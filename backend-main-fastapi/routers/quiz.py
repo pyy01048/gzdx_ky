@@ -347,8 +347,13 @@ async def submit_answer(submission: QuizSubmit, db: Session = Depends(get_db)):
     if not question:
         raise HTTPException(status_code=404, detail="题目不存在")
 
+    # V12 置信度分级：低置信答案（LLM 生成/缺失）不参与自动判分，
+    # 仅记录作答流水，返回 needs_review 交前端提示「答案待人工核对」。
+    low_confidence = getattr(question, "answer_confidence", 1.0) is not None and \
+        getattr(question, "answer_confidence", 1.0) < 0.8
+
     correct = False
-    if question.answer:
+    if question.answer and not low_confidence:
         correct = submission.my_answer.strip().upper() == question.answer.strip().upper()
 
     # 记录答题历史（用于真实正确率统计）
@@ -356,15 +361,15 @@ async def submit_answer(submission: QuizSubmit, db: Session = Depends(get_db)):
         question_id=question.id,
         my_answer=submission.my_answer,
         correct_answer=question.answer,
-        is_correct=correct,
+        is_correct=correct if not low_confidence else None,
         subject=question.subject,
         mode=submission.mode,
         cost_seconds=submission.cost_seconds or 0,
     )
     db.add(record)
 
-    # 答错自动加入错题本
-    if not correct:
+    # 答错自动加入错题本（低置信题不判错——答案本身可能不可靠）
+    if not correct and not low_confidence:
         error = ErrorRecord(
             question_id=question.id,
             content=question.content,
@@ -382,6 +387,7 @@ async def submit_answer(submission: QuizSubmit, db: Session = Depends(get_db)):
     return {
         "question_id": question.id,
         "correct": correct,
+        "needs_review": low_confidence,
         "correct_answer": question.answer,
         "analysis": question.analysis,
         "record_id": record.id,

@@ -96,6 +96,8 @@ class QuizQuestion(Base):
     answer_type = Column(String(20), default="objective", comment="作答类型：objective/subjective")
     is_available = Column(Boolean, default=True, comment="是否可用（下线标记）")
     quality = Column(String(20), nullable=True, comment="质量评级：A/B/C")
+    answer_source = Column(String(20), nullable=True, comment="答案来源：bank/source_extract/llm_generated/user_confirmed")
+    answer_confidence = Column(Float, nullable=True, comment="答案置信度 0-1（<0.8 不参与自动判分）")
     created_at = Column(DateTime, default=_utcnow)
 
 
