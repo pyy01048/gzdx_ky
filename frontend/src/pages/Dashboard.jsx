@@ -19,6 +19,7 @@ const MODULES = [
   { to: '/tasks', label: '任务打卡', icon: Target },
   { to: '/kbmap', label: '知识地图', icon: MapIcon },
   { to: '/quiz', label: '刷题中心', icon: Book },
+  { to: '/codebank', label: '复试代码题库', icon: Book },
   { to: '/notebook', label: '错题本', icon: FileText },
   { to: '/words', label: '单词记忆', icon: GraduationCap },
   { to: '/cards', label: '记忆卡片', icon: Brain },
