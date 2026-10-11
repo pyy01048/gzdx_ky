@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
 import { daysBetween, todayStr, weekdayIdx, WEEK_CN } from '../utils/date'
 import { reviewStatus } from '../utils/ebbinghaus'
@@ -258,6 +258,7 @@ export default function Dashboard() {
   }, [stats, todayTasks, dueReviews])
 
   const [today, setToday] = useState(null)
+  const [dayNotices, setDayNotices] = useState([])   // V16 当日院校公告
   const [report, setReport] = useState(null)
   const [showReport, setShowReport] = useState(false)
 
@@ -265,6 +266,12 @@ export default function Dashboard() {
     /* V11: 今日学习引导（一次拉齐：到期复习/今日任务/今日答题/薄弱点/行动清单） */
     import('../api/client').then(({ insightApi }) => {
       insightApi.today().then(setToday).catch(() => setToday(null))
+    })
+    /* V16: 当日院校公告（工科/理科相关招生动态，随时可看） */
+    import('../api/client').then(({ request }) => {
+      request('/kaoyan/notices/feed', { params: { page: 1, page_size: 8 } })
+        .then(r => setDayNotices(r.items || []))
+        .catch(() => setDayNotices([]))
     })
   }, [])
 
@@ -353,6 +360,27 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ===== V16 当日院校公告（工科/理科招生动态，随时查看） ===== */}
+      {dayNotices.length > 0 && (
+        <section className="dash-today" style={{ marginBottom: 18 }} aria-label="当日院校公告">
+          <div className="dash-today-head">
+            <strong>📰 院校公告速递</strong>
+            <span className="dash-today-sub">工科/理科相关专业 · 最新 {dayNotices.length} 条 · 点标题看原文</span>
+            <Link to="/kaoyan/notices" style={{ marginLeft: 'auto', fontSize: 12 }}>进入通知中心 →</Link>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {dayNotices.slice(0, 6).map(n => (
+              <a key={n.id} href={n.url} target="_blank" rel="noreferrer"
+                style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 13, textDecoration: 'none', color: 'var(--ink-2)' }}>
+                <em style={{ fontStyle: 'normal', fontSize: 11, padding: '1px 8px', borderRadius: 999, background: 'var(--accent-soft, rgba(43,90,158,.1))', color: 'var(--accent)', flexShrink: 0 }}>{n.notice_type || '公告'}</em>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title}</span>
+                <span style={{ fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{n.school_name}</span>
+              </a>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* ===== Hero 渐变倒计时 ===== */}

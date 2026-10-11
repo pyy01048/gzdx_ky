@@ -59,6 +59,8 @@ export const kaoyanApi = {
   refresh: (params) => request('/kaoyan/collection/refresh', { method: 'POST', params, timeout: 300000 }),
   // T5: 院校公告列表 + 类型分布
   schoolNotices: (id, params) => request(`/kaoyan/schools/${id}/notices`, { params }),
+  // V16 单校公告随时爬取（详情页按钮）
+  crawlSchoolNotices: (id) => request('/kaoyan/notices/crawl', { method: 'POST', params: { school_id: id } }),
   noticeTypeStats: () => request('/kaoyan/notices/types'),
   // C5: 采集历史
   collectionRuns: (params) => request('/kaoyan/collection/runs', { params }),
