@@ -1,0 +1,300 @@
+/* ============================================================
+   模型选型面板（ModelSelectPanel）
+   ============================================================ */
+
+.model-panel .card-title { font-size: 15px; }
+
+/* ---------- 硬件画像 ---------- */
+.mp-hw {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.mp-hw-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.mp-hw-gpu { font-size: 14px; font-weight: 700; color: var(--ink); }
+.mp-hw-tier { font-size: 12px; color: var(--ink-3); }
+.mp-hw-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.mp-hw-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.mp-hw-k { font-size: 11px; color: var(--ink-3); }
+.mp-hw-v {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-strong);
+  font-variant-numeric: tabular-nums;
+}
+.mp-warn {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--gold);
+  background: var(--gold-soft);
+  border-radius: 6px;
+  padding: 7px 10px;
+  line-height: 1.6;
+}
+
+/* ---------- Tabs ---------- */
+.mp-tabs {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+/* ---------- 分科建议 ---------- */
+.mp-subject { display: flex; flex-direction: column; gap: 8px; }
+.mp-subject-row {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  background: var(--surface);
+}
+.mp-subject-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.mp-task { font-size: 11px; font-weight: 400; color: var(--ink-3); }
+.mp-subject-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mp-pick-name { font-size: 13px; color: var(--accent-strong); font-weight: 600; }
+.mp-score {
+  font-size: 11px;
+  color: var(--violet);
+  background: var(--violet-soft);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.mp-none { font-size: 12px; color: var(--ink-3); }
+.mp-subject-alt {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.7;
+}
+
+.mp-batch {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+.mp-batch-title { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.mp-batch-row {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+.mp-batch-k { color: var(--ink-3); flex: 0 0 auto; min-width: 150px; }
+.mp-batch-v { color: var(--ink-2); flex: 1; min-width: 0; }
+
+/* ---------- 模型列表 ---------- */
+.mp-list { display: flex; flex-direction: column; gap: 9px; }
+.mp-model {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+  background: var(--surface);
+}
+.mp-model.installed { border-color: var(--green); background: var(--green-soft); }
+.mp-model-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.mp-model-name { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.mp-family {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  background: var(--surface-3);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.mp-badge {
+  font-size: 10.5px;
+  border-radius: 5px;
+  padding: 1px 6px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.mp-badge.ok { background: var(--green); color: #fff; }
+.mp-badge.cloud { background: var(--violet-soft); color: var(--violet); }
+
+.mp-fit {
+  font-size: 10.5px;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-weight: 600;
+}
+.mp-fit.perfect { background: var(--green-soft); color: var(--green); }
+.mp-fit.ok { background: var(--accent-soft); color: var(--accent-strong); }
+.mp-fit.tight { background: var(--gold-soft); color: var(--gold); }
+.mp-fit.too_big { background: var(--red-soft); color: var(--red); }
+.mp-fit.cloud_only { background: var(--violet-soft); color: var(--violet); }
+.mp-fit.unknown { background: var(--surface-3); color: var(--ink-3); }
+
+.mp-model-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 6px;
+}
+.mp-model-strengths { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.mp-model-note {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  line-height: 1.75;
+}
+
+.mp-model-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.mp-model-cmd code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 3px 8px;
+  color: var(--accent-strong);
+  word-break: break-all;
+}
+.mp-model-blocked {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--red);
+}
+.mp-copied-fail { font-size: 12px; color: var(--red); margin-top: 8px; }
+
+/* ---------- 说明 ---------- */
+.mp-help {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.mp-help summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--accent-strong);
+  user-select: none;
+}
+.mp-help ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mp-help li { font-size: 11.5px; color: var(--ink-2); line-height: 1.75; }
+
+/* ---------- 移动端 ---------- */
+@media (max-width: 640px) {
+  .mp-hw-stats { grid-template-columns: repeat(2, 1fr); }
+  .mp-model-meta { gap: 8px; }
+  .mp-batch-k { min-width: 0; }
+}
+
+
+/* ============================================================
+   备考科目设置（SubjectSettings）
+   ============================================================ */
+
+.subject-settings .card-title { font-size: 15px; }
+
+.ss-hint {
+  font-size: 12.5px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.ss-group { margin-bottom: 16px; }
+.ss-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+.ss-group-title { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.ss-group-desc { font-size: 11.5px; color: var(--ink-3); flex: 1; min-width: 0; }
+.ss-group-count { font-size: 11.5px; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+
+.ss-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.ss-chips .chip { display: inline-flex; align-items: center; gap: 5px; }
+.ss-chips .chip small { color: var(--ink-3); font-size: 10.5px; }
+.ss-chips .chip.active small { color: var(--accent-strong); }
+
+.ss-preview {
+  margin-top: 14px;
+  padding: 11px 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.ss-preview-title { font-size: 12.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 7px; }
+.ss-preview ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.ss-preview li { font-size: 12px; color: var(--ink-2); line-height: 1.7; }
+.ss-preview b { color: var(--accent-strong); }
+
+.ss-help {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.ss-help summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--accent-strong);
+  user-select: none;
+}
+.ss-help ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.ss-help li { font-size: 11.5px; color: var(--ink-2); line-height: 1.8; }
+.ss-help b { color: var(--ink); }
+
+@media (max-width: 640px) {
+  .subject-settings .card-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .subject-settings .page-actions { flex-wrap: wrap; }
+  .subject-settings .page-actions .btn { flex: 1 1 auto; }
+}

@@ -1,0 +1,4 @@
+torch>=2.0
+FlagEmbedding>=1.4.0
+fastapi>=0.110
+uvicorn>=0.29

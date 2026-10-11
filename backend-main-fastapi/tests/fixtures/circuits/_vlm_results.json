@@ -1,0 +1,54 @@
+{
+  "01_voltage_divider.png": {
+    "ok": true,
+    "circuit_type": "unknown",
+    "circuit_type_cn": "",
+    "components": [],
+    "connections": [],
+    "nodes": [],
+    "description": "",
+    "uncertainties": [],
+    "question_hints": "",
+    "engines": {
+      "vlm": "ok",
+      "ocr": "skipped"
+    },
+    "ocr_labels": [],
+    "errors": [],
+    "elapsed_ms": 26573
+  },
+  "02_common_emitter.png": {
+    "ok": false,
+    "circuit_type": "unknown",
+    "components": [],
+    "connections": [],
+    "nodes": [],
+    "description": "{",
+    "question_hints": "",
+    "engines": {
+      "vlm": "error",
+      "ocr": "skipped"
+    },
+    "errors": [
+      "[VLM] JSON 解析失败: VLM 输出不是合法 JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1); 原文片段: '{'"
+    ],
+    "elapsed_ms": 2332
+  },
+  "03_bridge_rectifier.png": {
+    "ok": false,
+    "circuit_type": "unknown",
+    "components": [],
+    "connections": [],
+    "nodes": [],
+    "description": "{\",_:, 为您, 为,火烧烧火烧火烧火烧火烧,烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧,烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧,烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧,,火烧火烧火烧火烧火烧火烧,,火烧火烧,火烧火烧,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,,火烧火烧,,火烧火烧,,,火烧火烧,,,,火烧火烧,,,,火烧火烧,,_,火烧火烧,,火烧火烧,,,火烧火烧,,,火烧火烧,,,,火烧火烧,,,火烧火烧,,,,,_:火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,,火烧火烧,,,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,,,火烧火烧,,火烧火烧,,,火烧火烧,,火烧火烧,,,火烧火烧,,火烧火烧,,_,火烧火烧,,火烧火烧,,火烧火烧,,,火烧火烧,,,火烧火烧,,,火烧火烧,,,火烧火烧,,,,火烧火烧,",
+    "question_hints": "",
+    "engines": {
+      "vlm": "error",
+      "ocr": "skipped"
+    },
+    "errors": [
+      "[VLM] JSON 解析失败: VLM 输出不是合法 JSON: Unterminated string starting at: line 1 column 2 (char 1); 原文片段: '{\",_:, 为您, 为,火烧烧火烧火烧火烧火烧,烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧,烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧,烧火烧火烧火烧火烧火烧火烧火烧火烧火烧火烧,,火烧火烧火烧火烧火烧火烧,,火烧火烧,火烧火烧,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,火烧火烧,,,火烧火烧,,火烧火烧,,,火烧火烧,,,,火烧火烧,,,,火烧火烧,,_,火烧火烧,,火烧火烧,,,火烧火烧,,,火烧火烧,,,,火烧火烧,,,火烧火烧,,,,,_:火烧火烧,,火烧火烧,,火烧火烧,,'"
+    ],
+    "elapsed_ms": 25213
+  }
+}

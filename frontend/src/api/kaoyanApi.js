@@ -1,0 +1,55 @@
+/* 考研择校数据中心 API client
+   统一复用 client.js 的 request（含认证头注入与 401 处理） */
+import { request } from './client'
+
+export const kaoyanApi = {
+  subjects: () => request('/kaoyan/subjects'),
+  schools: (params) => request('/kaoyan/schools', { params }),
+  // 热度榜 TOP N（对标 txkyer 首页热度榜；热度为后端派生代理指标）
+  hot: (params) => request('/kaoyan/analysis/hot', { params }),
+  schoolDetail: (id) => request('/kaoyan/schools/' + id),
+  schoolMajors: (id) => request('/kaoyan/schools/' + id + '/majors'),
+  schoolScores: (id) => request('/kaoyan/schools/' + id + '/scores'),
+  schoolAdmissions: (id) => request('/kaoyan/schools/' + id + '/admissions'),
+  trend: (params) => request('/kaoyan/analysis/trend', { params }),
+  compare: (schoolIds) => request('/kaoyan/analysis/compare', { params: { school_ids: schoolIds } }),
+  // D1: 增强推荐（多维权重）
+  recommend: (params) => request('/kaoyan/analysis/recommend', { params }),
+  // D4: 自然语言择校问答引擎
+  assistantQuery: (question) =>
+    request('/kaoyan/assistant/query', { method: 'POST', params: { question } }),
+  // D3: 设为目标院校
+  setGoal: (schoolId, targetScore) =>
+    request('/kaoyan/analysis/recommend/' + schoolId + '/set-goal', {
+      method: 'POST',
+      params: { target_score: targetScore },
+    }),
+  // D5: 区域热力图数据
+  heatmap: (params) => request('/kaoyan/analysis/heatmap', { params }),
+  // D6: 招生散点图数据
+  scatter: (params) => request('/kaoyan/analysis/scatter', { params }),
+  // V9 任务完善项: 择校数据分析聚合（业务课二TOP15/数英科目/专业对比/学院招生/专业课分数）
+  dashboardAnalysis: () => request('/kaoyan/analysis/dashboard'),
+  // F1: 考研 18 节点里程碑 + 阶段→月→周→日 三层规划
+  milestones: (year) => request('/plan/milestones', { params: { year } }),
+  generatePlan: (year) => request('/plan/generate', { method: 'POST', params: { year } }),
+  roadmap: (year) => request('/plan/roadmap', { params: { year } }),
+  // F2: 成长体系（等级/徽章/积分/成就）
+  growthSummary: () => request('/growth/summary'),
+  growthBadges: () => request('/growth/badges'),
+  growthAchievements: () => request('/growth/achievements'),
+  stats: () => request('/kaoyan/stats'),
+  // C1: 触发爬虫
+  runSpider: (provinces, allProvinces) =>
+    request('/kaoyan/spider/run', {
+      method: 'POST',
+      params: { provinces: provinces || '', all_provinces: allProvinces || false },
+    }),
+  // T5: 定向采集（engineering 工科代码集 / national_line 国家线 / notices 公告）
+  refresh: (params) => request('/kaoyan/collection/refresh', { method: 'POST', params, timeout: 300000 }),
+  // T5: 院校公告列表 + 类型分布
+  schoolNotices: (id, params) => request(`/kaoyan/schools/${id}/notices`, { params }),
+  noticeTypeStats: () => request('/kaoyan/notices/types'),
+  // C5: 采集历史
+  collectionRuns: (params) => request('/kaoyan/collection/runs', { params }),
+}

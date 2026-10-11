@@ -1,0 +1,2 @@
+scripts/data/** filter=lfs diff=lfs merge=lfs -text
+backend-main-fastapi/scripts/data/** filter=lfs diff=lfs merge=lfs -text
