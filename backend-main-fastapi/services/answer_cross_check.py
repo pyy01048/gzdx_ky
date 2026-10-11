@@ -429,6 +429,26 @@ def cross_check_question(
         (new_conf, question_id),
     )
     final["confidence_label"] = new_conf
+
+    # V13 改造：冲突不再只放返回值，持久化进人工复核队列（幂等，open 唯一）。
+    # 具体结案（采纳/驳回 + 候选降权）走 /api/conflicts，由人拍板。
+    if conflicts:
+        try:
+            from services.confidence_service import register_conflict
+            by_src = {s["source"]: s for s in sources}
+            for sa, sb in conflicts[:4]:  # 最多登记前 4 对，避免队列爆炸
+                register_conflict(
+                    db, question_id,
+                    answer_a=by_src.get(sa, {}).get("answer", ""),
+                    answer_b=by_src.get(sb, {}).get("answer", ""),
+                    source_a=sa, source_b=sb,
+                    confidence_a=by_src.get(sa, {}).get("confidence", 0.0),
+                    confidence_b=by_src.get(sb, {}).get("confidence", 0.0),
+                    suggested_winner=final.get("best_source"),
+                )
+        except Exception:  # 队列写入失败不阻断主校验链路
+            pass
+
     db.commit()
     return final
 
