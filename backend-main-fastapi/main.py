@@ -21,6 +21,7 @@ from models import (
 from routers import (
     kaoyan,
     kaoyan_ext,
+    insight,
     dashboard,
     tasks,
     quiz,
@@ -203,6 +204,7 @@ async def api_token_auth(request, call_next):
 # --------------------------------------------------------------------------- #
 app.include_router(kaoyan.router)
 app.include_router(kaoyan_ext.router)
+app.include_router(insight.router)
 app.include_router(dashboard.router)
 app.include_router(tasks.router)
 app.include_router(quiz.router)

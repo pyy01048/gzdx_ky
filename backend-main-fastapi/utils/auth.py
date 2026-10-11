@@ -6,8 +6,9 @@
 - 所有 API 请求携带 X-App-Password 头
 """
 import os
-from fastapi import Request, HTTPException, status
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 
 # 从环境变量读取密码（为空则不启用认证）
@@ -69,9 +70,11 @@ class SimpleAuthMiddleware(BaseHTTPMiddleware):
             password = request.query_params.get("password", "")
 
         if not verify_password(password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="密码错误或未提供认证，请先登录",
+            # 注意：BaseHTTPMiddleware 里 raise HTTPException 会被外层全局异常
+            # 处理器包装成 500，必须直接返回 JSONResponse 才是标准 401。
+            return JSONResponse(
+                status_code=401,
+                content={"code": "UNAUTHORIZED", "message": "密码错误或未提供认证，请先登录"},
             )
 
         return await call_next(request)

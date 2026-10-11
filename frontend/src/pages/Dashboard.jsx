@@ -256,8 +256,104 @@ export default function Dashboard() {
     return events.slice(0, 6)
   }, [stats, todayTasks, dueReviews])
 
+  const [today, setToday] = useState(null)
+  const [report, setReport] = useState(null)
+  const [showReport, setShowReport] = useState(false)
+
+  useEffect(() => {
+    /* V11: 今日学习引导（一次拉齐：到期复习/今日任务/今日答题/薄弱点/行动清单） */
+    import('../api/client').then(({ insightApi }) => {
+      insightApi.today().then(setToday).catch(() => setToday(null))
+    })
+  }, [])
+
+  const openReport = () => {
+    setShowReport(true)
+    if (!report) {
+      import('../api/client').then(({ insightApi }) => {
+        insightApi.weeklyReport().then(setReport).catch(() => setShowReport(false))
+      })
+    }
+  }
+
   return (
     <div className="dash">
+      {/* ===== V11 今日学习引导条（打开就知道该干什么） ===== */}
+      {today && (
+        <section className="dash-today" aria-label="今日学习引导">
+          <div className="dash-today-head">
+            <strong>📌 今日该干什么</strong>
+            <span className="dash-today-sub">{today.suggestion?.[0] || '按下面清单推进即可'}</span>
+          </div>
+          <div className="dash-today-grid">
+            <button className="dash-today-card" onClick={() => navigate('/review')}>
+              <em style={{ color: 'var(--gold)' }}>{today.due_review_count}</em>
+              <span>到期复习</span>
+            </button>
+            <button className="dash-today-card" onClick={() => navigate('/tasks')}>
+              <em style={{ color: 'var(--accent)' }}>{today.today_tasks_count}</em>
+              <span>今日任务</span>
+            </button>
+            <button className="dash-today-card" onClick={() => navigate('/quiz')}>
+              <em style={{ color: '#16a34a' }}>{today.today_answered}</em>
+              <span>今日已答</span>
+            </button>
+            {today.weak_top?.[0] && (
+              <button className="dash-today-card" onClick={() => navigate('/quiz?subject=' + encodeURIComponent(today.weak_top[0].subject || ''))}>
+                <em style={{ color: '#ef4444' }}>薄弱</em>
+                <span>{(today.weak_top[0].knowledge_point || '').slice(0, 10) || '考点待诊断'}</span>
+              </button>
+            )}
+            <button className="dash-today-card" onClick={openReport}>
+              <em style={{ color: 'var(--accent-strong)' }}>周报</em>
+              <span>本周 vs 上周</span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ===== V11 学习周报弹层 ===== */}
+      {showReport && (
+        <div className="dash-report-mask" onClick={() => setShowReport(false)}>
+          <div className="dash-report" onClick={e => e.stopPropagation()}>
+            <div className="dash-report-head">
+              <strong>📊 学习周报</strong>
+              <button className="dash-report-close" onClick={() => setShowReport(false)}>✕</button>
+            </div>
+            {!report ? (
+              <div className="dash-report-loading">生成中…</div>
+            ) : (
+              <>
+                <div className="dash-report-summary">{report.summary}</div>
+                <div className="dash-report-grid">
+                  <div><em>{report.this_week.answered}</em><span>本周答题{report.last_week.answered ? `（上周 ${report.last_week.answered}）` : ''}</span></div>
+                  <div><em>{report.this_week.accuracy != null ? Math.round(report.this_week.accuracy * 100) + '%' : '—'}</em><span>正确率{report.last_week.accuracy != null ? `（上周 ${Math.round(report.last_week.accuracy * 100)}%）` : ''}</span></div>
+                  <div><em>{report.this_week.duration_min}</em><span>学习时长（分钟）</span></div>
+                  <div><em>{report.delta.direction === 'up' ? '↑' : report.delta.direction === 'down' ? '↓' : '→'}</em><span>环比 {report.delta.text}</span></div>
+                </div>
+                <div className="dash-report-bars">
+                  {report.daily.map(d => (
+                    <div key={d.date} className="dash-report-bar-item" title={d.date}>
+                      <i style={{ height: `${Math.min(100, d.answered * 6)}%` }} />
+                      <b>{d.answered || ''}</b>
+                      <span>{d.label}</span>
+                    </div>
+                  ))}
+                </div>
+                {report.weak_delta?.length > 0 && (
+                  <div className="dash-report-weak">
+                    <b>薄弱考点变化：</b>
+                    {report.weak_delta.map((w, i) => (
+                      <span key={i} className="dash-report-weak-tag">{w.knowledge_point?.slice(0, 12)} {w.change}</span>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ===== Hero 渐变倒计时 ===== */}
       <section className="dash-hero">
         <div className="dash-hero-glow" />
