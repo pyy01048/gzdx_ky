@@ -145,7 +145,8 @@ export default function KaoyanSchools() {
   /* ---- 筛选（draft→apply，对齐参考件交互） ----
      数值筛选：录取均分 / 复录比 范围（min~max，空表示不限制） */
   const emptyFilters = { region: '', level: '', province: '', only0854: false, keyword: '',
-    numAdmitMin: '', numAdmitMax: '', numRatioMin: '', numRatioMax: '' }
+    numAdmitMin: '', numAdmitMax: '', numRatioMin: '', numRatioMax: '',
+    numRetestMin: '', numEnrollMin: '' }
   const [draft, setDraft] = useState(emptyFilters)
   const [filters, setFilters] = useState(emptyFilters)
   const [page, setPage] = useState(1)
@@ -260,6 +261,11 @@ export default function KaoyanSchools() {
       const avg = r.admit_avg_score
       if (filters.numAdmitMin !== '' && (avg == null || avg < Number(filters.numAdmitMin))) return false
       if (filters.numAdmitMax !== '' && (avg == null || avg > Number(filters.numAdmitMax))) return false
+      // V17 数值筛选：进复试≥ / 拟录取≥（txkyer 详细数据表口径）
+      const retest = r.retest_count ?? r.retest
+      if (filters.numRetestMin !== '' && (retest == null || retest < Number(filters.numRetestMin))) return false
+      const enroll = r.admit_count ?? r.admit
+      if (filters.numEnrollMin !== '' && (enroll == null || enroll < Number(filters.numEnrollMin))) return false
       // 数值筛选：复录比范围
       const ratio = r.retest_ratio
       if (filters.numRatioMin !== '' && (ratio == null || ratio < Number(filters.numRatioMin))) return false
@@ -769,6 +775,10 @@ export default function KaoyanSchools() {
             <span className="ky-range">
               <input className="ky-range-input" type="number" placeholder="最低" min="0" max="10" step="0.1"
                 value={draft.numRatioMin} onChange={(e) => setDraft({ ...draft, numRatioMin: e.target.value })} />
+              <input className="ky-range-input" type="number" min="0" placeholder="进复试≥" style={{ width: 90 }}
+                value={draft.numRetestMin} onChange={(e) => setDraft({ ...draft, numRetestMin: e.target.value })} />
+              <input className="ky-range-input" type="number" min="0" placeholder="拟录取≥" style={{ width: 90 }}
+                value={draft.numEnrollMin} onChange={(e) => setDraft({ ...draft, numEnrollMin: e.target.value })} />
               <span className="ky-range-sep">~</span>
               <input className="ky-range-input" type="number" placeholder="最高" min="0" max="10" step="0.1"
                 value={draft.numRatioMax} onChange={(e) => setDraft({ ...draft, numRatioMax: e.target.value })} />
