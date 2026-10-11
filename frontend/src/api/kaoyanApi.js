@@ -13,6 +13,16 @@ export const kaoyanApi = {
   schoolAdmissions: (id) => request('/kaoyan/schools/' + id + '/admissions'),
   trend: (params) => request('/kaoyan/analysis/trend', { params }),
   compare: (schoolIds) => request('/kaoyan/analysis/compare', { params: { school_ids: schoolIds } }),
+  // V10: 全局通知流（搜索/类型过滤/分页）
+  noticesFeed: (params) => request('/kaoyan/notices/feed', { params }),
+  // V10: 改考雷达（列表/统计/扫描）
+  reforms: (params) => request('/kaoyan/reforms', { params }),
+  reformStats: () => request('/kaoyan/reforms/stats'),
+  reformScan: (payload) => request('/kaoyan/reforms/scan', { method: 'POST', body: payload }),
+  // V10: 分数全景（多年明细/趋势/国家线差值）
+  scoreDetail: (id, params) => request('/kaoyan/analysis/score-detail/' + id, { params }),
+  // V10: 择校自动调整（冲稳保+理由）
+  autoAdjust: (payload) => request('/kaoyan/analysis/auto-adjust', { method: 'POST', body: payload }),
   // D1: 增强推荐（多维权重）
   recommend: (params) => request('/kaoyan/analysis/recommend', { params }),
   // D4: 自然语言择校问答引擎
