@@ -39,6 +39,34 @@ def ensure_school_type_schema(db: Session) -> Dict:
     return {"applied": applied}
 
 
+def enrich_from_seed(db: Session) -> Dict:
+    """kaoyan.cn 实测抓取的 name→类型 映射（school_type_seed.json）优先灌库。
+
+    精确匹配院校名；命中写 school_type + school_type_source='kaoyan.cn'。
+    返回 {matched, unmatched}，unmatched 供人工核对（勿编造）。
+    """
+    ensure_school_type_schema(db)
+    from pathlib import Path
+    seed_path = Path(__file__).parent / "school_type_seed.json"
+    if not seed_path.exists():
+        return {"matched": 0, "unmatched": [], "error": "seed 文件缺失"}
+    seed = json.loads(seed_path.read_text(encoding="utf-8"))
+    conn = db.connection().connection
+    matched, unmatched = 0, []
+    for s in seed:
+        row = conn.execute(
+            "SELECT id FROM kaoyan_schools WHERE name=?", (s["name"],)).fetchone()
+        if row:
+            conn.execute(
+                "UPDATE kaoyan_schools SET school_type=?, school_type_source='kaoyan.cn' "
+                "WHERE id=?", (s["school_type"], row[0]))
+            matched += 1
+        else:
+            unmatched.append(s["name"])
+    conn.commit()
+    return {"matched": matched, "unmatched": unmatched, "seed_size": len(seed)}
+
+
 def enrich_from_tags(db: Session, dry_run: bool = True) -> Dict:
     """从 tags JSON / intro 中提取院校类型（命中唯一类型才写，多个/零个留空）。"""
     ensure_school_type_schema(db)

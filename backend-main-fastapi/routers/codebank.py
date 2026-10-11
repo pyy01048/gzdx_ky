@@ -83,6 +83,13 @@ def syllabus_crawl(school_id: int = Query(...), dry_run: bool = Query(True),
     return syllabus_spider.crawl_syllabus(db, school_id, dry_run=dry_run)
 
 
+@router.post("/school-type/import-seed")
+def school_type_import_seed(db: Session = Depends(get_db)):
+    """kaoyan.cn 实测类型映射灌库（精确名匹配，unmatched 留人工核对）。"""
+    from services.kaoyan.school_type_enrich import enrich_from_seed
+    return enrich_from_seed(db)
+
+
 @router.post("/school-type/enrich")
 def school_type_enrich(dry_run: bool = Query(True), db: Session = Depends(get_db)):
     """院校类型补全（kaoyan.cn 筛选第三维）：从 tags/intro 提取，留空不编造。"""
