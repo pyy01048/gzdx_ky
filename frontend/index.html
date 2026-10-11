@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1e9" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%233A5A40'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='%23F4F1E9' font-family='Georgia'%3E研%3C/text%3E%3C/svg%3E" />
+    <meta name="description" content="考研档案 · 贵大 834 电子技术基础备考平台：知识地图（章节→知识点→题型）、扫描版真题 OCR 入库、错题本与知识库联动、复习进度追踪、AI 知识库问答，支持电脑/平板/手机三端" />
+    <title>考研档案 · 834 知识库与复习进度</title>
+    <script>
+      // V7.0 P0-1 首帧防闪（FOUC）：在首屏渲染前把持久化的主题偏好写到 <html data-theme>。
+      // React 挂载后由 useResolvedTheme（components/UI.jsx）接管，此处只负责「渲染前」这一段。
+      // 存储 key 与 store/useStore.js 的 persist({ name: 'kaoyan-archive-v1' }) 保持一致。
+      (function () {
+        var STORE_KEY = 'kaoyan-archive-v1'
+        var theme = 'light'
+        try {
+          var raw = window.localStorage.getItem(STORE_KEY)
+          if (raw) {
+            var parsed = JSON.parse(raw)
+            var stored = parsed && parsed.state && parsed.state.settings && parsed.state.settings.theme
+            if (stored === 'light' || stored === 'dark' || stored === 'system') theme = stored
+          }
+        } catch (e) {
+          // localStorage 不可用（隐私模式 / 配额禁用）或 JSON 损坏 → 兜底 light
+          theme = 'light'
+        }
+        if (theme === 'system') {
+          theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
+        }
+        document.documentElement.setAttribute('data-theme', theme)
+        // 同步浏览器 chrome 颜色，避免地址栏/状态栏与页面割裂
+        var meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.setAttribute('content', theme === 'dark' ? '#1a1c22' : '#f4f1e9')
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // HashRouter 兼容：直接访问裸路径（/quiz 等）时重写为 hash 路由，
+      // 避免无 hash 访问 fallback 到首页
+      (function () {
+        var path = window.location.pathname
+        if (path && path !== '/' && !window.location.hash) {
+          var target = '/#' + path + window.location.search + window.location.hash
+          window.location.replace(target)
+        }
+      })()
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

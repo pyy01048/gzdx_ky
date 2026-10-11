@@ -1,0 +1,57 @@
+database/
+node_modules/
+__pycache__/
+*.pyc
+*.db
+*.db-shm
+*.db-wal
+backend-main-fastapi/temp/
+backend-main-fastapi/uploads/
+backend-main-fastapi/data/embedding_models/
+backend-main-fastapi/static/
+backend-main-fastapi/knowledge_base/
+frontend/dist/
+frontend/data/
+knowledge_base/
+exports/
+_archive/
+.agent-runs/
+*.log
+*.log.*
+*.txt
+!requirements.txt
+
+# 密钥文件绝对不可入库
+.env
+.env.local
+*.env
+!.env.example
+
+# ── 运行期数据与用户数据（V7 中期完善：防止 git add 污染仓库）──
+# data/ 整目录含 6.5GB LoRA 模型、11.9GB 向量存储、249MB DB 备份与用户上传数据，均不可入库
+backend-main-fastapi/data/
+backend-main-fastapi/utils/data/
+backend-reranker/data/
+frontend/temp/
+*.bak
+_audit_db.py
+_test_db.py
+
+# --- test artifacts (added for github upload) ---
+test-results/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+playwright-report/
+.pytest_cache/
+.coverage
+htmlcov/
+# one-off backfill result
+backend-main-fastapi/backfill_answers_result.json
+# virtual envs (safety net)
+venv/
+.venv/
+env/
+# OS files
+.DS_Store
+Thumbs.db

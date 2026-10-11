@@ -1,0 +1,131 @@
+/* ============================================================
+   知识库健康面板（KbHealthPanel）
+   ============================================================ */
+
+.kb-health.ok { border-left: 3px solid var(--green); }
+.kb-health.has-issue { border-left: 3px solid var(--gold); }
+.kb-health .card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.kb-heal-msg {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+}
+
+/* ---------- 缺口清单 ---------- */
+.kb-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.kb-issue {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.kb-issue.error { background: var(--red-soft); border-color: rgba(176, 68, 46, 0.25); }
+.kb-issue.warn { background: var(--gold-soft); border-color: rgba(160, 116, 31, 0.25); }
+.kb-issue.info { background: var(--surface-2); }
+
+.kb-issue-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-top: 5px; flex: 0 0 auto;
+  background: var(--ink-3);
+}
+.kb-issue.error .kb-issue-dot { background: var(--red); }
+.kb-issue.warn .kb-issue-dot { background: var(--gold); }
+.kb-issue.info .kb-issue-dot { background: var(--accent); }
+
+.kb-issue-main { flex: 1; min-width: 0; }
+.kb-issue-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.kb-issue-impact {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 3px;
+  line-height: 1.6;
+}
+
+/* ---------- 数据明细 ---------- */
+.kb-health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.kb-health-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.kb-h-label { font-size: 11px; color: var(--ink-3); }
+.kb-h-val {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+.kb-h-val.bad { color: var(--red); font-weight: 600; }
+
+/* ---------- 建立流程 ---------- */
+.kb-flow {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.kb-flow-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.kb-flow ol {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.kb-flow li {
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+.kb-flow li b { color: var(--ink); }
+.kb-flow-entry {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 7px 10px;
+  line-height: 1.7;
+}
+
+/* ---------- 移动端 ---------- */
+@media (max-width: 640px) {
+  .kb-health .card-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .kb-health .page-actions { flex-wrap: wrap; }
+  .kb-health .page-actions .btn { flex: 1 1 auto; }
+  .kb-health-grid { grid-template-columns: repeat(2, 1fr); }
+}

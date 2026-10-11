@@ -1,0 +1,13 @@
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+pydantic>=2.0.0
+Pillow>=10.0.0
+pymupdf>=1.23.0
+# PaddleOCR 核心依赖（需单独安装，根据系统选择版本）
+# CPU 版本：
+# pip install paddlepaddle
+# GPU 版本（如有NVIDIA显卡）：
+# pip install paddlepaddle-gpu
+paddleocr>=2.7.0
+numpy>=1.24.0

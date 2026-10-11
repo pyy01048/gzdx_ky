@@ -1,0 +1,341 @@
+/* ==========================================================================
+   院校数据库（KaoyanSchools）V9 重做专用样式
+   --------------------------------------------------------------------------
+   只新增 class，不改动 global.css / v2-design.css 既有定义。
+   颜色一律走 var(--*) 学术蓝令牌，明暗主题自适应。
+   ========================================================================== */
+
+.ky-explorer { display: flex; flex-direction: column; gap: 16px; }
+
+/* ---------- 页头 + 快捷入口 ---------- */
+.ky-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ky-head h1 { margin: 0; }
+.ky-head-sub { margin: 6px 0 0; color: var(--ink-3); font-size: 13.5px; line-height: 1.6; }
+.ky-entry-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- 数据来源提示条 ---------- */
+.ky-source-note {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 14px; border-radius: var(--r-sm);
+  background: var(--gold-soft); color: var(--gold);
+  font-size: 12.5px; line-height: 1.6;
+}
+.ky-source-note b { font-weight: 700; }
+
+/* ---------- 筛选卡片 ---------- */
+.ky-filterbar {
+  background: var(--surface); border-radius: var(--r-md);
+  border: 1px solid var(--line); border-top: 3px solid var(--accent);
+  padding: 16px 18px; box-shadow: var(--shadow-1);
+}
+.ky-filter-grid { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.ky-field { display: flex; flex-direction: column; gap: 6px; min-width: 120px; }
+.ky-field-label { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.ky-select {
+  padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 10px;
+  background: var(--surface); color: var(--ink); font-size: 13.5px; min-width: 130px;
+}
+.ky-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ky-checks { display: flex; flex-direction: column; gap: 8px; padding-bottom: 2px; }
+.ky-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.ky-check input { width: 15px; height: 15px; accent-color: var(--accent); }
+.ky-filter-actions { display: flex; gap: 8px; }
+
+/* ---------- 主区：表格 + 侧边图表 ---------- */
+.ky-main-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+@media (max-width: 1080px) { .ky-main-grid { grid-template-columns: 1fr; } }
+
+.ky-list-card {
+  background: var(--surface); border-radius: var(--r-md);
+  border: 1px solid var(--line); padding: 16px 18px; box-shadow: var(--shadow-1);
+}
+.ky-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.ky-list-title { font-size: 16px; font-weight: 700; margin: 0; }
+.ky-list-count { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-left: 8px; }
+.ky-list-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ky-search { position: relative; }
+.ky-search input {
+  padding: 8px 12px 8px 32px; border: 1px solid var(--line-strong); border-radius: 10px;
+  background: var(--surface); color: var(--ink); font-size: 13.5px; width: 220px;
+}
+.ky-search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ky-search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--ink-3); font-size: 14px; pointer-events: none;
+}
+
+/* ---------- 表格 ---------- */
+.ky-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.ky-table th {
+  padding: 10px 10px; text-align: left; font-weight: 600; white-space: nowrap;
+  color: var(--ink-2); background: var(--surface-2); border-bottom: 2px solid var(--line);
+}
+.ky-table td { padding: 10px 10px; border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: middle; }
+.ky-table tbody tr { transition: background 0.15s; }
+.ky-table tbody tr:hover { background: var(--surface-2); }
+.ky-table tr.ky-row-hl { background: var(--gold-soft); }
+.ky-num { font-variant-numeric: tabular-nums; text-align: right; }
+.ky-cell-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); }
+.ky-cell-name a { color: var(--accent); text-decoration: none; }
+.ky-cell-name a:hover { text-decoration: underline; }
+
+/* 校徽占位（后端 logo_url 多为空，用首字色块代替） */
+.ky-badge {
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent-grad); color: var(--surface);
+  font-size: 13px; font-weight: 700;
+}
+
+/* 层级标签 */
+.ky-tier {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.ky-tier-985 { background: var(--red-soft); color: var(--red); }
+.ky-tier-211 { background: var(--accent-soft); color: var(--accent-strong); }
+.ky-tier-双一流 { background: var(--violet-soft); color: var(--violet); }
+.ky-tier-双非 { background: var(--surface-3); color: var(--ink-2); }
+.ky-tier-other { background: var(--surface-2); color: var(--ink-3); }
+
+/* 复录比配色：<1.2 绿 / 1.2-1.8 金 / >1.8 红 */
+.ky-ratio { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ky-ratio-ok { color: var(--green); }
+.ky-ratio-warn { color: var(--gold); }
+.ky-ratio-hot { color: var(--red); }
+
+/* 收藏星标 */
+.ky-fav {
+  border: none; background: transparent; cursor: pointer; padding: 4px;
+  border-radius: 8px; font-size: 16px; line-height: 1; color: var(--ink-3);
+}
+.ky-fav:hover { background: var(--surface-2); }
+.ky-fav.on { color: var(--gold); }
+
+/* 对比勾选 */
+.ky-cmp { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+
+/* ---------- 分页 ---------- */
+.ky-pager { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+.ky-pager button {
+  min-width: 32px; height: 32px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2);
+  font-size: 13px; cursor: pointer; transition: all 0.15s;
+}
+.ky-pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.ky-pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+.ky-pager button.cur { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.ky-pager-info { font-size: 12.5px; color: var(--ink-3); margin-left: 8px; }
+
+/* ---------- 侧边图表 ---------- */
+.ky-side { display: flex; flex-direction: column; gap: 14px; }
+.ky-chart-card {
+  background: var(--surface); border-radius: var(--r-md);
+  border: 1px solid var(--line); padding: 14px 16px; box-shadow: var(--shadow-1);
+}
+.ky-chart-title { font-size: 13.5px; font-weight: 700; margin: 0 0 8px; color: var(--ink); }
+.ky-chart-note { font-size: 11.5px; color: var(--ink-3); margin-top: 6px; }
+
+/* ---------- 随机抽一所 / 收藏计数 竖条按钮 ---------- */
+.ky-side-actions { display: flex; gap: 10px; }
+.ky-side-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 12px 8px; border-radius: var(--r-md); border: 1px solid var(--line);
+  background: var(--surface); cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: var(--shadow-1);
+}
+.ky-side-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.ky-side-btn.random { background: var(--accent-grad); color: var(--surface); border: none; }
+.ky-side-btn.favcount { color: var(--gold); background: var(--gold-soft); border: none; }
+.ky-side-btn .ico { font-size: 20px; }
+.ky-side-btn .lbl { font-size: 12px; font-weight: 700; text-align: center; line-height: 1.3; }
+
+/* ---------- 底部对比浮动条 ---------- */
+.ky-compare-bar {
+  position: sticky; bottom: 16px; margin-top: 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 16px; border-radius: var(--r-md);
+  background: var(--accent-grad); color: var(--surface); box-shadow: var(--shadow-3);
+}
+.ky-compare-bar .info { font-size: 13.5px; font-weight: 600; }
+.ky-compare-bar .btns { display: flex; gap: 8px; }
+.ky-compare-bar .btn.ghost { background: rgba(255,255,255,0.15); border-color: transparent; color: var(--surface); }
+.ky-compare-bar .btn.ghost:hover { background: rgba(255,255,255,0.25); color: var(--surface); }
+.ky-compare-bar .btn.solid { background: var(--surface); color: var(--accent-strong); }
+
+/* ---------- 加载 / 错误 ---------- */
+.ky-loading { padding: 60px 0; text-align: center; color: var(--ink-3); }
+.ky-error { padding: 40px 0; }
+
+/* ==========================================================================
+   V10 新增：多考试倒计时 / 热度榜 TOP10 / 专业方向展开行
+   ========================================================================== */
+.ky-countdown-strip { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+.ky-cd-card {
+  position: relative; display: flex; flex-direction: column; justify-content: center;
+  min-width: 150px; padding: 12px 16px; border-radius: var(--r-md);
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-1);
+}
+.ky-cd-card.main { background: var(--accent-grad); border: none; color: var(--surface); }
+.ky-cd-name { font-size: 12px; font-weight: 700; opacity: 0.9; }
+.ky-cd-big { font-size: 28px; font-weight: 800; line-height: 1.2; }
+.ky-cd-big span { font-size: 13px; font-weight: 600; }
+.ky-cd-clock { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+.ky-cd-pill { font-size: 20px; font-weight: 800; color: var(--accent-strong); line-height: 1.2; }
+.ky-cd-pill span { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.ky-cd-del {
+  position: absolute; top: 6px; right: 6px; width: 18px; height: 18px;
+  border: none; background: transparent; color: var(--ink-3); cursor: pointer;
+  font-size: 14px; line-height: 1; border-radius: 4px;
+}
+.ky-cd-del:hover { background: var(--red-soft); color: var(--red); }
+.ky-cd-add {
+  align-self: center; padding: 10px 14px; border-radius: var(--r-md);
+  border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-2);
+  cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.ky-cd-add:hover { border-color: var(--accent); color: var(--accent); }
+.ky-cd-addbox {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line);
+  min-width: 220px; box-shadow: var(--shadow-1);
+}
+.ky-cd-addbox .input { padding: 7px 10px; font-size: 13px; }
+.ky-cd-add-actions { display: flex; gap: 6px; }
+
+.ky-hot-card {
+  background: var(--surface); border-radius: var(--r-md);
+  border: 1px solid var(--line); padding: 16px 18px; box-shadow: var(--shadow-1);
+}
+.ky-hot-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.ky-hot-note { font-size: 12px; color: var(--ink-3); }
+.ky-hot-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+}
+@media (max-width: 1080px) { .ky-hot-grid { grid-template-columns: repeat(2, 1fr); } }
+.ky-hot-item {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-radius: var(--r-sm);
+  background: var(--surface-2); border: 1px solid var(--line);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.ky-hot-item:hover { border-color: var(--accent); transform: translateY(-2px); }
+.ky-hot-rank {
+  position: absolute; top: -8px; left: -6px;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--surface); background: var(--ink-3);
+}
+.ky-hot-rank.top1 { background: var(--gold); }
+.ky-hot-rank.top2 { background: var(--accent); }
+.ky-hot-rank.top3 { background: var(--red); }
+.ky-badge.sm { width: 26px; height: 26px; font-size: 12px; }
+.ky-hot-info { min-width: 0; flex: 1; }
+.ky-hot-name {
+  display: block; font-size: 13px; font-weight: 700; color: var(--ink);
+  text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ky-hot-name:hover { color: var(--accent); }
+.ky-hot-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.ky-hot-num { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.ky-expand-btn {
+  border: none; background: transparent; cursor: pointer; color: var(--ink-3);
+  font-size: 12px; padding: 2px 6px; border-radius: 4px;
+}
+.ky-expand-btn:hover { color: var(--accent); background: var(--surface-2); }
+.ky-expand-row td { background: var(--surface-2); padding: 0; }
+.ky-expand-panel { padding: 12px 16px; }
+.ky-expand-title { font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 8px; }
+.ky-major-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ky-major-list li {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 13px; padding: 4px 0; border-bottom: 1px dashed var(--line);
+}
+.ky-major-list li:last-child { border-bottom: none; }
+.ky-major-code { font-family: monospace; font-size: 12px; color: var(--accent-strong); }
+.ky-major-name { font-weight: 600; color: var(--ink); }
+.ky-major-exam { font-size: 12px; color: var(--ink-3); }
+.ky-expand-empty { font-size: 12.5px; color: var(--ink-3); padding: 4px 0; }
+
+/* ============================ V12 新增：卡片网格 / 数值筛选 / 分数分布直方图三联 ============================ */
+.ky-range { display: inline-flex; align-items: center; gap: 4px; }
+.ky-range-input {
+  width: 72px; height: 30px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+  color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.ky-range-input:focus { outline: none; border-color: var(--accent); }
+.ky-range-sep { color: var(--ink-3); font-size: 12px; }
+
+.ky-card-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.ky-school-card {
+  position: relative; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.ky-school-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.ky-card-hl { border-color: var(--gold); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 25%, transparent); }
+.ky-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.ky-card-titlebox { min-width: 0; flex: 1; }
+.ky-card-name {
+  display: block; font-size: 14.5px; font-weight: 700; color: var(--ink);
+  text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ky-card-name:hover { color: var(--accent); }
+.ky-card-sub { display: block; margin-top: 2px; font-size: 12px; color: var(--ink-3); }
+.ky-card-tools { display: flex; align-items: center; gap: 6px; }
+.ky-card-tools .ky-fav { font-size: 15px; }
+.ky-card-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+.ky-card-star { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; }
+.ky-card-0854 {
+  font-size: 10.5px; font-weight: 700; color: var(--accent-strong);
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 4px; padding: 1px 5px;
+}
+.ky-card-metrics {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 12px;
+}
+.ky-metric {
+  background: var(--surface-2); border-radius: 8px; padding: 7px 4px;
+  text-align: center; min-width: 0;
+}
+.ky-metric-v { display: block; font-size: 14px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ky-metric-k { display: block; margin-top: 1px; font-size: 11px; color: var(--ink-3); }
+.ky-card-links {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 12px;
+  padding-top: 10px; border-top: 1px dashed var(--line);
+}
+.ky-link {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 12.5px; color: var(--accent-strong); text-decoration: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 999px; padding: 3px 10px; background: color-mix(in srgb, var(--accent) 6%, transparent);
+  transition: background 0.15s, border-color 0.15s;
+}
+.ky-link:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); }
+.ky-link-expand {
+  font: inherit; cursor: pointer;
+  border-color: var(--line); background: var(--surface-2); color: var(--ink-2);
+}
+.ky-link-expand:hover { background: var(--surface-2); color: var(--accent); }
+.ky-card-expand { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); }
+.ky-card-empty {
+  grid-column: 1 / -1; padding: 40px 16px;
+  border: 1px dashed var(--line); border-radius: 12px; text-align: center;
+}
+
+.ky-hist-card { grid-column: 1 / -1; }
+.ky-hist-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.ky-hist-item { min-width: 0; }
+.ky-hist-sub { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 4px; text-align: center; }
+.ky-hist-empty {
+  height: 210px; display: flex; align-items: center; justify-content: center;
+  font-size: 12.5px; color: var(--ink-3); text-align: center;
+  border: 1px dashed var(--line); border-radius: 8px;
+}
