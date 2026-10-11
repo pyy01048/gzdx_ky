@@ -306,6 +306,22 @@ export default function Quiz() {
     window.scrollTo({ top: 0 })
   }, [mode])
 
+  /* V11 智能组卷：调 /api/insight/smart-paper 成卷后直接进入练习 */
+  const [smartLoading, setSmartLoading] = useState(null)
+  const runSmartPaper = async (m) => {
+    setSmartLoading(m)
+    try {
+      const { insightApi } = await import('../api/client')
+      const r = await insightApi.smartPaper({ mode: m, size: 20, subject: selSubject || undefined })
+      beginSession(`智能组卷 · ${m === 'weak' ? '薄弱优先' : m === 'error_prone' ? '易错重练' : '随机'}（${r.size}题）`, r.questions, 'practice')
+      toast(`已生成 ${r.size} 题：${r.basis?.slice(0, 40) || '就绪'}`)
+    } catch (e) {
+      toast(e?.message || '智能组卷失败')
+    } finally {
+      setSmartLoading(null)
+    }
+  }
+
   /* 返回首页时刷新本地作答记录（套卷网格颜色/做过次数随之更新） */
   useEffect(() => {
     if (view === 'home') setLocalRecs(loadRecs())
@@ -530,7 +546,25 @@ export default function Quiz() {
           </div>
         </div>
 
-        {tab === 'knowledge' && renderKnowledge()}
+        {tab === 'knowledge' && (
+          <>
+            {/* V11 智能组卷（薄弱优先/易错重练/随机）：数据已齐，一键成卷 */}
+            <div className="qsmart" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <strong style={{ fontSize: 13, color: 'var(--ink-2)', alignSelf: 'center' }}>⚡ 智能组卷：</strong>
+              {[
+                { m: 'weak', label: '薄弱优先', tip: '按薄弱考点自动抽题' },
+                { m: 'error_prone', label: '易错重练', tip: '从你的错题规律抽同类题' },
+                { m: 'random', label: '随机', tip: '随机抽题练手感' },
+              ].map(x => (
+                <button key={x.m} className="qtab-btn" disabled={smartLoading} title={x.tip}
+                  onClick={() => runSmartPaper(x.m)}>
+                  {smartLoading === x.m ? '组卷中…' : x.label}
+                </button>
+              ))}
+            </div>
+            {renderKnowledge()}
+          </>
+        )}
         {tab === 'year' && renderYear()}
         {tab === 'review' && renderReview()}
         {tab === 'review' && renderClosedLoop()}
