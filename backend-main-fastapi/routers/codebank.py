@@ -75,6 +75,21 @@ class ImportReq(BaseModel):
     dry_run: bool = False
 
 
+@router.post("/syllabus/crawl")
+def syllabus_crawl(school_id: int = Query(...), dry_run: bool = Query(True),
+                   db: Session = Depends(get_db)):
+    """复试大纲爬取（工科/理科）：栏目发现→章节抽取→codebank 灌入。"""
+    from services.kaoyan import syllabus_spider
+    return syllabus_spider.crawl_syllabus(db, school_id, dry_run=dry_run)
+
+
+@router.post("/school-type/enrich")
+def school_type_enrich(dry_run: bool = Query(True), db: Session = Depends(get_db)):
+    """院校类型补全（kaoyan.cn 筛选第三维）：从 tags/intro 提取，留空不编造。"""
+    from services.kaoyan.school_type_enrich import enrich_from_tags
+    return enrich_from_tags(db, dry_run=dry_run)
+
+
 @router.post("/import")
 def import_questions(req: ImportReq, db: Session = Depends(get_db)):
     """批量灌题：dry_run 只统计不入库；seed_builtin 导入内置种子（幂等）。"""

@@ -58,6 +58,7 @@ export default function KaoyanSchoolDetail() {
   const [reforms, setReforms] = useState([])   // V10 改考事件
   const [insight, setInsight] = useState(null) // V10 分数全景
   const [crawling, setCrawling] = useState(false) // V16 公告爬取中
+  const [selMajorId, setSelMajorId] = useState(null) // V17 招生计划选中专业
   const [tab, setTab] = useState('overview')
   const [favs, setFavs] = useState(loadFavs)
   // V7.0 P0-3：Canvas 图表必须用真实色值，不能直接写 var(--x)
@@ -353,20 +354,67 @@ export default function KaoyanSchoolDetail() {
 
       {tab === 'majors' && (
         <div>
-          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 12px' }}>
-            按参考站「招生计划」模式：专业代码/名称 + 研究方向 + 初试科目；研究方向下的分方向招生人数需采集后才可补充。
-          </p>
-          {majors.map(m => (
-            <div key={m.id} style={{ padding: '16px', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ fontWeight: 600 }}>{m.name} <span style={{ color: 'var(--ink-3)', fontSize: 13 }}>({m.code})</span>
-                {m.degree_type && <em style={{ fontStyle: 'normal', fontSize: 12, marginLeft: 8, padding: '1px 8px', borderRadius: 999, background: 'var(--surface-3)', color: 'var(--ink-2)' }}>{m.degree_type}</em>}
+          {/* V17 txkyer 招生计划布局：左专业列表 → 右详情（方向/初试科目/参考书） */}
+          {(() => {
+            const selId = selMajorId ?? majors[0]?.id ?? null
+            const sel = majors.find(m => m.id === selId) || majors[0]
+            if (!majors.length) return <div style={{ padding: '24px', color: 'var(--ink-3)' }}>暂无专业数据</div>
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 14, alignItems: 'start' }}>
+                <div style={{ maxHeight: 520, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 12, background: 'var(--surface)' }}>
+                  {majors.map(m => (
+                    <button key={m.id} onClick={() => setSelMajorId(m.id)}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px',
+                        border: 'none', borderBottom: '1px solid var(--line)', cursor: 'pointer',
+                        background: m.id === sel?.id ? 'var(--accent-soft, rgba(43,90,158,.08))' : 'transparent' }}>
+                      <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>{m.code || '—'}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: m.id === sel?.id ? 700 : 500, color: 'var(--ink)' }}>{m.name}</div>
+                    </button>
+                  ))}
+                </div>
+                {sel && (
+                  <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 18, background: 'var(--surface)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      <strong style={{ fontSize: 17 }}>{sel.name}</strong>
+                      <code style={{ fontSize: 12, color: 'var(--accent)' }}>{sel.code}</code>
+                      {sel.degree_type && <em style={{ fontStyle: 'normal', fontSize: 12, padding: '1px 10px', borderRadius: 999, background: 'var(--surface-3)', color: 'var(--ink-2)' }}>{sel.degree_type}</em>}
+                    </div>
+                    {sel.research_direction && <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 6 }}>研究方向：{sel.research_direction}</div>}
+                    {sel.exam_subjects && (
+                      <div style={{ margin: '10px 0' }}>
+                        <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 6 }}>初试科目</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {(Array.isArray(sel.exam_subjects) ? sel.exam_subjects : [sel.exam_subjects]).map((s, i) => (
+                            <em key={i} style={{ fontStyle: 'normal', fontSize: 12.5, padding: '3px 10px', borderRadius: 8, background: 'var(--accent-soft, rgba(43,90,158,.08))', color: 'var(--accent)' }}>{s}</em>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {sel.reference_books && (
+                      <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 8 }}>
+                        参考书：{Array.isArray(sel.reference_books) ? sel.reference_books.join('；') : sel.reference_books}
+                      </div>
+                    )}
+                    {/* 关联录取数据（有则展示，来源 admissions） */}
+                    {(() => {
+                      const ad = admissions.find(a => a.major_id === sel.id)
+                      if (!ad) return null
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginTop: 14 }}>
+                          {[['拟录取', ad.admit_count], ['进复试', ad.retest_count], ['录取均分', ad.admit_avg_score], ['复录比', ad.retest_ratio]].map(([l, v]) => (
+                            <div key={l} style={{ textAlign: 'center', padding: '8px 4px', borderRadius: 10, background: 'var(--surface-2, rgba(0,0,0,.03))' }}>
+                              <div style={{ fontSize: 16, fontWeight: 700 }}>{v ?? '—'}</div>
+                              <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{l}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
-              {m.research_direction && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>方向：{m.research_direction}</div>}
-              {m.exam_subjects && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>初试：{Array.isArray(m.exam_subjects) ? m.exam_subjects.join(' / ') : m.exam_subjects}</div>}
-              {m.reference_books && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>参考书：{Array.isArray(m.reference_books) ? m.reference_books.join('；') : m.reference_books}</div>}
-            </div>
-          ))}
-          {majors.length === 0 && <div style={{ padding: '24px', color: 'var(--ink-3)' }}>暂无专业数据</div>}
+            )
+          })()}
         </div>
       )}
 
