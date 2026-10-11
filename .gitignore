@@ -55,3 +55,6 @@ env/
 # OS files
 .DS_Store
 Thumbs.db
+
+# 备份目录严禁入库
+_backup_*/
