@@ -23,6 +23,7 @@ from routers import (
     kaoyan_ext,
     insight,
     qa_tools,
+    conflicts,
     dashboard,
     tasks,
     quiz,
@@ -207,6 +208,7 @@ app.include_router(kaoyan.router)
 app.include_router(kaoyan_ext.router)
 app.include_router(insight.router)
 app.include_router(qa_tools.router)
+app.include_router(conflicts.router)
 app.include_router(dashboard.router)
 app.include_router(tasks.router)
 app.include_router(quiz.router)
