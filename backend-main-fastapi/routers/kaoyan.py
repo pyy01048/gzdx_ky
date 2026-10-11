@@ -747,16 +747,17 @@ def notices_crawl(
 ):
     """单校公告爬取（院校详情页「随时爬取」按钮）。返回本次新增/总条数。"""
     from services.kaoyan.spider_notices import crawl_school_notices, ensure_notices_schema
+    from sqlalchemy import text as _sql
     ensure_notices_schema(db)
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
-    before = db.execute(
-        "SELECT COUNT(*) FROM kaoyan_notices WHERE school_id=?", (school_id,)).scalar()
+    before = db.execute(_sql(
+        "SELECT COUNT(*) FROM kaoyan_notices WHERE school_id=:i"), {"i": school_id}).scalar()
     result = crawl_school_notices(db_session=db, school_names=[school.name],
                                   max_schools=1, dry_run=dry_run)
-    after = db.execute(
-        "SELECT COUNT(*) FROM kaoyan_notices WHERE school_id=?", (school_id,)).scalar()
+    after = db.execute(_sql(
+        "SELECT COUNT(*) FROM kaoyan_notices WHERE school_id=:i"), {"i": school_id}).scalar()
     return {"school": school.name, "dry_run": dry_run, "result": result,
             "notices_total": after, "new": max(0, after - before)}
 

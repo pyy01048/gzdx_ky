@@ -58,21 +58,19 @@ def crawl_syllabus(db, school_id: int, dry_run: bool = True) -> Dict:
     云端/离线环境无网络时如实返回 skipped。
     """
     from services.kaoyan.spider_notices import _fetch, _robots_allows, _polite
-    from sqlalchemy import text as _sql
     conn = db.connection().connection
     row = conn.execute(
-        _sql.text("SELECT name, official_url FROM kaoyan_schools WHERE id=:i"),
-        {"i": school_id}).mappings().first()
+        "SELECT name, official_url FROM kaoyan_schools WHERE id=?", (school_id,)).fetchone()
     if not row:
         return {"error": "school_not_found"}
-    base = row["official_url"] or ""
+    name, base = row  # 原生 sqlite3 fetchone 返回元组
     if not base or not _robots_allows(re.sub(r"^https?://([^/]+).*", r"\1", base)):
-        return {"school": row["name"], "skipped": "no_url_or_robots"}
+        return {"school": name, "skipped": "no_url_or_robots"}
     _polite()
     try:
         html = _fetch(base)
     except Exception as e:
-        return {"school": row["name"], "skipped": f"fetch_failed:{e}"[:120]}
+        return {"school": name, "skipped": f"fetch_failed:{e}"[:120]}
     links = discover_syllabus_links(html, base)
     sections_map: Dict[str, List[str]] = {}
     for lk in links[:5]:
@@ -82,7 +80,7 @@ def crawl_syllabus(db, school_id: int, dry_run: bool = True) -> Dict:
         except Exception:
             sections_map[lk["title"]] = []
     if dry_run:
-        return {"school": row["name"], "links": links, "sections": sections_map,
+        return {"school": name, "links": links, "sections": sections_map,
                 "dry_run": True}
     from services.codebank_service import upsert_question
     created = 0
