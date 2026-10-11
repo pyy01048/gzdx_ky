@@ -57,6 +57,7 @@ export default function KaoyanSchoolDetail() {
   const [notices, setNotices] = useState([])
   const [reforms, setReforms] = useState([])   // V10 改考事件
   const [insight, setInsight] = useState(null) // V10 分数全景
+  const [crawling, setCrawling] = useState(false) // V16 公告爬取中
   const [tab, setTab] = useState('overview')
   const [favs, setFavs] = useState(loadFavs)
   // V7.0 P0-3：Canvas 图表必须用真实色值，不能直接写 var(--x)
@@ -390,6 +391,10 @@ export default function KaoyanSchoolDetail() {
               {scores.map((s, i) => {
                 /* 差值：仅总分列展示，>0 红色上箭头（参考站口径） */
                 const diff = (s.total_line != null && s.national_line != null) ? s.total_line - s.national_line : null
+                /* V16 对比去年批注：与上一年份总分线的差值（红涨绿降灰平） */
+                const prev = scores[i + 1]  // scores 按年降序，i+1 即上一年
+                const yoy = (s.total_line != null && prev?.total_line != null)
+                  ? s.total_line - prev.total_line : null
                 return (
                 <tr key={i} style={{ borderBottom: '1px solid var(--line)' }}>
                   <td style={{ padding: '8px' }}>{s.year}</td>
@@ -397,6 +402,17 @@ export default function KaoyanSchoolDetail() {
                     <DataCell value={s.total_line} record={s} badge />
                     {diff != null && diff > 0 && (
                       <span style={{ color: 'var(--red, #c0392b)', fontSize: 12, marginLeft: 4 }} title={`超国家线 ${diff} 分`}>↗{diff}</span>
+                    )}
+                    {yoy != null && yoy !== 0 && (
+                      <span style={{
+                        fontSize: 11.5, marginLeft: 6, padding: '1px 7px', borderRadius: 999,
+                        color: '#fff', background: yoy > 0 ? '#c0392b' : '#15803d',
+                      }} title={`较 ${prev.year} 年${yoy > 0 ? '上涨' : '下降'} ${Math.abs(yoy)} 分`}>
+                        {yoy > 0 ? '↑' : '↓'}{Math.abs(yoy)} 较去年
+                      </span>
+                    )}
+                    {yoy === 0 && (
+                      <span style={{ fontSize: 11.5, marginLeft: 6, color: 'var(--ink-3)' }}>— 持平</span>
                     )}
                   </td>
                   {SCORE_FIELDS.filter(f => f.key !== 'total_line').map(f => (
@@ -460,9 +476,25 @@ export default function KaoyanSchoolDetail() {
 
       {tab === 'notices' && (
         <div>
-          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 12px' }}>
-            来源：院校研究生院官网公告列表（采集时间见数据管理页）；点标题打开原文。
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: 0 }}>
+              来源：院校研究生院官网公告列表（采集时间见数据管理页）；点标题打开原文。
+            </p>
+            {/* V16 随时爬取本校公告 */}
+            <button className="btn sm outline" disabled={crawling}
+              onClick={() => {
+                setCrawling(true)
+                kaoyanApi.crawlSchoolNotices(school.id)
+                  .then(r => {
+                    toast(r.new > 0 ? `已新增 ${r.new} 条公告（共 ${r.notices_total} 条）` : `暂无新增（共 ${r.notices_total} 条）`)
+                    return kaoyanApi.schoolNotices(school.id, { limit: 50 }).then(setNotices).catch(() => {})
+                  })
+                  .catch(e => toast(e?.message || '爬取失败，真机联网后重试'))
+                  .finally(() => setCrawling(false))
+              }}>
+              {crawling ? '爬取中…' : '⚡ 立即爬取本校公告'}
+            </button>
+          </div>
           {notices.map(n => (
             <a key={n.id} href={n.url} target="_blank" rel="noreferrer"
               style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '11px 4px',

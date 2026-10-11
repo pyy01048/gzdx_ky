@@ -134,6 +134,7 @@ def list_subjects(db: Session = Depends(get_db)):
 def list_schools(
     level: Optional[str] = Query(None, description="层级：985/211/双一流/一本/二本/民办/双非"),
     province: Optional[str] = Query(None, description="省份"),
+    region: Optional[str] = Query(None, description="分区：A/B（B区=内蒙古/广西/海南/贵州/云南/西藏/甘肃/青海/宁夏/新疆）"),
     subject_code: Optional[str] = Query(None, description="学科代码"),
     keyword: Optional[str] = Query(None, description="院校名关键词"),
     year: Optional[int] = Query(None, description="年份筛选"),
@@ -147,11 +148,17 @@ def list_schools(
     每行返回：层级/省份/学校/学院数/专业方向数/进复试/拟录取/复录比/录取均分/专业课均分/热度/星级。
     热度与星级为透明派生（无对应原始列，口径见 _aggregate_schools / _derive_star），非伪造数据。
     """
+    # V16 A/B 区筛选：B 区十省固定映射（国家线分区口径），纯派生不动库
+    _REGION_B = ("内蒙古", "广西", "海南", "贵州", "云南", "西藏", "甘肃", "青海", "宁夏", "新疆")
     q = db.query(KaoyanSchool)
     if level:
         q = q.filter(KaoyanSchool.level == level)
     if province:
         q = q.filter(KaoyanSchool.province == province)
+    if region == "B":
+        q = q.filter(KaoyanSchool.province.in_(_REGION_B))
+    elif region == "A":
+        q = q.filter(~KaoyanSchool.province.in_(_REGION_B))
     if keyword:
         alias_ids = [s.id for s in match_aliases(db, keyword)]
         if alias_ids:
@@ -732,6 +739,28 @@ def kaoyan_stats(db: Session = Depends(get_db)):
 
 
 # ---- C1+C2: 触发爬虫 ----
+@router.post("/notices/crawl")
+def notices_crawl(
+    school_id: int = Query(..., description="院校 ID，单校爬取公告"),
+    dry_run: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """单校公告爬取（院校详情页「随时爬取」按钮）。返回本次新增/总条数。"""
+    from services.kaoyan.spider_notices import crawl_school_notices, ensure_notices_schema
+    ensure_notices_schema(db)
+    school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="院校不存在")
+    before = db.execute(
+        "SELECT COUNT(*) FROM kaoyan_notices WHERE school_id=?", (school_id,)).scalar()
+    result = crawl_school_notices(db_session=db, school_names=[school.name],
+                                  max_schools=1, dry_run=dry_run)
+    after = db.execute(
+        "SELECT COUNT(*) FROM kaoyan_notices WHERE school_id=?", (school_id,)).scalar()
+    return {"school": school.name, "dry_run": dry_run, "result": result,
+            "notices_total": after, "new": max(0, after - before)}
+
+
 @router.post("/spider/run")
 def spider_run(
     provinces: Optional[str] = Query(None, description="省份代码逗号分隔，如 11,12,13"),
