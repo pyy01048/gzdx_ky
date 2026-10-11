@@ -55,6 +55,8 @@ export default function KaoyanSchoolDetail() {
   const [scores, setScores] = useState([])
   const [admissions, setAdmissions] = useState([])
   const [notices, setNotices] = useState([])
+  const [reforms, setReforms] = useState([])   // V10 改考事件
+  const [insight, setInsight] = useState(null) // V10 分数全景
   const [tab, setTab] = useState('overview')
   const [favs, setFavs] = useState(loadFavs)
   // V7.0 P0-3：Canvas 图表必须用真实色值，不能直接写 var(--x)
@@ -73,6 +75,13 @@ export default function KaoyanSchoolDetail() {
     kaoyanApi.schoolNotices(id, { limit: 50 })
       .then(setNotices)
       .catch(() => setNotices([]))
+    // V10: 改考雷达事件 + 分数全景（失败静默，不影响主数据）
+    kaoyanApi.reforms({ school_id: id, limit: 20 })
+      .then(setReforms)
+      .catch(() => setReforms([]))
+    kaoyanApi.scoreDetail(id)
+      .then(setInsight)
+      .catch(() => setInsight(null))
   }, [id])
 
   if (!school) return <div style={{ padding: '48px', textAlign: 'center' }}>加载中…</div>
@@ -188,6 +197,78 @@ export default function KaoyanSchoolDetail() {
           {favs[school.id] ? '★ 已关注' : '☆ 关注'}
         </button>
       </div>
+
+      {/* V10: 改考提醒横幅（有改考/停招等事件时置顶警示） */}
+      {reforms.length > 0 && (
+        <div style={{
+          marginBottom: 18, padding: '14px 18px', borderRadius: 12,
+          background: 'linear-gradient(135deg, rgba(239,68,68,.10), rgba(245,158,11,.06))',
+          border: '1px solid rgba(239,68,68,.25)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 16 }}>🚨</span>
+            <strong style={{ fontSize: 15, color: '#b91c1c' }}>院校变动雷达 · {reforms.length} 条与该校相关的变动</strong>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {reforms.slice(0, 3).map(r => {
+              const color = r.change_type === '停招' ? '#b91c1c'
+                : r.change_type === '改考科目' ? '#d97706' : 'var(--accent)'
+              return (
+                <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', fontSize: 13 }}>
+                  <em style={{ fontStyle: 'normal', padding: '1px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600, background: color, color: '#fff' }}>{r.change_type}</em>
+                  <span style={{ color: 'var(--ink-2)' }}>{r.title}</span>
+                  {r.year ? <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{r.year}</span> : null}
+                  {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--accent)' }}>原文 ↗</a>}
+                </div>
+              )
+            })}
+          </div>
+          {reforms.length > 3 && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--ink-3)' }}>还有 {reforms.length - 3} 条 →「通知中心 · 改考雷达」</div>}
+        </div>
+      )}
+
+      {/* V10: 分数全景洞察条（趋势 + 国家线差值，数据来自 score-detail 聚合） */}
+      {insight && insight.trends && (insight.trends.admit_avg_trend !== '数据不足' || insight.line_vs_national) && (
+        <div style={{
+          display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch',
+          marginBottom: 18,
+        }}>
+          <div style={{
+            flex: '1 1 220px', padding: '14px 18px', borderRadius: 12,
+            background: 'var(--surface)', border: '1px solid var(--line)',
+          }}>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 4 }}>录取均分趋势</div>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>
+              {insight.trends.admit_avg_trend === '持续上涨' && <span style={{ color: '#b45309' }}>📈 持续上涨</span>}
+              {insight.trends.admit_avg_trend === '持续下降' && <span style={{ color: '#15803d' }}>📉 持续下降</span>}
+              {insight.trends.admit_avg_trend === '波动较大' && <span style={{ color: 'var(--accent)' }}>〰️ 波动较大</span>}
+              {insight.trends.admit_avg_trend === '基本平稳' && <span style={{ color: 'var(--ink-2)' }}>➖ 基本平稳</span>}
+              {insight.trends.admit_avg_trend === '数据不足' && <span style={{ color: 'var(--ink-3)' }}>数据不足</span>}
+            </div>
+            {insight.admissions_detail?.[0]?.admit_avg_score && (
+              <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 4 }}>
+                最近年录取均分 {insight.admissions_detail[0].admit_avg_score} 分
+              </div>
+            )}
+          </div>
+          {insight.line_vs_national && (
+            <div style={{
+              flex: '1 1 220px', padding: '14px 18px', borderRadius: 12,
+              background: 'var(--surface)', border: '1px solid var(--line)',
+            }}>
+              <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 4 }}>复试线 vs 国家线（{insight.line_vs_national.year}）</div>
+              <div style={{ fontSize: 17, fontWeight: 700 }}>
+                <span style={{ color: insight.line_vs_national.diff >= 0 ? '#b91c1c' : '#15803d' }}>
+                  {insight.line_vs_national.diff >= 0 ? '↑' : '↓'} 超国家线 {Math.abs(insight.line_vs_national.diff)} 分
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 4 }}>
+                校线 {insight.line_vs_national.total_line} / 国家线 {insight.line_vs_national.national_line}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 汇总统计条（参考站 8 指标横排模式；星级为层级派生，热度为派生代理） */}
       <div style={{

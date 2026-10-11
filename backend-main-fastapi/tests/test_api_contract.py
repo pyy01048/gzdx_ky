@@ -93,6 +93,7 @@ ALLOWED_4XX = {
 
     # ---- 404：外部资源 id 在测试库中不存在（非源码缺陷）----
     "/api/kaoyan/schools/{school_id}": ({404}, "测试库无院校数据"),
+    "/api/kaoyan/analysis/score-detail/{school_id}": ({404}, "测试库无院校数据（V10 分数全景）"),
     "/api/netdisk/files/{file_id}": ({404}, "测试库无网盘文件"),
     "/api/netdisk/preview/{file_id}": ({404}, "测试库无网盘文件"),
     "/api/netdisk/platform-config/{platform}": ({404}, "测试库无该平台配置"),
