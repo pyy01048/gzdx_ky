@@ -23,6 +23,7 @@ _TYPE_RE = re.compile("(" + "|".join(SCHOOL_TYPES) + ")")
 
 _DDLS = [
     "ALTER TABLE kaoyan_schools ADD COLUMN school_type TEXT",
+    "ALTER TABLE kaoyan_schools ADD COLUMN school_type_source TEXT",
 ]
 
 
