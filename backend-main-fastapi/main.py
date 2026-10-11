@@ -25,6 +25,7 @@ from routers import (
     qa_tools,
     conflicts,
     ai_tutoring,
+    codebank,
     dashboard,
     tasks,
     quiz,
@@ -211,6 +212,7 @@ app.include_router(insight.router)
 app.include_router(qa_tools.router)
 app.include_router(conflicts.router)
 app.include_router(ai_tutoring.router)
+app.include_router(codebank.router)
 app.include_router(dashboard.router)
 app.include_router(tasks.router)
 app.include_router(quiz.router)
