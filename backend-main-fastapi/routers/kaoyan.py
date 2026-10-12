@@ -41,8 +41,7 @@ def get_db():
 # --------------------------------------------------------------------------- #
 # 星级：由院校层级派生（数据无「星级」列，透明派生而非伪造）
 _STAR_BY_LEVEL = {
-    "985": 5.0, "C9": 5.0, "211": 4.0, "双一流": 4.0,
-    "一本": 3.0, "双非": 3.0, "二本": 2.5, "民办": 2.0,
+    "985": 5.0, "C9": 5.0, "211": 4.0, "双一流": 4.0, "双非": 3.0,
 }
 
 
@@ -132,8 +131,10 @@ def list_subjects(db: Session = Depends(get_db)):
 # ---- 院校列表 ----
 @router.get("/schools")
 def list_schools(
-    level: Optional[str] = Query(None, description="层级：985/211/双一流/一本/二本/民办/双非"),
+    level: Optional[str] = Query(None, description="层级：985/211/双一流/双非（不传=不限；库内level 为空的院校在列表页归入「未分类」）"),
     province: Optional[str] = Query(None, description="省份"),
+    region: Optional[str] = Query(None, description="大区：A区/B区（教育部国家线分区）"),
+    type: Optional[str] = Query(None, description="院校类型：公办/科研院所/军队院校/其他"),
     subject_code: Optional[str] = Query(None, description="学科代码"),
     keyword: Optional[str] = Query(None, description="院校名关键词"),
     year: Optional[int] = Query(None, description="年份筛选"),
@@ -152,6 +153,11 @@ def list_schools(
         q = q.filter(KaoyanSchool.level == level)
     if province:
         q = q.filter(KaoyanSchool.province == province)
+    # M3-1：A/B 区与院校类型（新增列，服务端筛选；列不存在时静默跳过以保持向后兼容）
+    if region and hasattr(KaoyanSchool, "region"):
+        q = q.filter(KaoyanSchool.region == region)
+    if type and hasattr(KaoyanSchool, "type"):
+        q = q.filter(KaoyanSchool.type == type)
     if keyword:
         alias_ids = [s.id for s in match_aliases(db, keyword)]
         if alias_ids:
@@ -175,6 +181,9 @@ def list_schools(
         return {
             "id": s.id, "name": s.name, "level": s.level,
             "province": s.province, "city": s.city,
+            # M3-1：新增列（getattr 兼容旧库未加列的情况）
+            "region": getattr(s, "region", None),
+            "type": getattr(s, "type", None),
             "logo_url": s.logo_url, "tags": s.tags,
             "intro": (s.intro or "")[:200],
             "official_url": s.official_url,
@@ -277,7 +286,14 @@ def get_school(school_id: int, db: Session = Depends(get_db)):
 # ---- 院校专业方向 ----
 @router.get("/schools/{school_id}/majors")
 def get_school_majors(school_id: int, db: Session = Depends(get_db)):
+    """专业方向列表，附 kb_coverage：该专业初试专业课在本知识库里的语料覆盖。
+
+    覆盖口径见 services/major_coverage.py（专业课名精确匹配，公共课不参与）。
+    """
+    from services import major_coverage as mc
+
     majors = db.query(KaoyanMajor).filter(KaoyanMajor.school_id == school_id).all()
+    supply = mc.subject_supply(db)
     return [{
         "id": m.id, "code": m.code, "name": m.name,
         "research_direction": m.research_direction,
@@ -285,6 +301,7 @@ def get_school_majors(school_id: int, db: Session = Depends(get_db)):
         "exam_subjects": m.exam_subjects,
         "reference_books": m.reference_books,
         "degree_type": m.degree_type,
+        "kb_coverage": mc.coverage_for(m.exam_subjects, supply),
     } for m in majors]
 
 
@@ -327,6 +344,150 @@ def get_school_admissions(school_id: int, db: Session = Depends(get_db)):
         "major_name": name or "未标注专业",
         "data_source": a.data_source,
     } for a, code, name in items]
+
+
+# ---- M3-4: 招生计划聚合（院系 → 专业 → 拟招人数 → 考试科目） ----
+# 考试科目原始串形如 "(302)数学（二） | (204)英语（二） | (857)电子技术基础"，
+# 需解析为结构化 [{code, name}]：code=3 位科目代码（如 "302"），name=纯科目名。
+_EXAM_SUBJECT_RE = re.compile(
+    r"^\s*[（(]?\s*(?P<code>\d{3})\s*[)）]?\s*(?P<name>.*?)\s*$"
+)
+
+
+def _split_exam_subject_segments(raw) -> List[str]:
+    """把 exam_subjects 原始值切成单科目片段列表。
+
+    支持 JSON 数组（list/tuple）与字符串两种存储形态；
+    字符串按 ``|`` 拆分，并兼容中文分号与换行。
+    """
+    if raw is None:
+        return []
+    segments: List[str] = []
+    if isinstance(raw, (list, tuple)):
+        for item in raw:
+            if item is None:
+                continue
+            segments.extend(str(item).split("|"))
+    else:
+        text = str(raw)
+        segments.extend(text.replace("；", "|").replace("\n", "|").split("|"))
+    return segments
+
+
+def _parse_exam_subjects(raw) -> List[dict]:
+    """把考试科目原始值解析为结构化列表 ``[{"code": "302", "name": "数学（二）"}]``。
+
+    解析规则：
+      - 每段形如 ``(302)数学（二）`` / ``302数学二`` / ``（302）数学（二）``；
+      - ``code`` 取开头的 3 位数字（缺失则为 ``None``），``name`` 为去掉编号后的科目名；
+      - 空段丢弃；结果保序，并按 ``(code, name)`` 去重。
+
+    无编号的科目（如 "无" 或纯文本）仍会保留，``code`` 为 ``None``。
+    """
+    structured: List[dict] = []
+    seen = set()
+    for seg in _split_exam_subject_segments(raw):
+        seg = seg.strip()
+        if not seg:
+            continue
+        match = _EXAM_SUBJECT_RE.match(seg)
+        if match:
+            code = match.group("code")
+            name = match.group("name").strip()
+        else:
+            code = None
+            name = seg
+        if not name:
+            continue
+        key = (code, name)
+        if key in seen:
+            continue
+        seen.add(key)
+        structured.append({"code": code, "name": name})
+    return structured
+
+
+def _normalize_exam_subjects(raw) -> List[str]:
+    """把考试科目原始值归一为**纯科目名**字符串列表（兼容旧契约）。
+
+    等价于 :func:`_parse_exam_subjects` 只取 ``name`` 字段。
+    """
+    return [item["name"] for item in _parse_exam_subjects(raw)]
+
+
+@router.get("/schools/{school_id}/enrollment-plan")
+def get_school_enrollment_plan(
+    school_id: int,
+    year: Optional[int] = Query(None, description="招生年度，缺省取该校最大年份"),
+    db: Session = Depends(get_db),
+):
+    """院校招生计划聚合端点（M3-4）。
+
+    一次性返回「院系 → 专业 → 拟招人数 → 考试科目」，避免前端两次调用拼接。
+    数据来源：kaoyan_colleges ⋈ kaoyan_majors ⋈ kaoyan_admissions。
+
+    - ``year`` 缺省时取该校招生数据中的最大年份；
+    - 该年无招生数据时如实返回空 ``items``（不伪造）；
+    - 考试科目归一为纯科目名数组，同时保留原始串供溯源。
+
+    向后兼容：不影响 ``/majors``、``/admissions`` 端点行为。
+    """
+    school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(404, f"院校不存在: {school_id}")
+
+    # 年份解析：显式传入则用之；否则取该校 admissions 最大年份（无数据则 None）
+    if year is None:
+        year = (
+            db.query(func.max(KaoyanAdmission.year))
+            .filter(KaoyanAdmission.school_id == school_id)
+            .scalar()
+        )
+
+    # 一次 join 拉全：admissions 为驱动，左连 majors、colleges
+    # （以 admissions 的 year 过滤，确保 enroll_count 语义正确）
+    rows = (
+        db.query(
+            KaoyanAdmission,
+            KaoyanMajor,
+            KaoyanCollege.name,
+        )
+        .outerjoin(KaoyanMajor, KaoyanAdmission.major_id == KaoyanMajor.id)
+        .outerjoin(KaoyanCollege, KaoyanMajor.college_id == KaoyanCollege.id)
+        .filter(KaoyanAdmission.school_id == school_id)
+        .filter(KaoyanAdmission.year == year)
+        .order_by(KaoyanCollege.name.is_(None), KaoyanCollege.name, KaoyanMajor.name)
+        .all()
+    ) if year is not None else []
+
+    items: List[dict] = []
+    for adm, major, college_name in rows:
+        raw_subjects = major.exam_subjects if major is not None else None
+        # 结构化考试科目：[{code, name}]（前端主用）
+        structured = _parse_exam_subjects(raw_subjects)
+        items.append({
+            "college": college_name,
+            "major": (major.name if major is not None else None) or "未标注专业",
+            "major_code": major.code if major is not None else None,
+            "direction": major.research_direction if major is not None else None,
+            "degree_type": major.degree_type if major is not None else None,
+            "enroll_count": adm.enroll_count,
+            "retest_count": adm.retest_count,
+            "admit_count": adm.admit_count,
+            # 结构化科目（含 3 位科目代码）：前端可按 code 做科目归类/统计
+            "exam_subjects": structured,
+            # 兼容：纯科目名扁平数组，避免破坏既有前端消费方
+            "exam_subjects_names": [s["name"] for s in structured],
+            # 原始串保留，不丢（溯源用）
+            "exam_subjects_raw": raw_subjects,
+        })
+
+    return {
+        "school_id": school.id,
+        "school_name": school.name,
+        "year": year,
+        "items": items,
+    }
 
 
 # ---- 多年趋势分析 ----
@@ -510,9 +671,21 @@ def analysis_recommend(
         })
 
     recs.sort(key=lambda x: x["score"], reverse=True)
+    top = recs[:20]
+    # 语料可靠度：该校有多少专业的初试专业课在本库有语料
+    # （口径见 services/major_coverage.py：专业课名精确匹配，公共课不计入分母）
+    from services import major_coverage as mc
+
+    supply = mc.subject_supply(db)
+    cov = mc.school_coverage(db, supply, [r["school_id"] for r in top])
+    for r in top:
+        c = cov.get(r["school_id"]) or {}
+        r["kb_coverage"] = {k: int(c.get(k, 0))
+                            for k in ("majors", "covered", "thin", "unindexed", "uncovered")}
+
     return {
         "score": score, "year": year,
-        "recommendations": recs[:20],
+        "recommendations": top,
         "algorithm": "多维权重: 分差40% + 复录比20% + 录取均分20% + 区域10% + 学科10%",
     }
 
@@ -549,7 +722,21 @@ PROVINCE_NAMES = [
     "云南", "西藏", "陕西", "甘肃", "青海", "宁夏", "新疆",
     "台湾", "香港", "澳门",
 ]
-LEVEL_NAMES = ["985", "211", "双一流", "一本", "二本", "民办"]
+LEVEL_NAMES = ["985", "211", "双一流", "双非"]
+# 「一本/二本/民办」是高考录取批次旧口径，教育部学科目录中无此分类，库内已清理完毕。
+# 但用户口语仍会说「考一本的学校」，故保留解析能力并统一归一到「双非」，
+# 保证解析结果仍能命中数据，而不是静默失效。
+_LEVEL_ALIAS = {"一本": "双非", "二本": "双非", "三本": "双非", "重点": "双非"}
+# 匹配顺序：先长后短，避免「一本」抢在「双非」类词前误命中（实际无重叠，仅为稳妥）
+_LEVEL_PARSE_KEYS = LEVEL_NAMES + list(_LEVEL_ALIAS.keys())
+
+
+def _parse_level(q: str) -> Optional[str]:
+    """从自然语言中提取院校层级，归一到权威取值（985/211/双一流/双非）。"""
+    hit = next((lv for lv in _LEVEL_PARSE_KEYS if lv in q), None)
+    if hit is None:
+        return None
+    return _LEVEL_ALIAS.get(hit, hit)
 
 
 def _parse_question(question: str) -> dict:
@@ -558,7 +745,7 @@ def _parse_question(question: str) -> dict:
     m = re.search(r"(?:考|大概|约|预估)?\s*(\d{3})\s*分", q)
     score = int(m.group(1)) if m else None
     province = next((p for p in PROVINCE_NAMES if p in q), None)
-    level = next((lv for lv in LEVEL_NAMES if lv in q), None)
+    level = _parse_level(q)
     return {
         "score": score,
         "province": province,
@@ -1028,6 +1215,155 @@ def notice_type_stats(db: Session = Depends(get_db)):
         "SELECT notice_type, COUNT(*) FROM kaoyan_notices GROUP BY notice_type ORDER BY 2 DESC"
     ).fetchall()
     return {"total": sum(r[1] for r in rows), "by_type": dict(rows)}
+
+
+# ---- T6：跨校公告聚合（首页「院校公告」栏数据源） ----
+# 说明：现有 /schools/{id}/notices 是按单校查（详情页用），首页需要「当日/近期
+# 哪些院校更新了」的跨校视角，故新增本聚合端点。全部只读，SQL 参数化，向后兼容。
+@router.get("/notices")
+def list_all_notices(
+    limit: int = Query(30, ge=1, le=200, description="返回条数上限"),
+    since: Optional[str] = Query(None, description="只返回该 ISO 日期(YYYY-MM-DD)当天及之后的公告"),
+    notice_type: Optional[str] = Query(None, description="按类型过滤：简章/复试/调剂/录取/公告…"),
+    keyword: Optional[str] = Query(None, description="标题关键词（模糊匹配）"),
+    school_id: Optional[int] = Query(None, description="仍可按院校过滤"),
+    order_by: str = Query("publish_date", description="排序字段：publish_date | fetched_at"),
+    db: Session = Depends(get_db),
+):
+    """跨校公告聚合（首页公告栏）。
+
+    返回：
+      - ``items``：公告列表，按 ``order_by`` 倒序（默认 publish_date，同值再按 id 倒序）
+      - ``stats``：首页「今日更新」概览
+          ``{total, school_count, latest_fetched_at, by_type}``
+
+    过滤参数均可选，可组合；``since`` 用 ``>= since``（当日含）。
+    """
+    from services.kaoyan.spider_notices import ensure_notices_schema
+    from services.kaoyan.notice_read import ensure_notice_read_schema
+
+    # 补齐 is_read/is_starred 列，使首页公告栏也能渲染未读状态
+    ensure_notice_read_schema(db)
+    conn = db.connection().connection
+
+    # ---- 组装过滤条件（全部参数化，杜绝注入）----
+    where: List[str] = []
+    args: list = []
+    if since:
+        # 只认 YYYY-MM-DD 前缀，避免非法输入直接进 SQL 造成异常比较
+        since_clean = str(since).strip()[:10]
+        where.append("publish_date IS NOT NULL AND publish_date != '' AND publish_date >= ?")
+        args.append(since_clean)
+    if notice_type:
+        where.append("notice_type = ?")
+        args.append(notice_type)
+    if keyword:
+        where.append("title LIKE ?")
+        args.append(f"%{keyword}%")
+    if school_id is not None:
+        where.append("school_id = ?")
+        args.append(school_id)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    # ---- 排序字段白名单（防注入：仅允许两个已知列名）----
+    sort_col = "fetched_at" if str(order_by).strip() == "fetched_at" else "publish_date"
+    order_sql = f" ORDER BY {sort_col} DESC, id DESC"
+
+    # ---- 明细列表（附已读/加星状态，供首页公告栏渲染未读圆点）----
+    rows = conn.execute(
+        "SELECT id, school_id, school_name, title, notice_type, publish_date,"
+        " url, source, fetched_at, is_read, is_starred FROM kaoyan_notices"
+        + where_sql
+        + order_sql
+        + " LIMIT ?",
+        args + [limit],
+    ).fetchall()
+    items = [
+        {
+            "id": r[0], "school_id": r[1], "school_name": r[2], "title": r[3],
+            "notice_type": r[4], "publish_date": r[5], "url": r[6],
+            "source": r[7], "fetched_at": r[8],
+            "is_read": bool(r[9]), "is_starred": bool(r[10]),
+        }
+        for r in rows
+    ]
+
+    # ---- 概览统计（同过滤条件，不受 limit 影响）----
+    total = conn.execute(
+        "SELECT COUNT(*) FROM kaoyan_notices" + where_sql, args
+    ).fetchone()[0]
+    # 有 school_id 的按 id 去重；school_id 为空的用 school_name 兜底（采集时可能未入库）
+    school_count = conn.execute(
+        "SELECT COUNT(*) FROM ("
+        " SELECT COALESCE(CAST(school_id AS TEXT), 'n:' || school_name) AS sk"
+        " FROM kaoyan_notices" + where_sql + " GROUP BY sk)",
+        args,
+    ).fetchone()[0]
+    # 最近一次采集时间（不过滤，表示数据新鲜度）
+    latest_row = conn.execute(
+        "SELECT MAX(fetched_at) FROM kaoyan_notices"
+    ).fetchone()
+    by_type_rows = conn.execute(
+        "SELECT notice_type, COUNT(*) FROM kaoyan_notices"
+        + where_sql
+        + " GROUP BY notice_type ORDER BY 2 DESC",
+        args,
+    ).fetchall()
+
+    return {
+        "items": items,
+        "stats": {
+            "total": total,
+            "school_count": school_count,
+            "latest_fetched_at": latest_row[0] if latest_row else None,
+            "by_type": {k: v for k, v in by_type_rows},
+        },
+    }
+
+
+@router.get("/notices/updates")
+def notice_updates(
+    days: int = Query(7, ge=1, le=365, description="最近 N 天内有更新的院校"),
+    db: Session = Depends(get_db),
+):
+    """最近 N 天内有哪些院校更新了公告（首页「今日更新」概览）。
+
+    返回：``{days, total_schools, total_notices, schools:[{school_id, school_name, count, latest_date}]}``
+    以 ``COALESCE(publish_date, fetched_at)`` 的日期部分作为「更新日期」口径：
+    公告可能没有发布日（列表页解析不到），此时退化为采集日，如实标注而非过滤掉。
+    """
+    from services.kaoyan.spider_notices import ensure_notices_schema
+    from datetime import date, timedelta
+
+    ensure_notices_schema(db)
+    conn = db.connection().connection
+
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        "SELECT school_id, school_name,"
+        " COUNT(*) AS cnt,"
+        " MAX(COALESCE(NULLIF(publish_date, ''), fetched_at)) AS latest_date"
+        " FROM kaoyan_notices"
+        " WHERE COALESCE(NULLIF(publish_date, ''), fetched_at) >= ?"
+        " GROUP BY COALESCE(CAST(school_id AS TEXT), 'n:' || school_name), school_id, school_name"
+        " ORDER BY latest_date DESC, cnt DESC",
+        [cutoff],
+    ).fetchall()
+    schools = [
+        {
+            "school_id": r[0],
+            "school_name": r[1],
+            "count": r[2],
+            "latest_date": (r[3] or "")[:10] or None,
+        }
+        for r in rows
+    ]
+    return {
+        "days": days,
+        "total_schools": len(schools),
+        "total_notices": sum(s["count"] for s in schools),
+        "schools": schools,
+    }
 
 
 @router.get("/analysis/dashboard")
