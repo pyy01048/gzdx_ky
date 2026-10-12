@@ -58,7 +58,7 @@ SLOW_ROUTE_BUDGETS = {
     "/api/kb/health": 15.0,              # 扫知识库目录 + 计数
     "/api/storage": 15.0,                # 目录体积统计
     "/api/access-info": 15.0,            # 探测局域网网卡
-    "/api/goals/strategy": 15.0,         # 可能回落 AI 生成（网络）
+    "/api/goals/strategy": 90.0,         # 无考研目标时回落 AI 生成（网络往返，实测可达 70s+）
     "/api/backup": 15.0,
 }
 
@@ -92,7 +92,10 @@ ALLOWED_4XX = {
     "/api/netdisk/quota": ({401}, "百度网盘未授权（测试环境无 token）"),
 
     # ---- 404：外部资源 id 在测试库中不存在（非源码缺陷）----
-    "/api/kaoyan/schools/{school_id}": ({404}, "测试库无院校数据"),
+    "/api/kaoyan/schools/{school_id}": ({404}, "���试库无院校数据"),
+    "/api/kaoyan/schools/{school_id}/enrollment-plan": ({404}, "M3-4 新端点：院校不存在时 404（测试库无院校数据），与 /schools/{school_id} 行为一致"),
+    "/api/notice-alert/notices/{notice_id}": ({404}, "M-notice-alert 新端点：公告不存在时 404（测试库无 kaoyan_notices 数据），资源型路由取不到 id 属预期，与 /kaoyan/schools/{school_id} 行为一致"),
+    "/api/quiz/questions/{question_id}": ({404}, "M2-5 新端点：题目不存在时 404（测试库无题目数据），与同路径 PUT/DELETE 行为一致"),
     "/api/netdisk/files/{file_id}": ({404}, "测试库无网盘文件"),
     "/api/netdisk/preview/{file_id}": ({404}, "测试库无网盘文件"),
     "/api/netdisk/platform-config/{platform}": ({404}, "测试库无该平台配置"),
