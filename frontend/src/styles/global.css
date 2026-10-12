@@ -215,7 +215,15 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--in
 .brand-text span { font-size: 10px; letter-spacing: 2.5px; color: var(--ink-3); }
 
 /* 侧边导航 */
-.side-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; margin-top: 6px; }
+.side-nav {
+  display: flex; flex-direction: column; gap: 2px;
+  flex: 1; margin-top: 6px;
+  /* 5+1 模块展开后条目变多：允许侧边栏导航区独立滚动，
+     否则 100vh 之外的模块（如院校数据中心）永远滚不到 */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .nav-item {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 12px;
@@ -1544,6 +1552,50 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--in
 }
 .nav-ico { flex-shrink: 0; }
 .nav-label { flex: 1; }
+
+/* ------------------------------------------------------------
+   5+1 模块导航（NAV_MODULES）：模块标题行 + 可折叠子项
+   样式沿用既有 .nav-item / --surface-2 / --accent-soft 令牌
+   ------------------------------------------------------------ */
+.nav-mod { margin-bottom: 4px; }
+
+.nav-mod-head {
+  width: calc(100% - 16px);
+  margin: 2px 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.nav-mod-head:hover { background: var(--surface-2); color: var(--ink); }
+.nav-mod-head.active { color: var(--accent-strong); font-weight: 600; }
+.nav-mod-head.active .nav-ico { opacity: 1; }
+.nav-mod-title { flex: 1; font-weight: 600; }
+
+.nav-mod-caret {
+  flex-shrink: 0;
+  color: var(--ink-3);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.nav-mod-caret.open { transform: rotate(180deg); }
+
+.nav-mod-items { display: flex; flex-direction: column; }
+/* 子项：左侧留出缩进 + 竖线，视觉上从属于模块标题 */
+.side-nav .nav-item.nav-sub {
+  padding: 7px 20px 7px 34px;
+  font-size: 13px;
+  margin: 0 8px;
+}
+.side-nav .nav-item.nav-sub .nav-label { flex: none; }
 
 /* 侧边栏底部 */
 .side-foot {

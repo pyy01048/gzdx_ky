@@ -26,6 +26,44 @@ function MasteryPie({ level, size = 32 }) {
   )
 }
 
+/* 后端 page_size 上限为 500（见 backend-main-fastapi/routers/words.py: Query(le=500)） */
+const PAGE_SIZE = 500
+
+/* 将后端 WordOut 映射为前端词条结构（列表拉取与单条评分刷新共用，避免字段漂移） */
+function formatWord(w) {
+  return {
+    id: w.id, word: w.word, phonetic: w.phonetic, pos: w.pos,
+    meaning: w.meaning, root: w.root, example: w.example,
+    ex_cn: w.example_cn, tag: w.tag, frequency: w.frequency,
+    deck: w.deck_id ? String(w.deck_id) : 'core',
+    status: w.status || 'new', ef: w.ease_factor || 2.5,
+    interval: w.interval || 0, reps: w.reps || 0, lapses: w.lapses || 0,
+    due: w.due_date ? w.due_date : todayStr(),
+    lastReview: w.last_review, history: w.review_history || []
+  }
+}
+
+/* 分页拉取全量单词。
+   GET /api/words 返回分页对象 {items,total,page,page_size,total_pages}，
+   必须读取 .items 并按 total_pages 循环拉完，否则只会拿到第一页。 */
+async function fetchAllWords() {
+  const all = []
+  let page = 1
+  let totalPages = 1
+  do {
+    const resp = await wordsApi.list({ page, page_size: PAGE_SIZE })
+    const items = Array.isArray(resp?.items) ? resp.items : []
+    if (items.length === 0 && (resp?.total || 0) > 0) {
+      // 后端报了总数却没给 items，说明响应契约不符：显式报错而非静默返回空列表
+      throw new Error(`单词列表接口未返回 items（total=${resp.total}）`)
+    }
+    all.push(...items)
+    totalPages = resp?.total_pages || Math.ceil((resp?.total || all.length) / PAGE_SIZE) || 1
+    page += 1
+  } while (page <= totalPages && all.length > 0)
+  return all.map(formatWord)
+}
+
 export default function Words() {
   const { words, decks, addDeck, importWords, reviewWord, removeWord, settings, setWords, setDecks } = useStore()
   const [view, setView] = useState('learn') // learn | list | decks | summary
@@ -36,7 +74,9 @@ export default function Words() {
   const [importText, setImportText] = useState('')
   const [showImport, setShowImport] = useState(false)
   const [packSel, setPackSel] = useState('core')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [stats, setStats] = useState(null)
   const [importResult, setImportResult] = useState(null)
   const [importing, setImporting] = useState(false)
   const [excelFile, setExcelFile] = useState(null)
@@ -47,46 +87,40 @@ export default function Words() {
     return saved ? parseInt(saved) : 30
   })
 
-  // 从后端加载单词和词库数据
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      try {
-        const backendDecks = await wordsApi.listDecks()
-        if (backendDecks && backendDecks.length > 0) {
-          const formattedDecks = backendDecks.map(d => ({
-            id: d.id, name: d.name, count: d.word_count || 0,
-            source: d.source || '后端', description: d.description, color: d.color
-          }))
-          setDecks(formattedDecks)
-        }
-        const backendWords = await wordsApi.list({ page: 1, page_size: 500 })
-        if (backendWords && backendWords.length > 0) {
-          const formattedWords = backendWords.map(w => ({
-            id: w.id, word: w.word, phonetic: w.phonetic, pos: w.pos,
-            meaning: w.meaning, root: w.root, example: w.example,
-            ex_cn: w.example_cn, tag: w.tag, frequency: w.frequency,
-            deck: w.deck_id ? String(w.deck_id) : 'core',
-            status: w.status || 'new', ef: w.ease_factor || 2.5,
-            interval: w.interval || 0, reps: w.reps || 0, lapses: w.lapses || 0,
-            due: w.due_date ? w.due_date : todayStr(),
-            lastReview: w.last_review, history: w.review_history || []
-          }))
-          setWords(formattedWords)
-        }
-      } catch (err) {
-        console.warn('从后端加载单词失败，使用本地数据:', err.message)
-        toast('后端词库加载失败，已切换为本地数据')
-      } finally {
-        setLoading(false)
+  // 从后端加载单词/词库/统计（接口失败展示真实错误态，不再静默回退本地假数据）
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const [backendDecks, backendWords, statsResp] = await Promise.all([
+        wordsApi.listDecks().catch(() => []), // 词库为次要信息，失败不阻断主流程
+        fetchAllWords(),
+        wordsApi.stats(),
+      ])
+      if (Array.isArray(backendDecks) && backendDecks.length > 0) {
+        setDecks(backendDecks.map(d => ({
+          id: d.id, name: d.name, count: d.word_count || 0,
+          source: d.source || '后端', description: d.description, color: d.color
+        })))
       }
+      setWords(backendWords)
+      setStats(statsResp || null)
+    } catch (err) {
+      console.error('单词数据加载失败：', err)
+      setLoadError(err?.message || '未知错误')
+    } finally {
+      setLoading(false)
     }
-    loadData()
+  }, [setDecks, setWords])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  // 评分/导入/删除后刷新统计（失败不阻塞主流程）
+  const refreshStats = useCallback(async () => {
+    try { setStats(await wordsApi.stats()) } catch { /* 统计刷新失败忽略 */ }
   }, [])
 
   const due = useMemo(() => dueCards(words, todayStr()), [words])
-  const learned = words.filter((w) => w.status === 'mastered').length
-  const learning = words.filter((w) => w.status !== 'mastered').length
 
   // 复习队列（到期词 + 新词），限制每日配额
   const queue = useMemo(() => {
@@ -132,12 +166,20 @@ export default function Words() {
       [gradeKey]: prev[gradeKey] + 1,
       words: [...prev.words, { id: current.id, word: current.word, grade: gradeKey }]
     }))
+    // 评分必须以「后端返回的最新调度状态」为准刷新本地，确保真正落库
     try {
-      await wordsApi.review(current.id, g)
+      const updated = await wordsApi.review(current.id, g)
+      if (updated) {
+        setWords((ws) => ws.map((w) => (w.id === updated.id ? formatWord(updated) : w)))
+        refreshStats()
+      } else {
+        reviewWord(current.id, g)
+      }
     } catch (err) {
-      console.warn('后端复习更新失败:', err.message)
+      // 落库失败必须可见，同时本地乐观更新保证卡片不卡死
+      toast(`评分保存失败：${err?.message || '未知错误'}`)
+      reviewWord(current.id, g)
     }
-    reviewWord(current.id, g)
     setShowAns(false)
     // 自动进入下一个
     if (curIdx + 1 < queue.length) {
@@ -166,9 +208,16 @@ export default function Words() {
 
   // 列表视图中的评级
   const gradeWord = async (id, g) => {
-    try { await wordsApi.review(id, g) } catch (err) { console.warn('后端复习更新失败:', err.message) }
-    reviewWord(id, g)
-    toast('已记录熟练度')
+    try {
+      const updated = await wordsApi.review(id, g)
+      if (updated) {
+        setWords((ws) => ws.map((w) => (w.id === updated.id ? formatWord(updated) : w)))
+        refreshStats()
+      }
+      toast('已记录熟练度')
+    } catch (err) {
+      toast(`评分保存失败：${err?.message || '未知错误'}`)
+    }
   }
 
   // 熟悉度徽标
@@ -189,20 +238,8 @@ export default function Words() {
       const result = await wordsApi.importText({ text: importText, deck_id: deckId })
       setImportResult(result)
       toast(`导入完成：成功 ${result.imported} 个，跳过 ${result.skipped} 个`)
-      const backendWords = await wordsApi.list({ page: 1, page_size: 500 })
-      if (backendWords && backendWords.length > 0) {
-        const formattedWords = backendWords.map(w => ({
-          id: w.id, word: w.word, phonetic: w.phonetic, pos: w.pos,
-          meaning: w.meaning, root: w.root, example: w.example,
-          ex_cn: w.example_cn, tag: w.tag, frequency: w.frequency,
-          deck: w.deck_id ? String(w.deck_id) : 'core',
-          status: w.status || 'new', ef: w.ease_factor || 2.5,
-          interval: w.interval || 0, reps: w.reps || 0, lapses: w.lapses || 0,
-          due: w.due_date ? w.due_date : todayStr(),
-          lastReview: w.last_review, history: w.review_history || []
-        }))
-        setWords(formattedWords)
-      }
+      setWords(await fetchAllWords())
+      refreshStats()
     } catch (e) {
       toast(`导入失败: ${e.message}`)
     } finally {
@@ -222,20 +259,8 @@ export default function Words() {
       const result = await wordsApi.importExcel(formData)
       setImportResult(result)
       toast(`Excel导入完成：成功 ${result.imported} 个，跳过 ${result.skipped} 个`)
-      const backendWords = await wordsApi.list({ page: 1, page_size: 500 })
-      if (backendWords && backendWords.length > 0) {
-        const formattedWords = backendWords.map(w => ({
-          id: w.id, word: w.word, phonetic: w.phonetic, pos: w.pos,
-          meaning: w.meaning, root: w.root, example: w.example,
-          ex_cn: w.example_cn, tag: w.tag, frequency: w.frequency,
-          deck: w.deck_id ? String(w.deck_id) : 'core',
-          status: w.status || 'new', ef: w.ease_factor || 2.5,
-          interval: w.interval || 0, reps: w.reps || 0, lapses: w.lapses || 0,
-          due: w.due_date ? w.due_date : todayStr(),
-          lastReview: w.last_review, history: w.review_history || []
-        }))
-        setWords(formattedWords)
-      }
+      setWords(await fetchAllWords())
+      refreshStats()
     } catch (e) {
       toast(`Excel导入失败: ${e.message}`)
     } finally {
@@ -252,9 +277,14 @@ export default function Words() {
   }
 
   const handleRemoveWord = async (id) => {
-    try { await wordsApi.remove(id) } catch (err) { console.warn('后端删除失败:', err.message) }
-    removeWord(id)
-    toast('单词已删除')
+    try {
+      await wordsApi.remove(id)
+      removeWord(id)
+      refreshStats()
+      toast('单词已删除')
+    } catch (err) {
+      toast(`删除失败：${err?.message || '未知错误'}`)
+    }
   }
 
   // 保存每日配额
@@ -285,14 +315,28 @@ export default function Words() {
         </div>
       </div>
 
-      {/* 统计条 */}
+      {/* 统计条（数据源：GET /api/words/stats） */}
       <div className="stat-grid">
-        <div className="stat-tile"><span className="st-ico blue"><Book size={20} /></span><span className="st-val">{words.length}</span><span className="st-label">总词数</span></div>
-        <div className="stat-tile"><span className="st-ico red"><Target size={20} /></span><span className="st-val" style={{ color: 'var(--red)' }}>{due.length}</span><span className="st-label">今日待复习</span></div>
-        <div className="stat-tile"><span className="st-ico amber"><Clock size={20} /></span><span className="st-val" style={{ color: 'var(--gold)' }}>{learning}</span><span className="st-label">学习中</span></div>
-        <div className="stat-tile"><span className="st-ico green"><CheckCircle size={20} /></span><span className="st-val" style={{ color: 'var(--green)' }}>{learned}</span><span className="st-label">已掌握</span></div>
+        <div className="stat-tile"><span className="st-ico blue"><Book size={20} /></span><span className="st-val">{stats ? stats.total : '—'}</span><span className="st-label">总词数</span></div>
+        <div className="stat-tile"><span className="st-ico red"><Target size={20} /></span><span className="st-val" style={{ color: 'var(--red)' }}>{stats ? stats.due_today : '—'}</span><span className="st-label">今日待复习</span></div>
+        <div className="stat-tile"><span className="st-ico amber"><Clock size={20} /></span><span className="st-val" style={{ color: 'var(--gold)' }}>{stats ? stats.learning + stats.reviewing : '—'}</span><span className="st-label">学习中</span></div>
+        <div className="stat-tile"><span className="st-ico green"><CheckCircle size={20} /></span><span className="st-val" style={{ color: 'var(--green)' }}>{stats ? stats.mastered : '—'}</span><span className="st-label">已掌握</span></div>
       </div>
 
+      {/* 加载中 / 错误态 / 正常内容：接口失败展示真实错误，不再回退本地假数据 */}
+      {loading ? (
+        <div className="loading-inline">正在从后端加载单词…</div>
+      ) : loadError ? (
+        <div className="card" style={{ textAlign: 'center', padding: '40px 16px' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+          <div className="card-title">单词数据加载失败</div>
+          <p className="card-sub">后端接口请求失败：{loadError}</p>
+          <button className="btn primary" style={{ marginTop: 16 }} onClick={loadData}>
+            <RefreshCw size={16} style={{ marginRight: 6 }} /> 重新加载
+          </button>
+        </div>
+      ) : (
+      <>
       {/* 视图切换 */}
       <Segmented options={[
         { label: '今日复习', value: 'learn' },
@@ -576,6 +620,9 @@ export default function Words() {
             <button className="btn primary" onClick={addNewDeck}>创建词库</button>
           </div>
         </div>
+      )}
+
+      </>
       )}
 
       {/* 导入弹窗 */}

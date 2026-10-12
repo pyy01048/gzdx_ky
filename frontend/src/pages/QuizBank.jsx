@@ -49,6 +49,7 @@ export default function QuizBank() {
   const [subjects, setSubjects] = useState([])   // 后端动态科目列表
   const [chapters, setChapters] = useState([])    // 常用章节（datalist）
   const [stats, setStats] = useState({ total: 0, active: 0, mastered: 0, graduated: 0 })
+  const [bankTotal, setBankTotal] = useState(null)   /* 题库总量：与列表同口径（可作答题） */
   const [loadError, setLoadError] = useState('')   /* 阶段2：题目列表错误就地态 */
 
   const [preview, setPreview] = useState(null)
@@ -81,6 +82,16 @@ export default function QuizBank() {
           graduated: d.graduated_errors ?? 0,
         })
       })
+      .catch(() => {})
+  }, [])
+
+  /* 题库总量：与列表接口同口径（默认 answerable=true，仅返回可作答题）。
+     /api/quiz/stats 不支持 answerable 参数，其 total_questions 是「全部可见题」
+     （含不可作答，5588），会与页头列表 total（3465）互相矛盾；故改用不筛选的
+     列表 total 作准数，保证页头与统计卡数字口径一致。 */
+  useEffect(() => {
+    quizApi.questions({ page: 1, page_size: 1 })
+      .then((d) => { if (d && typeof d.total === 'number') setBankTotal(d.total) })
       .catch(() => {})
   }, [])
 
@@ -204,7 +215,7 @@ export default function QuizBank() {
   }
 
   const statCards = [
-    { icon: <Book size={28} />, label: '题库总量', value: stats.total, color: 'var(--accent)' },
+    { icon: <Book size={28} />, label: '题库总量', value: bankTotal == null ? '—' : bankTotal, color: 'var(--accent)', title: '仅统计可作答题（与下方题目列表同口径）' },
     { icon: <Target size={28} />, label: '待攻克题', value: stats.active, color: 'var(--red)' },
     { icon: <CheckCircle size={28} />, label: '正确率 %', value: stats.mastered, color: 'var(--green)' },
     { icon: <GraduationCap size={28} />, label: '已毕业题', value: stats.graduated, color: 'var(--gold)' },
@@ -224,7 +235,7 @@ export default function QuizBank() {
       {/* 统计卡片 */}
       <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {statCards.map((s, i) => (
-          <div key={i} className="stat-card" style={{
+          <div key={i} className="stat-card" title={s.title} style={{
             background: 'var(--surface)',
             border: '1px solid var(--line)',
             borderRadius: 16,

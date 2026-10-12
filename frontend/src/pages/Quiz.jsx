@@ -85,6 +85,55 @@ function safeParseOptions(raw) {
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v : [] } catch { return [] }
 }
 
+/* 剥掉选项自带的序号前缀。库内 options 元素普遍自带「A．」「A、」「A.」
+   等前缀，若与 UI 的字母徽标同时渲染会出现「A  A．奇偶校验码」的重复文字。
+   剥完为空时回退为原值，保证不丢内容。支持 A-H / a-h。 */
+const OPT_LABEL_RE = /^\s*[（(]?\s*([A-Ha-h])\s*[）).、．:：]\s*/
+export function stripOptLabel(opt) {
+  const s = String(opt == null ? '' : opt)
+  const m = s.match(OPT_LABEL_RE)
+  if (!m) return s.trim()
+  const rest = s.slice(m[0].length).trim()
+  return rest || s.trim()
+}
+
+/* 从答案串中抽出正确选项的下标集合。兼容 'B' / 'B．' / '答案B' /
+   'ABC'（多选）/ 'B、C' 等写法。返回 null 表示答案无法解析为字母。 */
+export function answerIndexes(answer) {
+  const s = String(answer == null ? '' : answer).toUpperCase()
+  const m = s.match(/[A-H]/g)
+  if (!m || !m.length) return null
+  return new Set(m)
+}
+
+/** 判断第 optIndex 个选项（对应字母 letterOf(optIndex)）是否正确。 */
+export function isCorrectOption(optIndex, answer) {
+  const set = answerIndexes(answer)
+  if (!set) return false
+  return set.has(letterOf(optIndex))
+}
+
+/* 纯文本题（需要用户输入作答）：填空/简答/计算/作图。
+   选择题的 answer 往往是孤立字母，不走输入自评流程——那条路径会让用户
+   面对「答案是 D 却无选项」的题目输入文字并被判错，详见 isChoiceLike。 */
+const TEXT_TYPES = ['fill', 'essay', 'calc', 'draw']
+export function isTextQuestion(q) {
+  if (TEXT_TYPES.includes(q?.question_type)) return true
+  if (q?.question_type === 'multiple' || q?.question_type === 'single' || q?.question_type === 'judge') return false
+  return !answerIndexes(q?.answer)   // 答案为纯字母 → 选择题
+}
+/** 选择题语义（含「options 为空但答案是字母」的残缺选择题）。 */
+export function isChoiceLike(q) { return !isTextQuestion(q) }
+/** 选择题但选项缺失：只读展示，禁止作答。 */
+export function isChoiceWithoutOptions(q) {
+  return isChoiceLike(q) && !(Array.isArray(q?.options) && q.options.filter(Boolean).length > 0)
+}
+/* 题面或答案依赖原书插图。 */
+const FIG_RE = /如图|见图|下图|上图|图\s*\d+[-－]?\d*|所示图|图中/
+export function dependsOnFigure(q) {
+  return FIG_RE.test(String(q?.content || '')) || FIG_RE.test(String(q?.answer || ''))
+}
+
 /* 归一化后端题目 */
 function normQ(q) {
   return {
@@ -119,6 +168,10 @@ export default function Quiz() {
   const urlSubject = searchParams.get('subject') || ''
   const urlChapter = searchParams.get('chapter') || ''
   const urlType = searchParams.get('question_type') || ''
+  /* 知识点级精确筛选（M1-3 全景页 startPractice 传入）。
+     存在 kp_id 时按知识点拉题，否则保持原有 subject/chapter 降级逻辑不变。 */
+  const urlKpId = searchParams.get('kp_id') || ''
+  const urlKpName = searchParams.get('kp_name') || ''
 
   /* ---------- 视图与模式 ---------- */
   const [view, setView] = useState('home')            // home | practice | result
@@ -177,6 +230,11 @@ export default function Quiz() {
   const [selfCheck, setSelfCheck] = useState(null)   // 文本题对照 {qid,myAns,correctAnswer,analysis}
   const [submitting, setSubmitting] = useState(false)
   const startedFromRef = useRef(null)               // 记录会话来源，便于「再练一次」
+
+  /* ---------- 知识点级筛选标识（仅当 URL 带 kp_id 时生效） ---------- */
+  const [kpFilter, setKpFilter] = useState(null)    // { id, name } | null
+  /* 知识点筛选无题时的空态（避免白屏）：{ name } | null */
+  const [kpEmpty, setKpEmpty] = useState(null)
 
   /* ================= 数据加载 ================= */
   const loadStats = useCallback(async () => {
@@ -311,35 +369,61 @@ export default function Quiz() {
     if (view === 'home') setLocalRecs(loadRecs())
   }, [view])
 
-  /* 按筛选条件向后端拉题并开始（知识点章节 / 整科） */
-  const startWithFilter = useCallback(async ({ subject, chapter, question_type, title }) => {
+  /* 按筛选条件向后端拉题并开始（知识点精确 / 知识点章节 / 整科）。
+     kp_id 为可选：传入时按知识点级精确筛选（后端 /api/quiz/questions 已支持）。 */
+  const startWithFilter = useCallback(async ({ subject, chapter, question_type, kp_id, kp_name, title }) => {
     setSubmitting(true)
     try {
       const d = await quizApi.questions({
         subject: subject || undefined,
         chapter: chapter || undefined,
         question_type: question_type || undefined,
+        kp_id: kp_id || undefined,
         page: 1, page_size: 100
       })
       const qs = (d?.questions || d?.items || []).map(normQ)
       setBackendOk(true)
+      /* 记录本次是否为知识点级筛选，供界面标识与空态判断使用 */
+      const kp = kp_id ? { id: String(kp_id), name: kp_name || `#${kp_id}` } : null
+      setKpFilter(kp)
+      /* 知识点级筛选命中 0 题：给出显式 Empty 兜底，不进入空会话（避免白屏） */
+      if (kp && !qs.length) {
+        setKpEmpty({ name: kp.name })
+        setSubmitting(false)
+        return
+      }
+      setKpEmpty(null)
       beginSession(title, qs, mode)
     } catch {
       setBackendOk(false)
+      const kp = kp_id ? { id: String(kp_id), name: kp_name || `#${kp_id}` } : null
+      setKpFilter(kp)
       const qs = LOCAL_FALLBACK.filter((x) => !subject || x.subject === subject)
       beginSession(title, qs.length ? qs : LOCAL_FALLBACK, mode)
     } finally { setSubmitting(false) }
   }, [beginSession, mode])
 
-  /* QuizSection 深链：?subject=&chapter= 直达该章练习 */
+  /* QuizSection 深链：?subject=&chapter= 直达该章练习；
+     ?kp_id=&kp_name= 直达该知识点精确刷题。 */
   useEffect(() => {
-    if (urlChapter && view === 'home') {
-      startWithFilter({ subject: urlSubject, chapter: urlChapter, question_type: urlType, title: `${urlSubject || ''} · ${urlChapter}`.trim() })
+    if ((urlChapter || urlKpId) && view === 'home') {
+      const title = urlKpName
+        ? `知识点 · ${urlKpName}`
+        : `${urlSubject || ''} · ${urlChapter || ''}`.trim()
+      startWithFilter({
+        subject: urlSubject,
+        chapter: urlChapter,
+        question_type: urlType,
+        kp_id: urlKpId,
+        kp_name: urlKpName,
+        title
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* ================= 作答与判分 ================= */
+  /* 多选仍需逐个勾选后判分；单选/判断在 toggleDraft 里点选即判。 */
   const toggleDraft = (qid, i) => {
     const q = session.questions[idx]
     if (records[qid]) return
@@ -349,9 +433,32 @@ export default function Quiz() {
         const next = cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort((a, b) => a - b)
         return { ...prev, [qid]: next }
       })
-    } else {
-      setDrafts((prev) => ({ ...prev, [qid]: i }))
+      return
     }
+    // 单选/判断：记录草稿并立即判分，点选即给反馈，不等提交
+    setDrafts((prev) => ({ ...prev, [qid]: i }))
+    gradeChoice(q, i)
+  }
+
+  /* 选择题判分。sel 为下标或下标数组（多选）。 */
+  const gradeChoice = async (q, sel) => {
+    if (records[q.id] || selfCheck || submitting) return
+    const myAns = Array.isArray(sel) ? sel.map(letterOf).join('') : letterOf(sel)
+    let correct = false, correctAnswer = q.answer, analysis = q.analysis
+    if (backendOk && !q.id.startsWith('l')) {
+      setSubmitting(true)
+      try {
+        const r = await quizApi.submit({ question_id: Number(q.id), my_answer: myAns })
+        correct = !!r.correct
+        correctAnswer = r.correct_answer ?? correctAnswer
+        analysis = r.analysis ?? analysis
+      } catch {
+        correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
+      } finally { setSubmitting(false) }
+    } else {
+      correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
+    }
+    applyGrade(q, correct, myAns, correctAnswer, analysis)
   }
 
   const applyGrade = (q, correct, selected, correctAnswer, analysis) => {
@@ -367,27 +474,12 @@ export default function Quiz() {
     if (records[q.id] || selfCheck) return
     if (submitting) return
 
-    /* ---- 选择题：先选后提交 ---- */
-    if (isChoiceQ(q)) {
+    /* ---- 多选题：勾选后提交 ---- */
+    if (isChoiceQ(q) && isMultiQ(q)) {
       const sel = drafts[q.id]
       const empty = sel == null || (Array.isArray(sel) && !sel.length)
-      if (empty) { toast(isMultiQ(q) ? '请至少选择一个选项' : '请先选择一个选项'); return }
-      const myAns = Array.isArray(sel) ? sel.map(letterOf).join('') : letterOf(sel)
-      let correct = false, correctAnswer = q.answer, analysis = q.analysis
-      if (backendOk && !q.id.startsWith('l')) {
-        setSubmitting(true)
-        try {
-          const r = await quizApi.submit({ question_id: Number(q.id), my_answer: myAns })
-          correct = !!r.correct
-          correctAnswer = r.correct_answer ?? correctAnswer
-          analysis = r.analysis ?? analysis
-        } catch {
-          correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
-        } finally { setSubmitting(false) }
-      } else {
-        correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
-      }
-      applyGrade(q, correct, myAns, correctAnswer, analysis)
+      if (empty) { toast('请至少选择一个选项'); return }
+      await gradeChoice(q, sel)
       return
     }
 
@@ -450,7 +542,11 @@ export default function Quiz() {
         if (i >= 0 && i < q.options.length) { toggleDraft(q.id, i); return }
       }
       if (e.key === 'Enter') {
-        if (!records[q.id] && !selfCheck) doSubmit()
+        // 残缺选择题（无选项不可作答）按 Enter 直接跳下一题
+        if (isChoiceWithoutOptions(q)) {
+          if (idx + 1 < session.questions.length) go(idx + 1)
+          else finishSession()
+        } else if (!records[q.id] && !selfCheck) doSubmit()
         else if (idx + 1 < session.questions.length) go(idx + 1)
         else finishSession()
       } else if (e.key === 'ArrowLeft') go(idx - 1)
@@ -471,7 +567,7 @@ export default function Quiz() {
               <div className="qh-hero-eyebrow">QUIZ CENTER · 刷题中心</div>
               <h1 className="qh-hero-title">历年真题，按知识点、按年份精准刷</h1>
               <p className="qh-hero-desc">
-                覆盖考纲知识点与历年真题，先选后提交、即时判题与解析；答错自动收入错题本，
+                覆盖考纲知识点与历年真题，点选即判、即时显示答案与解析；答错自动收入错题本，
                 薄弱点一目了然。支持练习 / 背题双模式与键盘快捷作答。
               </p>
             </div>
@@ -501,6 +597,25 @@ export default function Quiz() {
               : <span className="offline-dot">· 统计加载失败，显示为 0，可重试</span>}
           </div>
         </section>
+
+        {/* 知识点级筛选标识：仅在 URL 带 kp_id 时出现，让用户明确当前按知识点刷题 */}
+        {kpFilter && (
+          <div className="qkp-filter card">
+            <span className="qkp-filter-tag">🔖 当前筛选：知识点 {kpFilter.name}</span>
+            <button className="btn mini ghost" onClick={() => { setKpFilter(null); setKpEmpty(null); goHome() }}>
+              清除筛选
+            </button>
+          </div>
+        )}
+
+        {/* 知识点筛选命中 0 题：显式空态兜底，不白屏 */}
+        {kpEmpty && (
+          <Empty icon="🔍" title={`知识点「${kpEmpty.name}」暂无关联题目`}
+            desc="该知识点尚未关联题目，可先返回知识点全景页选择其它知识点，或按科目/章节刷题。"
+            action={<button className="btn primary" onClick={() => { setKpEmpty(null); setKpFilter(null); goHome() }}>
+              返回题库首页
+            </button>} />
+        )}
 
         {statsErr && (
           <div className="qerr card">
@@ -896,6 +1011,8 @@ export default function Quiz() {
             <div className="qprac-meta">
               <button className="btn mini ghost" onClick={goHome}>‹ 返回题库</button>
               <span>{session.title}</span>
+              {/* 知识点级筛选标识：明确告知用户当前按知识点精确出题 */}
+              {kpFilter && <span className="chip kp" title={`知识点 ID ${kpFilter.id}`}>🔖 知识点 · {kpFilter.name}</span>}
               <span className="chip">{memorize ? '背题模式' : '练习模式'}</span>
               <span className="chip">{TYPE_LABELS[q.question_type] || q.question_type || '题目'}</span>
               {q.subject && <span className="chip">{q.subject}</span>}
@@ -915,29 +1032,50 @@ export default function Quiz() {
                 <span className="no">{idx + 1}.</span>{q.content}
               </p>
 
-              {/* 选择题：先选后提交 */}
+              {/* 依赖原书插图的题目给出提示，避免用户对着「见下图」困惑 */}
+              {dependsOnFigure(q) && (
+                <p className="qfig-note">本题依赖原书插图，答案见原书。</p>
+              )}
+
+              {/* 选择题：点选即判 */}
               {isChoiceQ(q) && (
                 <div className="qopt-list">
                   {q.options.map((o, i) => {
-                    const isAns = String(letterOf(i)).toUpperCase() === String((rec?.correctAnswer ?? q.answer)).toUpperCase()
+                    const isAns = isCorrectOption(i, rec?.correctAnswer ?? q.answer)
+                    const picked = Array.isArray(draft) ? draft.includes(i) : draft === i
+                    const wasBad = revealed && !isAns && (
+                      Array.isArray(rec?.selected)
+                        ? rec.selected.includes(letterOf(i))
+                        : String(rec?.selected || '').toUpperCase().includes(letterOf(i))
+                    )
                     let cls = 'qopt'
-                    if (!revealed && draft != null && (Array.isArray(draft) ? draft.includes(i) : draft === i)) cls += ' sel'
+                    if (!revealed && picked) cls += ' sel'
                     if (revealed) {
                       if (isAns) cls += ' ok'
-                      else if (Array.isArray(rec?.selected) ? rec.selected.includes(i) : letterOf(i) === rec?.selected) cls += ' bad'
+                      else if (wasBad) cls += ' bad'
                     }
                     return (
                       <button key={i} className={cls} disabled={revealed} onClick={() => toggleDraft(q.id, i)}>
-                        <span className="qopt-letter">{revealed && isAns ? '✓' : letterOf(i)}</span>
-                        <span>{o}</span>
+                        <span className="qopt-letter">
+                          {revealed && isAns ? '✓' : revealed && wasBad ? '✗' : letterOf(i)}
+                        </span>
+                        <span className="qopt-body">{stripOptLabel(o)}</span>
                       </button>
                     )
                   })}
                 </div>
               )}
 
+              {/* 残缺选择题：答案是字母但 options 为空。只读展示，禁止作答 */}
+              {!isChoiceQ(q) && isChoiceWithoutOptions(q) && (
+                <div className="qopt-none">
+                  <span className="qopt-none-t">本题无选项，答案：{q.answer || '—'}</span>
+                  <span className="qopt-none-d">题库缺少该题选项内容，仅供记忆参考，不可作答。</span>
+                </div>
+              )}
+
               {/* 文本题：输入 + 对照自评 */}
-              {!isChoiceQ(q) && (
+              {isTextQuestion(q) && (
                 <div className="qtext-area">
                   <textarea className="qtext-input" placeholder="在此输入你的作答（填空 / 简答 / 计算过程 / 作图描述）…"
                     value={textDraft[q.id] || ''} disabled={revealed}
@@ -971,9 +1109,9 @@ export default function Quiz() {
                 </div>
               )}
 
-              {/* 未提交提示 */}
-              {!revealed && !selfCheck && isChoiceQ(q) && (
-                <p className="qkey-hint">选择后点「提交答案」才会判分揭示（不会点选即判）。</p>
+              {/* 未作答提示：单选/判断点选即判；多选仍需提交 */}
+              {!revealed && !selfCheck && isChoiceQ(q) && isMultiQ(q) && (
+                <p className="qkey-hint">勾选所有正确选项后，点「提交答案」判分。</p>
               )}
             </div>
 
@@ -982,8 +1120,16 @@ export default function Quiz() {
               <span className="qkey-hint">快捷键：A–F 选择 · Enter 提交/下一题 · ← → 切换</span>
               <div className="qprac-foot-btns">
                 <button className="btn ghost" onClick={() => navigate('/assistant')}>🤖 问 AI</button>
-                {!revealed && !selfCheck && isChoiceQ(q) && (
+                {!revealed && !selfCheck && isChoiceQ(q) && isMultiQ(q) && (
                   <button className="btn primary" disabled={submitting} onClick={doSubmit}>提交答案</button>
+                )}
+                {/* 残缺选择题不可作答，允许直接跳到下一题 */}
+                {isChoiceWithoutOptions(q) && (
+                  idx + 1 < total ? (
+                    <button className="btn primary" onClick={() => go(idx + 1)}>下一题 ›</button>
+                  ) : (
+                    <button className="btn primary" onClick={finishSession}>{memorize ? '完成背题' : '交卷并查看报告'}</button>
+                  )
                 )}
                 {(revealed || selfCheck) && idx + 1 < total && (
                   <button className="btn primary" onClick={() => go(idx + 1)}>下一题 ›</button>
@@ -1001,13 +1147,15 @@ export default function Quiz() {
             <div className="qsheet-grid">
               {session.questions.map((qq, i) => {
                 const r = records[qq.id]
+                const skipped = isChoiceWithoutOptions(qq)
                 let cls = 'qsheet-cell'
-                if (r) cls += r.correct ? ' ok' : ' bad'
+                if (skipped) cls += ' skip'
+                else if (r) cls += r.correct ? ' ok' : ' bad'
                 else if (drafts[qq.id] != null || textDraft[qq.id]) cls += ' draft'
                 if (i === idx) cls += ' cur'
                 return (
                   <button key={qq.id} className={cls} onClick={() => go(i)}
-                    aria-label={`第 ${i + 1} 题${r ? (r.correct ? '，正确' : '，错误') : ''}`}>
+                    aria-label={`第 ${i + 1} 题${skipped ? '，无选项不可作答' : r ? (r.correct ? '，正确' : '，错误') : ''}`}>
                     {i + 1}
                   </button>
                 )
@@ -1017,6 +1165,7 @@ export default function Quiz() {
               <li><span className="qsheet-dot ok" />正确</li>
               <li><span className="qsheet-dot bad" />错误</li>
               <li><span className="qsheet-dot todo" />未做</li>
+              <li><span className="qsheet-dot skip" />无选项</li>
             </ul>
             <button className="btn ghost qsheet-finish" onClick={finishSession}>
               {memorize ? '结束背题' : '交卷并查看报告'}

@@ -349,8 +349,8 @@ const useStore = create(
       removeWord: (id) => set((s) => ({ words: s.words.filter((w) => w.id !== id) })),
       addDeck: (name) =>
         set((s) => ({ decks: [...s.decks, { id: uid(), name, count: 0, source: '自定义' }] })),
-      // 从后端批量设置单词和词库
-      setWords: (newWords) => set({ words: newWords }),
+      // 从后端批量设置单词和词库（支持传入数组或 (prev)=>next 更新函数，便于按条刷新）
+      setWords: (newWords) => set((s) => ({ words: typeof newWords === 'function' ? newWords(s.words) : newWords })),
       setDecks: (newDecks) => set({ decks: newDecks }),
 
       /* ---------- 记忆卡片（SM-2） ---------- */

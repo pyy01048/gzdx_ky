@@ -9,6 +9,8 @@ export const kaoyanApi = {
   hot: (params) => request('/kaoyan/analysis/hot', { params }),
   schoolDetail: (id) => request('/kaoyan/schools/' + id),
   schoolMajors: (id) => request('/kaoyan/schools/' + id + '/majors'),
+  // M3-4: 招生计划聚合（院系→专业→拟招人数→考试科目，单次调用）
+  schoolEnrollmentPlan: (id, params) => request('/kaoyan/schools/' + id + '/enrollment-plan', { params }),
   schoolScores: (id) => request('/kaoyan/schools/' + id + '/scores'),
   schoolAdmissions: (id) => request('/kaoyan/schools/' + id + '/admissions'),
   trend: (params) => request('/kaoyan/analysis/trend', { params }),
@@ -50,6 +52,31 @@ export const kaoyanApi = {
   // T5: 院校公告列表 + 类型分布
   schoolNotices: (id, params) => request(`/kaoyan/schools/${id}/notices`, { params }),
   noticeTypeStats: () => request('/kaoyan/notices/types'),
+  // T6: 跨校公告聚合（首页公告栏）+ 最近 N 天更新概览
+  // params: { limit, since, notice_type, keyword, school_id, order_by }
+  notices: (params) => request('/kaoyan/notices', { params }),
+  noticeUpdates: (params) => request('/kaoyan/notices/updates', { params }),
+
+  // ---- 通知已读标记（/api/notices，单用户设计）----
+  // 未读统计（全局角标数据源）：{ total, unread, read, starred, important_unread, by_type, by_school }
+  noticeUnreadStats: () => request('/notices/unread-stats'),
+  // 通知列表：params { unread_only, starred_only, notice_type, school_id, keyword, page, page_size }
+  noticeList: (params) => request('/notices/list', { params }),
+  // 单条标记已读 / 取消已读
+  markNoticeRead: (id, isRead = true) =>
+    request(`/notices/${id}/read`, { method: 'POST', body: { is_read: isRead } }),
+  // 批量标记：{ notice_ids } | { school_id } | { notice_type } | { all: true }
+  batchMarkNoticeRead: (payload) =>
+    request('/notices/batch-read', { method: 'POST', body: payload }),
+  // 单条加星 / 取消加星
+  starNotice: (id, starred = true) =>
+    request(`/notices/${id}/star`, { method: 'POST', body: { is_starred: starred } }),
+  // 批量加星
+  batchStarNotice: (noticeIds, starred = true) =>
+    request('/notices/batch-star', {
+      method: 'POST',
+      body: { notice_ids: noticeIds, is_starred: starred },
+    }),
   // C5: 采集历史
   collectionRuns: (params) => request('/kaoyan/collection/runs', { params }),
 }

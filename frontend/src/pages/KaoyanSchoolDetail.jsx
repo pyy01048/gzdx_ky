@@ -33,16 +33,18 @@ const PROVINCE_COORDS = {
   '澳门': [113.55, 22.2],
 }
 
-/* 层级徽章：颜色区分（参考站用红色985/普通标签），用平台令牌 */
+/* 层级徽章：颜色区分（参考站用红色985/普通标签），用平台令牌。
+   level 为空的院校（库内 190 条）显示中性「未分类」徽章，而不是直接不显示——
+   否则用户无法区分「没定层级」和「样式没渲染出来」。 */
 function LevelBadge({ level }) {
-  if (!level) return null
+  const lv = String(level || '').trim() || '未分类'
   const style = {
     '985': { background: 'var(--red, #c0392b)', color: '#fff' },
     '211': { background: 'var(--accent)', color: 'var(--surface)' },
     '双一流': { background: 'var(--green)', color: 'var(--surface)' },
-    '一本': { background: 'var(--gold)', color: '#fff' },
-  }[level] || { background: 'var(--surface-3)', color: 'var(--ink-2)' }
-  return <em style={{ ...style, fontStyle: 'normal', padding: '2px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{level}</em>
+    '双非': { background: 'var(--surface-3)', color: 'var(--ink-2)' },
+  }[lv] || { background: 'var(--surface-3)', color: 'var(--ink-2)' }
+  return <em style={{ ...style, fontStyle: 'normal', padding: '2px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{lv}</em>
 }
 
 const FAV_KEY = 'kaoyan-fav-schools'
@@ -52,6 +54,8 @@ export default function KaoyanSchoolDetail() {
   const { id } = useParams()
   const [school, setSchool] = useState(null)
   const [majors, setMajors] = useState([])
+  // M3-4: 招生计划聚合（院系→专业→拟招人数→考试科目），单次调用避免两次拼接
+  const [enrollPlan, setEnrollPlan] = useState(null)
   const [scores, setScores] = useState([])
   const [admissions, setAdmissions] = useState([])
   const [notices, setNotices] = useState([])
@@ -69,6 +73,10 @@ export default function KaoyanSchoolDetail() {
     ]).then(([s, m, sc, ad]) => {
       setSchool(s); setMajors(m); setScores(sc); setAdmissions(ad)
     }).catch(() => toast('院校详情加载失败'))
+    // M3-4: 招生计划聚合独立加载（含拟招人数/考试科目），失败静默回退到 /majors 渲染
+    kaoyanApi.schoolEnrollmentPlan(id)
+      .then(setEnrollPlan)
+      .catch(() => setEnrollPlan(null))
     // 公告独立加载（新表可能未建，失败静默——无数据时标签页隐藏）
     kaoyanApi.schoolNotices(id, { limit: 50 })
       .then(setNotices)
@@ -272,19 +280,40 @@ export default function KaoyanSchoolDetail() {
       {tab === 'majors' && (
         <div>
           <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 12px' }}>
-            按参考站「招生计划」模式：专业代码/名称 + 研究方向 + 初试科目；研究方向下的分方向招生人数需采集后才可补充。
+            按参考站「招生计划」模式（M3-4 单次聚合）：院系 → 专业 → 拟招人数 → 初试科目。
+            {enrollPlan && enrollPlan.year ? ` 招生年度：${enrollPlan.year}。` : ''}
+            {(!enrollPlan || (enrollPlan.items || []).length === 0) && ' 暂无招生计划聚合数据，以下为专业方向明细。'}
           </p>
-          {majors.map(m => (
-            <div key={m.id} style={{ padding: '16px', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ fontWeight: 600 }}>{m.name} <span style={{ color: 'var(--ink-3)', fontSize: 13 }}>({m.code})</span>
-                {m.degree_type && <em style={{ fontStyle: 'normal', fontSize: 12, marginLeft: 8, padding: '1px 8px', borderRadius: 999, background: 'var(--surface-3)', color: 'var(--ink-2)' }}>{m.degree_type}</em>}
+          {enrollPlan && (enrollPlan.items || []).length > 0 ? (
+            enrollPlan.items.map((it, i) => (
+              <div key={i} style={{ padding: '16px', borderBottom: '1px solid var(--line)' }}>
+                <div style={{ fontWeight: 600 }}>
+                  {it.major} <span style={{ color: 'var(--ink-3)', fontSize: 13 }}>({it.major_code || '—'})</span>
+                  {it.degree_type && <em style={{ fontStyle: 'normal', fontSize: 12, marginLeft: 8, padding: '1px 8px', borderRadius: 999, background: 'var(--surface-3)', color: 'var(--ink-2)' }}>{it.degree_type}</em>}
+                  {it.enroll_count != null && <em style={{ fontStyle: 'normal', fontSize: 12, marginLeft: 8, color: 'var(--accent)', fontWeight: 600 }}>拟招 {it.enroll_count} 人</em>}
+                </div>
+                {it.college && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>院系：{it.college}</div>}
+                {it.direction && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>方向：{it.direction}</div>}
+                {Array.isArray(it.exam_subjects) && it.exam_subjects.length > 0 && (
+                  <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>初试：{it.exam_subjects.join(' / ')}</div>
+                )}
               </div>
-              {m.research_direction && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>方向：{m.research_direction}</div>}
-              {m.exam_subjects && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>初试：{Array.isArray(m.exam_subjects) ? m.exam_subjects.join(' / ') : m.exam_subjects}</div>}
-              {m.reference_books && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>参考书：{Array.isArray(m.reference_books) ? m.reference_books.join('；') : m.reference_books}</div>}
-            </div>
-          ))}
-          {majors.length === 0 && <div style={{ padding: '24px', color: 'var(--ink-3)' }}>暂无专业数据</div>}
+            ))
+          ) : (
+            majors.map(m => (
+              <div key={m.id} style={{ padding: '16px', borderBottom: '1px solid var(--line)' }}>
+                <div style={{ fontWeight: 600 }}>{m.name} <span style={{ color: 'var(--ink-3)', fontSize: 13 }}>({m.code})</span>
+                  {m.degree_type && <em style={{ fontStyle: 'normal', fontSize: 12, marginLeft: 8, padding: '1px 8px', borderRadius: 999, background: 'var(--surface-3)', color: 'var(--ink-2)' }}>{m.degree_type}</em>}
+                </div>
+                {m.research_direction && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>方向：{m.research_direction}</div>}
+                {m.exam_subjects && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>初试：{Array.isArray(m.exam_subjects) ? m.exam_subjects.join(' / ') : m.exam_subjects}</div>}
+                {m.reference_books && <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>参考书：{Array.isArray(m.reference_books) ? m.reference_books.join('；') : m.reference_books}</div>}
+              </div>
+            ))
+          )}
+          {(majors.length === 0) && (!enrollPlan || (enrollPlan.items || []).length === 0) && (
+            <div style={{ padding: '24px', color: 'var(--ink-3)' }}>暂无专业数据</div>
+          )}
         </div>
       )}
 

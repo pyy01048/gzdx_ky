@@ -4,11 +4,12 @@ import useStore from '../store/useStore'
 import { daysBetween, todayStr } from '../utils/date'
 import GlobalAI from './GlobalAI'
 import CommandPalette from './CommandPalette'
+import NoticeUnreadBadge from './NoticeUnreadBadge'
 import { useResolvedTheme } from './UI'
 import {
-  Home, Clock, Calendar, Book, Folder, Target,
+  Home, Calendar, Book, Folder, Target,
   Settings, Sun, Moon, Plus, Brain, FileText, GraduationCap,
-  MessageSquare, ChevronDown, Search, Cloud, ChevronRight, Map, Filter, CheckCircle, Activity
+  MessageSquare, ChevronDown, Search, ChevronRight, Map, Activity
 } from './Icon'
 
 /* 侧边栏考研初试倒计时（27 考研初试：2026-12-19）——借鉴 gitgraduate 导航倒计时细节 */
@@ -43,71 +44,121 @@ function ExamCountdown() {
   )
 }
 
-// 分组导航配置（桌面端）
-const NAV_GROUPS = [
+/* ==========================================================================
+   主导航：5+1 模块结构（对标 gitgraduate.com 的产品信息架构）
+   --------------------------------------------------------------------------
+   收敛前是 34 个平铺入口分5 组；现在改为「5 大学习模块 + 1 院校数据中心」，
+   页面文件一个都没动，只是把导航层级重组：
+     学习文库/ 知识地图 / 题库 / 单词记忆 / 错题复盘  +  院校数据中心
+   每个模块用一个可折叠的 NavGroup 呈现，模块首项即模块主页（defaultTo）。
+   未归入 5+1 的通用能力（仪表盘 / 任务 / 计划 / 设置 / AI）放在「其他」组，
+   保证任何页面都能从侧边栏到达，不产生死链。
+   ========================================================================== */
+const NAV_MODULES = [
   {
-    title: '今日',
+    key: 'library',
+    title: '学习文库',
+    icon: Folder,
+    defaultTo: '/library',
     items: [
-      { to: '/', label: '仪表盘', icon: Home, exact: true },
-      { to: '/tasks', label: '任务打卡', icon: Target },
-      { to: '/kbmap', label: '知识地图', icon: Map },
-    ]
+      { to: '/library', label: '学习文库' },
+      { to: '/documents', label: '文档知识库' },
+      { to: '/pan', label: '网盘联动' },
+      { to: '/subjects', label: '科目管理' },
+    ],
   },
   {
-    title: '学习',
+    key: 'kbmap',
+    title: '知识地图',
+    icon: Map,
+    defaultTo: '/kbmap',
     items: [
-      { to: '/quiz', label: '刷题中心', icon: Book },
-      { to: '/quiz-section', label: '分项刷题', icon: Filter },
-      { to: '/quiz-bank', label: '题库', icon: Book },
-      { to: '/analysis', label: '题目分析', icon: Brain },
-      { to: '/profile', label: '学习画像', icon: Activity },
-      { to: '/notebook', label: '错题本', icon: FileText },
-      { to: '/words', label: '单词记忆', icon: GraduationCap },
-      { to: '/cards', label: '记忆卡片', icon: Brain },
-      { to: '/subjects', label: '科目管理', icon: Settings },
-    ]
+      { to: '/kbmap', label: '知识地图' },
+      { to: '/panorama', label: '知识点全景' },
+      { to: '/exam-frequency', label: '考频分析' },
+      { to: '/analysis', label: '题目分析' },
+      // 数据质量：识别口径/答疑评测的历史运行与语料体检，知识地图同源的置信层
+      { to: '/quality', label: '评测与数据质量' },
+    ],
   },
   {
-    title: '资源与计划',
+    key: 'quiz',
+    title: '题库',
+    icon: Book,
+    defaultTo: '/quiz-bank',
     items: [
-      { to: '/documents', label: '文档知识库', icon: Folder },
-      { to: '/pan', label: '网盘联动', icon: Cloud },
-      { to: '/planner', label: '学习计划', icon: Calendar },
-      { to: '/settings', label: '设置', icon: Settings },
-    ]
-  },
-  // D8: 择校类目归组 —— "择校中心"等考研择校入口统一归入"考研择校"类目（考研数据侧），
-  // 不再挂在 AI 分组下；AI 分组仅保留通用 AI 助手
-  {
-    title: '考研择校',
-    items: [
-      { to: '/kaoyan', label: '择校中心', icon: GraduationCap },
-      { to: '/kaoyan/schools', label: '院校库', icon: Book },
-      { to: '/kaoyan/compare', label: '院校对比', icon: Filter },
-      { to: '/kaoyan/analysis', label: '分数分析', icon: Brain },
-      { to: '/kaoyan/map', label: '区域热力图', icon: Map },
-      { to: '/kaoyan/scatter', label: '招生散点图', icon: Search },
-      { to: '/kaoyan/recommend', label: '智能择校', icon: Target },
-      { to: '/kaoyan/plan', label: '考研规划', icon: Calendar },
-      { to: '/kaoyan/growth', label: '成长体系', icon: CheckCircle },
-      { to: '/kaoyan/assistant', label: '择校 AI 问答', icon: MessageSquare },
-      { to: '/kaoyan/import', label: '数据管理', icon: FileText },
-    ]
+      { to: '/quiz-bank', label: '题库管理' },
+      { to: '/quiz', label: '刷题中心' },
+      { to: '/cards', label: '记忆卡片' },
+    ],
   },
   {
-    title: 'AI',
+    key: 'words',
+    title: '单词记忆',
+    icon: GraduationCap,
+    defaultTo: '/words',
+    items: [{ to: '/words', label: '单词记忆' }],
+  },
+  {
+    key: 'review',
+    title: '错题复盘',
+    icon: FileText,
+    defaultTo: '/error-review',
     items: [
-      { to: '/assistant', label: 'AI 助手', icon: MessageSquare },
-    ]
-  }
+      { to: '/error-review', label: '错题复盘' },
+      { to: '/notebook', label: '电子错题本' },
+    ],
+  },
+  {
+    key: 'kaoyan',
+    title: '院校数据中心',
+    icon: Target,
+    defaultTo: '/kaoyan',
+    items: [
+      { to: '/kaoyan', label: '择校中心', exact: true },
+      { to: '/kaoyan/notices', label: '通知中心' },
+      { to: '/kaoyan/schools', label: '院校库' },
+      { to: '/kaoyan/compare', label: '院校对比' },
+      { to: '/kaoyan/analysis', label: '分数分析' },
+      { to: '/kaoyan/map', label: '区域热力图' },
+      { to: '/kaoyan/scatter', label: '招生散点图' },
+      { to: '/kaoyan/recommend', label: '智能择校' },
+      { to: '/kaoyan/plan', label: '考研规划' },
+      { to: '/kaoyan/growth', label: '成长体系' },
+      { to: '/kaoyan/assistant', label: '择校 AI 问答' },
+      { to: '/kaoyan/import', label: '数据管理' },
+    ],
+  },
 ]
 
-// 移动端底部导航（7 个，覆盖手机高频场景；批次1-1：补「择校」出口，解决移动端进择校模块出不来）
+/* 未归入 5+1 的通用入口（保持可达，避免收敛后出现死链） */
+const NAV_OTHER = [
+  { to: '/', label: '仪表盘', icon: Home, exact: true },
+  { to: '/tasks', label: '任务打卡', icon: Target },
+  { to: '/planner', label: '学习计划', icon: Calendar },
+  { to: '/profile', label: '学习画像', icon: Activity },
+  { to: '/assistant', label: 'AI 助手', icon: MessageSquare },
+  { to: '/settings', label: '设置', icon: Settings },
+]
+
+/* 模块 → 展开状态。默认全部收起，用户点开一个模块后保持展开（localStorage 记忆）。 */
+const NAV_OPEN_KEY = 'nav_modules_open'
+
+function loadNavOpen() {
+  try {
+    const raw = localStorage.getItem(NAV_OPEN_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+// 移动端底部导航（覆盖手机高频场景；与 5+1 模块结构对齐）
 // 手机主要用途：拍错题、看考点进度、刷题、问 AI。
-// 「资源」「我的」放进去是因为移动端没有侧边栏，必须有入口。
 const BOTTOM_NAV = [
   { to: '/', label: '今日', icon: Home, exact: true },
-  { to: '/notebook', label: '错题', icon: FileText },
+  { to: '/error-review', label: '复盘', icon: FileText },
   { to: '/kbmap', label: '考点', icon: Map },
   { to: '/quiz', label: '刷题', icon: Book },
   { to: '/kaoyan', label: '择校', icon: GraduationCap },
@@ -120,11 +171,15 @@ const CRUMB_MAP = {
   '/': '首页',
   '/tasks': '任务打卡',
   '/kbmap': '知识地图',
+  '/library': '学习文库',
   '/quiz': '刷题中心',
   '/quiz-bank': '题库管理',
+  '/panorama': '知识点全景',
+  '/exam-frequency': '考频分析',
   '/analysis': '题目分析',
   '/profile': '学习画像',
-  '/notebook': '错题本',
+  '/error-review': '错题复盘',
+  '/notebook': '电子错题本',
   '/subjects': '科目管理',
   '/words': '单词记忆',
   '/cards': '记忆卡片',
@@ -136,6 +191,7 @@ const CRUMB_MAP = {
   // 择校中心（/kaoyan 系列）
   '/kaoyan': '择校中心',
   '/kaoyan/guide': '择校中心',
+  '/kaoyan/notices': '通知中心',
   '/kaoyan/schools': '院校库',
   '/kaoyan/compare': '院校对比',
   '/kaoyan/analysis': '分数分析',
@@ -157,23 +213,28 @@ const crumbName = (path) => {
 
 // 相关功能（上下文相关跳转，仿大平台"相关推荐"）
 const RELATED = {
-  '/tasks': ['/kbmap', '/planner', '/notebook'],
-  '/kbmap': ['/documents', '/notebook', '/quiz'],
-  '/quiz': ['/notebook', '/words', '/cards'],
-  '/notebook': ['/quiz', '/kbmap', '/planner'],
-  '/words': ['/cards', '/quiz', '/notebook'],
-  '/cards': ['/words', '/quiz', '/notebook'],
+  '/tasks': ['/kbmap', '/planner', '/error-review'],
+  '/kbmap': ['/documents', '/error-review', '/quiz'],
+  '/library': ['/kbmap', '/documents', '/quiz'],
+  '/quiz': ['/error-review', '/words', '/cards'],
+  '/quiz-bank': ['/quiz', '/panorama', '/error-review'],
+  '/panorama': ['/quiz', '/kbmap', '/analysis'],
+  '/exam-frequency': ['/panorama', '/quiz', '/kbmap'],
+  '/error-review': ['/notebook', '/quiz', '/kbmap'],
+  '/notebook': ['/quiz', '/kbmap', '/error-review'],
+  '/words': ['/cards', '/quiz', '/error-review'],
+  '/cards': ['/words', '/quiz', '/error-review'],
   '/documents': ['/kbmap', '/pan', '/assistant'],
   '/pan': ['/documents', '/assistant', '/settings'],
-  '/planner': ['/tasks', '/kbmap', '/notebook'],
-  '/assistant': ['/documents', '/kbmap', '/notebook'],
+  '/planner': ['/tasks', '/kbmap', '/error-review'],
+  '/assistant': ['/documents', '/kbmap', '/error-review'],
   '/settings': ['/pan', '/assistant', '/documents'],
 }
 
 // 快捷操作面板
 const QUICK_ACTIONS = [
   { label: '添加任务', icon: Target, action: '/tasks' },
-  { label: '拍错题', icon: FileText, action: '/notebook' },
+  { label: '错题复盘', icon: FileText, action: '/error-review' },
   { label: '看考点', icon: Map, action: '/kbmap' },
   { label: '问 AI', icon: Brain, action: '/assistant' },
 ]
@@ -197,6 +258,29 @@ export default function Layout({ children }) {
   const isActive = (to, exact = false) => {
     if (exact) return location.pathname === to
     return location.pathname.startsWith(to) && to !== '/'
+  }
+
+  /* 5+1 模块展开状态：初始取 localStorage，若当前路由落在某模块下则强制展开该模块 */
+  const [openModules, setOpenModules] = useState(() => {
+    const saved = loadNavOpen()
+    const activeKeys = NAV_MODULES.filter((m) =>
+      m.items.some((n) => (n.exact ? location.pathname === n.to : location.pathname.startsWith(n.to)))
+    ).map((m) => m.key)
+    return Array.from(new Set([...saved, ...activeKeys]))
+  })
+
+  /* 模块标题行为：收起时点它 → 跳模块主页并展开；已展开时点它 → 收起
+     （若当前正停在该模块内，收起前先跳到模块主页，避免"收起=内容消失"的错觉） */
+  const toggleModule = (key) => {
+    const mod = NAV_MODULES.find((m) => m.key === key)
+    if (!mod) return
+    const inside = mod.items.some((n) => (n.exact ? location.pathname === n.to : location.pathname.startsWith(n.to)))
+    const wasOpen = openModules.includes(key)
+    const next = wasOpen ? openModules.filter((k) => k !== key) : [...openModules, key]
+    try { localStorage.setItem(NAV_OPEN_KEY, JSON.stringify(next)) } catch { /* 隐私模式忽略 */ }
+    setOpenModules(next)
+    if (wasOpen && inside) navigate(mod.defaultTo)
+    else if (!wasOpen) navigate(mod.defaultTo)
   }
 
   const go = (to) => {
@@ -236,24 +320,60 @@ export default function Layout({ children }) {
         <ExamCountdown />
 
         <nav className="side-nav">
-          {NAV_GROUPS.map((group, gi) => (
-            <div key={group.title} className="nav-group">
-              {gi > 0 && <div className="nav-divider" />}
-              <div className="nav-group-title">{group.title}</div>
-              {group.items.map((n) => (
-                <NavLink
-                  key={n.to}
-                  to={n.to}
-                  end={n.exact}
-                  className={({ isActive: a }) => `nav-item ${a ? 'active' : ''}`}
-                  aria-label={n.label}
+          {/* 5+1 模块导航：模块标题可点击（跳模块主页 + 展开/收起子项） */}
+          {NAV_MODULES.map((mod) => {
+            const open = openModules.includes(mod.key)
+            // 当前路由落在该模块下 → 强制展开（用户手动收起时不记忆，状态以展开为准）
+            const containsActive = mod.items.some((n) => isActive(n.to, n.exact))
+            const expanded = open || containsActive
+            return (
+              <div key={mod.key} className={`nav-mod ${expanded ? 'open' : ''}`}>
+                <button
+                  className={`nav-mod-head ${containsActive ? 'active' : ''}`}
+                  onClick={() => toggleModule(mod.key)}
+                  title={`${mod.title}（点击进入模块主页）`}
                 >
-                  <n.icon size={18} className="nav-ico" />
-                  <span className="nav-label">{n.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
+                  <mod.icon size={17} className="nav-ico" />
+                  <span className="nav-mod-title">{mod.title}</span>
+                  {/* 未读通知角标：院校数据中心挂在模块标题上，全局可见 */}
+                  {mod.key === 'kaoyan' && <NoticeUnreadBadge className="nav-mod-badge" />}
+                  <ChevronDown size={14} className={`nav-mod-caret ${expanded ? 'open' : ''}`} />
+                </button>
+                {expanded && (
+                  <div className="nav-mod-items">
+                    {mod.items.map((n) => (
+                      <NavLink
+                        key={n.to}
+                        to={n.to}
+                        end={n.exact}
+                        className={({ isActive: a }) => `nav-item nav-sub ${a ? 'active' : ''}`}
+                        aria-label={n.label}
+                      >
+                        <span className="nav-label">{n.label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          <div className="nav-group">
+            <div className="nav-divider" />
+            <div className="nav-group-title">其他</div>
+            {NAV_OTHER.map((n) => (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                end={n.exact}
+                className={({ isActive: a }) => `nav-item ${a ? 'active' : ''}`}
+                aria-label={n.label}
+              >
+                <n.icon size={18} className="nav-ico" />
+                <span className="nav-label">{n.label}</span>
+              </NavLink>
+            ))}
+          </div>
         </nav>
 
         <div className="side-foot">

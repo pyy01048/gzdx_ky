@@ -47,7 +47,7 @@ export default function KaoyanRecommend() {
             <option value="985">985</option>
             <option value="211">211</option>
             <option value="双一流">双一流</option>
-            <option value="一本">一本</option>
+            <option value="双非">双非</option>
           </select>
         </div>
         <div>

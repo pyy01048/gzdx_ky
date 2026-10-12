@@ -1,0 +1,155 @@
+/* ============================================================
+   知识点全景刷题页（Panorama）
+   信息架构：左侧 科目→章节→知识点 树 / 右侧 知识点详情 + 开始练习 + 覆盖率。
+   视觉复用 kbmap.css 的色标类（.kb-*）与 global.css 令牌，本文件仅补充
+   本页专属的布局与详情区样式，颜色一律走 CSS 变量，不引入新配色。
+   ============================================================ */
+
+/* ---------- 覆盖概览条 ---------- */
+.pn-overview {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 14px 22px;
+  box-shadow: var(--shadow-1);
+  margin-bottom: 16px;
+}
+.pn-ov-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 84px;
+}
+.pn-ov-num {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.pn-ov-num small { font-size: 14px; color: var(--ink-3); font-weight: 600; margin-left: 1px; }
+.pn-ov-num.ok { color: var(--green); }
+.pn-ov-num.tone-low { color: var(--red); }
+.pn-ov-num.tone-mid { color: var(--gold); }
+.pn-ov-num.tone-ok { color: var(--green); }
+.pn-ov-label { font-size: 11.5px; color: var(--ink-3); }
+.pn-legend {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-2);
+  flex-wrap: wrap;
+}
+
+/* ---------- 双栏布局（左树 / 右详情） ---------- */
+.pn-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.95fr);
+  gap: 16px;
+  align-items: start;
+}
+.pn-tree-col, .pn-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.pn-subject-card { padding: 16px 18px; }
+/* 详情列在长列表下保持可跟随 */
+.pn-side-col { position: sticky; top: 16px; }
+
+/* ---------- 知识点行（可点选） ---------- */
+.pn-kp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.pn-kp:hover { background: var(--surface-2); }
+.pn-kp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pn-kp.is-sel {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* ---------- 知识点详情卡 ---------- */
+.pn-detail-card .card-body { padding-top: 4px; }
+.pn-detail-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-3);
+  padding: 18px 2px;
+}
+.pn-detail { display: flex; flex-direction: column; gap: 12px; }
+.pn-detail-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.pn-detail-path { font-size: 12px; color: var(--ink-3); margin-top: -4px; }
+
+.pn-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.pn-detail-cell {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pn-cell-label { font-size: 11.5px; color: var(--ink-3); }
+.pn-cell-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.pn-cell-val.tone-low { color: var(--red); }
+.pn-cell-val.tone-mid { color: var(--gold); }
+.pn-cell-val.tone-ok { color: var(--green); }
+
+.pn-detail-types {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pn-types { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.pn-detail-actions { display: flex; gap: 10px; }
+.pn-detail-actions .btn { flex: 1; justify-content: center; }
+.pn-detail-note {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1080px) {
+  .pn-layout { grid-template-columns: 1fr; }
+  .pn-side-col { position: static; }
+}
+@media (max-width: 560px) {
+  .pn-overview { gap: 16px; }
+  .pn-legend { margin-left: 0; }
+  .pn-detail-grid { grid-template-columns: 1fr; }
+}

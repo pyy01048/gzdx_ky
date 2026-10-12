@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { taxonomyApi, reviewApi } from '../api/client'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { taxonomyApi, reviewApi, quizApi } from '../api/client'
 import { toast, Empty } from '../components/UI'
 import {
   RefreshCw, CheckCircle, ChevronRight, ChevronDown,
@@ -55,6 +56,14 @@ export default function KbMap() {
   const [openChapters, setOpenChapters] = useState({})
   const [reviewing, setReviewing] = useState(null)
   const [errMsg, setErrMsg] = useState('')
+
+  const navigate = useNavigate()
+  /* 知识点详情抽屉：详情来自 /api/taxonomy/knowledge-points/{id}；
+     关联题量来自 /api/quiz/questions?kp_id=（tree 不返回题量，故单独查真实值）。 */
+  const [detail, setDetail] = useState({ open: false, loading: false, error: '', data: null })
+  const [kpQCount, setKpQCount] = useState(null)
+  const [detailReviewing, setDetailReviewing] = useState(false)
+  const detailSeq = useRef(0)
 
   /* 首次加载：科目列表 + 全局总览 + 全量结构树 并行拉取 */
   const loadAll = useCallback(async () => {
@@ -128,6 +137,66 @@ export default function KbMap() {
       setReviewing(null)
     }
   }
+
+  /* 打开知识点详情抽屉：并行拉取详情 + 关联题量（各自容错，防竞态） */
+  const openDetail = useCallback(async (kp) => {
+    const id = kp?.id
+    if (id == null) return
+    const seq = ++detailSeq.current
+    setDetail({ open: true, loading: true, error: '', data: null })
+    setKpQCount(null)
+    const [detRes, qRes] = await Promise.allSettled([
+      taxonomyApi.knowledgePoint(id),
+      quizApi.questions({ kp_id: id, page_size: 1 }),
+    ])
+    if (seq !== detailSeq.current) return
+    if (detRes.status === 'fulfilled' && detRes.value) {
+      setDetail({ open: true, loading: false, error: '', data: detRes.value })
+    } else {
+      setDetail({
+        open: true,
+        loading: false,
+        error: detRes.reason?.message || '知识点详情加载失败',
+        data: null,
+      })
+    }
+    // 题量查询失败时置 null（界面显示 '—'），绝不伪造 0
+    setKpQCount(
+      qRes.status === 'fulfilled' && qRes.value && typeof qRes.value.total === 'number'
+        ? qRes.value.total
+        : null
+    )
+  }, [])
+
+  const closeDetail = useCallback(() => {
+    detailSeq.current++
+    setDetail({ open: false, loading: false, error: '', data: null })
+    setKpQCount(null)
+  }, [])
+
+  /* 抽屉内复习打卡：复用 reviewApi.submit，成功后刷新抽屉与页面数据 */
+  const submitDetailReview = async (result) => {
+    const id = detail.data?.id
+    if (id == null) return
+    setDetailReviewing(true)
+    try {
+      const r = await reviewApi.submit({ item_type: 'knowledge', item_id: id, result })
+      toast(`已记录：掌握度 ${r.mastery_before} → ${r.mastery_after}，${r.interval} 天后复习`)
+      await Promise.all([openDetail({ id }), loadAll()])
+    } catch (e) {
+      toast('记录失败：' + (e?.message || ''))
+    } finally {
+      setDetailReviewing(false)
+    }
+  }
+
+  /* Esc 关闭抽屉 */
+  useEffect(() => {
+    if (!detail.open) return
+    const onKey = (e) => { if (e.key === 'Escape') closeDetail() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [detail.open, closeDetail])
 
   /* 科目维度汇总（用于概览分布条） */
   const dist = useMemo(() => {
@@ -361,7 +430,20 @@ export default function KbMap() {
                               {ch.knowledge_points.map((kp) => {
                                 const kt = masteryTone(kp.mastery)
                                 return (
-                                  <div className="kb-kp" key={kp.id}>
+                                  <div
+                                    className="kb-kp kb-kp-clickable"
+                                    key={kp.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => openDetail(kp)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault()
+                                        openDetail(kp)
+                                      }
+                                    }}
+                                    title={`查看「${kp.name}」知识点详情`}
+                                  >
                                     <span className={`kb-dot tone-${kt.cls}`} title={`掌握度 ${kp.mastery}（${kt.label}）`} />
                                     <div className="kb-kp-main">
                                       <div className="kb-kp-row1">
@@ -388,7 +470,7 @@ export default function KbMap() {
                                           key={r.result}
                                           className={`kb-mini-btn ${r.cls}`}
                                           disabled={reviewing === kp.id}
-                                          onClick={() => submitReview(kp.id, r.result)}
+                                          onClick={(e) => { e.stopPropagation(); submitReview(kp.id, r.result) }}
                                           title={`标记为${r.label}`}
                                         >
                                           {r.label}
@@ -507,6 +589,157 @@ export default function KbMap() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 知识点详情抽屉（点击知识点行打开） */}
+      {detail.open && (
+        <div className="kb-drawer-mask" onClick={closeDetail}>
+          <aside
+            className="kb-drawer"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="知识点详情"
+          >
+            <div className="kb-drawer-head">
+              <div className="kb-drawer-titles">
+                <div className="kb-drawer-name">{detail.data?.name || '知识点详情'}</div>
+                <div className="kb-drawer-path">
+                  {detail.data
+                    ? `${detail.data.subject || ''}${detail.data.chapter ? ' · ' + detail.data.chapter : ''}`
+                    : '加载中…'}
+                </div>
+              </div>
+              <button className="kb-drawer-close" onClick={closeDetail} aria-label="关闭">✕</button>
+            </div>
+            <div className="kb-drawer-body">
+              {detail.loading ? (
+                <div className="loading-inline">详情加载中…</div>
+              ) : detail.error ? (
+                <div className="kb-drawer-err">
+                  <AlertCircle size={16} /> {detail.error}
+                  <div style={{ marginTop: 10 }}>
+                    <button className="btn ghost" onClick={() => openDetail({ id: detail.data?.id })}>重试</button>
+                  </div>
+                </div>
+              ) : detail.data ? (
+                <>
+                  <div className="kb-drawer-meta">
+                    <div className="kb-drawer-cell">
+                      <span className="kb-drawer-cell-label">掌握度</span>
+                      <span className={`kb-drawer-cell-val tone-${masteryTone(detail.data.mastery).cls}`}>
+                        {detail.data.mastery ?? 0}%
+                      </span>
+                    </div>
+                    <div className="kb-drawer-cell">
+                      <span className="kb-drawer-cell-label">考频</span>
+                      <span className="kb-drawer-cell-val">{detail.data.exam_frequency ?? '—'}</span>
+                    </div>
+                    <div className="kb-drawer-cell">
+                      <span className="kb-drawer-cell-label">难度</span>
+                      <span className="kb-drawer-cell-val">{detail.data.difficulty ?? '—'}</span>
+                    </div>
+                    <div className="kb-drawer-cell">
+                      <span className="kb-drawer-cell-label">关联题量</span>
+                      <span className="kb-drawer-cell-val">{kpQCount == null ? '—' : `${kpQCount} 题`}</span>
+                    </div>
+                  </div>
+
+                  {(detail.data.question_types || []).length > 0 && (
+                    <div className="kb-drawer-section">
+                      <div className="kb-drawer-section-title">题型</div>
+                      <div className="kb-qtypes">
+                        {detail.data.question_types.map((t) => (
+                          <span className="kb-qtype" key={t}>{typeLabel(t)}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {detail.data.description && (
+                    <div className="kb-drawer-section">
+                      <div className="kb-drawer-section-title">描述</div>
+                      <p className="kb-drawer-desc">{detail.data.description}</p>
+                    </div>
+                  )}
+
+                  <div className="kb-drawer-section">
+                    <div className="kb-drawer-section-title">
+                      原文摘录
+                      <span className="kb-drawer-count">{(detail.data.related_chunks || []).length}</span>
+                    </div>
+                    {(detail.data.related_chunks || []).length === 0 ? (
+                      <div className="kb-drawer-empty">该知识点暂无关联原文</div>
+                    ) : (
+                      <div className="kb-drawer-chunks">
+                        {detail.data.related_chunks.map((c) => (
+                          <div className="kb-drawer-chunk" key={c.chunk_id}>
+                            {c.doc_name && <div className="kb-drawer-chunk-src">{c.doc_name}</div>}
+                            <div className="kb-drawer-chunk-text">{c.text || '（无文本）'}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="kb-drawer-section">
+                    <div className="kb-drawer-section-title">
+                      关联错题
+                      <span className="kb-drawer-count">{(detail.data.related_errors || []).length}</span>
+                    </div>
+                    {(detail.data.related_errors || []).length === 0 ? (
+                      <div className="kb-drawer-empty">暂无关联错题</div>
+                    ) : (
+                      <div className="kb-drawer-errs">
+                        {detail.data.related_errors.map((e) => (
+                          <div className="kb-drawer-err-item" key={e.id}>
+                            <div className="kb-drawer-err-content">{e.content || '（无题干）'}</div>
+                            <div className="kb-drawer-err-meta">
+                              <span>我的答案：{e.my_answer || '—'}</span>
+                              <span>正确答案：{e.correct_answer || '—'}</span>
+                              {e.error_reason && <span>错因：{e.error_reason}</span>}
+                            </div>
+                            <button
+                              className="kb-mini-btn"
+                              onClick={() => navigate(
+                                '/error-review?error_id=' + e.id +
+                                '&subject=' + encodeURIComponent(e.subject || detail.data.subject || '')
+                              )}
+                            >
+                              去复盘
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="kb-drawer-section">
+                    <div className="kb-drawer-section-title">复习打卡</div>
+                    <div className="kb-drawer-review-actions">
+                      {REVIEW_ACTIONS.map((r) => (
+                        <button
+                          key={r.result}
+                          className={`kb-mini-btn ${r.cls}`}
+                          disabled={detailReviewing}
+                          onClick={() => submitDetailReview(r.result)}
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+                    {detail.data.review_count > 0 && (
+                      <div className="kb-drawer-review-hint">
+                        已复习 {detail.data.review_count} 次 · 下次复习{' '}
+                        {detail.data.next_review ? String(detail.data.next_review).slice(0, 10) : '—'}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </aside>
         </div>
       )}
     </div>

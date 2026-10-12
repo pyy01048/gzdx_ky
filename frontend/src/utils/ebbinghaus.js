@@ -30,12 +30,16 @@ export function nextReviewLabel(lastReview, masterLevel) {
 export function reviewStatus(item, today = todayStr()) {
   // status: 'new' 未学 / 'due' 到期需复习 / 'reviewing' 进行中 / 'mastered' 已掌握
   if (!item.lastReview) return { status: 'new', nextDue: null, pass: 0 }
-  const level = Math.min(item.mastery, 6)
+  // mastery 可能缺失/为NaN（后端字段异常或本地旧数据）：
+  // Math.min(NaN, 6) = NaN → REVIEW_POINTS[NaN] 为 undefined → 读 .value 整页崩，
+  // 故先归一化成 0..7 的整数。
+  const mastery = Math.min(Math.max(Number(item.mastery) || 0, 0), 7)
+  const level = Math.min(mastery, 6)
   const interval = REVIEW_POINTS[level].value
   const nextDue = addDays(item.lastReview, interval)
-  if (item.mastery >= 7) return { status: 'mastered', nextDue, pass: 7 }
-  if (daysBetween(today, nextDue) <= 0) return { status: 'due', nextDue, pass: item.mastery }
-  return { status: 'reviewing', nextDue, pass: item.mastery }
+  if (mastery >= 7) return { status: 'mastered', nextDue, pass: 7 }
+  if (daysBetween(today, nextDue) <= 0) return { status: 'due', nextDue, pass: mastery }
+  return { status: 'reviewing', nextDue, pass: mastery }
 }
 
 /** 下一次七刷日期 */

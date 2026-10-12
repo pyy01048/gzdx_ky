@@ -2,7 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // V3.0 前端工程配置（性能优化版）
-export default defineConfig({
+// 使用函数式 config：区分 dev / build，避免 dev 也 drop console 掩盖报错
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   base: './',
   test: {
@@ -46,7 +47,9 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router-dom', 'zustand'],
   },
+  // 仅在「生产构建」时 drop console/debugger；dev 保留控制台输出，
+  // 否则静默降级（catch 里的 console.warn/error）在开发期完全不可见。
   esbuild: {
-    drop: ['console', 'debugger'],
+    drop: command === 'build' ? ['console', 'debugger'] : [],
   },
-})
+}))

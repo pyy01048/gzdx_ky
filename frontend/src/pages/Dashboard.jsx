@@ -7,6 +7,7 @@ import { dueCards } from '../utils/spaced'
 import { CountUp, Empty, toast } from '../components/UI'
 import { dashboardApi } from '../api/client'
 import { MiniLineChart, RingProgress } from '../components/Charts'
+import NoticeBoard from '../components/NoticeBoard'
 import {
   Target, Clock, Book, Calendar, Warning, ChevronRight, CheckCircle,
   Folder, GraduationCap, Brain, MessageSquare, Settings, FileText, Cloud,
@@ -454,6 +455,15 @@ export default function Dashboard() {
               ))}
               <span>多</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 院校公告栏（跨校聚合，当日哪些院校更新） ===== */}
+      {!loading && (
+        <div className="dash-row">
+          <div className="notice-board-full">
+            <NoticeBoard />
           </div>
         </div>
       )}

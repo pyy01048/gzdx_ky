@@ -68,6 +68,19 @@ vi.mock('../api/kaoyanApi', () => ({
     hot: vi.fn().mockResolvedValue({ total: 0, items: [] }),
     dashboardAnalysis: vi.fn().mockResolvedValue(null),
     schoolMajors: vi.fn().mockResolvedValue([]),
+    // 首页「院校公告」栏（NoticeBoard）调用：跨校聚合 + 近期更新概览
+    notices: vi.fn().mockResolvedValue({ items: [], stats: { total: 0, school_count: 0, by_type: {} } }),
+    noticeUpdates: vi.fn().mockResolvedValue({ days: 7, total_schools: 0, total_notices: 0, schools: [] }),
+    // 全局未读角标：Layout 侧边栏「院校数据中心」模块任何页面都会渲染 NoticeUnreadBadge
+    // → useUnreadNotices() 在首屏调用 noticeUnreadStats()。mock 缺失该方法会抛
+    // "noticeUnreadStats is not a function" 未捕获异常（vitest 报 unhandled error）。
+    // 返回字段需覆盖 useUnreadNotices 读取的快照键，否则角标拿不到 unread。
+    noticeUnreadStats: vi.fn().mockResolvedValue({
+      total: 0, unread: 0, read: 0, starred: 0,
+      important_unread: 0, important_total: 0, urgent_unread: 0,
+      by_type: {}, by_school: {},
+    }),
+    noticeList: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
   },
 }))
 
