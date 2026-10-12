@@ -100,6 +100,7 @@ ALLOWED_4XX = {
     "/api/netdisk/preview/{file_id}": ({404}, "测试库无网盘文件"),
     "/api/netdisk/platform-config/{platform}": ({404}, "测试库无该平台配置"),
     "/api/ai/build-embeddings/status/{task_id}": ({404}, "内存态任务表为空，任务不存在"),
+    "/api/quality/eval-runs/{run_id}": ({404}, "评测任务不存在时 404：conftest 强制重定向到临时空库，eval_runs 无数据；已核实真库 eval_runs 有 id=1~5、路由定义于 routers/quality.py:47 且已在 main.py:240 注册，属测试库预期空态而非源码缺陷"),
 }
 
 #: 路径变量名 -> sample_data 里真实存在的 id 字段。
