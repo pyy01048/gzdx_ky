@@ -245,7 +245,11 @@ export const quizApi = {
   subjects: () => request('/quiz/subjects'),
   sections: (params) => request('/quiz/sections', { params }),
   years: () => request('/quiz/years'),
-  papersIndex: (params) => request('/quiz/papers-index', { params })
+  papersIndex: (params) => request('/quiz/papers-index', { params }),
+  // 考频聚合：dimension = kp | chapter | paper（M2-7 考频分析页消费）
+  frequency: (params) => request('/quiz/frequency', { params }),
+  // 错因分布（错题复盘页筛选项）：{total, items:[{reason, count}]}
+  wrongReasons: () => request('/quiz/wrong-reasons')
 }
 
 /* ---------------- Errors 错题本 ---------------- */
@@ -256,7 +260,12 @@ export const errorsApi = {
   remove: (id) => request(`/errors/${id}`, { method: 'DELETE' }),
   // review: 后端无 /api/errors/{id}/review 接口，错题复习请用 aiAnalyze / graduate
   ocr: (formData) => request('/errors/ocr', { method: 'POST', formData }),
-  aiAnalyze: (id) => request(`/errors/${id}/ai-analyze`, { method: 'POST' })
+  aiAnalyze: (id) => request(`/errors/${id}/ai-analyze`, { method: 'POST' }),
+  graduate: (id) => request(`/errors/${id}/graduate`, { method: 'POST' }),
+  // 知识点关联：GET 返回 {error_id, items:[]}；POST body {knowledge_point_id}
+  knowledgePoints: (id) => request(`/errors/${id}/knowledge-points`),
+  linkKnowledge: (id, body) => request(`/errors/${id}/link-knowledge`, { method: 'POST', body }),
+  unlinkKnowledge: (linkId) => request(`/errors/links/${linkId}`, { method: 'DELETE' })
 }
 
 /* ---------------- Flashcards 记忆卡片 ---------------- */
@@ -466,6 +475,7 @@ export const reviewApi = {
   history: (params) => request('/review/history', { params }),
   weakPoints: (params) => request('/review/weak-points', { params }),
   linkStats: () => request('/review/link-stats'),
+  stats: () => request('/review/stats'),
 }
 
 /* ---------------- 知识库健康（体检 + 自愈） ---------------- */
@@ -533,10 +543,20 @@ export const planningApi = {
   // materials / faq: 后端无 /api/planning/* 对应接口
 }
 
+/* ---------------- 评测与数据质量（/api/quality，只读） ---------------- */
+export const qualityApi = {
+  // 运行历史：kind ∈ qa | recognition | recognition_policy | corpus_probe | doc_lock
+  evalRuns: (params) => request('/quality/eval-runs', { params }),
+  evalRun: (id) => request(`/quality/eval-runs/${id}`),
+  latest: (kind) => request('/quality/latest', { params: { kind } }),
+  corpus: () => request('/quality/corpus', { timeout: 60000 }),
+  treeOverlay: () => request('/quality/tree-overlay', { timeout: 60000 }),
+}
+
 /* ---------------- 聚合导出 ---------------- */
 export default {
   dashboardApi, tasksApi, goalsApi, quizApi, errorsApi, flashcardsApi,
   documentsApi, netdiskApi, importsApi, aiApi, customizationApi, plannerApi, wordsApi,
   studyApi, taxonomyApi, reviewApi, systemApi, kbApi, analysisApi, quizSectionApi, paperApi, planningApi,
-  kbImportApi
+  kbImportApi, qualityApi
 }

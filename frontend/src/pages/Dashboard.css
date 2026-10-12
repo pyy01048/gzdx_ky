@@ -75,3 +75,58 @@
 .weak-card.good { background: var(--green-soft); border-color: rgba(22, 163, 74, 0.25); }
 .weak-card.good .panel-title { color: var(--green); }
 .weak-card.good .weak-ico { background: var(--green-soft); color: var(--green); }
+
+/* ---- 院校公告栏（跨校聚合，首页 NoticeBoard.jsx） ---- */
+.notice-board-full { grid-column: 1 / -1; }
+.notice-board .notice-head-right { display: inline-flex; align-items: center; gap: 10px; }
+.notice-board .notice-refresh { padding: 4px 8px; line-height: 1; }
+.notice-overview {
+  font-size: 12.5px; color: var(--ink-2); margin: 2px 0 12px;
+  padding: 8px 12px; border-radius: var(--r-sm);
+  background: var(--accent-soft); border: 1px solid var(--line);
+}
+.notice-overview b { color: var(--accent-strong); font-weight: 700; }
+.notice-list { display: flex; flex-direction: column; }
+.notice-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 4px;
+  border-bottom: 1px solid var(--line); text-decoration: none;
+  color: var(--ink-1, inherit); transition: background var(--dur-fast);
+}
+.notice-item:last-child { border-bottom: none; }
+.notice-item:hover { background: var(--surface-2); }
+.notice-school {
+  flex: none; max-width: 120px; font-size: 12px; font-weight: 600;
+  color: var(--accent-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.notice-title {
+  flex: 1; min-width: 0; font-size: 13.5px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.notice-type {
+  flex: none; font-style: normal; font-size: 11px; padding: 1px 8px;
+  border-radius: 999px; background: var(--surface-3); color: var(--ink-3);
+}
+.notice-date { flex: none; font-size: 12px; color: var(--ink-3); min-width: 48px; text-align: right; }
+.notice-foot { font-size: 11px; color: var(--ink-3); margin: 10px 0 0; }
+
+/* ---- 公告栏未读视觉区分（配合 NoticeCenter 的已读标记体系） ----
+   未读：左侧实心圆点 + 标题加粗
+   已读：整行淡化，不干扰首页浏览 */
+.notice-item.is-unread .notice-title { font-weight: 600; }
+.notice-item.is-read { opacity: 0.6; }
+.notice-item.is-read:hover { opacity: 0.9; }
+.notice-item .nc-dot {
+  flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--red);
+}
+.notice-item.is-read .nc-dot {
+  background: transparent; border: 1px solid var(--line-strong);
+}
+
+/* 引导到通知中心的入口 */
+.notice-more {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 10px; font-size: 12px; color: var(--accent-strong);
+  text-decoration: none;
+}
+.notice-more:hover { text-decoration: underline; }

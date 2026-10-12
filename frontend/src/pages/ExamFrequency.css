@@ -1,0 +1,168 @@
+/* ============================================================
+   考频分析页（ExamFrequency）
+   布局：顶部标题 → 科目 chips（复用 kbmap.css 的 .kb-*）→ 维度 segmented →
+        知识点排行表 / 章节·套卷横条 → 页脚口径说明。
+   颜色一律走全站 CSS 令牌（global.css / kbmap.css），不引入新配色。
+   ============================================================ */
+
+/* ---------- 顶部标题 ---------- */
+.ef-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.ef-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 4px;
+}
+.ef-sub { font-size: 13px; color: var(--ink-3); margin: 0; line-height: 1.55; }
+.ef-sub b { color: var(--ink-2); }
+
+/* ---------- 维度工具条 ---------- */
+.ef-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0;
+}
+.ef-count { font-size: 12.5px; color: var(--ink-3); }
+
+/* ---------- 加载骨架 ---------- */
+.ef-skeleton { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.ef-sk-row {
+  height: 16px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 37%, var(--surface-2) 63%);
+  background-size: 400% 100%;
+  animation: ef-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes ef-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* ---------- 知识点档：排行表 ---------- */
+.ef-kp-list { padding: 6px 4px; }
+.ef-kp-head,
+.ef-kp-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 168px 92px 104px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+}
+.ef-kp-head {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+.ef-kp-row {
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: background var(--dur-fast);
+}
+.ef-kp-row:last-child { border-bottom: none; }
+.ef-kp-row:hover { background: var(--surface-2); }
+.ef-col-rank { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: center; }
+.ef-col-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ef-kp-name { font-size: 14px; color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ef-kp-chap { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ef-col-tone { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.ef-col-q { font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+.ef-col-q small { font-size: 11px; color: var(--ink-3); font-weight: 400; }
+.ef-q-none { color: var(--ink-3); }
+.ef-col-act { text-align: right; }
+
+/* 考频色标：复用全站语义色（高频红 / 中频金 / 低频绿 / 冷门灰） */
+.ef-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--ink-3); }
+.ef-dot.high { background: var(--red); }
+.ef-dot.mid { background: var(--gold); }
+.ef-dot.low { background: var(--green); }
+.ef-dot.cold { background: var(--ink-3); }
+.ef-tone-text { font-weight: 600; }
+.ef-tone-text.high { color: var(--red); }
+.ef-tone-text.mid { color: var(--gold); }
+.ef-tone-text.low { color: var(--green); }
+.ef-tone-text.cold { color: var(--ink-3); }
+.ef-freq-num { color: var(--ink-3); font-size: 11.5px; }
+
+/* ---------- 章节 / 套卷档：横向条形 ---------- */
+.ef-bar-list { padding: 10px 16px; }
+.ef-bar-row {
+  display: grid;
+  grid-template-columns: 28px minmax(120px, 240px) minmax(80px, 1fr) 150px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.ef-bar-rank { font-size: 12px; color: var(--ink-3); text-align: center; font-variant-numeric: tabular-nums; }
+.ef-bar-label {
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ef-bar-track {
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.ef-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--accent-grad, var(--accent));
+  transition: width var(--dur-base) ease;
+}
+.ef-bar-val { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+.ef-bar-val small { color: var(--ink-3); font-weight: 400; font-size: 11.5px; }
+.ef-bar-kp { color: var(--ink-3); font-weight: 400; font-size: 11.5px; margin-left: 6px; }
+
+/* ---------- 页脚口径 ---------- */
+.ef-foot {
+  margin: 18px 2px 4px;
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+.ef-foot b { color: var(--ink-2); }
+
+/* ---------- 窄屏适配 ---------- */
+@media (max-width: 720px) {
+  .ef-kp-head { display: none; }
+  .ef-kp-row {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rank name act"
+      "rank tone act"
+      ".    q    act";
+    row-gap: 3px;
+  }
+  .ef-col-rank { grid-area: rank; }
+  .ef-col-name { grid-area: name; }
+  .ef-col-tone { grid-area: tone; }
+  .ef-col-q { grid-area: q; }
+  .ef-col-act { grid-area: act; }
+  .ef-bar-row {
+    grid-template-columns: 24px minmax(0, 1fr) 120px;
+    grid-template-areas:
+      "rank label val"
+      ".    track track";
+    row-gap: 4px;
+  }
+  .ef-bar-rank { grid-area: rank; }
+  .ef-bar-label { grid-area: label; }
+  .ef-bar-track { grid-area: track; }
+  .ef-bar-val { grid-area: val; text-align: right; }
+}

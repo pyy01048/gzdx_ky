@@ -443,3 +443,163 @@
   .kb-kp-freq { display: none; }
   .kb-kp-actions { flex-direction: column; }
 }
+
+/* ---------- 知识点详情抽屉（点击知识点行打开） ---------- */
+.kb-kp-clickable { cursor: pointer; }
+.kb-kp-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r-sm);
+}
+
+.kb-drawer-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.35);
+  animation: kb-drawer-fade 160ms var(--ease-out, ease-out);
+}
+.kb-drawer {
+  width: min(460px, 92vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18);
+  animation: kb-drawer-slide 200ms var(--ease-out, ease-out);
+}
+@keyframes kb-drawer-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes kb-drawer-slide {
+  from { transform: translateX(24px); opacity: 0.6; }
+  to { transform: none; opacity: 1; }
+}
+
+.kb-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.kb-drawer-titles { flex: 1; min-width: 0; }
+.kb-drawer-name { font-size: 16px; font-weight: 700; color: var(--ink); word-break: break-word; }
+.kb-drawer-path { font-size: 12px; color: var(--ink-3); margin-top: 4px; word-break: break-word; }
+.kb-drawer-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  line-height: 1;
+}
+.kb-drawer-close:hover { background: var(--surface-2); }
+
+.kb-drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 24px; }
+
+.kb-drawer-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.kb-drawer-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+}
+.kb-drawer-cell-label { font-size: 11.5px; color: var(--ink-3); }
+.kb-drawer-cell-val { font-size: 16px; font-weight: 700; color: var(--ink); }
+.kb-drawer-cell-val.tone-low { color: var(--red); }
+.kb-drawer-cell-val.tone-mid { color: var(--gold); }
+.kb-drawer-cell-val.tone-ok { color: var(--green); }
+
+.kb-drawer-section { margin-top: 16px; }
+.kb-drawer-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.kb-drawer-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+.kb-drawer-desc { font-size: 13px; color: var(--ink-2); line-height: 1.75; margin: 0; }
+.kb-drawer-empty { font-size: 12.5px; color: var(--ink-3); padding: 8px 0; }
+
+.kb-drawer-chunks { display: flex; flex-direction: column; gap: 10px; }
+.kb-drawer-chunk {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  background: var(--surface);
+}
+.kb-drawer-chunk-src {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+.kb-drawer-chunk-text {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+
+.kb-drawer-err {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--red);
+  padding: 8px 0;
+}
+
+.kb-drawer-errs { display: flex; flex-direction: column; gap: 10px; }
+.kb-drawer-err-item {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}
+.kb-drawer-err-content {
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.7;
+  max-height: 120px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+.kb-drawer-err-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 6px 0 8px;
+}
+
+.kb-drawer-review-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.kb-drawer-review-hint { font-size: 12px; color: var(--ink-3); margin-top: 8px; }

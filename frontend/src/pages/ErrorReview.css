@@ -1,0 +1,270 @@
+/* ============================================================
+   错题复盘页（ErrorReview）
+   样式体系与 Library.css 完全一致：只使用 global.css 设计令牌
+   （--surface / --line / --ink-* / --accent* / --r-* 等），
+   不新增配色、不引入任何 UI 库。
+   ============================================================ */
+
+/* ---------- 复盘总览小卡 ---------- */
+.er-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.er-stat { padding: 14px 16px; }
+.er-stat-num {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.er-stat-label { font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+.er-stat-warn .er-stat-num { color: var(--gold); }
+.er-stat-ok .er-stat-num { color: var(--green); }
+
+/* ---------- 筛选条（掌握度 / 错因 / 学科各一行） ---------- */
+.er-filterbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.er-filterbar-icon { color: var(--ink-3); flex: 0 0 auto; }
+.er-filter-label {
+  font-size: 12px;
+  color: var(--ink-3);
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+/* ---------- 主体两栏（左列表 / 右详情） ---------- */
+.er-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.er-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.er-card { padding: 16px 18px; }
+
+/* ---------- 错题清单 ---------- */
+.er-list { display: flex; flex-direction: column; }
+.er-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--line);
+  padding: 11px 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink);
+}
+.er-row:first-child { border-top: none; }
+.er-row:hover { background: var(--surface-2); }
+.er-row.active { background: var(--accent-soft); border-radius: var(--r-sm); }
+
+.er-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.er-status {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.er-status.warn { background: var(--gold-soft); color: var(--gold); }
+.er-status.ok { background: var(--green-soft); color: var(--green); }
+.er-status.muted { background: var(--surface-3); color: var(--ink-3); }
+
+.er-subj {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: var(--surface-3);
+  border-radius: 5px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.er-reason {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--accent-strong);
+  white-space: nowrap;
+}
+.er-meta {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.er-row-q {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  min-width: 0;
+}
+.er-row-q > svg { color: var(--ink-3); flex: 0 0 auto; margin-top: 4px; }
+.er-row-q > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- 分页 ---------- */
+.er-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.er-pager-txt { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* ---------- 详情 ---------- */
+.er-q {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+}
+.er-answers { display: flex; gap: 10px; flex-wrap: wrap; }
+.er-ans {
+  flex: 1 1 160px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--ink);
+}
+.er-ans.wrong { background: var(--red-soft); color: var(--red); }
+.er-ans.right { background: var(--green-soft); color: var(--green); }
+.er-ans-label { font-size: 11.5px; opacity: 0.85; flex: 0 0 auto; }
+
+.er-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.er-kv b { color: var(--ink-2); font-weight: 600; }
+
+.er-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.er-tag {
+  font-size: 11px;
+  color: var(--ink-2);
+  background: var(--surface-3);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* ---------- AI 分析块 ---------- */
+.er-ai {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.er-ai > svg { flex: 0 0 auto; margin-top: 3px; }
+.er-ai-ok { background: var(--accent-soft); color: var(--ink); }
+.er-ai-ok > svg { color: var(--accent-strong); }
+.er-ai-error { background: var(--red-soft); color: var(--red); }
+.er-ai-title { font-weight: 700; font-size: 12.5px; margin-bottom: 4px; }
+.er-ai-body { color: var(--ink-2); white-space: pre-wrap; word-break: break-word; }
+.er-ai-err { color: var(--red); font-size: 12.5px; word-break: break-word; }
+
+.er-ai-btn { white-space: nowrap; }
+
+/* ---------- 知识点关联 ---------- */
+.er-kp-list { display: flex; flex-direction: column; gap: 8px; }
+.er-kp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.er-kp > svg { color: var(--ink-3); flex: 0 0 auto; }
+.er-kp-main { flex: 1; min-width: 0; }
+.er-kp-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.er-kp-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+
+.er-link-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.er-select { flex: 1 1 200px; min-width: 0; cursor: pointer; }
+
+.er-muted { font-size: 12.5px; color: var(--ink-3); }
+
+.er-inline-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--red);
+  background: var(--red-soft);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+}
+.er-inline-error > svg { flex: 0 0 auto; }
+
+/* ---------- 加载骨架 ---------- */
+.er-skel-list { display: flex; flex-direction: column; gap: 10px; }
+.er-skel-row { display: flex; align-items: center; gap: 10px; }
+.er-skel {
+  height: 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.er-skel.w1 { flex: 1 1 auto; }
+.er-skel.w90 { width: 90px; }
+.er-skel.w46 { width: 46px; }
+
+/* ---------- 错误态 ---------- */
+.er-error-card { display: flex; gap: 16px; align-items: flex-start; padding: 24px; }
+.er-error-icon { color: var(--red); flex: 0 0 auto; margin-top: 2px; }
+.er-error-title { font-size: 16px; font-weight: 700; color: var(--ink); }
+.er-error-desc { font-size: 13px; color: var(--ink-3); margin: 6px 0 14px; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1080px) {
+  .er-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .er-meta { display: none; }
+}
+@media (max-width: 560px) {
+  .er-subj { display: none; }
+  .er-stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -1,0 +1,289 @@
+/* 通知中心样式 —— 未读视觉区分 + 角标
+ *
+ * 设计要点（对应用户「防止错过消息」的诉求）：
+ *   - 未读：左侧实心圆点 + 标题 600 字重 + 淡蓝底 + 左侧 3px 高亮竖条
+ *   - 已读：整行淡化（降低透明度）、标题常规字重、圆点变空心
+ *   - 加星：金色 ★ + 淡金底，且置顶排在列表最前（后端 is_starred DESC 排序）
+ *   - 关键类型未读：红色「重要」标签，与普通公告一眼区分
+ * 全部使用平台 CSS 变量，深色模式自动适配（global.css 已定义两套令牌）。
+ */
+
+.notice-center {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---------- 概览条 ---------- */
+.nc-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.nc-ov-num {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.nc-ov-num b {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--red);
+  line-height: 1;
+}
+.nc-ov-num span {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.nc-ov-sub {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nc-ov-warn {
+  font-style: normal;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-weight: 600;
+}
+.nc-ov-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nc-ov-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ---------- 筛选 ---------- */
+.nc-filters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nc-type-select {
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-1, var(--bg));
+  color: var(--ink);
+  cursor: pointer;
+}
+
+/* ---------- 列表 ---------- */
+.nc-list {
+  display: flex;
+  flex-direction: column;
+}
+.nc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.nc-item:last-child { border-bottom: none; }
+.nc-item:hover { background: var(--surface-2); }
+
+/* 未读：左侧高亮竖条 + 淡蓝底 */
+.nc-item.is-unread {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+/* 加星：淡金底，视觉上"被用户亲自关注过" */
+.nc-item.is-starred {
+  background: var(--gold-soft);
+  border-left-color: var(--gold);
+}
+/* 已读：整行淡化，一眼扫过去不干扰 */
+.nc-item.is-read {
+  opacity: 0.62;
+}
+.nc-item.is-read:hover { opacity: 0.85; }
+
+/* 未读圆点：未读实心、已读空心 */
+.nc-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.nc-item.is-read .nc-dot {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+}
+.nc-item.is-starred .nc-dot { background: var(--gold); }
+
+.nc-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.nc-school {
+  flex: none;
+  max-width: 130px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 未读标题加粗，已读常规 —— 这是最强的"未读"信号 */
+.nc-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--ink);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nc-item.is-unread .nc-title { font-weight: 600; }
+
+.nc-tags {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.nc-type {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  font-weight: 600;
+}
+.nc-important {
+  font-style: normal;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-weight: 700;
+}
+
+/* 紧急级：比「重要」更强的视觉信号——实心红底标签（反白）。
+   依据：importance_level=urgent 是不看就会错过报名/复试/录取节点的通知，
+   实测有 134 条混在全库 1004 条里，必须一眼扫到。 */
+.nc-important.lv-urgent {
+  background: var(--red);
+  color: #fff;
+  box-shadow: 0 0 0 1px var(--red);
+}
+
+/* 重要级沿用淡红标签，视觉上明确弱于紧急级 */
+.nc-important.lv-important {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+/* 列表项左侧竖条：紧急=红、重要=金，均需盖过未读的 accent 竖条。
+   已读（is-read）不显示竖条，避免打扰已处理过的通知。 */
+.nc-item.lv-urgent.is-unread { border-left-color: var(--red); }
+.nc-item.lv-important.is-unread { border-left-color: var(--gold); }
+
+/* 紧急项整体加一层极淡红底，与「重要」拉开档位 */
+.nc-item.lv-urgent.is-unread { background: var(--red-soft); }
+.nc-item.lv-urgent.is-unread:hover { background: var(--red-soft); }
+
+.nc-ov-warn.is-urgent {
+  background: var(--red);
+  color: #fff;
+  font-weight: 700;
+}
+
+.nc-date {
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-3);
+  min-width: 52px;
+  text-align: right;
+}
+
+/* 加星按钮 */
+.nc-star {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.nc-star:hover { background: var(--surface-3); color: var(--gold); }
+.nc-star.on { color: var(--gold); }
+
+/* ---------- 分页 ---------- */
+.nc-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--line);
+}
+.nc-pager .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.nc-pager-info {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---------- 全局未读角标（Layout 侧边栏） ---------- */
+.notice-unread-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  margin-left: auto;
+}
+.notice-unread-badge.nav-mod-badge { margin-left: 6px; }
+
+/* ---------- 移动端 ---------- */
+@media (max-width: 640px) {
+  .nc-school { max-width: 84px; }
+  .nc-date { min-width: 44px; font-size: 11px; }
+  .nc-ov-num b { font-size: 24px; }
+}

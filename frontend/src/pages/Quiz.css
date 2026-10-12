@@ -26,6 +26,13 @@
 .qh-hstat dd small { font-size: 12px; font-weight: 600; opacity: 0.8; margin-left: 3px; }
 .qh-hero-note { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.22); font-size: 12.5px; opacity: 0.9; display: flex; gap: 14px; flex-wrap: wrap; }
 
+/* ---------- 知识点级筛选标识（URL 带 kp_id 时展示） ---------- */
+.qkp-filter {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; padding: 12px 16px; border-left: 3px solid var(--accent);
+}
+.qkp-filter-tag { font-size: 13px; font-weight: 600; color: var(--accent-strong); }
+
 /* ---------- 三入口 Tab + 模式切换行 ---------- */
 .qbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 18px 0 4px; }
 .qtab-bar { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-2); border-radius: 12px; }
@@ -123,25 +130,50 @@
 .qprac-stem { font-size: 16px; line-height: 1.75; color: var(--ink); white-space: pre-wrap; }
 .qprac-stem .no { color: var(--accent); font-weight: 700; margin-right: 6px; }
 
-/* 选项（先选后提交） */
+/* 选项（点选即判） */
 .qopt-list { display: flex; flex-direction: column; gap: 10px; }
 .qopt {
   display: flex; align-items: flex-start; gap: 12px; text-align: left; width: 100%;
-  padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface);
+  min-width: 0; box-sizing: border-box;
+  padding: 12px 14px; border: 1.5px solid var(--line); border-left: 3px solid var(--line);
+  border-radius: 12px; background: var(--surface);
   font-size: 14px; line-height: 1.6; cursor: pointer; transition: all 0.15s ease;
 }
-.qopt:hover { border-color: var(--accent); background: var(--accent-soft); }
+.qopt:hover:not(:disabled) { border-color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
 .qopt:disabled { cursor: default; }
-.qopt.sel { border-color: var(--accent); background: var(--accent-soft); }
-.qopt.ok { border-color: var(--green); background: var(--green-soft); }
-.qopt.bad { border-color: var(--red); background: var(--red-soft); }
+/* 选项正文：允许在任意位置折行，长选项/公式在窄屏不溢出 */
+.qopt-body { min-width: 0; flex: 1; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; }
+.qopt.sel { border-color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
+/* 克制反馈：左侧竖条 + 描边着色，不用绿底大色块 */
+.qopt.ok { border-color: var(--green); border-left-color: var(--green); background: var(--surface); }
+.qopt.bad { border-color: var(--danger, var(--red)); border-left-color: var(--danger, var(--red)); background: var(--surface); }
 .qopt-letter {
   width: 26px; height: 26px; flex: none; border-radius: 999px; border: 1.5px solid var(--line-strong);
   display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--ink-2); margin-top: 1px;
 }
 .qopt.sel .qopt-letter { border-color: var(--accent); background: var(--accent); color: #fff; }
 .qopt.ok .qopt-letter { border-color: var(--green); background: var(--green); color: #fff; }
-.qopt.bad .qopt-letter { border-color: var(--red); background: var(--red); color: #fff; }
+.qopt.bad .qopt-letter { border-color: var(--danger, var(--red)); background: var(--danger, var(--red)); color: #fff; }
+
+/* 插图依赖题提示 */
+.qfig-note {
+  margin: 0 0 10px; padding: 8px 12px; border-left: 3px solid var(--line-strong);
+  background: var(--surface-2); border-radius: 8px;
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.6;
+}
+
+/* 残缺选择题：答案是字母但 options 为空，只读展示，禁止作答 */
+.qopt-none {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
+  border-radius: 10px; background: var(--surface-2);
+}
+.qopt-none-t { font-size: 14px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.qopt-none-d { font-size: 12.5px; color: var(--ink-3); line-height: 1.6; }
+
+/* 答题卡：不可作答（无选项题）标记 */
+.qsheet-cell.skip { color: var(--ink-3); border-style: dashed; background: transparent; }
+.qsheet-dot.skip { background: transparent; border: 1.5px dashed var(--line-strong); }
 
 /* 文本题（填空/简答/计算/作图）：输入 + 自评对照 */
 .qtext-area { display: flex; flex-direction: column; gap: 8px; }
@@ -265,4 +297,12 @@
   .qsheet { position: static; }
   .qreview-grid { grid-template-columns: 1fr; }
   .qresult-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---------- 窄屏：选项长文本不溢出 ---------- */
+@media (max-width: 480px) {
+  .qopt { padding: 10px 12px; gap: 10px; font-size: 13.5px; }
+  .qopt-letter { width: 22px; height: 22px; font-size: 11px; }
+  .qopt-none { padding: 10px 12px; }
+  .qfig-note { padding: 7px 10px; font-size: 12px; }
 }

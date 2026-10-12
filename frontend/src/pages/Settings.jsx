@@ -105,12 +105,30 @@ export default function Settings() {
   // T2：目标院校可更换——从院校库拉可选名单（datalist：可搜索可选，也可手输）
   const [schoolOptions, setSchoolOptions] = useState([])
   useEffect(() => {
-    kaoyanApi.schools({ page: 1, page_size: 500 })
-      .then((d) => {
-        const list = (d?.items || []).map((s) => s.name).filter(Boolean)
+    let alive = true
+    /* 后端 /api/kaoyan/schools 的 page_size 上限为 200（传 500 会 422 静默失败，
+       导致候选列表永远为空）；院校库共 500+ 所，故按 200 分页拉全量后合并去重。 */
+    const PAGE = 200
+    const MAX_PAGES = 15 // 安全上限，避免 total 异常时无限循环
+    ;(async () => {
+      try {
+        const first = await kaoyanApi.schools({ page: 1, page_size: PAGE })
+        const firstItems = first?.items || []
+        const total = Number(first?.total) || firstItems.length
+        const pages = Math.min(MAX_PAGES, Math.max(1, Math.ceil(total / PAGE)))
+        const all = [...firstItems]
+        for (let p = 2; p <= pages; p++) {
+          const d = await kaoyanApi.schools({ page: p, page_size: PAGE })
+          all.push(...(d?.items || []))
+        }
+        if (!alive) return
+        const list = all.map((s) => s.name).filter(Boolean)
         setSchoolOptions([...new Set(list)])
-      })
-      .catch(() => { /* 后端不可达时退化为手输，不打断设置页 */ })
+      } catch {
+        /* 后端不可达时退化为手输，不打断设置页 */
+      }
+    })()
+    return () => { alive = false }
   }, [])
 
   const saveSettings = async () => {

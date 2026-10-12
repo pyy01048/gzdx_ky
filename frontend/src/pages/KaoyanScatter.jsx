@@ -16,21 +16,22 @@ export default function KaoyanScatter() {
     kaoyanApi.scatter({ year }).then(setData).catch(() => setData({ items: [] })).finally(() => setLoading(false))
   }, [year])
 
+  // 层级配色：仅保留权威口径 985/211/双一流/双非 + 「未分类」中性灰。
+  // 旧口径「一本/二本/民办」是高考录取批次，库内已清理完毕，配色项留着只会上架空图例。
   const levelColor = {
     '985': '#dc2626',
     '211': '#f59e0b',
     '双一流': '#8b5cf6',
-    '一本': '#10b981',
-    '二本': '#3b82f6',
-    '民办': '#6b7280',
+    '双非': '#3b82f6',
+    '未分类': '#6b7280',
   }
 
   const items = data.items || []
 
-  // 按层级分组
+  // 按层级分组（空level 归入「未分类」，与列表页口径一致）
   const groups = {}
   items.forEach(item => {
-    const lvl = item.level || '其他'
+    const lvl = String(item.level || '').trim() || '未分类'
     if (!groups[lvl]) groups[lvl] = []
     groups[lvl].push([
       item.enroll || 0,

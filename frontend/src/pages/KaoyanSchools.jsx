@@ -61,23 +61,24 @@ function normProvince(p) {
     .trim()
 }
 
-/* 地区（大区）由省份派生，后端无 region 字段 */
-const REGION_MAP = {
-  北京: '华北', 天津: '华北', 河北: '华北', 山西: '华北', 内蒙古: '华北',
-  辽宁: '东北', 吉林: '东北', 黑龙江: '东北',
-  上海: '华东', 江苏: '华东', 浙江: '华东', 安徽: '华东', 福建: '华东', 江西: '华东', 山东: '华东',
-  河南: '华中', 湖北: '华中', 湖南: '华中',
-  广东: '华南', 广西: '华南', 海南: '华南',
-  重庆: '西南', 四川: '西南', 贵州: '西南', 云南: '西南', 西藏: '西南',
-  陕西: '西北', 甘肃: '西北', 青海: '西北', 宁夏: '西北', 新疆: '西北',
+/* 层级归一化：库内 level 有 190 条为 NULL（未公开层级判定的院校）。
+   空值统一映射为「未分类」，避免这批院校在任何层级筛选下都不可见。 */
+export const LEVEL_UNCLASSIFIED = '未分类'
+export function normLevel(l) {
+  const v = String(l == null ? '' : l).trim()
+  return v || LEVEL_UNCLASSIFIED
 }
-const regionOf = (p) => REGION_MAP[normProvince(p)] || '其他'
 
-/* 层级选项（后端 level 支持任意字符串，含 一本/二本/民办） */
-const LEVELS = ['985', '211', '双一流', '双非', '一本', '二本', '民办']
-const REGIONS = ['华北', '东北', '华东', '华中', '华南', '西南', '西北', '其他']
+/* 层级选项（985 > 211 > 双一流 > 双非 为权威口径；
+   「一本/二本/民办」是 2000 年代高考录取批次旧口径，教育部学科目录中无此分类，
+   库内已全部清理完毕，故不再作为筛选项，避免产生恒 0 结果的死选项。 */
+const LEVELS = ['985', '211', '双一流', '双非', LEVEL_UNCLASSIFIED]
+/* 大区（教育部国家线分区）：直接使用后端 region 字段值，不再由省份派生 */
+const REGIONS = ['A区', 'B区']
+/* 院校类型：直接使用后端 type 字段值 */
+const SCHOOL_TYPES = ['公办', '科研院所', '军队院校']
 
-/* 层级 → 标签配色（未覆盖的层级统一用中性 other 样式） */
+/* 层级 → 标签配色（「未分类」及任何未知层级统一用中性 other 样式） */
 function tierClass(level) {
   if (level === '985') return 'ky-tier-985'
   if (level === '211') return 'ky-tier-211'
@@ -111,8 +112,9 @@ function collegeInfo(s) {
 }
 
 /* 拉取全部院校（后端单页上限 100，循环翻页直到取完）。
-   全量拉取是为了支撑后端不支持的三件事：地区（由省份派生）筛选、
-   省份下拉选项、随机抽一所；排序仍由后端 sort 参数决定。 */
+   全量拉取是为了支撑后端不支持的三件事：省份下拉选项、随机抽一所、
+   以及前端即时筛选（region/type 用后端字段值比对，口径与后端一致）。
+   排序仍由后端 sort 参数决定。 */
 async function fetchAllSchools(extra = {}) {
   let page = 1
   const out = []
@@ -144,7 +146,7 @@ export default function KaoyanSchools() {
 
   /* ---- 筛选（draft→apply，对齐参考件交互） ----
      数值筛选：录取均分 / 复录比 范围（min~max，空表示不限制） */
-  const emptyFilters = { region: '', level: '', province: '', only0854: false, keyword: '',
+  const emptyFilters = { region: '', level: '', type: '', province: '', only0854: false, keyword: '',
     numAdmitMin: '', numAdmitMax: '', numRatioMin: '', numRatioMax: '' }
   const [draft, setDraft] = useState(emptyFilters)
   const [filters, setFilters] = useState(emptyFilters)
@@ -251,8 +253,9 @@ export default function KaoyanSchools() {
   /* ---- 过滤（排序保持后端返回顺序，不前端重排） ---- */
   const filtered = useMemo(() => {
     return rows.filter((r) => {
-      if (filters.region && regionOf(r.province) !== filters.region) return false
-      if (filters.level && (r.level || '') !== filters.level) return false
+      if (filters.region && (r.region || '') !== filters.region) return false
+      if (filters.level && normLevel(r.level) !== filters.level) return false
+      if (filters.type && (r.type || '') !== filters.type) return false
       if (filters.province && normProvince(r.province) !== filters.province) return false
       if (filters.only0854 && !r.has0854) return false
       if (filters.keyword && !(r.name || '').toLowerCase().includes(filters.keyword.trim().toLowerCase())) return false
@@ -373,8 +376,8 @@ export default function KaoyanSchools() {
 
   // 4) 院校层级分布（环形图）
   const levelPie = useMemo(() => {
-    const agg = { '985': 0, '211': 0, '双一流': 0, '双非': 0, '其他': 0 }
-    rows.forEach((r) => { agg[LEVELS.includes(r.level) ? r.level : '其他']++ })
+    const agg = { '985': 0, '211': 0, '双一流': 0, '双非': 0, [LEVEL_UNCLASSIFIED]: 0 }
+    rows.forEach((r) => { agg[normLevel(r.level)]++ })
     const palette = [T.red, T.accent, T.violet, T.gold, T['ink-3']]
     return {
       tooltip: { trigger: 'item' },
@@ -652,7 +655,7 @@ export default function KaoyanSchools() {
                 <div className="ky-hot-info">
                   <Link to={`/kaoyan/schools/${s.id || 0}`} className="ky-hot-name">{s.name}</Link>
                   <div className="ky-hot-meta">
-                    <span className={`ky-tier ${tierClass(s.level)}`}>{s.level || '未分层'}</span>
+                    <span className={`ky-tier ${tierClass(s.level)}`}>{normLevel(s.level)}</span>
                     <span className="ky-hot-num">热度 {s.heat != null ? Math.round(s.heat) : '—'}</span>
                   </div>
                 </div>
@@ -742,6 +745,14 @@ export default function KaoyanSchools() {
             <select className="ky-select" value={draft.level} onChange={(e) => setDraft({ ...draft, level: e.target.value })}>
               <option value="">全部层级</option>
               {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </label>
+
+          <label className="ky-field">
+            <span className="ky-field-label">院校类型</span>
+            <select className="ky-select" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
+              <option value="">全部类型</option>
+              {SCHOOL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
 
@@ -845,7 +856,9 @@ export default function KaoyanSchools() {
                   </div>
 
                   <div className="ky-card-tags">
-                    <span className={`ky-tier ${tierClass(s.level)}`}>{s.level || '未分层'}</span>
+                    <span className={`ky-tier ${tierClass(s.level)}`}>{normLevel(s.level)}</span>
+                    {s.region && <span className="ky-tier ky-tier-other">{s.region}</span>}
+                    {s.type && <span className="ky-tier ky-tier-other">{s.type}</span>}
                     {s.star != null && (
                       <span className="ky-card-star" title={`星级 ${s.star}`} style={{ color: 'var(--gold)' }}>{starText(s.star)}</span>
                     )}
