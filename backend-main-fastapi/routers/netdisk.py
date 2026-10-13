@@ -9,7 +9,7 @@ import httpx
 import mimetypes
 from urllib.parse import unquote, quote
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -188,7 +188,13 @@ async def list_files(
     page_size: int = 50,
     db: Session = Depends(get_db),
 ):
-    """网盘文件列表。"""
+    """网盘文件列表。
+
+    local_files 是本地同步缓存（/netdisk/sync 写入的 netdisk_files 行），
+    api_files 是百度网盘实时列表。**授权失效时本接口返回 401 而不是
+    静默返回本地缓存** —— 以前 `except Exception: pass` 会让页面拿着
+    缓存照样渲染"目录"，用户以为网盘还连着（#netdisk-refactor 修的漏洞）。
+    """
     # 先从本地数据库查
     local_files = (
         db.query(NetdiskFile)
@@ -203,13 +209,19 @@ async def list_files(
     # 尝试从网盘 API 实时获取
     service = NetdiskService(db)
     api_files = []
+    api_error = None
     try:
         api_result = await service.get_file_list(path, page, page_size)
         api_files = api_result.get("list", [])
-    except Exception:
-        pass  # API 不可用时返回本地缓存
+    except NetdiskAuthError as e:
+        # 授权失效必须显式 401：前端据此回到平台选择页要求重新授权，
+        # 而不是显示一份来路不明的本地缓存目录。
+        raise _netdisk_http_error(e)
+    except Exception as e:  # noqa: BLE001
+        # 网络抖动等非授权错误：保留本地缓存，但把失败原因显式带回前端
+        api_error = f"{type(e).__name__}: {e}"
 
-    return {
+    resp = {
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -232,6 +244,9 @@ async def list_files(
         ],
         "api_files": api_files,
     }
+    if api_error:
+        resp["api_error"] = api_error
+    return resp
 
 
 @router.get("/files/{file_id}")
@@ -331,7 +346,7 @@ async def get_preview(file_id: int, db: Session = Depends(get_db)):
     raise HTTPException(status_code=400, detail="文件缺少网盘 ID")
 
 
-async def _proxy_stream(file: NetdiskFile, disposition: str, db: Session):
+async def _proxy_stream(file: NetdiskFile, disposition: str, db: Session, request: Request = None):
     service = NetdiskService(db)
     try:
         # 先把链接取到手：授权失效/token 过期在这一步就该变成干净的 401/502，
@@ -353,13 +368,48 @@ async def _proxy_stream(file: NetdiskFile, disposition: str, db: Session):
     headers = {
         "Content-Disposition": (f"{disposition}; filename=\"{ascii_fallback}\"; "
                                 f"filename*=UTF-8''{quote(name, safe='')}"),
-        "Accept-Ranges": "none",
         "Cache-Control": "no-cache",
+        # 声明支持 Range：视频播放器 seek / 图片分段加载都靠它。
+        # 上游（百度 dlink）支持 Range 时透传 206，忽略时按 200 全量返回。
+        "Accept-Ranges": "bytes",
     }
     if size:
         headers["Content-Length"] = str(size)
-    return StreamingResponse(service.iter_download(file.fs_id),
-                             media_type=media, headers=headers)
+
+    # Range 透传：浏览器 <video> 拖动进度条会带 Range 头。
+    # 先打开上游流再构造响应——这样 403/404 在响应头发出前就变成干净的错误码，
+    # 不会给前端半个文件。
+    range_header = request.headers.get("range") if request else None
+    stream_cm = service.open_download(file.fs_id, range_header=range_header)
+    resp, _client = await stream_cm.__aenter__()
+    if resp.status_code == 403:
+        await stream_cm.__aexit__(None, None, None)
+        raise _netdisk_http_error(
+            NetdiskError(403, "下载被拒绝（403）：请确认请求带 User-Agent: pan.baidu.com"))
+    if resp.status_code >= 400:
+        await stream_cm.__aexit__(None, None, None)
+        raise _netdisk_http_error(
+            NetdiskError(resp.status_code, f"上游返回 HTTP {resp.status_code}"))
+
+    status_code = 200
+    if range_header and resp.status_code == 206:
+        status_code = 206
+        content_range = resp.headers.get("content-range")
+        if content_range:
+            headers["Content-Range"] = content_range
+        content_length = resp.headers.get("content-length")
+        if content_length:
+            headers["Content-Length"] = content_length
+
+    async def _body():
+        try:
+            async for chunk in resp.aiter_bytes(1 << 20):
+                if chunk:
+                    yield chunk
+        finally:
+            await stream_cm.__aexit__(None, None, None)
+
+    return StreamingResponse(_body(), status_code=status_code, media_type=media, headers=headers)
 
 
 def _check_disposition(disposition: str) -> str:
@@ -369,20 +419,20 @@ def _check_disposition(disposition: str) -> str:
 
 
 @router.get("/files/{file_id}/content")
-async def stream_netdisk_content(file_id: int, disposition: str = "inline",
+async def stream_netdisk_content(file_id: int, request: Request, disposition: str = "inline",
                                  db: Session = Depends(get_db)):
-    """按本地记录 ID 取网盘原文字节流。"""
+    """按本地记录 ID 取网盘原文字节流（支持 Range，供视频播放器 seek）。"""
     file = db.query(NetdiskFile).filter(NetdiskFile.id == file_id).first()
     if not file:
         raise HTTPException(status_code=404, detail="文件不存在")
     if not file.fs_id:
         raise HTTPException(status_code=400, detail="文件缺少网盘 ID，无法取流")
     _check_disposition(disposition)
-    return await _proxy_stream(file, disposition, db)
+    return await _proxy_stream(file, disposition, db, request)
 
 
 @router.get("/content")
-async def stream_netdisk_content_by_fsid(fs_id: str, disposition: str = "inline",
+async def stream_netdisk_content_by_fsid(fs_id: str, request: Request, disposition: str = "inline",
                                          db: Session = Depends(get_db)):
     """按百度 fs_id 取流 —— 前端网盘目录页只持有 fs_id，没有本地记录 ID。
 
@@ -393,7 +443,63 @@ async def stream_netdisk_content_by_fsid(fs_id: str, disposition: str = "inline"
         raise HTTPException(status_code=400, detail="fs_id 必须是数字")
     _check_disposition(disposition)
     file = await _resolve_netdisk_file(db, fs_id)
-    return await _proxy_stream(file, disposition, db)
+    return await _proxy_stream(file, disposition, db, request)
+
+
+@router.post("/logout")
+async def logout_netdisk(db: Session = Depends(get_db)):
+    """退出百度网盘授权：清除后端 token（保留 app_key 等配置）。
+
+    前端「退出授权」按钮调用。只清授权态不清配置，用户下次可直接重新授权。
+    """
+    row = (
+        db.query(PlatformConfig)
+        .filter(PlatformConfig.platform_name == "baidu_netdisk")
+        .first()
+    )
+    if row:
+        row.token = ""
+        extra = dict(row.extra or {})
+        for key in ("refresh_token", "expires_at"):
+            extra.pop(key, None)
+        row.extra = extra
+        db.commit()
+    return {"success": True, "message": "已退出百度网盘授权"}
+
+
+@router.get("/quark/web-view")
+async def quark_web_view(db: Session = Depends(get_db)):
+    """夸克网盘 Web 视图嵌入地址（配置化）。
+
+    **为什么是 Web 视图而不是 API 对接**：夸克网盘没有对外开放的文件 API
+    —— 既无 OAuth 授权体系，也无文件列表/下载接口（与百度 xpan 开放平台
+    完全不同）。因此本项目的夸克方案是「配置化 Web 视图嵌入」：
+
+    - 后端只负责提供/校验可嵌入地址（platform_configs.quark_netdisk.extra.web_view_url，
+      未配置时用内置默认 https://pan.quark.cn/）；
+    - 前端以 iframe 嵌入该地址，用户的夸克登录态由浏览器自己的 Cookie 维护；
+    - 站点若设置 X-Frame-Options 禁止嵌入导致白屏，前端提供「新窗口打开」兜底。
+
+    安全：只允许 http/https 协议，拒绝 javascript: 等，防止 iframe 注入。
+    """
+    cfg = (
+        db.query(PlatformConfig)
+        .filter(PlatformConfig.platform_name == "quark_netdisk")
+        .first()
+    )
+    extra = (cfg.extra or {}) if cfg else {}
+    configured = bool((extra.get("web_view_url") or "").strip())
+    url = (extra.get("web_view_url") or "").strip() or QUARK_DEFAULT_WEB_VIEW
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400,
+                            detail="web_view_url 必须以 http:// 或 https:// 开头")
+    return {
+        "url": url,
+        "configured": configured,
+        "defaulted": not configured,
+        "mode": "web_view",
+        "message": "夸克网盘未开放官方 API，当前为配置化 Web 视图嵌入模式",
+    }
 
 
 @router.post("/classify")
@@ -622,12 +728,18 @@ async def ingest_all_netdisk(db: Session = Depends(get_db)):
 # 平台名 -> 数据库 platform_name 的映射
 _PLATFORM_MAP = {
     "baidu": "baidu_netdisk",
+    "quark": "quark_netdisk",
     "shengcai": "shengcai",
     "anki": "anki",
     "momo": "momo",
     "bilibili": "bilibili",
     "xmind": "xmind",
 }
+
+#: 夸克网盘 Web 视图默认嵌入地址（平台配置 quark_netdisk.extra.web_view_url 可覆盖）。
+#: 夸克**没有对外开放的文件 API**（无 OAuth、无文件列表/下载接口），
+#: 因此采用「配置化 Web 视图嵌入」方案，详见 GET /quark/web-view 的说明。
+QUARK_DEFAULT_WEB_VIEW = "https://pan.quark.cn/"
 
 
 def _serialize_config(cfg: PlatformConfig) -> dict:
@@ -762,6 +874,19 @@ async def test_platform_connection(platform: str, db: Session = Depends(get_db))
             "auth_url": result.get("auth_url"),
             "quota": result.get("quota"),
             "token": status,
+        }
+
+    # ---- 夸克网盘（Web 视图嵌入，无官方 API） ---- #
+    elif platform == "quark":
+        # 夸克没有官方开放 API，"连接测试"只校验嵌入地址是否合法可填。
+        url = (extra.get("web_view_url") or "").strip() or QUARK_DEFAULT_WEB_VIEW
+        if not url.lower().startswith(("http://", "https://")):
+            return {"connected": False,
+                    "message": "Web 视图地址必须以 http:// 或 https:// 开头"}
+        return {
+            "connected": True,
+            "mode": "web_view",
+            "message": "夸克网盘为 Web 视图嵌入模式（无官方 API），嵌入地址已配置",
         }
 
     # ---- Anki (AnkiConnect 本地服务) ---- #

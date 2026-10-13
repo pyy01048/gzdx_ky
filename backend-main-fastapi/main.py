@@ -449,6 +449,30 @@ def _register_ollama_providers():
         db.close()
 
 
+def _ensure_missing_platform_configs(db):
+    """幂等补建缺失的平台配置行（存量库升级用）。
+
+    只新增不更新：用户改过的 web_view_url / app_key 一律保留。
+    目前只需补 quark_netdisk（2026-10 网盘重构新增）。
+    """
+    existing = {
+        c.platform_name
+        for c in db.query(PlatformConfig.platform_name).all()
+    }
+    if "quark_netdisk" not in existing:
+        db.add(PlatformConfig(
+            platform_name="quark_netdisk",
+            sync_enabled=False,
+            sync_frequency="daily",
+            extra={
+                "web_view_url": "https://pan.quark.cn/",
+                "embed_mode": "web_view",
+            },
+        ))
+        db.commit()
+        print("[初始化] 补建平台配置: quark_netdisk")
+
+
 def _init_default_config():
     """写入平台默认配置（AI 供应商 / 快捷链接 / 网盘与平台开关）。
 

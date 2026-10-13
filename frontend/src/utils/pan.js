@@ -6,6 +6,10 @@
    注意：所有请求统一走 api/client.js 的 request()，
    以复用超时控制、错误透传与 401 处理，避免裸 fetch 造成
    "永久 loading / 错误不可见"。
+
+   #netdisk-refactor：授权状态的唯一事实来源是**后端 token-status**，
+   不再是 localStorage 残留 token —— 旧写法让浏览器里一份过期 token
+   就能打开"目录"面板，而后端其实早已失效，用户看到的是本地缓存冒充的目录。
    ============================================================ */
 
 import { request } from '../api/client'
@@ -65,6 +69,39 @@ export async function refreshPanToken(refreshToken) {
   return null
 }
 
+/* 授权状态：唯一事实来源 = 后端 /netdisk/token-status。
+ * 返回 { authorized, expired, expires_in_seconds, has_refresh_token, ... }。
+ * 页面门禁只认它：localStorage 有残留 token 但后端未授权时，一律视为未连接。 */
+export async function getTokenStatus() {
+  return request('/netdisk/token-status')
+}
+
+/* 目录浏览：只取百度真实文件列表（api_files），
+ * 不混本地同步缓存（local_files 是 /netdisk/sync 写的 DB 行，
+ * 混进来会让"没连接也显示目录"的 bug 复活）。
+ * 授权失效时后端明确 401（ApiError.status === 401），调用方据此要求重新授权。 */
+export async function fetchRemoteFiles(dir = '/') {
+  const j = await request('/netdisk/files', { params: { path: dir } })
+  if (j && j.api_error) console.warn('[pan] 网盘列表部分失败：', j.api_error)
+  return (j.api_files || []).map((f) => normalize(f, dir))
+}
+
+/* 退出授权：清后端 token + 本地遗留键 */
+export async function logoutPan() {
+  try {
+    await request('/netdisk/logout', { method: 'POST' })
+  } finally {
+    clearPan()
+  }
+}
+
+/* 夸克网盘 Web 视图嵌入地址。
+ * 夸克没有官方开放 API（无 OAuth / 无文件列表），后端只提供可嵌入地址，
+ * 登录态由浏览器 Cookie 维护。返回 { url, configured, defaulted, mode, message }。 */
+export async function getQuarkView() {
+  return request('/netdisk/quark/web-view')
+}
+
 /* 文件列表：GET /api/netdisk/files?path=... 返回 local_files + api_files
  *
  * 两个来源字段名不一样（百度是 server_filename/server_mtime 秒级，本地记录是
@@ -105,5 +142,7 @@ export async function listPanFiles(accessToken, dir = '/') {
 export default {
   getStoredPan, storePan, clearPan,
   getStatus, getAuthUrl, exchangeToken, refreshPanToken,
-  listPanFiles
+  listPanFiles,
+  // #netdisk-refactor 新增：后端授权状态 / 真实目录浏览 / 退出授权 / 夸克 Web 视图
+  getTokenStatus, fetchRemoteFiles, logoutPan, getQuarkView,
 }

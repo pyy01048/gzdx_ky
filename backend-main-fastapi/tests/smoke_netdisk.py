@@ -100,9 +100,16 @@ print()
 print("=" * 74)
 print("5) 回归：原有网盘接口仍在")
 print("=" * 74)
-for path in ("/api/netdisk/files?path=/", "/api/netdisk/platform-configs"):
-    st, _ = call("GET", path)
-    check(st == 200, path, f"HTTP {st}")
+st, d = call("GET", "/api/netdisk/files?path=/")
+# 授权失效时 files 必须明确 401（带 reauthorize 指引），而不是静默返回
+# 本地同步缓存目录——那正是"没连接网盘却显示目录"的 bug 根因。
+ok = st == 200 or (
+    st == 401 and isinstance(d, dict)
+    and (d.get("detail") or {}).get("action") == "reauthorize"
+)
+check(ok, "/api/netdisk/files?path=/", f"HTTP {st}")
+st, _ = call("GET", "/api/netdisk/platform-configs")
+check(st == 200, "/api/netdisk/platform-configs", f"HTTP {st}")
 
 print()
 print("=" * 74)

@@ -27,6 +27,7 @@
 import datetime
 import os
 import re
+from contextlib import asynccontextmanager
 from typing import Any, Dict, Iterator, Optional
 
 import httpx
@@ -490,24 +491,46 @@ class NetdiskService:
     async def download_file(self, fs_id: str) -> Dict[str, Any]:
         return await self.get_download_url(fs_id)
 
+    @asynccontextmanager
+    async def open_download(self, fs_id: str, *, range_header: Optional[str] = None):
+        """打开上游下载流（不读 body），yield (httpx.Response, client)。
+
+        调用方以 `async with` 使用，退出时自动关闭响应与客户端。
+
+        Range 透传：视频播放器拖动进度条会发 `Range: bytes=...`，
+        百度 dlink 支持时上游回 206 + Content-Range，调用方据此回 206；
+        上游忽略 Range 时回 200 全量，浏览器仍可顺序播放（只是不能高效 seek）。
+
+        关键点：必须带 `User-Agent: pan.baidu.com`，否则百度直接 403。
+        """
+        dl = await self.get_download_url(fs_id)
+        headers = {"User-Agent": self.PAN_USER_AGENT}
+        if range_header:
+            headers["Range"] = range_header
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, read=300.0),
+            follow_redirects=True,
+            headers=headers,
+        )
+        resp = await client.send(client.build_request("GET", dl["download_url"]), stream=True)
+        try:
+            yield resp, client
+        finally:
+            await resp.aclose()
+            await client.aclose()
+
     async def iter_download(self, fs_id: str, *, chunk_size: int = 1 << 20) -> Iterator[bytes]:
         """流式下载（大文件不爆内存）。
 
         关键点：必须带 `User-Agent: pan.baidu.com`，否则百度返回 403。
         """
-        dl = await self.get_download_url(fs_id)
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0, read=300.0),
-            follow_redirects=True,
-            headers={"User-Agent": self.PAN_USER_AGENT},
-        ) as client:
-            async with client.stream("GET", dl["download_url"]) as resp:
-                if resp.status_code == 403:
-                    raise NetdiskError(403, "下载被拒绝（403）：请确认请求带 User-Agent: pan.baidu.com")
-                resp.raise_for_status()
-                async for chunk in resp.aiter_bytes(chunk_size):
-                    if chunk:
-                        yield chunk
+        async with self.open_download(fs_id) as (resp, _client):
+            if resp.status_code == 403:
+                raise NetdiskError(403, "下载被拒绝（403）：请确认请求带 User-Agent: pan.baidu.com")
+            resp.raise_for_status()
+            async for chunk in resp.aiter_bytes(chunk_size):
+                if chunk:
+                    yield chunk
 
     async def download_to_file(self, fs_id: str, dest_path: str, *, max_bytes: int = 0) -> Dict[str, Any]:
         """流式下载到指定路径。
