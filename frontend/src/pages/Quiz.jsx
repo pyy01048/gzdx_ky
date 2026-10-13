@@ -493,16 +493,20 @@ export default function Quiz() {
 
   /* V14 场景化 AI 讲题状态（组件顶层，Hooks 规则） */
   const [tutor, setTutor] = useState(null)
+  /* 讲题模式（M0-103②）：auto=按题目来源自动派生；exam/textbook=用户手动指定。
+     后端 /ai/tutoring/explain 按模式给出**实质不同**的讲解立场（评分视角 / 理解视角）。 */
+  const [tutorMode, setTutorMode] = useState('auto')
   const askTutor = async (qid, angle, myAnswer) => {
     setTutor({ qid, angle, loading: true, content: '', history: [] })
     try {
       const { request } = await import('../api/client')
       const r = await request('/ai/tutoring/explain', {
         method: 'POST',
-        body: { question_id: qid, angle, my_answer: myAnswer || undefined },
+        body: { question_id: qid, angle, my_answer: myAnswer || undefined,
+                source_kind: tutorMode === 'auto' ? undefined : tutorMode },
       })
       setTutor({ qid, angle, loading: false, content: r.content, provider: r.provider,
-                 similar: r.similar, history: [
+                 mode: r.mode, source_kind: r.source_kind, similar: r.similar, history: [
                    { role: 'user', content: angle },
                    { role: 'assistant', content: r.content }] })
     } catch (e) {
@@ -517,9 +521,11 @@ export default function Quiz() {
       const { request } = await import('../api/client')
       const r = await request('/ai/tutoring/followup', {
         method: 'POST',
-        body: { question_id: tutor.qid, message, history: hist.slice(-6) },
+        body: { question_id: tutor.qid, message, history: hist.slice(-6),
+                source_kind: tutorMode === 'auto' ? undefined : tutorMode },
       })
       setTutor(t => ({ ...t, loading: false, content: r.content,
+                       mode: r.mode || t?.mode, source_kind: r.source_kind || t?.source_kind,
                        history: [...hist, { role: 'user', content: message },
                                 { role: 'assistant', content: r.content }] }))
     } catch (e) {
@@ -537,13 +543,14 @@ export default function Quiz() {
     try {
       const r = await request('/ai/tutoring/explain', {
         method: 'POST',
-        body: { question_id: Number(qid), angle: 'solution' },
+        body: { question_id: Number(qid), angle: 'solution',
+                source_kind: tutorMode === 'auto' ? undefined : tutorMode },
       })
-      setAiAnalyses((m) => ({ ...m, [qid]: { loading: false, content: r?.content || '', provider: r?.provider || 'AI' } }))
+      setAiAnalyses((m) => ({ ...m, [qid]: { loading: false, content: r?.content || '', provider: r?.provider || 'AI', mode: r?.mode } }))
     } catch (e) {
       setAiAnalyses((m) => ({ ...m, [qid]: { loading: false, content: '', provider: '', error: e?.message || 'AI 生成解析失败' } }))
     }
-  }, [])
+  }, [tutorMode])
 
   /* 返回首页时刷新本地作答记录（套卷网格颜色/做过次数随之更新） */
   useEffect(() => {
@@ -1455,10 +1462,19 @@ export default function Quiz() {
                           <div>
                             <span style={{ color: 'var(--ink-3)' }}>解析：暂无解析</span>
                             {!ai?.content && (
-                              <button className="btn sm ghost" style={{ marginLeft: 12 }}
-                                disabled={ai?.loading} onClick={() => generateAnalysis(q)}>
-                                {ai?.loading ? 'AI 生成中…' : 'AI 生成解析'}
-                              </button>
+                              <>
+                                <select className="select" style={{ width: 'auto', marginLeft: 12, fontSize: 12 }}
+                                  value={tutorMode} onChange={(e) => setTutorMode(e.target.value)}
+                                  title="AI 生成解析的讲解模式：真题=评分视角，教材=理解视角">
+                                  <option value="auto">自动（按题目来源）</option>
+                                  <option value="exam">真题模式（评分视角）</option>
+                                  <option value="textbook">教材模式（理解视角）</option>
+                                </select>
+                                <button className="btn sm ghost" style={{ marginLeft: 8 }}
+                                  disabled={ai?.loading} onClick={() => generateAnalysis(q)}>
+                                  {ai?.loading ? 'AI 生成中…' : 'AI 生成解析'}
+                                </button>
+                              </>
                             )}
                             {ai?.error && <span style={{ marginLeft: 12, color: 'var(--red)' }}>{ai.error}</span>}
                           </div>
@@ -1466,7 +1482,8 @@ export default function Quiz() {
                         {ai?.content && (
                           <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--line)' }}>
                             <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 4 }}>
-                              AI 生成解析（来源 {ai.provider || 'AI'} · 未入库，仅供参考）
+                              AI 生成解析（来源 {ai.provider || 'AI'} · 未入库，仅供参考
+                              {ai.mode ? ` · 按${ai.mode === 'exam' ? '真题模式（评分视角）' : ai.mode === 'textbook' ? '教材模式（理解视角）' : '通用模式'}讲解` : ''}）
                             </div>
                             <div style={{ whiteSpace: 'pre-wrap' }}>{ai.content}</div>
                           </div>
@@ -1586,9 +1603,11 @@ export default function Quiz() {
         const { request } = await import('../api/client')
         const r = await request('/ai/tutoring/explain', {
           method: 'POST',
-          body: { question_id: qid, angle, my_answer: myAnswer || undefined },
+          body: { question_id: qid, angle, my_answer: myAnswer || undefined,
+                  source_kind: tutorMode === 'auto' ? undefined : tutorMode },
         })
         setTutor({ qid, angle, loading: false, content: r.content, provider: r.provider,
+                   mode: r.mode, source_kind: r.source_kind,
                    similar: r.similar, history: [{ role: 'user', content: angle }, { role: 'assistant', content: r.content }] })
       } catch (e) {
         setTutor({ qid, angle, loading: false, content: e?.message || '讲题失败', history: [] })
@@ -1602,9 +1621,11 @@ export default function Quiz() {
         const { request } = await import('../api/client')
         const r = await request('/ai/tutoring/followup', {
           method: 'POST',
-          body: { question_id: tutor.qid, message, history: hist.slice(-6) },
+          body: { question_id: tutor.qid, message, history: hist.slice(-6),
+                  source_kind: tutorMode === 'auto' ? undefined : tutorMode },
         })
         setTutor(t => ({ ...t, loading: false, content: r.content,
+                         mode: r.mode || t?.mode, source_kind: r.source_kind || t?.source_kind,
                          history: [...hist, { role: 'user', content: message }, { role: 'assistant', content: r.content }] }))
       } catch (e) {
         setTutor({ ...tutor, loading: false, content: e?.message || '追问失败' })
@@ -1649,6 +1670,19 @@ export default function Quiz() {
           {wrong.length > 0 && (
             <section className="qresult-panel">
               <div className="qresult-panel-t">🤖 AI 讲题（点错题即问，自动带题目上下文）</div>
+              {/* 讲题模式（M0-103②）：真题=评分视角，教材=理解视角；auto 由题目来源自动判定 */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>讲解模式：</span>
+                {[{ id: 'auto', label: '自动（按题目来源）' }, { id: 'exam', label: '真题模式' }, { id: 'textbook', label: '教材模式' }].map((m) => (
+                  <button key={m.id} className={`qmode-btn ${tutorMode === m.id ? 'active' : ''}`}
+                    onClick={() => setTutorMode(m.id)} title={m.id === 'exam' ? '按阅卷评分视角：踩分点 / 失分步骤 / 答题规范' : m.id === 'textbook' ? '按概念理解视角：原理讲透 / 推导链 / 概念辨析' : '依据题目来源自动选择'}>
+                    {m.label}
+                  </button>
+                ))}
+                {tutor?.mode && (
+                  <span className="chip">当前按【{tutor.mode === 'exam' ? '真题模式 · 评分视角' : tutor.mode === 'textbook' ? '教材模式 · 理解视角' : '通用模式'}】讲解</span>
+                )}
+              </div>
               {wrong.slice(0, 10).map((q) => (
                 <div key={q.id} className="qresult-row" style={{ gap: 8, alignItems: 'center' }}>
                   <span className="qrow-name" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
