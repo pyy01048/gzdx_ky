@@ -167,8 +167,6 @@ export default function KaoyanSchools() {
   /* ---- 筛选（draft→apply，对齐参考件交互） ----
      数值筛选：录取均分 / 复录比 范围（min~max，空表示不限制） */
   const emptyFilters = { region: '', level: '', type: '', province: '', only0854: false, keyword: '',
-    numAdmitMin: '', numAdmitMax: '', numRatioMin: '', numRatioMax: '' }
-  const emptyFilters = { region: '', level: '', province: '', only0854: false, keyword: '',
     numAdmitMin: '', numAdmitMax: '', numRatioMin: '', numRatioMax: '',
     numRetestMin: '', numEnrollMin: '' }
   const [draft, setDraft] = useState(emptyFilters)
