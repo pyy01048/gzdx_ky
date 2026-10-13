@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import useStore from '../store/useStore'
 import { todayStr, weekdayIdx, WEEK_CN } from '../utils/date'
-import { examDaysLeft, examYear, resolveExamDate } from '../utils/exam'
+import { examDaysLeft, examYear, examDateMD, resolveExamDate } from '../utils/exam'
 import { reviewStatus } from '../utils/ebbinghaus'
 import { dueCards } from '../utils/spaced'
 import { CountUp, Empty, toast } from '../components/UI'
@@ -91,7 +91,8 @@ export default function Dashboard() {
   const examDate = resolveExamDate(cd && cd.exam_date, settings.examDate)
   const days = examDaysLeft(examDate)
   const examY = examYear(examDate)
-  // 后端无 Goal 时给的是 12/21 估算值，必须标「预估」，不能伪装成官方日期
+  // 后端无 Goal 时给的是兜底估算日期，必须标「预估」，不能伪装成官方日期；
+  // 具体 M/D 由 examDateMD(examDate) 现算，不再写死 12/21（#105a/②）
   const estimated = !!cd?.is_default
   const schoolLabel = [cd?.university || settings.school, cd?.major || settings.major]
     .filter(Boolean).join(' ') || null
@@ -617,7 +618,9 @@ export default function Dashboard() {
             <h1 className="dash-hero-title">
               {examDate ? (
                 <>距 {examY} 考研还有<span className="dash-hero-days"><CountUp value={days > 0 ? days : 0} /></span>天
-                  {estimated && <span className="dash-hero-est">12/21 预估</span>}
+                  {estimated && examDate && (
+                    <span className="dash-hero-est">{examDateMD(examDate)} 预估</span>
+                  )}
                 </>
               ) : (
                 <>距考研还有<span className="dash-hero-days">—</span>天
