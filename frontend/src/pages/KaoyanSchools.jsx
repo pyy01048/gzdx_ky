@@ -7,6 +7,7 @@ import { useThemeTokens } from '../components/themeTokens'
 import { toast, Empty } from '../components/UI'
 import useStore from '../store/useStore'
 import { resolveExamDate } from '../utils/exam'
+import { examSubjectText } from '../utils/kaoyanFields'
 import './KaoyanSchools.css'
 
 /* ==========================================================================
@@ -985,7 +986,7 @@ export default function KaoyanSchools() {
                             <li key={m.id}>
                               <span className="ky-major-code">{m.code}</span>
                               <span className="ky-major-name">{m.name}</span>
-                              {m.exam_subjects && <span className="ky-major-exam">{m.exam_subjects}</span>}
+                              {m.exam_subjects && <span className="ky-major-exam">{examSubjectText(m.exam_subjects)}</span>}
                               {m.kb_coverage && m.kb_coverage.state !== 'public_only' && (
                                 <span
                                   className={`ky-cov ky-cov-${m.kb_coverage.state}`}

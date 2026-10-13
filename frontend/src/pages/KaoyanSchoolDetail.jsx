@@ -4,7 +4,7 @@ import { kaoyanApi } from '../api/kaoyanApi'
 import EChart from '../components/EChart'
 import { DataCell, SourceBadge, DataQualityNote } from '../components/SourceBadge'
 import { useThemeTokens } from '../components/themeTokens'
-import { SCORE_FIELDS, ADMISSION_FIELDS } from '../utils/kaoyanFields'
+import { SCORE_FIELDS, ADMISSION_FIELDS, examSubjects } from '../utils/kaoyanFields'
 import { toast } from '../components/UI'
 
 /* ============================================================
@@ -376,7 +376,9 @@ export default function KaoyanSchoolDetail() {
             const planItem = (enrollPlan?.items || []).find(
               it => (it.major_code && it.major_code === sel.code) || it.major === sel.name
             )
-            const subjChips = (s) => Array.isArray(s) ? s : (s ? [s] : [])
+            // 考试科目归一：库内是竖线分隔文本，enrollment-plan 是 [{code,name}]
+            // 一律走 examSubjects()，避免整串挤成一个徽标 / 渲染出 [object Object]
+            const subjChips = (s) => examSubjects(s)
             return (
               <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 14, alignItems: 'start' }}>
                 {/* 左：专业列表（V17 参考站布局） */}
@@ -406,7 +408,9 @@ export default function KaoyanSchoolDetail() {
                         <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 6 }}>初试科目</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {subjChips(sel.exam_subjects).map((s, i) => (
-                            <em key={i} style={{ fontStyle: 'normal', fontSize: 12.5, padding: '3px 10px', borderRadius: 8, background: 'var(--accent-soft, rgba(43,90,158,.08))', color: 'var(--accent)' }}>{s}</em>
+                            <em key={i} style={{ fontStyle: 'normal', fontSize: 12.5, padding: '3px 10px', borderRadius: 8, background: 'var(--accent-soft, rgba(43,90,158,.08))', color: 'var(--accent)' }}>
+                              {s.code && <span style={{ opacity: .6, marginRight: 4 }}>{s.code}</span>}{s.name}
+                            </em>
                           ))}
                         </div>
                       </div>
