@@ -60,4 +60,20 @@ describe('examSubjects 归一化', () => {
   it('纯字符串数组（旧契约）仍可用', () => {
     expect(examSubjectNames(['数学', '英语'])).toEqual(['数学', '英语'])
   })
+
+  it('真实库形态：ORM 返回的竖线文本（后端 JSON 列反序列化后的值）', () => {
+    // GET /api/kaoyan/schools/3/majors 实测返回
+    const raw = '(301)数学（一） | (201)英语（一） | (857)电子技术基础（含数字与模拟电路）'
+    expect(examSubjects(raw)).toEqual([
+      { code: '301', name: '数学（一）' },
+      { code: '201', name: '英语（一）' },
+      { code: '857', name: '电子技术基础（含数字与模拟电路）' },
+    ])
+  })
+
+  it('过滤占位值（后端数据缺失时会给出 "-"）', () => {
+    // GET /api/kaoyan/schools/3/enrollment-plan 实测含 [{code: null, name: '-'}]
+    expect(examSubjects([{ code: null, name: '-' }])).toEqual([])
+    expect(examSubjectNames('无 | 数学')).toEqual(['数学'])
+  })
 })

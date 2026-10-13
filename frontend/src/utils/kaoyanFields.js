@@ -112,6 +112,8 @@ export function needsSourceBadge(kind) {
 export function examSubjects(raw) {
   if (raw == null) return []
   const CODE_RE = /^[（(]?\s*(\d{3})\s*[)）]?\s*(.*)$/
+  // 占位值不算科目（后端在数据缺失时会给出 "-"）
+  const PLACEHOLDER = new Set(['-', '—', '－', '/', '无', '暂无', '未标注', '暂无数据'])
 
   const flatten = (value) => {
     if (value == null) return []
@@ -133,7 +135,7 @@ export function examSubjects(raw) {
       const m = s.match(CODE_RE)
       const code = m ? m[1] : null
       const name = (m ? m[2] : s).replace(/^[、·\s]+/, '').trim()
-      if (!name) continue
+      if (!name || PLACEHOLDER.has(name)) continue
       const key = `${code ?? ''}|${name}`
       if (seen.has(key)) continue
       seen.add(key)
