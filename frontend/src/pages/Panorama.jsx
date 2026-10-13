@@ -193,6 +193,18 @@ export default function Panorama() {
     navigate(`/quiz?${params.toString()}`)
   }
 
+  /* 深度链接到「知识地图」：带上当前选中的 科目/章节/知识点，
+     KbMap 会按 ?subject&chapter&kp_id 直接定位到该知识点的例题/方法。
+     两个页面分工：全景页=跨章节图谱总览；知识地图=沿章节推进的复习动线。 */
+  const openInKbMap = (sel) => {
+    if (!sel) return
+    const params = new URLSearchParams()
+    if (sel.subject) params.set('subject', sel.subject)
+    if (sel.chapter) params.set('chapter', sel.chapter)
+    if (sel.kp?.id != null) params.set('kp_id', sel.kp.id)
+    navigate(`/kbmap?${params.toString()}`)
+  }
+
   /* ---------------- 三态：加载中 ---------------- */
   if (status === 'loading') {
     return (
@@ -238,6 +250,29 @@ export default function Panorama() {
           </button>
         </div>
       </div>
+
+      {/* 顶部导航（居中置顶）：与「知识地图」「考频分析」同模块互跳 */}
+      <nav className="kb-topnav" aria-label="知识地图模块导航">
+        <div className="kb-topnav-lead" />
+        <div className="kb-topnav-inner">
+          <button
+            className="kb-navpill"
+            onClick={() => navigate('/kbmap')}
+            title="切换到知识地图：章节 → 知识点 → 例题/方法 复习动线"
+          >
+            知识地图
+          </button>
+          <span className="kb-navpill active" aria-current="page">知识点全景</span>
+          <button
+            className="kb-navpill"
+            onClick={() => navigate('/exam-frequency')}
+            title="切换到考频分析：知识点 / 章节 / 套卷三维考频排行"
+          >
+            考频分析
+          </button>
+        </div>
+        <div className="kb-topnav-actions" />
+      </nav>
 
       {/* 覆盖概览（按当前科目口径） */}
       <div className="pn-overview">
@@ -468,11 +503,15 @@ export default function Panorama() {
                       <button className="btn primary" onClick={() => startPractice(selected.subject, selected.chapter, selected.kp)}>
                         <Play size={14} /> 开始练习
                       </button>
+                      <button className="btn ghost" onClick={() => openInKbMap(selected)}>
+                        <MapIcon size={14} /> 在知识地图复习
+                      </button>
                     </div>
-                    {/* 跳转口径说明：已支持知识点级精确刷题 */}
+                    {/* 跳转口径说明：已支持知识点级精确刷题；「在知识地图复习」按知识点深链回章节动线 */}
                     <p className="pn-detail-note">
                       跳转口径：已支持知识点级精确刷题 —— 点击「开始练习」将按该知识点（kp_id）精确出题；
                       若该知识点暂无关联题目，刷题页会给出空态提示并可返回按科目/章节刷题。
+                      「在知识地图复习」会带科目 / 章节 / 知识点深链到知识地图，查看该点的例题与方法。
                     </p>
                   </div>
                 )}
