@@ -233,9 +233,52 @@ def _netdisk_row(**kw):
         db.close()
 
 
+def _parse_range(header, total):
+    """把 `bytes=start-end` 解成 (start, end)。只覆盖测试用到的简单形态。"""
+    spec = header.split("=", 1)[1]
+    start_s, _, end_s = spec.partition("-")
+    start = int(start_s) if start_s else 0
+    end = int(end_s) if end_s else total - 1
+    return start, min(end, total - 1)
+
+
+class _FakeUpstreamResp:
+    """替身：只保留 `_proxy_stream` 真正读到的字段。"""
+
+    def __init__(self, body, status_code=200, headers=None):
+        self._body = body
+        self.status_code = status_code
+        self.headers = headers if headers is not None else {"content-length": str(len(body))}
+
+    async def aiter_bytes(self, chunk_size=1 << 20):  # noqa: ARG002
+        # 故意用 7 字节小块：大块会掩盖「漏拼 / 重复拼接」的 bug
+        for i in range(0, len(self._body), 7):
+            yield self._body[i:i + 7]
+
+
+class _FakeOpenDownload:
+    """替身：模拟 `@asynccontextmanager` 形态的 open_download，yield (resp, client)。"""
+
+    def __init__(self, resp):
+        self._resp = resp
+
+    async def __aenter__(self):
+        return self._resp, None
+
+    async def __aexit__(self, *exc):  # noqa: ARG002
+        return False
+
+
 @pytest.fixture()
 def fake_pan(monkeypatch):
-    """把百度的取链接/取流两步替成假数据（绝不联网）。"""
+    """把百度的「取链接」与「打开下载流」两步替成假数据（绝不联网）。
+
+    必须 patch **当前真实入口** `open_download()`：`_proxy_stream` 在 0202eee
+    为支持视频/图片 Range seek 改用 `open_download`（返回 206 + Content-Range），
+    旧的 `iter_download` 已不在代理链路上。
+    只 patch 旧名字会让 patch **静默失效** —— 测试真的去打上游，拿到的是
+    404/502 而不是断言失败，排查成本极高（曾经就是这个原因让本文件红了两处）。
+    """
     from services.netdisk_service import NetdiskService
 
     state = {"size": len(BODY), "error": None}
@@ -246,12 +289,21 @@ def fake_pan(monkeypatch):
         return {"download_url": "https://pan.baidu.com/disk/x", "filename": "x.pdf",
                 "size": state["size"], "md5": ""}
 
-    async def fake_iter(self, fs_id):  # noqa: ARG001
-        for i in range(0, len(BODY), 7):
-            yield BODY[i:i + 7]
+    def fake_open(self, fs_id, *, range_header=None):  # noqa: ARG001
+        if state["error"]:
+            raise state["error"]
+        if range_header:
+            start, end = _parse_range(range_header, len(BODY))
+            return _FakeOpenDownload(_FakeUpstreamResp(
+                BODY[start:end + 1],
+                status_code=206,
+                headers={"content-length": str(end - start + 1),
+                         "content-range": f"bytes {start}-{end}/{len(BODY)}"},
+            ))
+        return _FakeOpenDownload(_FakeUpstreamResp(BODY))
 
     monkeypatch.setattr(NetdiskService, "get_download_url", fake_url)
-    monkeypatch.setattr(NetdiskService, "iter_download", fake_iter)
+    monkeypatch.setattr(NetdiskService, "open_download", fake_open)
     return state
 
 
@@ -264,8 +316,8 @@ def test_netdisk_content_proxies_bytes_through_server(client, fake_pan):
         assert r.headers["content-disposition"].startswith("inline;")
         assert "filename*=UTF-8''" in r.headers["content-disposition"]
         assert r.headers["content-length"] == str(len(BODY))
-        # 代理流不支持区间跳转，如实告诉浏览器
-        assert r.headers["accept-ranges"] == "none"
+        # 0202eee 起声明 support Range：视频 <video> 拖动进度条 / 图片分段加载都依赖它
+        assert r.headers["accept-ranges"] == "bytes"
     finally:
         _cleanup(fid)
 
@@ -331,7 +383,25 @@ def test_netdisk_content_by_fsid_streams_existing_row(client, fake_pan):
         r = client.get("/api/netdisk/content", params={"fs_id": "20001"})
         assert r.status_code == 200, r.text
         assert r.content == BODY
-        assert r.headers["accept-ranges"] == "none"
+        assert r.headers["accept-ranges"] == "bytes"
+    finally:
+        _cleanup(fid)
+
+
+def test_netdisk_content_passes_through_range_206(client, fake_pan):
+    """代理必须透传 Range（206 + Content-Range）。
+
+    0202eee 的核心收益：百度 dlink 支持 Range 时后端回 206，视频播放器才能 seek。
+    这条锁住它——退化成 200 全量会让 908MB 的课视频「不能拖进度条」。
+    """
+    fid = _netdisk_row(file_name="能拖进度条的课.mp4", fs_id="10009", size=len(BODY))
+    try:
+        r = client.get(f"/api/netdisk/files/{fid}/content",
+                       headers={"Range": "bytes=5-9"})
+        assert r.status_code == 206, r.text
+        assert r.content == BODY[5:10]
+        assert r.headers["content-range"] == f"bytes 5-9/{len(BODY)}"
+        assert r.headers["accept-ranges"] == "bytes"
     finally:
         _cleanup(fid)
 
