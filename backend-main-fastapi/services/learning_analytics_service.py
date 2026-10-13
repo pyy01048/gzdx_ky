@@ -20,6 +20,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from models import ErrorRecord, AnswerRecord, Task, Document, KnowledgeChunk, KnowledgePoint
+from services import kp_mastery
 from services.ai_service import AIService
 
 
@@ -184,7 +185,7 @@ class LearningAnalyticsService:
                 "correct_rate": float,
                 "weak_points": [
                     {"knowledge_point": str, "error_count": int, "correct_count": int,
-                     "mastery": float, "level": "薄弱"/"一般"/"良好", "suggestion": str}
+                     "mastery": float, "level": "薄弱"/"已掌握", "suggestion": str}
                 ],
                 "error_categories": {"概念不清": int, "计算失误": int, ...},
                 "subject_distribution": {"数学": int, "英语": int, ...},
@@ -258,16 +259,15 @@ class LearningAnalyticsService:
         result = []
         for kw, count in sorted_kw:
             # 估算掌握度（错误次数越多，掌握度越低）
+            # 分级口径与知识点三态对齐（services/kp_mastery）：这些关键词全部
+            # 来自错题记录，必然"有学习记录"，所以只有 薄弱/已掌握 两态。
             mastery = max(10, 100 - count * 15)
-            if mastery < 40:
-                level = "薄弱"
-                suggestion = f"「{kw}」错误较多，建议重点复习相关概念和公式，多做练习题巩固。"
-            elif mastery < 70:
-                level = "一般"
-                suggestion = f"「{kw}」掌握一般，建议定期复习，适当增加练习量。"
-            else:
-                level = "良好"
+            if mastery >= kp_mastery.MASTERY_THRESHOLD:
+                level = "已掌握"
                 suggestion = f"「{kw}」掌握较好，可适当减少复习频率。"
+            else:
+                level = "薄弱"
+                suggestion = f"「{kw}」错误较多（{count} 次），建议重点复习相关概念和公式，多做练习巩固。"
 
             result.append({
                 "knowledge_point": kw,

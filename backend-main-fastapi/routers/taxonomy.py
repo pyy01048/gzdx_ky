@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import KnowledgePoint, Document, KnowledgeChunk, SubjectConfig
-from services import taxonomy
+from services import kp_mastery, taxonomy
 
 router = APIRouter(prefix="/api/taxonomy", tags=["知识结构"])
 
@@ -211,10 +211,13 @@ async def structure_tree(
     include_extension: bool = Query(True, description="是否包含拓展科目"),
     db: Session = Depends(get_db),
 ):
-    """三级结构树：科目 → 章节 → 知识点（含题型与掌握度）。
+    """三级结构树：科目 → 章节 → 知识点（含题型与掌握度三态）。
 
     以**大纲为标准骨架**，再把数据库里已有知识点挂上去，
     这样"还没录入资料"的章节也会显示为空白节点，一眼看出进度缺口。
+
+    掌握度三态（未学/薄弱/已掌握）口径见 ``services/kp_mastery.py``：
+    未学知识点不计入薄弱统计。
     """
     subjects = list(taxonomy.CORE_SUBJECTS)
     if include_extension:
@@ -225,6 +228,7 @@ async def structure_tree(
 
     # 一次性取全部知识点，按科目分组
     rows = db.query(KnowledgePoint).all()
+    learned = kp_mastery.learned_kp_ids(db)
     by_subject: dict[str, list[KnowledgePoint]] = {}
     for kp in rows:
         by_subject.setdefault(taxonomy.normalize_subject(kp.subject), []).append(kp)
@@ -244,22 +248,28 @@ async def structure_tree(
         # 先按大纲章序列出
         for ch_name in taxonomy.chapters_of(s):
             items = chapter_map.pop(ch_name, [])
-            chapters.append(_chapter_node(ch_name, items, s))
+            chapters.append(_chapter_node(ch_name, items, s, learned))
         # 再列出大纲外的章（实际资料里的自定义章）
         for ch_name in sorted(chapter_map.keys()):
-            chapters.append(_chapter_node(ch_name, chapter_map[ch_name], s))
+            chapters.append(_chapter_node(ch_name, chapter_map[ch_name], s, learned))
         # 未标章节的
         if uncategorized:
-            chapters.append(_chapter_node("未归章", uncategorized, s))
+            chapters.append(_chapter_node("未归章", uncategorized, s, learned))
 
         total = len(kps)
-        mastered = sum(1 for k in kps if (k.mastery or 0) >= 70)
+        counts = kp_mastery.tally(kps, learned)
+        learned_n = total - counts["unlearned"]
         tree.append({
             "subject": s,
             "is_core": taxonomy.is_core(s),
             "knowledge_point_count": total,
-            "mastered_count": mastered,
-            "avg_mastery": round(sum(int(k.mastery or 0) for k in kps) / total, 1) if total else 0.0,
+            "mastered_count": counts["mastered"],
+            "weak_count": counts["weak"],
+            "unlearned_count": counts["unlearned"],
+            "avg_mastery": round(counts["mastery_sum"] / total, 1) if total else 0.0,
+            "learned_avg_mastery": (
+                round(counts["learned_mastery_sum"] / learned_n, 1) if learned_n else 0.0
+            ),
             "outline_chapter_count": len(taxonomy.chapters_of(s)),
             "filled_chapter_count": sum(1 for c in chapters if c["knowledge_point_count"] > 0),
             "chapters": chapters,
@@ -268,7 +278,7 @@ async def structure_tree(
     return {"tree": tree}
 
 
-def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str) -> dict:
+def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str, learned: set) -> dict:
     types: list[str] = []
     for kp in kps:
         for t in (kp.question_types or []):
@@ -277,11 +287,18 @@ def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str) -> dict:
     if not types:
         types = taxonomy.question_types_of(subject)
 
+    counts = kp_mastery.tally(kps, learned)
+    learned_n = counts["total"] - counts["unlearned"]
     return {
         "title": title,
         "knowledge_point_count": len(kps),
-        "mastered_count": sum(1 for k in kps if (k.mastery or 0) >= 70),
-        "avg_mastery": round(sum(int(k.mastery or 0) for k in kps) / len(kps), 1) if kps else 0.0,
+        "mastered_count": counts["mastered"],
+        "weak_count": counts["weak"],
+        "unlearned_count": counts["unlearned"],
+        "avg_mastery": round(counts["mastery_sum"] / counts["total"], 1) if kps else 0.0,
+        "learned_avg_mastery": (
+            round(counts["learned_mastery_sum"] / learned_n, 1) if learned_n else 0.0
+        ),
         "question_types": types,
         "knowledge_points": [
             {
@@ -289,6 +306,7 @@ def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str) -> dict:
                 "name": kp.name,
                 "question_types": kp.question_types or taxonomy.question_types_of(kp.subject),
                 "mastery": int(kp.mastery or 0),
+                "state": kp_mastery.classify_state(kp.mastery, kp.id in learned),
                 "difficulty": kp.difficulty or 3,
                 "exam_frequency": kp.exam_frequency or 0,
                 "review_count": kp.review_count or 0,
@@ -311,7 +329,11 @@ async def list_knowledge_points(
     page_size: int = 50,
     db: Session = Depends(get_db),
 ):
-    """知识点列表（支持 科目 / 章节 / 题型 / 关键词 / 薄弱 筛选）。"""
+    """知识点列表（支持 科目 / 章节 / 题型 / 关键词 / 薄弱 筛选）。
+
+    ``low_mastery`` 按三态口径过滤：只有**已学且掌握度 < 70** 的才算薄弱，
+    未学知识点（无任何学习记录）不入选 —— 见 services/kp_mastery.py。
+    """
     q = db.query(KnowledgePoint)
     if subject:
         q = q.filter(KnowledgePoint.subject == taxonomy.normalize_subject(subject))
@@ -319,9 +341,14 @@ async def list_knowledge_points(
         q = q.filter(KnowledgePoint.chapter.like(f"%{chapter}%"))
     if keyword:
         q = q.filter(KnowledgePoint.name.like(f"%{keyword}%"))
-    if low_mastery:
-        q = q.filter(KnowledgePoint.mastery < 40)
     rows = q.all()
+
+    learned = kp_mastery.learned_kp_ids(db)
+    if low_mastery:
+        rows = [
+            r for r in rows
+            if kp_mastery.classify_state(r.mastery, r.id in learned) == kp_mastery.STATE_WEAK
+        ]
 
     if question_type:
         rows = [r for r in rows if question_type in (r.question_types or [])]
@@ -344,6 +371,7 @@ async def list_knowledge_points(
                 "chapter": k.chapter,
                 "question_types": k.question_types or taxonomy.question_types_of(k.subject),
                 "mastery": int(k.mastery or 0),
+                "state": kp_mastery.classify_state(k.mastery, k.id in learned),
                 "difficulty": k.difficulty or 3,
                 "exam_frequency": k.exam_frequency or 0,
                 "review_count": k.review_count or 0,
@@ -442,6 +470,8 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db)):
 
     from services import error_linker, review_service
 
+    learned = kp_mastery.learned_kp_ids(db)
+
     # —— 知识块关联（2026-10 修复）—— #
     # 问题：knowledge_points.subject 是归一后的主分类（数模电/408/公共课），
     # 而 knowledge_chunks.subject 保留原始口径（数字电子技术/模拟电子技术/
@@ -490,6 +520,7 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db)):
         "description": kp.description,
         "question_types": kp.question_types or taxonomy.question_types_of(kp.subject),
         "mastery": int(kp.mastery or 0),
+        "state": kp_mastery.classify_state(kp.mastery, kp.id in learned),
         "difficulty": kp.difficulty or 3,
         "exam_frequency": kp.exam_frequency or 0,
         "review_count": kp.review_count or 0,

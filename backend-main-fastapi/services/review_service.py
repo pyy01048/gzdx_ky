@@ -22,7 +22,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import KnowledgePoint, ErrorRecord, ReviewRecord
-from services import taxonomy
+from services import kp_mastery, taxonomy
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
 
 
@@ -282,16 +282,23 @@ def due_items(
 
 
 def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, Any]:
-    """复习进度总览：整体掌握率、分科目、分章节、薄弱 TOP。"""
+    """复习进度总览：整体掌握率、分科目、分章节、薄弱 TOP。
+
+    掌握度三态口径（见 services/kp_mastery.py）：
+      未学（无任何学习记录）不计入薄弱 —— 它们"还没开始"，不是"薄弱"。
+    """
     now = _now()
     q = db.query(KnowledgePoint)
     if subject:
         q = q.filter(KnowledgePoint.subject == taxonomy.normalize_subject(subject))
     rows = q.all()
+    learned = kp_mastery.learned_kp_ids(db)
 
     total = len(rows)
-    mastered = sum(1 for k in rows if (k.mastery or 0) >= 70)
-    weak = sum(1 for k in rows if (k.mastery or 0) < 40)
+    counts = kp_mastery.tally(rows, learned)
+    unlearned = counts["unlearned"]
+    weak = counts["weak"]
+    mastered = counts["mastered"]
     reviewed = sum(1 for k in rows if (k.review_count or 0) > 0)
     new_count = total - reviewed
     # due_count 只统计"已排期且逾期"的，不把新知识点算进来 ——
@@ -300,26 +307,37 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
         1 for k in rows
         if k.review_count and k.next_review is not None and k.next_review <= now
     )
-    avg = round(sum(int(k.mastery or 0) for k in rows) / total, 1) if total else 0.0
+    avg = round(counts["mastery_sum"] / total, 1) if total else 0.0
+    # 已学平均掌握度：未学知识点不拉低均值（它们还没开始，谈不上掌握度）
+    learned_n = total - unlearned
+    learned_avg = round(counts["learned_mastery_sum"] / learned_n, 1) if learned_n else 0.0
 
     # 分科目
     by_subject: dict[str, dict[str, Any]] = {}
     for k in rows:
         s = taxonomy.normalize_subject(k.subject)
-        d = by_subject.setdefault(s, {"subject": s, "total": 0, "mastery_sum": 0, "mastered": 0, "weak": 0})
+        d = by_subject.setdefault(s, {
+            "subject": s, "total": 0, "mastery_sum": 0, "mastered": 0,
+            "weak": 0, "unlearned": 0, "learned_mastery_sum": 0,
+        })
+        mastery = int(k.mastery or 0)
+        state = kp_mastery.classify_state(mastery, k.id in learned)
         d["total"] += 1
-        d["mastery_sum"] += int(k.mastery or 0)
-        if (k.mastery or 0) >= 70:
-            d["mastered"] += 1
-        if (k.mastery or 0) < 40:
-            d["weak"] += 1
+        d["mastery_sum"] += mastery
+        d[state] += 1
+        if state != kp_mastery.STATE_UNLEARNED:
+            d["learned_mastery_sum"] += mastery
     subject_stats = [
         {
             "subject": d["subject"],
             "total": d["total"],
             "avg_mastery": round(d["mastery_sum"] / d["total"], 1) if d["total"] else 0.0,
+            "learned_avg_mastery": round(
+                d["learned_mastery_sum"] / (d["total"] - d["unlearned"]), 1
+            ) if d["total"] - d["unlearned"] else 0.0,
             "mastered": d["mastered"],
             "weak": d["weak"],
+            "unlearned": d["unlearned"],
             "is_core": taxonomy.is_core(d["subject"]),
         }
         for d in sorted(by_subject.values(), key=lambda x: -x["total"])
@@ -348,8 +366,11 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
     ]
     chapter_stats.sort(key=lambda x: x["avg_mastery"])
 
-    # 薄弱知识点 TOP10
-    weak_top = sorted(rows, key=lambda k: (int(k.mastery or 0), -(k.exam_frequency or 0)))[:10]
+    # 薄弱知识点 TOP10：只从**已学**知识点里挑 —— 未学的不算薄弱
+    weak_top = sorted(
+        (k for k in rows if k.id in learned),
+        key=lambda k: (int(k.mastery or 0), -(k.exam_frequency or 0)),
+    )[:10]
 
     # 近 7 天复习量
     week_ago = now - datetime.timedelta(days=7)
@@ -364,7 +385,9 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
         "due_count": due,
         "mastered_count": mastered,
         "weak_count": weak,
+        "unlearned_count": unlearned,
         "avg_mastery": avg,
+        "learned_avg_mastery": learned_avg,
         "completion_rate": round(reviewed / total * 100, 1) if total else 0.0,
         "mastered_rate": round(mastered / total * 100, 1) if total else 0.0,
         "reviews_last_7_days": recent_reviews,
@@ -380,6 +403,7 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
                 "exam_frequency": k.exam_frequency or 0,
                 "review_count": k.review_count or 0,
                 "lapses": k.lapses or 0,
+                "state": kp_mastery.classify_state(k.mastery, k.id in learned),
             }
             for k in weak_top
         ],
