@@ -210,7 +210,7 @@ export default function Notebook() {
         notebook: st.notebook.map((n) => (n.id === id ? { ...n, status: correct ? 'graduated' : 'active', lastReview: today } : n))
       })
     }
-    toast(correct ? '回答正确，掌握度 +1' : '答错了，稍后再复习')
+    toast(correct ? '回答正确，已推进复习进度' : '答错了，稍后再复习')
   }
 
   /* V2.0 四档评分复习 */
@@ -400,7 +400,7 @@ export default function Notebook() {
     <div className="container stack">
       <div className="page-head">
         <div>
-          <h1 className="page-title">电子错题本</h1>
+          <h1 className="page-title">错题本</h1>
           <p className="page-sub">
             七刷机制 + 艾宾浩斯遗忘曲线 · 答错自动入册，答对提升掌握度
             {backendOk ? <span className="live-dot"> · 后端已连接</span> : <span className="offline-dot"> · 本地模式</span>}

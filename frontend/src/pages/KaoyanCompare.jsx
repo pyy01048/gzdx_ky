@@ -13,7 +13,7 @@ import { toast, Empty } from '../components/UI'
  */
 const COMPARE_COLUMNS = [
   { key: 'total_line', label: '进面最低分', from: 'score', badge: true },
-  { key: 'enroll_count', label: '进线人数', from: 'adm', badge: true },
+  { key: 'enroll_count', label: '进面人数', from: 'adm', badge: true },
   { key: 'admit_avg_score', label: '进面均分', from: 'adm', badge: true },
 ]
 
@@ -40,7 +40,7 @@ export default function KaoyanCompare() {
     radar: {
       indicator: [
         { name: '进面最低分', max: 450 },
-        { name: '进线人数', max: 500 },
+        { name: '进面人数', max: 500 },
         { name: '进面均分', max: 420 },
       ],
     },
@@ -96,7 +96,6 @@ export default function KaoyanCompare() {
                 <th style={{ padding: '10px' }}>年份</th>
                 <th style={{ padding: '10px' }}>复试线</th>
                 <th style={{ padding: '10px' }}>拟招</th>
-                <th style={{ padding: '10px' }}>录取</th>
                 <th style={{ padding: '10px' }}>均分</th>
               </tr>
             </thead>
@@ -112,7 +111,6 @@ export default function KaoyanCompare() {
                     <td style={{ padding: '10px' }}>{score.year || adm.year || '-'}</td>
                     <td style={{ padding: '10px' }}>{score.retest_line || '-'}</td>
                     <td style={{ padding: '10px' }}>{adm.enroll_count || '-'}</td>
-                    <td style={{ padding: '10px' }}>{adm.admit_count || '-'}</td>
                     <td style={{ padding: '10px' }}>{adm.admit_avg_score || '-'}</td>
                   </tr>
                 )

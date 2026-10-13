@@ -355,7 +355,7 @@ export default function Quiz() {
 
   /* ================= 会话开始 ================= */
   const beginSession = useCallback((title, questions, modeUsed, startIdx = 0) => {
-    if (!questions || !questions.length) { toast('该分组下暂无可练习题目'); return }
+    if (!questions || !questions.length) { toast('当前筛选条件下暂无题目'); return }
     const si = Math.max(0, Math.min(startIdx, questions.length - 1))
     setSession({ title, questions, mode: modeUsed || mode })
     setIdx(si); setDrafts({}); setTextDraft({}); setRecords({}); setSelfCheck(null)
@@ -795,7 +795,7 @@ export default function Quiz() {
         )}
 
         {open && list && list.length === 0 && !loading && (
-          <Empty icon="📄" title="该分组暂无题目" desc="换个套卷或年份试试" />
+          <Empty icon="📄" title="当前筛选条件下暂无题目" desc="换个套卷或年份试试" />
         )}
       </section>
     )

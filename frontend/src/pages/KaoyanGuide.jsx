@@ -71,13 +71,13 @@ export default function KaoyanGuide() {
       <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>分析工具</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
         {[
-          { to: '/kaoyan/schools', label: '院校数据库', desc: '222+ 院校多维度筛选' },
-          { to: '/kaoyan/compare', label: '院校对比', desc: '最多5所院校横向对比' },
+          { to: '/kaoyan/schools', label: '院校数据库', desc: '全国院校多维度筛选' },
+          { to: '/kaoyan/compare', label: '院校对比', desc: '最多 5 所院校横向对比' },
           { to: '/kaoyan/analysis', label: '分数分析', desc: '多年分数线趋势' },
           { to: '/kaoyan/map', label: '区域热力图', desc: '全国各省院校分布' },
-          { to: '/kaoyan/scatter', label: '招生散点图', desc: '招生人数vs录取均分' },
-          { to: '/kaoyan/recommend', label: '智能择校', desc: '多维权重推荐(复录比/均分/区域)' },
-          { to: '/kaoyan/import', label: '数据管理', desc: '导入/爬虫/数据源' },
+          { to: '/kaoyan/scatter', label: '招生散点图', desc: '招生人数 vs 录取均分' },
+          { to: '/kaoyan/recommend', label: '智能择校', desc: '多维权重推荐（复录比 / 均分 / 区域）' },
+          { to: '/kaoyan/import', label: '数据管理', desc: '数据导入与来源管理' },
         ].map((item) => (
           <Link key={item.to} to={item.to}
             style={{

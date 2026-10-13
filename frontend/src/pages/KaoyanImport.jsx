@@ -133,7 +133,7 @@ export default function KaoyanImport() {
       {/* 周期任务说明 */}
       <div style={{ padding: '14px 16px', borderRadius: 10, background: 'var(--surface-2)', border: '1px dashed var(--line)', marginBottom: 20, fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.7 }}>
         ⏰ <b>周期任务</b>：每周一 06:00 自动执行轻量增量（国家线新年份回填 + 公告列表前 10 所）。
-        工科研招网全量爬取不进周期任务（耗时长），需要时点上方「工科定向采集」手动触发。
+        工科研招网全量采集不进周期任务（耗时长），需要时点上方「工科定向采集」手动触发。
         全部采集遵守 robots.txt 与 2-5s 随机延迟。
       </div>
 
