@@ -1,99 +1,295 @@
-﻿import React, { useEffect, useMemo, useState } from 'react'
-import useStore from '../store/useStore'
-import { fmtFileSize, fmtDateCN } from '../utils/date'
+﻿import React, { useCallback, useEffect, useState } from 'react'
 import { Modal, Empty, toast } from '../components/UI'
-import { useSubjectConfig, subjectLabel } from '../hooks/useSubjectConfig'
-import {
-  getStoredPan, clearPan, getStatus, getAuthUrl, exchangeToken,
-  refreshPanToken, listPanFiles
-} from '../utils/pan'
 import { netdiskApi } from '../api/client'
-import { Cloud, Search, Plus, Folder, RefreshCw, X } from '../components/Icon'
+import {
+  getTokenStatus, fetchRemoteFiles, getAuthUrl, exchangeToken, logoutPan, getQuarkView,
+} from '../utils/pan'
+import { fmtFileSize, fmtDateCN } from '../utils/date'
+import { Cloud, Folder, RefreshCw, Download, ChevronRight, X } from '../components/Icon'
 
-/* 分类页签 = 固定项 + 配置的考试科目（见 hooks/useSubjectConfig）+ 存量资料已用的分类
- * '其他' 作为无法归类时的兜底分类。 */
-const FIXED_CATS = ['全部', '真题']
-const FALLBACK_CAT = '其他'
-const ICON = { pdf: '📕', video: '🎬', doc: '📄', audio: '🎧', zip: '🗜', other: '📁' }
+/* ============================================================
+ * 网盘联动（#netdisk-refactor 重构）
+ *
+ * 交互流程（状态机 view: select → baidu / quark）：
+ *   ① select  未授权：只渲染平台选择卡（百度网盘 / 夸克网盘）+ 授权按钮，
+ *               **禁止出现任何目录/文件** —— 旧版拿 localStorage 残留 token
+ *               当门禁、又把本地同步缓存混进列表，"没连接也显示目录"的 bug
+ *               就是这么来的；现在门禁只认后端 /netdisk/token-status。
+ *   ② 百度网盘：OAuth（oob 手动授权码）→ 后端换 token → 进入文件浏览器。
+ *   ③ 文件浏览器：逐级进入文件夹 + 面包屑导航，数据只取百度真实列表。
+ *   ④ 文件点击 → 右侧预览面板：图片 <img> / PDF <iframe> / 视频 <video>
+ *      / 音频 <audio> / 文本 <pre> / docx（mammoth 转 HTML）。
+ *   ⑤ 下载与预览都走后端代理 /api/netdisk/content（百度 dlink 强制 UA，
+ *      浏览器直连必 403）。
+ *   夸克网盘：无官方开放 API，采用配置化 Web 视图嵌入（见 getQuarkView）。
+ * ============================================================ */
 
-/* 浏览器能直接渲染的才给「预览」，其余（docx/ppt/压缩包）只能下载 */
-const INLINE_PREVIEW_EXT = /\.(pdf|png|jpe?g|gif|webp|bmp|svg|txt|md|markdown|csv|html)$/i
+const VIDEO_EXT = /\.(mp4|mkv|webm|mov|avi|flv|wmv|m4v)$/i
+const AUDIO_EXT = /\.(mp3|wav|m4a|flac|aac|ogg)$/i
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i
+const PDF_EXT = /\.pdf$/i
+const TEXT_EXT = /\.(txt|md|markdown|csv|log|json)$/i
+const DOCX_EXT = /\.docx$/i
 
-function fileIcon(name) {
-  const n = (name || '').toLowerCase()
-  if (n.endsWith('.pdf')) return 'pdf'
-  if (/\.(mp4|mkv|avi|mov|flv|wmv)$/.test(n)) return 'video'
-  if (/\.(docx?|xlsx?|pptx?|txt|md)$/.test(n)) return 'doc'
-  if (/\.(mp3|wav|m4a|flac)$/.test(n)) return 'audio'
-  if (/\.(zip|rar|7z|tar|gz)$/.test(n)) return 'zip'
+function fileKind(name) {
+  const n = name || ''
+  if (VIDEO_EXT.test(n)) return 'video'
+  if (AUDIO_EXT.test(n)) return 'audio'
+  if (IMAGE_EXT.test(n)) return 'image'
+  if (PDF_EXT.test(n)) return 'pdf'
+  if (TEXT_EXT.test(n)) return 'text'
+  if (DOCX_EXT.test(n)) return 'docx'
   return 'other'
 }
 
-/** 按文件名猜分类：名师/关键词启发式优先，其次匹配当前配置的科目，都不中则兜底。 */
-function guessCat(name, subjectCats = []) {
-  const n = (name || '').toLowerCase()
-  if (/真题|押题|模考|试卷/.test(n)) return '真题'
-  if (/数学|高数|线代|概率|1800|660|汤|张宇/.test(n)) return '数学'
-  if (/英语|恋恋|单词|词汇|阅读|作文|真题精讲/.test(n)) return '英语'
-  if (/政治|马原|毛概|史纲|肖|腿|徐涛/.test(n)) return '政治'
-  const hit = subjectCats.find((c) => !FIXED_CATS.includes(c) && c !== FALLBACK_CAT && n.includes(c.toLowerCase()))
-  return hit || FALLBACK_CAT
+const KIND_ICON = { video: '🎬', audio: '🎧', image: '🖼', pdf: '📕', text: '📄', docx: '📘', other: '📄' }
+const KIND_LABEL = { video: '视频', audio: '音频', image: '图片', pdf: 'PDF', text: '文本', docx: 'Word 文档', other: '文件' }
+
+/** 面包屑：根目录 / 各级目录名，可点击回跳。 */
+function Breadcrumb({ dir, onNavigate }) {
+  const segs = String(dir || '/').split('/').filter(Boolean)
+  return (
+    <nav className="pan-crumb" aria-label="目录导航">
+      <button className="pan-crumb-item" onClick={() => onNavigate('/')}>根目录</button>
+      {segs.map((s, i) => {
+        const p = `/${segs.slice(0, i + 1).join('/')}`
+        const last = i === segs.length - 1
+        return (
+          <React.Fragment key={p}>
+            <ChevronRight size={13} className="pan-crumb-sep" />
+            {last
+              ? <span className="pan-crumb-item current" title={s}>{s}</span>
+              : <button className="pan-crumb-item" onClick={() => onNavigate(p)} title={s}>{s}</button>}
+          </React.Fragment>
+        )
+      })}
+    </nav>
+  )
+}
+
+/** 右侧文件预览面板：图片/PDF/视频/音频/文本/docx，其余仅提供下载。 */
+function FilePreview({ file, onClose }) {
+  const kind = fileKind(file.name)
+  const inlineUrl = netdiskApi.contentUrlByFsid(file.fs_id)
+  const dlUrl = netdiskApi.contentUrlByFsid(file.fs_id, 'attachment')
+  const [text, setText] = useState('')
+  const [docxHtml, setDocxHtml] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [ingesting, setIngesting] = useState(false)
+
+  useEffect(() => {
+    setText(''); setDocxHtml(''); setError('')
+    if (kind === 'text') {
+      setLoading(true)
+      fetch(inlineUrl)
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then(setText).catch((e) => setError(String(e?.message || e)))
+        .finally(() => setLoading(false))
+    } else if (kind === 'docx') {
+      setLoading(true)
+      ;(async () => {
+        try {
+          const resp = await fetch(inlineUrl)
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          const arrayBuffer = await resp.arrayBuffer()
+          // mammoth 只在需要预览 docx 时才加载，不进首屏包体。
+          // 注意入参键名是 buffer：该版本 openZip 只认 path/buffer/file，
+          // 传 arrayBuffer 会被当成"没给文件"而 reject。
+          const mod = await import('mammoth')
+          const mammoth = mod.default?.convertToHtml ? mod.default : mod
+          const r = await mammoth.convertToHtml({ buffer: arrayBuffer })
+          setDocxHtml(r.value || '')
+        } catch (e) {
+          setError(String(e?.message || e))
+        } finally {
+          setLoading(false)
+        }
+      })()
+    }
+  }, [file.fs_id, kind, inlineUrl]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ingest = async () => {
+    setIngesting(true)
+    try {
+      const r = await netdiskApi.ingest(file.fs_id)
+      toast(r?.message || '已入库到知识库')
+    } catch (e) {
+      toast(`入库失败：${e?.message || '未知错误'}`)
+    } finally {
+      setIngesting(false)
+    }
+  }
+
+  return (
+    <div className="panel pan2-preview">
+      <div className="panel-head">
+        <h3 className="panel-title">文件预览</h3>
+        <button className="modal-close" onClick={onClose} aria-label="关闭预览"><X size={14} /></button>
+      </div>
+      <div className="pv-name" title={file.path}>{file.name}</div>
+      <div className="pv-meta">
+        <span>{KIND_LABEL[kind]}</span>
+        <span>{fmtFileSize(file.size_kb)}</span>
+        {file.date ? <span>{fmtDateCN(file.date)}</span> : null}
+      </div>
+      <div className="pv-stage">
+        {kind === 'image' && <img className="pv-img" src={inlineUrl} alt={file.name} />}
+        {kind === 'pdf' && <iframe className="pv-frame" src={inlineUrl} title={file.name} />}
+        {kind === 'video' && (
+          <video className="pv-video" src={inlineUrl} controls preload="metadata" playsInline />
+        )}
+        {kind === 'audio' && <audio className="pv-audio" src={inlineUrl} controls preload="metadata" />}
+        {kind === 'text' && (
+          loading ? <p className="pan-hint">加载中…</p>
+            : error ? <p className="pan-error">读取失败：{error}</p>
+              : <pre className="pv-pre">{text}</pre>
+        )}
+        {kind === 'docx' && (
+          loading ? <p className="pan-hint">正在转换文档…</p>
+            : error ? <p className="pan-error">文档预览失败：{error}（可下载后查看）</p>
+              // mammoth 输出为受控 HTML 映射，本地可信文档场景可用
+              : <div className="pv-doc" dangerouslySetInnerHTML={{ __html: docxHtml }} />
+        )}
+        {kind === 'other' && <p className="pan-hint">该类型暂不支持在线预览，请下载后查看</p>}
+      </div>
+      <div className="pv-actions">
+        <button className="btn primary" onClick={() => window.open(dlUrl, '_blank')}>
+          <Download size={14} /> 下载
+        </button>
+        <button className="btn ghost" onClick={ingest} disabled={ingesting}>
+          {ingesting ? '入库中…' : '入库到知识库'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export default function Pan() {
-  const { pan, addPan, removePan, updatePan } = useStore()
-  const { exam } = useSubjectConfig()
-  const [cat, setCat] = useState('全部')
-  const [q, setQ] = useState('')
-  const [activeId, setActiveId] = useState(null)
-  const [link, setLink] = useState('')
+  /* ---- 视图状态机：select 平台选择 / baidu 文件浏览器 / quark Web 视图 ---- */
+  const [view, setView] = useState('select')
+  /* ---- 授权状态：唯一事实来源是后端 token-status，不信 localStorage ---- */
+  const [tokenStatus, setTokenStatus] = useState(null)
+  const [statusLoading, setStatusLoading] = useState(true)
 
-  const CATS = useMemo(() => Array.from(new Set([
-    ...FIXED_CATS,
-    ...exam.map(subjectLabel),
-    ...pan.map((p) => p.cat).filter(Boolean),
-    FALLBACK_CAT,
-  ])), [exam, pan])
-  /* 科目多于配置页签时当前选中项可能失效，回落到「全部」而不是空列表 */
-  useEffect(() => {
-    if (!CATS.includes(cat)) setCat('全部')
-  }, [CATS, cat])
-
-  /* ---- 百度网盘对接状态 ---- */
-  const [baidu, setBaidu] = useState({ configured: false })
-  const [panToken, setPanToken] = useState(getStoredPan())
-  const [remoteDir, setRemoteDir] = useState('/')
-  const [remoteFiles, setRemoteFiles] = useState([])
-  const [remoteLoading, setRemoteLoading] = useState(false)
-  const [showAuth, setShowAuth] = useState(false)
-  const [authCode, setAuthCode] = useState('')
-  const [authUrl, setAuthUrl] = useState('')
-  const [authBusy, setAuthBusy] = useState(false)
-  const [curPath, setCurPath] = useState(['/'])
-
-  /* ---- 登记资料弹窗 ---- */
-  const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ name: '', type: 'pdf', cat: FALLBACK_CAT, desc: '', size: 0 })
-
-  useEffect(() => { getStatus().then(setBaidu).catch(() => toast('网盘服务状态获取失败，请检查后端是否启动')) }, [])
-
-  /* ---- 平台配置（后端 platform-configs）：平台列表/密钥不再写死，从后端读 ---- */
+  /* ---- 平台配置（"配置入口灵活化"）：百度 app_key + 夸克 web_view_url ---- */
   const [platformCfgs, setPlatformCfgs] = useState({})
+  const loadCfgs = useCallback(() => {
+    netdiskApi.platformConfigs()
+      .then((d) => setPlatformCfgs(d?.configs || {}))
+      .catch(() => setPlatformCfgs({}))
+  }, [])
+  useEffect(() => { loadCfgs() }, [loadCfgs])
+
+  /* 挂载即校验后端授权状态：已授权且未过期才直接进文件浏览器 */
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const st = await getTokenStatus()
+        if (!alive) return
+        setTokenStatus(st)
+        if (st?.authorized && st?.expired !== true) setView('baidu')
+      } catch (e) {
+        toast(`网盘状态获取失败：${e?.message || '请检查后端服务'}`)
+      } finally {
+        if (alive) setStatusLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  const baiduAuthorized = !!tokenStatus?.authorized && tokenStatus?.expired !== true
+
+  /* ---- 百度文件浏览器 ---- */
+  const [dir, setDir] = useState('/')
+  const [entries, setEntries] = useState([])
+  const [browseLoading, setBrowseLoading] = useState(false)
+  const [browseError, setBrowseError] = useState('')
+  const [selected, setSelected] = useState(null)
+
+  const loadDir = useCallback(async (path) => {
+    setBrowseLoading(true)
+    setBrowseError('')
+    try {
+      const list = await fetchRemoteFiles(path)
+      setEntries(list)
+      setDir(path)
+      setSelected(null)
+    } catch (e) {
+      if (e?.status === 401) {
+        // 授权失效：回平台选择页要求重新授权，绝不用本地缓存冒充目录
+        setTokenStatus((s) => ({ ...(s || {}), authorized: false, expired: true }))
+        setEntries([]); setSelected(null)
+        setView('select')
+        toast('百度网盘授权已失效，请重新授权')
+      } else {
+        setBrowseError(e?.message || '目录读取失败')
+      }
+    } finally {
+      setBrowseLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { if (view === 'baidu') loadDir('/') }, [view, loadDir]) // eslint-disable-line
+
+  /* ---- OAuth 授权（oob：授权页显示授权码，手动粘回） ---- */
+  const [showAuth, setShowAuth] = useState(false)
+  const [authUrl, setAuthUrl] = useState('')
+  const [authCode, setAuthCode] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+
+  const startAuth = async () => {
+    try {
+      const url = await getAuthUrl()
+      setAuthUrl(url)
+      setShowAuth(true)
+    } catch (e) {
+      toast(e?.message || '获取授权链接失败')
+    }
+  }
+  const submitAuthCode = async () => {
+    const code = authCode.trim()
+    if (!code) return toast('请输入授权码')
+    setAuthBusy(true)
+    try {
+      await exchangeToken(code)
+      const st = await getTokenStatus()
+      setTokenStatus(st)
+      setShowAuth(false)
+      setAuthCode('')
+      if (st?.authorized && st?.expired !== true) {
+        setView('baidu')
+        toast('百度网盘授权成功')
+      } else {
+        toast('授权未生效，请重试')
+      }
+    } catch (e) {
+      toast(e?.message || '授权失败')
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+  const doLogout = async () => {
+    try { await logoutPan() } catch { /* 后端不可用时也放行本地退出 */ }
+    setTokenStatus((s) => ({ ...(s || {}), authorized: false }))
+    setEntries([]); setSelected(null)
+    setView('select')
+    toast('已退出百度网盘授权')
+  }
+
+  /* ---- 百度 API 配置弹窗（app_key / secret_key / redirect_uri） ---- */
   const [showCfg, setShowCfg] = useState(false)
   const [cfgForm, setCfgForm] = useState({ app_key: '', secret_key: '', redirect_uri: 'oob' })
   const [cfgSaving, setCfgSaving] = useState(false)
-
-  const loadPlatformCfgs = () => {
-    netdiskApi.platformConfigs().then((d) => setPlatformCfgs(d?.configs || {})).catch(() => setPlatformCfgs({}))
-  }
-  useEffect(() => { loadPlatformCfgs() }, [])
+  const baiduCfg = platformCfgs.baidu || {}
+  const baiduReady = !!baiduCfg.app_key
 
   const openCfg = () => {
-    const c = platformCfgs.baidu || {}
     setCfgForm({
-      app_key: c.app_key || '',
-      secret_key: c.secret_key || '',
-      redirect_uri: c.redirect_uri || 'oob',
+      app_key: baiduCfg.app_key || '',
+      secret_key: baiduCfg.secret_key || '',
+      redirect_uri: baiduCfg.redirect_uri || 'oob',
     })
     setShowCfg(true)
   }
@@ -107,92 +303,63 @@ export default function Pan() {
       })
       toast('百度网盘 API 配置已保存')
       setShowCfg(false)
-      loadPlatformCfgs()
-      getStatus().then(setBaidu).catch(() => {})
+      loadCfgs()
     } catch (e) {
-      toast(`保存失败：${e.message || '未知错误'}`)
+      toast(`保存失败：${e?.message || '未知错误'}`)
     } finally {
       setCfgSaving(false)
     }
   }
 
-  const tokenValid = panToken && panToken.access_token
+  /* ---- 夸克 Web 视图（无官方 API，配置化嵌入） ---- */
+  const [quark, setQuark] = useState(null)
+  const [quarkLoading, setQuarkLoading] = useState(false)
+  const [showQuarkCfg, setShowQuarkCfg] = useState(false)
+  const [quarkForm, setQuarkForm] = useState({ web_view_url: '' })
+  const [quarkSaving, setQuarkSaving] = useState(false)
 
-  const loadRemote = async (dir = remoteDir) => {
-    if (!tokenValid) return
-    setRemoteLoading(true)
+  const enterQuark = async () => {
+    setQuarkLoading(true)
     try {
-      const list = await listPanFiles(panToken.access_token, dir)
-      setRemoteFiles(list)
-      setCurPath((p) => (dir === '/' ? ['/'] : (p.includes(dir) ? p.slice(0, p.indexOf(dir) + 1) : [...p, dir])))
+      const v = await getQuarkView()
+      setQuark(v)
+      setQuarkForm({ web_view_url: v?.url || '' })
+      setView('quark')
     } catch (e) {
-      if (panToken.refresh_token) {
-        try {
-          const refreshed = await refreshPanToken(panToken.refresh_token)
-          setPanToken(refreshed)
-          setRemoteFiles(await listPanFiles(refreshed.access_token, dir))
-        } catch {
-          toast('授权已失效，请重新授权')
-          setPanToken(null); clearPan()
-        }
-      } else toast(e.message)
+      toast(e?.message || '夸克网盘配置读取失败')
+    } finally {
+      setQuarkLoading(false)
     }
-    setRemoteLoading(false)
   }
-
-  useEffect(() => { if (tokenValid) loadRemote('/') }, [tokenValid]) // eslint-disable-line
-
-  const openAuth = async () => {
-    try { const url = await getAuthUrl(); setAuthUrl(url); setShowAuth(true) }
-    catch (e) { toast(e.message) }
+  const openQuarkCfg = () => {
+    setQuarkForm({ web_view_url: quark?.url || platformCfgs.quark?.web_view_url || 'https://pan.quark.cn/' })
+    setShowQuarkCfg(true)
   }
-  const submitAuthCode = async () => {
-    const code = authCode.trim()
-    if (!code) return toast('请输入授权码')
-    setAuthBusy(true)
+  const saveQuarkCfg = async () => {
+    setQuarkSaving(true)
     try {
-      const tok = await exchangeToken(code)
-      setPanToken(tok); setShowAuth(false); setAuthCode('')
-      toast('百度网盘授权成功')
-    } catch (e) { toast(e.message) } finally { setAuthBusy(false) }
-  }
-  const logoutPan = () => { setPanToken(null); clearPan(); setRemoteFiles([]); toast('已退出百度网盘') }
-  const openDir = (f) => { if (!f.isdir) return; setRemoteDir(f.path); loadRemote(f.path) }
-  const goUp = () => {
-    const parent = curPath.length > 1 ? curPath.slice(0, -1).join('/') || '/' : '/'
-    setRemoteDir(parent); loadRemote(parent)
-  }
-  /* 浏览器直连 dlink 必 403（百度校验 UA），旧的 getFileMetas 又把人当数组取
-   * arr[0]（它其实返回 {list:[...]}），所以取流一律走后端代理。 */
-  const importRemote = (f) => {
-    addPan({ name: f.name, type: fileIcon(f.name), cat: guessCat(f.name, CATS), desc: `来自百度网盘：${f.path}`, size: f.size_kb, remote: true, fsId: f.fs_id })
-    toast(`已登记「${f.name}」到本地资料库`)
+      await netdiskApi.updatePlatformConfig('quark', { web_view_url: quarkForm.web_view_url.trim() })
+      toast('夸克网盘 Web 视图地址已保存')
+      setShowQuarkCfg(false)
+      loadCfgs()
+      const v = await getQuarkView()
+      setQuark(v)
+    } catch (e) {
+      toast(`保存失败：${e?.message || '未知错误'}`)
+    } finally {
+      setQuarkSaving(false)
+    }
   }
 
-  const list = useMemo(
-    () => (cat === '全部' ? pan : pan.filter((p) => p.cat === cat))
-      .filter((p) => !q || (p.name || '').toLowerCase().includes(q.toLowerCase())),
-    [pan, cat, q]
-  )
-  const active = pan.find((p) => p.id === activeId) || null
-  const syncedCount = pan.filter((p) => p.synced).length
-  const recentSync = useMemo(
-    () => [...pan].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 5),
-    [pan]
-  )
+  if (statusLoading) {
+    return (
+      <div className="pan2">
+        <div className="panel"><p className="pan-hint">正在读取网盘授权状态…</p></div>
+      </div>
+    )
+  }
 
-  const submit = () => {
-    if (!form.name.trim()) return toast('请填写文件名')
-    addPan({ name: form.name.trim(), type: form.type, cat: form.cat, desc: form.desc.trim(), size: Number(form.size) || 0, url: '' })
-    setForm({ name: '', type: 'pdf', cat: FALLBACK_CAT, desc: '', size: 0 })
-    setShowAdd(false); toast('资料已登记')
-  }
-  const importLink = () => {
-    const v = link.trim()
-    if (!v) return toast('请粘贴分享链接')
-    addPan({ name: v, type: 'other', cat: guessCat(v, CATS), desc: '从分享链接导入', size: 0, url: v })
-    setLink(''); toast('链接已登记到资料库')
-  }
+  const parentDir = dir === '/' ? '/' : (dir.slice(0, dir.lastIndexOf('/')) || '/')
 
   return (
     <div className="pan2">
@@ -200,221 +367,216 @@ export default function Pan() {
       <div className="pan2-head">
         <div>
           <div className="pan2-title">网盘联动</div>
-          <div className="pan2-sub">集中管理你的云端学习资料，一键同步到本地 · 已同步 {syncedCount}/{pan.length} 项</div>
+          <div className="pan2-sub">选择网盘平台并授权，即可浏览云端学习资料 · 支持逐级目录、文件预览与视频播放</div>
         </div>
-        {/* 平台数以后端真实注册数为准：接口失败/库里没行时不报「1 个网盘」，
-            那是 Math.max(...,1) 兜出来的假数。 */}
-        <span className="pan2-status">
-          <span className="dot" />百度网盘 {tokenValid ? '已连接' : '未连接'}
-          {Object.keys(platformCfgs).length > 0 && ` · 后端已注册 ${Object.keys(platformCfgs).length} 个平台`}
-        </span>
+        {view !== 'select' && (
+          <button className="btn ghost" onClick={() => { setView('select'); setSelected(null) }}>← 切换平台</button>
+        )}
       </div>
 
-      {/* ===== 云盘连接卡（平台列表从后端 platform-configs 读，不再写死） ===== */}
-      <div className="provider-grid">
-        <div className={`provider-card ${tokenValid ? 'connected' : ''}`}>
-          <div className="provider-ico"><Cloud size={20} /></div>
-          <div className="provider-name">百度网盘</div>
-          <div className="provider-desc">{tokenValid ? 'OAuth 已授权 · 可浏览下载' : '官方 OAuth 直连'}</div>
-          <span className={`provider-pill ${tokenValid ? 'on' : 'off'}`}>{tokenValid ? '已连接' : '未连接'}</span>
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button className="provider-btn ghost" onClick={openCfg}>API 配置</button>
-            {tokenValid
-              ? <button className="provider-btn ghost" onClick={logoutPan}>退出授权</button>
-              : <button className="provider-btn primary" onClick={openAuth} disabled={!baidu.configured}>去连接</button>}
-          </div>
-        </div>
-        {/* 后端 platform_configs 里除百度以外的真实行（实测当前库里只有表结构、0 行）。
-            本项目口径是「只做百度网盘」，所以这里不写「即将支持阿里云盘/夸克」这类
-            占位承诺：有行就按行里的真实授权状态显示，没行就什么都不显示。 */}
-        {Object.entries(platformCfgs).filter(([k]) => k !== 'baidu').map(([key, c]) => (
-          <div key={key} className={`provider-card ${c.token ? 'connected' : ''}`}>
+      {/* ===== ① 平台选择（未授权：只有平台卡 + 授权按钮，没有任何目录） ===== */}
+      {view === 'select' && (
+        <div className="provider-grid">
+          <div className={`provider-card ${baiduAuthorized ? 'connected' : ''}`}>
             <div className="provider-ico"><Cloud size={20} /></div>
-            <div className="provider-name">{c.display_name || key}</div>
-            <div className="provider-desc">{c.token ? '已配置授权' : '已注册但未配置授权'}</div>
-            <span className={`provider-pill ${c.token ? 'on' : 'off'}`}>{c.token ? '已配置' : '未配置'}</span>
+            <div className="provider-name">百度网盘</div>
+            <div className="provider-desc">官方 OAuth 授权 · 授权后可浏览目录、预览与下载文件</div>
+            <span className={`provider-pill ${baiduAuthorized ? 'on' : 'off'}`}>
+              {baiduAuthorized ? '已连接' : '未连接'}
+            </span>
+            <div className="provider-btns">
+              <button className="provider-btn ghost" onClick={openCfg}>API 配置</button>
+              {baiduAuthorized ? (
+                <>
+                  <button className="provider-btn primary" onClick={() => setView('baidu')}>进入网盘</button>
+                  <button className="provider-btn ghost" onClick={doLogout}>退出授权</button>
+                </>
+              ) : (
+                <button
+                  className="provider-btn primary"
+                  onClick={startAuth}
+                  disabled={!baiduReady}
+                  title={baiduReady ? '' : '请先配置百度网盘 AppKey / SecretKey'}
+                >去授权</button>
+              )}
+            </div>
+            {!baiduReady && (
+              <div className="provider-hint">
+                尚未配置 API 密钥：点击「API 配置」填写百度开放平台申请的 AppKey / SecretKey 后即可授权。
+              </div>
+            )}
+            {tokenStatus?.expired && baiduAuthorized === false && tokenStatus?.authorized && (
+              <div className="provider-hint">授权已过期，请重新「去授权」。</div>
+            )}
           </div>
-        ))}
-      </div>
 
-      {/* ===== 百度网盘文件浏览（授权后） ===== */}
-      {tokenValid && (
-        <div className="panel">
-          <div className="panel-head">
-            <h3 className="panel-title"><Folder size={16} style={{ verticalAlign: -3, marginRight: 6 }} />百度网盘文件</h3>
-            <button className="btn ghost" onClick={() => loadRemote(remoteDir)}><RefreshCw size={14} /> 刷新</button>
+          <div className="provider-card">
+            <div className="provider-ico"><Cloud size={20} /></div>
+            <div className="provider-name">夸克网盘</div>
+            <div className="provider-desc">Web 视图嵌入 · 夸克未开放官方 API，登录态由浏览器维护</div>
+            <span className="provider-pill off">Web 视图</span>
+            <div className="provider-btns">
+              <button className="provider-btn ghost" onClick={openQuarkCfg}>配置</button>
+              <button className="provider-btn primary" onClick={enterQuark} disabled={quarkLoading}>
+                {quarkLoading ? '读取配置…' : '进入网盘'}
+              </button>
+            </div>
+            <div className="provider-hint">
+              夸克网盘暂无官方文件 API，本方案将网页版以内嵌视图呈现；地址可在「配置」中修改。
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-            <button className="btn ghost" style={{ padding: '4px 10px' }} onClick={goUp} disabled={curPath.length <= 1}>⬆ 上级</button>
-            <span style={{ fontSize: 12.5, color: 'var(--ink-2)', wordBreak: 'break-all' }}>{curPath.join(' / ') || '/'}</span>
-          </div>
-          {remoteLoading ? (
-            <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>正在读取百度网盘…</p>
-          ) : remoteFiles.length === 0 ? (
-            <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>当前目录暂无文件</p>
-          ) : (
-            <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {remoteFiles.map((f) => (
-                <div key={f.fs_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 10 }}>
-                  <span style={{ fontSize: 18 }}>{f.isdir ? '📁' : ICON[fileIcon(f.name)] || '📄'}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{f.isdir ? '文件夹' : `${fmtFileSize(f.size_kb)} · ${fmtDateCN(f.date)}`}</div>
+        </div>
+      )}
+
+      {/* ===== ②③④ 百度网盘文件浏览器（授权后才出现） ===== */}
+      {view === 'baidu' && (
+        <div className="pan2-body">
+          <div className="panel">
+            <div className="panel-head">
+              <h3 className="panel-title">
+                <Folder size={16} style={{ verticalAlign: -3, marginRight: 6 }} />百度网盘文件
+              </h3>
+              <div className="panel-head-btns">
+                <button className="btn ghost" onClick={() => loadDir(dir)} disabled={browseLoading}>
+                  <RefreshCw size={14} /> 刷新
+                </button>
+                <button className="btn ghost" onClick={doLogout}>退出授权</button>
+              </div>
+            </div>
+
+            <div className="pan-crumb-bar">
+              <button
+                className="btn ghost pan-up"
+                onClick={() => loadDir(parentDir)}
+                disabled={dir === '/' || browseLoading}
+              >⬆ 上级</button>
+              <Breadcrumb dir={dir} onNavigate={(p) => loadDir(p)} />
+            </div>
+
+            {browseLoading ? (
+              <p className="pan-hint">正在读取百度网盘…</p>
+            ) : browseError ? (
+              <p className="pan-error">{browseError}</p>
+            ) : entries.length === 0 ? (
+              <Empty icon={<span style={{ fontSize: 30 }}>📂</span>} title="当前目录暂无文件" desc="点击「上级」或面包屑返回其他目录" />
+            ) : (
+              <div className="pan-file-list">
+                {entries.map((f) => (
+                  <div
+                    key={f.fs_id || f.path}
+                    className={`pan-file-row ${selected && selected.fs_id === f.fs_id ? 'active' : ''}`}
+                    onClick={() => (f.isdir ? loadDir(f.path) : setSelected(f))}
+                  >
+                    <span className="pan-file-ico">{f.isdir ? '📁' : KIND_ICON[fileKind(f.name)]}</span>
+                    <div className="pan-file-main">
+                      <div className="pan-file-name" title={f.path}>{f.name}</div>
+                      <div className="pan-file-meta">
+                        {f.isdir ? '文件夹' : `${fmtFileSize(f.size_kb)}${f.date ? ` · ${fmtDateCN(f.date)}` : ''}`}
+                      </div>
+                    </div>
+                    {!f.isdir && <span className="pan-file-go">预览 ›</span>}
                   </div>
-                  {f.isdir ? (
-                    <button className="btn ghost" style={{ padding: '4px 10px' }} onClick={() => openDir(f)}>进入</button>
-                  ) : (
-                    <>
-                      <button className="btn ghost" style={{ padding: '4px 10px' }} onClick={() => importRemote(f)}>登记</button>
-                      {INLINE_PREVIEW_EXT.test(f.name) && (
-                        <button className="btn ghost" style={{ padding: '4px 10px' }} disabled={!baidu.configured} title={baidu.configured ? '后端代理取流，浏览器可直接渲染' : '后端未完成百度网盘授权，无法代理取流'} onClick={() => window.open(netdiskApi.contentUrlByFsid(f.fs_id), '_blank')}>预览</button>
-                      )}
-                      <button className="btn ghost" style={{ padding: '4px 10px' }} disabled={!baidu.configured} title={baidu.configured ? '' : '后端未完成百度网盘授权，无法代理取流'} onClick={() => window.open(netdiskApi.contentUrlByFsid(f.fs_id, 'attachment'), '_blank')}>下载</button>
-                    </>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </div>
+
+          {selected ? (
+            <FilePreview file={selected} onClose={() => setSelected(null)} />
+          ) : (
+            <div className="panel pan-empty-side">
+              <Empty icon={<span style={{ fontSize: 30 }}>👆</span>} title="点击文件即可预览" desc="图片 / PDF / 视频 / 文档均支持在线查看" />
             </div>
           )}
         </div>
       )}
 
-      {/* ===== 资源列表 + 活动/预览 ===== */}
-      <div className="pan2-body">
-        <div className="pan2-res">
-          <div className="pan2-toolbar">
-            <div className="pan2-search">
-              <Search size={15} />
-              <input placeholder="搜索文件名、来源…" value={q} onChange={(e) => setQ(e.target.value)} />
+      {/* ===== 夸克网盘 Web 视图 ===== */}
+      {view === 'quark' && (
+        <div className="panel">
+          <div className="panel-head">
+            <h3 className="panel-title">
+              <Cloud size={16} style={{ verticalAlign: -3, marginRight: 6 }} />夸克网盘（Web 视图）
+            </h3>
+            <div className="panel-head-btns">
+              <button className="btn ghost" onClick={openQuarkCfg}>配置地址</button>
+              <button className="btn ghost" onClick={() => window.open(quark?.url, '_blank', 'noopener')}>新窗口打开</button>
             </div>
-            <div className="pan2-tabs">
-              {CATS.map((c) => (
-                <button key={c} className={`pan2-tab ${cat === c ? 'active' : ''}`} onClick={() => setCat(c)}>{c}</button>
-              ))}
-            </div>
-            <button className="btn primary" onClick={() => setShowAdd(true)}><Plus size={15} /> 添加资料</button>
           </div>
-
-          {list.length === 0 ? (
-            <div className="panel">
-              <Empty icon={<span style={{ fontSize: 32 }}>☁️</span>} title="该分类暂无资料" desc="点击「添加资料」或从上方百度网盘导入" />
-            </div>
-          ) : (
-            <div className="res-list">
-              {list.map((p) => (
-                <div key={p.id} className={`res-item ${activeId === p.id ? 'active' : ''}`} onClick={() => setActiveId(p.id)}>
-                  <div className={`res-ico ${p.type}`}>{ICON[p.type] || '📁'}</div>
-                  <div className="res-info">
-                    <div className="res-name">{p.name}</div>
-                    <div className="res-meta">{fmtFileSize(p.size)} · {p.cat} · {fmtDateCN(p.date)}</div>
-                  </div>
-                  {p.remote && <span className="res-tag remote">网盘</span>}
-                  {p.synced ? <span className="res-tag synced">已同步</span> : <span className="res-tag unsynced">未同步</span>}
-                </div>
-              ))}
-            </div>
+          <p className="pan-note">
+            夸克网盘未开放官方 API（无 OAuth、无文件列表接口），本方案为配置化 Web 视图嵌入：下方内嵌网页的登录状态由浏览器 Cookie 维护；
+            若站点禁止被 iframe 嵌入导致白屏，请点击右上角「新窗口打开」。嵌入地址可在「配置地址」中修改（仅支持 http/https）。
+          </p>
+          {quark?.defaulted && (
+            <p className="pan-note">当前使用默认地址 {quark.url}，你可以在「配置地址」中改成自己的分享页/目录页。</p>
           )}
+          <iframe
+            className="pan-quark-frame"
+            src={quark?.url || 'https://pan.quark.cn/'}
+            title="夸克网盘"
+            referrerPolicy="no-referrer"
+          />
         </div>
+      )}
 
-        {/* 右侧：选中→预览，未选→活动面板 */}
-        {active ? (
-          <div className="panel pan2-preview">
-            <div className="pv-icon">{ICON[active.type] || '📁'}</div>
-            <div className="pv-title">{active.name}</div>
-            <div className="pv-meta">
-              <span>{fmtFileSize(active.size)}</span>
-              <span>{active.cat}</span>
-              <span>{active.synced ? '已同步' : '待同步'}</span>
-              {active.remote && <span>来自网盘</span>}
-            </div>
-            <div className="pv-body">{active.desc || '暂无描述'}</div>
-            <div className="pv-actions">
-              <button className="btn primary" onClick={() => updatePan(active.id, { synced: !active.synced })}>
-                {active.synced ? '标记为未同步' : '标记为已同步'}
-              </button>
-              <button className="btn ghost" onClick={() => (active.remote && active.fsId
-                ? window.open(netdiskApi.contentUrlByFsid(active.fsId), '_blank')
-                : toast('该资料没有网盘 fs_id，无法取流'))}>在网盘中打开</button>
-              <button className="btn danger" onClick={() => { removePan(active.id); setActiveId(null); toast('已移除该资料') }}>移除</button>
-            </div>
-          </div>
-        ) : (
-          <div className="pan2-activity">
-            <div className="panel quick-import">
-              <div className="panel-title" style={{ marginBottom: 10 }}>快速导入</div>
-              <input className="qinput" placeholder="粘贴分享链接…" value={link} onChange={(e) => setLink(e.target.value)} />
-              <button className="btn primary" onClick={importLink}>导入到本地</button>
-            </div>
-            <div className="panel">
-              <div className="panel-title" style={{ marginBottom: 10 }}>最近同步</div>
-              <div className="act-list">
-                {recentSync.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>暂无同步记录</p>}
-                {recentSync.map((p) => (
-                  <div key={p.id} className="act-row">
-                    <span className={`act-dot ${p.synced ? 'green' : 'amber'}`} />
-                    <span className="act-text">{p.name}</span>
-                    <span className="act-time">{fmtDateCN(p.date)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ===== 登记资料弹窗 ===== */}
-      <Modal open={showAdd} title="登记网盘资料" onClose={() => setShowAdd(false)}
-        footer={<><button className="btn ghost" onClick={() => setShowAdd(false)}>取消</button><button className="btn primary" onClick={submit}>保存</button></>}>
-        <label style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>文件名
-          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="如：834 真题 2026.pdf" />
-        </label>
-        <label style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>类型
-          <select className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-            <option value="pdf">PDF 文档</option>
-            <option value="doc">Word 文档</option>
-            <option value="video">视频</option>
-            <option value="audio">音频</option>
-            <option value="zip">压缩包</option>
-            <option value="other">其他</option>
-          </select>
-        </label>
-        <label style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>分类
-          <select className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={form.cat} onChange={(e) => setForm({ ...form, cat: e.target.value })}>
-            {CATS.filter((c) => c !== '全部').map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
-        <label style={{ display: 'block', fontSize: 13 }}>说明
-          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} placeholder="资料用途、使用建议" />
+      {/* ===== 授权弹窗（oob 手动授权码） ===== */}
+      <Modal open={showAuth} title="授权百度网盘" onClose={() => setShowAuth(false)}
+        footer={<>
+          <button className="btn ghost" onClick={() => setShowAuth(false)}>取消</button>
+          <button className="btn primary" onClick={submitAuthCode} disabled={authBusy}>
+            {authBusy ? '正在换取…' : '完成授权'}
+          </button>
+        </>}>
+        <p style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.8, marginBottom: 10 }}>
+          点击下方按钮跳转百度网盘授权页，登录并同意授权后，<strong>复制页面显示的授权码（code）</strong>粘贴到下方输入框。
+          授权成功后自动进入文件浏览器。
+        </p>
+        <a href={authUrl} target="_blank" rel="noreferrer" className="btn primary"
+          style={{ textDecoration: 'none', display: 'inline-flex', marginBottom: 12 }}>前往百度网盘授权</a>
+        <label style={{ display: 'block', fontSize: 13 }}>授权码（code）
+          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }}
+            value={authCode} onChange={(e) => setAuthCode(e.target.value)} placeholder="粘贴授权码" />
         </label>
       </Modal>
 
-      {/* ===== API 配置弹窗（app_key / secret_key / redirect_uri，不再写死） ===== */}
+      {/* ===== 百度 API 配置弹窗 ===== */}
       <Modal open={showCfg} title="百度网盘 API 配置" onClose={() => setShowCfg(false)}
-        footer={<><button className="btn ghost" onClick={() => setShowCfg(false)}>取消</button><button className="btn primary" onClick={saveCfg} disabled={cfgSaving}>{cfgSaving ? '保存中…' : '保存'}</button></>}>
+        footer={<>
+          <button className="btn ghost" onClick={() => setShowCfg(false)}>取消</button>
+          <button className="btn primary" onClick={saveCfg} disabled={cfgSaving}>{cfgSaving ? '保存中…' : '保存'}</button>
+        </>}>
         <p style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.7, marginBottom: 12 }}>
           填入你在百度开放平台（pan.baidu.com/union）申请的 AppKey / SecretKey。
           留空则使用后端内置默认应用。
         </p>
         <label style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>App Key（client_id）
-          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={cfgForm.app_key} onChange={(e) => setCfgForm({ ...cfgForm, app_key: e.target.value })} placeholder="如：xxxxxxxxxxxxxxxx" />
+          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }}
+            value={cfgForm.app_key} onChange={(e) => setCfgForm({ ...cfgForm, app_key: e.target.value })} placeholder="如：xxxxxxxxxxxxxxxx" />
         </label>
         <label style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>Secret Key（client_secret）
-          <input className="input" type="password" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={cfgForm.secret_key} onChange={(e) => setCfgForm({ ...cfgForm, secret_key: e.target.value })} placeholder="如：xxxxxxxxxxxxxxxx" />
+          <input className="input" type="password" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }}
+            value={cfgForm.secret_key} onChange={(e) => setCfgForm({ ...cfgForm, secret_key: e.target.value })} placeholder="如：xxxxxxxxxxxxxxxx" />
         </label>
         <label style={{ display: 'block', fontSize: 13 }}>回调地址（redirect_uri）
-          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={cfgForm.redirect_uri} onChange={(e) => setCfgForm({ ...cfgForm, redirect_uri: e.target.value })} placeholder="oob（默认，表示授权后手动复制授权码）" />
+          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }}
+            value={cfgForm.redirect_uri} onChange={(e) => setCfgForm({ ...cfgForm, redirect_uri: e.target.value })} placeholder="oob（默认，表示授权后手动复制授权码）" />
         </label>
       </Modal>
 
-      {/* ===== 授权弹窗 ===== */}
-      <Modal open={showAuth} title="授权百度网盘" onClose={() => setShowAuth(false)}
-        footer={<><button className="btn ghost" onClick={() => setShowAuth(false)}>取消</button><button className="btn primary" onClick={submitAuthCode} disabled={authBusy}>{authBusy ? '正在换取…' : '完成授权'}</button></>}>
-        <p style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.8, marginBottom: 10 }}>
-          点击下方按钮跳转百度网盘授权页，登录并同意授权后，<strong>复制页面显示的授权码（code）</strong>粘贴到下方输入框。
+      {/* ===== 夸克 Web 视图配置弹窗 ===== */}
+      <Modal open={showQuarkCfg} title="夸克网盘 Web 视图配置" onClose={() => setShowQuarkCfg(false)}
+        footer={<>
+          <button className="btn ghost" onClick={() => setShowQuarkCfg(false)}>取消</button>
+          <button className="btn primary" onClick={saveQuarkCfg} disabled={quarkSaving}>{quarkSaving ? '保存中…' : '保存'}</button>
+        </>}>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.7, marginBottom: 12 }}>
+          夸克网盘未开放官方 API，此处配置要嵌入的网页地址（默认 pan.quark.cn 首页，也可填具体分享页）。
+          仅支持 http/https 地址；登录状态由浏览器 Cookie 维护。
         </p>
-        <a href={authUrl} target="_blank" rel="noreferrer" className="btn primary" style={{ textDecoration: 'none', display: 'inline-flex', marginBottom: 12 }}>前往百度网盘授权</a>
-        <label style={{ display: 'block', fontSize: 13 }}>授权码（code）
-          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={authCode} onChange={(e) => setAuthCode(e.target.value)} placeholder="粘贴授权码" />
+        <label style={{ display: 'block', fontSize: 13 }}>Web 视图地址
+          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }}
+            value={quarkForm.web_view_url} onChange={(e) => setQuarkForm({ web_view_url: e.target.value })}
+            placeholder="https://pan.quark.cn/" />
         </label>
       </Modal>
     </div>

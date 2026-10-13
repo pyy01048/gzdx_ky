@@ -91,6 +91,9 @@ ALLOWED_4XX = {
     # ---- 401：外部服务未授权（测试环境无网盘 OAuth token）----
     "/api/netdisk/recursive-files": ({401}, "百度网盘未授权（测试环境无 token）"),
     "/api/netdisk/quota": ({401}, "百度网盘未授权（测试环境无 token）"),
+    # 网盘重构后 /files 授权失效时显式 401（带 action=reauthorize），
+    # 不再静默返回本地同步缓存冒充"目录"——这是修 bug 后的预期行为
+    "/api/netdisk/files": ({401}, "百度网盘未授权（测试环境无 token）：授权失效显式 401，前端据此回到平台选择页"),
 
     # ---- 404：外部资源 id 在测试库中不存在（非源码缺陷）----
     "/api/kaoyan/schools/{school_id}": ({404}, "���试库无院校数据"),
