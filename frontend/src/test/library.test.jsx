@@ -61,10 +61,23 @@ const getContentMock = vi.fn(async (id) => ({
   id, file_name: '模电第三章-放大电路.pdf', content_length: 12, content: '共射放大电路的静态工作点…', truncated: false,
 }))
 
+// Library.jsx 的科目选项**唯一来源**是 GET /documents/subjects（不再硬编码数组），
+// 故 mock 必须实现 subjects()，否则页面 effect 会 `documentsApi.subjects is not
+// a function` 直接崩掉。返回体形状对齐后端 routers/documents.py:323 的
+// `{ subjects: [{ name, document_count, chunk_count }] }`。
+const SUBJECT_ROWS = [
+  { name: '数模电', document_count: 1, chunk_count: 8 },
+  { name: '408', document_count: 1, chunk_count: 5 },
+  { name: '公共课-英语', document_count: 1, chunk_count: 0 },
+  { name: '其他', document_count: 1, chunk_count: 2 },
+]
+const subjectsMock = vi.fn(async () => ({ subjects: SUBJECT_ROWS }))
+
 vi.mock('../api/client', () => ({
   documentsApi: {
     list: (...args) => listMock(...args),
     getContent: (...args) => getContentMock(...args),
+    subjects: (...args) => subjectsMock(...args),
   },
 }))
 
@@ -75,6 +88,8 @@ beforeEach(() => {
   getContentMock.mockImplementation(async (id) => ({
     id, file_name: 'x', content_length: 12, content: '共射放大电路的静态工作点…', truncated: false,
   }))
+  subjectsMock.mockClear()
+  subjectsMock.mockImplementation(async () => ({ subjects: SUBJECT_ROWS }))
 })
 
 afterEach(() => { cleanup() })
