@@ -4,7 +4,8 @@ import { fmtDateCN } from '../utils/date'
 // 体积口径全站一份：0 字节显示「—」，不再被 Math.max(1,...) 报成「1 KB」
 import { fmtBytes } from '../utils/format'
 import { SubTag, Modal, toast, CountUp } from '../components/UI'
-import { documentsApi, aiApi, kbImportApi } from '../api/client'
+import { LoadingState, ErrorState, EmptyState } from '../components/States'
+import { documentsApi, aiApi, kbImportApi, taxonomyApi, request, fileUrl } from '../api/client'
 import KbHealthPanel from '../components/KbHealthPanel'
 
 /* ============================================================
@@ -13,7 +14,25 @@ import KbHealthPanel from '../components/KbHealthPanel'
    V2 新增：
    ① 批量上传 + 去重：dropzone 拖拽多文件，按「文件名 + 字节数」指纹与库内文档比对，重复自动跳过
    ② 知识点图谱预览：知识点以 chip 标签云呈现，按科目 / 频率筛选，点击查看详情并可一键转记忆卡片
+   V3 治理（学习文库 / 文档知识库深度重构）：
+   ③ 三态（loading/empty/error）齐全，接入统一 States.jsx 组件
+   ④ 详情抽屉：Markdown 快照预览 + 导出 md/txt/pdf + 归档源文件 + 原始文件下载
+   ⑤ 批量选择：批量归档 / 标记删除 / 改科目（物理删除仍走 delete_guard 闸门）
+   ⑥ 内联科目维护入口（增删改科目，走科目 API，不硬编码）
+   ⑦ 空正文文档显著标记「正文缺失/待重新解析」并提供重新解析入口
+   ⑧ 扫描 knowledge_base 根目录 → 按科目自动归档（含断链跳过报告）
    ============================================================ */
+
+/* 文档治理：新端点未进 documentsApi（避免与并行改动冲突），此处就地封装 */
+const governanceApi = {
+  snapshot: (id) => request(`/documents/${id}/snapshot`),
+  exportUrl: (id, fmt) => fileUrl(`/documents/${id}/export`, { fmt: fmt || 'md' }),
+  archive: (id) => request(`/documents/${id}/archive`, { method: 'POST', body: {} }),
+  bulk: (body) => request('/documents/bulk', { method: 'POST', body }),
+  scanRoot: (dryRun) => request('/documents/scan-root', { method: 'POST', body: { dry_run: !!dryRun } }),
+}
+
+const EMPTY_CT = { subject: '', doc_type: '', stage: '', content_type: '', subject_source: '' }
 
 const VIEWS = [
   { label: '文档列表', value: 'list' },
@@ -30,6 +49,10 @@ const canInlinePreview = (d) => {
 }
 
 const ACCEPT = '.pdf,.docx,.doc,.txt,.md'
+
+/* 正文缺失判定：content_length 为 0（后端 documents.content 为空）。
+   实测约 150 篇此类文档，列表里要能一眼看出、并能就地重新解析。 */
+const isEmptyBody = (d) => (Number(d?.content_length) || 0) === 0
 
 /* 文件指纹：名称 + 字节数（同名同大小视为重复） */
 const sigOf = (name, size) => `${(name || '').trim().toLowerCase()}::${size || 0}`
@@ -85,6 +108,8 @@ export default function Documents() {
   const addCard = useStore((s) => s.addCard)
   const [backendOk, setBackendOk] = useState(false)
   const [docs, setDocs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadErr, setLoadErr] = useState('')
   const [subject, setSubject] = useState('all')
   const [subjectStats, setSubjectStats] = useState(null)
   const [subjectOptions, setSubjectOptions] = useState([])
@@ -127,6 +152,17 @@ export default function Documents() {
   const [kbDocIds, setKbDocIds] = useState(null) // null=全库；number[]=分批范围
   const [kbScopeLabel, setKbScopeLabel] = useState('全库') // Modal 标题展示用
 
+  // V3 治理：批量选择 / 详情抽屉 / 内联科目维护 / 扫描归档
+  const [selected, setSelected] = useState(() => new Set())
+  const [detailDoc, setDetailDoc] = useState(null)
+  const [snapshot, setSnapshot] = useState({ state: 'idle', md: '', path: '', exists: false })
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [scanningRoot, setScanningRoot] = useState(false)
+  const [subjMgrOpen, setSubjMgrOpen] = useState(false)
+  const [subjList, setSubjList] = useState([])
+  const [subjBusy, setSubjBusy] = useState(false)
+  const [subjEditor, setSubjEditor] = useState({ open: false, mode: 'create', original: '', name: '' })
+
   const refreshSubjects = useCallback(async () => {
     try {
       const s = await documentsApi.subjects()
@@ -142,6 +178,7 @@ export default function Documents() {
   }, [])
 
   const refresh = useCallback(async () => {
+    setLoading(true)
     try {
       const d = await documentsApi.list({ subject: subject === 'all' ? undefined : subject })
       const list = Array.isArray(d) ? d : (d.documents || d.items || [])
@@ -149,7 +186,9 @@ export default function Documents() {
         setDocs(list.map((x) => ({
           id: String(x.id),
           filename: x.file_name || x.filename || x.name || '未命名文档',
+          file_name: x.file_name || x.filename || x.name || '未命名文档',
           doc_type: x.file_type || x.doc_type || 'txt',
+          file_type: x.file_type || '',
           size: x.size || 0,
           subject: x.subject || '未分类',
           status: x.index_status === 'indexed' ? 'parsed' : (x.index_status || 'uploaded'),
@@ -158,13 +197,26 @@ export default function Documents() {
           uploaded_at: x.created_at || '',
           summary: (x.summary || '').slice(0, 120),
           content_length: x.content_length || 0,
-          chunk_count: x.chunk_count || 0
+          chunk_count: x.chunk_count || 0,
+          // V3 治理字段：原文可读性 / 阶段 / 来源，供详情抽屉与空正文标记使用
+          has_local_file: !!x.has_local_file,
+          local_file_note: x.local_file_note || '',
+          chunk_count_raw: x.chunk_count || 0,
+          stage: x.stage || '',
+          content_type: x.content_type || '',
+          subject_source: x.subject_source || '',
+          folder_path: x.folder_path || '',
+          index_status: x.index_status || '',
         })))
         setBackendOk(true)
+        setLoadErr('')
       }
-    } catch {
+    } catch (e) {
       setDocs([])
       setBackendOk(false)
+      setLoadErr(e?.message || '文档列表加载失败')
+    } finally {
+      setLoading(false)
     }
   }, [subject])
 
@@ -538,6 +590,188 @@ export default function Documents() {
     catch (e) { toast(`批量解析失败：${e.message}`) }
   }
 
+  /* ---------------- V3 治理：批量选择 ---------------- */
+  const toggleSelect = (id) => setSelected((prev) => {
+    const n = new Set(prev)
+    if (n.has(id)) n.delete(id); else n.add(id)
+    return n
+  })
+  const toggleAllVisible = (list, check) => setSelected((prev) => {
+    const n = new Set(prev)
+    list.forEach((d) => { if (check) n.add(d.id); else n.delete(d.id) })
+    return n
+  })
+  const clearSelection = () => setSelected(new Set())
+  const selectedDocs = useMemo(() => docs.filter((d) => selected.has(d.id)), [docs, selected])
+
+  /* ---------------- V3 治理：详情抽屉 + Markdown 快照 ---------------- */
+  const openDetail = async (d) => {
+    if (!backendOk) return toast('需连接后端查看文档详情')
+    setDetailDoc(d)
+    setSnapshot({ state: 'loading', md: '', path: '', exists: false })
+    try {
+      const r = await governanceApi.snapshot(Number(d.id))
+      setSnapshot({ state: 'ok', md: r.markdown || '', path: r.snapshot_path || '', exists: !!r.snapshot_exists })
+    } catch (e) {
+      setSnapshot({ state: 'error', md: '', path: '', exists: false })
+      toast(`读取快照失败：${e.message}`)
+    }
+  }
+
+  /* 导出统一快照（md/txt/pdf）。pdf 依赖缺失后端会降级为 md，这里据响应头明确提示。 */
+  const exportDoc = async (d, fmt) => {
+    if (!backendOk) return toast('需连接后端导出文档')
+    try {
+      const resp = await fetch(fileUrl(`/documents/${Number(d.id)}/export`, { fmt }))
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const degraded = resp.headers.get('X-Export-Degraded') === '1'
+      if (degraded) toast('PDF 渲染依赖缺失，已降级导出 Markdown（内容一致）')
+      const blob = await resp.blob()
+      // 从 Content-Disposition 里取回后端给的文件名（中文按 RFC 5987 编码）
+      const cd = resp.headers.get('content-disposition') || ''
+      const m = /filename\*=UTF-8''([^;]+)/i.exec(cd)
+      const fname = m ? decodeURIComponent(m[1]) : `${(d.filename || 'document').replace(/\.[^.]+$/, '')}.${fmt}`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fname
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 4000)
+      if (!degraded) toast(`已导出 ${fname}`)
+    } catch (e) {
+      toast(`导出失败：${e.message}`)
+    }
+  }
+
+  /* 归档源文件到 knowledge_base/_archive/（默认归档而非删除） */
+  const archiveDoc = async (d) => {
+    if (!backendOk) return toast('需连接后端归档')
+    if (!confirm(`把《${d.filename}》的源文件归档到 knowledge_base/_archive/？（不会删除数据）`)) return
+    try {
+      const r = await governanceApi.archive(Number(d.id))
+      toast(r.message || (r.archived ? '已归档' : '未归档'))
+      await refresh()
+    } catch (e) {
+      toast(`归档失败：${e.message}`)
+    }
+  }
+
+  /* 单篇改科目（内联入口） */
+  const changeDocSubject = async (d) => {
+    if (!backendOk) return toast('需连接后端')
+    const s = window.prompt(`把《${d.filename}》改到哪个科目？（填科目名）`, d.subject || '')
+    if (!s || !s.trim()) return
+    try {
+      const r = await governanceApi.bulk({ action: 'set_subject', doc_ids: [Number(d.id)], subject: s.trim() })
+      toast(r.message || '科目已更新')
+      await refresh()
+      refreshSubjects()
+    } catch (e) {
+      toast(`改科目失败：${e.message}`)
+    }
+  }
+
+  /* 批量操作：archive / mark_delete / set_subject / purge（purge 走 delete_guard 闸门） */
+  const bulkAction = async (action) => {
+    if (!backendOk) return toast('需连接后端执行批量操作')
+    const ids = selectedDocs.map((d) => Number(d.id))
+    if (!ids.length) return toast('请先勾选文档')
+    let body = { action, doc_ids: ids }
+    if (action === 'set_subject') {
+      const subj = window.prompt(`把选中的 ${ids.length} 篇文档改到哪个科目？（填科目名）`, selectedDocs[0]?.subject || '')
+      if (!subj || !subj.trim()) return
+      body.subject = subj.trim()
+    }
+    if (action === 'mark_delete' && !confirm(`标记删除 ${ids.length} 篇文档的源文件（移动到 _trash/，记录保留）？`)) return
+    if (action === 'purge' && !confirm(`物理删除 ${ids.length} 篇文档及其分块/知识点？此操作不可逆，需已开启物理删除开关。`)) return
+    if (action === 'archive' && !confirm(`归档 ${ids.length} 篇文档的源文件到 _archive/？（不会删除数据）`)) return
+    setBulkBusy(true)
+    try {
+      const r = await governanceApi.bulk(body)
+      toast(r.message || '批量操作完成')
+      if (action !== 'set_subject') clearSelection()
+      await refresh()
+      refreshSubjects()
+    } catch (e) {
+      toast(`批量操作失败：${e.message}`)
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  /* 扫描 knowledge_base 根目录 → 按科目归档（dryRun 预览） */
+  const runScanRoot = async (dryRun) => {
+    if (!backendOk) return toast('需连接后端扫描')
+    if (!dryRun && !confirm('扫描 knowledge_base 根目录并按科目归档？文件会被移动到 {科目}/ 目录，DB 路径同步更新（断链记录只统计不动）。')) return
+    setScanningRoot(true)
+    try {
+      const r = await governanceApi.scanRoot(dryRun)
+      const msg = r.message || `移动 ${r.moved}，跳过 ${r.skipped}，断链 ${r.broken}，失败 ${r.errors}`
+      toast(msg)
+      if (!dryRun) { await refresh(); refreshSubjects() }
+    } catch (e) {
+      toast(`扫描失败：${e.message}`)
+    } finally {
+      setScanningRoot(false)
+    }
+  }
+
+  /* ---------------- V3 治理：内联科目维护（走科目 API，不硬编码） ---------------- */
+  const loadSubjects = useCallback(async () => {
+    setSubjBusy(true)
+    try {
+      const d = await taxonomyApi.subjects()
+      const list = Array.isArray(d) ? d : (d?.subjects || d?.items || [])
+      setSubjList(Array.isArray(list) ? list : [])
+    } catch (e) {
+      toast(`加载科目失败：${e.message}`)
+    } finally {
+      setSubjBusy(false)
+    }
+  }, [])
+
+  const openSubjectMgr = () => { setSubjMgrOpen(true); loadSubjects() }
+
+  const submitSubjectForm = async () => {
+    const name = (subjEditor.name || '').trim()
+    if (!name) return toast('请填写科目名称')
+    setSubjBusy(true)
+    try {
+      if (subjEditor.mode === 'create') {
+        await taxonomyApi.createSubject({ subject: name })
+        toast('科目已添加')
+      } else {
+        await taxonomyApi.updateSubject(subjEditor.original, { subject: name })
+        toast('科目已更新')
+      }
+      setSubjEditor({ open: false, mode: 'create', original: '', name: '' })
+      await loadSubjects()
+      refreshSubjects()
+    } catch (e) {
+      toast(`保存失败：${e.message}`)
+    } finally {
+      setSubjBusy(false)
+    }
+  }
+
+  const removeSubject = async (item) => {
+    const n = item?.question_count || 0
+    const tip = n > 0
+      ? `科目「${item.subject}」下已有 ${n} 道题目，删除后这些题目将失去科目归属，确定删除吗？`
+      : `确定删除科目「${item.subject}」吗？`
+    if (!window.confirm(tip)) return
+    try {
+      await taxonomyApi.removeSubject(item.subject)
+      toast('科目已删除')
+      await loadSubjects()
+      refreshSubjects()
+    } catch (e) {
+      toast(`删除失败：${e.message}`)
+    }
+  }
+
   const [previewDoc, setPreviewDoc] = useState(null)
   const [previewContent, setPreviewContent] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -591,6 +825,16 @@ export default function Documents() {
     <div>
       <style>{`
         .doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+        /* V3 治理：批量操作栏 / 选择框 / 详情抽屉 / 内联科目维护 */
+        .doc-bulkbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+        .doc-check-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+        .doc-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); flex: none; }
+        .doc-card-checked { border-color: var(--accent) !important; box-shadow: 0 0 0 1px var(--accent) inset; }
+        .doc-detail { display: flex; flex-direction: column; gap: 10px; }
+        .doc-detail-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+        .doc-detail-mdhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+        .doc-detail-path { font-weight: 400; color: var(--ink-3); font-size: 11.5px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-subjmgr { max-height: 52vh; overflow-y: auto; }
         .kp-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
         .kp-chip-lg { font-size: 13px; padding: 7px 13px; }
         .doc-pre { font-size: 12.8px; line-height: 1.9; white-space: pre-wrap; word-break: break-word; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px; max-height: 46vh; overflow-y: auto; }
@@ -635,6 +879,13 @@ export default function Documents() {
           {backendOk ? <span className="badge success">后端已连接</span> : <span className="badge warning">后端离线</span>}
           <span className="badge info">{overview.total} 篇 · {overview.chunks} 分块</span>
           <button className="btn ghost" onClick={parseAll} disabled={!backendOk || !overview.pending}>批量解析未入库</button>
+          <button className="btn ghost" onClick={() => runScanRoot(false)} disabled={!backendOk || scanningRoot}
+            title="扫描 knowledge_base 根目录，按科目归档到 {科目}/ 并同步 DB 路径（断链只统计）">
+            {scanningRoot ? '扫描中…' : '🗂 扫描归档根目录'}
+          </button>
+          <button className="btn ghost" onClick={openSubjectMgr} disabled={!backendOk} title="内联维护科目（增删改）">
+            科目维护
+          </button>
           <button className="btn outline" onClick={() => openKbImport(null)} disabled={!backendOk} title="扫描全部文档识别题目（约5分钟，建议分批）">
             🔍 全库识别
           </button>
@@ -853,72 +1104,124 @@ export default function Documents() {
 
       {/* ============ 文档列表 ============ */}
       {view === 'list' && (
-        filtered.length === 0 ? (
-          <div className="card"><div className="card-body">
-            <div className="empty">
-              <div className="e-ico">📁</div>
-              <div className="e-title">{docs.length ? '没有匹配的文档' : '知识库还是空的'}</div>
-              <div className="e-text">{docs.length ? '换个关键词或清除科目筛选试试' : '上传一份讲义或真题，让 AI 帮你解析知识点'}</div>
-              <div className="e-actions">
-                <button className="btn primary" onClick={() => fileRef.current?.click()}>↑ 选择文件上传</button>
-                {docs.length > 0 && <button className="btn ghost" onClick={() => { setQ(''); setSubject('all') }}>清除筛选</button>}
-              </div>
-            </div>
-          </div></div>
-        ) : (
-          <div className="doc-grid">
-            {filtered.map((d) => {
-              const t = TYPE_ICO[(d.doc_type || 'txt').toLowerCase()] || TYPE_ICO.txt
-              return (
-                <div key={d.id} className="card">
-                  <div className="card-head">
-                    <div className="row" style={{ gap: 10, minWidth: 0 }}>
-                      <div className={`ico sm ${t.cls}`} style={{ fontSize: 11, fontWeight: 800 }}>{t.text}</div>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="card-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 210 }} title={d.filename}>{d.filename}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>{fmtDateCN(d.uploaded_at)} · {fmtBytes(d.size)}</div>
-                      </div>
-                    </div>
-                    {d.status === 'parsed' ? <span className="badge success">已入库</span>
-                      : d.status === 'failed' ? <span className="badge danger">入库失败</span>
-                        : <span className="badge warning">未解析</span>}
+        <>
+          {loading && docs.length === 0 ? (
+            <div className="card"><div className="card-body"><LoadingState text="正在加载文档…" rows={4} /></div></div>
+          ) : loadErr ? (
+            <div className="card"><div className="card-body">
+              <ErrorState message={loadErr} onRetry={refresh} />
+            </div></div>
+          ) : (
+            <>
+              {/* 批量操作栏：勾选后批量归档 / 标记删除 / 改科目（物理删除走闸门） */}
+              <div className="doc-bulkbar">
+                <label className="doc-check-inline">
+                  <input type="checkbox"
+                    checked={filtered.length > 0 && filtered.every((d) => selected.has(d.id))}
+                    onChange={(e) => toggleAllVisible(filtered, e.target.checked)} />
+                  <span>全选当前 {filtered.length} 篇</span>
+                </label>
+                {selected.size > 0 && (
+                  <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                    <span className="badge accent">已选 {selected.size}</span>
+                    <button className="btn ghost sm" disabled={bulkBusy} onClick={() => bulkAction('archive')}>归档源文件</button>
+                    <button className="btn ghost sm" disabled={bulkBusy} onClick={() => bulkAction('set_subject')}>批量改科目</button>
+                    <button className="btn ghost sm" disabled={bulkBusy} onClick={() => bulkAction('mark_delete')}>标记删除</button>
+                    <button className="btn danger sm" disabled={bulkBusy} title="物理删除需开启 KAOYAN_ALLOW_PHYSICAL_DELETE=1"
+                      onClick={() => bulkAction('purge')}>物理删除</button>
+                    <button className="btn ghost sm" disabled={bulkBusy} onClick={clearSelection}>清除选择</button>
                   </div>
-                  <div className="card-body">
-                    <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                      <SubTag subject={d.subject} />
-                      <span className="badge">{(d.content_length || 0).toLocaleString()} 字</span>
-                      {d.chunk_count > 0 ? <span className="badge info">{d.chunk_count} 分块</span> : <span className="badge">无分块</span>}
-                    </div>
-                    {d.summary
-                      ? <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.8, margin: 0 }}>{d.summary}</p>
-                      : <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: 0 }}>暂无摘要，解析后自动生成</p>}
-                  </div>
-                  <div className="card-foot" style={{ flexWrap: 'wrap', gap: 8 }}>
-                    {d.status === 'parsed' ? (
-                      <>
-                        <button className="btn ghost" onClick={() => showKnowledge(d)}>知识点</button>
-                        {d.chunk_count > 0 && <button className="btn ghost" onClick={() => showChunks(d)}>≡ 分块</button>}
-                        <button className="btn ghost" onClick={() => handleShowPreview(d)}>原文</button>
-                        {/* #26：本地原文预览/下载。754 篇本地没有原文（439 未登记路径 + 238 IMA 媒体号 + 77 已失效），
-                            按钮按 has_local_file 置灰并把原因写在 title，而不是点了才报错 */}
-                        <button className="btn ghost" disabled={!d.has_local_file}
-                          title={d.has_local_file ? '在浏览器里打开原文件' : (d.local_file_note || '本地没有原文件')}
-                          onClick={() => setFileDoc(d)}>📄 原文件</button>
-                        <button className="btn ghost" disabled={analyzingId === d.id} onClick={() => analyze(d)}>{analyzingId === d.id ? '分析中…' : '✨ 智能分析'}</button>
-                        <button className="btn ghost" disabled={previewingId === d.id} onClick={() => handlePreviewQuestions(d)}>{previewingId === d.id ? '预览中…' : '👁 预览题目'}</button>
-                        <button className="btn ghost" onClick={() => openKbImport([Number(d.id)])}>🔍 识别</button>
-                        <button className="btn ghost" onClick={() => generateQuiz(d)}>出题</button>
-                      </>
-                    ) : (
-                      <button className="btn primary" disabled={parsingId === d.id} onClick={() => parse(d.id)}>{parsingId === d.id ? '解析中…' : '开始解析'}</button>
-                    )}
-                    <button className="btn danger" onClick={() => remove(d.id)}>删除</button>
-                  </div>
+                )}
+                <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
+                  <span className="badge warning">{docs.filter(isEmptyBody).length} 篇正文缺失</span>
+                  <button className="btn ghost sm" disabled={scanningRoot} onClick={() => runScanRoot(true)}>预览扫描归档</button>
                 </div>
-              )
-            })}
-          </div>
-        )
+              </div>
+
+              {filtered.length === 0 ? (
+                <div className="card"><div className="card-body">
+                  <EmptyState
+                    icon="📁"
+                    title={docs.length ? '没有匹配的文档' : '知识库还是空的'}
+                    desc={docs.length ? '换个关键词或清除科目筛选试试' : '上传一份讲义或真题，让 AI 帮你解析知识点'}
+                    action={(
+                      <>
+                        <button className="btn primary" onClick={() => fileRef.current?.click()}>↑ 选择文件上传</button>
+                        {docs.length > 0 && <button className="btn ghost" onClick={() => { setQ(''); setSubject('all') }}>清除筛选</button>}
+                      </>
+                    )}
+                  />
+                </div></div>
+              ) : (
+                <div className="doc-grid">
+                  {filtered.map((d) => {
+                    const t = TYPE_ICO[(d.doc_type || 'txt').toLowerCase()] || TYPE_ICO.txt
+                    const empty = isEmptyBody(d)
+                    const checked = selected.has(d.id)
+                    return (
+                      <div key={d.id} className={`card ${checked ? 'doc-card-checked' : ''}`}>
+                        <div className="card-head">
+                          <div className="row" style={{ gap: 10, minWidth: 0 }}>
+                            <input type="checkbox" className="doc-check" checked={checked}
+                              onChange={() => toggleSelect(d.id)} title="选择该文档" />
+                            <div className={`ico sm ${t.cls}`} style={{ fontSize: 11, fontWeight: 800 }}>{t.text}</div>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="card-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 190 }} title={d.filename}>{d.filename}</div>
+                              <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>{fmtDateCN(d.uploaded_at)} · {fmtBytes(d.size)}</div>
+                            </div>
+                          </div>
+                          {empty ? <span className="badge danger" title="正文缺失：documents.content 为空，建议重新解析">正文缺失</span>
+                            : d.status === 'parsed' ? <span className="badge success">已入库</span>
+                              : d.status === 'failed' ? <span className="badge danger">入库失败</span>
+                                : <span className="badge warning">未解析</span>}
+                        </div>
+                        <div className="card-body">
+                          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                            <SubTag subject={d.subject} />
+                            <span className={`badge ${empty ? 'danger' : ''}`}>{empty ? '待重新解析' : `${(d.content_length || 0).toLocaleString()} 字`}</span>
+                            {d.chunk_count > 0 ? <span className="badge info">{d.chunk_count} 分块</span> : <span className="badge">无分块</span>}
+                          </div>
+                          {d.summary
+                            ? <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.8, margin: 0 }}>{d.summary}</p>
+                            : <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: 0 }}>暂无摘要，解析后自动生成</p>}
+                        </div>
+                        <div className="card-foot" style={{ flexWrap: 'wrap', gap: 8 }}>
+                          <button className="btn ghost" onClick={() => openDetail(d)}>详情</button>
+                          {empty && (
+                            <button className="btn primary" disabled={parsingId === d.id} onClick={() => parse(d.id)}>
+                              {parsingId === d.id ? '解析中…' : '重新解析'}
+                            </button>
+                          )}
+                          {d.status === 'parsed' && !empty ? (
+                            <>
+                              <button className="btn ghost" onClick={() => showKnowledge(d)}>知识点</button>
+                              {d.chunk_count > 0 && <button className="btn ghost" onClick={() => showChunks(d)}>≡ 分块</button>}
+                              <button className="btn ghost" onClick={() => handleShowPreview(d)}>原文</button>
+                              {/* #26：本地原文预览/下载。754 篇本地没有原文（439 未登记路径 + 238 IMA 媒体号 + 77 已失效），
+                                  按钮按 has_local_file 置灰并把原因写在 title，而不是点了才报错 */}
+                              <button className="btn ghost" disabled={!d.has_local_file}
+                                title={d.has_local_file ? '在浏览器里打开原文件' : (d.local_file_note || '本地没有原文件')}
+                                onClick={() => setFileDoc(d)}>📄 原文件</button>
+                              <button className="btn ghost" disabled={analyzingId === d.id} onClick={() => analyze(d)}>{analyzingId === d.id ? '分析中…' : '✨ 智能分析'}</button>
+                              <button className="btn ghost" disabled={previewingId === d.id} onClick={() => handlePreviewQuestions(d)}>{previewingId === d.id ? '预览中…' : '👁 预览题目'}</button>
+                              <button className="btn ghost" onClick={() => openKbImport([Number(d.id)])}>🔍 识别</button>
+                              <button className="btn ghost" onClick={() => generateQuiz(d)}>出题</button>
+                            </>
+                          ) : (d.status !== 'parsed' && !empty) ? (
+                            <button className="btn primary" disabled={parsingId === d.id} onClick={() => parse(d.id)}>{parsingId === d.id ? '解析中…' : '开始解析'}</button>
+                          ) : null}
+                          <button className="btn ghost" onClick={() => changeDocSubject(d)} title="把该文档改到其他科目">改科目</button>
+                          <button className="btn ghost" disabled={!d.has_local_file} onClick={() => archiveDoc(d)} title={d.has_local_file ? '归档源文件到 _archive/' : '本地无原文，无法归档'}>归档</button>
+                          <button className="btn danger" onClick={() => remove(d.id)}>删除</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
 
       {/* ============ 知识点图谱 / 分块 ============ */}
@@ -1289,6 +1592,118 @@ export default function Documents() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* ============ V3 治理：文档详情抽屉（Markdown 快照 + 导出 + 归档） ============ */}
+      <Modal
+        open={!!detailDoc}
+        title={detailDoc ? `文档详情 · ${detailDoc.filename}` : ''}
+        onClose={() => { setDetailDoc(null); setSnapshot({ state: 'idle', md: '', path: '', exists: false }) }}
+        footer={detailDoc ? (
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn ghost" onClick={() => exportDoc(detailDoc, 'md')}>导出 MD</button>
+            <button className="btn ghost" onClick={() => exportDoc(detailDoc, 'txt')}>导出 TXT</button>
+            <button className="btn ghost" onClick={() => exportDoc(detailDoc, 'pdf')} title="PDF 依赖不可用时后端会降级为 Markdown 并提示">导出 PDF</button>
+            {detailDoc.has_local_file && (
+              <>
+                <a className="btn ghost" href={documentsApi.downloadUrl(detailDoc.id)} download>下载原文件</a>
+                <button className="btn ghost" onClick={() => archiveDoc(detailDoc)}>归档源文件</button>
+              </>
+            )}
+            {isEmptyBody(detailDoc) && (
+              <button className="btn primary" disabled={parsingId === detailDoc.id} onClick={() => parse(detailDoc.id)}>
+                {parsingId === detailDoc.id ? '解析中…' : '重新解析'}
+              </button>
+            )}
+            <button className="btn ghost" onClick={() => { setDetailDoc(null) }}>关闭</button>
+          </div>
+        ) : null}
+      >
+        {detailDoc && (
+          <div className="doc-detail">
+            <div className="doc-detail-meta">
+              <span className="badge">{detailDoc.file_type || detailDoc.doc_type || '未知类型'}</span>
+              <SubTag subject={detailDoc.subject} />
+              <span className="badge">{fmtBytes(detailDoc.size)}</span>
+              <span className={`badge ${isEmptyBody(detailDoc) ? 'danger' : 'info'}`}>{detailDoc.content_length || 0} 字</span>
+              {isEmptyBody(detailDoc) && <span className="badge danger">正文缺失，建议重新解析</span>}
+              {!detailDoc.has_local_file && <span className="badge warning" title={detailDoc.local_file_note}>{detailDoc.local_file_note || '本地无原文'}</span>}
+            </div>
+            <div className="doc-detail-mdhead">
+              <span>Markdown 快照预览</span>
+              {snapshot.path && <span className="doc-detail-path" title={snapshot.path}>{snapshot.exists ? '已落盘' : '未落盘'}：{snapshot.path}</span>}
+            </div>
+            {snapshot.state === 'loading' ? (
+              <div className="loading-inline"><i />正在生成快照…</div>
+            ) : snapshot.state === 'error' ? (
+              <div className="doc-pre">快照生成失败，可稍后重试</div>
+            ) : (
+              <div className="doc-pre">{snapshot.md || '（该文档暂无正文，快照为空）'}</div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* ============ V3 治理：内联科目维护（增删改，走科目 API） ============ */}
+      <Modal
+        open={subjMgrOpen}
+        title="科目维护（文档页内联入口）"
+        onClose={() => setSubjMgrOpen(false)}
+        footer={<button className="btn primary" onClick={() => setSubjMgrOpen(false)}>关闭</button>}
+      >
+        <div className="doc-subjmgr">
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+            <span className="badge info">共 {subjList.length} 个科目</span>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn ghost sm" disabled={subjBusy} onClick={loadSubjects}>刷新</button>
+              <button className="btn primary sm" onClick={() => setSubjEditor({ open: true, mode: 'create', original: '', name: '' })}>+ 添加科目</button>
+            </div>
+          </div>
+          {subjBusy && subjList.length === 0 ? (
+            <div className="loading-inline"><i />加载科目…</div>
+          ) : subjList.length === 0 ? (
+            <EmptyState icon="📚" title="暂无科目" desc="点击「添加科目」创建第一个科目" />
+          ) : (
+            <div className="list">
+              {subjList.map((s) => (
+                <div key={s.subject} className="list-row">
+                  <div className="lr-main">
+                    <div className="lr-title">{s.subject}</div>
+                    <div className="lr-meta">
+                      {s.unregistered ? '未登记' : s.is_custom ? '自定义' : '内置'}
+                      {s.question_count != null ? ` · ${s.question_count} 题` : ''}
+                      {s.document_count != null ? ` · ${s.document_count} 篇资料` : ''}
+                    </div>
+                  </div>
+                  <div className="lr-actions">
+                    <button className="btn ghost sm" onClick={() => setSubjEditor({ open: true, mode: 'edit', original: s.subject, name: s.subject })}>编辑</button>
+                    <button className="btn danger sm" onClick={() => removeSubject(s)}>删除</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 添加 / 编辑子弹窗 */}
+        <Modal
+          open={subjEditor.open}
+          title={subjEditor.mode === 'create' ? '添加科目' : '编辑科目'}
+          onClose={() => setSubjEditor({ open: false, mode: 'create', original: '', name: '' })}
+          footer={(
+            <>
+              <button className="btn ghost" onClick={() => setSubjEditor({ open: false, mode: 'create', original: '', name: '' })}>取消</button>
+              <button className="btn primary" disabled={subjBusy} onClick={submitSubjectForm}>{subjBusy ? '保存中…' : '保存'}</button>
+            </>
+          )}
+        >
+          <div className="field">
+            <label>科目名称</label>
+            <input className="input" value={subjEditor.name} autoFocus
+              onChange={(e) => setSubjEditor((s) => ({ ...s, name: e.target.value }))}
+              placeholder="如：数字电子技术" />
+          </div>
+        </Modal>
       </Modal>
     </div>
   )

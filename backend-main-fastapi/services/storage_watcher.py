@@ -434,6 +434,12 @@ class StorageWatcher:
             # 清理无效Unicode字符（代理对、控制字符等）
             content_text = clean_text(content_text)
 
+            # 导入时预清洗行内水印（公众号/微信/QQ群/淘宝店等）。
+            # 放在质量闸门**之后**：闸门靠连续控制字节的分布识别坏文件，
+            # 先剔水印行会影响该统计；这里只动水印行、不碰控制字符判定。
+            from services.kb_service import preclean_watermarks
+            content_text, _wm_dropped, _wm_mixed = preclean_watermarks(content_text)
+
             # 3. 更新Document内容
             # 旧写法 `content_text[:5000]` 是"截断副本"的来源：库里因此留下
             # 一批只有前 5000 字的行，去重时新正文会被并进残本、整份内容丢失，

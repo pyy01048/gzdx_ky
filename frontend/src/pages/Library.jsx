@@ -32,20 +32,7 @@ const STAGE_OPTIONS = [
   { value: '复试', label: '复试' },
 ]
 
-/* 科目选项：专业课并列；公共课三个子项归入「公共课」分组，避免一行里三个
-   「公共课-xx」长标签把 chip 挤爆。value 必须与后端 Document.subject 取值一致。 */
-const SUBJECT_OPTIONS = [
-  { value: '', label: '全部' },
-  { value: '数模电', label: '数模电' },
-  { value: '408', label: '408' },
-  { value: '信号与系统', label: '信号与系统' },
-  { value: '公共课-数学', label: '数学', group: '公共课' },
-  { value: '公共课-政治', label: '政治', group: '公共课' },
-  { value: '公共课-英语', label: '英语', group: '公共课' },
-  { value: '其他', label: '其他' },
-]
-
-/* 内容性质（与后端 Document.content_type 取值一致） */
+/* 内容性质（与后端 Document.content_type 取值一致；这是内容枚举，非科目数组） */
 const CONTENT_TYPE_OPTIONS = [
   { value: '', label: '全部' },
   { value: '知识', label: '知识' },
@@ -105,11 +92,28 @@ export default function Library() {
   const [subject, setSubject] = useState('')
   const [contentType, setContentType] = useState('')
 
+  // 科目选项：唯一来源是科目 API（GET /api/documents/subjects），**不硬编码科目数组**。
+  // 科目字典里配好但还没数据的科目也会返回，这里再按 IMA 实际数据收窄，
+  // 避免 30+ 空科目把 chip 挤爆（收窄依据是真实计数，不是写死的名单）。
+  const [subjectOptions, setSubjectOptions] = useState([])
+
   const [items, setItems] = useState([])        // 当前筛选组合下的资料（服务端过滤）
   const [facet, setFacet] = useState([])        // 当前阶段全量（用于 chip 计数）
   const [status, setStatus] = useState('loading') // loading | ok | error
   const [loading, setLoading] = useState(false)   // 清单请求进行中（含切筛选时的刷新）
   const [errMsg, setErrMsg] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    documentsApi.subjects()
+      .then((d) => {
+        if (!alive) return
+        const names = (d?.subjects || []).map((s) => s.name).filter(Boolean)
+        setSubjectOptions(names)
+      })
+      .catch(() => { if (alive) setSubjectOptions([]) }) // 科目 API 挂了不影响资料清单
+    return () => { alive = false }
+  }, [])
 
   // 正文预览：就地展开，一次只展开一条
   const [openId, setOpenId] = useState(null)
@@ -161,6 +165,17 @@ export default function Library() {
     () => countBy(facet.filter((d) => !subject || d.subject === subject), 'content_type'),
     [facet, subject]
   )
+
+  /* 科目 chip 列表：以科目 API 为骨架，按本阶段 IMA 实际计数收窄；
+     数据里出现但 API 未登记的科目（unregistered）补在末尾，保证不漏数据。 */
+  const subjectChips = useMemo(() => {
+    const inData = Object.keys(subjectCounts).filter(Boolean)
+    const base = subjectOptions.length
+      ? subjectOptions.filter((s) => inData.includes(s))
+      : inData
+    const extra = inData.filter((s) => !base.includes(s))
+    return [...base, ...extra]
+  }, [subjectOptions, subjectCounts])
 
   /* ---------------- 切换筛选：收起预览，避免残留上一条的正文 ---------------- */
   const closePreview = () => {
@@ -271,7 +286,7 @@ export default function Library() {
     )
   }
 
-  const subjectLabel = SUBJECT_OPTIONS.find((o) => o.value === subject)?.label || '全部'
+  const subjectLabel = subject || '全部'
   const ctLabel = contentType || '全部'
 
   return (
@@ -298,28 +313,34 @@ export default function Library() {
         </div>
       </div>
 
-      {/* 科目筛选 */}
+      {/* 科目筛选（选项来自科目 API，按本阶段实际计数收窄） */}
       <div className="lb-filterbar">
         <Folder size={15} className="lb-filterbar-icon" />
         <span className="lb-filter-label">科目</span>
         <div className="kb-chips">
-          {SUBJECT_OPTIONS.map((o, i) => {
-            const prev = SUBJECT_OPTIONS[i - 1]
-            const needGroup = o.group && (!prev || prev.group !== o.group)
-            const n = subjectCounts[o.value] || 0
+          <button
+            className={`kb-chip ${subject === '' ? 'active' : ''}`}
+            onClick={() => pickSubject('')}
+          >
+            全部
+            {(facet.length > 0) && <small>{facet.length}</small>}
+          </button>
+          {subjectChips.map((name) => {
+            const n = subjectCounts[name] || 0
             return (
-              <React.Fragment key={o.value || 'all'}>
-                {needGroup && <span className="lb-chip-group">{o.group}</span>}
-                <button
-                  className={`kb-chip ${subject === o.value ? 'active' : ''}`}
-                  onClick={() => pickSubject(o.value)}
-                >
-                  {o.label}
-                  {n > 0 && <small>{n}</small>}
-                </button>
-              </React.Fragment>
+              <button
+                key={name}
+                className={`kb-chip ${subject === name ? 'active' : ''}`}
+                onClick={() => pickSubject(name)}
+              >
+                {name}
+                {n > 0 && <small>{n}</small>}
+              </button>
             )
           })}
+          {subjectChips.length === 0 && (
+            <span className="lb-filter-label" style={{ opacity: 0.7 }}>（当前阶段暂无 IMA 资料）</span>
+          )}
         </div>
       </div>
 
@@ -392,7 +413,7 @@ export default function Library() {
                         {(Number(d.chunk_count) || 0) > 0 && ` · ${d.chunk_count} 分块`}
                       </span>
                       <span className={`lb-state ${parsed ? 'ok' : ''}`}>
-                        {parsed ? '已解析' : '未解析'}
+                        {parsed ? '已解析' : ((Number(d.content_length) || 0) === 0 ? '正文缺失' : '未解析')}
                       </span>
                       <span className="lb-src">{d.subject_source === 'ima' ? 'IMA' : (d.subject_source || '本地')}</span>
                     </button>
