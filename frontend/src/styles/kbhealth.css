@@ -87,6 +87,30 @@
 }
 .kb-h-val.bad { color: var(--red); font-weight: 600; }
 
+/* ---------- 系统健康（/api/health 的 kb 段） ---------- */
+.kb-sys-health {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.kb-sys-health > summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.kb-sys-health > summary::before {
+  content: '▸ ';
+  color: var(--ink-3);
+}
+.kb-sys-health[open] > summary::before {
+  content: '▾ ';
+}
+.kb-sys-health > summary:hover { color: var(--ink); }
+.kb-sys-health .kb-health-grid { border-top: none; padding-top: 10px; }
+
 /* ---------- 建立流程 ---------- */
 .kb-flow {
   margin-top: 14px;

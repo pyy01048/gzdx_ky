@@ -81,6 +81,34 @@ class ReviewScheduler:
         return utcnow() + datetime.timedelta(days=30)  # naive UTC（P0-4）
 
     @staticmethod
+    def first_review_at(accuracy: Optional[float] = None) -> datetime.datetime:
+        """新错题首入库的首次复习排程（naive UTC）。
+
+        修复背景（与单词 V12 修复同族的错题侧缺口）：
+            旧逻辑对三个错题入口（手动收录 / 刷题判错 / 模考回流）一律用
+            ``ebinghaus_next_review(0)`` 排程——20 分钟后即"今日到期"。
+            后果：新错题入册当天全部涌入"今日复习队列"，整本错题本失真
+            （症状与单词侧"4568/4569 今日待复习"完全同族）。
+            单词/卡片侧的口径是：新内容不进当日 due 队列，首间隔至少 1 天。
+
+        按掌握度（accuracy，0-1）给合理的首次复习间隔：
+            accuracy 缺失或 < 0.5（没掌握/未评估）→ 1 天后（SM-2 标准首间隔）
+            0.5 ≤ accuracy < 0.8（半会）           → 2 天后
+            accuracy ≥ 0.8（眼会手错）             → 3 天后
+        """
+        try:
+            acc = float(accuracy) if accuracy is not None else None
+        except (TypeError, ValueError):
+            acc = None
+        if acc is None or acc < 0.5:
+            days = 1
+        elif acc < 0.8:
+            days = 2
+        else:
+            days = 3
+        return utcnow() + datetime.timedelta(days=days)  # naive UTC（P0-4）
+
+    @staticmethod
     def get_due_flashcards(db: Session, limit: int = 100) -> List[Flashcard]:
         """获取今日待复习卡片。"""
         now = utcnow()  # naive UTC，与 DB 列比较（P0-4）

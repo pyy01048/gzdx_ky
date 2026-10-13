@@ -64,10 +64,10 @@ export default function QuizBank() {
   useEffect(() => {
     taxonomyApi.subjects()
       .then((d) => setSubjects(Array.isArray(d) ? d : (d && (d.subjects || d.items)) || []))
-      .catch(() => {})
+      .catch((e) => { setSubjects([]); toast('科目列表加载失败：' + (e?.message || '未知错误')) })
     quizApi.sections()
       .then((d) => setChapters((d && d.items) || []))
-      .catch(() => {})
+      .catch((e) => { setChapters([]); toast('章节列表加载失败：' + (e?.message || '未知错误')) })
   }, [])
 
   /* 全局统计（一次即可） */
@@ -82,7 +82,7 @@ export default function QuizBank() {
           graduated: d.graduated_errors ?? 0,
         })
       })
-      .catch(() => {})
+      .catch((e) => toast('题库统计加载失败：' + (e?.message || '未知错误')))
   }, [])
 
   /* 题库总量：与列表接口同口径（默认 answerable=true，仅返回可作答题）。
@@ -92,7 +92,7 @@ export default function QuizBank() {
   useEffect(() => {
     quizApi.questions({ page: 1, page_size: 1 })
       .then((d) => { if (d && typeof d.total === 'number') setBankTotal(d.total) })
-      .catch(() => {})
+      .catch((e) => toast('题库总量统计失败：' + (e?.message || '未知错误')))
   }, [])
 
   const loadQuestions = useCallback(async () => {

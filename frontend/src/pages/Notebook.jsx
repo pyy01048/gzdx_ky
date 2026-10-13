@@ -1,10 +1,25 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import useStore from '../store/useStore'
-import { fmtDateCN, todayStr } from '../utils/date'
+import { fmtDateCN, todayStr, addDays } from '../utils/date'
 import { toApiId } from '../utils/id'
 import { SubTag, Modal, Segmented, Empty, toast, CountUp } from '../components/UI'
 import { errorsApi, flashcardsApi, taxonomyApi } from '../api/client'
 import { fileToCompressedDataUrl, dataUrlToFile } from '../utils/image'
+
+/* 今日到期判定（与后端 due 口径对齐：active 且已排期且 next_review ≤ 今天）。
+   V12 同族修复：旧逻辑把全部 active 错题都算"今日待复习"——新入库错题首间隔
+   ≥1 天，不当日进队列；修复前整本错题本都会涌进"今日复习队列"（与单词侧
+   "4568/4569 今日待复习"同族）。无排期的条目（离线新录/脏数据）同样不计入。 */
+function isDueToday(n, today) {
+  if (n.status !== 'active') return false
+  const nr = n.nextReview || n.next_review
+  if (!nr) return false
+  return String(nr).slice(0, 10) <= today
+}
+
+/* 四档评分 → 下次复习间隔（天），与按钮文案一致：
+   忘记=今天重学 / 模糊=1 天 / 记得=3 天 / 简单=7 天 */
+const GRADE_INTERVAL_DAYS = { 1: 0, 2: 1, 3: 3, 4: 7 }
 
 /* ---------- 将后端错题对象映射为前端视图模型 ---------- */
 function mapError(e) {
@@ -151,10 +166,10 @@ export default function Notebook() {
 
   const counts = useMemo(() => ({
     total: notebook.length,
-    due: notebook.filter((n) => n.status === 'active').length,
+    due: notebook.filter((n) => isDueToday(n, today)).length,
     reviewing: notebook.filter((n) => n.status === 'active' && (n.review_count || 0) > 0).length,
     mastered: notebook.filter((n) => n.status === 'graduated').length
-  }), [notebook])
+  }), [notebook, today])
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -188,7 +203,7 @@ export default function Notebook() {
     } else {
       const st = useStore.getState()
       useStore.setState({
-        notebook: [{ id: 'n' + Date.now(), status: 'active', createdAt: today, lastReview: null, reviewCount: 0, question: form.question.trim(), answer: form.answer.trim(), analysis: form.analysis.trim(), reason: form.reason.trim(), subject: form.subject, tags: form.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean), myAnswer: '' }, ...st.notebook]
+        notebook: [{ id: 'n' + Date.now(), status: 'active', createdAt: today, lastReview: null, reviewCount: 0, nextReview: addDays(today, 1), question: form.question.trim(), answer: form.answer.trim(), analysis: form.analysis.trim(), reason: form.reason.trim(), subject: form.subject, tags: form.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean), myAnswer: '' }, ...st.notebook]
       })
       toast('错题已收录（本地模式）')
     }
@@ -215,7 +230,7 @@ export default function Notebook() {
 
   /* V2.0 四档评分复习 */
   const startReview = () => {
-    const dueList = notebook.filter(n => n.status === 'active')
+    const dueList = notebook.filter((n) => isDueToday(n, today))
     if (dueList.length === 0) return toast('今日没有待复习的错题')
     setReviewQueue(dueList)
     setReviewIdx(0)
@@ -234,10 +249,14 @@ export default function Notebook() {
     // 根据评分更新掌握度和状态
     const newReviewCount = (current.reviewCount || 0) + (grade >= 3 ? 1 : 0)
     const newStatus = grade === 4 && newReviewCount >= 4 ? 'graduated' : 'active'
+    // V12 同族修复：复习后必须按档位推进 next_review（忘记=今天重学 / 模糊=1 天 /
+    // 记得=3 天 / 简单=7 天），否则条目会永远停在"今日到期"，队列只进不出。
+    const nextReview = addDays(today, GRADE_INTERVAL_DAYS[grade] ?? 1)
     await patchError(current.id, {
       review_count: newReviewCount,
       status: newStatus,
-      last_review: today
+      last_review: today,
+      next_review: nextReview
     })
     setShowAnswer(false)
     // 下一题或结束
@@ -586,7 +605,7 @@ export default function Notebook() {
                   <input type="checkbox" checked={selectedIds.includes(n.id)} onChange={() => toggleSelect(n.id)} aria-label="选择" />
                   <SubTag subject={n.subject} />
                 </div>
-                <span className={`badge ${n.status === 'graduated' ? 'success' : 'warning'}`}>{n.status === 'graduated' ? '已毕业' : '待复习'}</span>
+                <span className={`badge ${n.status === 'graduated' ? 'success' : 'warning'}`}>{n.status === 'graduated' ? '已毕业' : (isDueToday(n, today) ? '待复习' : '复习中')}</span>
               </div>
               <div className="lr-title" style={{ marginBottom: 8, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{n.question}</div>
               <div className="lr-meta">复习 {n.reviewCount || 0} 次 · {subjectName(n.subject)}</div>

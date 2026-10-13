@@ -543,11 +543,12 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
             (qid,),
         ).fetchone()
         if not exists:
-            # T6-2：模考错题与刷题错题同待遇——插入即挂艾宾浩斯首期复习
-            # （20 分钟后进复习队列），否则模考错题永远不进 SM-2 循环
+            # T6-2：模考错题与刷题错题同待遇——插入即挂首次复习排期。
+            # V12 同族修复：首间隔按掌握度给 ≥1 天，不再 20 分钟后即当日到期
+            # （那会让模考新错题当天全部涌入"今日复习队列"）。
             from services.review_scheduler import ReviewScheduler
 
-            next_review = ReviewScheduler.ebinghaus_next_review(0)
+            next_review = ReviewScheduler.first_review_at()
             exec_retry(
                 conn,
                 """

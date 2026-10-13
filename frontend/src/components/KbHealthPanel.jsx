@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { kbApi } from '../api/client'
+import { kbApi, systemApi } from '../api/client'
 import { Warning, CheckCircle, RefreshCw } from '../components/Icon'
+import { ErrorState, LoadingState } from './States'
+import useApiData from '../hooks/useApiData'
 
 /**
  * 知识库健康面板：如实显示缺口，并提供一键修复。
@@ -8,6 +10,42 @@ import { Warning, CheckCircle, RefreshCw } from '../components/Icon'
  * 「自主本地知识库建立」的可观测入口 ——
  * 不再需要去命令行跑脚本才知道知识库缺什么。
  */
+/** 状态徽标：ok/healthy → 正常，其余 → 告警色（与面板内 kb-h-val.bad 同口径） */
+function StatusBadge({ status }) {
+  const ok = status === 'ok' || status === 'healthy'
+  return <span className={`kb-h-val ${ok ? '' : 'bad'}`}>{status || 'unknown'}</span>
+}
+
+/** 系统健康明细：把 /api/health 的 kb 段渲染成人话 */
+function SysHealthDetail({ kb }) {
+  if (!kb) return <div className="empty-hint">系统健康数据为空</div>
+  const vec = kb.vector_store || {}
+  const fts = kb.fts5 || {}
+  const tables = kb.tables || {}
+  const tableText = Object.values(tables)
+    .map((t) => `${t.label} ${t.exists ? t.rows : '缺表'}`)
+    .join(' · ')
+  return (
+    <div className="kb-health-grid">
+      <div><span className="kb-h-label">数据库连接</span>
+        <StatusBadge status={kb.database?.status} /></div>
+      <div><span className="kb-h-label">向量库（{vec.backend || '—'}）</span>
+        <span className="kb-h-val">
+          {vec.with_embedding ?? 0}/{vec.rows ?? 0} 已向量化
+          {vec.dims?.length ? ` · 维度 ${vec.dims.join('/')}` : ''}
+        </span></div>
+      <div><span className="kb-h-label">FTS5 全文索引</span>
+        <span className={`kb-h-val ${fts.pending ? 'bad' : ''}`}>
+          {fts.rows ?? 0} 条{fts.pending ? ` · 待同步 ${fts.pending}` : ''}
+        </span></div>
+      <div><span className="kb-h-label">关键表行数</span>
+        <span className="kb-h-val">{tableText || '—'}</span></div>
+      {vec.detail && <div><span className="kb-h-label">向量库说明</span><span className="kb-h-val">{vec.detail}</span></div>}
+      {fts.detail && <div><span className="kb-h-label">FTS5 说明</span><span className="kb-h-val">{fts.detail}</span></div>}
+    </div>
+  )
+}
+
 export default function KbHealthPanel() {
   const [rep, setRep] = useState(null)
   const [status, setStatus] = useState('loading')
@@ -28,6 +66,11 @@ export default function KbHealthPanel() {
   }
 
   useEffect(() => { load() }, [])
+
+  /* 系统健康（GET /api/health 的 kb 段）：数据库连接 / 向量库 / FTS5 / 关键表行数。
+     与上面的「知识库体检」互补：体检看内容缺口，这里看基础设施是否掉链子。
+     统一走 useApiData 三态，接口挂了就地显示重试，不白屏。 */
+  const sys = useApiData(() => systemApi.health())
 
   /* 修复是后台任务（OCR 慢），轮询进度 */
   const pollHeal = async () => {
@@ -153,6 +196,18 @@ export default function KbHealthPanel() {
             <span className={`kb-h-val ${d.missing_structure_level ? 'bad' : ''}`}>{d.missing_structure_level} 篇</span>
           </div>
         </div>
+
+        {/* 系统健康：数据库 / 向量库 / FTS5 / 关键表行数（GET /api/health 的 kb 段） */}
+        <details className="kb-sys-health">
+          <summary>系统健康检查（数据库 · 向量库 · FTS5 · 关键表行数）</summary>
+          {sys.loading ? (
+            <LoadingState text="系统健康检查中…" rows={0} />
+          ) : sys.error ? (
+            <ErrorState message={sys.error} onRetry={sys.reload} title="系统健康检查失败" />
+          ) : (
+            <SysHealthDetail kb={sys.data?.kb} />
+          )}
+        </details>
 
         {/* 建立流程说明 */}
         {expanded && (

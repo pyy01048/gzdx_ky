@@ -729,7 +729,9 @@ async def submit_answer(submission: QuizSubmit, db: Session = Depends(get_db)):
             error_reason="答题错误",
             subject=question.subject,
             status="active",
-            next_review=ReviewScheduler.ebinghaus_next_review(0),
+            # V12 同族修复：新错题首入库按掌握度排首次复习（≥1 天），
+            # 不再 20 分钟后即当日到期、当天全部涌入"今日复习队列"。
+            next_review=ReviewScheduler.first_review_at(),
         )
         db.add(error)
 

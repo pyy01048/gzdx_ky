@@ -256,12 +256,19 @@ app.include_router(quality.router)
 # --------------------------------------------------------------------------- #
 @app.get("/api/health")
 async def health_check():
+    from services.health_service import kb_health_snapshot
+
+    # KB 健康检查面板数据源：数据库连接 / 向量库 / FTS5 / 关键表行数。
+    # kb_health_snapshot 内部对每个探测项独立降级，不会让本接口自己 500。
+    kb = kb_health_snapshot()
     return {
-        "status": "ok",
+        # 进程在线即 ok；数据库/KB 层缺口只在 kb.status 体现为 degraded
+        "status": "ok" if kb.get("database", {}).get("status") == "healthy" else "degraded",
         "service": "kaoyan-backend",
         "version": "3.0.0",
         # 纯展示字段：带 +00:00 的 ISO8601 对前端 new Date() 更友好
         "timestamp": utcnow_aware().isoformat(),
+        "kb": kb,
     }
 
 
