@@ -22,8 +22,8 @@ const COMMANDS = [
   // 单词记忆
   { to: '/words', label: '单词记忆', desc: '单词背诵与发音', kw: ['word', '单词', '词', 'danci', 'vocab'] },
   // 错题复盘
-  { to: '/error-review', label: '错题复盘', desc: '错因分布 · 薄弱知识点 · AI 归因', kw: ['error', 'review', '错题', '复盘', 'cuoti', 'fupan'] },
-  { to: '/notebook', label: '错题本', desc: '错题录入与日常复习', kw: ['notebook', '错题本', 'cuoti', 'error'] },
+  { to: '/error-review', label: '错题复盘', desc: '错因分布 · 薄弱知识点 · AI 归因分析', kw: ['error', 'review', '错题', '复盘', 'cuoti', 'fupan'] },
+  { to: '/notebook', label: '错题本', desc: '错题录入 · 艾宾浩斯复习（拍照 OCR 收录）', kw: ['notebook', '错题本', 'cuoti', 'error'] },
   // 院校数据中心
   { to: '/kaoyan', label: '择校中心', desc: '院校库 · 对比 · 智能择校', kw: ['kaoyan', '择校', 'zk', '院校', 'yuanxiao'] },
   { to: '/kaoyan/schools', label: '院校库', desc: '院校数据浏览与详情', kw: ['schools', '院校库', 'yuanxiaoku'] },
