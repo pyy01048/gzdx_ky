@@ -28,7 +28,18 @@ const DIFFICULTY_OPTIONS = [
   { value: '5', label: '难度 5 · 最难' },
 ]
 
+/* 清洗选项：库内存在「数组非空但元素全空」的题，直接渲染会得到空白行 */
+const cleanOptions = (opts) =>
+  (Array.isArray(opts) ? opts.map((o) => String(o ?? '').trim()).filter(Boolean) : [])
+
 const PAGE_SIZE = 20
+
+/* 来源大类过滤（与刷题中心口径一致）：真题 / 教材题 / 全部 */
+const SOURCE_KIND_OPTIONS = [
+  { value: 'all', label: '全部来源' },
+  { value: 'exam', label: '历年真题' },
+  { value: 'textbook', label: '教材题' },
+]
 
 const EMPTY_FORM = {
   content: '', optionsText: '', answer: '', analysis: '',
@@ -40,6 +51,8 @@ export default function QuizBank() {
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(false)
   const [subject, setSubject] = useState('all')
+  const [sourceKind, setSourceKind] = useState('all')
+  const [onlyAnswerable, setOnlyAnswerable] = useState(true)
   const [qType, setQType] = useState('all')
   const [difficulty, setDifficulty] = useState('all')
   const [q, setQ] = useState('')
@@ -86,12 +99,14 @@ export default function QuizBank() {
   }, [])
 
   /* 题库总量：与列表接口同口径（默认 answerable=true，仅返回可作答题）。
-     /api/quiz/stats 不支持 answerable 参数，其 total_questions 是「全部可见题」
-     （含不可作答，5588），会与页头列表 total（3465）互相矛盾；故改用不筛选的
-     列表 total 作准数，保证页头与统计卡数字口径一致。 */
+     优先取后端新增的 answerable_count（精确「可作答」口径），缺失时回退 total。 */
   useEffect(() => {
     quizApi.questions({ page: 1, page_size: 1 })
-      .then((d) => { if (d && typeof d.total === 'number') setBankTotal(d.total) })
+      .then((d) => {
+        if (!d) return
+        if (typeof d.answerable_count === 'number') setBankTotal(d.answerable_count)
+        else if (typeof d.total === 'number') setBankTotal(d.total)
+      })
       .catch((e) => toast('题库总量统计失败：' + (e?.message || '未知错误')))
   }, [])
 
@@ -101,9 +116,12 @@ export default function QuizBank() {
     try {
       const params = { page, page_size: PAGE_SIZE }
       if (subject !== 'all') params.subject = subject
+      if (sourceKind !== 'all') params.source_kind = sourceKind
       if (qType !== 'all') params.question_type = qType
       if (difficulty !== 'all') params.difficulty = Number(difficulty)
       if (q) params.q = q
+      // 默认只看可作答题；取消勾选时传 answerable=false 拉全量（缺答案/空题，供排查补全）
+      if (!onlyAnswerable) params.answerable = false
 
       const data = await quizApi.questions(params)
       const list = (data && data.questions) || data?.items || []
@@ -115,12 +133,12 @@ export default function QuizBank() {
     } finally {
       setLoading(false)
     }
-  }, [subject, qType, difficulty, q, page])
+  }, [subject, sourceKind, qType, difficulty, q, page, onlyAnswerable])
 
   useEffect(() => { loadQuestions() }, [loadQuestions])
 
   /* 筛选/搜索变化时回到第一页 */
-  useEffect(() => { setPage(1) }, [subject, qType, difficulty, q])
+  useEffect(() => { setPage(1) }, [subject, sourceKind, qType, difficulty, q, onlyAnswerable])
 
   /* 删除后若当前页已空且非首页，回退一页 */
   useEffect(() => {
@@ -267,6 +285,10 @@ export default function QuizBank() {
           <option value="all">全部科目</option>
           {subjects.map((s) => <option key={s.subject} value={s.subject}>{s.subject}</option>)}
         </select>
+        <select className="select" style={{ width: 140 }} value={sourceKind} onChange={(e) => setSourceKind(e.target.value)}
+          title="按来源大类过滤：真题与教材题分开展示">
+          {SOURCE_KIND_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
         <select className="select" style={{ width: 130 }} value={qType} onChange={(e) => setQType(e.target.value)}>
           {QUESTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
@@ -279,6 +301,15 @@ export default function QuizBank() {
         <button className="btn primary" onClick={openCreate}>
           <Plus size={14} /> 添加题目
         </button>
+      </div>
+
+      {/* 口径提示：列表默认只列「可作答」题；可切换查看不可作答（缺选项/缺答案）以排查补全 */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, fontSize: 13, color: 'var(--ink-3)' }}>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+          <input type="checkbox" checked={onlyAnswerable} onChange={(e) => setOnlyAnswerable(e.target.checked)} />
+          只看可作答题（有答案且可用；取消勾选可查看缺答案/空题）
+        </label>
+        <span>当前列出 {total} 题</span>
       </div>
 
       {/* 题目列表 */}
@@ -346,14 +377,26 @@ export default function QuizBank() {
                           fontSize: 12,
                         }}>{item.knowledge_point}</span>
                       )}
+                      {/* 可用性标记：不可作答（空题假题）/ 仅记忆参考（无选项有答案） */}
+                      {(item.is_available === false || item.quality === 'incomplete') && (
+                        <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)', padding: '2px 10px', borderRadius: 20, fontSize: 12 }}>
+                          不可作答
+                        </span>
+                      )}
+                      {(item.is_available !== false && item.quality !== 'incomplete'
+                        && cleanOptions(item.options).length === 0) && (
+                        <span className="tag" style={{ background: 'var(--gold-soft)', color: 'var(--gold)', padding: '2px 10px', borderRadius: 20, fontSize: 12 }}>
+                          仅记忆参考
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 15, color: 'var(--ink)', lineHeight: 1.6, marginBottom: 8 }}>
                       <span style={{ color: 'var(--ink-3)', marginRight: 8 }}>{(page - 1) * PAGE_SIZE + idx + 1}.</span>
                       {item.content || '无题目内容'}
                     </div>
-                    {item.options && Array.isArray(item.options) && item.options.length > 0 && (
+                    {cleanOptions(item.options).length > 0 && (
                       <div style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.8 }}>
-                        {item.options.map((opt, i) => {
+                        {cleanOptions(item.options).map((opt, i) => {
                           const letter = String.fromCharCode(65 + i)
                           const correct = isOpen && item.answer === letter
                           return (
@@ -367,7 +410,7 @@ export default function QuizBank() {
                         })}
                       </div>
                     )}
-                    {isOpen && item.answer && !(item.options && item.options.length) && (
+                    {isOpen && item.answer && cleanOptions(item.options).length === 0 && (
                       <div style={{ fontSize: 13, color: 'var(--green)', marginTop: 4 }}>
                         答案：{item.answer}
                       </div>
@@ -427,11 +470,11 @@ export default function QuizBank() {
                 {preview.content}
               </div>
             </div>
-            {preview.options && Array.isArray(preview.options) && preview.options.length > 0 && (
+            {cleanOptions(preview.options).length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <strong style={{ color: 'var(--ink-2)' }}>选项：</strong>
                 <div style={{ marginTop: 8 }}>
-                  {preview.options.map((opt, i) => {
+                  {cleanOptions(preview.options).map((opt, i) => {
                     const letter = String.fromCharCode(65 + i)
                     const correct = previewRevealed && preview.answer === letter
                     return (

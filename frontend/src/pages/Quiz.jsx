@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Empty, toast, CountUp } from '../components/UI'
-import { quizApi, taxonomyApi, errorsApi, goalsApi } from '../api/client'
+import { LoadingState, ErrorState } from '../components/States'
+import { quizApi, taxonomyApi, errorsApi, goalsApi, quizSectionApi, request } from '../api/client'
 import './Quiz.css'
 
 /* =====================================================================
@@ -21,6 +22,19 @@ const TYPE_LABELS = {
 }
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
 const letterOf = (i) => LETTERS[i] || String(i + 1)
+
+/* 来源大类（M0 刷题中心）：真题 / 教材题 **分页隔离** 的唯一依据。
+   与后端 GET /api/quiz/questions?source_kind= 一一对应：
+     exam     = source 以「真题:」开头（历年真题原卷）
+     textbook = source 以「知识库:」开头（教材/讲义抽取题）
+     all      = 不限制（用户显式选择「全部」时才混合展示）
+   默认使用 'exam'，保证「真题与教材题不混在一个列表里」。 */
+export const SOURCE_KINDS = [
+  { id: 'exam', label: '历年真题' },
+  { id: 'textbook', label: '教材题' },
+  { id: 'all', label: '全部来源' },
+]
+const SOURCE_KIND_LABEL = Object.fromEntries(SOURCE_KINDS.map((s) => [s.id, s.label]))
 
 /* 本地错题 id 集合（与旧版 quiz_wrong 兼容；后端错题以 /api/errors 为准） */
 const WRONG_KEY = 'quiz_wrong'
@@ -134,12 +148,18 @@ export function dependsOnFigure(q) {
   return FIG_RE.test(String(q?.content || '')) || FIG_RE.test(String(q?.answer || ''))
 }
 
-/* 归一化后端题目 */
+/* 归一化后端题目。
+   注意 options 过滤：库内存在大量「options 非空数组但元素全为空/None」的题
+   （实测可见可作答 3388 题中 2842 题如此）。若不过滤，isChoiceQ 会判真 →
+   渲染出一排**空白选项按钮**，用户点了也没内容（本次要修的核心问题之一）。 */
 function normQ(q) {
+  const opts = safeParseOptions(q.options)
+    .map((o) => (o == null ? '' : String(o)))
+    .filter((s) => s.trim().length > 0)
   return {
     id: String(q.id),
     content: q.content || '',
-    options: safeParseOptions(q.options),
+    options: opts,
     answer: q.answer ?? '',
     analysis: q.analysis || '',
     subject: q.subject || '',
@@ -148,6 +168,9 @@ function normQ(q) {
     difficulty: q.difficulty || 1,
     source: q.source || '',
     question_type: q.question_type || '',
+    answer_type: q.answer_type || '',
+    quality: q.quality || '',
+    is_available: q.is_available ?? null,
     year: q.year ?? null,
     paper: q.paper ?? null,
     question_no: q.question_no ?? null
@@ -155,6 +178,21 @@ function normQ(q) {
 }
 const isChoiceQ = (q) => Array.isArray(q.options) && q.options.length > 0
 const isMultiQ = (q) => q.question_type === 'multiple'
+
+/* 题目「可用性标记」——决定是否可作答，以及给用户什么提示（不渲染空白按钮）。
+   * available：正常可作答（有选项或有答案）；
+   * memorize ：仅有参考答案但无选项（answer_type=subjective）→ 仅记忆参考，不可作答；
+   * locked   ：空题假题（quality=incomplete 或 is_available=false）→ 不可作答。 */
+export function questionMark(q) {
+  if (q?.is_available === false || q?.quality === 'incomplete') {
+    return { id: 'locked', label: '不可作答', desc: '本题为缺选项/缺答案的空题，已下架练习，仅作浏览参考。' }
+  }
+  if (isChoiceQ(q)) return null
+  if (q?.answer_type === 'subjective') {
+    return { id: 'memorize', label: '仅记忆参考', desc: '本题有参考答案但题库缺少选项内容，仅供记忆参考，不可作答。' }
+  }
+  return null
+}
 
 /* 后端不可用时的最小演示题 */
 const LOCAL_FALLBACK = [
@@ -237,6 +275,17 @@ export default function Quiz() {
   /* 知识点筛选无题时的空态（避免白屏）：{ name } | null */
   const [kpEmpty, setKpEmpty] = useState(null)
 
+  /* ---------- M0 刷题中心：来源大类（真题 / 教材题 分页隔离） ---------- */
+  /* 默认 'exam'：真题与教材题**不混在一个列表里**；用户显式切到 'all' 才混合。 */
+  const urlSourceKind = searchParams.get('source_kind') || ''
+  const [sourceKind, setSourceKind] = useState(
+    SOURCE_KINDS.some((s) => s.id === urlSourceKind) ? urlSourceKind : 'exam'
+  )
+  /* 会话「依据明示」：本次练习是按什么条件出的题 + 可作答/总量口径 */
+  const [basis, setBasis] = useState(null)
+  /* AI 生成解析（复用现有 /ai/tutoring/explain，仅前端展示、不落库） */
+  const [aiAnalyses, setAiAnalyses] = useState({})   // { [qid]: {content, provider, loading, error} }
+
   /* ================= 数据加载 ================= */
   const loadStats = useCallback(async () => {
     setStatsLoading(true); setStatsErr(false)
@@ -274,6 +323,19 @@ export default function Quiz() {
         }))
       }
       const list = (Array.isArray(items) ? items.filter((s) => s && (s.subject || s.name)) : [])
+      /* 合并「可作答」题数：taxonomy 科目接口不带该字段，单独取 /quiz/subjects
+         （后端已按 is_available 口径统计），把可作答题数与题量分别展示，避免
+         「显示 2000 题、点进去 0 题可判分」的口径错位。 */
+      let answerableMap = {}
+      try {
+        const qs = await quizApi.subjects()
+        const its = Array.isArray(qs?.items) ? qs.items : (Array.isArray(qs) ? qs : [])
+        answerableMap = Object.fromEntries(its.map((x) => [x.subject, x.answerable_count ?? 0]))
+      } catch { answerableMap = {} }
+      for (const s of list) {
+        const name = s.subject || s.name
+        if (answerableMap[name] != null) s.answerable_count = answerableMap[name]
+      }
       /* 排序：用户配置科目在前（按配置顺序），其余按有题优先、最后 0 题 */
       const cfgIdx = (name) => { const i = cfgOrder.indexOf(name); return i < 0 ? 9999 : i }
       const sorted = [...list].sort((a, b) => {
@@ -308,27 +370,34 @@ export default function Quiz() {
     finally { setTreeLoading(false) }
   }, [])
 
-  /* 拉取真题套卷索引 + 年份×科目聚合（后端已回填 paper/year/question_no） */
+  /* 拉取真题套卷索引 + 年份×科目聚合（后端已回填 paper/year/question_no）。
+     带上 source_kind：与列表口径一致，避免「教材题」Tab 下仍显示真题套卷。 */
   const loadYears = useCallback(async () => {
     setYearLoading(true); setYearErr(false)
     try {
+      const sk = sourceKind !== 'all' ? sourceKind : undefined
       const [pi, yr] = await Promise.all([
-        quizApi.papersIndex().catch(() => ({ papers: [] })),
-        quizApi.years().catch(() => ({ years: [] })),
+        quizApi.papersIndex({ source_kind: sk }).catch(() => ({ papers: [] })),
+        quizApi.years({ source_kind: sk }).catch(() => ({ years: [] })),
       ])
       setPapers(pi?.papers || [])
       setYearsData(yr?.years || [])
     } catch { setYearErr(true) }
     finally { setYearLoading(false) }
-  }, [])
+  }, [sourceKind])
 
-  /* 懒加载某个分组的题目：套卷按 question_no 顺序，年份按科目筛选 */
+  /* 懒加载某个分组的题目：套卷按 question_no 顺序，年份按科目筛选。
+     统一带上 source_kind，保证「真题 / 教材题」分组视图与列表口径一致。 */
   const loadGroup = useCallback(async (key, params) => {
     if (groupQs[key]) { setOpenKey(key); return }
     setGroupLoading((s) => ({ ...s, [key]: true }))
     setOpenKey(key)
     try {
-      const d = await quizApi.questions({ ...params, page: 1, page_size: 1000, mode: 'sequential' })
+      const d = await quizApi.questions({
+        ...params,
+        source_kind: sourceKind !== 'all' ? sourceKind : undefined,
+        page: 1, page_size: 1000, mode: 'sequential',
+      })
       const qs = (d?.questions || d?.items || []).map(normQ)
       setGroupQs((s) => ({ ...s, [key]: qs }))
     } catch {
@@ -336,7 +405,7 @@ export default function Quiz() {
     } finally {
       setGroupLoading((s) => ({ ...s, [key]: false }))
     }
-  }, [groupQs])
+  }, [groupQs, sourceKind])
 
   const loadErrors = useCallback(async () => {
     setErrLoading(true); setErrErr(false)
@@ -386,15 +455,18 @@ export default function Quiz() {
     if (!selSubject && subjects.length) setSelSubject(subjects[0].subject)
   }, [subjects, selSubject])
   useEffect(() => { loadTree(selSubject) }, [selSubject, loadTree])
-  useEffect(() => { if (tab === 'year' && !papers.length && !yearsData.length && !yearLoading) loadYears() }, [tab, papers.length, yearsData.length, yearLoading, loadYears])
+  /* 进入「按年份」或切换来源大类时（重新）拉取套卷/年份索引，保证与来源 Tab 同口径 */
+  useEffect(() => { if (tab === 'year') loadYears() }, [tab, sourceKind, loadYears])
   useEffect(() => { if (tab === 'review') loadErrors() }, [tab, loadErrors])
 
   /* ================= 会话开始 ================= */
-  const beginSession = useCallback((title, questions, modeUsed, startIdx = 0, noAnswer = false) => {
+  const beginSession = useCallback((title, questions, modeUsed, startIdx = 0, noAnswer = false, basisInfo = null) => {
     if (!questions || !questions.length) { toast('当前筛选条件下暂无题目'); return }
     const si = Math.max(0, Math.min(startIdx, questions.length - 1))
     setSession({ title, questions, mode: modeUsed || mode, noAnswer })
     setIdx(si); setDrafts({}); setTextDraft({}); setRecords({}); setSelfCheck(null)
+    /* 依据明示：本次练习的来源/科目/知识点/可作答口径，练习页顶部原样展示 */
+    setBasis(basisInfo)
     startedFromRef.current = { title, questions, mode: modeUsed || mode }
     setView('practice')
     window.scrollTo({ top: 0 })
@@ -452,38 +524,70 @@ export default function Quiz() {
     }
   }
 
+  /* “AI 生成解析”：复用项目现有 AI 讲题路由 POST /api/ai/tutoring/explain
+     （angle=solution）。该路由真实存在且已在用，生成的解析**只在前端展示、不落库**，
+     因此显式标注「AI 生成 · 未入库」，不做“已写回题库”的假承诺。 */
+  const generateAnalysis = useCallback(async (q) => {
+    if (!q?.id) return
+    const qid = q.id
+    setAiAnalyses((m) => ({ ...m, [qid]: { loading: true, content: '', provider: '' } }))
+    try {
+      const r = await request('/ai/tutoring/explain', {
+        method: 'POST',
+        body: { question_id: Number(qid), angle: 'solution' },
+      })
+      setAiAnalyses((m) => ({ ...m, [qid]: { loading: false, content: r?.content || '', provider: r?.provider || 'AI' } }))
+    } catch (e) {
+      setAiAnalyses((m) => ({ ...m, [qid]: { loading: false, content: '', provider: '', error: e?.message || 'AI 生成解析失败' } }))
+    }
+  }, [])
+
   /* 返回首页时刷新本地作答记录（套卷网格颜色/做过次数随之更新） */
   useEffect(() => {
     if (view === 'home') setLocalRecs(loadRecs())
   }, [view])
 
-  /* 按筛选条件向后端拉题并开始（知识点精确 / 知识点章节 / 整科）。
-     kp_id 为可选：传入时按知识点级精确筛选（后端 /api/quiz/questions 已支持）。 */
-  const startWithFilter = useCallback(async ({ subject, chapter, question_type, kp_id, kp_name, title }) => {
+  /* 按筛选条件向后端拉题并开始（真题/教材题分区 · 知识点精确 · 章节 · 整科）。
+
+     统一口径（M0）：所有入口只走这**一个** quizApi.questions 调用，参数收敛为
+     `subject / source_kind / answerable / kp_id / chapter / question_type / year / paper / mode`。
+     source_kind 由顶部「历年真题 / 教材题 / 全部来源」Tab 决定（真题与教材题默认分离）。
+
+     科目严格隔离（双保险）：后端已按 subject 精确过滤，这里再做一次**前端一致性校验**——
+     凡返回题目 subject 与请求 subject 不一致的（历史脏数据/关联串科目）直接剔除并提示，
+     杜绝「切到数电却刷出政治题」的混用。 */
+  const startWithFilter = useCallback(async ({ subject, chapter, question_type, kp_id, kp_name, title, source_kind }) => {
     setSubmitting(true)
+    const sk = source_kind !== undefined ? source_kind : sourceKind
+    const baseParams = {
+      subject: subject || undefined,
+      chapter: chapter || undefined,
+      question_type: question_type || undefined,
+      kp_id: kp_id || undefined,
+      source_kind: sk && sk !== 'all' ? sk : undefined,
+    }
     try {
-      let d = await quizApi.questions({
-        subject: subject || undefined,
-        chapter: chapter || undefined,
-        question_type: question_type || undefined,
-        kp_id: kp_id || undefined,
-        page: 1, page_size: 100
-      })
+      const d = await quizApi.questions({ ...baseParams, answerable: true, page: 1, page_size: 100 })
       let qs = (d?.questions || d?.items || []).map(normQ)
+      let answerableCount = d?.answerable_count ?? qs.length
+      let totalCount = d?.total_count ?? qs.length
       let noAnswer = false
       /* 可作答题为 0（多数科目题库尚未回填标准答案）时，回退取全部题进入「浏览模式」，
          避免「点开始练习无反应」；浏览模式不判分、不进错题本（见 gradeChoice/applyGrade）。 */
       if (!qs.length) {
-        const d2 = await quizApi.questions({
-          subject: subject || undefined,
-          chapter: chapter || undefined,
-          question_type: question_type || undefined,
-          kp_id: kp_id || undefined,
-          answerable: false,
-          page: 1, page_size: 100
-        })
+        const d2 = await quizApi.questions({ ...baseParams, answerable: false, page: 1, page_size: 100 })
         const qs2 = (d2?.questions || d2?.items || []).map(normQ)
+        if (d2?.total_count != null) totalCount = d2.total_count
+        answerableCount = d2?.answerable_count ?? 0
         if (qs2.length) { qs = qs2; noAnswer = true }
+      }
+      /* —— 前端科目一致性校验（科目严格隔离的第二道闸）—— */
+      let dropped = 0
+      if (subject) {
+        const before = qs.length
+        qs = qs.filter((x) => x.subject === subject)
+        dropped = before - qs.length
+        if (dropped > 0) toast(`已隔离 ${dropped} 道科目不符的题目（当前科目：${subject}）`)
       }
       setBackendOk(true)
       /* 记录本次是否为知识点级筛选，供界面标识与空态判断使用 */
@@ -496,8 +600,21 @@ export default function Quiz() {
         return
       }
       setKpEmpty(null)
-      if (noAnswer) toast('该科目暂无标准答案题，已载入题库全部题目（浏览模式：不判分、不进错题本）')
-      beginSession(title, qs, mode, 0, noAnswer)
+      if (noAnswer) toast('该筛选下暂无标准答案题，已载入题库题目（浏览模式：不判分、不进错题本）')
+      const basisInfo = {
+        title,
+        subject: subject || null,
+        chapter: chapter || null,
+        kpName: kp?.name || null,
+        sourceKind: sk || 'all',
+        sourceKindLabel: SOURCE_KIND_LABEL[sk] || '全部来源',
+        noAnswer,
+        loaded: qs.length,
+        answerableCount: answerableCount || 0,
+        totalCount: totalCount || qs.length,
+        dropped,
+      }
+      beginSession(title, qs, mode, 0, noAnswer, basisInfo)
     } catch {
       setBackendOk(false)
       const kp = kp_id ? { id: String(kp_id), name: kp_name || `#${kp_id}` } : null
@@ -505,7 +622,7 @@ export default function Quiz() {
       const qs = LOCAL_FALLBACK.filter((x) => !subject || x.subject === subject)
       beginSession(title, qs.length ? qs : LOCAL_FALLBACK, mode)
     } finally { setSubmitting(false) }
-  }, [beginSession, mode])
+  }, [beginSession, mode, sourceKind])
 
   /* QuizSection 深链：?subject=&chapter= 直达该章练习；
      ?kp_id=&kp_name= 直达该知识点精确刷题。 */
@@ -732,11 +849,30 @@ export default function Quiz() {
         )}
 
         {statsErr && (
-          <div className="qerr card">
-            <div className="qerr-t">统计数据加载失败</div>
-            <button className="btn ghost" onClick={loadStats}>重试</button>
+          <div className="card">
+            <ErrorState title="统计数据加载失败" message="无法读取 /api/quiz/stats，请确认后端已启动。" onRetry={loadStats} retryText="重试" />
           </div>
         )}
+
+        {/* 来源分离（M0）：真题 / 教材题 / 全部来源。
+            默认「历年真题」——真题与教材题不再混在同一个列表里；
+            本 Tab 同时决定「按知识点 / 按年份 / 错题收藏」三个视图的取题范围。 */}
+        <div className="qbar">
+          <div className="qtab-bar" role="tablist" aria-label="题目来源">
+            {SOURCE_KINDS.map((s) => (
+              <button key={s.id} role="tab" aria-selected={sourceKind === s.id}
+                className={`qtab-btn ${sourceKind === s.id ? 'active' : ''}`}
+                title={s.id === 'all' ? '混合展示全部来源（真题+教材题）' : `只展示${s.label}`}
+                onClick={() => { setSourceKind(s.id); setGroupQs({}); setOpenKey(null) }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <span className="qnote flush" style={{ margin: 0 }}>
+            当前依据：<strong>{SOURCE_KIND_LABEL[sourceKind] || '全部来源'}</strong>
+            {sourceKind === 'exam' ? '（真题与教材题已分离，不混排）' : ''}
+          </span>
+        </div>
 
         {/* 三入口 Tab + 练习/背题切换 */}
         <div className="qbar">
@@ -787,7 +923,7 @@ export default function Quiz() {
 
   /* ---------- 按知识点 ---------- */
   const renderKnowledge = () => {
-    if (subjLoading) return <div className="qloading card">正在加载科目列表…</div>
+    if (subjLoading) return <div className="card"><LoadingState text="正在加载科目列表…" rows={4} /></div>
     if (!subjects.length) {
       return <Empty icon="📚" title="暂无科目" desc="科目从后端动态加载，请稍后重试"
         action={<button className="btn primary" onClick={loadSubjects}>重试</button>} />
@@ -796,6 +932,7 @@ export default function Quiz() {
     const active = subjects.find((s) => s.subject === selSubject)
       || subjects.find((s) => (s.question_count || 0) > 0)
       || subjects[0]
+    const activeAnswerable = active?.answerable_count
     const chapters = tree?.chapters || []
     return (
       <div className="qknow-layout">
@@ -810,6 +947,9 @@ export default function Quiz() {
                   <span className="qknow-subj-cnt">{s.question_count || 0}题</span>
                 </span>
                 <span className="qknow-subj-meta">
+                  <span className={s.answerable_count === 0 ? 'err' : ''}>
+                    可作答 {s.answerable_count ?? '—'}
+                  </span>
                   <span className="err">错题 {s.error_count || 0}</span>
                   {s.is_custom && <span>自定义</span>}
                 </span>
@@ -826,15 +966,25 @@ export default function Quiz() {
                 if ((active?.question_count || 0) === 0) return toast('该科目暂无题目，可先在科目管理中维护或导入题目')
                 startWithFilter({ subject: active.subject, title: `${active.subject} · 整科练习` })
               }}>
-              整科练习（{active?.question_count || 0}）
+              {(activeAnswerable === 0)
+                ? `浏览全部（${active?.question_count || 0}，不可判分）`
+                : `整科练习（可作答 ${activeAnswerable ?? '—'}）`}
             </button>
           </div>
 
-          {treeLoading && <div className="qloading card">正在加载知识点树…</div>}
+          {/* 依据明示：当前科目题量 vs 可作答题量，让用户清楚「能判分多少」 */}
+          {active && (
+            <p className="qnote flush" style={{ marginTop: 0 }}>
+              当前依据：科目 <strong>{active.subject}</strong> · 可见题 {active.question_count || 0} 题 ·
+              可作答 {activeAnswerable ?? '未知'} 题
+              {activeAnswerable === 0 && '（该科目尚无标准答案，将进入「浏览模式」：不判分、不进错题本）'}
+            </p>
+          )}
+
+          {treeLoading && <div className="card"><LoadingState text="正在加载知识点树…" rows={3} /></div>}
           {treeErr && (
-            <div className="qerr card">
-              <div className="qerr-t">知识点树加载失败</div>
-              <button className="btn ghost" onClick={() => loadTree(active?.subject)}>重试</button>
+            <div className="card">
+              <ErrorState title="知识点树加载失败" message="无法读取 /api/taxonomy/tree。" onRetry={() => loadTree(active?.subject)} />
             </div>
           )}
           {!treeLoading && !treeErr && !chapters.length && (
@@ -881,6 +1031,13 @@ export default function Quiz() {
     const done = list ? list.filter((q) => localRecs[q.id]).length : 0
     const pct = list && list.length ? Math.round((done / list.length) * 100) : 0
     const noOf = (q, i) => (numbered ? (q.question_no || i + 1) : (i + 1))
+    /* 依据明示：套卷/年份分组的来源口径（真题/教材题）随会话带入练习页 */
+    const groupBasis = {
+      title, subject: null, chapter: null, kpName: null,
+      sourceKind, sourceKindLabel: SOURCE_KIND_LABEL[sourceKind] || '全部来源',
+      noAnswer: false, loaded: list ? list.length : 0,
+      answerableCount: null, totalCount: count, dropped: 0,
+    }
     return (
       <section key={key} className="qpaper">
         <div className="qpaper-head">
@@ -894,7 +1051,7 @@ export default function Quiz() {
           </button>
         </div>
 
-        {loading && <div className="qloading card">正在载入题目…</div>}
+        {loading && <div className="card"><LoadingState text="正在载入题目…" rows={2} /></div>}
 
         {open && list && list.length > 0 && (
           <div className="qpaper-body">
@@ -907,7 +1064,7 @@ export default function Quiz() {
                   return (
                     <button key={q.id} className={cls}
                       title={`第 ${noOf(q, i)} 题${r ? ` · 做过 ${r.times} 次` : ' · 未做'}`}
-                      onClick={() => beginSession(title, list, mode, i)}>
+                      onClick={() => beginSession(title, list, mode, i, false, groupBasis)}>
                       {noOf(q, i)}
                       {r?.times > 0 && <span className="t">{r.times}</span>}
                     </button>
@@ -919,7 +1076,7 @@ export default function Quiz() {
                 {list.map((q, i) => {
                   const r = localRecs[q.id]
                   return (
-                    <div key={q.id} className="qp-row" onClick={() => beginSession(title, list, mode, i)}>
+                    <div key={q.id} className="qp-row" onClick={() => beginSession(title, list, mode, i, false, groupBasis)}>
                       <span className="qp-no">{noOf(q, i)}</span>
                       <span className={`qp-state ${r ? (r.correct ? 'ok' : 'bad') : ''}`} />
                       <span className="qp-txt">{q.content}</span>
@@ -940,11 +1097,10 @@ export default function Quiz() {
   }
 
   const renderYear = () => {
-    if (yearLoading) return <div className="qloading card">正在载入真题套卷与年份索引…</div>
+    if (yearLoading) return <div className="card"><LoadingState text="正在载入真题套卷与年份索引…" rows={3} /></div>
     if (yearErr) {
-      return <div className="qerr card">
-        <div className="qerr-t">索引加载失败</div>
-        <button className="btn ghost" onClick={loadYears}>重试</button>
+      return <div className="card">
+        <ErrorState title="套卷/年份索引加载失败" message="无法读取 /api/quiz/papers-index 或 /api/quiz/years。" onRetry={loadYears} />
       </div>
     }
     const yearTotal = yearsData.reduce((a, y) => a + (y.total || 0), 0)
@@ -975,7 +1131,10 @@ export default function Quiz() {
                 `paper::${p.paper}`, p.paper, p.year_label || '套卷',
                 Object.entries(p.subjects || {}).slice(0, 3).map(([s, c]) => <span key={s} className="chip">{s} {c}</span>),
                 { paper: p.paper }, p.count, true))
-            : <Empty icon="📚" title="暂无真题套卷" desc="题库中还没有可归卷的真题" />
+            : <Empty icon="📚" title="暂无套卷"
+                desc={sourceKind === 'textbook'
+                  ? '「教材题」按章节组织、通常无套卷归属；请切到「按知识点」按章节刷，或切「历年真题」查看套卷。'
+                  : '当前来源下还没有可归卷的套卷。'} />
         )}
 
         {yearSub === 'year' && (
@@ -984,7 +1143,10 @@ export default function Quiz() {
                 `year::${y.year}`, `${y.year} 年真题`, String(y.year),
                 Object.entries(y.subjects || {}).slice(0, 4).map(([s, c]) => <span key={s} className="chip">{s} {c}</span>),
                 { year: y.year }, y.total, false))
-            : <Empty icon="📅" title="暂无按年份数据" desc="只有能可靠解析年份的真题才会出现在这里" />
+            : <Empty icon="📅" title="暂无按年份数据"
+                desc={sourceKind === 'textbook'
+                  ? '「教材题」一般无真题年份；请切到「历年真题」按年份浏览。'
+                  : '只有能可靠解析年份的真题才会出现在这里。'} />
         )}
 
         <p className="qnote">
@@ -1017,9 +1179,8 @@ export default function Quiz() {
             <button className="btn mini primary" disabled={!errQuestions.length}
               onClick={() => beginSession('错题重练', errQuestions, mode)}>全部重练</button>
           </div>
-          {errLoading && <div className="qloading">正在加载错题…</div>}
-          {errErr && <div className="qerr"><div className="qerr-t">错题加载失败</div>
-            <button className="btn ghost" onClick={loadErrors}>重试</button></div>}
+          {errLoading && <LoadingState text="正在加载错题…" rows={3} />}
+          {errErr && <ErrorState title="错题加载失败" message="无法读取 /api/errors。" onRetry={loadErrors} />}
           {!errLoading && !errErr && !errQuestions.length && (
             <Empty icon="🎉" title="还没有错题" desc="继续保持，答错的题目会自动归集到这里" />
           )}
@@ -1171,6 +1332,27 @@ export default function Quiz() {
               </div>
             )}
 
+            {/* 依据明示（M0）：本次练习按什么条件出题 + 可作答/总量口径，一眼可见 */}
+            {basis && (
+              <div className="qnote" style={{ marginTop: 8 }}>
+                当前依据：
+                <strong>{basis.sourceKindLabel}</strong>
+                {basis.subject ? ` · 科目 ${basis.subject}` : ''}
+                {basis.chapter ? ` · 章节 ${basis.chapter}` : ''}
+                {basis.kpName ? ` · 知识点 ${basis.kpName}` : ''}
+                {' · '}可作答 {basis.answerableCount}{basis.totalCount ? ` / 共 ${basis.totalCount}` : ''} 题
+                {basis.dropped > 0 ? ` · 已隔离 ${basis.dropped} 道科目不符题` : ''}
+                {basis.noAnswer ? ' · 已回退浏览模式（不判分）' : ''}
+              </div>
+            )}
+
+            {/* 单题可用性标记：仅记忆参考 / 不可作答（不渲染空白选项按钮） */}
+            {questionMark(q) && (
+              <div className="qnote" style={{ marginTop: 8, color: '#ad6800' }}>
+                ⚠ 本题标记：<strong>{questionMark(q).label}</strong> —— {questionMark(q).desc}
+              </div>
+            )}
+
             <div className="qprac-body">
               <div className="qprac-progress">
                 <span className="progress thin"><i style={{ width: `${pct}%` }} /></span>
@@ -1215,11 +1397,14 @@ export default function Quiz() {
                 </div>
               )}
 
-              {/* 残缺选择题：答案是字母但 options 为空。只读展示，禁止作答 */}
+              {/* 残缺选择题：答案是字母但 options 为空/全空。只读展示，**不渲染空白选项按钮**，禁止作答 */}
               {!isChoiceQ(q) && isChoiceWithoutOptions(q) && (
                 <div className="qopt-none">
-                  <span className="qopt-none-t">本题无选项，答案：{q.answer || '—'}</span>
-                  <span className="qopt-none-d">题库缺少该题选项内容，仅供记忆参考，不可作答。</span>
+                  <span className="qopt-none-t">
+                    {questionMark(q)?.label === '不可作答' ? '本题不可作答' : '本题无选项'}
+                    {q.answer ? `，答案：${q.answer}` : '，且无参考答案'}
+                  </span>
+                  <span className="qopt-none-d">{questionMark(q)?.desc || '题库缺少该题选项内容，仅供记忆参考，不可作答。'}</span>
                 </div>
               )}
 
@@ -1242,13 +1427,46 @@ export default function Quiz() {
               {(revealed || selfCheck) && (
                 <div className={`qreveal ${rec ? (rec.correct ? 'ok' : 'bad') : (selfCheck ? 'plain' : 'plain')}`}>
                   <div className="qreveal-row">
-                    <span>正确答案：<span className="ans">{rec?.correctAnswer ?? q.answer}</span></span>
+                    <span>正确答案：<span className="ans">{(rec?.correctAnswer ?? q.answer) || '—'}</span></span>
                     {rec && <span>{rec.correct ? '· 回答正确 ✓' : `· 你的答案 ${rec.selected || ''}，回答错误 ✗`}</span>}
                     {selfCheck && <span>· 你的作答：{selfCheck.myAns}</span>}
                   </div>
-                  {(rec?.analysis || q.analysis || selfCheck?.analysis) && (
-                    <div className="qreveal-row"><span>解析：{rec?.analysis || selfCheck?.analysis || q.analysis}</span></div>
-                  )}
+
+                  {/* —— 解析区（M0）——
+                      有 analysis 正常展示；没有则明确「暂无解析」，并给出「AI 生成解析」入口。
+                      该入口复用项目现有 POST /api/ai/tutoring/explain，生成结果只在前端展示
+                      且标注「未入库」，不做已写回题库的假承诺。 */}
+                  {(() => {
+                    const raw = rec?.analysis || selfCheck?.analysis || q.analysis
+                    const ai = aiAnalyses[q.id]
+                    return (
+                      <div className="qreveal-row" style={{ display: 'block' }}>
+                        {raw ? (
+                          <span>解析：{raw}</span>
+                        ) : (
+                          <div>
+                            <span style={{ color: 'var(--ink-3)' }}>解析：暂无解析</span>
+                            {!ai?.content && (
+                              <button className="btn sm ghost" style={{ marginLeft: 12 }}
+                                disabled={ai?.loading} onClick={() => generateAnalysis(q)}>
+                                {ai?.loading ? 'AI 生成中…' : 'AI 生成解析'}
+                              </button>
+                            )}
+                            {ai?.error && <span style={{ marginLeft: 12, color: 'var(--red)' }}>{ai.error}</span>}
+                          </div>
+                        )}
+                        {ai?.content && (
+                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--line)' }}>
+                            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 4 }}>
+                              AI 生成解析（来源 {ai.provider || 'AI'} · 未入库，仅供参考）
+                            </div>
+                            <div style={{ whiteSpace: 'pre-wrap' }}>{ai.content}</div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
                   {selfCheck && (
                     <div className="qtext-row">
                       <button className="btn primary" onClick={() => selfGrade(true)}>✅ 我答对了</button>
