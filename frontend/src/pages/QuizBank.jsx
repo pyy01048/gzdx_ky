@@ -21,11 +21,11 @@ const TYPE_LABEL = Object.fromEntries(QUESTION_TYPES.map(t => [t.value, t.label]
 /* 难度为后端整数 1-5（旧版中文「简单/中等/困难」与后端不符，过滤失效） */
 const DIFFICULTY_OPTIONS = [
   { value: 'all', label: '全部难度' },
-  { value: '1', label: '1（最简单）' },
-  { value: '2', label: '2（较易）' },
-  { value: '3', label: '3（中等）' },
-  { value: '4', label: '4（较难）' },
-  { value: '5', label: '5（最难）' },
+  { value: '1', label: '难度 1 · 最简单' },
+  { value: '2', label: '难度 2 · 较易' },
+  { value: '3', label: '难度 3 · 中等' },
+  { value: '4', label: '难度 4 · 较难' },
+  { value: '5', label: '难度 5 · 最难' },
 ]
 
 const PAGE_SIZE = 20
@@ -218,7 +218,7 @@ export default function QuizBank() {
     { icon: <Book size={28} />, label: '题库总量', value: bankTotal == null ? '—' : bankTotal, color: 'var(--accent)', title: '仅统计可作答题（与下方题目列表同口径）' },
     { icon: <Target size={28} />, label: '待攻克题', value: stats.active, color: 'var(--red)' },
     { icon: <CheckCircle size={28} />, label: '正确率 %', value: stats.mastered, color: 'var(--green)' },
-    { icon: <GraduationCap size={28} />, label: '已毕业题', value: stats.graduated, color: 'var(--gold)' },
+    { icon: <GraduationCap size={28} />, label: '已掌握题', value: stats.graduated, color: 'var(--gold)' },
   ]
 
   return (
