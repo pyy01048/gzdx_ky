@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional, List
 import datetime
+import json
 import re
 
 from database import SessionLocal
@@ -360,11 +361,44 @@ _EXAM_SUBJECT_RE = re.compile(
 )
 
 
+def _decode_escaped_text(raw) -> str:
+    """修复「JSON 双重编码」文本。
+
+    历史导入脚本把中文串先 ``json.dumps``（ensure_ascii=True）再落库，导致
+    ``kaoyan_majors.exam_subjects`` 在库内长这样（字面量，含外层引号）::
+
+        "(302)\u6570\u5b66\uff08\u4e8c\uff09 | (204)\u82f1\u8bed\uff08\u4e8c\uff09"
+
+    后果：``"数学" in s`` 永远为假 → 公开课统计恒为空；前端展示为转义乱码。
+    本函数做**幂等**解码：不是该形态就原样返回，最多解两层。
+    """
+    text = str(raw)
+    for _ in range(2):
+        stripped = text.strip()
+        looks_json_string = (
+            len(stripped) >= 2
+            and stripped.startswith('"')
+            and stripped.endswith('"')
+        )
+        has_escape = "\\u" in stripped
+        if not (looks_json_string or has_escape):
+            break
+        try:
+            decoded = json.loads(stripped)
+        except Exception:
+            break
+        if not isinstance(decoded, str) or decoded == stripped:
+            break
+        text = decoded
+    return text
+
+
 def _split_exam_subject_segments(raw) -> List[str]:
     """把 exam_subjects 原始值切成单科目片段列表。
 
     支持 JSON 数组（list/tuple）与字符串两种存储形态；
     字符串按 ``|`` 拆分，并兼容中文分号与换行。
+    文本形态先过 :func:`_decode_escaped_text`，兼容历史遗留的双重编码数据。
     """
     if raw is None:
         return []
@@ -373,9 +407,9 @@ def _split_exam_subject_segments(raw) -> List[str]:
         for item in raw:
             if item is None:
                 continue
-            segments.extend(str(item).split("|"))
+            segments.extend(_decode_escaped_text(item).split("|"))
     else:
-        text = str(raw)
+        text = _decode_escaped_text(raw)
         segments.extend(text.replace("；", "|").replace("\n", "|").split("|"))
     return segments
 
@@ -419,6 +453,31 @@ def _normalize_exam_subjects(raw) -> List[str]:
     等价于 :func:`_parse_exam_subjects` 只取 ``name`` 字段。
     """
     return [item["name"] for item in _parse_exam_subjects(raw)]
+
+
+# 全国统考公共课：政治 / 外语 / 数学（含经济类联考与部分自命题数学）。
+# 判定「业务课二（专业课）」＝ 初试科目里**不是**公共课的那一门。
+_PUBLIC_SUBJECT_CODES = {
+    "101",  # 思想政治理论
+    "199",  # 管理类联考综合能力
+    "201", "202", "203", "204",  # 英语（一/二）、俄语、日语
+    "301", "302", "303", "304",  # 数学（一/二/三）、教育学专业基础
+    "306",  # 西医综合
+    "307",  # 中医综合
+}
+_PUBLIC_SUBJECT_KEYS = ("政治", "思想", "英语", "外语", "俄语", "日语", "数学")
+
+
+def _is_public_subject(item: dict) -> bool:
+    """该考试科目是否属于全国统考公共课（政治 / 外语 / 数学）。
+
+    判据：3 位科目代码命中统考代码表，或科目名含公共课关键词。
+    """
+    code = (item.get("code") or "").strip()
+    if code in _PUBLIC_SUBJECT_CODES:
+        return True
+    name = (item.get("name") or "").strip()
+    return any(k in name for k in _PUBLIC_SUBJECT_KEYS)
 
 
 @router.get("/schools/{school_id}/enrollment-plan")
@@ -1405,22 +1464,24 @@ def analysis_dashboard(db: Session = Depends(get_db)):
       college_enroll    —— 学院级：招生人数
       major_score_dist  —— 专业课均分分数段分布
     """
-    # ---- 1) 科目分布：遍历专业考试科目 JSON ----
+    # ---- 1) 科目分布：遍历专业考试科目 ----
     majors = db.query(KaoyanMajor).all()
     math_agg, english_agg, major2_agg = {}, {}, {}
     for m in majors:
         # 库内 exam_subjects 实为竖线分隔文本 "(302)数学（二） | (204)英语（二） | ..."，
         # 不能用 isinstance(list) 判断（那会让数学/英语/专业课统计**恒为空**）。
         # 统一走 _parse_exam_subjects：兼容文本与 JSON 数组两种存储形态。
-        for idx, item in enumerate(_parse_exam_subjects(m.exam_subjects)):
+        for item in _parse_exam_subjects(m.exam_subjects):
             s = (item.get("name") or "").strip()
             if not s:
                 continue
             if "数学" in s:
                 math_agg[s] = math_agg.get(s, 0) + 1
-            elif "英语" in s or "外语" in s:
+            elif any(k in s for k in ("英语", "外语", "俄语", "日语")):
                 english_agg[s] = english_agg.get(s, 0) + 1
-            elif idx == 3 and not any(k in s for k in ("政治", "思想", "综合")):
+            elif not _is_public_subject(item):
+                # 业务课二（专业课）：按公共课集合反选，而不是写死 idx == 3。
+                # 真库多数专业只有「数学 | 英语 | 专业课」三门，写死第 4 位会让专业课统计恒为空。
                 major2_agg[s] = major2_agg.get(s, 0) + 1
 
     def top(items, n=15):
