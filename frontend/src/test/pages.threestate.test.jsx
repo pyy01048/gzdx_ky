@@ -37,8 +37,10 @@ function group() {
   return new Proxy(
     {},
     {
-      get: (_t, prop) => {
+      get: (target, prop) => {
         if (typeof prop !== 'string') return undefined
+        // 测试里对单个方法的覆盖（clientStub.xxxApi.method = fn）优先
+        if (prop in target) return target[prop]
         if (!cache.has(prop)) cache.set(prop, fail(prop))
         return cache.get(prop)
       },
@@ -174,5 +176,34 @@ describe('主要数据页：接口返回 null 时不崩不白屏', () => {
     expect(crashes, `${_name} 收到 null 时抛出了未捕获异常`).toEqual([])
     // 页面骨架仍在：页头标题可见（各页 page-title 不会因数据为空而消失）
     expect(container.textContent.length).toBeGreaterThan(0)
+  })
+})
+
+/* ========================================================================= *
+ * 三、KB 健康面板：体检成功但系统健康接口挂时不白屏（就地错误态 + 重试）
+ * ========================================================================= */
+describe('KbHealthPanel：系统健康接口故障时降级', () => {
+  it('kb/health 正常 + /api/health 挂 → 系统健康区显示错误态与重试', async () => {
+    // 让体检接口返回一份最小合法报告，走到渲染系统健康区的分支
+    clientStub.kbApi.health = () => Promise.resolve({
+      healthy: true,
+      documents: { total: 10, by_status: { indexed: 10 }, empty_content: 0, ocr_used: 0, missing_structure_level: 0 },
+      chunks: { total: 100, with_embedding: 100, missing_embedding: 0 },
+      issues: [],
+    })
+    try {
+      const KbHealthPanel = (await import('../components/KbHealthPanel')).default
+      const { crashes, container } = renderPage(KbHealthPanel, '/documents')
+      await settle()
+
+      expect(await screen.findByText('未发现缺口，知识库健康')).toBeInTheDocument()
+      // 系统健康区（details 折叠但仍在 DOM 中）：统一错误态 + 重试按钮
+      expect(screen.getByText('系统健康检查失败')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument()
+      expect(container.firstChild, 'KbHealthPanel 在系统健康故障时 DOM 为空 = 白屏').toBeTruthy()
+      expect(crashes).toEqual([])
+    } finally {
+      delete clientStub.kbApi.health // 恢复全故障 mock，避免污染其他用例
+    }
   })
 })
