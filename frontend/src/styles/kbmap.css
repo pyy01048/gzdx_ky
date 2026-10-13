@@ -732,8 +732,22 @@
   transition: background var(--dur-fast), border-color var(--dur-fast);
 }
 .kb3-kp-card:hover { border-color: var(--accent); }
-.kb3-kp-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .kb3-kp-card.is-sel { background: var(--accent-soft); border-color: var(--accent); }
+/* 卡内选中区：独立的按钮（避免在 role=button 卡片里嵌套按钮的无效 ARIA） */
+.kb3-kp-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.kb3-kp-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 .kb3-kp-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kb3-kp-name {
   flex: 1;
