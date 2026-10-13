@@ -326,8 +326,10 @@ def plan(conn: sqlite3.Connection) -> dict[str, Any]:
     option_filled: list[tuple[int, str, list[str]]] = []   # ⑤ 解析成功
     option_manual: list[dict[str, Any]] = []               # ⑤ 待人工
 
-    for qid, content, options, subject, qtype, source, is_junk in conn.execute(
-        "SELECT id, content, options, subject, question_type, source, is_junk FROM quiz_questions"
+    for (qid, content, options, subject, qtype, source, is_junk,
+         question_no, source_paper, source_page, year) in conn.execute(
+        "SELECT id, content, options, subject, question_type, source, is_junk, "
+        "question_no, source_paper, source_page, year FROM quiz_questions"
     ):
         # ⑥ 题面水印
         new_c, _d, _mx = clean_text(content or "")
@@ -371,6 +373,8 @@ def plan(conn: sqlite3.Connection) -> dict[str, Any]:
             else:
                 option_manual.append({
                     "id": qid, "question_type": qtype, "source": source,
+                    "question_no": question_no, "source_paper": source_paper,
+                    "source_page": source_page, "year": year,
                     "content_head": (content or "")[:120],
                 })
 

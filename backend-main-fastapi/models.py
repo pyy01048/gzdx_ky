@@ -107,6 +107,10 @@ class QuizQuestion(Base):
     is_retest = Column(Boolean, default=False, index=True, comment="是否复试题（0 初试 / 1 复试）")
     answer_source = Column(String(20), nullable=True, comment="答案来源：bank/source_extract/llm_generated/user_confirmed")
     answer_confidence = Column(Float, nullable=True, comment="答案置信度 0-1（<0.8 不参与自动判分）")
+    # —— 识别图缺失标记（2026-10 数据治理）—— #
+    # 题干引用了图/表（“如图/图1.2.12/真值表…”），但本库无任何题目图片存储 → 该题的图必然缺失。
+    # 刻意**不复用 quality**：quality 已被 A/B/C 分级 + incomplete 占用，写入非分级值会毁掉分级语义。
+    figure_missing = Column(Integer, nullable=False, default=0, server_default="0", comment="识别图缺失标记")
     created_at = Column(DateTime, default=_utcnow)
 
 
