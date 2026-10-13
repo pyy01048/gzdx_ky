@@ -325,6 +325,34 @@ export default function Dashboard() {
   return (
     <div className="dash">
 
+      {/* ===== 今日复习队列（置顶：打开先清今日到期，按艾宾浩斯节奏推进） ===== */}
+      <section className="dash-today" aria-label="今日复习队列">
+        <div className="dash-today-head">
+          <strong>🔁 今日复习队列</strong>
+          <span className="dash-today-sub">
+            共 {dueReviews + dueWordCount + dueCardCount} 项待复习 · 点进去逐项清理
+          </span>
+        </div>
+        <div className="dash-today-grid">
+          <button className="dash-today-card" onClick={() => navigate('/error-review')}>
+            <em style={{ color: 'var(--gold)' }}>{dueReviews}</em>
+            <span>道错题</span>
+          </button>
+          <button className="dash-today-card" onClick={() => navigate('/words')}>
+            <em style={{ color: 'var(--accent)' }}>{dueWordCount}</em>
+            <span>个单词</span>
+          </button>
+          <button className="dash-today-card" onClick={() => navigate('/cards')}>
+            <em style={{ color: '#16a34a' }}>{dueCardCount}</em>
+            <span>张记忆卡</span>
+          </button>
+          <button className="dash-today-card" onClick={() => navigate('/quiz')}>
+            <em style={{ color: '#ef4444' }}>去</em>
+            <span>继续刷题</span>
+          </button>
+        </div>
+      </section>
+
       {/* ===== V11 今日学习引导条（打开就知道该干什么） ===== */}
       {today && (
         <section className="dash-today" aria-label="今日学习引导">
