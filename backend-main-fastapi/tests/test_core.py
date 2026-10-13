@@ -118,6 +118,118 @@ class TestEbinghaus:
 
 
 # --------------------------------------------------------------------------- #
+# 新错题首入库排程测试（V12 同族修复）
+#
+# 历史缺陷：三个错题入口（手动收录 / 刷题判错 / 模考回流）一律用
+# ebinghaus_next_review(0)（20 分钟后）给新错题排程 → 新错题入册当天
+# 全部涌进"今日复习队列"，整本错题本调度失真（与单词侧
+# "4568/4569 今日待复习"同族）。修复：first_review_at 按掌握度给
+# ≥1 天的首间隔，新内容不当日到期。
+# --------------------------------------------------------------------------- #
+
+class TestErrorFirstReview:
+    """ReviewScheduler.first_review_at：新错题首次复习排程。"""
+
+    @staticmethod
+    def _now():
+        return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+    def _assert_days_later(self, accuracy, days):
+        result = ReviewScheduler.first_review_at(accuracy)
+        expected = self._now() + datetime.timedelta(days=days)
+        assert abs((result - expected).total_seconds()) < 5, (
+            f"accuracy={accuracy!r} 应排在 {days} 天后，实际 {result}")
+
+    def test_unknown_mastery_one_day(self):
+        """未评估（None/0）→ SM-2 标准首间隔 1 天，不当日到期。"""
+        self._assert_days_later(None, 1)
+        self._assert_days_later(0.0, 1)
+
+    def test_low_mastery_one_day(self):
+        """accuracy < 0.5（没掌握）→ 1 天。"""
+        self._assert_days_later(0.3, 1)
+        self._assert_days_later(0.49, 1)
+
+    def test_mid_mastery_two_days(self):
+        """0.5 ≤ accuracy < 0.8（半会）→ 2 天。"""
+        self._assert_days_later(0.5, 2)
+        self._assert_days_later(0.79, 2)
+
+    def test_high_mastery_three_days(self):
+        """accuracy ≥ 0.8（眼会手错）→ 3 天。"""
+        self._assert_days_later(0.8, 3)
+        self._assert_days_later(1.0, 3)
+
+    def test_garbage_accuracy_falls_back_to_one_day(self):
+        """脏数据 accuracy 不能炸，回落 1 天。"""
+        self._assert_days_later("abc", 1)
+        self._assert_days_later([1], 1)
+
+    def test_never_due_today(self):
+        """不变式：首排程必须严格大于当前时刻——新错题不进今日队列。"""
+        now = self._now()
+        for acc in (None, 0.0, 0.5, 0.8, 1.0):
+            assert ReviewScheduler.first_review_at(acc) > now
+
+
+class TestErrorCreationSchedulesFirstReview:
+    """错题创建入口的首排程（API 级，V12 同族修复）。"""
+
+    def test_manual_add_schedules_first_review(self, client, db_schema):
+        """POST /api/errors：新错题 next_review 必须在 ~1 天后，不是 20 分钟后。"""
+        r = client.post("/api/errors", json={
+            "content": "首排程测试题", "correct_answer": "B",
+            "subject": "数学", "status": "active",
+        })
+        assert r.status_code == 200, r.text
+        from database import SessionLocal
+        from models import ErrorRecord
+
+        db = SessionLocal()
+        try:
+            err = db.query(ErrorRecord).filter(
+                ErrorRecord.content == "首排程测试题").order_by(ErrorRecord.id.desc()).first()
+            assert err is not None and err.next_review is not None
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            delta_days = (err.next_review - now).total_seconds() / 86400
+            assert 0.9 <= delta_days <= 1.1, (
+                f"新错题首间隔应约 1 天，实际 {delta_days:.3f} 天")
+        finally:
+            db.close()
+
+    def test_quiz_wrong_answer_schedules_first_review(self, client, db_schema):
+        """POST /api/quiz/submit 答错自动入册：next_review ~1 天后。"""
+        from database import SessionLocal
+        from models import ErrorRecord, QuizQuestion
+
+        db = SessionLocal()
+        try:
+            q = QuizQuestion(content="首排程刷题测试题", options='["A", "B"]',
+                             answer="B", subject="数学", question_type="single")
+            db.add(q)
+            db.commit()
+            qid = q.id
+        finally:
+            db.close()
+
+        r = client.post("/api/quiz/submit", json={
+            "question_id": qid, "my_answer": "A", "mode": "practice"})
+        assert r.status_code == 200, r.text
+
+        db = SessionLocal()
+        try:
+            err = db.query(ErrorRecord).filter(
+                ErrorRecord.question_id == qid).order_by(ErrorRecord.id.desc()).first()
+            assert err is not None and err.next_review is not None
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            delta_days = (err.next_review - now).total_seconds() / 86400
+            assert 0.9 <= delta_days <= 1.1, (
+                f"刷题新错题首间隔应约 1 天，实际 {delta_days:.3f} 天")
+        finally:
+            db.close()
+
+
+# --------------------------------------------------------------------------- #
 # 分页响应测试
 # --------------------------------------------------------------------------- #
 
