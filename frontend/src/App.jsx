@@ -17,6 +17,7 @@ const Pan = lazy(() => import('./pages/Pan'))
 const Words = lazy(() => import('./pages/Words'))
 const Cards = lazy(() => import('./pages/Cards'))
 const Settings = lazy(() => import('./pages/Settings'))
+const CodeBank = lazy(() => import('./pages/CodeBank'))
 const Quiz = lazy(() => import('./pages/Quiz'))
 const QuizBank = lazy(() => import('./pages/QuizBank'))
 const Panorama = lazy(() => import('./pages/Panorama'))
@@ -37,6 +38,7 @@ const KaoyanImport = lazy(() => import('./pages/KaoyanImport'))
 const KaoyanMap = lazy(() => import('./pages/KaoyanMap'))
 const KaoyanScatter = lazy(() => import('./pages/KaoyanScatter'))
 const KaoyanAssistant = lazy(() => import('./pages/KaoyanAssistant'))
+const KaoyanNotices = lazy(() => import('./pages/KaoyanNotices'))
 const PlanPage = lazy(() => import('./pages/PlanPage'))
 const GrowthPage = lazy(() => import('./pages/GrowthPage'))
 const ErrorReview = lazy(() => import('./pages/ErrorReview'))
@@ -55,6 +57,7 @@ const KAOYAN_TABS = [
   { value: '/kaoyan/compare', label: '院校对比' },
   { value: '/kaoyan/analysis', label: '分数分析' },
   { value: '/kaoyan/recommend', label: '智能择校' },
+  { value: '/kaoyan/notices', label: '通知中心' },
   { value: '/kaoyan/map', label: '区域热力图' },
   { value: '/kaoyan/import', label: '数据管理' },
 ]
@@ -115,6 +118,7 @@ export default function App() {
           <Route path="/words" element={<Words />} />
           <Route path="/cards" element={<Cards />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/codebank" element={<CodeBank />} />
           {/* D7: 考研择校模块分组（嵌套路由 + 懒加载） */}
           <Route path="/kaoyan" element={<KaoyanModuleLayout />}>
             <Route index element={<KaoyanGuide />} />
@@ -130,6 +134,7 @@ export default function App() {
             <Route path="map" element={<KaoyanMap />} />
             <Route path="scatter" element={<KaoyanScatter />} />
             <Route path="assistant" element={<KaoyanAssistant />} />
+            <Route path="notices" element={<KaoyanNotices />} />
             <Route path="plan" element={<PlanPage />} />
             <Route path="growth" element={<GrowthPage />} />
           </Route>

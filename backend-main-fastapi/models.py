@@ -105,6 +105,8 @@ class QuizQuestion(Base):
     # —— M6-3：复试维度标记（2026-11）—— #
     # is_retest=1 表示复试题（复试面试/笔试），默认 0=初试。用于复试题库分区与过滤。
     is_retest = Column(Boolean, default=False, index=True, comment="是否复试题（0 初试 / 1 复试）")
+    answer_source = Column(String(20), nullable=True, comment="答案来源：bank/source_extract/llm_generated/user_confirmed")
+    answer_confidence = Column(Float, nullable=True, comment="答案置信度 0-1（<0.8 不参与自动判分）")
     created_at = Column(DateTime, default=_utcnow)
 
 

@@ -400,6 +400,58 @@ export default function Quiz() {
     window.scrollTo({ top: 0 })
   }, [mode])
 
+  /* V11 智能组卷：调 /api/insight/smart-paper 成卷后直接进入练习 */
+  const [smartLoading, setSmartLoading] = useState(null)
+  const runSmartPaper = async (m) => {
+    setSmartLoading(m)
+    try {
+      const { insightApi } = await import('../api/client')
+      const r = await insightApi.smartPaper({ mode: m, size: 20, subject: selSubject || undefined })
+      beginSession(`智能组卷 · ${m === 'weak' ? '薄弱优先' : m === 'error_prone' ? '易错重练' : '随机'}（${r.size}题）`, r.questions, 'practice')
+      toast(`已生成 ${r.size} 题：${r.basis?.slice(0, 40) || '就绪'}`)
+    } catch (e) {
+      toast(e?.message || '智能组卷失败')
+    } finally {
+      setSmartLoading(null)
+    }
+  }
+
+  /* V14 场景化 AI 讲题状态（组件顶层，Hooks 规则） */
+  const [tutor, setTutor] = useState(null)
+  const askTutor = async (qid, angle, myAnswer) => {
+    setTutor({ qid, angle, loading: true, content: '', history: [] })
+    try {
+      const { request } = await import('../api/client')
+      const r = await request('/ai/tutoring/explain', {
+        method: 'POST',
+        body: { question_id: qid, angle, my_answer: myAnswer || undefined },
+      })
+      setTutor({ qid, angle, loading: false, content: r.content, provider: r.provider,
+                 similar: r.similar, history: [
+                   { role: 'user', content: angle },
+                   { role: 'assistant', content: r.content }] })
+    } catch (e) {
+      setTutor({ qid, angle, loading: false, content: e?.message || '讲题失败', history: [] })
+    }
+  }
+  const askFollowup = async (message) => {
+    if (!tutor?.qid || !message.trim()) return
+    const hist = tutor.history || []
+    setTutor(t => ({ ...t, loading: true }))
+    try {
+      const { request } = await import('../api/client')
+      const r = await request('/ai/tutoring/followup', {
+        method: 'POST',
+        body: { question_id: tutor.qid, message, history: hist.slice(-6) },
+      })
+      setTutor(t => ({ ...t, loading: false, content: r.content,
+                       history: [...hist, { role: 'user', content: message },
+                                { role: 'assistant', content: r.content }] }))
+    } catch (e) {
+      setTutor(t => ({ ...t, loading: false, content: e?.message || '追问失败' }))
+    }
+  }
+
   /* 返回首页时刷新本地作答记录（套卷网格颜色/做过次数随之更新） */
   useEffect(() => {
     if (view === 'home') setLocalRecs(loadRecs())
@@ -681,7 +733,25 @@ export default function Quiz() {
           </div>
         </div>
 
-        {tab === 'knowledge' && renderKnowledge()}
+        {tab === 'knowledge' && (
+          <>
+            {/* V11 智能组卷（薄弱优先/易错重练/随机）：数据已齐，一键成卷 */}
+            <div className="qsmart" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <strong style={{ fontSize: 13, color: 'var(--ink-2)', alignSelf: 'center' }}>⚡ 智能组卷：</strong>
+              {[
+                { m: 'weak', label: '薄弱优先', tip: '按薄弱考点自动抽题' },
+                { m: 'error_prone', label: '易错重练', tip: '从你的错题规律抽同类题' },
+                { m: 'random', label: '随机', tip: '随机抽题练手感' },
+              ].map(x => (
+                <button key={x.m} className="qtab-btn" disabled={smartLoading} title={x.tip}
+                  onClick={() => runSmartPaper(x.m)}>
+                  {smartLoading === x.m ? '组卷中…' : x.label}
+                </button>
+              ))}
+            </div>
+            {renderKnowledge()}
+          </>
+        )}
         {tab === 'year' && renderYear()}
         {tab === 'review' && renderReview()}
         {tab === 'review' && renderClosedLoop()}
@@ -1247,6 +1317,38 @@ export default function Quiz() {
       beginSession(src?.title || session.title, src?.questions || list, src?.mode)
     }
 
+    /* V14 场景化 AI 讲题：状态在组件顶层（Hooks 规则），此处仅用 */
+    const askTutor = async (qid, angle, myAnswer) => {
+      setTutor({ qid, angle, loading: true, content: '', history: [] })
+      try {
+        const { request } = await import('../api/client')
+        const r = await request('/ai/tutoring/explain', {
+          method: 'POST',
+          body: { question_id: qid, angle, my_answer: myAnswer || undefined },
+        })
+        setTutor({ qid, angle, loading: false, content: r.content, provider: r.provider,
+                   similar: r.similar, history: [{ role: 'user', content: angle }, { role: 'assistant', content: r.content }] })
+      } catch (e) {
+        setTutor({ qid, angle, loading: false, content: e?.message || '讲题失败', history: [] })
+      }
+    }
+    const askFollowup = async (message) => {
+      if (!tutor?.qid || !message.trim()) return
+      const hist = tutor.history || []
+      setTutor({ ...tutor, loading: true })
+      try {
+        const { request } = await import('../api/client')
+        const r = await request('/ai/tutoring/followup', {
+          method: 'POST',
+          body: { question_id: tutor.qid, message, history: hist.slice(-6) },
+        })
+        setTutor(t => ({ ...t, loading: false, content: r.content,
+                         history: [...hist, { role: 'user', content: message }, { role: 'assistant', content: r.content }] }))
+      } catch (e) {
+        setTutor({ ...tutor, loading: false, content: e?.message || '追问失败' })
+      }
+    }
+
     return (
       <div className="container">
         <div className="qresult">
@@ -1280,6 +1382,35 @@ export default function Quiz() {
             <button className="btn ghost" onClick={redoAll}>再练一次</button>
             <button className="btn ghost" onClick={goHome}>返回题库</button>
           </div>
+
+          {/* V14 场景化 AI 讲题：错题逐条三问 + 追问弹层 */}
+          {wrong.length > 0 && (
+            <section className="qresult-panel">
+              <div className="qresult-panel-t">🤖 AI 讲题（点错题即问，自动带题目上下文）</div>
+              {wrong.slice(0, 10).map((q) => (
+                <div key={q.id} className="qresult-row" style={{ gap: 8, alignItems: 'center' }}>
+                  <span className="qrow-name" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {(q.content || '').slice(0, 40)}
+                  </span>
+                  {[['why_wrong', '为什么我错'], ['solution', '解题思路'], ['method', '举一反三']].map(([a, label]) => (
+                    <button key={a} className="btn sm ghost" disabled={tutor?.loading}
+                      onClick={() => askTutor(q.id, a, records[q.id]?.selected)}>
+                      {tutor?.qid === q.id && tutor?.loading ? '…' : label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {tutor?.content && (
+                <div className="qtutor-panel" style={{ marginTop: 12, padding: '14px 16px', borderRadius: 12, background: 'var(--surface-2, rgba(0,0,0,.03))' }}>
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 6 }}>
+                    讲答来源：{tutor.provider || 'AI'} · 可继续追问
+                  </div>
+                  <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.7 }}>{tutor.content}</div>
+                  <FollowupBox onSend={askFollowup} busy={tutor?.loading} />
+                </div>
+              )}
+            </section>
+          )}
         </div>
       </div>
     )
@@ -1291,5 +1422,20 @@ export default function Quiz() {
       {view === 'practice' && renderPractice()}
       {view === 'result' && renderResult()}
     </>
+  )
+}
+
+/* V14 追问输入框（结果页 AI 讲题弹层内） */
+function FollowupBox({ onSend, busy }) {
+  const [text, setText] = useState('')
+  return (
+    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+      <input className="input" style={{ flex: 1 }} value={text} disabled={busy}
+        placeholder="继续追问，如：第 2 步为什么用戴维南定理？"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !busy) { onSend(text); setText('') } }} />
+      <button className="btn sm primary" disabled={busy || !text.trim()}
+        onClick={() => { onSend(text); setText('') }}>追问</button>
+    </div>
   )
 }

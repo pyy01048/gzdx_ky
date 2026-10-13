@@ -64,6 +64,12 @@ vi.mock('../api/client', () => ({
   tasksApi: { list: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({}), update: vi.fn().mockResolvedValue({}), remove: vi.fn().mockResolvedValue({}) },
   errorsApi: { list: vi.fn().mockResolvedValue([]), resolve: vi.fn().mockResolvedValue({}) },
   flashcardsApi: { list: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({}) },
+  /* V11 学习洞察（Dashboard 引用） */
+  insightApi: {
+    today: vi.fn().mockResolvedValue({ due_review_count: 0, today_tasks_count: 0, today_answered: 0, weak_top: [], suggestion: [] }),
+    weeklyReport: vi.fn().mockResolvedValue({ summary: '', daily: [], this_week: { answered: 0, accuracy: null, duration_min: 0 }, last_week: { answered: 0, accuracy: null }, delta: { direction: 'flat', text: '持平' }, weak_delta: [] }),
+    smartPaper: vi.fn().mockResolvedValue({ mode: 'random', size: 0, basis: '', questions: [] }),
+  },
 }))
 
 vi.mock('../api/kaoyanApi', () => ({

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
 import { todayStr, weekdayIdx, WEEK_CN } from '../utils/date'
 import { examDaysLeft, examYear, resolveExamDate } from '../utils/exam'
@@ -32,6 +33,19 @@ export const MODULES = [
   { id: '/planner', to: '/planner', label: '学习计划', icon: Calendar },
   { id: '/assistant', to: '/assistant', label: 'AI 助手', icon: MessageSquare },
   { id: '/settings', to: '/settings', label: '设置', icon: Settings },
+const MODULES = [
+  { to: '/tasks', label: '任务打卡', icon: Target },
+  { to: '/kbmap', label: '知识地图', icon: MapIcon },
+  { to: '/quiz', label: '刷题中心', icon: Book },
+  { to: '/codebank', label: '复试代码题库', icon: Book },
+  { to: '/notebook', label: '错题本', icon: FileText },
+  { to: '/words', label: '单词记忆', icon: GraduationCap },
+  { to: '/cards', label: '记忆卡片', icon: Brain },
+  { to: '/documents', label: '文档知识库', icon: Folder },
+  { to: '/pan', label: '网盘联动', icon: Cloud },
+  { to: '/planner', label: '学习计划', icon: Calendar },
+  { to: '/assistant', label: 'AI 助手', icon: MessageSquare },
+  { to: '/settings', label: '设置', icon: Settings },
 ]
 
 /* 实时时钟 */
@@ -276,18 +290,12 @@ export default function Dashboard() {
         id: 'minutes', ico: Clock, tone: 'blue', trend: 'up', trendText: '本周',
         value: (weekMinutes / 60).toFixed(1), unit: 'h', label: '学习时长', to: '/kbmap',
       },
-      {
         id: 'tasks', ico: Target, tone: 'green', trend: 'flat', trendText: '今日',
         value: todayTasks.length, unit: '', label: `今日任务 · 已完成 ${doneCount}`, to: '/tasks',
-      },
-      {
         id: 'review', ico: Book, tone: 'amber', trend: 'flat', trendText: '待处理',
         value: dueReviews + dueWordCount + dueCardCount, unit: '', label: '待复习（错/词/卡）', to: '/notebook',
-      },
-      {
         id: 'streak', ico: Calendar, tone: 'violet', trend: 'up', trendText: '连续',
         value: streak, unit: '天', label: '学习打卡', to: '/planner',
-      },
     ]
     return applyOrder(all.filter((c) => !layout.statsHidden.includes(c.id)), layout.statsOrder)
   }, [weekMinutes, todayTasks, doneCount, dueReviews, dueWordCount, dueCardCount, streak,
@@ -297,9 +305,128 @@ export default function Dashboard() {
     () => applyOrder(MODULES.filter((m) => !layout.modsHidden.includes(m.id)), layout.modsOrder),
     [layout.modsHidden, layout.modsOrder],
   )
+  const [today, setToday] = useState(null)
+  const [dayNotices, setDayNotices] = useState([])   // V16 当日院校公告
+  const [report, setReport] = useState(null)
+  const [showReport, setShowReport] = useState(false)
+
+  useEffect(() => {
+    /* V11: 今日学习引导（一次拉齐：到期复习/今日任务/今日答题/薄弱点/行动清单） */
+    import('../api/client').then(({ insightApi }) => {
+      insightApi.today().then(setToday).catch(() => setToday(null))
+    })
+    /* V16: 当日院校公告（工科/理科相关招生动态，随时可看） */
+    import('../api/client').then(({ request }) => {
+      request('/kaoyan/notices/feed', { params: { page: 1, page_size: 8 } })
+        .then(r => setDayNotices(r.items || []))
+        .catch(() => setDayNotices([]))
+  }, [])
+
+  const openReport = () => {
+    setShowReport(true)
+    if (!report) {
+        insightApi.weeklyReport().then(setReport).catch(() => setShowReport(false))
+    }
 
   return (
     <div className="dash">
+      {/* ===== V11 今日学习引导条（打开就知道该干什么） ===== */}
+      {today && (
+        <section className="dash-today" aria-label="今日学习引导">
+          <div className="dash-today-head">
+            <strong>📌 今日该干什么</strong>
+            <span className="dash-today-sub">{today.suggestion?.[0] || '按下面清单推进即可'}</span>
+          </div>
+          <div className="dash-today-grid">
+            <button className="dash-today-card" onClick={() => navigate('/review')}>
+              <em style={{ color: 'var(--gold)' }}>{today.due_review_count}</em>
+              <span>到期复习</span>
+            </button>
+            <button className="dash-today-card" onClick={() => navigate('/tasks')}>
+              <em style={{ color: 'var(--accent)' }}>{today.today_tasks_count}</em>
+              <span>今日任务</span>
+            </button>
+            <button className="dash-today-card" onClick={() => navigate('/quiz')}>
+              <em style={{ color: '#16a34a' }}>{today.today_answered}</em>
+              <span>今日已答</span>
+            </button>
+            {today.weak_top?.[0] && (
+              <button className="dash-today-card" onClick={() => navigate('/quiz?subject=' + encodeURIComponent(today.weak_top[0].subject || ''))}>
+                <em style={{ color: '#ef4444' }}>薄弱</em>
+                <span>{(today.weak_top[0].knowledge_point || '').slice(0, 10) || '考点待诊断'}</span>
+              </button>
+            )}
+            <button className="dash-today-card" onClick={openReport}>
+              <em style={{ color: 'var(--accent-strong)' }}>周报</em>
+              <span>本周 vs 上周</span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ===== V11 学习周报弹层 ===== */}
+      {showReport && (
+        <div className="dash-report-mask" onClick={() => setShowReport(false)}>
+          <div className="dash-report" onClick={e => e.stopPropagation()}>
+            <div className="dash-report-head">
+              <strong>📊 学习周报</strong>
+              <button className="dash-report-close" onClick={() => setShowReport(false)}>✕</button>
+            </div>
+            {!report ? (
+              <div className="dash-report-loading">生成中…</div>
+            ) : (
+              <>
+                <div className="dash-report-summary">{report.summary}</div>
+                <div className="dash-report-grid">
+                  <div><em>{report.this_week.answered}</em><span>本周答题{report.last_week.answered ? `（上周 ${report.last_week.answered}）` : ''}</span></div>
+                  <div><em>{report.this_week.accuracy != null ? Math.round(report.this_week.accuracy * 100) + '%' : '—'}</em><span>正确率{report.last_week.accuracy != null ? `（上周 ${Math.round(report.last_week.accuracy * 100)}%）` : ''}</span></div>
+                  <div><em>{report.this_week.duration_min}</em><span>学习时长（分钟）</span></div>
+                  <div><em>{report.delta.direction === 'up' ? '↑' : report.delta.direction === 'down' ? '↓' : '→'}</em><span>环比 {report.delta.text}</span></div>
+                </div>
+                <div className="dash-report-bars">
+                  {report.daily.map(d => (
+                    <div key={d.date} className="dash-report-bar-item" title={d.date}>
+                      <i style={{ height: `${Math.min(100, d.answered * 6)}%` }} />
+                      <b>{d.answered || ''}</b>
+                      <span>{d.label}</span>
+                    </div>
+                  ))}
+                </div>
+                {report.weak_delta?.length > 0 && (
+                  <div className="dash-report-weak">
+                    <b>薄弱考点变化：</b>
+                    {report.weak_delta.map((w, i) => (
+                      <span key={i} className="dash-report-weak-tag">{w.knowledge_point?.slice(0, 12)} {w.change}</span>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== V16 当日院校公告（工科/理科招生动态，随时查看） ===== */}
+      {dayNotices.length > 0 && (
+        <section className="dash-today" style={{ marginBottom: 18 }} aria-label="当日院校公告">
+          <div className="dash-today-head">
+            <strong>📰 院校公告速递</strong>
+            <span className="dash-today-sub">工科/理科相关专业 · 最新 {dayNotices.length} 条 · 点标题看原文</span>
+            <Link to="/kaoyan/notices" style={{ marginLeft: 'auto', fontSize: 12 }}>进入通知中心 →</Link>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {dayNotices.slice(0, 6).map(n => (
+              <a key={n.id} href={n.url} target="_blank" rel="noreferrer"
+                style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 13, textDecoration: 'none', color: 'var(--ink-2)' }}>
+                <em style={{ fontStyle: 'normal', fontSize: 11, padding: '1px 8px', borderRadius: 999, background: 'var(--accent-soft, rgba(43,90,158,.1))', color: 'var(--accent)', flexShrink: 0 }}>{n.notice_type || '公告'}</em>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title}</span>
+                <span style={{ fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{n.school_name}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ===== Hero 渐变倒计时 ===== */}
       {!hidden('hero') && (
       <section className="dash-hero">

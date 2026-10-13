@@ -184,6 +184,107 @@ export default function KaoyanRecommend() {
           ))}
         </div>
       )}
+
+      <AutoAdjustPanel form={form} />
+    </div>
+  )
+}
+
+/* ---------- V10: 自动调整面板（冲/稳/保 三档 + 数据化理由） ---------- */
+function AutoAdjustPanel({ form }) {
+  const [adj, setAdj] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+
+  const run = () => {
+    setLoading(true)
+    setErr('')
+    kaoyanApi.autoAdjust({
+      user_score: form.score,
+      subject_code: form.subject_code || undefined,
+      province: form.province || undefined,
+      level: form.level || undefined,
+    })
+      .then(setAdj)
+      .catch(e => setErr(e?.message || '自动调整失败，请稍后重试'))
+      .finally(() => setLoading(false))
+  }
+
+  const buckets = [
+    { key: 'rush', title: '冲刺', icon: '🚀', color: '#ef4444', desc: '分差 35~5 分，需要超常发挥' },
+    { key: 'stable', title: '稳妥', icon: '🛡️', color: '#f59e0b', desc: '分差 ±15 分，匹配度最高' },
+    { key: 'safe', title: '保底', icon: '🌱', color: '#16a34a', desc: '高出均分 15 分以上，胜算大' },
+  ]
+
+  return (
+    <div style={{ marginTop: '36px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+        <div>
+          <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>⚡ 一键自动调整</h2>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--ink-3)' }}>
+            基于近3年录取均分自动分「冲 / 稳 / 保」三档，附数据化理由（分数变化后点一下即可重新分档）
+          </p>
+        </div>
+        <button onClick={run} disabled={loading}
+          style={{
+            padding: '11px 28px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 600,
+            background: 'linear-gradient(135deg, #3A6FB8, #2B5A9E)', color: '#fff',
+            boxShadow: '0 6px 18px -6px rgba(43,90,158,.5)',
+          }}>
+          {loading ? '调整中…' : `按 ${form.score} 分自动调整`}
+        </button>
+      </div>
+
+      {err && (
+        <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '13px' }}>{err}</div>
+      )}
+
+      {adj && (
+        <>
+          <div style={{ padding: '10px 14px', marginBottom: '14px', borderRadius: '10px', background: 'var(--surface)', border: '1px solid var(--line)', fontSize: '12px', color: 'var(--ink-2)' }}>
+            {adj.method} · 覆盖院校 {adj.coverage?.total || 0} 所（有近3年录取均分数据的）
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+            {buckets.map(b => {
+              const items = adj.buckets?.[b.key] || []
+              return (
+                <div key={b.key} style={{
+                  borderRadius: '16px', background: 'var(--surface)', border: '1px solid var(--line)',
+                  borderTop: `3px solid ${b.color}`, padding: '16px', minHeight: '160px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '16px', fontWeight: 700 }}>{b.icon} {b.title}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{items.length} 所</span>
+                  </div>
+                  <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--ink-3)' }}>{b.desc}</p>
+                  {items.length === 0 && <p style={{ fontSize: '13px', color: 'var(--ink-3)' }}>暂无匹配院校</p>}
+                  {items.map(s => (
+                    <div key={s.school_id} style={{
+                      padding: '10px 12px', marginBottom: '8px', borderRadius: '10px',
+                      background: 'var(--surface-2, rgba(0,0,0,0.03))',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                        <Link to={`/kaoyan/schools/${s.school_id}`} style={{ fontWeight: 600, color: 'var(--ink)', textDecoration: 'none', fontSize: '14px' }}>{s.school_name}</Link>
+                        <span style={{ fontSize: '12px', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>均分 {s.avg3}</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: '2px' }}>
+                        {s.level || '—'} · {s.province || '—'} · 分差 {s.gap > 0 ? '+' : ''}{s.gap} · 信心 {Math.round(s.confidence * 100)}%
+                      </div>
+                      {s.reasons?.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+                          {s.reasons.map((r, i) => (
+                            <span key={i} style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '999px', background: 'var(--accent-soft, rgba(43,90,158,.1))', color: 'var(--accent)' }}>{r}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }

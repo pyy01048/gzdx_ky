@@ -15,6 +15,16 @@ export const kaoyanApi = {
   schoolAdmissions: (id) => request('/kaoyan/schools/' + id + '/admissions'),
   trend: (params) => request('/kaoyan/analysis/trend', { params }),
   compare: (schoolIds) => request('/kaoyan/analysis/compare', { params: { school_ids: schoolIds } }),
+  // V10: 全局通知流（搜索/类型过滤/分页）
+  noticesFeed: (params) => request('/kaoyan/notices/feed', { params }),
+  // V10: 改考雷达（列表/统计/扫描）
+  reforms: (params) => request('/kaoyan/reforms', { params }),
+  reformStats: () => request('/kaoyan/reforms/stats'),
+  reformScan: (payload) => request('/kaoyan/reforms/scan', { method: 'POST', body: payload }),
+  // V10: 分数全景（多年明细/趋势/国家线差值）
+  scoreDetail: (id, params) => request('/kaoyan/analysis/score-detail/' + id, { params }),
+  // V10: 择校自动调整（冲稳保+理由）
+  autoAdjust: (payload) => request('/kaoyan/analysis/auto-adjust', { method: 'POST', body: payload }),
   // D1: 增强推荐（多维权重）
   recommend: (params) => request('/kaoyan/analysis/recommend', { params }),
   // D4: 自然语言择校问答引擎
@@ -51,6 +61,8 @@ export const kaoyanApi = {
   refresh: (params) => request('/kaoyan/collection/refresh', { method: 'POST', params, timeout: 300000 }),
   // T5: 院校公告列表 + 类型分布
   schoolNotices: (id, params) => request(`/kaoyan/schools/${id}/notices`, { params }),
+  // V16 单校公告随时爬取（详情页按钮）
+  crawlSchoolNotices: (id) => request('/kaoyan/notices/crawl', { method: 'POST', params: { school_id: id } }),
   noticeTypeStats: () => request('/kaoyan/notices/types'),
   // T6: 跨校公告聚合（首页公告栏）+ 最近 N 天更新概览
   // params: { limit, since, notice_type, keyword, school_id, order_by }
