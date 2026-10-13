@@ -6,7 +6,7 @@ import EChart from '../components/EChart'
 import { useThemeTokens } from '../components/themeTokens'
 import { toast, Empty } from '../components/UI'
 import useStore from '../store/useStore'
-import { resolveExamDate } from '../utils/exam'
+import { resolveExamDate, examDateMD } from '../utils/exam'
 import { examSubjectText } from '../utils/kaoyanFields'
 import './KaoyanSchools.css'
 
@@ -205,7 +205,8 @@ export default function KaoyanSchools() {
     if (!mainExamDate) return exams
     return [{
       id: '__main',
-      name: `考研初试${cd?.is_default ? '（12/21 预估，可在设置修改）' : ''}`,
+      // 预估标签的 M/D 由 examDateMD(mainExamDate) 现算，不写死 12/21（#105a/②）
+      name: `考研初试${cd?.is_default ? `（${examDateMD(mainExamDate)} 预估，可在设置修改）` : ''}`,
       date: `${mainExamDate}T08:30:00+08:00`,
       main: true,
     }, ...exams]
