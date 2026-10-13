@@ -11,12 +11,13 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import collections
 
 from sqlalchemy.orm import Session
 
-from models import KnowledgeChunk
+from models import Document, KnowledgeChunk
 from services import search_service
 from services.delete_guard import require_physical_delete_enabled
 
@@ -630,3 +631,461 @@ def ingest_document(db: Session, doc, *, replace: bool = True) -> int:
         db, doc.id, doc.file_name, doc.content, subject=subject,
         replace=replace, content_category=category,
     )
+
+
+# --------------------------------------------------------------------------- #
+# 文档治理（学习文库 / 文档知识库）：预清洗 · Markdown 快照 · 导出 · 归档 · 按科目归档
+#
+# 用户诉求（逐条落地）：
+#   1. 水印：识别结果里混入「东坡哥微信/haodongpo」「第N页(OCR)」「QQ群/淘宝店」等。
+#      → 复用 services/extraction_noise 的规则做**导入时预清洗**（与存量清洗脚本同源）。
+#   2. 格式统一：pdf/doc/docx/txt 落库时统一生成 Markdown 快照
+#      （knowledge_base/_md/{doc_id}.md），源文件归入 knowledge_base/_archive/（默认归档而非删除）。
+#   3. 可转格式：详情里能导出 md / txt；pdf 依赖缺失则降级并**明确提示**，不静默失败。
+#   5. 按科目归档：根目录文件按「文件名关键词 + 文档已有 subject」推断科目，
+#      移动到 knowledge_base/{科目}/{文件名}；未匹配进 待分类/。
+#
+# 硬约束（这是本模块存在的原因）：
+#   · 真库约 1561 篇 file_path 指向 knowledge_base，实测 315 篇文件已不在盘上（断链）。
+#     所以「按科目归档」必须是「**先移动成功 → 再写回 DB file_path**」的原子流程，
+#     失败要回滚文件移动；对断链记录**跳过并计入报告**，绝不因找不到文件整体抛异常。
+#   · 任何真库写入前先 create_backup()（SQLite backup API，禁 cp/copy2）。
+# --------------------------------------------------------------------------- #
+
+#: 知识库根目录（仓库根/knowledge_base）。可用环境变量覆盖，便于测试注入临时目录。
+_KB_ROOT_ENV = "KAOYAN_KB_ROOT"
+#: Markdown 快照目录名（相对 knowledge_base 根）。
+MD_SNAPSHOT_DIRNAME = "_md"
+#: 源文件归档目录名（相对 knowledge_base 根）。
+ARCHIVE_DIRNAME = "_archive"
+#: 软删（标记删除）源文件落到这里，保留可恢复性。
+TRASH_DIRNAME = "_trash"
+#: 未匹配任何科目的文件落的目录。
+PENDING_SUBJECT = "待分类"
+#: 根目录下不参与归档的保留文件名（仓库自带的说明/状态文件）。
+RESERVED_ROOT_FILES = {"readme.md", "readme.txt", "readme", ".processed_files.json"}
+
+
+def _backend_dir() -> str:
+    """后端根目录（本文件位于 <backend>/services/）。"""
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def resolve_kb_root(kb_root: str | None = None) -> str:
+    """解析知识库根目录：显式入参 > 环境变量 KAOYAN_KB_ROOT > 仓库同级 knowledge_base。"""
+    if kb_root:
+        return os.path.abspath(kb_root)
+    env = (os.environ.get(_KB_ROOT_ENV) or "").strip()
+    if env:
+        return os.path.abspath(env)
+    return os.path.abspath(os.path.join(_backend_dir(), os.pardir, "knowledge_base"))
+
+
+def _safe_dirname(name: str) -> str:
+    """把科目名清洗成可安全用作目录名的片段（挡掉路径分隔符等危险字符）。"""
+    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", (name or "").strip())
+    return cleaned.strip(" .") or PENDING_SUBJECT
+
+
+def _normcase_abspath(path: str) -> str:
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _is_under(path: str, root: str) -> bool:
+    ap, rp = _normcase_abspath(path), _normcase_abspath(root)
+    return ap == rp or ap.startswith(rp + os.sep)
+
+
+def preclean_watermarks(text: str | None) -> tuple[str, int, int]:
+    """导入/入库时预清洗行内水印。返回 (清洗后文本, 丢行数, 删片段行数)。
+
+    规则与 :mod:`scripts.clean_document_watermarks` 完全同源（都在
+    :mod:`services.extraction_noise`），避免"清过的又被重新导入弄脏"。
+    """
+    from services.extraction_noise import clean_document_text
+
+    return clean_document_text(text)
+
+
+def configured_subject_set(db: Session) -> set[str]:
+    """当前 subject_config 字典里的科目名集合（科目唯一权威）。"""
+    try:
+        from models import SubjectConfig
+
+        return {r[0] for r in db.query(SubjectConfig.subject).all() if r[0]}
+    except Exception:  # noqa: BLE001 —— 字典表缺失不应让归档整体失败
+        return set()
+
+
+def infer_subject_for_doc(db: Session, file_name: str, doc=None) -> tuple[str, bool]:
+    """推断文件应归入的科目。返回 ``(科目名, 是否为待分类)``。
+
+    依据（按优先级）：
+      1. 文件名关键词表（复用 kb_service.classify_subject_confidence，高置信才采信）；
+      2. 文档已有 subject（DB 里已有的标注）；
+      3. 都判不出 → ``待分类``。
+    """
+    subj, high = classify_subject_confidence(file_name or "", (doc.content if doc else "") or "")
+    if high and subj:
+        return subj, False
+    if doc is not None and (getattr(doc, "subject", None) or "").strip():
+        return str(doc.subject).strip(), False
+    return PENDING_SUBJECT, True
+
+
+def build_markdown_snapshot(doc, *, cleaned_content: str | None = None) -> str:
+    """把一篇文档渲染成统一的 Markdown 快照文本（带 YAML front-matter 元信息）。"""
+    body = cleaned_content
+    if body is None:
+        body, _d, _m = preclean_watermarks(doc.content or "")
+    name = doc.file_name or f"document_{getattr(doc, 'id', '')}"
+    stem = os.path.splitext(name)[0]
+    lines = [
+        "---",
+        f"doc_id: {getattr(doc, 'id', '')}",
+        f"file_name: {name}",
+        f"file_type: {doc.file_type or ''}",
+        f"subject: {doc.subject or ''}",
+        f"file_path: {(doc.file_path or '').replace(chr(92), '/')}",
+        "---",
+        "",
+        f"# {stem}",
+        "",
+        body,
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def snapshot_path(doc_id, *, kb_root: str | None = None) -> str:
+    """返回某文档 Markdown 快照的绝对路径。"""
+    return os.path.join(resolve_kb_root(kb_root), MD_SNAPSHOT_DIRNAME, f"{doc_id}.md")
+
+
+def write_markdown_snapshot(doc, *, kb_root: str | None = None) -> str:
+    """生成/覆盖文档的 Markdown 快照到 ``knowledge_base/_md/{doc_id}.md``，返回路径。"""
+    path = snapshot_path(doc.id, kb_root=kb_root)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    md = build_markdown_snapshot(doc)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(md)
+    return path
+
+
+def export_document(doc, fmt: str, *, kb_root: str | None = None) -> dict:
+    """导出文档统一快照。
+
+    Returns:
+        ``{"data": bytes, "filename": str, "media_type": str, "degraded": bool,
+        "note": str}``。``fmt=pdf`` 依赖缺失时返回 ``degraded=True`` 并把
+        ``data`` 降级为 Markdown 快照，调用方据此在 UI 明确提示（不静默失败）。
+    """
+    fmt = (fmt or "md").lower().strip()
+    stem = os.path.splitext(doc.file_name or f"document_{doc.id}")[0] or f"document_{doc.id}"
+    cleaned, _d, _m = preclean_watermarks(doc.content or "")
+    md_text = build_markdown_snapshot(doc, cleaned_content=cleaned)
+
+    if fmt == "txt":
+        return {
+            "data": cleaned.encode("utf-8-sig"),
+            "filename": f"{stem}.txt",
+            "media_type": "text/plain",
+            "degraded": False,
+            "note": "",
+        }
+
+    if fmt == "pdf":
+        pdf_bytes = _render_pdf(cleaned, stem)
+        if pdf_bytes is not None:
+            return {
+                "data": pdf_bytes,
+                "filename": f"{stem}.pdf",
+                "media_type": "application/pdf",
+                "degraded": False,
+                "note": "",
+            }
+        # 降级：明确告知，不静默失败
+        return {
+            "data": md_text.encode("utf-8-sig"),
+            "filename": f"{stem}.md",
+            "media_type": "text/markdown",
+            "degraded": True,
+            "note": "PDF 渲染依赖不可用，已降级为 Markdown 快照（内容一致）",
+        }
+
+    # 默认 md
+    return {
+        "data": md_text.encode("utf-8-sig"),
+        "filename": f"{stem}.md",
+        "media_type": "text/markdown",
+        "degraded": False,
+        "note": "",
+    }
+
+
+def _render_pdf(text: str, title: str) -> bytes | None:
+    """用 reportlab 生成中文 PDF；依赖/字体不可用时返回 None（交由调用方降级）。"""
+    try:
+        from io import BytesIO
+
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        from reportlab.pdfgen import canvas
+    except Exception:  # noqa: BLE001
+        return None
+
+    try:
+        try:
+            pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+            font_name = "STSong-Light"
+        except Exception:  # noqa: BLE001
+            font_name = "Helvetica"
+
+        buf = BytesIO()
+        c = canvas.Canvas(buf, pagesize=A4)
+        width, height = A4
+        x, top = 18 * mm, height - 20 * mm
+        bottom = 18 * mm
+        line_h = 6.5 * mm
+        chars_per_line = max(20, int((width - 36 * mm) / 5.2))
+
+        ctx = c.beginText(x, top)
+        ctx.setFont(font_name, 10.5)
+        y = top
+
+        def _new_page():
+            nonlocal ctx, y
+            c.drawText(ctx)
+            c.showPage()
+            ctx = c.beginText(x, top)
+            ctx.setFont(font_name, 10.5)
+            y = top
+
+        for raw_line in (text or "").split("\n"):
+            line = raw_line.rstrip()
+            # 依字符宽度硬折行（中文字符等宽近似），保证不溢出页宽
+            pieces = [line[i:i + chars_per_line] for i in range(0, len(line), chars_per_line)] or [""]
+            for piece in pieces:
+                ctx.textLine(piece)
+                y -= line_h
+                if y < bottom:
+                    _new_page()
+        c.drawText(ctx)
+        c.save()
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 —— 任何渲染异常都降级，不冒泡打断导出
+        return None
+
+
+def archive_source_file(doc, *, kb_root: str | None = None) -> dict:
+    """把文档源文件移动到 ``knowledge_base/_archive/``（默认归档而非删除）。
+
+    返回 ``{"archived": bool, "new_path": str|None, "reason": str}``。
+    文件不存在/未登记路径 → ``archived=False`` 且给出原因（调用方据此计数，
+    **绝不抛异常**，否则存量 315 篇断链记录会把整批归档一起带崩）。
+    """
+    raw = (getattr(doc, "file_path", None) or "").strip()
+    if not raw:
+        return {"archived": False, "new_path": None, "reason": "未登记原文路径"}
+    if not os.path.isabs(raw):
+        return {"archived": False, "new_path": None, "reason": "原文在外部知识库，本地无文件"}
+    src = os.path.abspath(raw)
+    if not os.path.isfile(src):
+        return {"archived": False, "new_path": None, "reason": "原文文件已不在磁盘（断链）"}
+    root = resolve_kb_root(kb_root)
+    archive_dir = os.path.join(root, ARCHIVE_DIRNAME)
+    if _is_under(src, archive_dir):
+        return {"archived": False, "new_path": src, "reason": "已在归档目录"}
+    stem, ext = os.path.splitext(os.path.basename(src))
+    dest = os.path.join(archive_dir, f"{stem}_{doc.id}{ext}")
+    try:
+        os.makedirs(archive_dir, exist_ok=True)
+        if os.path.exists(dest):
+            dest = os.path.join(archive_dir, f"{stem}_{doc.id}_{int(os.path.getmtime(src))}{ext}")
+        os.replace(src, dest)
+    except OSError as e:
+        return {"archived": False, "new_path": None, "reason": f"移动失败：{e}"}
+    return {"archived": True, "new_path": dest, "reason": ""}
+
+
+def soft_delete_source_file(doc, *, kb_root: str | None = None) -> dict:
+    """软删（标记删除）源文件：移动到 ``knowledge_base/_trash/``，DB 记录保留。
+
+    与归档同一口径：文件不存在/断链 → 返回原因而不抛异常。
+    """
+    raw = (getattr(doc, "file_path", None) or "").strip()
+    if not raw or not os.path.isabs(raw):
+        return {"archived": False, "new_path": None, "reason": "无可移动的本地原文"}
+    src = os.path.abspath(raw)
+    if not os.path.isfile(src):
+        return {"archived": False, "new_path": None, "reason": "原文文件已不在磁盘（断链）"}
+    root = resolve_kb_root(kb_root)
+    trash_dir = os.path.join(root, TRASH_DIRNAME)
+    if _is_under(src, trash_dir):
+        return {"archived": False, "new_path": src, "reason": "已在回收目录"}
+    stem, ext = os.path.splitext(os.path.basename(src))
+    dest = os.path.join(trash_dir, f"{stem}_{doc.id}{ext}")
+    try:
+        os.makedirs(trash_dir, exist_ok=True)
+        if os.path.exists(dest):
+            dest = os.path.join(trash_dir, f"{stem}_{doc.id}_{int(os.path.getmtime(src))}{ext}")
+        os.replace(src, dest)
+    except OSError as e:
+        return {"archived": False, "new_path": None, "reason": f"移动失败：{e}"}
+    return {"archived": True, "new_path": dest, "reason": ""}
+
+
+def ensure_write_backup() -> str | None:
+    """真库写入前备份（SQLite backup API）。测试库（temp 目录）跳过，避免污染真实备份。
+
+    Returns:
+        备份路径；跳过或失败时返回 None（调用方不应因此中断写操作，
+        但真实生产库的失败会打印告警，便于排查）。
+    """
+    try:
+        import tempfile
+
+        from services.backup_service import DB_PATH, create_backup
+
+        db_abs = os.path.abspath(DB_PATH)
+        tmp_root = os.path.abspath(tempfile.gettempdir())
+        if _is_under(db_abs, tmp_root):
+            return None  # 隔离测试库，不产生真实备份、也不触发旧备份清理
+        return create_backup()
+    except Exception as e:  # noqa: BLE001
+        print(f"[kb-governance] 写前备份失败（继续但请留意）：{e}")
+        return None
+
+
+def scan_root_and_archive(
+    db: Session,
+    *,
+    kb_root: str | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """扫描 knowledge_base **根目录**文件 → 按科目归档 → 同步 DB file_path。
+
+    原子性（本任务硬骨头）：
+      · 先 ``os.replace`` 移动文件成功，**再**写回 ``doc.file_path`` 并 commit；
+      · DB 写失败则把文件移动回原位（best-effort）并计入 ``errors``；
+      · 对断链文档（file_path 指向已不存在的文件）**只统计不处理**，绝不抛异常。
+
+    Returns:
+        ``{moved, skipped, broken, unclassified, errors, moved_items,
+        skipped_items, broken_items, kb_root, dry_run}``。
+    """
+    root = resolve_kb_root(kb_root)
+    report: dict = {
+        "moved": 0,
+        "skipped": 0,
+        "broken": 0,
+        "unclassified": 0,
+        "errors": 0,
+        "moved_items": [],
+        "skipped_items": [],
+        "broken_items": [],
+        "kb_root": root,
+        "dry_run": bool(dry_run),
+    }
+    if not os.path.isdir(root):
+        report["error"] = f"知识库根目录不存在：{root}"
+        return report
+
+    # 文档索引：绝对路径 → Document（用于移动后写回 file_path）
+    docs = db.query(Document).filter(Document.file_path.isnot(None)).all()
+    by_abspath: dict[str, object] = {}
+    for d in docs:
+        fp = (d.file_path or "").strip()
+        if fp and os.path.isabs(fp):
+            by_abspath[_normcase_abspath(fp)] = d
+
+    # ---- 1) 根目录文件 → 科目目录 ----
+    try:
+        entries = sorted(os.listdir(root))
+    except OSError as e:
+        report["error"] = f"无法读取知识库根目录：{e}"
+        return report
+
+    for name in entries:
+        full = os.path.join(root, name)
+        if not os.path.isfile(full):
+            continue
+        if name.startswith(".") or name.lower() in RESERVED_ROOT_FILES:
+            continue
+
+        doc = by_abspath.get(_normcase_abspath(full))
+        subject, unclassified = infer_subject_for_doc(db, name, doc)
+        subject_dir = _safe_dirname(subject)
+        dest_dir = os.path.join(root, subject_dir)
+        dest = os.path.join(dest_dir, name)
+
+        if _normcase_abspath(dest) == _normcase_abspath(full):
+            report["skipped"] += 1
+            report["skipped_items"].append({"file": name, "reason": "已在目标科目目录"})
+            continue
+        if os.path.exists(dest):
+            report["skipped"] += 1
+            report["skipped_items"].append({"file": name, "reason": "目标已存在，跳过避免覆盖"})
+            continue
+
+        entry = {"file": name, "subject": subject, "doc_id": getattr(doc, "id", None), "dest": dest}
+
+        if dry_run:
+            report["moved"] += 1
+            if unclassified:
+                report["unclassified"] += 1
+            report["moved_items"].append({**entry, "dry_run": True})
+            continue
+
+        # 先移动文件
+        try:
+            os.makedirs(dest_dir, exist_ok=True)
+            os.replace(full, dest)
+        except OSError as e:
+            report["errors"] += 1
+            report["skipped_items"].append({"file": name, "reason": f"移动失败：{e}"})
+            continue
+
+        # 移动成功 → 再写回 DB（失败则回滚文件位置）
+        if doc is not None:
+            try:
+                doc.file_path = dest
+                db.commit()
+            except Exception as e:  # noqa: BLE001
+                db.rollback()
+                try:
+                    os.replace(dest, full)
+                except OSError:
+                    pass
+                report["errors"] += 1
+                report["skipped_items"].append(
+                    {"file": name, "reason": f"DB 写回失败已回滚文件：{e}"}
+                )
+                continue
+
+        report["moved"] += 1
+        if unclassified:
+            report["unclassified"] += 1
+        report["moved_items"].append(entry)
+
+    # ---- 2) 断链统计：file_path 落在知识库内但文件已不存在 ----
+    for d in docs:
+        fp = (d.file_path or "").strip()
+        if not fp or not os.path.isabs(fp):
+            continue
+        ap = os.path.abspath(fp)
+        if not _is_under(ap, root):
+            continue
+        if not os.path.isfile(ap):
+            report["broken"] += 1
+            if len(report["broken_items"]) < 50:
+                report["broken_items"].append({"doc_id": d.id, "file_path": ap})
+    return report
+
+
+def scan_root_preview(db: Session, *, kb_root: str | None = None) -> dict:
+    """只读预览：不落盘、不写库，返回与 :func:`scan_root_and_archive` 同结构的统计。"""
+    return scan_root_and_archive(db, kb_root=kb_root, dry_run=True)
+

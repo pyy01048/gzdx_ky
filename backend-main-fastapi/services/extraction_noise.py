@@ -35,6 +35,13 @@ __all__ = [
     "MIN_OPTION_COUNT",
     "SPLIT_OPTIONS_ENV",
     "split_options_enabled",
+    # —— 文档正文「行内水印」清洗（学习文库 / 文档知识库共用）——
+    "DOC_WATERMARK_SPAN_PATTERNS",
+    "DOC_WATERMARK_FAST_MARKERS",
+    "MIN_MEANINGFUL_CHARS",
+    "meaningful_count",
+    "clean_document_line",
+    "clean_document_text",
 ]
 
 
@@ -401,3 +408,160 @@ def strip_cross_question_leak(text: str | None) -> tuple[str, bool]:
     cleaned = text.strip()[:cut].strip()
     cleaned = re.sub(r"[\s，,、；;。.]+$", "", cleaned).strip()
     return cleaned, True
+
+
+# --------------------------------------------------------------------------- #
+# 4. 文档正文「行内水印」清洗（学习文库 / 文档知识库的**唯一**规则落点）
+# --------------------------------------------------------------------------- #
+# 背景：`documents.content` / `knowledge_chunks.text` 里混入「东坡哥微信：
+# haidongpo8」「微信公众号:xxx」「QQ 群号」「淘宝店铺」「文库站名」等引流文本。
+# 原先这套规则只写在 `scripts/clean_document_watermarks.py` 里，只能事后刷库；
+# 现在抽到本模块，让「导入/入库时预清洗」与「存量清洗脚本」共用**同一份**规则，
+# 避免两套规则各自演化、清过的又被重新导入弄脏。
+#
+# 设计原则（沿用本项目教训）：**宁可漏删，不可误杀正文**。
+# 只在**确实移除过水印**时才改动文本；未命中水印的行按原样保留。
+# --------------------------------------------------------------------------- #
+
+#: 水印片段规则（按「强特征」排序，长特征在前，避免被短特征吃掉）。
+#: 全部来自实测抽样，覆盖公众号 / 微信 / QQ / 店铺 / 文库站名 / 引流话术。
+DOC_WATERMARK_SPAN_PATTERNS: tuple[str, ...] = (
+    # —— 品牌/公众号家族（实测残留逐一收编）——
+    r"东坡哥微信\s*[:：]?\s*haidongpo\d*",
+    r"haidongpo\d*",
+    r"公众号【[^】]*】[^\n]{0,40}",
+    r"研池大叔",
+    r"蜂考[《》】\w]{0,10}[^\n]{0,24}",
+    r"水木观畴",
+    r"笃学考研",
+    r"考研班主任",
+    r"各大高校真题资料",
+    r"获取联系方式",
+    r"视频课程加",
+    r"全套视频和资料|独家视频讲解",
+    r"观畴考研[，,、]?\s*你身边的考研专家",
+    r"模电考研全套视频和资料",
+    r"电子与通信工程考研",
+    r"关注微信公众号\s*[:：]?\s*[\w\u4e00-\u9fff]{0,20}[”\"']?",
+    r"微信公众号\s*[:：]?\s*[\w\u4e00-\u9fff]{0,20}",
+    r"公众号\s*[:：]\s*[\w\u4e00-\u9fff]{0,20}",
+    r"微信号\s*[:：]?\s*[\w]{0,20}",
+    r"微信扫一扫",
+    r"微信\s*[:：]\s*[\w]{0,20}",
+    r"加微信\s*[:：]?\s*[\w]{0,20}",
+    # —— QQ / 群引流（支持小写、QQ群、可选冒号）——
+    r"(?i)qq\s*群?\s*[:：]?\s*\d{5,12}",
+    r"(?i)(?:加|联系|关注)\s*(?:qq|微信)\s*群?",
+    r"Q{4,}",
+    r"扫描?二维码",
+    r"扫码(获取|关注|进群)?",
+    r"淘宝[^\s]{0,6}(店铺|店|代购|打印)",
+    r"光速考研工作室",
+    r"更多考研资料",
+    r"(道客巴巴|百度文库|豆丁|原创力|小木虫)",
+    r"关注【[^】]*】",
+    r"免费(?:分享|提供|获取)[^\n]{0,16}",
+    # 版权声明水印（收窄：只删「侵权必究/侵权删除」这类声明词，不删裸「侵权」——
+    # 政治/法律题里会出现「侵权责任」等正常内容，裸词会误伤）
+    r"资料仅供学习交流|仅供学习交流|请勿转载|侵权必究|侵权删除",
+)
+
+#: 编译后的水印正则（与 :data:`DOC_WATERMARK_SPAN_PATTERNS` 一一对应）。
+DOC_WATERMARK_SPAN_RES: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(p) for p in DOC_WATERMARK_SPAN_PATTERNS
+)
+
+#: 快速预筛标记：行内不含任一标记就直接跳过全部正则（大幅加速）。
+#: 标记集合刻意放宽，只求不漏。
+DOC_WATERMARK_FAST_MARKERS: tuple[str, ...] = (
+    "微信", "公众号", "haidongpo", "QQ", "qq", "Q群", "淘宝", "扫码", "二维码",
+    "MOOC", "慕课", "研池", "蜂考", "观畴", "笃学", "考研班主任", "侵权", "转载",
+    "http", "www.", "资料", "加群", "联系",
+)
+
+#: 独立 URL —— 考研资料正文里的裸链接几乎全是水印/引流；
+#: 但只在「该行实义汉字很少」时才整行丢弃，避免误删正文里的正常链接。
+DOC_URL_RE = re.compile(r"(?:https?://|www\.)\S{6,}")
+
+#: 整行丢弃阈值：抹掉水印后，实义字符（中英文数字）少于该值即视为纯水印行。
+MIN_MEANINGFUL_CHARS = 4
+
+_RE_MEANINGFUL = re.compile(r"[\u4e00-\u9fffA-Za-z0-9]")
+
+
+def meaningful_count(s: str) -> int:
+    """统计字符串里的实义字符数（中英文 + 数字），用于判断是否为纯水印行。"""
+    return len(_RE_MEANINGFUL.findall(s or ""))
+
+
+def clean_document_line(line: str) -> tuple[str | None, bool]:
+    """清洗单行文档文本里的行内水印。
+
+    Args:
+        line: 原始文本行。
+
+    Returns:
+        ``(新行 or None, 是否发生过水印移除)``；``None`` 表示整行都是纯水印，
+        调用方可安全丢弃。
+    """
+    raw = line
+    # 快速预筛：不含任何水印标记的行直接跳过全部正则（大幅加速）
+    if not any(m in line for m in DOC_WATERMARK_FAST_MARKERS):
+        return line, False
+    t = line
+    touched = False
+    for rx in DOC_WATERMARK_SPAN_RES:
+        new = rx.sub(" ", t)
+        if new != t:
+            touched = True
+            t = new
+    # URL 单独处理：只有当整行去掉水印与 URL 后几乎没有正文时才丢弃
+    if DOC_URL_RE.search(t):
+        stripped = DOC_URL_RE.sub(" ", t)
+        if meaningful_count(stripped) < MIN_MEANINGFUL_CHARS:
+            touched = True
+            t = stripped
+    t = re.sub(r"[ \t]{2,}", " ", t).strip()
+
+    if not touched:
+        return line, False
+
+    if meaningful_count(t) < MIN_MEANINGFUL_CHARS:
+        return None, True
+    return t, True
+
+
+def clean_document_text(text: str | None) -> tuple[str, int, int]:
+    """清洗整段文档文本里的行内水印。
+
+    只在**确实移除过水印**时才改动文本；未命中水印的行按原样保留，
+    避免把「仅换行/空白归一」误算成命中（也避免 ``\\x0b`` 等控制符被当换行重组）。
+
+    Args:
+        text: 原始正文。
+
+    Returns:
+        ``(清洗后文本, 被丢弃的纯水印行数, 被移除水印片段的混合行数)``。
+    """
+    if not text:
+        return text or "", 0, 0
+    kept: list[str] = []
+    dropped = 0
+    mixed = 0
+    # 只用 "\n" 切分（不能用 splitlines()——它会把 \x0b/\x0c 等当换行，污染判定）
+    for line in text.split("\n"):
+        if not line.strip():
+            kept.append(line)
+            continue
+        new, touched = clean_document_line(line)
+        if new is None:
+            dropped += 1
+            continue
+        if touched:
+            mixed += 1
+        kept.append(new)
+    if dropped == 0 and mixed == 0:
+        return text, 0, 0
+    out = "\n".join(kept)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return out, dropped, mixed

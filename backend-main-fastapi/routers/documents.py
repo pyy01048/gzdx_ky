@@ -358,6 +358,12 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     else:
         content_text = f"[文件缺失或未落盘] 文件名：{doc.file_name}"
 
+    # 导入时预清洗行内水印（东坡哥微信/haodongpo、公众号/QQ群/淘宝店等）：
+    # 与存量清洗脚本 scripts/clean_document_watermarks.py 同源（services.extraction_noise），
+    # 在**质量闸门之前**做，避免水印文本干扰空正文/乱码判定。
+    from services.kb_service import preclean_watermarks
+    content_text, _wm_dropped, _wm_mixed = preclean_watermarks(content_text)
+
     # 质量闸门：空正文/占位提示/乱码/二进制残留/同文重复一律拒绝。
     # 拒绝时**不覆盖** doc.content（老正文可能仍有用），状态置 failed 并把原因
     # 透给前端 —— 静默写进库才是这一轮审计里最难发现的那种损坏。
@@ -739,7 +745,7 @@ async def parse_all_documents(db: Session = Depends(get_db)):
         return {"parsed": 0, "message": "没有待解析的文档"}
 
     from services.document_parser import DocumentParser
-    from services.kb_service import has_searchable_chunks, ingest_document
+    from services.kb_service import has_searchable_chunks, ingest_document, preclean_watermarks
 
     parser = DocumentParser()
     parsed_count = 0
@@ -756,6 +762,9 @@ async def parse_all_documents(db: Session = Depends(get_db)):
                 content_text = parser.parse(doc.file_path)
             else:
                 content_text = f"[文件缺失] 文件名：{doc.file_name}"
+
+            # 导入时预清洗行内水印（与单篇解析同源，见 services.extraction_noise）
+            content_text, _wm_dropped, _wm_mixed = preclean_watermarks(content_text)
 
             verdict = gate_for_write(db, content_text, path=doc.file_path or "", doc_id=doc.id)
             if not verdict["ok"]:
@@ -1284,3 +1293,210 @@ async def fix_chunk_label(chunk_id: int, payload: dict, db: Session = Depends(ge
     return {"chunk_id": chunk_id, "subject": chunk.subject,
             "l3_content_type": chunk.l3_content_type,
             "mirror_synced": mirror, "message": "已修正并回流标注集"}
+
+
+# --------------------------------------------------------------------------- #
+# 文档治理（学习文库 / 文档知识库）
+#   · GET  /{doc_id}/export?fmt=md|txt|pdf   导出统一快照
+#   · GET  /{doc_id}/snapshot                Markdown 快照预览（不落盘）
+#   · POST /{doc_id}/archive                 归档源文件（走归档目录，非删除）
+#   · POST /bulk                             批量（归档 / 标记删除 / 改科目 / 物理删除）
+#   · POST /scan-root                        扫描 knowledge_base 根目录 → 按科目归档
+# 说明：按科目归档走「先移动成功 → 再写回 DB file_path」的原子流程；断链文档
+#       只统计不处理，绝不因找不到文件整体抛异常（存量 315 篇断链实测）。
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/{doc_id}/snapshot")
+async def get_document_snapshot(doc_id: int, db: Session = Depends(get_db)):
+    """返回该文档的 Markdown 快照（前端详情抽屉预览用，**只读、不写盘**）。"""
+    from services.kb_service import build_markdown_snapshot, snapshot_path
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    path = snapshot_path(doc.id)
+    md = build_markdown_snapshot(doc)
+    return {
+        "id": doc_id,
+        "file_name": doc.file_name,
+        "subject": doc.subject,
+        "snapshot_path": path,
+        "snapshot_exists": os.path.isfile(path),
+        "markdown": md,
+        "content_length": len(doc.content or ""),
+    }
+
+
+@router.get("/{doc_id}/export")
+async def export_document(doc_id: int, fmt: str = "md", db: Session = Depends(get_db)):
+    """导出文档统一快照：fmt=md|txt|pdf。
+
+    - md：YAML front-matter + 正文的 Markdown 快照；
+    - txt：纯正文（UTF-8 BOM，方便 Windows 记事本）；
+    - pdf：reportlab 渲染中文；依赖/字体不可用时**降级为 md**，并在响应头
+      ``X-Export-Degraded: 1`` + 正文提示，前端据此明确告知用户（不静默失败）。
+    """
+    from io import BytesIO
+
+    from services.kb_service import export_document as do_export
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if fmt not in ("md", "txt", "pdf"):
+        raise HTTPException(status_code=400, detail="fmt 仅支持 md / txt / pdf")
+
+    result = do_export(doc, fmt)
+    headers = {
+        "Content-Disposition": _content_disposition(result["filename"], doc.id, "attachment"),
+        "Cache-Control": "no-cache",
+    }
+    if result.get("degraded"):
+        # 非 ASCII 提示不能放 HTTP 头（latin-1 编码限制），用 ASCII 标记 + 文件名兜底
+        headers["X-Export-Degraded"] = "1"
+        headers["X-Export-Note"] = "pdf-deps-missing-fallback-to-md"
+    return StreamingResponse(BytesIO(result["data"]), media_type=result["media_type"], headers=headers)
+
+
+@router.post("/{doc_id}/archive")
+async def archive_document_file(doc_id: int, db: Session = Depends(get_db)):
+    """归档该文档的源文件到 knowledge_base/_archive/（默认归档而非删除）。
+
+    走「移动文件 → 写回 file_path」；文件断链只返回原因，不报 500。
+    """
+    from services.kb_service import archive_source_file, ensure_write_backup
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
+
+    ensure_write_backup()
+    result = archive_source_file(doc)
+    if result["archived"]:
+        doc.file_path = result["new_path"]
+        db.commit()
+        return {"id": doc_id, "archived": True, "new_path": result["new_path"],
+                "message": "源文件已归档到 knowledge_base/_archive/"}
+    return {"id": doc_id, "archived": False, "reason": result["reason"],
+            "message": f"未归档：{result['reason']}"}
+
+
+@router.post("/bulk")
+async def bulk_documents(payload: dict, db: Session = Depends(get_db)):
+    """批量操作文档。
+
+    body::
+
+        {"action": "archive"|"mark_delete"|"set_subject"|"purge",
+         "doc_ids": [1,2,3],
+         "subject": "数字电子技术"}   # set_subject 时必填
+
+    行为边界（对齐 delete_guard 铁律）：``archive`` / ``mark_delete`` 只移动源文件，
+    不物理删除任何数据；``purge`` 是**物理删除**，必须由环境变量
+    ``KAOYAN_ALLOW_PHYSICAL_DELETE=1`` 显式开启，否则 403。
+    """
+    from services.delete_guard import PhysicalDeleteBlocked, require_physical_delete_enabled
+    from services.kb_service import (
+        archive_source_file, ensure_write_backup, soft_delete_source_file,
+    )
+
+    action = (payload.get("action") or "").strip()
+    raw_ids = payload.get("doc_ids") or []
+    doc_ids = [int(x) for x in raw_ids if str(x).strip()]
+    if not doc_ids:
+        raise HTTPException(status_code=400, detail="缺少 doc_ids")
+    if action not in ("archive", "mark_delete", "set_subject", "purge"):
+        raise HTTPException(status_code=400, detail="action 仅支持 archive / mark_delete / set_subject / purge")
+
+    docs = db.query(Document).filter(Document.id.in_(doc_ids)).all()
+    found = {d.id for d in docs}
+    missing = [i for i in doc_ids if i not in found]
+
+    if action == "set_subject":
+        subject = (payload.get("subject") or "").strip()
+        if not subject:
+            raise HTTPException(status_code=400, detail="set_subject 需要 subject")
+        ensure_write_backup()
+        for d in docs:
+            d.subject = subject
+        db.commit()
+        return {"action": action, "subject": subject, "updated": len(docs),
+                "missing": missing, "message": f"已将 {len(docs)} 篇文档科目改为「{subject}」"}
+
+    if action == "purge":
+        # 物理删除闸门：knowledge_chunks 的 DELETE 不可逆，必须显式放行
+        try:
+            require_physical_delete_enabled("knowledge_chunks")
+        except PhysicalDeleteBlocked as e:
+            raise HTTPException(status_code=403, detail=str(e))
+        ensure_write_backup()
+        removed = 0
+        for d in docs:
+            if d.file_path and os.path.isfile(d.file_path):
+                try:
+                    os.remove(d.file_path)
+                except OSError:
+                    pass
+            db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == d.id).delete()
+            db.query(KnowledgePoint).filter(KnowledgePoint.document_id == d.id).delete()
+            db.delete(d)
+            removed += 1
+        db.commit()
+        return {"action": action, "purged": removed, "missing": missing,
+                "message": f"已物理删除 {removed} 篇文档及其分块/知识点"}
+
+    # archive / mark_delete 都只移动源文件，不物理删除
+    ensure_write_backup()
+    moved, skipped = 0, []
+    for d in docs:
+        if action == "mark_delete":
+            result = soft_delete_source_file(d)
+            if result["archived"]:
+                d.file_path = result["new_path"]
+                d.index_status = "deleted"
+                moved += 1
+            else:
+                skipped.append({"id": d.id, "reason": result["reason"]})
+        else:
+            result = archive_source_file(d)
+            if result["archived"]:
+                d.file_path = result["new_path"]
+                moved += 1
+            else:
+                skipped.append({"id": d.id, "reason": result["reason"]})
+    db.commit()
+    return {
+        "action": action,
+        "moved": moved,
+        "skipped": skipped,
+        "missing": missing,
+        "message": (
+            f"已{'标记删除' if action == 'mark_delete' else '归档'} {moved} 篇"
+            + (f"，跳过 {len(skipped)} 篇（断链/文件缺失）" if skipped else "")
+        ),
+    }
+
+
+@router.post("/scan-root")
+async def scan_root(payload: dict | None = None, db: Session = Depends(get_db)):
+    """扫描 knowledge_base 根目录 → 按科目归档 → 同步 DB file_path。
+
+    body: ``{"dry_run": false}``（缺省 false，dry_run=true 时只预览不落盘）。
+
+    Returns:
+        ``{moved, skipped, broken, unclassified, errors, moved_items, ...}``。
+        ``broken`` = file_path 指向知识库内但文件已不存在的文档数（断链，只统计）。
+    """
+    from services.kb_service import ensure_write_backup, scan_root_and_archive
+
+    dry_run = bool((payload or {}).get("dry_run"))
+    if not dry_run:
+        ensure_write_backup()
+    report = scan_root_and_archive(db, dry_run=dry_run)
+    report["message"] = (
+        f"{'预览' if dry_run else '归档'}完成：移动 {report['moved']} 篇"
+        f"（其中待分类 {report['unclassified']} 篇），跳过 {report['skipped']}，"
+        f"断链 {report['broken']}，失败 {report['errors']}"
+    )
+    return report

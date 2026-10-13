@@ -71,6 +71,13 @@ SKIP_PATHS = {
     "/api/imports/scan/{task_id}",  # 导入扫描任务
 }
 
+#: **合法返回文件字节流（非 JSON）** 的 GET 接口 —— 只豁免"响应体必须是 JSON"
+#: 这一条断言，仍照常参与 5xx / 4xx / 耗时巡检。文件导出接口本就该返回
+#: md/txt/pdf 字节，而不是 JSON，故在此显式登记并写明理由。
+NON_JSON_GET_PATHS = {
+    "/api/documents/{doc_id}/export",  # 学习文库导出统一快照（md/txt/pdf 字节流）
+}
+
 #: 允许的 4xx 容差白名单：路径 -> (允许的状态码集合, 理由)
 #: **白名单之外出现任何 4xx/5xx 都会导致测试失败。**
 ALLOWED_4XX = {
@@ -393,6 +400,8 @@ def test_get_routes_return_json(client, get_cases):  # noqa: ARG001
     for template, url in get_cases:
         if template in SKIP_PATHS:
             continue
+        if template in NON_JSON_GET_PATHS:
+            continue  # 合法的文件字节流接口，不要求 JSON
         try:
             resp = client.get(url)
         except Exception as exc:  # noqa: BLE001

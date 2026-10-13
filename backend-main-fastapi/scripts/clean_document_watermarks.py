@@ -54,143 +54,21 @@ DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 DEP_TABLES = ("knowledge_chunks_vec", "knowledge_chunks_fts", "error_knowledge_links")
 
 # --------------------------------------------------------------------------- #
-# 水印片段规则（按「强特征」排序，长特征在前，避免被短特征吃掉）
-# 全部来自实测抽样，覆盖公众号/微信/QQ/店铺/文库站名/引流话术。
+# 水印清洗规则：**唯一落点**已抽到 services/extraction_noise.py，本脚本只做
+# 批量刷库（扫描 → 备份 → 写库 → 同步 FTS）。导入时预清洗与存量清洗因此共用
+# 同一份规则，避免两套规则各自演化、清过的又被重新导入弄脏。
+# 下面用 `as` 别名保留本脚本既有内部名（clean_line/clean_text 等），
+# 使自带 selftest 与主流程零改动。
 # --------------------------------------------------------------------------- #
-_SPAN_PATTERNS: tuple[str, ...] = (
-    # —— 品牌/公众号家族（实测残留逐一收编）——
-    r"东坡哥微信\s*[:：]?\s*haidongpo\d*",
-    r"haidongpo\d*",
-    r"公众号【[^】]*】[^\n]{0,40}",
-    r"研池大叔",
-    r"蜂考[《》】\w]{0,10}[^\n]{0,24}",
-    r"水木观畴",
-    r"笃学考研",
-    r"考研班主任",
-    r"各大高校真题资料",
-    r"获取联系方式",
-    r"视频课程加",
-    r"全套视频和资料|独家视频讲解",
-    r"观畴考研[，,、]?\s*你身边的考研专家",
-    r"模电考研全套视频和资料",
-    r"电子与通信工程考研",
-    r"关注微信公众号\s*[:：]?\s*[\w\u4e00-\u9fff]{0,20}[”\"']?",
-    r"微信公众号\s*[:：]?\s*[\w\u4e00-\u9fff]{0,20}",
-    r"公众号\s*[:：]\s*[\w\u4e00-\u9fff]{0,20}",
-    r"微信号\s*[:：]?\s*[\w]{0,20}",
-    r"微信扫一扫",
-    r"微信\s*[:：]\s*[\w]{0,20}",
-    r"加微信\s*[:：]?\s*[\w]{0,20}",
-    # —— QQ / 群引流（支持小写、QQ群、可选冒号）——
-    r"(?i)qq\s*群?\s*[:：]?\s*\d{5,12}",
-    r"(?i)(?:加|联系|关注)\s*(?:qq|微信)\s*群?",
-    r"Q{4,}",
-    r"扫描?二维码",
-    r"扫码(获取|关注|进群)?",
-    r"淘宝[^\s]{0,6}(店铺|店|代购|打印)",
-    r"光速考研工作室",
-    r"更多考研资料",
-    r"(道客巴巴|百度文库|豆丁|原创力|小木虫)",
-    r"关注【[^】]*】",
-    r"免费(?:分享|提供|获取)[^\n]{0,16}",
-    # 版权声明水印（收窄：只删「侵权必究/侵权删除」这类声明词，不删裸「侵权」——
-    # 政治/法律题里会出现「侵权责任」等正常内容，裸词会误伤）
-    r"资料仅供学习交流|仅供学习交流|请勿转载|侵权必究|侵权删除",
+from services.extraction_noise import (  # noqa: E402
+    DOC_WATERMARK_FAST_MARKERS as _FAST_MARKERS,
+    DOC_WATERMARK_SPAN_PATTERNS as _SPAN_PATTERNS,
+    DOC_URL_RE as _URL_RE,
+    MIN_MEANINGFUL_CHARS as _MIN_MEANINGFUL,
+    clean_document_line as clean_line,
+    clean_document_text as clean_text,
+    meaningful_count as _meaningful_count,
 )
-_SPAN_RES = tuple(re.compile(p) for p in _SPAN_PATTERNS)
-
-#: 快速预筛标记：行内不含任一标记就直接跳过全部正则（实测此举把 132M 字符的
-#: 全量扫描从十几分钟降到一个量级以内；标记集合刻意放宽，只求不漏）。
-_FAST_MARKERS: tuple[str, ...] = (
-    "微信", "公众号", "haidongpo", "QQ", "qq", "Q群", "淘宝", "扫码", "二维码",
-    "MOOC", "慕课", "研池", "蜂考", "观畴", "笃学", "考研班主任", "侵权", "转载",
-    "http", "www.", "资料", "加群", "联系",
-)
-
-#: 独立 URL —— 考研资料正文里的裸链接几乎全是水印/引流；
-#: 但只在「该行实义汉字很少」时才整行丢弃，避免误删正文里的正常链接。
-_URL_RE = re.compile(r"(?:https?://|www\.)\S{6,}")
-
-#: 整行丢弃阈值：抹掉水印后，实义字符（中英文数字）少于该值即视为纯水印行。
-_MIN_MEANINGFUL = 4
-
-_RE_MEANINGFUL = re.compile(r"[\u4e00-\u9fffA-Za-z0-9]")
-
-
-def _meaningful_count(s: str) -> int:
-    return len(_RE_MEANINGFUL.findall(s))
-
-
-def clean_line(line: str) -> tuple[str | None, bool]:
-    """清洗单行。
-
-    Returns:
-        (新行 or None 表示整行丢弃, 是否发生过水印移除)
-    """
-    raw = line
-    # 快速预筛：不含任何水印标记的行直接跳过全部正则（大幅加速）
-    if not any(m in line for m in _FAST_MARKERS):
-        return line, False
-    t = line
-    touched = False
-    for rx in _SPAN_RES:
-        new = rx.sub(" ", t)
-        if new != t:
-            touched = True
-            t = new
-    # URL 单独处理：只有当整行去掉水印与 URL 后几乎没有正文时才丢弃
-    if _URL_RE.search(t):
-        stripped = _URL_RE.sub(" ", t)
-        if _meaningful_count(stripped) < _MIN_MEANINGFUL:
-            touched = True
-            t = stripped
-            # 走到这里 remainder 已很短 → 下面会整行丢弃
-        else:
-            # 正文里夹链接：保留，仅去首尾多余空白（不删链接，避免误伤）
-            pass
-    t = re.sub(r"[ \t]{2,}", " ", t).strip()
-
-    if not touched:
-        return line, False
-
-    if _meaningful_count(t) < _MIN_MEANINGFUL:
-        return None, True
-    return t, True
-
-
-def clean_text(text: str | None) -> tuple[str, int, int]:
-    """清洗整段文本。
-
-    只在**确实移除过水印**时才改动文本；未命中水印的行按原样保留，
-    避免把「仅换行/空白归一」误算成命中（也避免 \x0b 等控制符被当换行重组）。
-
-    Returns:
-        (清洗后文本, 被丢弃的纯水印行数, 被移除水印片段的混合行数)
-    """
-    if not text:
-        return text or "", 0, 0
-    kept: list[str] = []
-    dropped = 0
-    mixed = 0
-    # 只用 "\n" 切分（不能用 splitlines()——它会把 \x0b/\x0c 等当换行，污染判定）
-    for line in text.split("\n"):
-        if not line.strip():
-            kept.append(line)
-            continue
-        new, touched = clean_line(line)
-        if new is None:
-            dropped += 1
-            continue
-        if touched:
-            mixed += 1
-        kept.append(new)
-    if dropped == 0 and mixed == 0:
-        return text, 0, 0
-    out = "\n".join(kept)
-    out = re.sub(r"\n{3,}", "\n\n", out).strip()
-    return out, dropped, mixed
-
-
 def backup_db(src_path: str, dst_path: str) -> str:
     """SQLite 官方 backup() API —— 唯一正确的备份方式（copy2/cp 会丢 WAL 数据）。"""
     src = sqlite3.connect(src_path)
