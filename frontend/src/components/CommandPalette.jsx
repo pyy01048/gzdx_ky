@@ -13,8 +13,6 @@ const COMMANDS = [
   // 知识地图
   { to: '/kbmap', label: '知识地图', desc: '章节→知识点→题型与复习进度', kw: ['kb', '知识地图', '考点', '章节', 'zhishi', 'map', 'taxonomy'] },
   { to: '/panorama', label: '知识点全景', desc: '科目→章节→知识点一屏纵览', kw: ['panorama', '全景', 'quanjing', '刷题'] },
-  { to: '/exam-frequency', label: '考频分析', desc: '知识点/章节/套卷三维考频排行', kw: ['frequency', '考频', 'kaopin', 'exam'] },
-  { to: '/analysis', label: '题目分析', desc: '题目维度统计与分析', kw: ['analysis', '分析', 'fenxi', '题目'] },
   // 题库
   { to: '/quiz-bank', label: '题库管理', desc: '真题地图 · 章节刷题', kw: ['bank', '题库', 'tiku', '真题', 'zhenti'] },
   { to: '/quiz', label: '刷题中心', desc: '题库与错题强化', kw: ['quiz', '刷题', 'shuati', 'test'] },

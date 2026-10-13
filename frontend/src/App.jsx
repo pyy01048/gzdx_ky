@@ -21,8 +21,6 @@ const CodeBank = lazy(() => import('./pages/CodeBank'))
 const Quiz = lazy(() => import('./pages/Quiz'))
 const QuizBank = lazy(() => import('./pages/QuizBank'))
 const Panorama = lazy(() => import('./pages/Panorama'))
-const ExamFrequency = lazy(() => import('./pages/ExamFrequency'))
-const Analysis = lazy(() => import('./pages/Analysis'))
 const LearnerProfile = lazy(() => import('./pages/LearnerProfile'))
 const SubjectManager = lazy(() => import('./pages/SubjectManager'))
 const Documents = lazy(() => import('./pages/Documents'))
@@ -100,10 +98,12 @@ export default function App() {
           <Route path="/quiz-bank" element={<QuizBank />} />
           {/* 知识点全景刷题：科目→章节→知识点 一屏纵览，点知识点直达刷题 */}
           <Route path="/panorama" element={<Panorama />} />
-          {/* 考频分析：知识点/章节/套卷 三维考频排行（对标 exam-strategy） */}
-          <Route path="/exam-frequency" element={<ExamFrequency />} />
+          {/* 冗余页清理（docx/22 D3/D4）：考频分析(ExamFrequency)已并入知识点全景，
+              题目分析(Analysis，含其「历史讲义」区块)整体下线。
+              保留旧路径重定向，避免历史书签/被删页入口出现死链。 */}
+          <Route path="/exam-frequency" element={<Navigate to="/panorama" replace />} />
+          <Route path="/analysis" element={<Navigate to="/" replace />} />
           <Route path="/subjects" element={<SubjectManager />} />
-          <Route path="/analysis" element={<Analysis />} />
           <Route path="/profile" element={<LearnerProfile />} />
           {/* 错题复盘：错因分布 / 薄弱知识点 / 单题 AI 归因与知识点挂接（5+1 的第 5 个模块主页） */}
           <Route path="/error-review" element={<ErrorReview />} />
