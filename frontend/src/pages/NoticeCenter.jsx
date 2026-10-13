@@ -22,6 +22,7 @@
  *   这类最易错过的节点（实测漏标 94 条 urgent 公告），故已废弃该白名单。
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { kaoyanApi } from '../api/kaoyanApi'
 import { request } from '../api/client'
 import { useUnreadNotices } from '../hooks/useUnreadNotices'
@@ -74,6 +75,139 @@ function humanDate(dateStr) {
   return day
 }
 
+/* ---------- 改考雷达（自 KaoyanNotices 并入的信息结构） ----------
+ * 2026-10-13（#105a/①）：旧页 KaoyanNotices 的第二个 tab「改考雷达」是它相对
+ * 本页**独有**的信息结构（按 change_type 分组 + 置信度 + 命中关键词 + 年份），
+ * 且被两处 UI 文案引用（院校详情页「还有 N 条 →『通知中心 · 改考雷达』」、
+ * 命令面板「通知中心 · 公告已读/置顶 · 改考雷达」），故在本页保留为第二个 tab，
+ * 再删掉旧页。CSS 类名前缀由 ky-n- 改为 nc- 并全部走令牌。
+ */
+const REFORM_TYPES = {
+  改考科目: '🔁',
+  停招: '⛔',
+  恢复招生: '✅',
+  新增专业: '🌟',
+  参考书变更: '📚',
+  大纲调整: '🧭',
+  复试调整: '🎯',
+  '学制/学费调整': '⏱️',
+}
+
+/** 变动类型的语义色（复用平台令牌，未知类型走中性色）。 */
+const REFORM_TONE = {
+  停招: 'var(--red)',
+  改考科目: 'var(--gold)',
+  恢复招生: 'var(--green)',
+  新增专业: 'var(--violet)',
+}
+
+function ReformRadar() {
+  const [items, setItems] = useState([])
+  const [stats, setStats] = useState(null)
+  const [changeType, setChangeType] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const load = useCallback(() => {
+    setLoading(true)
+    const params = {}
+    if (changeType) params.change_type = changeType
+    Promise.all([kaoyanApi.reforms(params), kaoyanApi.reformStats()])
+      .then(([list, s]) => {
+        setItems(Array.isArray(list) ? list : [])
+        setStats(s || null)
+      })
+      .catch(() => { setItems([]); setStats(null) })
+      .finally(() => setLoading(false))
+  }, [changeType])
+
+  useEffect(() => { load() }, [load])
+
+  /** 触发后端规则引擎扫描最新公告，检出改考/停招等事件。 */
+  const runScan = () => {
+    setMsg('扫描中…')
+    kaoyanApi.reformScan({})
+      .then((r) => setMsg(`扫描完成：检测 ${r?.detected ?? 0} 条，新增 ${r?.inserted ?? 0} 条`))
+      .catch(() => setMsg('扫描失败，请稍后重试'))
+      .then(() => load())
+  }
+
+  return (
+    <>
+      <div className="panel nc-reform-bar">
+        {stats && (
+          <div className="nc-reform-stats">
+            <strong>{stats.total ?? 0}</strong> 条变动事件
+            {Object.entries(stats.by_type || {}).slice(0, 4).map(([t, c]) => (
+              <span key={t} className="nc-mini">{t} {c}</span>
+            ))}
+          </div>
+        )}
+        <button className="btn primary" onClick={runScan} disabled={loading}>
+          ⚡ 扫描最新公告
+        </button>
+      </div>
+      {msg && <div className="panel nc-reform-msg">{msg}</div>}
+
+      <div className="panel nc-filters">
+        <div className="nc-chips">
+          <button className={`chip ${!changeType ? 'on' : ''}`} onClick={() => setChangeType('')}>全部</button>
+          {Object.entries(REFORM_TYPES).map(([t, icon]) => (
+            <button
+              key={t}
+              className={`chip ${changeType === t ? 'on' : ''}`}
+              onClick={() => setChangeType(t)}
+            >
+              {icon} {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel">
+        {loading ? (
+          <div className="nc-loading">雷达扫描中…</div>
+        ) : items.length === 0 ? (
+          <Empty
+            icon={<FileText size={22} />}
+            title="暂无改考事件"
+            desc="点击「扫描最新公告」检测改考 / 停招等关键变动"
+          />
+        ) : (
+          <div className="nc-reform-list">
+            {items.map((r) => {
+              const tone = REFORM_TONE[r.change_type] || 'var(--accent)'
+              return (
+                <article key={r.id} className="nc-reform-card" style={{ borderLeftColor: tone }}>
+                  <div className="nc-reform-head">
+                    <span className="nc-reform-badge" style={{ color: tone, borderColor: tone }}>
+                      {REFORM_TYPES[r.change_type] || '⚠️'} {r.change_type}
+                    </span>
+                    {r.year && <span className="nc-reform-year">{r.year}</span>}
+                    <span className="nc-reform-conf" title="规则匹配置信度">
+                      置信 {Math.round((r.confidence || 0) * 100)}%
+                    </span>
+                  </div>
+                  <h3 className="nc-reform-title">{r.title}</h3>
+                  <div className="nc-reform-meta">
+                    {r.school_name && (
+                      r.school_id
+                        ? <Link to={`/kaoyan/schools/${r.school_id}`} className="nc-reform-school">{r.school_name}</Link>
+                        : <span className="nc-reform-school">{r.school_name}</span>
+                    )}
+                    {r.keywords && <code className="nc-reform-kw">命中：{r.keywords}</code>}
+                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="nc-reform-link">公告原文 ↗</a>}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
 export default function NoticeCenter() {
   // 全局未读快照：概览条与筛选器计数都来自这里，保证与侧边栏角标口径一致
   const { important_unread: importantUnread, urgent_unread: urgentUnread, refresh: refreshStats } =
@@ -84,11 +218,17 @@ export default function NoticeCenter() {
   const [status, setStatus] = useState('loading') // loading | ok | error
   const [busy, setBusy] = useState(false)
 
+  // 页签：通知列表（已读/加星管理）| 改考雷达（变动事件流）
+  const [tab, setTab] = useState('list')
+
   // 筛选状态
   const [readFilter, setReadFilter] = useState('all') // all | unread | starred
   const [noticeType, setNoticeType] = useState('')
   const [levelFilter, setLevelFilter] = useState('all') // all | urgent | important
   const [page, setPage] = useState(1)
+  // 标题关键词（后端 /notices/list 的 keyword 参数做全库模糊匹配，非仅当前页）
+  const [kw, setKw] = useState('')
+  const [kwInput, setKwInput] = useState('')
 
   const load = useCallback(async () => {
     setStatus(items.length ? 'ok' : 'loading')
@@ -97,6 +237,7 @@ export default function NoticeCenter() {
         unread_only: readFilter === 'unread',
         starred_only: readFilter === 'starred',
         notice_type: noticeType || undefined,
+        keyword: kw || undefined,
         // 重要度筛选走后端 SQL 参数（而非前端本地过滤），
         // 否则只会过滤当前页的 20 条，分页语义会骗人。
         urgent_only: levelFilter === 'urgent',
@@ -116,12 +257,19 @@ export default function NoticeCenter() {
       setStatus('error')
       setItems([])
     }
-  }, [readFilter, noticeType, levelFilter, page, items.length])
+  }, [readFilter, noticeType, levelFilter, kw, page, items.length])
 
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readFilter, noticeType, levelFilter, page])
+  }, [readFilter, noticeType, levelFilter, kw, page])
+
+  /** 提交关键词搜索：重置到第 1 页再查（否则第 3 页搜出空列表会让人以为没数据）。 */
+  const onSearch = (e) => {
+    e.preventDefault()
+    setKw(kwInput.trim())
+    setPage(1)
+  }
 
   /** 点击列表项：先本地置为已读（即时反馈），再调后端持久化。 */
   const onItemClick = useCallback(
@@ -213,9 +361,31 @@ export default function NoticeCenter() {
     { value: 'important', label: `仅重要${importantUnread ? ` ${importantUnread}` : ''}` },
   ]
 
-  if (status === 'loading') {
+  const tabBar = (
+    <div className="nc-tabs" role="tablist">
+      <button
+        role="tab"
+        aria-selected={tab === 'list'}
+        className={tab === 'list' ? 'on' : ''}
+        onClick={() => setTab('list')}
+      >
+        📋 通知列表
+      </button>
+      <button
+        role="tab"
+        aria-selected={tab === 'reform'}
+        className={tab === 'reform' ? 'on' : ''}
+        onClick={() => setTab('reform')}
+      >
+        🚨 改考雷达
+      </button>
+    </div>
+  )
+
+  if (tab === 'list' && status === 'loading') {
     return (
       <div className="notice-center">
+        {tabBar}
         <div className="panel">
           <div className="skeleton sk-line" style={{ height: 16, margin: '8px 0' }} />
           <div className="skeleton sk-line" style={{ height: 16, margin: '8px 0' }} />
@@ -225,9 +395,10 @@ export default function NoticeCenter() {
     )
   }
 
-  if (status === 'error') {
+  if (tab === 'list' && status === 'error') {
     return (
       <div className="notice-center">
+        {tabBar}
         <div className="panel">
           <Empty
             icon={<FileText size={22} />}
@@ -244,8 +415,18 @@ export default function NoticeCenter() {
     )
   }
 
+  if (tab === 'reform') {
+    return (
+      <div className="notice-center">
+        {tabBar}
+        <ReformRadar />
+      </div>
+    )
+  }
+
   return (
     <div className="notice-center">
+      {tabBar}
       {/* 概览条 */}
       <div className="panel nc-overview">
         <div className="nc-ov-left">
@@ -279,6 +460,26 @@ export default function NoticeCenter() {
 
       {/* 筛选 */}
       <div className="panel nc-filters">
+        {/* 标题关键词搜索（后端 keyword 参数做全库模糊匹配） */}
+        <form className="nc-search" onSubmit={onSearch}>
+          <input
+            className="nc-search-input"
+            value={kwInput}
+            onChange={(e) => setKwInput(e.target.value)}
+            placeholder="搜索公告标题，如「初试科目」…"
+            aria-label="搜索公告标题"
+          />
+          <button className="btn ghost" type="submit">搜索</button>
+          {kw && (
+            <button
+              className="btn ghost"
+              type="button"
+              onClick={() => { setKwInput(''); setKw(''); setPage(1) }}
+            >
+              清除
+            </button>
+          )}
+        </form>
         <Segmented options={filterOptions} value={readFilter} onChange={setReadFilter} />
         <select className="nc-type-select" value={noticeType} onChange={(e) => { setNoticeType(e.target.value); setPage(1) }}>
           {typeOptions.map((o) => (
