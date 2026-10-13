@@ -6,7 +6,7 @@ import { examDaysLeft, examYear, resolveExamDate } from '../utils/exam'
 import { reviewStatus } from '../utils/ebbinghaus'
 import { dueCards } from '../utils/spaced'
 import { CountUp, Empty, toast } from '../components/UI'
-import { dashboardApi, insightApi } from '../api/client'
+import { dashboardApi, insightApi, request } from '../api/client'
 import { kaoyanApi } from '../api/kaoyanApi'
 import { MiniLineChart, RingProgress } from '../components/Charts'
 import NoticeBoard from '../components/NoticeBoard'
@@ -14,8 +14,8 @@ import {
   useUiLayout, applyOrder,
 } from '../hooks/useUiLayout'
 import {
-  Target, Clock, Book, Calendar, Warning, ChevronRight, CheckCircle,
-  Folder, GraduationCap, Brain, MessageSquare, Settings, FileText, Cloud,
+  Target, Clock, Book, Calendar, Warning, ChevronRight, ChevronDown, CheckCircle,
+  Folder, GraduationCap, Brain, MessageSquare, Settings, FileText, Cloud, Activity,
   Map as MapIcon,
 } from '../components/Icon'
 import './Dashboard.css'
@@ -306,6 +306,41 @@ export default function Dashboard() {
   const [report, setReport] = useState(null)
   const [showReport, setShowReport] = useState(false)
 
+  /* ---------- docx/22 G2：学习工作台（任务打卡 / 学习计划 / 学习画像 聚合） ----------
+     任务打卡数据取自 store / live；学习计划、学习画像摘要按需向后端拉取。
+     后端不可用或接口缺字段时保持 null，卡片显示占位文案，绝不白屏。
+     这里用底层 request 而不是 plannerApi / analysisApi 具名导入：
+     只依赖 client 的 request（各测试 mock 都提供），避免新增导出触发 mock 缺口。 */
+  const [workbench, setWorkbench] = useState({ plan: null, profile: null })
+  const [openWb, setOpenWb] = useState('tasks') // tasks | planner | profile | null
+  const toggleWb = (k) => setOpenWb((cur) => (cur === k ? null : k))
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const plan = { earlyStreak: null, ebbing: null, phase: null }
+      try {
+        const eb = await request('/planner/earlybird')
+        const sv = eb && eb.current_streak
+        plan.earlyStreak = typeof sv === 'number'
+          ? sv
+          : (Array.isArray(eb && eb.records) ? eb.records.length : null)
+      } catch { /* 后端未启动：计划摘要留空 */ }
+      try {
+        const r = await request('/planner/ebbinghaus')
+        plan.ebbing = (Array.isArray(r) ? r : (r && r.items) || []).length
+      } catch { /* 忽略 */ }
+      try {
+        const r = await request('/planner/phase')
+        plan.phase = (Array.isArray(r) ? r : (r && r.plans) || []).length
+      } catch { /* 忽略 */ }
+      let profile = null
+      try { profile = await request('/analysis/profile', { params: { days: 30 } }) } catch { /* 忽略 */ }
+      if (alive) setWorkbench({ plan, profile: profile || null })
+    })()
+    return () => { alive = false }
+  }, [])
+
   useEffect(() => {
     let alive = true
     insightApi.today().then((d) => { if (alive) setToday(d) }).catch(() => {})
@@ -321,6 +356,11 @@ export default function Dashboard() {
       insightApi.weeklyReport().then(setReport).catch(() => setShowReport(false))
     }
   }
+
+  /* 学习画像摘要（工作台卡片用；后端缺字段时全部退化为占位） */
+  const pv = workbench.profile?.overview
+  const pWeak = workbench.profile?.weak_points || []
+  const pSubjects = workbench.profile?.subjects || []
 
   return (
     <div className="dash">
@@ -386,6 +426,122 @@ export default function Dashboard() {
           </div>
         </section>
       )}
+
+      {/* ===== docx/22 G2：学习工作台（任务打卡 / 学习计划 / 学习画像 聚合到仪表盘） =====
+          三个入口的核心摘要直接落在首页，点标题展开细节、点链接进对应页；
+          「设置」不进下拉，保持单列（见 Layout.jsx）。 */}
+      <section className="dash-workbench" aria-label="学习工作台">
+        <div className="dash-today-head">
+          <strong>🧭 学习工作台</strong>
+          <span className="dash-today-sub">任务打卡 · 学习计划 · 学习画像 已并入仪表盘 · 点标题展开摘要</span>
+        </div>
+        <div className="wb-grid">
+          {/* 任务打卡 */}
+          <div className={`wb-card ${openWb === 'tasks' ? 'open' : ''}`}>
+            <button className="wb-head" onClick={() => toggleWb('tasks')} aria-expanded={openWb === 'tasks'}>
+              <span className="wb-ico"><Target size={16} /></span>
+              <span className="wb-title">任务打卡</span>
+              <span className="wb-summary">今日 {doneCount}/{todayTasks.length} · 连续 {streak} 天</span>
+              <ChevronDown size={15} className={`wb-caret ${openWb === 'tasks' ? 'open' : ''}`} />
+            </button>
+            {openWb === 'tasks' && (
+              <div className="wb-body">
+                <div className="wb-metrics">
+                  <div><em>{doneCount}</em><span>今日已完成</span></div>
+                  <div><em>{Math.max(0, todayTasks.length - doneCount)}</em><span>今日待办</span></div>
+                  <div><em>{streak}</em><span>连续打卡（天）</span></div>
+                </div>
+                {todayTasks.length > 0 ? (
+                  <ul className="wb-list">
+                    {todayTasks.slice(0, 4).map((t) => (
+                      <li key={t.id}>
+                        <span className={`task-dot ${t.status === 'done' ? 'done' : t.status === 'doing' ? 'doing' : ''}`} />
+                        <span className="wb-li-text">{t.title}</span>
+                        {t.subject && <span className="task-subject">{t.subject}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="wb-empty">今日暂无任务，去任务打卡页安排今天。</p>
+                )}
+                <button className="link-btn" onClick={() => navigate('/tasks')}>
+                  进入任务打卡 <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 学习计划 */}
+          <div className={`wb-card ${openWb === 'planner' ? 'open' : ''}`}>
+            <button className="wb-head" onClick={() => toggleWb('planner')} aria-expanded={openWb === 'planner'}>
+              <span className="wb-ico"><Calendar size={16} /></span>
+              <span className="wb-title">学习计划</span>
+              <span className="wb-summary">
+                {workbench.plan
+                  ? `早起连续 ${workbench.plan.earlyStreak ?? 0} 天 · 艾宾浩斯 ${workbench.plan.ebbing ?? 0} 条`
+                  : '正在读取计划…'}
+              </span>
+              <ChevronDown size={15} className={`wb-caret ${openWb === 'planner' ? 'open' : ''}`} />
+            </button>
+            {openWb === 'planner' && (
+              <div className="wb-body">
+                <div className="wb-metrics">
+                  <div><em>{workbench.plan?.earlyStreak ?? '—'}</em><span>早起连续（天）</span></div>
+                  <div><em>{workbench.plan?.ebbing ?? '—'}</em><span>艾宾浩斯在学</span></div>
+                  <div><em>{workbench.plan?.phase ?? '—'}</em><span>阶段计划</span></div>
+                </div>
+                <p className="wb-empty">日 / 周 / 月计划、艾宾浩斯复习点、早起打卡与阶段复习都在「学习计划」页。</p>
+                <button className="link-btn" onClick={() => navigate('/planner')}>
+                  进入学习计划 <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 学习画像 */}
+          <div className={`wb-card ${openWb === 'profile' ? 'open' : ''}`}>
+            <button className="wb-head" onClick={() => toggleWb('profile')} aria-expanded={openWb === 'profile'}>
+              <span className="wb-ico"><Activity size={16} /></span>
+              <span className="wb-title">学习画像</span>
+              <span className="wb-summary">
+                {pv
+                  ? `累计答题 ${pv.total_answers ?? 0} · 正确率 ${pv.overall_accuracy != null ? pv.overall_accuracy + '%' : '—'}`
+                  : '正在读取画像…'}
+              </span>
+              <ChevronDown size={15} className={`wb-caret ${openWb === 'profile' ? 'open' : ''}`} />
+            </button>
+            {openWb === 'profile' && (
+              <div className="wb-body">
+                <div className="wb-metrics">
+                  <div><em>{pv?.total_answers ?? '—'}</em><span>累计答题</span></div>
+                  <div><em>{pv?.overall_accuracy != null ? pv.overall_accuracy + '%' : '—'}</em><span>总正确率</span></div>
+                  <div><em>{pv?.error_stock ?? '—'}</em><span>错题存量</span></div>
+                </div>
+                {pSubjects.length > 0 && (
+                  <ul className="wb-list">
+                    {pSubjects.slice(0, 3).map((s) => (
+                      <li key={s.subject}>
+                        <span className="wb-tag">{s.mastery}</span>
+                        <span className="wb-li-text">{s.subject}</span>
+                        <span className="task-subject">正确率 {s.accuracy != null ? s.accuracy + '%' : '—'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {pWeak.length > 0 && (
+                  <p className="wb-empty">薄弱考点：{pWeak.slice(0, 3).map((w) => w.knowledge_point).join('、')}</p>
+                )}
+                {!pv && pWeak.length === 0 && (
+                  <p className="wb-empty">画像数据来自答题 / 错题 / 模考记录，先去刷几题就会生成。</p>
+                )}
+                <button className="link-btn" onClick={() => navigate('/profile')}>
+                  进入学习画像 <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* ===== V11 学习周报弹层 ===== */}
       {showReport && (
