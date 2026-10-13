@@ -204,13 +204,24 @@ def backfill_meta(db: Session, *, commit: bool = True, limit: Optional[int] = No
 
 
 def _find_storage_roots() -> list[str]:
-    """项目内可能存放资料原件的目录。"""
+    """项目内可能存放资料原件的目录。
+
+    ⚠️ 必须包含 ``knowledge_base``：实测 2611 篇里在盘的 1857 篇中，1484 篇
+    的原文就在 ``D:\\平台\\knowledge_base`` 下。此前只列 ``data/storage*``，
+    导致 ``repair_file_paths`` 对自己最大的资料目录完全视而不见（只能找回零散
+    副本）。路径按 ``routers/documents.py`` 同一种算法（realpath + 仅在目录
+    存在时追加）算出，不硬编码绝对路径。
+    """
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return [
+    roots = [
         os.path.join(base, "data", "storage", "documents"),
         os.path.join(base, "data", "storage"),
         os.path.join(base, "data", "uploads"),
     ]
+    kb_root = os.path.realpath(os.path.join(base, os.pardir, "knowledge_base"))
+    if os.path.isdir(kb_root):
+        roots.append(kb_root)
+    return roots
 
 
 def build_file_index() -> dict[str, list[str]]:
@@ -223,6 +234,21 @@ def build_file_index() -> dict[str, list[str]]:
             for f in files:
                 idx.setdefault(f.lower(), []).append(os.path.join(dirpath, f))
     return idx
+
+
+def _index_hits(name: str, idx: dict[str, list[str]]) -> list[str]:
+    """按文件名在索引里找同名文件，带 ``.pdf`` 去/补后缀回退。
+
+    三处归一：`repair_file_paths` 与只读的 `plan_file_path_repairs` 共用这一份
+    匹配逻辑，避免两处各写一遍导致"计划"与"执行"结果不一致。
+    """
+    key = (name or "").lower()
+    hits = idx.get(key) or []
+    if not hits and key.endswith(".pdf"):
+        hits = idx.get(key[:-4]) or []
+    if not hits and not key.endswith(".pdf"):
+        hits = idx.get(key + ".pdf") or []
+    return hits
 
 
 def repair_file_paths(
@@ -238,21 +264,19 @@ def repair_file_paths(
     `data/storage/documents/`，旧路径就全部失效了 —— 于是这些文档
     再也无法重新解析，OCR 也就无从触发。
     """
-    idx = build_file_index()
     broken = [
         d for d in db.query(Document).all()
         if not (d.file_path and os.path.exists(d.file_path))
     ]
+    if not broken:
+        # 无断链时不建索引（walk knowledge_base 5000+ 文件），保持幂等调用的低成本
+        return {"broken": 0, "repaired": 0, "not_found": 0, "indexed_files": 0}
+    idx = build_file_index()
     stats = {"broken": len(broken), "repaired": 0, "not_found": 0,
              "indexed_files": sum(len(v) for v in idx.values())}
 
     for i, doc in enumerate(broken, 1):
-        name = (doc.file_name or "").lower()
-        hits = idx.get(name) or []
-        if not hits and name.endswith(".pdf"):
-            hits = idx.get(name[:-4]) or []
-        if not hits and not name.endswith(".pdf"):
-            hits = idx.get(name + ".pdf") or []
+        hits = _index_hits(doc.file_name or "", idx)
         if hits:
             doc.file_path = hits[0]
             stats["repaired"] += 1
@@ -264,6 +288,44 @@ def repair_file_paths(
     if commit and stats["repaired"]:
         db.commit()
     return stats
+
+
+def plan_file_path_repairs(db: Session, *, max_candidates: int = 5) -> dict:
+    """**只读**：输出"将要改哪些行的 file_path（old → new）"，不落库。
+
+    口径与 `repair_file_paths` 完全一致（broken = 没登记路径或路径已失效），
+    区别只是不写 `doc.file_path`、不 commit。给用户一次"要不要批量修复"的
+    知情决策：`recoverable` 为 0 就说明这些文件真的不在盘上，不该给假承诺。
+    """
+    broken_docs = [
+        d for d in db.query(Document).all()
+        if not (d.file_path and os.path.exists(d.file_path))
+    ]
+    # 无断链就不建索引：build_file_index 要 walk 整个 knowledge_base（5000+ 文件），
+    # 空库/健康库走这条零成本快路径。
+    idx = build_file_index() if broken_docs else {}
+    plan: list[dict] = []
+    not_found = 0
+    for doc in broken_docs:
+        hits = _index_hits(doc.file_name or "", idx)
+        if hits:
+            plan.append({
+                "doc_id": doc.id,
+                "file_name": doc.file_name,
+                "old": doc.file_path,
+                "new": hits[0],
+                "candidates": hits[:max_candidates],
+            })
+        else:
+            not_found += 1
+    return {
+        "total_documents": db.query(Document).count(),
+        "broken": len(broken_docs),
+        "recoverable": len(plan),
+        "not_found": not_found,
+        "indexed_files": sum(len(v) for v in idx.values()),
+        "plan": plan,
+    }
 
 
 def reparse_empty(

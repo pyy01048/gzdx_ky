@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from sqlalchemy import and_, not_, or_
+from sqlalchemy import and_, func, not_, or_, text
 
 from models import QuizQuestion
 
@@ -84,8 +84,146 @@ def source_kind_expr(source_kind: Optional[str], model: Any = QuizQuestion) -> A
 
 
 def answerable_expr(model: Any = QuizQuestion) -> Any:
-    """「可作答」判定表达式：is_available 为 True 或 NULL（NULL 视为可用，向后兼容）。"""
+    """「可作答」判定表达式：is_available 为 True 或 NULL（NULL 视为可用，向后兼容）。
+
+    **不要改本函数语义**：quiz / taxonomy / documents / papers 四个端点共用它。
+    需要"真正能刷"的更严口径请用 ``practiceable_expr``（并列新增，不覆盖本函数）。
+    """
     return or_(model.is_available.is_(True), model.is_available.is_(None))
+
+
+# --------------------------------------------------------------------------- #
+# 「可练习」第四档口径（M0-104）：raw ⊇ visible ⊇ answerable ⊇ practiceable
+#
+# 动机（真库实测，2026-10）：`answerable` 只看 is_available，于是把两类**人做不了**
+# 的题也算成可作答——① 缺图题（figure_missing=1 且无选项，题干依赖图/表才能作答）；
+# ② 空答案壳（answer 只有「答案：」这类壳，或串入「一、填空题」这种章节标题）。
+# 这两类混进刷题池 = 用户刷到无法作答的题。故新增更严的 practiceable 口径，
+# 供刷题入口默认使用；`answerable` 保持原样供审计端点使用。
+# --------------------------------------------------------------------------- #
+
+# 答案「壳」标签：剥掉后若什么都不剩即为空壳
+_ANSWER_SHELL_LABELS = ("参考答案", "答案")
+# 答案壳里可能夹带的括号/全角空格
+_ANSWER_WRAP_CHARS = ("【", "】", "[", "]", "\u3000")
+# 纯标点（去掉后若为空，说明答案只有标点，仍算空壳）
+_ANSWER_PUNCT_CHARS = (
+    "：", ":", "．", ".", "、", ",", "，", ";", "；", "。", "!", "！", "?",
+    "？", "·", "-", "—", "－", "_", "'", "\"", "“", "”",
+)
+# 明显不是答案的体裁（实测 top 噪声，逐条有据）：
+#   * 「一、填空题 / 二、判断题」等题型标题
+#   * 「第1章 拓展习题 / 第6章 拓展习题」等章节标题
+#   * 「填入空内。」等指令残留
+_ANSWER_SECTION_TITLE_LIKE = ("第%章%", "%填入空内%")
+_CN_NUMERALS = "一二三四五六七八九十"
+
+# 答案栏里出现的「占位/指引语」——它们不是答案，用户拿它比对必然判错。
+# 真库实测值：「见解析」「见解析。」「略」「请注意电路中IB和IC的数量级」。
+_ANSWER_PLACEHOLDER_PREFIX = ("见解析", "详见", "同上", "请注意", "注意", "提示", "略")
+
+
+def answer_core_expr(model: Any = QuizQuestion) -> Any:
+    """把 ``answer`` 归一为「去掉壳与标点后的核心串」的 SQL 表达式（仅剩判断用）。
+
+    处理链：trim → 去「参考答案/答案」→ 去括号/全角空格 → trim → 去标点 → trim。
+    只用于判空，不用于展示；因此全局替换标点是安全的（如 ``1.5`` → ``15`` 仍有内容）。
+    """
+    col: Any = model.answer
+    core: Any = func.trim(col)
+    for lab in _ANSWER_SHELL_LABELS:
+        core = func.replace(core, lab, "")
+    for ch in _ANSWER_WRAP_CHARS:
+        core = func.replace(core, ch, "")
+    core = func.trim(core)
+    for ch in _ANSWER_PUNCT_CHARS:
+        core = func.replace(core, ch, "")
+    return func.trim(core)
+
+
+def has_real_answer_expr(model: Any = QuizQuestion) -> Any:
+    """「答案是真答案」判定：核心串非空，且不是章节/题型标题等非答案体裁。"""
+    core = answer_core_expr(model)
+    not_empty = func.length(core) >= 1
+    # 体裁黑名单（LIKE + GLOB 组合；SQLite GLOB 支持 [0-9] 字符类）
+    bad_clauses = [core.like(p) for p in _ANSWER_SECTION_TITLE_LIKE]
+    # 题型标题：「一、填空题」「二、判断题」等。
+    # 注意 core 已剥离标点（见 answer_core_expr），故「一、填空题」在 core 里是
+    # 「一填空题」——pattern 必须用**无标点**形态，否则匹配不上。实测这两种形态：
+    #   带「题」字尾（122 行）、省略「题」字尾（填空/选择/判断）。
+    bad_clauses += [core.like(f"{n}%题") for n in _CN_NUMERALS]
+    bad_clauses += [core.like(f"{n}填%") for n in _CN_NUMERALS]
+    bad_clauses += [core.like(f"{n}选%") for n in _CN_NUMERALS]
+    bad_clauses += [core.like(f"{n}判%") for n in _CN_NUMERALS]
+    bad_clauses += [core.like(f"{n}简%") for n in _CN_NUMERALS]
+    bad_clauses += [core.like(f"{n}名%") for n in _CN_NUMERALS]
+    bad_clauses += [core.like(f"{n}解%") for n in _CN_NUMERALS]
+    bad_clauses += [
+        # 小问标号：全角/半角括号 + 数字。**必须用 * 覆盖任意位数** ——
+        # 实测真库既有「（1）」30 行，也有「（25）」1 行，只匹配一位数会漏。
+        core.op("GLOB")("（[0-9]*）"),
+        core.op("GLOB")("([0-9]*)"),
+    ]
+    # 「详见正文」类占位语：原文是「见解析」「请注意电路中IB和IC的数量级」这类
+    # 提示/指引，不是可比对的答案。真库实测漏网 6 条（id=1497「略」、1707/248/566/568
+    # 「见解析」、2640/2641/2643「请注意…」、7882「（10011)」畸形标号）。
+    bad_clauses += [core.like(f"{p}%") for p in _ANSWER_PLACEHOLDER_PREFIX]
+    # 畸形括号标号：全角左括号配半角右括号（或反之），如实测 id=7882 的「（10011)」。
+    # 判据必须建在**剥离前**的原始 answer 上 —— answer_core_expr 会把全角括号当
+    # 包装字符去掉，core 里只剩「10011」，而纯数字答案（填空题常见）不能一刀切。
+    raw = func.trim(model.answer)
+    bad_clauses += [
+        raw.op("GLOB")("（[0-9]*[)]"),
+        raw.op("GLOB")("([0-9]*）"),
+    ]
+    return and_(not_empty, not_(or_(*bad_clauses)))
+
+
+def blank_options_expr(model: Any = QuizQuestion) -> Any:
+    """「options 无有效内容」判定，兼容 list / dict / JSON 字符串三种存法。
+
+    实测口径：SQL 判定与 Python 逐行 ``json.loads`` 判定**完全一致**（均 8099 行）。
+    实现依赖 SQLite JSON1（``json_valid`` / ``json_type`` / ``json_each``）；本仓库
+    固定 SQLite，故可接受。SQL NULL 与 JSON ``null`` 都算空；数组/对象里
+    所有元素 ``trim`` 后为空也算空。
+    """
+    tbl = model.__tablename__
+    col = f"{tbl}.options"
+    # 直接写 EXISTS / NOT EXISTS 两条 text（TextClause 不能被 not_() 取反）
+    has_content = text(
+        f"EXISTS (SELECT 1 FROM json_each({col}) WHERE trim(json_each.value) <> '')"
+    )
+    no_content = text(
+        f"NOT EXISTS (SELECT 1 FROM json_each({col}) WHERE trim(json_each.value) <> '')"
+    )
+    legacy_blank = text(
+        "trim(replace(replace(replace(replace("
+        f"{col},'[',''),']',''),'\"',''),' ','')) IN ('','null','{{}}')"
+    )
+    return or_(
+        model.options.is_(None),
+        # 合法 JSON（含 'null' / '[]' / 全空白数组）：没有任何非空元素即空
+        and_(text(f"coalesce(json_valid({col}),0) = 1"), no_content),
+        # 非 JSON 文本兜底：清掉括号引号空白后仍为空
+        and_(text(f"coalesce(json_valid({col}),0) = 0"), legacy_blank),
+    )
+
+
+def practiceable_expr(model: Any = QuizQuestion) -> Any:
+    """「可练习」口径 = answerable + 有真答案 + 未「缺图且无选项」。
+
+    比 ``answerable`` 更严，用于刷题入口默认出题；``answerable`` 本身保持不变。
+    恒等式：practiceable ⊆ answerable ⊆ visible ⊆ raw。
+    """
+    missing_figure_and_blind = and_(
+        func.coalesce(model.figure_missing, 0) == 1,
+        blank_options_expr(model),
+    )
+    return and_(
+        answerable_expr(model),
+        not_(missing_figure_and_blind),
+        has_real_answer_expr(model),
+    )
 
 
 def visible_quiz_filter(query: Any, include_junk: bool = False) -> Any:

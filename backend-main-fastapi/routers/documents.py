@@ -1508,3 +1508,103 @@ async def scan_root(payload: dict | None = None, db: Session = Depends(get_db)):
         f"断链 {report['broken']}，失败 {report['errors']}"
     )
     return report
+
+
+# --------------------------------------------------------------------------- #
+# 断链可追溯性（M0-5）
+#   · GET  /broken-links        纯只读：断链里哪些还能找回、在哪
+#   · POST /repair-file-paths   默认 dry_run：先看 old→new 计划，再决定是否写
+# 说明：`build_file_index` 的搜索根已含 knowledge_base
+#       （services/kb_pipeline._find_storage_roots），不再只扫 data/storage。
+# --------------------------------------------------------------------------- #
+
+@router.get("/broken-links")
+async def list_broken_links(db: Session = Depends(get_db)):
+    """**纯只读**：列出断链文档（登记了绝对路径但原件读不到）+ 能否找回。
+
+    - ``broken`` = 登记了**绝对路径**却读不到的文档（断链本体）；``reason``
+      复用 :func:`_resolve_local_file` 的中文原因。空路径 / IMA 媒体号（非本地
+      绝对路径）不计入 ``broken``，另用 ``no_path`` / ``external`` 单列以便对账。
+    - ``recoverable`` = 按 ``file_name`` 在本地索引里能命中实际文件的条数
+      （含 ``.pdf`` 去/补后缀回退），``candidates`` 即命中的实际路径。
+      **索引根已含 knowledge_base**，这是判断"还能不能找回"的关键。
+    - ``recoverable == 0`` 说明这些文件真的不在盘上 —— 此时不该给用户
+      "一键修复"的假承诺。
+
+    本端点不写库、不落盘；无断链时跳过建索引（空库/健康库零成本）。
+    """
+    from services.kb_pipeline import _index_hits, build_file_index
+
+    docs = db.query(Document).all()
+    no_path = 0
+    external = 0
+    broken_docs: list[tuple[Document, str]] = []
+    for d in docs:
+        raw = (d.file_path or "").strip()
+        if not raw:
+            no_path += 1
+            continue
+        path, reason = _resolve_local_file(d)
+        if path is not None:
+            continue  # 原件可读，不是断链
+        if not os.path.isabs(raw):
+            external += 1  # IMA 媒体号等，非本地绝对路径
+            continue
+        broken_docs.append((d, reason or "原文不可读"))
+
+    idx = build_file_index() if broken_docs else {}
+    items = []
+    recoverable = 0
+    by_reason: dict[str, int] = {}
+    for d, reason in broken_docs:
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+        hits = _index_hits(d.file_name or "", idx)
+        if hits:
+            recoverable += 1
+        items.append({
+            "doc_id": d.id,
+            "file_name": d.file_name,
+            "file_path": d.file_path,
+            "reason": reason,
+            "candidates": hits[:5],
+        })
+    return {
+        "total": len(docs),
+        "broken": len(items),
+        "recoverable": recoverable,
+        "not_found": len(items) - recoverable,
+        "no_path": no_path,
+        "external": external,
+        "by_reason": by_reason,
+        "indexed_files": sum(len(v) for v in idx.values()),
+        "items": items,
+    }
+
+
+@router.post("/repair-file-paths")
+async def repair_document_file_paths(dry_run: bool = True, db: Session = Depends(get_db)):
+    """把失效的 ``file_path`` 重新指回本地实际文件。
+
+    - ``dry_run=true``（**默认**）：只读，返回 ``old → new`` 计划与
+      ``recoverable / not_found``，**不写库**。用户先看计划再决定。
+    - ``dry_run=false``：先 ``ensure_write_backup()`` 做一次全库备份
+      （与 archive / bulk / scan-root 同一红线，实测约 30-40s），再写库提交。
+
+    匹配逻辑复用 ``services/kb_pipeline`` 的同一份索引与文件名回退规则，
+    计划与执行结果一致；``repair_file_paths()`` 既有语义不变，只是索引更完整。
+    """
+    from services.kb_pipeline import plan_file_path_repairs, repair_file_paths
+    from services.kb_service import ensure_write_backup
+
+    if dry_run:
+        report = plan_file_path_repairs(db)
+        report["dry_run"] = True
+        return report
+
+    ensure_write_backup()
+    stats = repair_file_paths(db, commit=True)
+    stats["dry_run"] = False
+    stats["message"] = (
+        f"修复完成：找回 {stats['repaired']} 篇，无法找回 {stats['not_found']} 篇"
+    )
+    return stats
