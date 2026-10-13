@@ -18,12 +18,12 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, not_, or_
 from sqlalchemy.orm import Session
 
 from models import (
     ErrorRecord, KnowledgePoint, KnowledgeChunk, Document,
-    ErrorKnowledgeLink,
+    ErrorKnowledgeLink, QuestionKnowledgeLink, ReviewRecord,
 )
 from services import taxonomy, kp_cleaner
 from services.delete_guard import require_physical_delete_enabled
@@ -362,34 +362,202 @@ def unlink(db: Session, link_id: int, *, commit: bool = True) -> bool:
     return True
 
 
+def mastery_state_condition(state: str):
+    """把三态名（unlearned/weak/mastered）翻译成 SQLAlchemy 过滤条件。
+
+    与 ``services/kp_mastery.error_mastery_state`` **逐条对齐**（同一阈值
+    ``MASTERED_THRESHOLD``，同一"有学习记录"定义），保证"列表筛选出来的条数"
+    与"逐条算出来的三态"完全一致 —— 避免又出现"页面显示和筛选对不上"。
+
+        mastered : status='graduated' OR (review_count>0 AND accuracy*100 ≥ 阈值)
+        unlearned: status≠'graduated' AND review_count 为 0/NULL
+        weak     : status≠'graduated' AND review_count>0 AND accuracy*100 < 阈值
+
+    未知 state 返回 ``None``（调用方不追加过滤）。
+    """
+    from services import kp_mastery
+
+    not_grad = func.coalesce(ErrorRecord.status, "active") != kp_mastery.STATE_MASTERED_MARK
+    reviewed = func.coalesce(ErrorRecord.review_count, 0) > 0
+    high_acc = (
+        func.coalesce(ErrorRecord.accuracy, 0) * 100 >= kp_mastery.MASTERED_THRESHOLD
+    )
+    if state == kp_mastery.STATE_MASTERED:
+        return or_(ErrorRecord.status == kp_mastery.STATE_MASTERED_MARK, and_(reviewed, high_acc))
+    if state == kp_mastery.STATE_UNLEARNED:
+        return and_(not_grad, not_(reviewed))
+    if state == kp_mastery.STATE_WEAK:
+        return and_(not_grad, reviewed, not_(high_acc))
+    return None
+
+
+def error_stats(db: Session, *, subject: str | None = None) -> dict[str, Any]:
+    """**错题统计的唯一口径**（错题本 / 错题复盘 / 仪表盘共用同一实现）。
+
+    修复背景：此前"错题数 / 今日待复习"至少有三套算法在跑 ——
+    仪表盘前端用本地 ``reviewStatus()``（mastery 缺失 → 落到 5 分钟节点 →
+    几乎所有复习过的错题都被判"到期"）、``/api/review/stats`` 用一套、
+    错题本页面又各自从当前页 items 现算一套。同一个"今日待复习错题"，
+    三个页面三个数。
+
+    本函数是唯一事实源；``GET /api/errors/stats`` 与仪表盘 ``stats`` 都走它。
+    """
+    from services import kp_mastery
+
+    now = utcnow()
+    q = db.query(ErrorRecord)
+    if subject:
+        q = q.filter(ErrorRecord.subject == taxonomy.normalize_subject(subject))
+
+    total = q.count()
+    active = q.filter(ErrorRecord.status == "active").count()
+    graduated = q.filter(ErrorRecord.status == kp_mastery.STATE_MASTERED_MARK).count()
+    archived = q.filter(ErrorRecord.status == "archived").count()
+    # 到期 = 在练 且 已排期 且 next_review ≤ 现在（无排期的脏数据不计入，口径同
+    # ReviewScheduler.get_due_errors / review.py:132）
+    due = q.filter(
+        ErrorRecord.status == "active",
+        ErrorRecord.next_review.isnot(None),
+        ErrorRecord.next_review <= now,
+    ).count()
+
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    total_reviews = db.query(func.count(ReviewRecord.id)).scalar() or 0
+    today_reviews = (
+        db.query(func.count(ReviewRecord.id))
+        .filter(ReviewRecord.created_at >= today_start)
+        .scalar()
+        or 0
+    )
+    error_reviews = (
+        db.query(func.count(ReviewRecord.id))
+        .filter(ReviewRecord.item_type == "error")
+        .scalar()
+        or 0
+    )
+
+    states = {}
+    for name in (kp_mastery.STATE_UNLEARNED, kp_mastery.STATE_WEAK, kp_mastery.STATE_MASTERED):
+        cond = mastery_state_condition(name)
+        states[name] = q.filter(cond).count() if cond is not None else 0
+
+    return {
+        "total": total,
+        "active_errors": active,
+        "due_errors": due,
+        "graduated_errors": graduated,
+        "archived_errors": archived,
+        "today_reviews": today_reviews,
+        "total_reviews": total_reviews,
+        "error_reviews": error_reviews,
+        # 三态计数（键名与 kp_mastery.STATE_* 一致）
+        "unlearned": states[kp_mastery.STATE_UNLEARNED],
+        "weak": states[kp_mastery.STATE_WEAK],
+        "mastered": states[kp_mastery.STATE_MASTERED],
+        # 三态中文标签（前端不再自行写死档位文案）
+        "labels": dict(kp_mastery.STATE_LABELS),
+        "subject": taxonomy.normalize_subject(subject) if subject else None,
+    }
+
+
 def knowledge_points_of_error(db: Session, error_id: int) -> list[dict[str, Any]]:
-    """错题关联的知识点（含掌握度，便于"这题考的点我掌握得怎么样"）。"""
+    """错题关联的知识点（**按实际链路展示，不再只是启发式关联**）。
+
+    修复背景（docx/22 F3「知识点关联硬编码且关联错」）：
+    此前本函数只读 ``error_knowledge_links``（RAG/keyword 自动挂接），
+    于是页面上出现的往往是"进制/计数器/触发器"这类低置信弱关联
+    （真实库 34 条里 19 条是 ``name_match_cross`` 跨科目兜底），而错题背后
+    **真正的题目**在 ``question_knowledge_links`` 里有 ``is_verified=1`` 的
+    人工校验关联，却被完全忽略 —— 用户看到的"这道题考什么"因此是错的。
+
+    现在按优先级合并两条真实链路，且各自标注来源，页面可如实呈现：
+
+      1. ``question_knowledge_links``（错题 underlying question 的关联）——
+         权威、可人工校验（``is_verified`` / ``role``），来源标 ``question_link``；
+      2. ``error_knowledge_links``（错题本身的自动/手动挂接）——
+         补充，保留 ``relevance`` 与 ``source``（auto 族 / manual）。
+
+    同一知识点在两处都出现时以 (1) 为准（``verified`` 字段透出）。
+    每个知识点附带掌握度三态（``state`` / ``state_label``），前端不再自行写死档位。
+    """
+    from services import kp_mastery
+
+    err = db.query(ErrorRecord).filter(ErrorRecord.id == error_id).first()
+    if not err:
+        return []
+
+    learned = kp_mastery.learned_kp_ids(db)
+    out: list[dict[str, Any]] = []
+    seen: set[int] = set()
+
+    def _kp_dict(kp: KnowledgePoint) -> dict[str, Any]:
+        state = kp_mastery.classify_state(kp.mastery, kp.id in learned)
+        return {
+            "name": kp.name,
+            "subject": kp.subject,
+            "chapter": kp.chapter,
+            "mastery": int(kp.mastery or 0),
+            "state": state,
+            "state_label": kp_mastery.STATE_LABELS.get(state, state),
+            "question_types": (kp.question_types if kp else None)
+                              or taxonomy.question_types_of(kp.subject if kp else None),
+        }
+
+    # —— 1. 题目实际关联（question_knowledge_links）—— 权威 —— #
+    if err.question_id:
+        qkl_rows = (
+            db.query(QuestionKnowledgeLink, KnowledgePoint)
+            .join(KnowledgePoint, KnowledgePoint.id == QuestionKnowledgeLink.knowledge_point_id)
+            .filter(QuestionKnowledgeLink.question_id == err.question_id)
+            .order_by(QuestionKnowledgeLink.is_verified.desc(), QuestionKnowledgeLink.weight.desc())
+            .all()
+        )
+        for qkl, kp in qkl_rows:
+            if kp is None or kp.id in seen:
+                continue
+            seen.add(kp.id)
+            out.append({
+                "link_id": None,  # question_link 无 error_knowledge_links 行，不可在此解除
+                "knowledge_point_id": kp.id,
+                "relevance": round(float(qkl.weight or 1.0), 4),
+                "source": "question_link",
+                "role": qkl.role,
+                "verified": bool(qkl.is_verified),
+                "chunk_id": None,
+                "document_id": None,
+                **_kp_dict(kp),
+            })
+
+    # —— 2. 错题启发式/手动挂接（error_knowledge_links）—— 补充 —— #
     links = (
         db.query(ErrorKnowledgeLink)
         .filter(ErrorKnowledgeLink.error_id == error_id)
         .order_by(ErrorKnowledgeLink.relevance.desc())
         .all()
     )
-    out = []
     for lk in links:
         kp = None
         if lk.knowledge_point_id:
             kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == lk.knowledge_point_id).first()
-        item = {
+        if kp is not None and kp.id in seen:
+            continue
+        if kp is not None:
+            seen.add(kp.id)
+        out.append({
             "link_id": lk.id,
             "knowledge_point_id": lk.knowledge_point_id,
             "relevance": lk.relevance,
             "source": lk.source,
+            "role": None,
+            "verified": False,
             "chunk_id": lk.chunk_id,
             "document_id": lk.document_id,
-            "name": kp.name if kp else None,
-            "subject": kp.subject if kp else None,
-            "chapter": kp.chapter if kp else None,
-            "mastery": int(kp.mastery or 0) if kp else None,
-            "question_types": (kp.question_types if kp else None)
-                              or taxonomy.question_types_of(kp.subject if kp else None),
-        }
-        out.append(item)
+            **(_kp_dict(kp) if kp is not None else {
+                "name": None, "subject": None, "chapter": None,
+                "mastery": None, "state": None, "state_label": None,
+                "question_types": None,
+            }),
+        })
     return out
 
 

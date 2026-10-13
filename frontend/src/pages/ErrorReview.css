@@ -23,6 +23,7 @@
 .er-stat-label { font-size: 12px; color: var(--ink-3); margin-top: 4px; }
 .er-stat-warn .er-stat-num { color: var(--gold); }
 .er-stat-ok .er-stat-num { color: var(--green); }
+.er-stat-muted .er-stat-num { color: var(--ink-3); }
 
 /* ---------- 筛选条（掌握度 / 错因 / 学科各一行） ---------- */
 .er-filterbar {

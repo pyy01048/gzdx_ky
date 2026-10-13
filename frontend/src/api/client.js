@@ -278,6 +278,8 @@ export const quizApi = {
 /* ---------------- Errors 错题本 ---------------- */
 export const errorsApi = {
   list: (params) => request('/errors', { params }),
+  // 错题统计（唯一口径：与仪表盘 stats.active_errors/due_errors 同一聚合函数）
+  stats: (params) => request('/errors/stats', { params }),
   create: (body) => request('/errors', { method: 'POST', body }),
   update: (id, body) => request(`/errors/${id}`, { method: 'PUT', body }),
   remove: (id) => request(`/errors/${id}`, { method: 'DELETE' }),
