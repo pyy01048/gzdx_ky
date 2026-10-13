@@ -8,9 +8,9 @@ import NoticeUnreadBadge from './NoticeUnreadBadge'
 import { useResolvedTheme } from './UI'
 import { useUiLayout, applyOrder } from '../hooks/useUiLayout'
 import {
-  Home, Calendar, Book, Folder, Target,
+  Home, Book, Folder, Target,
   Settings, Sun, Moon, Plus, Brain, FileText, GraduationCap,
-  MessageSquare, ChevronDown, Search, ChevronRight, Map, Activity
+  MessageSquare, ChevronDown, Search, ChevronRight, Map
 } from './Icon'
 
 /* 侧边栏考研初试倒计时：日期取统一配置（utils/exam.js），未设置时给出设置入口 */
@@ -63,16 +63,31 @@ function ExamCountdown() {
 }
 
 /* ==========================================================================
-   主导航：5+1 模块结构（对标 gitgraduate.com 的产品信息架构）
+   主导航：分组下拉结构（docx/22 G2）
    --------------------------------------------------------------------------
-   收敛前是 34 个平铺入口分5 组；现在改为「5 大学习模块 + 1 院校数据中心」，
-   页面文件一个都没动，只是把导航层级重组：
-     学习文库/ 知识地图 / 题库 / 单词记忆 / 错题复盘  +  院校数据中心
-   每个模块用一个可折叠的 NavGroup 呈现，模块首项即模块主页（defaultTo）。
-   未归入 5+1 的通用能力（仪表盘 / 任务 / 计划 / 设置 / AI）放在「其他」组，
-   保证任何页面都能从侧边栏到达，不产生死链。
+   页面文件一个都没动，只重组导航层级。每个分组是一个可点击展开的「下拉」，
+   分组首项即该模块主页（defaultTo），展开后在组内列出全部子入口，
+   保证任何页面都能从侧边栏点到，不产生死链。
+
+   分组（下拉）清单：
+     仪表盘（任务打卡 / 学习计划 / 学习画像 已划归此处）
+     学习文库 / 知识地图 / 题库 / 单词记忆 / 错题复盘 / 院校数据中心
+   未分组的通用入口（AI 助手 / 设置）以「单列」形式直接呈现，设置不再并入分组。
    ========================================================================== */
 export const NAV_MODULES = [
+  {
+    key: 'home',
+    title: '仪表盘',
+    icon: Home,
+    defaultTo: '/',
+    items: [
+      // 用户诉求：任务打卡 / 学习计划 / 学习画像 全部划归仪表盘
+      { to: '/', label: '仪表盘总览', exact: true },
+      { to: '/tasks', label: '任务打卡' },
+      { to: '/planner', label: '学习计划' },
+      { to: '/profile', label: '学习画像' },
+    ],
+  },
   {
     key: 'library',
     title: '学习文库',
@@ -108,6 +123,8 @@ export const NAV_MODULES = [
       { to: '/quiz-bank', label: '题库管理' },
       { to: '/quiz', label: '刷题中心' },
       { to: '/cards', label: '记忆卡片' },
+      // 复试代码题库（/codebank）：此前仅首页「全部模块」可达，主入口补进导航
+      { to: '/codebank', label: '复试代码题库' },
     ],
   },
   {
@@ -149,12 +166,8 @@ export const NAV_MODULES = [
   },
 ]
 
-/* 未归入 5+1 的通用入口（保持可达，避免收敛后出现死链） */
+/* 未分组的通用入口（以单列形式直接呈现；设置单列，不并入任何下拉） */
 export const NAV_OTHER = [
-  { to: '/', label: '仪表盘', icon: Home, exact: true },
-  { to: '/tasks', label: '任务打卡', icon: Target },
-  { to: '/planner', label: '学习计划', icon: Calendar },
-  { to: '/profile', label: '学习画像', icon: Activity },
   { to: '/assistant', label: 'AI 助手', icon: MessageSquare },
   { to: '/settings', label: '设置', icon: Settings },
 ]
@@ -205,6 +218,7 @@ const CRUMB_MAP = {
   '/pan': '网盘联动',
   '/planner': '学习计划',
   '/assistant': 'AI 助手',
+  '/codebank': '复试代码题库',
   '/settings': '设置',
   // 择校中心（/kaoyan 系列）
   '/kaoyan': '择校中心',
@@ -300,18 +314,18 @@ export default function Layout({ children }) {
     return Array.from(new Set([...saved, ...activeKeys]))
   })
 
-  /* 模块标题行为：收起时点它 → 跳模块主页并展开；已展开时点它 → 收起
-     （若当前正停在该模块内，收起前先跳到模块主页，避免"收起=内容消失"的错觉） */
+  /* 分组标题行为（下拉开关）：
+     - 单项分组（如「单词记忆」）：标题即入口，直接跳转，省一次点击；
+     - 多项分组：点击展开/收起下拉，组内首项即模块主页。
+     展开状态记忆在 localStorage，当前路由落在组内时强制展开。 */
   const toggleModule = (key) => {
     const mod = NAV_MODULES.find((m) => m.key === key)
     if (!mod) return
-    const inside = mod.items.some((n) => (n.exact ? location.pathname === n.to : location.pathname.startsWith(n.to)))
+    if (mod.items.length === 1) { navigate(mod.items[0].to); return }
     const wasOpen = openModules.includes(key)
     const next = wasOpen ? openModules.filter((k) => k !== key) : [...openModules, key]
     try { localStorage.setItem(NAV_OPEN_KEY, JSON.stringify(next)) } catch { /* 隐私模式忽略 */ }
     setOpenModules(next)
-    if (wasOpen && inside) navigate(mod.defaultTo)
-    else if (!wasOpen) navigate(mod.defaultTo)
   }
 
   const go = (to) => {
@@ -351,7 +365,7 @@ export default function Layout({ children }) {
         <ExamCountdown />
 
         <nav className="side-nav">
-          {/* 5+1 模块导航：模块标题可点击（跳模块主页 + 展开/收起子项） */}
+          {/* 分组下拉导航：点分组标题展开/收起，组内为子入口 */}
           {navGroups.map((mod) => {
             const open = openModules.includes(mod.key)
             // 当前路由落在该模块下 → 强制展开（用户手动收起时不记忆，状态以展开为准）
@@ -362,13 +376,16 @@ export default function Layout({ children }) {
                 <button
                   className={`nav-mod-head ${containsActive ? 'active' : ''}`}
                   onClick={() => toggleModule(mod.key)}
-                  title={`${mod.title}（点击进入模块主页）`}
+                  aria-expanded={mod.items.length > 1 ? expanded : undefined}
+                  title={mod.items.length > 1 ? `${mod.title}（点击展开下拉）` : `${mod.title}（点击进入）`}
                 >
                   <mod.icon size={17} className="nav-ico" />
                   <span className="nav-mod-title">{mod.title}</span>
                   {/* 未读通知角标：院校数据中心挂在模块标题上，全局可见 */}
                   {mod.key === 'kaoyan' && <NoticeUnreadBadge className="nav-mod-badge" />}
-                  <ChevronDown size={14} className={`nav-mod-caret ${expanded ? 'open' : ''}`} />
+                  {mod.items.length > 1 && (
+                    <ChevronDown size={14} className={`nav-mod-caret ${expanded ? 'open' : ''}`} />
+                  )}
                 </button>
                 {expanded && (
                   <div className="nav-mod-items">
