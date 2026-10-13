@@ -40,7 +40,7 @@ export default function PlanPage() {
   return (
     <div className="ky-page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '8px' }}>
-        <h1 style={{ marginBottom: '0' }}>考研规划（18 节点）</h1>
+        <h1 style={{ marginBottom: '0' }}>考研规划</h1>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))}
             style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--line)', background: 'var(--surface)' }}>
@@ -106,8 +106,8 @@ export default function PlanPage() {
         ))}
       </div>
 
-      {/* 18 节点时间线 */}
-      <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>18 个关键节点</h2>
+      {/* 关键节点时间线（数量随后端里程碑数据动态变化） */}
+      <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>关键节点（{(milestones?.milestones || []).length} 个）</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
         {[...(milestones?.milestones || [])].sort((a, b) => (a.start || '').localeCompare(b.start || '')).map((n) => {
           const stage = roadmap.stages.find((s) => s.name === n.stage)
