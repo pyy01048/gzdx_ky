@@ -390,10 +390,10 @@ export default function Quiz() {
   useEffect(() => { if (tab === 'review') loadErrors() }, [tab, loadErrors])
 
   /* ================= 会话开始 ================= */
-  const beginSession = useCallback((title, questions, modeUsed, startIdx = 0) => {
+  const beginSession = useCallback((title, questions, modeUsed, startIdx = 0, noAnswer = false) => {
     if (!questions || !questions.length) { toast('当前筛选条件下暂无题目'); return }
     const si = Math.max(0, Math.min(startIdx, questions.length - 1))
-    setSession({ title, questions, mode: modeUsed || mode })
+    setSession({ title, questions, mode: modeUsed || mode, noAnswer })
     setIdx(si); setDrafts({}); setTextDraft({}); setRecords({}); setSelfCheck(null)
     startedFromRef.current = { title, questions, mode: modeUsed || mode }
     setView('practice')
@@ -462,14 +462,29 @@ export default function Quiz() {
   const startWithFilter = useCallback(async ({ subject, chapter, question_type, kp_id, kp_name, title }) => {
     setSubmitting(true)
     try {
-      const d = await quizApi.questions({
+      let d = await quizApi.questions({
         subject: subject || undefined,
         chapter: chapter || undefined,
         question_type: question_type || undefined,
         kp_id: kp_id || undefined,
         page: 1, page_size: 100
       })
-      const qs = (d?.questions || d?.items || []).map(normQ)
+      let qs = (d?.questions || d?.items || []).map(normQ)
+      let noAnswer = false
+      /* 可作答题为 0（多数科目题库尚未回填标准答案）时，回退取全部题进入「浏览模式」，
+         避免「点开始练习无反应」；浏览模式不判分、不进错题本（见 gradeChoice/applyGrade）。 */
+      if (!qs.length) {
+        const d2 = await quizApi.questions({
+          subject: subject || undefined,
+          chapter: chapter || undefined,
+          question_type: question_type || undefined,
+          kp_id: kp_id || undefined,
+          answerable: false,
+          page: 1, page_size: 100
+        })
+        const qs2 = (d2?.questions || d2?.items || []).map(normQ)
+        if (qs2.length) { qs = qs2; noAnswer = true }
+      }
       setBackendOk(true)
       /* 记录本次是否为知识点级筛选，供界面标识与空态判断使用 */
       const kp = kp_id ? { id: String(kp_id), name: kp_name || `#${kp_id}` } : null
@@ -481,7 +496,8 @@ export default function Quiz() {
         return
       }
       setKpEmpty(null)
-      beginSession(title, qs, mode)
+      if (noAnswer) toast('该科目暂无标准答案题，已载入题库全部题目（浏览模式：不判分、不进错题本）')
+      beginSession(title, qs, mode, 0, noAnswer)
     } catch {
       setBackendOk(false)
       const kp = kp_id ? { id: String(kp_id), name: kp_name || `#${kp_id}` } : null
@@ -532,6 +548,12 @@ export default function Quiz() {
   const gradeChoice = async (q, sel) => {
     if (records[q.id] || selfCheck || submitting) return
     const myAns = Array.isArray(sel) ? sel.map(letterOf).join('') : letterOf(sel)
+    // 浏览模式（无标准答案题）：不调用判分接口、不写错题本，仅记录用户作答供自检
+    if (session?.noAnswer) {
+      setRecords((prev) => ({ ...prev, [q.id]: { selfCheckOnly: true, selected: myAns, correctAnswer: '', analysis: '' } }))
+      toast('浏览模式：本题暂无标准答案，请对照教材/解析自检')
+      return
+    }
     let correct = false, correctAnswer = q.answer, analysis = q.analysis
     if (backendOk && !q.id.startsWith('l')) {
       setSubmitting(true)
@@ -550,6 +572,10 @@ export default function Quiz() {
   }
 
   const applyGrade = (q, correct, selected, correctAnswer, analysis) => {
+    if (session?.noAnswer) {
+      setRecords((prev) => ({ ...prev, [q.id]: { selfCheckOnly: true, selected, correctAnswer: '', analysis: '' } }))
+      return
+    }
     setRecords((prev) => ({ ...prev, [q.id]: { correct, selected, correctAnswer, analysis } }))
     pushRec(q.id, correct)   // V10 本地作答累计（做过次数 + 最近对错）
     if (correct) toast('回答正确')
@@ -1130,10 +1156,20 @@ export default function Quiz() {
               <span className="chip">{TYPE_LABELS[q.question_type] || q.question_type || '题目'}</span>
               {q.subject && <span className="chip">{q.subject}</span>}
               {q.chapter && <span className="chip">{q.chapter}</span>}
+              {session.noAnswer && (
+                <span className="chip" style={{ background: '#fff7e6', color: '#ad6800', border: '1px solid #ffe1a8' }}>
+                  ⚠ 浏览模式 · 暂不可判分
+                </span>
+              )}
               <button className={`qstar ${favOn ? 'on' : ''}`} onClick={() => toggleFav(q)}>
                 {favOn ? '★ 已收藏' : '☆ 收藏'}
               </button>
             </div>
+            {session.noAnswer && (
+              <div className="qnote" style={{ marginTop: 8 }}>
+                当前为浏览模式：该科目/章节题库尚未回填标准答案，题目仅用于浏览与自检，不会判分、也不会进入错题本。可在「题库管理」为题目补全答案后恢复正常练习。
+              </div>
+            )}
 
             <div className="qprac-body">
               <div className="qprac-progress">
