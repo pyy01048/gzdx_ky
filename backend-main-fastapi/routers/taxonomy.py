@@ -168,6 +168,11 @@ async def update_subject(subject: str, payload: dict, db: Session = Depends(get_
     if payload.get("question_types") is not None:
         row.question_types = _validate_question_types(payload["question_types"])
 
+    if renamed:
+        # 改名同样要把 goals 两层里的旧名换成新名，否则设置页改名后
+        # 其他页面仍读到旧名死引用（与删除路径同一闭环）。
+        _sync_goal_subject_refs(db, renamed_from=subject, renamed_to=row.subject)
+
     db.commit()
     db.refresh(row)
     taxonomy.load_configured_subjects(db)
@@ -185,17 +190,65 @@ async def update_subject(subject: str, payload: dict, db: Session = Depends(get_
     return resp
 
 
+# --------------------------------------------------------------------------- #
+# goals 两层科目引用同步（科目唯一数据源闭环）
+#
+# 背景：goals.subjects / goals.support_subjects 存的是科目名字符串数组。
+# 如果只删/改 subject_config 字典行而不动 goals，「设置页删了科目、
+# 其他页面还在」就会复发——GET /api/goals/subjects 仍从 goals 读层，
+# 死引用会让已删科目继续出现在各页面下拉里。
+# 因此删除/重命名科目时，必须把 goals 两层里的同名引用一并清掉/换掉。
+# --------------------------------------------------------------------------- #
+def _sync_goal_subject_refs(db: Session, *, removed: str = None, renamed_from: str = None, renamed_to: str = None) -> None:
+    """删除科目时移除 goals 两层引用；重命名时把旧名替换为新名。
+
+    Args:
+        db: SQLAlchemy 会话（调用方负责 commit）。
+        removed: 被删除的科目名 —— 从两层中剔除。
+        renamed_from / renamed_to: 重命名前后科目名 —— 两层中旧名换新名。
+    """
+    from models import Goal
+
+    goal = db.query(Goal).first()
+    if not goal:
+        return
+
+    def _clean(lst):
+        if not isinstance(lst, list):
+            return lst
+        out = []
+        for s in lst:
+            if removed is not None and s == removed:
+                continue
+            if renamed_from is not None and s == renamed_from:
+                s = renamed_to
+            if s not in out:
+                out.append(s)
+        return out
+
+    if removed is not None:
+        goal.subjects = _clean(goal.subjects)
+        goal.support_subjects = _clean(goal.support_subjects)
+    if renamed_from is not None:
+        goal.subjects = _clean(goal.subjects)
+        goal.support_subjects = _clean(goal.support_subjects)
+
+
 @router.delete("/subjects/{subject}")
 async def delete_subject(subject: str, db: Session = Depends(get_db)):
     """删除科目配置行（内置默认也可删）。
 
     仅删除科目字典配置；``quiz_questions`` / ``error_records`` 等业务表里
     既有的题目数据**不受影响**（题目上的科目标签字符串保持原值）。
+
+    同时把 ``goals`` 两层（考试科目 / 支撑科目）里对该科目的引用一并移除 ——
+    否则设置页删了科目，其他页面仍会从 goals 读到死引用，表现为"删了不同步"。
     """
     row = db.query(SubjectConfig).filter(SubjectConfig.subject == subject).first()
     if not row:
         raise HTTPException(status_code=404, detail=f"科目不存在：{subject}")
     db.delete(row)
+    _sync_goal_subject_refs(db, removed=subject)
     db.commit()
     taxonomy.load_configured_subjects(db)
     return {
