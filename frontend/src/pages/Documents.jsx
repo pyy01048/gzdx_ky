@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import useStore from '../store/useStore'
 import { fmtDateCN } from '../utils/date'
+// 体积口径全站一份：0 字节显示「—」，不再被 Math.max(1,...) 报成「1 KB」
+import { fmtBytes } from '../utils/format'
 import { SubTag, Modal, toast, CountUp } from '../components/UI'
 import { documentsApi, aiApi, kbImportApi } from '../api/client'
 import KbHealthPanel from '../components/KbHealthPanel'
@@ -19,12 +21,18 @@ const VIEWS = [
   { label: '知识库检索', value: 'search' }
 ]
 
+/* 浏览器自己能渲染的类型才塞进 iframe；docx/ppt 塞进去只会变成一张下载提示。 */
+const INLINE_EXT = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg',
+  'txt', 'md', 'markdown', 'csv', 'html']
+const canInlinePreview = (d) => {
+  const ext = String(d?.file_name || '').toLowerCase().split('.').pop()
+  return INLINE_EXT.includes(ext) || INLINE_EXT.includes(String(d?.file_type || '').toLowerCase())
+}
+
 const ACCEPT = '.pdf,.docx,.doc,.txt,.md'
 
 /* 文件指纹：名称 + 字节数（同名同大小视为重复） */
 const sigOf = (name, size) => `${(name || '').trim().toLowerCase()}::${size || 0}`
-
-const fmtSize = (n) => (n > 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB')
 
 const TYPE_ICO = { pdf: { text: 'PDF', cls: 'red' }, docx: { text: 'DOC', cls: 'blue' }, doc: { text: 'DOC', cls: 'blue' }, md: { text: 'MD', cls: 'violet' }, txt: { text: 'TXT', cls: 'neutral' } }
 
@@ -123,7 +131,12 @@ export default function Documents() {
     try {
       const s = await documentsApi.subjects()
       setSubjectStats(s)
-      const opts = (s.subjects || []).map((x) => ({ label: `${x.name}（${x.document_count} 篇）`, value: x.name }))
+      // 篇数必须是「点这一科实际能拿到的篇数」：后端会把「公共课-数学」这类
+      // 别名写法折叠进「数学」，所以优先用 merged_document_count，用原值就少报。
+      const opts = (s.subjects || []).map((x) => {
+        const n = x.merged_document_count ?? x.document_count
+        return { label: `${x.name}（${n} 篇）${(x.aliases || []).length ? ' 含别名写法' : ''}`, value: x.name }
+      })
       setSubjectOptions(opts)
     } catch { /* 后端离线时静默 */ }
   }, [])
@@ -140,7 +153,9 @@ export default function Documents() {
           size: x.size || 0,
           subject: x.subject || '未分类',
           status: x.index_status === 'indexed' ? 'parsed' : (x.index_status || 'uploaded'),
-          uploaded_at: x.created_at || new Date().toISOString(),
+          // 后端没给日期就是「未知」，不能拿当前时间冒充上传时间 —— 页面会把它
+          // 排在「最新上传」最前面，等于伪造排序依据。
+          uploaded_at: x.created_at || '',
           summary: (x.summary || '').slice(0, 120),
           content_length: x.content_length || 0,
           chunk_count: x.chunk_count || 0
@@ -263,7 +278,9 @@ export default function Documents() {
       toast(r.message || '解析完成，已提取知识点')
       await refresh()
     } catch (e) {
-      toast(`解析失败：${e.message}`)
+      // 422 = 质量闸门拒绝，detail 已经是完整原因，不能再加上「解析失败」把
+      // 「被规则拦下」和「代码报错」混成同一句话。
+      toast(e.status === 422 ? e.message : `解析失败：${e.message}`)
     }
     setParsingId(null)
   }
@@ -517,13 +534,15 @@ export default function Documents() {
 
   const parseAll = async () => {
     if (!backendOk) return toast('需连接后端批量解析')
-    try { const r = await documentsApi.parseAll(); toast(r.message || `批量解析完成：${r.parsed || 0}篇`); await refresh() }
+    try { const r = await documentsApi.parseAll(); toast(r.message || `批量解析完成：成功 ${r.parsed || 0}/${r.total || 0} 篇${r.rejected ? `，质量闸门拒绝 ${r.rejected} 篇` : ''}`); await refresh() }
     catch (e) { toast(`批量解析失败：${e.message}`) }
   }
 
   const [previewDoc, setPreviewDoc] = useState(null)
   const [previewContent, setPreviewContent] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
+  /* #26 原文件（字节流）预览：与"解析文本"预览是两码事，前者是磁盘上的那份 PDF */
+  const [fileDoc, setFileDoc] = useState(null)
   const handleShowPreview = async (d) => {
     if (!backendOk) return toast('需连接后端预览文档')
     setPreviewDoc(d); setPreviewLoading(true); setPreviewContent('')
@@ -575,6 +594,8 @@ export default function Documents() {
         .kp-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
         .kp-chip-lg { font-size: 13px; padding: 7px 13px; }
         .doc-pre { font-size: 12.8px; line-height: 1.9; white-space: pre-wrap; word-break: break-word; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px; max-height: 46vh; overflow-y: auto; }
+        /* #26 原文件字节流预览：PDF/图片交给浏览器渲染，后端已支持 Range，翻页不会整读 908MB */
+        .file-frame { display: block; width: 100%; height: 68vh; border: 1px solid var(--line); border-radius: var(--r-md); background: #fff; }
         /* V8 阶段3：kb-import 识别预览（新增 class，颜色全部走 var(--*)） */
         .kbimp-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
         .kbimp-sum .ks-cell { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; }
@@ -669,8 +690,11 @@ export default function Documents() {
                     <div className="st-ico ico sm neutral">科</div>
                     {subject === s.name && <span className="badge accent">筛选中</span>}
                   </div>
-                  <div className="st-val" style={{ fontSize: 22 }}>{s.document_count}</div>
-                  <div className="st-label">{s.name}{s.chunk_count != null ? ` · ${s.chunk_count} 分块` : ''}</div>
+                  <div className="st-val" style={{ fontSize: 22 }}>{s.merged_document_count ?? s.document_count}</div>
+                  <div className="st-label">
+                    {s.name}{s.chunk_count != null ? ` · ${s.chunk_count} 分块` : ''}
+                    {(s.aliases || []).length > 0 && `（含 ${s.aliases.join('、')}）`}
+                  </div>
                 </div>
               ))}
             </div>
@@ -756,7 +780,7 @@ export default function Documents() {
                       <div className="lr-ico ico sm neutral">{(it.name.split('.').pop() || '?').slice(0, 3).toUpperCase()}</div>
                       <div className="lr-main">
                         <div className="lr-title">{it.name}</div>
-                        <div className="lr-meta">{fmtSize(it.size)}{it.msg ? ` · ${it.msg}` : ''}</div>
+                        <div className="lr-meta">{fmtBytes(it.size)}{it.msg ? ` · ${it.msg}` : ''}</div>
                       </div>
                       <div className="lr-actions">
                         {it.status === 'pending' && <span className="badge">待上传</span>}
@@ -852,10 +876,12 @@ export default function Documents() {
                       <div className={`ico sm ${t.cls}`} style={{ fontSize: 11, fontWeight: 800 }}>{t.text}</div>
                       <div style={{ minWidth: 0 }}>
                         <div className="card-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 210 }} title={d.filename}>{d.filename}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>{fmtDateCN((d.uploaded_at || '').slice(0, 10))} · {fmtSize(d.size)}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>{fmtDateCN(d.uploaded_at)} · {fmtBytes(d.size)}</div>
                       </div>
                     </div>
-                    {d.status === 'parsed' ? <span className="badge success">已入库</span> : <span className="badge warning">未解析</span>}
+                    {d.status === 'parsed' ? <span className="badge success">已入库</span>
+                      : d.status === 'failed' ? <span className="badge danger">入库失败</span>
+                        : <span className="badge warning">未解析</span>}
                   </div>
                   <div className="card-body">
                     <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -873,6 +899,11 @@ export default function Documents() {
                         <button className="btn ghost" onClick={() => showKnowledge(d)}>知识点</button>
                         {d.chunk_count > 0 && <button className="btn ghost" onClick={() => showChunks(d)}>≡ 分块</button>}
                         <button className="btn ghost" onClick={() => handleShowPreview(d)}>原文</button>
+                        {/* #26：本地原文预览/下载。754 篇本地没有原文（439 未登记路径 + 238 IMA 媒体号 + 77 已失效），
+                            按钮按 has_local_file 置灰并把原因写在 title，而不是点了才报错 */}
+                        <button className="btn ghost" disabled={!d.has_local_file}
+                          title={d.has_local_file ? '在浏览器里打开原文件' : (d.local_file_note || '本地没有原文件')}
+                          onClick={() => setFileDoc(d)}>📄 原文件</button>
                         <button className="btn ghost" disabled={analyzingId === d.id} onClick={() => analyze(d)}>{analyzingId === d.id ? '分析中…' : '✨ 智能分析'}</button>
                         <button className="btn ghost" disabled={previewingId === d.id} onClick={() => handlePreviewQuestions(d)}>{previewingId === d.id ? '预览中…' : '👁 预览题目'}</button>
                         <button className="btn ghost" onClick={() => openKbImport([Number(d.id)])}>🔍 识别</button>
@@ -1018,6 +1049,34 @@ export default function Documents() {
         {previewLoading
           ? <div className="loading-inline"><i />正在读取正文…</div>
           : <div className="doc-pre">{previewContent || '（未取到正文内容，可能尚未解析）'}</div>}
+      </Modal>
+
+      {/* 原文件（磁盘上那份）预览 Modal：字节流走 /documents/{id}/raw，后端支持 Range */}
+      <Modal
+        open={!!fileDoc}
+        title={fileDoc ? `原文件 · ${fileDoc.file_name}` : ''}
+        onClose={() => setFileDoc(null)}
+        footer={(
+          <div style={{ display: 'flex', gap: 8 }}>
+            {fileDoc && canInlinePreview(fileDoc) && (
+              <a className="btn ghost" href={documentsApi.rawUrl(fileDoc.id)} target="_blank" rel="noreferrer">新窗口打开</a>
+            )}
+            {/* footer 这一整块 JSX 在**每次渲染**时都会求值（Modal 的 open 只影响
+                是否挂载内容，不影响 props 的构造），所以这里每一次 `fileDoc.xxx`
+                都必须带判空 —— 漏一个就是整页白屏（fileDoc 初始就是 null）。 */}
+            {fileDoc && (
+              <a className="btn primary" href={documentsApi.downloadUrl(fileDoc.id)} download>下载原文件</a>
+            )}
+            <button className="btn ghost" onClick={() => setFileDoc(null)}>关闭</button>
+          </div>
+        )}
+      >
+        {fileDoc && (canInlinePreview(fileDoc)
+          ? <iframe className="file-frame" title="原文件预览" src={documentsApi.rawUrl(fileDoc.id)} />
+          : <div className="doc-pre">
+            {`该文件的类型（${fileDoc.file_type || '未知'}）浏览器不能直接渲染，请点下方「下载原文件」后用本地应用打开。`}
+            {fileDoc.size ? `\n大小 ${(fileDoc.size / 1048576).toFixed(1)} MB` : ''}
+          </div>)}
       </Modal>
 
       {/* 题目预览 / 人工审核 Modal */}

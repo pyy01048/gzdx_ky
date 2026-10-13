@@ -37,6 +37,8 @@ vi.mock('echarts/renderers', () => ({ CanvasRenderer: {} }))
 
 // 2) mock 后端 API（返回空数据，避免真实网络请求）
 vi.mock('../api/client', () => ({
+  // 页面有直接 request('/quality/...') 的调用（院校库覆盖率），缺失会让整页进错误态
+  request: vi.fn().mockResolvedValue(null),
   api: { get: vi.fn().mockResolvedValue({ data: {} }) },
   dashboardApi: {
     get: vi.fn().mockResolvedValue({
@@ -46,6 +48,17 @@ vi.mock('../api/client', () => ({
       review_due: 0,
       errors_today: 0,
       recent_docs: [],
+    }),
+    // sync.js 的 countdown 域加载器会单独调用该端点
+    countdown: vi.fn().mockResolvedValue({ exam_date: '2027-12-25', days: 400, is_default: false }),
+  },
+  // 科目配置单一来源（hooks/useSubjectConfig）：Analysis / Pan / Planner 首屏都会读
+  goalsApi: {
+    subjects: vi.fn().mockResolvedValue({
+      exam_subjects: ['数学', '英语', '政治', '数字电子技术'],
+      support_subjects: ['计算机学科专业基础408'],
+      all_known: ['数学', '英语', '政治', '数字电子技术', '计算机学科专业基础408'],
+      using_default: true,
     }),
   },
   tasksApi: { list: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({}), update: vi.fn().mockResolvedValue({}), remove: vi.fn().mockResolvedValue({}) },

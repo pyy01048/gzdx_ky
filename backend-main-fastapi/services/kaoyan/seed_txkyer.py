@@ -58,7 +58,10 @@ def extract_schools_from_js():
             continue
         province = str(rec[0]).strip() if rec[0] else None
         level_raw = str(rec[-1]).strip() if rec[-1] else ""
-        level = level_raw if level_raw in ("985", "211", "双一流") else None
+        # 权威映射：985 / 211 / 双一流 / 双非 四档齐全。
+        # 历史 bug：这里只认 ("985", "211", "双一流")，把「双非」丢成 None，
+        # 导致大批双非院校 level 为空、前端层次筛选漏项。现已补齐。
+        level = level_raw if level_raw in ("985", "211", "双一流", "双非") else None
         schools[name] = {"name": name, "level": level, "province": province}
     return list(schools.values())
 

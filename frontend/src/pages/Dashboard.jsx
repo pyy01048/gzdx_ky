@@ -1,13 +1,17 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import useStore from '../store/useStore'
-import { daysBetween, todayStr, weekdayIdx, WEEK_CN } from '../utils/date'
+import { todayStr, weekdayIdx, WEEK_CN } from '../utils/date'
+import { examDaysLeft, examYear, resolveExamDate } from '../utils/exam'
 import { reviewStatus } from '../utils/ebbinghaus'
 import { dueCards } from '../utils/spaced'
 import { CountUp, Empty, toast } from '../components/UI'
 import { dashboardApi } from '../api/client'
 import { MiniLineChart, RingProgress } from '../components/Charts'
 import NoticeBoard from '../components/NoticeBoard'
+import {
+  useUiLayout, applyOrder,
+} from '../hooks/useUiLayout'
 import {
   Target, Clock, Book, Calendar, Warning, ChevronRight, CheckCircle,
   Folder, GraduationCap, Brain, MessageSquare, Settings, FileText, Cloud,
@@ -16,18 +20,18 @@ import {
 import './Dashboard.css'
 
 /* 首页模块跳转矩阵（仿大平台首页，一键直达任意功能） */
-const MODULES = [
-  { to: '/tasks', label: '任务打卡', icon: Target },
-  { to: '/kbmap', label: '知识地图', icon: MapIcon },
-  { to: '/quiz', label: '刷题中心', icon: Book },
-  { to: '/notebook', label: '错题本', icon: FileText },
-  { to: '/words', label: '单词记忆', icon: GraduationCap },
-  { to: '/cards', label: '记忆卡片', icon: Brain },
-  { to: '/documents', label: '文档知识库', icon: Folder },
-  { to: '/pan', label: '网盘联动', icon: Cloud },
-  { to: '/planner', label: '学习计划', icon: Calendar },
-  { to: '/assistant', label: 'AI 助手', icon: MessageSquare },
-  { to: '/settings', label: '设置', icon: Settings },
+export const MODULES = [
+  { id: '/tasks', to: '/tasks', label: '任务打卡', icon: Target },
+  { id: '/kbmap', to: '/kbmap', label: '知识地图', icon: MapIcon },
+  { id: '/quiz', to: '/quiz', label: '刷题中心', icon: Book },
+  { id: '/notebook', to: '/notebook', label: '错题本', icon: FileText },
+  { id: '/words', to: '/words', label: '单词记忆', icon: GraduationCap },
+  { id: '/cards', to: '/cards', label: '记忆卡片', icon: Brain },
+  { id: '/documents', to: '/documents', label: '文档知识库', icon: Folder },
+  { id: '/pan', to: '/pan', label: '网盘联动', icon: Cloud },
+  { id: '/planner', to: '/planner', label: '学习计划', icon: Calendar },
+  { id: '/assistant', to: '/assistant', label: 'AI 助手', icon: MessageSquare },
+  { id: '/settings', to: '/settings', label: '设置', icon: Settings },
 ]
 
 /* 实时时钟 */
@@ -64,6 +68,8 @@ export default function Dashboard() {
 
   const [live, setLive] = useState(null)
   const [status, setStatus] = useState('loading') // loading | ok | error
+  const layout = useUiLayout()
+  const hidden = (id) => layout.dashHidden.includes(id)
 
   useEffect(() => {
     let alive = true
@@ -78,10 +84,16 @@ export default function Dashboard() {
     return () => { alive = false }
   }, [])
 
-  /* ---------- 倒计时 ---------- */
+  /* ---------- 倒计时（口径见 utils/exam.js：后端 Goal 优先，其次本地设置） ---------- */
   const cd = live && live.countdown
-  const examDate = (cd && cd.exam_date) || settings.examDate || '2027-12-25'
-  const days = cd && cd.days != null ? cd.days : daysBetween(todayStr(), examDate)
+  const examDate = resolveExamDate(cd && cd.exam_date, settings.examDate)
+  const days = examDaysLeft(examDate)
+  const examY = examYear(examDate)
+  // 后端无 Goal 时给的是 12/21 估算值，必须标「预估」，不能伪装成官方日期
+  const estimated = !!cd?.is_default
+  const schoolLabel = [cd?.university || settings.school, cd?.major || settings.major]
+    .filter(Boolean).join(' ') || null
+  const targetScore = cd?.total_score_target ?? settings.targetScore ?? null
 
   /* ---------- 今日任务（后端优先，本地兜底） ----------
      注意 live 可能为 null：后端返回 2xx 但无 JSON 体时 client 会 resolve(null)，
@@ -257,21 +269,61 @@ export default function Dashboard() {
     return events.slice(0, 6)
   }, [stats, todayTasks, dueReviews])
 
+  /* ---------- 可自定义部分（显隐/排序偏好见 hooks/useUiLayout.js） ---------- */
+  const statCards = useMemo(() => {
+    const all = [
+      {
+        id: 'minutes', ico: Clock, tone: 'blue', trend: 'up', trendText: '本周',
+        value: (weekMinutes / 60).toFixed(1), unit: 'h', label: '学习时长', to: '/kbmap',
+      },
+      {
+        id: 'tasks', ico: Target, tone: 'green', trend: 'flat', trendText: '今日',
+        value: todayTasks.length, unit: '', label: `今日任务 · 已完成 ${doneCount}`, to: '/tasks',
+      },
+      {
+        id: 'review', ico: Book, tone: 'amber', trend: 'flat', trendText: '待处理',
+        value: dueReviews + dueWordCount + dueCardCount, unit: '', label: '待复习（错/词/卡）', to: '/notebook',
+      },
+      {
+        id: 'streak', ico: Calendar, tone: 'violet', trend: 'up', trendText: '连续',
+        value: streak, unit: '天', label: '学习打卡', to: '/planner',
+      },
+    ]
+    return applyOrder(all.filter((c) => !layout.statsHidden.includes(c.id)), layout.statsOrder)
+  }, [weekMinutes, todayTasks, doneCount, dueReviews, dueWordCount, dueCardCount, streak,
+    layout.statsHidden, layout.statsOrder])
+
+  const moduleCells = useMemo(
+    () => applyOrder(MODULES.filter((m) => !layout.modsHidden.includes(m.id)), layout.modsOrder),
+    [layout.modsHidden, layout.modsOrder],
+  )
+
   return (
     <div className="dash">
       {/* ===== Hero 渐变倒计时 ===== */}
+      {!hidden('hero') && (
       <section className="dash-hero">
         <div className="dash-hero-glow" />
         <div className="dash-hero-inner">
           <div>
             <div className="dash-hero-greet">
-              {LiveClock()} · 目标 {cd?.university || settings.school || '贵州大学'} {cd?.major || settings.major || '电子信息'}
+              {LiveClock()} · {schoolLabel ? `目标 ${schoolLabel}` : '尚未设置目标院校专业'}
             </div>
             <h1 className="dash-hero-title">
-              距 2027 考研还有<span className="dash-hero-days"><CountUp value={days > 0 ? days : 0} /></span>天
+              {examDate ? (
+                <>距 {examY} 考研还有<span className="dash-hero-days"><CountUp value={days > 0 ? days : 0} /></span>天
+                  {estimated && <span className="dash-hero-est">12/21 预估</span>}
+                </>
+              ) : (
+                <>距考研还有<span className="dash-hero-days">—</span>天
+                  <Link className="dash-hero-set" to="/settings">设置初试日期</Link>
+                </>
+              )}
             </h1>
             <div className="dash-hero-goal">
-              <span><Target size={14} /> 目标分数 {cd?.total_score_target || settings.targetScore || 360}</span>
+              {(targetScore || targetScore === 0) && (
+                <span><Target size={14} /> 目标分数 {targetScore}</span>
+              )}
               <span><Clock size={14} /> 今日 {todayTasks.length} 个任务</span>
               <span><Book size={14} /> 本周学习 {weekMinutes} 分钟</span>
             </div>
@@ -288,6 +340,7 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ===== 加载骨架 ===== */}
       {loading && (
@@ -309,59 +362,29 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ===== 4 张统计卡（全部可点，跳转对应模块） ===== */}
-      {!loading && (
+      {/* ===== 统计卡（可隐藏/排序，全部可点跳转对应模块） ===== */}
+      {!loading && !hidden('stats') && statCards.length > 0 && (
         <div className="stat-grid">
-          <div className="stat-card clickable" role="button" tabIndex={0}
-            onClick={() => navigate('/kbmap')}
-            onKeyDown={(e) => { if (e.key === 'Enter') navigate('/kbmap') }}>
-            <div className="stat-top">
-              <div className="stat-ico blue"><Clock size={18} /></div>
-              <span className="stat-trend up">本周</span>
+          {statCards.map((c) => (
+            <div key={c.id} className="stat-card clickable" role="button" tabIndex={0}
+              onClick={() => navigate(c.to)}
+              onKeyDown={(e) => { if (e.key === 'Enter') navigate(c.to) }}>
+              <div className="stat-top">
+                <div className={`stat-ico ${c.tone}`}><c.ico size={18} /></div>
+                <span className={`stat-trend ${c.trend}`}>{c.trendText}</span>
+              </div>
+              <div className="stat-val">{c.value}{c.unit && <span className="stat-unit">{c.unit}</span>}</div>
+              <div className="stat-label">{c.label}</div>
+              <span className="stat-go">查看 <ChevronRight size={13} /></span>
             </div>
-            <div className="stat-val">{(weekMinutes / 60).toFixed(1)}<span className="stat-unit">h</span></div>
-            <div className="stat-label">学习时长</div>
-            <span className="stat-go">查看 <ChevronRight size={13} /></span>
-          </div>
-          <div className="stat-card clickable" role="button" tabIndex={0}
-            onClick={() => navigate('/tasks')}
-            onKeyDown={(e) => { if (e.key === 'Enter') navigate('/tasks') }}>
-            <div className="stat-top">
-              <div className="stat-ico green"><Target size={18} /></div>
-              <span className="stat-trend flat">今日</span>
-            </div>
-            <div className="stat-val">{todayTasks.length}</div>
-            <div className="stat-label">今日任务 · 已完成 {doneCount}</div>
-            <span className="stat-go">查看 <ChevronRight size={13} /></span>
-          </div>
-          <div className="stat-card clickable" role="button" tabIndex={0}
-            onClick={() => navigate('/notebook')}
-            onKeyDown={(e) => { if (e.key === 'Enter') navigate('/notebook') }}>
-            <div className="stat-top">
-              <div className="stat-ico amber"><Book size={18} /></div>
-              <span className="stat-trend flat">待处理</span>
-            </div>
-            <div className="stat-val">{dueReviews + dueWordCount + dueCardCount}</div>
-            <div className="stat-label">待复习（错/词/卡）</div>
-            <span className="stat-go">查看 <ChevronRight size={13} /></span>
-          </div>
-          <div className="stat-card clickable" role="button" tabIndex={0}
-            onClick={() => navigate('/planner')}
-            onKeyDown={(e) => { if (e.key === 'Enter') navigate('/planner') }}>
-            <div className="stat-top">
-              <div className="stat-ico violet"><Calendar size={18} /></div>
-              <span className="stat-trend up">连续</span>
-            </div>
-            <div className="stat-val">{streak}<span className="stat-unit">天</span></div>
-            <div className="stat-label">学习打卡</div>
-            <span className="stat-go">查看 <ChevronRight size={13} /></span>
-          </div>
+          ))}
         </div>
       )}
 
       {/* ===== 今日任务 + 复习提醒 ===== */}
-      {!loading && (
+      {!loading && (!hidden('todo') || !hidden('review')) && (
         <div className="dash-row">
+          {!hidden('todo') && (
           <div className="panel">
             <div className="panel-head">
               <h3 className="panel-title">今日待办</h3>
@@ -391,7 +414,9 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
+          )}
 
+          {!hidden('review') && (
           <div className="panel">
             <div className="panel-head">
               <h3 className="panel-title">复习提醒</h3>
@@ -414,12 +439,14 @@ export default function Dashboard() {
             </div>
             <button className="btn primary full" onClick={() => navigate('/notebook')}>全部开始复习</button>
           </div>
+          )}
         </div>
       )}
 
       {/* ===== 可视化区：本周专注趋势 + 学习热力图 ===== */}
-      {!loading && (
+      {!loading && (!hidden('trend') || !hidden('heat')) && (
         <div className="dash-row">
+          {!hidden('trend') && (
           <div className="panel">
             <div className="panel-head">
               <h3 className="panel-title">本周专注趋势</h3>
@@ -429,7 +456,9 @@ export default function Dashboard() {
               <MiniLineChart data={trend} height={180} showArea color="var(--accent)" />
             </div>
           </div>
+          )}
 
+          {!hidden('heat') && (
           <div className="panel">
             <div className="panel-head">
               <h3 className="panel-title">学习热力图</h3>
@@ -456,11 +485,12 @@ export default function Dashboard() {
               <span>多</span>
             </div>
           </div>
+          )}
         </div>
       )}
 
       {/* ===== 院校公告栏（跨校聚合，当日哪些院校更新） ===== */}
-      {!loading && (
+      {!loading && !hidden('notice') && (
         <div className="dash-row">
           <div className="notice-board-full">
             <NoticeBoard />
@@ -469,8 +499,9 @@ export default function Dashboard() {
       )}
 
       {/* ===== 智能每日推荐 + 今日时间轴 ===== */}
-      {!loading && (
+      {!loading && (!hidden('recommend') || !hidden('timeline')) && (
         <div className="dash-row">
+          {!hidden('recommend') && (
           <div className="panel">
             <div className="panel-head">
               <h3 className="panel-title">🎯 今日智能推荐</h3>
@@ -496,7 +527,9 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
+          )}
 
+          {!hidden('timeline') && (
           <div className="panel">
             <div className="panel-head">
               <h3 className="panel-title">⏱️ 今日时间轴</h3>
@@ -517,11 +550,12 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
       {/* ===== 薄弱预警 ===== */}
-      {!loading && (
+      {!loading && !hidden('weakness') && (
         weakness ? (
           <div className="weak-card">
             <div className="weak-head">
@@ -545,15 +579,15 @@ export default function Dashboard() {
         )
       )}
 
-      {/* ===== 全部模块入口（首页直达矩阵） ===== */}
-      {!loading && (
+      {/* ===== 全部模块入口（首页直达矩阵，可隐藏/排序） ===== */}
+      {!loading && !hidden('modules') && moduleCells.length > 0 && (
         <div className="panel">
           <div className="panel-head">
             <h3 className="panel-title">全部模块</h3>
             <span className="panel-sub">一键直达任意功能</span>
           </div>
           <div className="mod-grid">
-            {MODULES.map((m) => (
+            {moduleCells.map((m) => (
               <button key={m.to} className="mod-cell" onClick={() => navigate(m.to)}>
                 <m.icon size={22} />
                 <span>{m.label}</span>

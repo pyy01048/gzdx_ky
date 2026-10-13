@@ -3,18 +3,22 @@
 import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-
 import os
 import re
 import httpx
-from urllib.parse import unquote
+import mimetypes
+from urllib.parse import unquote, quote
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 
 
 from database import get_db, BASE_DIR
 from models import NetdiskFile, PlatformConfig, Document
+from services.doc_naming import apply_display_name
+from services.smart_ingest import gate_for_write
 from services.netdisk_service import NetdiskService, NetdiskError, NetdiskAuthError
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
 
@@ -218,6 +222,11 @@ async def list_files(
                 "size": f.size,
                 "category": f.category,
                 "play_progress": f.play_progress,
+                "fs_id": f.fs_id,
+                "download_link": f.download_link,
+                # toPan 需要真实上传时间；缺字段时前端会退回 localStorage 的旧值，
+                # 但绝不能由后端补一个"今天"，那等于伪造同步日期。
+                "created_at": f.created_at,
             }
             for f in local_files
         ],
@@ -245,11 +254,31 @@ async def get_file_detail(file_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/sync")
-async def sync_files(path: str = "/", db: Session = Depends(get_db)):
-    """手动同步。"""
+async def sync_files(
+    path: str = "",
+    max_depth: int = 4,
+    max_items: int = 2000,
+    deadline: float = 45.0,
+    db: Session = Depends(get_db),
+):
+    """手动同步（**递归**）。
+
+    修复前这里调的是 `get_file_list()` —— 只列一层，于是库里永远是
+    「AI笔记 / StarNote / 我的资源」这几个根目录条目，真正的资料一个都进不来。
+    现改为 `list_all()`（下钻 4 层 + 条数/耗时双闸 + 截断标记）。
+
+    path 留空时自动使用配置里的 sync_dir（platform_configs.extra.sync_dir）。
+    """
     service = NetdiskService(db)
+
+    # 未显式指定目录时，落到配置里的同步根目录
+    if not path:
+        path = service._get_config().get("sync_dir") or "/"
+
     try:
-        result = await service.get_file_list(path)
+        result = await service.list_all(
+            path, max_depth=max_depth, max_items=max_items, deadline=deadline
+        )
         files = result.get("list", [])
         synced = 0
         for f in files:
@@ -300,6 +329,71 @@ async def get_preview(file_id: int, db: Session = Depends(get_db)):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"获取预览链接失败：{str(e)}")
     raise HTTPException(status_code=400, detail="文件缺少网盘 ID")
+
+
+async def _proxy_stream(file: NetdiskFile, disposition: str, db: Session):
+    service = NetdiskService(db)
+    try:
+        # 先把链接取到手：授权失效/token 过期在这一步就该变成干净的 401/502，
+        # 而不是响应头已发出、流到一半才炸给浏览器一个残缺文件。
+        info = await service.get_download_url(file.fs_id)
+    except (NetdiskError, NetdiskAuthError) as e:
+        raise _netdisk_http_error(e)
+
+    name = file.file_name or info.get("filename") or f"netdisk_{file.fs_id}"
+    size = int(info.get("size") or file.size or 0)
+    if size and size > MAX_DOWNLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件 {size / 1048576:.0f}MB 超过代理上限 "
+                   f"{MAX_DOWNLOAD_BYTES // 1048576}MB，请先入库再读本地原文")
+
+    media = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    ascii_fallback = re.sub(r"[^A-Za-z0-9._ -]", "_", name).strip() or f"netdisk_{file.fs_id}"
+    headers = {
+        "Content-Disposition": (f"{disposition}; filename=\"{ascii_fallback}\"; "
+                                f"filename*=UTF-8''{quote(name, safe='')}"),
+        "Accept-Ranges": "none",
+        "Cache-Control": "no-cache",
+    }
+    if size:
+        headers["Content-Length"] = str(size)
+    return StreamingResponse(service.iter_download(file.fs_id),
+                             media_type=media, headers=headers)
+
+
+def _check_disposition(disposition: str) -> str:
+    if disposition not in ("inline", "attachment"):
+        raise HTTPException(status_code=400, detail="disposition 只支持 inline / attachment")
+    return disposition
+
+
+@router.get("/files/{file_id}/content")
+async def stream_netdisk_content(file_id: int, disposition: str = "inline",
+                                 db: Session = Depends(get_db)):
+    """按本地记录 ID 取网盘原文字节流。"""
+    file = db.query(NetdiskFile).filter(NetdiskFile.id == file_id).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if not file.fs_id:
+        raise HTTPException(status_code=400, detail="文件缺少网盘 ID，无法取流")
+    _check_disposition(disposition)
+    return await _proxy_stream(file, disposition, db)
+
+
+@router.get("/content")
+async def stream_netdisk_content_by_fsid(fs_id: str, disposition: str = "inline",
+                                         db: Session = Depends(get_db)):
+    """按百度 fs_id 取流 —— 前端网盘目录页只持有 fs_id，没有本地记录 ID。
+
+    没有这条的话 Pan.jsx 只能继续 `window.open(dlink)`，而 dlink 缺
+    `User-Agent: pan.baidu.com` 必 403，用户看到的就是「下载没反应」。
+    """
+    if not fs_id.strip().isdigit():
+        raise HTTPException(status_code=400, detail="fs_id 必须是数字")
+    _check_disposition(disposition)
+    file = await _resolve_netdisk_file(db, fs_id)
+    return await _proxy_stream(file, disposition, db)
 
 
 @router.post("/classify")
@@ -365,7 +459,7 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
     注意：下载走**流式**写入磁盘（`download_to_file`），不再把整个文件
     读进内存 —— 之前用 `resp.content` 一次性读，遇上百 MB 课件容易把进程撑爆。
     """
-    from services.kb_service import ingest_text, detect_doc_meta
+    from services.kb_service import detect_doc_meta, has_searchable_chunks, ingest_text
     from services.document_parser import DocumentParser
 
     if not file.fs_id:
@@ -374,8 +468,13 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
     save_name = file.file_name or f"netdisk_{file.fs_id}"
     save_name = re.sub(r'[\\/:*?"<>|]', '_', save_name)
 
-    # 已入库则跳过，避免重复
-    existing = db.query(Document).filter(Document.file_name == save_name).first()
+    # 已入库则跳过，避免重复。**只按 file_path 认，绝不按 file_name 认**：
+    # ① #27 的入库改名会把 file_name 改成「第 1 章 逻辑代数基础」这类正文标题，
+    #    按名字认会让同一个网盘文件再下载一遍、长出重复分块；
+    # ② 反过来按名字认还会误伤 —— 库里任何一份同名但来源不同的文档都会被
+    #    当成「已入库」跳过，并把它的 id 报给前端。下载落盘路径唯一，路径才是身份。
+    save_path = os.path.join(UPLOAD_DIR, save_name)
+    existing = db.query(Document).filter(Document.file_path == save_path).first()
     if existing and existing.index_status == "indexed" and existing.content:
         return {
             "file_name": save_name, "success": True, "skipped": True,
@@ -390,7 +489,6 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
                 "message": "不支持的文件类型（仅 PDF/DOC/DOCX/PPT/PPTX/TXT/MD）"}
 
     service = NetdiskService(db)
-    save_path = os.path.join(UPLOAD_DIR, save_name)
     try:
         dl = await service.download_to_file(file.fs_id, save_path, max_bytes=MAX_DOWNLOAD_BYTES)
     except Exception as e:
@@ -419,13 +517,25 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
     if not content_text or not content_text.strip():
         content_text = f"[{file_type} 文件，未能提取到文本内容] 文件名：{save_name}"
 
+    # 质量闸门：网盘下载来的文件最常见的坏法是"扫描版 PDF 解析出空正文"，
+    # 以前直接写成占位提示并标 indexed，检索命中它就等于假答案。
+    # 拒绝时这篇 Document 只留 failed 状态，正文和分块都不写。
+    verdict = gate_for_write(db, content_text, path=save_path, doc_id=doc.id)
+    if not verdict["ok"]:
+        doc.index_status = "failed"
+        doc.parse_progress = 1.0
+        db.commit()
+        return {"file_name": save_name, "success": False,
+                "message": "质量闸门拒绝入库：" + "；".join(verdict["reasons"])}
+
     doc.content = content_text
     doc.parse_progress = 0.6
+    apply_display_name(db, doc, content_text)
     db.commit()
 
     chunk_count = 0
     try:
-        chunk_count = ingest_text(db, doc.id, save_name, content_text, replace=True)
+        chunk_count = ingest_text(db, doc.id, doc.file_name, content_text, replace=True)
     except Exception as e:
         print(f"[kb] 网盘文件 {save_name} 入库分块失败: {e}")
 
@@ -436,7 +546,8 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
     except Exception as e:
         print(f"[kb] 网盘文件 {save_name} 元信息判定失败: {e}")
 
-    doc.index_status = "indexed"
+    # indexed 的口径 = 库里真有可检索的分块（本轮 0 块但旧块还在，仍算已入库）
+    doc.index_status = "indexed" if has_searchable_chunks(db, doc.id) else "failed"
     doc.parse_progress = 1.0
     db.commit()
     return {

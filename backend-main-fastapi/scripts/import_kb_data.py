@@ -19,6 +19,9 @@ import shutil
 import datetime
 import collections
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from services.delete_guard import require_physical_delete_enabled  # noqa: E402
+
 DATA = r"D:\MarvisData\User\oAN1i2T40ogJFVM4CCm9d72iRr_I\workspace\conv_8902ff7614d342c7962b8e3a65ae2d45\output\kaoyan_ai_project_20260830\data"
 DB = r"D:\MarvisData\User\oAN1i2T40ogJFVM4CCm9d72iRr_I\workspace\conv_6307dce6ea3e494fa029dd89f1bf322a\output\kaoyan-study-platform\backend-main-fastapi\data\kaoyan.db"
 BACKUP = r"D:\MarvisData\User\oAN1i2T40ogJFVM4CCm9d72iRr_I\workspace\conv_6307dce6ea3e494fa029dd89f1bf322a\temp"
@@ -185,6 +188,9 @@ def main():
     cur = conn.cursor()
 
     # 重建 documents 表（含 subject 列）
+    # 物理删除闸门：DROP TABLE knowledge_chunks 是整表级不可逆操作，
+    # 比行级DELETE 危险得多，必须显式放行。
+    require_physical_delete_enabled("knowledge_chunks")
     cur.execute("DROP TABLE IF EXISTS knowledge_chunks")
     cur.execute("DROP TABLE IF EXISTS sft_examples")
     cur.execute("""CREATE TABLE IF NOT EXISTS knowledge_chunks (

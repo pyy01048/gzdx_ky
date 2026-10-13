@@ -1,14 +1,24 @@
 """文档路由。"""
 
+import mimetypes
 import os
 import re
+from urllib.parse import quote
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, File
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from database import get_db, BASE_DIR
 from models import Document, KnowledgePoint, KnowledgeChunk
+from services.doc_naming import apply_display_name
+from services.smart_ingest import gate_for_write
+from services.quiz_content_gate import admit as gate_admit
+from services.quiz_content_gate import gate_log_summary
+from services.delete_guard import require_physical_delete_enabled
+from services import quiz_dedupe as _quiz_dedupe
+from services import subject_vocab
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -29,6 +39,132 @@ def _safe_filename(filename: str) -> str:
     if not name or name == '.':
         name = 'unknown'
     return name
+
+
+# --------------------------------------------------------------------------- #
+# 原文文件读取（浏览器内预览 + 一键下载）
+# --------------------------------------------------------------------------- #
+#: 允许读取的根目录：路径必须落在其中之一，否则一律拒绝（防遍历）。
+#: 实测 2611 篇里在盘的 1857 篇只分布在两处 —— backend-main-fastapi 373 篇、
+#: knowledge_base 1484 篇，故白名单就列这两个；不把整个项目根放进来，
+#: 免得 kaoyan.db / 模型权重这类文件有机会被这个端点读出去。
+#: 测试通过 monkeypatch 本常量换成临时目录。
+LOCAL_FILE_ROOTS = [os.path.realpath(BASE_DIR)]
+_KB_ROOT = os.path.realpath(os.path.join(BASE_DIR, os.pardir, "knowledge_base"))
+if os.path.isdir(_KB_ROOT):
+    LOCAL_FILE_ROOTS.append(_KB_ROOT)
+
+#: 分块大小：单次驻留内存的上限，908 MB 的原书也不会整读
+_STREAM_CHUNK = 1 << 20
+
+
+def _media_type(path: str) -> str:
+    return mimetypes.guess_type(path)[0] or "application/octet-stream"
+
+
+def _inside_roots(abspath: str) -> bool:
+    return any(abspath == root or abspath.startswith(root + os.sep)
+               for root in LOCAL_FILE_ROOTS)
+
+
+def _resolve_local_file(doc: Document, *, strict: bool = False):
+    """返回 (可读绝对路径, 不可读原因)。原因写成给用户看的话，用于 404 detail。
+
+    `strict=True`（真要打开文件时）额外做 realpath 校验，挡符号链接逃逸；
+    列表页只判断按钮可用性，用字符串级的 abspath —— 实测 1934 篇
+    abspath+isfile 10.4 ms、realpath 388.6 ms，差 37 倍。
+    """
+    raw = (doc.file_path or "").strip()
+    if not raw:
+        return None, "该文档没有登记原文路径，只有解析文本"
+    if not os.path.isabs(raw):
+        # IMA 导入的 238 篇把媒体号写在 file_path 上，本地从来没有这个文件
+        media = getattr(doc, "ima_media_id", None) or raw[:32]
+        return None, f"原文在外部知识库（媒体号 {media}），本地未下载该文件"
+    abspath = os.path.abspath(raw)
+    if not _inside_roots(abspath):
+        return None, "原文路径越出允许目录，已拒绝读取"
+    if not os.path.isfile(abspath):
+        return None, "原文文件已不在磁盘上（可能被移动或删除）"
+    if strict:
+        real = os.path.realpath(abspath)
+        if not _inside_roots(real):
+            return None, "原文经符号链接指向了允许目录之外，已拒绝读取"
+    return abspath, None
+
+
+def _content_disposition(name: str, doc_id: int, disposition: str) -> str:
+    """RFC 5987：中文名走 filename*，filename 只放 ASCII 兜底。"""
+    fallback = re.sub(r"[^A-Za-z0-9._ -]", "_", name).strip() or f"document_{doc_id}"
+    return (f"{disposition}; filename=\"{fallback}\"; "
+            f"filename*=UTF-8''{quote(name, safe='')}")
+
+
+def _parse_range(header: str, size: int):
+    """解析单区间 Range。返回 (start, length)，越界返回 None 交由调用方发 416。"""
+    m = re.match(r"^\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*$", header or "")
+    if not m or size == 0:
+        return 0, size
+    first, last = m.group(1), m.group(2)
+    if first == "" and last == "":
+        return 0, size
+    if first == "":
+        # 后缀区间：最后 N 字节；bytes=-0 是不可满足区间
+        n = min(int(last), size)
+        return None if n <= 0 else (size - n, n)
+    start = int(first)
+    if start >= size:
+        return None
+    end = int(last) if last else size - 1
+    end = min(end, size - 1)
+    return start, end - start + 1
+
+
+def _iter_file(path: str, start: int, length: int):
+    with open(path, "rb") as fh:
+        fh.seek(start)
+        remaining = length
+        while remaining > 0:
+            data = fh.read(min(_STREAM_CHUNK, remaining))
+            if not data:
+                break
+            remaining -= len(data)
+            yield data
+
+
+def _file_response(doc: Document, request: Request, disposition: str):
+    path, reason = _resolve_local_file(doc, strict=True)
+    if path is None:
+        raise HTTPException(status_code=404, detail=reason)
+    size = os.path.getsize(path)
+    start, length = 0, size
+    status_code = 200
+    range_header = request.headers.get("range")
+    parsed = _parse_range(range_header, size) if range_header else (0, size)
+    if parsed is None:
+        # 直接构造响应而不是 raise：全局异常处理器会丢掉 headers，
+        # 而 416 必须带 Content-Range: bytes */size 才合 RFC 7233
+        return JSONResponse(status_code=416,
+                            content={"detail": f"Range 越界（文件共 {size} 字节）",
+                                     "path": request.url.path},
+                            headers={"Content-Range": f"bytes */{size}",
+                                     "Accept-Ranges": "bytes"})
+    start, length = parsed
+    if range_header and length != size:
+        status_code = 206
+    name = doc.file_name or os.path.basename(path)
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(length),
+        "Content-Disposition": _content_disposition(name, doc.id, disposition),
+        # 重新导入会换文件，缓存住会看到旧原文
+        "Cache-Control": "no-cache",
+    }
+    if status_code == 206:
+        headers["Content-Range"] = f"bytes {start}-{start + length - 1}/{size}"
+    return StreamingResponse(_iter_file(path, start, length),
+                             status_code=status_code,
+                             media_type=_media_type(path), headers=headers)
 
 
 @router.post("/upload")
@@ -72,17 +208,37 @@ async def list_documents(
     subject: str = None,
     doc_type: str = None,
     ocr_only: bool = False,
+    stage: str = None,
+    content_type: str = None,
+    subject_source: str = None,
     db: Session = Depends(get_db),
 ):
-    """文档列表（可按学科 / 资料层级 / 是否扫描件过滤）。"""
+    """文档列表（可按学科 / 资料层级 / 是否扫描件 / 备考阶段 / 内容性质 / 来源过滤）。
+
+    新增三个筛选维度用于 IMA 知识库资料（与既有 doc_type 正交，互不影响）：
+      - stage        : 初试 / 复试
+      - content_type : 知识 / 试题 / 单词
+      - subject_source : ima（IMA 导入）/ 其它
+    """
     q = db.query(Document)
     if subject:
-        q = q.filter(Document.subject == subject)
+        # 词表对齐（docx/16 §1.5-E）：documents.subject 的写法比 knowledge_chunks.subject 多，
+        # 「公共课-数学」「数模电」「408」这些在分块侧没有同名值。等值过滤会让选「数学」的人
+        # 看不到 31 篇「公共课-数学」、选「数字电子技术」看不到 186 篇「数模电」。
+        # 归一只发生在查询层：把原值展开成 in_，库里一个字段都不改（改库要逐科人批）。
+        group = subject_vocab.doc_subject_group(subject)
+        q = q.filter(Document.subject.in_(list(group)))
     if doc_type:
         # raw 原始层 / note 加工层 / index 索引层
         q = q.filter(Document.doc_type == doc_type)
     if ocr_only:
         q = q.filter(Document.ocr_used == True)  # noqa: E712
+    if stage:
+        q = q.filter(Document.stage == stage)
+    if content_type:
+        q = q.filter(Document.content_type == content_type)
+    if subject_source:
+        q = q.filter(Document.subject_source == subject_source)
     docs = q.order_by(Document.created_at.desc()).all()
     # 一次性聚合每个文档的分块数，避免 N+1 查询
     from sqlalchemy import func
@@ -93,6 +249,7 @@ async def list_documents(
     ) if docs else {}
     result = []
     for d in docs:
+        local_path, local_note = _resolve_local_file(d)
         result.append({
             "id": d.id,
             "file_name": d.file_name,
@@ -106,6 +263,15 @@ async def list_documents(
             "doc_type": d.doc_type,
             "structure_level": d.structure_level,
             "ocr_used": bool(d.ocr_used),
+            # IMA 导入相关：备考阶段 / 内容性质 / 来源 / IMA 目录（前端据此分栏展示）
+            "stage": d.stage,
+            "content_type": d.content_type,
+            "subject_source": d.subject_source,
+            "folder_path": d.folder_path,
+            "ima_media_id": d.ima_media_id,
+            # 原文可不可读在前端就要知道：置灰按钮 + 说明原因，比点了报 404 好
+            "has_local_file": local_path is not None,
+            "local_file_note": local_note,
             "summary": (d.content or "")[:200],
             "content_length": len(d.content or ""),
             "chunk_count": chunk_counts.get(d.id, 0),
@@ -116,27 +282,49 @@ async def list_documents(
 
 @router.get("/subjects")
 async def list_subjects(db: Session = Depends(get_db)):
-    """学科分类统计（文档数 + 分块数）。"""
+    """学科分类统计（文档数 + 分块数）。
+
+    M0-4 学科统一收口：数据源改为 `services.subject_registry` 唯一聚合器，
+    既有字段（``name / document_count / chunk_count``）口径不变；§1.5-E 只**新增**
+    ``aliases / alias_of / merged_document_count`` 和顶层 ``merged_count_note``，
+    老前端忽略新字段即可，不需要改动。
+
+    口径说明：科目集合以 ``subject_config`` 字典为权威，附带"字典未登记但
+    业务表出现过"的科目；文档数为 0 的字典科目也会列出（便于提示"该科还没资料"）。
+    """
+    from services import subject_registry, subject_vocab
+
+    data = subject_registry.list_subjects(db)["subjects"]
+    # 文档侧原值分组计数：组内各原值互斥（一篇文档只有一个 subject 写法），
+    # 所以「折叠后的合并文档数」就是逐原值求和，不会重复计数。
     from sqlalchemy import func
-    doc_rows = db.query(Document.subject, func.count(Document.id)).group_by(
-        Document.subject
-    ).all()
-    chunk_rows = db.query(KnowledgeChunk.subject, func.count(KnowledgeChunk.id)).group_by(
-        KnowledgeChunk.subject
-    ).all()
-    chunk_map = dict(chunk_rows)
+    doc_counts = dict(
+        db.query(Document.subject, func.count(Document.id))
+        .group_by(Document.subject).all()
+    )
+    subjects = []
+    for s in data:
+        group = subject_vocab.doc_subject_group(s["subject"])
+        subjects.append({
+            "name": s["subject"],
+            "document_count": s["document_count"],
+            "chunk_count": s["chunk_count"],
+            # 只增字段：老前端忽略即可。aliases 是折进本行的文档侧写法，alias_of 说明
+            # 本行自己只是某个规范名的别名；merged_document_count 才是选这科能拿到的篇数。
+            "aliases": [g for g in group if g != s["subject"]],
+            "alias_of": subject_vocab.alias_parent(s["subject"]),
+            "merged_document_count": sum(int(doc_counts.get(g, 0) or 0) for g in group),
+        })
+    # 兼容旧排序：文档数降序（字典项 document_count=0 自然沉底）
+    subjects.sort(key=lambda it: (-it["document_count"], it["name"]))
+
     doc_total = db.query(Document).count()
     chunk_total = db.query(KnowledgeChunk).count()
-    subjects = [
-        {
-            "name": name or "未分类",
-            "document_count": cnt,
-            "chunk_count": chunk_map.get(name, 0),
-        }
-        for name, cnt in doc_rows
-    ]
     return {
         "total_documents": doc_total,
+        # 折叠后的行之间会重叠（「数模电」同时计入数电和模电），
+        # 所以各科 merged_document_count 不能相加，总量只看 total_documents。
+        "merged_count_note": "merged_document_count 含别名/合并口径折叠，跨行相加会重复计数",
         "total_chunks": chunk_total,
         "subjects": subjects,
     }
@@ -170,13 +358,26 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     else:
         content_text = f"[文件缺失或未落盘] 文件名：{doc.file_name}"
 
+    # 质量闸门：空正文/占位提示/乱码/二进制残留/同文重复一律拒绝。
+    # 拒绝时**不覆盖** doc.content（老正文可能仍有用），状态置 failed 并把原因
+    # 透给前端 —— 静默写进库才是这一轮审计里最难发现的那种损坏。
+    verdict = gate_for_write(db, content_text, path=doc.file_path or "", doc_id=doc.id)
+    if not verdict["ok"]:
+        doc.index_status = "failed"
+        db.commit()
+        raise HTTPException(status_code=422,
+                            detail="质量闸门拒绝入库：" + "；".join(verdict["reasons"]))
+
     doc.content = content_text
     doc.parse_progress = 0.5
+    # #27 按内容定显示名：必须在分块入库前改，chunk.doc_name 才会带新名
+    apply_display_name(db, doc, content_text)
     db.commit()
 
     # —— 知识库闭环（P0-1）：文本 -> 分块 -> knowledge_chunks + FTS —— #
     # 这一步让上传的文档真正进入 RAG 知识库，可被 AI 检索引用。
-    from services.kb_service import ingest_document, detect_doc_meta
+    from services.kb_service import (detect_doc_meta, has_searchable_chunks,
+                                     ingest_document)
     chunk_count = 0
     try:
         chunk_count = ingest_document(db, doc, replace=True)
@@ -233,8 +434,10 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
         # AI 抽取失败不影响"已入库可检索"的结果
         print(f"[ai] 文档 {doc.id} 知识点提取失败（不影响入库）: {e}")
 
-    # 只要文本已解析并分块入库，即视为 indexed（可被 RAG 检索）
-    doc.index_status = "indexed"
+    # 状态口径：indexed 必须等于「库里真有可检索的分块」。
+    # 以前这里无条件写 indexed，分块失败只 print 一句就吞掉，
+    # 库里于是攒出「UI 显示已入库、检索永远搜不到」的文档（实测存量 89 篇）。
+    doc.index_status = "indexed" if has_searchable_chunks(db, doc.id) else "failed"
     doc.parse_progress = 1.0
     db.commit()
     return {
@@ -335,32 +538,84 @@ async def generate_quiz(doc_id: int, db: Session = Depends(get_db)):
         ])
 
         import json
-        questions_created = 0
+        # ===== 入库前内容闸门（docx/16 §1.5-H）=====
+        # 原先这条路径把模型返回的 JSON 直接 db.add，不过 quiz_content_gate，
+        # 也不填 subject，是「题目格式没有统一标准」的两个源头之一。
+        rejected_by_gate: dict[str, int] = {}
+        parse_error = ""
+        questions: list = []
         try:
             text = result["content"]
             start = text.find("[")
             end = text.rfind("]") + 1
             if start >= 0 and end > start:
-                questions = json.loads(text[start:end])
-                for q in questions:
-                    new_q = QuizQuestion(
-                        content=q.get("content", ""),
-                        options=q.get("options", []),
-                        answer=q.get("answer", ""),
-                        analysis=q.get("analysis", ""),
-                        source=f"文档生成：{doc.file_name}",
-                        question_type="single",
-                    )
-                    db.add(new_q)
-                    questions_created += 1
+                parsed = json.loads(text[start:end])
+                if isinstance(parsed, list):
+                    questions = parsed
+                else:
+                    parse_error = "模型返回的不是 JSON 数组"
+            else:
+                parse_error = "模型输出中找不到 JSON 数组"
+        except (json.JSONDecodeError, ValueError) as exc:
+            parse_error = f"JSON 解析失败：{exc}"
+
+        src = f"文档生成：{doc.file_name}"[:200]
+        seen: set[str] = set()
+        candidates: list[tuple[str, list, dict]] = []
+        for q in questions:
+            if not isinstance(q, dict):
+                continue
+            stem = (q.get("content") or "").strip()
+            opts = q.get("options") or []
+            ok, reason = gate_admit(
+                stem,
+                options=opts,
+                answer=q.get("answer"),
+                source=src,
+            )
+            if not ok:
+                rejected_by_gate[reason] = rejected_by_gate.get(reason, 0) + 1
+                continue
+            key = stem[:100]
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append((stem, opts if isinstance(opts, list) else [], q))
+
+        questions_created = 0
+        if candidates:
+            for stem, opts, q in candidates:
+                db.add(QuizQuestion(
+                    content=stem[:5000],
+                    options=opts,
+                    answer=(q.get("answer") or "")[:500],
+                    analysis=(q.get("analysis") or "")[:2000],
+                    subject=(doc.subject or "其他")[:50],
+                    knowledge_point="",
+                    difficulty=3,
+                    source=src,
+                    question_type="single",
+                    ai_generated=True,
+                    verified=False,
+                ))
+            try:
                 db.commit()
-        except (json.JSONDecodeError, ValueError):
-            pass
+                questions_created = len(candidates)
+            except Exception:
+                db.rollback()
+                questions_created = 0
+                parse_error = parse_error or "题目写入失败，已回滚"
 
         return {
             "questions_created": questions_created,
+            "model_returned": len(questions),
+            "rejected_by_gate": rejected_by_gate,
+            "parse_error": parse_error,
             "preview": result["content"][:500],
-            "message": f"从文档生成了 {questions_created} 道题目",
+            "message": (
+                f"从文档生成了 {questions_created} 道题目"
+                + (f"（闸门拦截 {sum(rejected_by_gate.values())} 条）" if rejected_by_gate else "")
+            ),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"题目生成失败：{str(e)}")
@@ -383,6 +638,9 @@ async def delete_document(doc_id: int, db: Session = Depends(get_db)):
         except OSError:
             pass
 
+    # 物理删除闸门：knowledge_chunks 的 DELETE 不可逆。删文档会连带清空
+    # 全部分块，是最容易造成大规模数据损失的路径，必须显式放行。
+    require_physical_delete_enabled("knowledge_chunks")
     # 删除关联的分块和知识点
     db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).delete()
     db.query(KnowledgePoint).filter(KnowledgePoint.document_id == doc_id).delete()
@@ -412,6 +670,24 @@ async def get_document_content(doc_id: int, limit: int = 5000, db: Session = Dep
         "content": doc.content[:limit],
         "truncated": len(doc.content) > limit,
     }
+
+
+@router.get("/{doc_id}/raw")
+async def get_document_raw(doc_id: int, request: Request, db: Session = Depends(get_db)):
+    """原文文件字节流（浏览器内预览用，支持 Range）。"""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return _file_response(doc, request, "inline")
+
+
+@router.get("/{doc_id}/download")
+async def download_document_raw(doc_id: int, request: Request, db: Session = Depends(get_db)):
+    """原文文件下载（中文名按 RFC 5987 编码，走 attachment）。"""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return _file_response(doc, request, "attachment")
 
 
 # --------------------------------------------------------------------------- #
@@ -463,7 +739,7 @@ async def parse_all_documents(db: Session = Depends(get_db)):
         return {"parsed": 0, "message": "没有待解析的文档"}
 
     from services.document_parser import DocumentParser
-    from services.kb_service import ingest_document
+    from services.kb_service import has_searchable_chunks, ingest_document
 
     parser = DocumentParser()
     parsed_count = 0
@@ -481,8 +757,20 @@ async def parse_all_documents(db: Session = Depends(get_db)):
             else:
                 content_text = f"[文件缺失] 文件名：{doc.file_name}"
 
+            verdict = gate_for_write(db, content_text, path=doc.file_path or "", doc_id=doc.id)
+            if not verdict["ok"]:
+                # 批量任务不能因一篇坏文件整体失败：跳过写入、标 failed、原因进结果
+                doc.index_status = "failed"
+                doc.parse_progress = 1.0
+                db.commit()
+                results.append({"id": doc.id, "file_name": doc.file_name,
+                                "status": "rejected",
+                                "error": "；".join(verdict["reasons"])})
+                continue
+
             doc.content = content_text
             doc.parse_progress = 0.5
+            apply_display_name(db, doc, content_text)
             db.commit()
 
             # 分块入库
@@ -492,21 +780,28 @@ async def parse_all_documents(db: Session = Depends(get_db)):
             except Exception as e:
                 print(f"[kb] 文档 {doc.id} 分块失败: {e}")
 
-            doc.index_status = "indexed"
+            # indexed 的口径 = 库里真有分块；本轮返回 0 但旧块还在，仍算已入库
+            indexed = has_searchable_chunks(db, doc.id)
+            doc.index_status = "indexed" if indexed else "failed"
             doc.parse_progress = 1.0
             db.commit()
-            parsed_count += 1
-            results.append({"id": doc.id, "file_name": doc.file_name, "chunks": chunk_count, "status": "success"})
+            if indexed:
+                parsed_count += 1
+            results.append({"id": doc.id, "file_name": doc.file_name, "chunks": chunk_count,
+                            "status": "success" if indexed else "no_chunks"})
         except Exception as e:
             doc.index_status = "failed"
             db.commit()
             results.append({"id": doc.id, "file_name": doc.file_name, "error": str(e), "status": "failed"})
 
+    rejected = sum(1 for r in results if r.get("status") == "rejected")
     return {
         "parsed": parsed_count,
+        "rejected": rejected,
         "total": len(pending_docs),
         "results": results,
-        "message": f"批量解析完成，成功 {parsed_count}/{len(pending_docs)}",
+        "message": f"批量解析完成，成功 {parsed_count}/{len(pending_docs)}"
+                   + (f"，质量闸门拒绝 {rejected} 篇" if rejected else ""),
     }
 
 
@@ -708,6 +1003,8 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
                     opt_str = str(opt).strip()
                     if not opt_str or any(opt_str.startswith(p) for p in metadata_prefixes):
                         continue
+                    # 统一剥离选项自带字母前缀（A. / B、 / C: 等），避免与前端自动编号重复
+                    opt_str = re.sub(r'^[A-F][\.、:：]\s*', '', opt_str)
                     cleaned_options.append(opt_str)
                 if len(cleaned_options) > 6:
                     cleaned_options = cleaned_options[:4]
@@ -737,7 +1034,8 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
             # AI 不可用/超时降级：本地正则引擎识别（纯本地、无 AI 依赖，保证接口可用）
             try:
                 from services.qbank_builder import extract_questions as _regex_extract
-                for _q in _regex_extract(chunk["text"][:6000]):
+                for _q in _regex_extract(chunk["text"][:6000],
+                                         source_hint=doc.file_name or ""):
                     _content = (_q.get("content") or "").strip()
                     if not _content or len(_content) < 10:
                         continue
@@ -787,15 +1085,27 @@ async def confirm_questions(doc_id: int, payload: dict, db: Session = Depends(ge
     if not questions:
         raise HTTPException(status_code=400, detail="没有题目需要入库")
 
-    # 去重
+    # ===== 去重 =====
+    # 旧逻辑只用题干前 100 字，且**只在source 含当前文档名的行里**比对
+    #（existing_contents 的来源）。同一道题承载在另一篇文档里时匹配不到 →
+    # 同一题入库两次，是跨来源重复的根因。
+    # 现在叠加一层**跨来源指纹判重**（services/quiz_dedupe），命中即合并溯源、
+    # 不再插入；原来源内判重保留为快速路径。开关：QUIZ_DEDUPE_CROSS_SOURCE（默认开）。
     existing_contents = {
         (q.content or "")[:100] for q in db.query(QuizQuestion).filter(
             QuizQuestion.source.like(f"%{doc.file_name}%")
         ).all()
     }
+    _cross_dedupe = _quiz_dedupe.dedupe_enabled()
+    _dd_index = (
+        _quiz_dedupe.build_index_from_db(db) if _cross_dedupe else None
+    )
+    _dd_stats = _quiz_dedupe.DedupeStats()
 
     imported = 0
     skipped = 0
+    merged_dup = 0
+    rejected_by_gate: dict[str, int] = {}
     for q_data in questions:
         if not q_data.get("selected", True):
             skipped += 1
@@ -811,6 +1121,18 @@ async def confirm_questions(doc_id: int, payload: dict, db: Session = Depends(ge
             skipped += 1
             continue
 
+        # ===== 入库前内容闸门（防讲义/PPT 正文混入题库）=====
+        _src = (q_data.get("source") or f"文档提取：{doc.file_name}")[:200]
+        _ok, _reason = gate_admit(
+            content,
+            options=q_data.get("options") or [],
+            answer=q_data.get("answer"),
+            source=_src,
+        )
+        if not _ok:
+            rejected_by_gate[_reason] = rejected_by_gate.get(_reason, 0) + 1
+            continue
+
         q = QuizQuestion(
             content=content[:5000],
             options=q_data.get("options") or [],
@@ -820,18 +1142,145 @@ async def confirm_questions(doc_id: int, payload: dict, db: Session = Depends(ge
             chapter=(q_data.get("chapter") or "")[:200],
             knowledge_point="",
             difficulty=min(5, max(1, int(q_data.get("difficulty", 3)))),
-            source=(q_data.get("source") or f"文档提取：{doc.file_name}")[:200],
+            source=_src,
             question_type=(q_data.get("question_type") or "single")[:50],
         )
+        # ===== 跨来源判重（入库前最后一道闸）=====
+        # 命中则不插入：把本源合并进已有题的溯源，并补齐缺失字段。
+        _decision = _quiz_dedupe.decide_insert(
+            db, content, _src, _dd_index,
+            answer=q_data.get("answer"),
+            analysis=q_data.get("analysis"),
+            options=q_data.get("options"),
+            stats=_dd_stats,
+        )
+        if not _decision.is_insert:
+            merged_dup += 1
+            continue
+
         db.add(q)
         existing_contents.add(content_key)
         imported += 1
 
     db.commit()
+    if rejected_by_gate:
+        gate_log_summary()
     return {
         "doc_id": doc_id,
         "imported": imported,
         "skipped": skipped,
         "total": len(questions),
-        "message": f"确认入库：成功 {imported} 道，跳过 {skipped} 道",
+        "merged_cross_source": merged_dup,
+        "cross_source_dedupe": _cross_dedupe,
+        "dedupe_stats": _dd_stats.as_dict(),
+        "message": f"确认入库：成功 {imported} 道，跳过 {skipped} 道，"
+                   f"跨来源合并 {merged_dup} 道",
     }
+
+
+# --------------------------------------------------------------------------- #
+# chunk 三层标签（docx/14 阶段 A：三路融合打标 + 聚合 + 人工修正回流）
+# --------------------------------------------------------------------------- #
+@router.post("/{doc_id}/classify-chunks")
+async def classify_doc_chunks(
+    doc_id: int,
+    use_llm: bool = True,
+    only_unlabeled: bool = False,
+    background: bool = True,
+    background_tasks: BackgroundTasks = None,  # noqa: B008
+    db: Session = Depends(get_db),
+):
+    """对文档全部 chunk 跑三路融合打标。默认后台执行（LLM 兜底可能分钟级）。"""
+    doc = db.get(Document, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    from services import chunk_classifier
+
+    chunk_classifier.ensure_chunk_label_columns(db)
+    if not background:
+        return chunk_classifier.classify_document(
+            db, doc_id, use_llm=use_llm, only_unlabeled=only_unlabeled)
+
+    def _run():
+        from database import SessionLocal
+        s = SessionLocal()
+        try:
+            chunk_classifier.classify_document(
+                s, doc_id, use_llm=use_llm, only_unlabeled=only_unlabeled)
+        finally:
+            s.close()
+
+    background_tasks.add_task(_run)
+    return {"doc_id": doc_id, "started": True,
+            "message": "已提交后台打标，完成后用 classify-summary 查看"}
+
+
+@router.get("/{doc_id}/classify-summary")
+async def classify_summary(doc_id: int, db: Session = Depends(get_db)):
+    """chunk 标签聚合视图：学科占比 / L3 分布 / 置信度均值 / 是否混合文档。"""
+    from sqlalchemy import func
+    from services import chunk_classifier
+
+    doc = db.get(Document, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    rows = (
+        db.query(KnowledgeChunk.subject, KnowledgeChunk.l3_content_type,
+                 func.count(KnowledgeChunk.id), func.avg(KnowledgeChunk.classify_confidence))
+        .filter(KnowledgeChunk.document_id == doc_id)
+        .group_by(KnowledgeChunk.subject, KnowledgeChunk.l3_content_type)
+        .all()
+    )
+    total = sum(r[2] for r in rows) or 1
+    subject_shares: dict = {}
+    l3_dist: dict = {}
+    for subj, l3, cnt, conf in rows:
+        subject_shares[subj or "未标"] = round(subject_shares.get(subj or "未标", 0) + cnt / total, 4)
+        l3_dist[l3 or "未标"] = l3_dist.get(l3 or "未标", 0) + cnt
+    return {
+        "doc_id": doc_id,
+        "doc_subject": doc.subject,
+        "total_chunks": len([r for r in db.query(KnowledgeChunk.id).filter(KnowledgeChunk.document_id == doc_id).all()]),
+        "subject_shares": subject_shares,
+        "l3_distribution": l3_dist,
+        "mixed": bool(subject_shares) and max(subject_shares.values()) < 0.85,
+        "main_subject": chunk_classifier.aggregate_document(db, doc_id)["main_subject"],
+    }
+
+
+@router.post("/chunks/{chunk_id}/label")
+async def fix_chunk_label(chunk_id: int, payload: dict, db: Session = Depends(get_db)):
+    """人工修正 chunk 标签；修正样本自动回流 annotation_samples（docx/14 评估闭环）。"""
+    from models import AnnotationSample
+    from services.chunk_classifier import L3_TYPES, _normalize_subject
+
+    chunk = db.get(KnowledgeChunk, chunk_id)
+    if chunk is None:
+        raise HTTPException(status_code=404, detail="分块不存在")
+    l1 = _normalize_subject(str(payload.get("subject", "") or ""))
+    l3 = str(payload.get("l3_content_type", "") or "").strip()
+    if not l1 and "subject" in payload:
+        raise HTTPException(status_code=400, detail=f"非法学科标签: {payload.get('subject')}")
+    if l3 and l3 not in L3_TYPES:
+        raise HTTPException(status_code=400, detail=f"非法 L3 类型: {l3}")
+    if l1:
+        chunk.subject = l1
+    if l3:
+        chunk.l3_content_type = l3
+    if "l2_chapter" in payload:
+        chunk.l2_chapter = str(payload["l2_chapter"] or "")[:200]
+    chunk.classify_source = "manual"
+    db.add(AnnotationSample(
+        chunk_id=chunk_id, chunk_text=chunk.text or "",
+        label_l1=chunk.subject, label_l2=chunk.l2_chapter,
+        label_l3=chunk.l3_content_type,
+        annotate_user=str(payload.get("user", "admin")), source="manual_fix",
+    ))
+    db.commit()
+    # 人工修正同样要落进检索镜像：学科过滤读的是 fts/vec 的 subject 拷贝，
+    # 不同步就出现"标签已改、检索照旧"（口径见 docx/14 §9.10）。
+    from services.chunk_classifier import sync_mirror_subjects
+    mirror = sync_mirror_subjects(db, [chunk_id])
+    return {"chunk_id": chunk_id, "subject": chunk.subject,
+            "l3_content_type": chunk.l3_content_type,
+            "mirror_synced": mirror, "message": "已修正并回流标注集"}

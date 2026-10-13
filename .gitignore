@@ -58,3 +58,10 @@ Thumbs.db
 
 # 备份目录严禁入库
 _backup_*/
+
+temp/
+*.json.old
+
+# 网盘抓取原始快照（含内部目录ID）
+tools/datasource/payload/
+tools/datasource/_shards/

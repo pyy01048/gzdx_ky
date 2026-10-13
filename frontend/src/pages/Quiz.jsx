@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Empty, toast, CountUp } from '../components/UI'
-import { quizApi, taxonomyApi, errorsApi } from '../api/client'
+import { quizApi, taxonomyApi, errorsApi, goalsApi } from '../api/client'
 import './Quiz.css'
 
 /* =====================================================================
@@ -189,6 +189,7 @@ export default function Quiz() {
 
   /* 按知识点：左选科目 + 右知识点树 */
   const [selSubject, setSelSubject] = useState(urlSubject || '')
+  const selSubjectRef = useRef(false)
   const [tree, setTree] = useState(null)
   const [treeLoading, setTreeLoading] = useState(false)
   const [treeErr, setTreeErr] = useState(false)
@@ -245,6 +246,18 @@ export default function Quiz() {
     finally { setStatsLoading(false) }
   }, [])
 
+  /* 用户配置的考试/支撑科目顺序（goals/subjects），用于科目列表排序与默认选中 */
+  const [cfgOrder, setCfgOrder] = useState([])
+  const cfgLoadedRef = useRef(false)
+  const loadCfgOrder = useCallback(async () => {
+    if (cfgLoadedRef.current) return
+    cfgLoadedRef.current = true
+    try {
+      const d = await goalsApi.subjects()
+      setCfgOrder([...(d?.exam_subjects || []), ...(d?.support_subjects || [])])
+    } catch { setCfgOrder([]) }
+  }, [])
+
   const loadSubjects = useCallback(async () => {
     setSubjLoading(true)
     try {
@@ -260,10 +273,30 @@ export default function Quiz() {
           is_custom: s.is_custom ?? false
         }))
       }
-      setSubjects(Array.isArray(items) ? items.filter((s) => s && (s.subject || s.name)) : [])
+      const list = (Array.isArray(items) ? items.filter((s) => s && (s.subject || s.name)) : [])
+      /* 排序：用户配置科目在前（按配置顺序），其余按有题优先、最后 0 题 */
+      const cfgIdx = (name) => { const i = cfgOrder.indexOf(name); return i < 0 ? 9999 : i }
+      const sorted = [...list].sort((a, b) => {
+        const ca = cfgIdx(a.subject || a.name), cb = cfgIdx(b.subject || b.name)
+        if (ca !== cb) return ca - cb
+        const qa = (a.question_count || 0) > 0 ? 0 : 1
+        const qb = (b.question_count || 0) > 0 ? 0 : 1
+        if (qa !== qb) return qa - qb
+        return 0
+      })
+      setSubjects(sorted)
+      /* 默认选中：优先配置科目中第一个有题的，其次配置科目首位，再退有题科目 */
+      if (!selSubjectRef.current) {
+        const preferred = cfgOrder
+          .map((n) => sorted.find((s) => (s.subject || s.name) === n))
+          .filter(Boolean)
+        const target = preferred.find((s) => (s.question_count || 0) > 0) || preferred[0]
+          || sorted.find((s) => (s.question_count || 0) > 0) || sorted[0]
+        if (target) setSelSubject(target.subject || target.name)
+      }
     } catch { setSubjects([]) }
     finally { setSubjLoading(false) }
-  }, [])
+  }, [cfgOrder])
 
   const loadTree = useCallback(async (subj) => {
     if (!subj) { setTree(null); return }
@@ -344,7 +377,10 @@ export default function Quiz() {
     } catch (e) { toast(e.message || '复习提交失败') }
   }
 
-  useEffect(() => { loadStats(); loadSubjects() }, [loadStats, loadSubjects])
+  useEffect(() => { loadStats() }, [loadStats])
+  useEffect(() => { loadCfgOrder() }, [loadCfgOrder])
+  /* 等配置科目顺序就绪后再加载科目列表，保证排序/默认选中正确 */
+  useEffect(() => { if (cfgLoadedRef.current || cfgOrder.length) loadSubjects() }, [cfgOrder, loadSubjects])
   /* 科目加载后，若未指定科目则默认选中第一个（驱动右侧知识点树） */
   useEffect(() => {
     if (!selSubject && subjects.length) setSelSubject(subjects[0].subject)
@@ -660,7 +696,10 @@ export default function Quiz() {
       return <Empty icon="📚" title="暂无科目" desc="科目从后端动态加载，请稍后重试"
         action={<button className="btn primary" onClick={loadSubjects}>重试</button>} />
     }
-    const active = subjects.find((s) => s.subject === selSubject) || subjects[0]
+    /* 默认选中第一个有题的科目（避免落在 0 题科目上，点「开始练习」无反应） */
+    const active = subjects.find((s) => s.subject === selSubject)
+      || subjects.find((s) => (s.question_count || 0) > 0)
+      || subjects[0]
     const chapters = tree?.chapters || []
     return (
       <div className="qknow-layout">
@@ -687,7 +726,10 @@ export default function Quiz() {
           <div className="qknow-head">
             <div className="qknow-title">{active?.subject || ''} · 章节知识点</div>
             <button className="btn primary" disabled={!active || submitting}
-              onClick={() => startWithFilter({ subject: active.subject, title: `${active.subject} · 整科练习` })}>
+              onClick={() => {
+                if ((active?.question_count || 0) === 0) return toast('该科目暂无题目，可先在科目管理中维护或导入题目')
+                startWithFilter({ subject: active.subject, title: `${active.subject} · 整科练习` })
+              }}>
               整科练习（{active?.question_count || 0}）
             </button>
           </div>
@@ -1001,7 +1043,8 @@ export default function Quiz() {
     const revealed = memorize || !!rec
     const draft = drafts[q.id]
     const answeredCount = Object.keys(records).length
-    const pct = Math.round(((memorize ? idx + 1 : answeredCount) / total) * 100)
+    // total=0（这道题集没载到题）时进度必须是 0，不能让 NaN 流进 style.width
+    const pct = total > 0 ? Math.round(((memorize ? idx + 1 : answeredCount) / total) * 100) : 0
     const favOn = !!favs[q.id]
 
     return (
@@ -1225,7 +1268,7 @@ export default function Quiz() {
               {Array.from(byChapter.entries()).map(([name, v]) => (
                 <div key={name} className="qresult-row">
                   <span className="qrow-name">{name}</span>
-                  <span className="progress thin"><i style={{ width: `${Math.round((v.correct / v.total) * 100)}%` }} /></span>
+                  <span className="progress thin"><i style={{ width: `${v.total ? Math.round((v.correct / v.total) * 100) : 0}%` }} /></span>
                   <span className="qrow-num">{v.correct}/{v.total}</span>
                 </div>
               ))}

@@ -26,6 +26,14 @@ import os
 import json
 import argparse
 import datetime
+
+# Windows 控制台默认 GBK，打印 ✓/中文进度会直接 UnicodeEncodeError 让训练白跑一轮
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        pass
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # 数据目录
@@ -33,7 +41,9 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "lor
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # 模型配置
-MODEL_NAME = "Qwen/Qwen2.5-4B-Instruct"  # 或本地路径
+# 基座可用 LORA_MODEL_NAME 覆盖为本地已缓存路径（离线机没有 HF 网络）：
+#   LORA_MODEL_NAME=C:\Users\33884\.cache\modelscope\hub\models\Qwen--Qwen2.5-3B-Instruct\snapshots\master
+MODEL_NAME = os.environ.get("LORA_MODEL_NAME", "Qwen/Qwen2.5-4B-Instruct")  # 或本地路径
 OUTPUT_DIR = os.path.join(DATA_DIR, "checkpoints")
 MERGED_DIR = os.path.join(DATA_DIR, "merged")
 MAX_LENGTH = 2048
@@ -44,6 +54,18 @@ NUM_EPOCHS = 3
 LORA_R = 16
 LORA_ALPHA = 32
 LORA_DROPOUT = 0.05
+
+#: Qwen2.5 的 ChatML 特殊标记，Modelfile 模板必须还原角色，否则指令模型认不出用户轮次
+#: 必须写成完整 token（含闭合 ">"）：裸前缀会让 Ollama 的 stop 串查表落空。
+CHATML_START = "<|im_start|>"
+CHATML_END = "<|im_end|>"
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
 
 
 def prepare_data():
@@ -154,7 +176,9 @@ def train_lora(data_dir: str = None, output_dir: str = None):
     print("=" * 60)
 
     data_dir = data_dir or DATA_DIR
-    out_dir = output_dir or OUTPUT_DIR
+    out_dir = output_dir or (
+        os.path.join(data_dir, "checkpoints") if data_dir != DATA_DIR else OUTPUT_DIR
+    )
 
     try:
         import torch
@@ -163,7 +187,7 @@ def train_lora(data_dir: str = None, output_dir: str = None):
             AutoTokenizer,
             TrainingArguments,
             Trainer,
-            DataCollatorForLanguageModeling,
+            DataCollatorForSeq2Seq,
             BitsAndBytesConfig,
         )
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -254,32 +278,52 @@ def train_lora(data_dir: str = None, output_dir: str = None):
     model.print_trainable_parameters()
 
     # 根据显存调整训练参数（必须在数据预处理之前定义max_len）
+    # 全部可经环境变量覆盖，方便在小显存机器上实测挑配置而不用改代码：
+    #   TRAIN_BATCH_SIZE / TRAIN_GRAD_ACCUM / TRAIN_MAX_LEN / TRAIN_EPOCHS
+    #   TRAIN_GRAD_CKPT=0 关梯度检查点，TRAIN_MAX_STEPS=N 只跑 N 步做基准
+    train_batch_size = _env_int("TRAIN_BATCH_SIZE", 1 if use_qlora else BATCH_SIZE)
+    grad_accum = _env_int("TRAIN_GRAD_ACCUM", 8 if use_qlora else GRADIENT_ACCUMULATION)
+    eval_batch_size = _env_int("TRAIN_EVAL_BS", train_batch_size)
+    epochs = _env_int("TRAIN_EPOCHS", NUM_EPOCHS)
+    use_gc = _env_int("TRAIN_GRAD_CKPT", 1) == 1
     if use_qlora:
-        train_batch_size = 1
-        eval_batch_size = 1
-        grad_accum = 16
-        max_len = 1024
-        print(f"\nQLoRA模式: batch_size={train_batch_size}, grad_accum={grad_accum}, max_len={max_len}")
+        # Windows 桌面合成器（explorer/webview/NVIDIA overlay 共 17 个进程）常驻
+        # 占掉 ~3.6GB，训练实际只有 ~4.3GB 可用；1024 会溢出到共享显存，
+        # 实测单步 11~13 分钟（慢 80 倍）。样本 token 长度 p90=479，
+        # 所以 640 既放得下又留得住余量，超出部分截断（无学习目标的样本会被剔除）。
+        max_len = _env_int("TRAIN_MAX_LEN", 640)
+        # 开梯度检查必须关 KV cache，否则每步白算一遍 past_key_values
+        model.config.use_cache = False
+        print(f"\nQLoRA模式: batch_size={train_batch_size}, grad_accum={grad_accum}, "
+              f"max_len={max_len}, grad_ckpt={use_gc}, epochs={epochs}")
     else:
-        train_batch_size = BATCH_SIZE
-        eval_batch_size = BATCH_SIZE
-        grad_accum = GRADIENT_ACCUMULATION
-        max_len = MAX_LENGTH
+        max_len = _env_int("TRAIN_MAX_LEN", MAX_LENGTH)
+        model.config.use_cache = True
+        print(f"\n训练模式: batch_size={train_batch_size}, grad_accum={grad_accum}, "
+              f"max_len={max_len}, epochs={epochs}")
 
     # 数据预处理
     def preprocess_function(examples):
         texts = []
+        prompt_lens = []
         for messages in examples["messages"]:
-            text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-            texts.append(text)
+            full = tokenizer.apply_chat_template(messages, tokenize=False,
+                                                 add_generation_prompt=False)
+            # 只有 assistant 轮参与 loss：旧写法把题干/prompt 也当学习目标，
+            # 模型学到的是"复述问题"，这正是上一版 LoRA 照抄率 0.72 的直接来源。
+            head = tokenizer.apply_chat_template(messages[:-1], tokenize=False,
+                                                 add_generation_prompt=True)
+            texts.append(full)
+            prompt_lens.append(len(tokenizer(head, add_special_tokens=False)["input_ids"]))
 
-        tokenized = tokenizer(
-            texts,
-            truncation=True,
-            max_length=max_len,
-            padding="max_length",
-        )
-        tokenized["labels"] = tokenized["input_ids"].copy()
+        # 不做静态 padding：实测样本 token 长度中位 215 / p95 662，
+        # 全部补齐到 1024 会把 4 倍算力花在 pad 上。交给 collator 动态补齐，
+        # labels 的 pad 位由 DataCollatorForSeq2Seq 统一填 -100（不进 loss）。
+        tokenized = tokenizer(texts, truncation=True, max_length=max_len)
+        labels = []
+        for ids, plen in zip(tokenized["input_ids"], prompt_lens):
+            labels.append([-100 if i < plen else tid for i, tid in enumerate(ids)])
+        tokenized["labels"] = labels
         return tokenized
 
     tokenized_datasets = dataset.map(
@@ -288,15 +332,33 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         remove_columns=dataset["train"].column_names,
     )
 
+    # 兜底：prompt 过长被截断后，assistant 区间可能整段被切没 → 该样本 labels 全 -100，
+    # 交叉熵没有有效目标会返回 NaN 并把整个训练毁掉。这类样本必须丢掉并计数。
+    def _has_target(example):
+        return any(l != -100 for l in example["labels"])
+
+    dropped = {}
+    for split in ("train", "validation"):
+        before = len(tokenized_datasets[split])
+        tokenized_datasets[split] = tokenized_datasets[split].filter(_has_target)
+        dropped[split] = before - len(tokenized_datasets[split])
+    print(f"  截断后无学习目标样本已剔除: train {dropped['train']} 条, "
+          f"val {dropped['validation']} 条")
+
     # 训练参数
     # 计算warmup_steps（transformers 5.x移除了warmup_ratio）
-    total_steps = (len(dataset["train"]) // (train_batch_size * grad_accum)) * NUM_EPOCHS
+    n_train = len(tokenized_datasets["train"])
+    total_steps = max(1, (n_train // (train_batch_size * grad_accum)) * epochs)
     warmup_steps = int(total_steps * 0.03)
-    print(f"\n训练配置: 总步数={total_steps}, warmup_steps={warmup_steps}")
+    print(f"\n训练配置: 总步数={total_steps}, warmup_steps={warmup_steps}, "
+          f"有效批量={train_batch_size * grad_accum}")
+
+    max_steps = _env_int("TRAIN_MAX_STEPS", -1)
 
     training_args = TrainingArguments(
         output_dir=out_dir,
-        num_train_epochs=NUM_EPOCHS,
+        num_train_epochs=epochs,
+        max_steps=max_steps,
         per_device_train_batch_size=train_batch_size,
         per_device_eval_batch_size=eval_batch_size,
         gradient_accumulation_steps=grad_accum,
@@ -305,15 +367,18 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         warmup_steps=warmup_steps,
         lr_scheduler_type="cosine",
         logging_steps=10,
-        save_strategy="epoch",
-        eval_strategy="epoch",
-        load_best_model_at_end=True,
+        save_strategy="no" if max_steps > 0 else "epoch",
+        eval_strategy="no" if max_steps > 0 else "epoch",
+        load_best_model_at_end=max_steps <= 0,
         report_to="none",
         bf16=device == "cuda",
         fp16=False,
-        gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": False},
-        optim="paged_adamw_8bit" if use_qlora else "adamw_torch",
+        gradient_checkpointing=use_gc,
+        gradient_checkpointing_kwargs={"use_reentrant": False} if use_gc else None,
+        # paged_adamw_8bit 依赖 CUDA UVM，在 Windows WDDM 上会把优化器状态来回搬进
+        # 共享显存 —— 实测单步 11~13 分钟。可训练参数只有 3000 万，普通 AdamW 常驻
+        # 显存约 240MB，直接用它。
+        optim="adamw_torch",
         dataloader_num_workers=0,
         save_total_limit=2,
     )
@@ -324,12 +389,28 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         args=training_args,
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets["validation"],
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        # 不能用 DataCollatorForLanguageModeling：它会拿 input_ids 覆盖我们算好的
+        # prompt-mask labels。Seq2Seq 版才按 -100 填充 labels。
+        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model,
+                                             padding="longest", max_length=max_len),
     )
 
     # 开始训练
-    print("\n开始训练...")
-    trainer.train()
+    print("\n开始训练...", flush=True)
+    t0 = datetime.datetime.now()
+    result = trainer.train()
+    if device == "cuda":
+        peak = torch.cuda.max_memory_allocated() / 1024**3
+        reserved = torch.cuda.max_memory_reserved() / 1024**3
+        steps = int(result.global_step) or 1
+        secs = (datetime.datetime.now() - t0).total_seconds()
+        print(f"[基准] 步数={steps} 用时={secs:.0f}s 单步={secs / steps:.1f}s/it "
+              f"峰值allocated={peak:.2f}GB reserved={reserved:.2f}GB "
+              f"每千步={secs / steps * 1000 / 3600:.2f}h", flush=True)
+
+    if max_steps > 0:
+        print("[基准模式] 不保存权重", flush=True)
+        return None
 
     # 保存模型
     final_output = os.path.join(out_dir, "final")
@@ -340,11 +421,20 @@ def train_lora(data_dir: str = None, output_dir: str = None):
     return final_output
 
 
-def merge_model():
-    """合并 LoRA 权重并导出完整模型。"""
+def merge_model(data_dir: str = None, output_dir: str = None):
+    """合并 LoRA 权重并导出完整模型。
+
+    路径跟着训练目录走：用 data/lora_finetune_v2 训练出的适配器，
+    就必须合并 v2 自己的 final/，否则会静默合并上一版脏权重。
+    """
     print("=" * 60)
     print("阶段3：合并模型并导出")
     print("=" * 60)
+
+    lora_dir = output_dir or (
+        os.path.join(data_dir, "checkpoints") if data_dir else OUTPUT_DIR
+    )
+    merged_dir = os.path.join(os.path.dirname(os.path.abspath(lora_dir)), "merged")
 
     try:
         import torch
@@ -354,7 +444,7 @@ def merge_model():
         print(f"✗ 缺少依赖库: {e}")
         return
 
-    lora_path = os.path.join(OUTPUT_DIR, "final")
+    lora_path = os.path.join(lora_dir, "final")
     if not os.path.exists(lora_path):
         print(f"LoRA 模型不存在: {lora_path}")
         print("请先运行 --stage train")
@@ -375,33 +465,79 @@ def merge_model():
     print("合并权重...")
     merged_model = model.merge_and_unload()
 
-    os.makedirs(MERGED_DIR, exist_ok=True)
-    merged_model.save_pretrained(MERGED_DIR, safe_serialization=True)
-    tokenizer.save_pretrained(MERGED_DIR)
+    os.makedirs(merged_dir, exist_ok=True)
+    merged_model.save_pretrained(merged_dir, safe_serialization=True)
+    tokenizer.save_pretrained(merged_dir)
+    _write_ollama_compat_config(merged_dir)
 
-    print(f"\n✓ 模型合并完成！保存到: {MERGED_DIR}")
-    return MERGED_DIR
+    print(f"\n✓ 模型合并完成！保存到: {merged_dir}")
+    return merged_dir
 
 
-def create_ollama_modelfile():
-    """创建 Ollama Modelfile 并导入模型。"""
+def _write_ollama_compat_config(merged_dir: str) -> None:
+    """补齐 Ollama 导入所需的顶层 config 键。
+
+    transformers 5.x 把 rope_theta 移进 rope_parameters、把 torch_dtype 改名 dtype，
+    而 Ollama 0.14.2 的 safetensors 导入器只读顶层键：读不到就写
+    qwen2.rope.freq_base = 0.0，模型加载后 RoPE 直接出 NaN
+    （现象：/api/chat 500 + "model runner has unexpectedly stopped"，
+    llama-sampling.cpp 断言 found，评测全 0）。
+    """
+    cfg_path = os.path.join(merged_dir, "config.json")
+    try:
+        with open(cfg_path, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"⚠ 无法读取 {cfg_path}，跳过 Ollama 兼容键补齐: {e}")
+        return
+
+    changed = []
+    if cfg.get("rope_theta") is None:
+        theta = (cfg.get("rope_parameters") or {}).get("rope_theta") or \
+                (cfg.get("rope_scaling") or {}).get("rope_theta")
+        if theta is not None:
+            cfg["rope_theta"] = theta
+            changed.append(f"rope_theta={theta}")
+    if cfg.get("torch_dtype") is None and cfg.get("dtype"):
+        cfg["torch_dtype"] = cfg["dtype"]
+        changed.append(f"torch_dtype={cfg['dtype']}")
+
+    if not changed:
+        print("Ollama 兼容键已齐备，config.json 未改动")
+        return
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    print(f"✓ config.json 补齐 Ollama 兼容键: {', '.join(changed)}")
+
+
+def create_ollama_modelfile(data_dir: str = None, output_dir: str = None,
+                            tag: str = "kaoyan-assistant-v2"):
+    """创建 Modelfile（默认新标签，不覆盖线上 kaoyan-assistant，便于新旧对照）。"""
     print("=" * 60)
-    print("阶段4：导入 Ollama")
+    print("阶段4：生成 Ollama Modelfile")
     print("=" * 60)
 
-    merged_path = MERGED_DIR
+    lora_dir = output_dir or (
+        os.path.join(data_dir, "checkpoints") if data_dir else OUTPUT_DIR
+    )
+    merged_path = os.path.join(os.path.dirname(os.path.abspath(lora_dir)), "merged")
     if not os.path.exists(merged_path):
         print(f"合并模型不存在: {merged_path}")
         print("请先运行 --stage merge")
         return
 
-    # 创建 Modelfile（使用普通字符串拼接避免三引号嵌套问题）
-    template_str = '{{{{ if .System }}}}{{{{ .System }}}}\n{{{{ end }}}}{{{{ if .Prompt }}}}{{{{ .Prompt }}}}\n{{{{ end }}}}'
+    # 旧模板只渲染 System+Prompt，把 ChatML 角色标记整段丢掉，指令模型认不出用户轮次。
+    # 这里按 Qwen2.5 原生 ChatML 复原，stop 词也补齐。
+    template_str = (
+        "{{ if .System }}" + CHATML_START + "system\n{{ .System }}" + CHATML_END + "\n{{ end }}"
+        "{{ if .Prompt }}" + CHATML_START + "user\n{{ .Prompt }}" + CHATML_END + "\n{{ end }}"
+        + CHATML_START + "assistant\n"
+    )
     system_str = (
-        "你是一个考研备考助手，专长是考研英语、政治、数学和专业课"
-        "（数字电子技术、模拟电子技术等）。\n"
-        "你基于用户提供的学习资料和知识库，给出准确、简洁、有条理的回答。\n"
-        "回答时优先引用本地知识库内容，并标注来源。"
+        "你是一位考研辅导老师，负责计算机与电子信息类考研的答疑，"
+        "专长是数字电子技术、模拟电子技术（834 电子技术基础）以及数学二、英语二、政治。"
+        "回答要求：先给结论，再解释原理，必要时给出解题步骤；"
+        "只讲与问题相关的内容，不要复述题目原文。"
     )
 
     modelfile_content = (
@@ -412,19 +548,23 @@ def create_ollama_modelfile():
         "PARAMETER top_k 40\n"
         "PARAMETER num_ctx 4096\n"
         "PARAMETER num_predict 2048\n\n"
-        f'SYSTEM """{system_str}"""\n'
+        # 自定义 TEMPLATE 不会自动带 stop 词，缺了它模型会一路生成到
+        # num_predict 上限（把下一轮 user 内容也编出来）。
+        f"PARAMETER stop \"{CHATML_END}\"\n"
+        f"PARAMETER stop \"{CHATML_START}\"\n\n"
+        f'SYSTEM \"\"\"{system_str}\"\"\"\n'
     )
 
-    modelfile_path = os.path.join(DATA_DIR, "Modelfile")
+    modelfile_path = os.path.join(os.path.dirname(os.path.abspath(merged_path)), "Modelfile")
     with open(modelfile_path, "w", encoding="utf-8") as f:
         f.write(modelfile_content)
 
     print(f"Modelfile 已创建: {modelfile_path}")
     print("\n执行以下命令导入 Ollama:")
-    print(f"  ollama create kaoyan-assistant -f {modelfile_path}")
-    print("\n导入完成后，运行:")
-    print("  ollama run kaoyan-assistant")
-    print("\n在平台设置中，将本地模型名称改为: kaoyan-assistant")
+    print(f"  ollama create {tag} -f {modelfile_path}")
+    print("\n对照评测（新旧模型都在时）:")
+    print(f"  python scripts/eval_qa_model.py --models qwen2.5:1.5b,kaoyan-assistant,{tag} --n 150")
+    print(f"\n确认新模型更准后，再在平台设置里把本地模型名改成: {tag}")
 
     return modelfile_path
 
@@ -448,6 +588,11 @@ def main():
         default=None,
         help="检查点输出目录（默认 <data-dir>/checkpoints）",
     )
+    parser.add_argument(
+        "--tag",
+        default="kaoyan-assistant-v2",
+        help="导入 Ollama 的模型标签（默认新标签，不覆盖在用的 kaoyan-assistant）",
+    )
     args = parser.parse_args()
 
     print(f"开始时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -463,10 +608,10 @@ def main():
         train_lora(data_dir=args.data_dir, output_dir=args.output_dir)
 
     if args.stage == "merge" or args.stage == "all":
-        merge_model()
+        merge_model(data_dir=args.data_dir, output_dir=args.output_dir)
 
     if args.stage == "ollama" or args.stage == "all":
-        create_ollama_modelfile()
+        create_ollama_modelfile(data_dir=args.data_dir, output_dir=args.output_dir, tag=args.tag)
 
     print(f"\n完成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("✓ 全部完成！")

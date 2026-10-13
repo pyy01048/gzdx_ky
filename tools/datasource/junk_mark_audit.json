@@ -1,0 +1,1610 @@
+{
+  "batches": [
+    {
+      "applied_at": "2026-10-12 02:20:29",
+      "db_path": "D:/平台/database/kaoyan.db",
+      "backup": "D:\\平台\\backend-main-fastapi\\data\\backups\\kaoyan_pre_junkmark_20261012_022028.db",
+      "source": "tools/datasource/junk_questions_candidates.json (high 档)",
+      "marked_count": 319,
+      "medium_not_marked": true,
+      "control_char_not_marked": true,
+      "entries": [
+        {
+          "id": 16,
+          "subject": "数字电子技术",
+          "content": "对于4 变量逻辑函数（变量为"
+        },
+        {
+          "id": 18,
+          "subject": "数字电子技术",
+          "content": "若将一TTL 异或门（输入端为"
+        },
+        {
+          "id": 21,
+          "subject": "数字电子技术",
+          "content": "用最小项表示函数F（A，B，"
+        },
+        {
+          "id": 58,
+          "subject": "模拟电子技术",
+          "content": "发光二极管（LE"
+        },
+        {
+          "id": 250,
+          "subject": "模拟电子技术",
+          "content": "通过图判断反馈类型（多看书上例题"
+        },
+        {
+          "id": 335,
+          "subject": "数字电子技术",
+          "content": "逻辑函数表达式F =（A+"
+        },
+        {
+          "id": 423,
+          "subject": "数字电子技术",
+          "content": "TTL、 CMOS"
+        },
+        {
+          "id": 425,
+          "subject": "数字电子技术",
+          "content": "D/A A/D"
+        },
+        {
+          "id": 432,
+          "subject": "数字电子技术",
+          "content": "75；000101100011.01110101"
+        },
+        {
+          "id": 434,
+          "subject": "数字电子技术",
+          "content": "4V；0.4V"
+        },
+        {
+          "id": 438,
+          "subject": "数字电子技术",
+          "content": "4V；0.3V；0.3V；3.6V"
+        },
+        {
+          "id": 475,
+          "subject": "数字电子技术",
+          "content": "× 2． × 3． × 4． √"
+        },
+        {
+          "id": 480,
+          "subject": "数字电子技术",
+          "content": "ACDABY "
+        },
+        {
+          "id": 495,
+          "subject": "数字电子技术",
+          "content": "若F（A，B，C，"
+        },
+        {
+          "id": 841,
+          "subject": "数字电子技术",
+          "content": "39×2＝0.78 0"
+        },
+        {
+          "id": 842,
+          "subject": "数字电子技术",
+          "content": "78×2＝1.56 1"
+        },
+        {
+          "id": 843,
+          "subject": "数字电子技术",
+          "content": "56×2＝1.12 1"
+        },
+        {
+          "id": 844,
+          "subject": "数字电子技术",
+          "content": "12×2＝0.24 0"
+        },
+        {
+          "id": 845,
+          "subject": "数字电子技术",
+          "content": "24×2＝0.48 0"
+        },
+        {
+          "id": 846,
+          "subject": "数字电子技术",
+          "content": "48×2＝0.96 0"
+        },
+        {
+          "id": 848,
+          "subject": "数字电子技术",
+          "content": "92×2＝1.84 1"
+        },
+        {
+          "id": 849,
+          "subject": "数字电子技术",
+          "content": "84×2＝1.68 1"
+        },
+        {
+          "id": 1308,
+          "subject": "数字电子技术",
+          "content": "将 2004个“1”异或起来得到的结果是（"
+        },
+        {
+          "id": 1309,
+          "subject": "数字电子技术",
+          "content": "由 555定时器构成的三种电路中，（"
+        },
+        {
+          "id": 1315,
+          "subject": "数字电子技术",
+          "content": "施密特触发器有（"
+        },
+        {
+          "id": 1328,
+          "subject": "数字电子技术",
+          "content": "（１１．００１）２＝（"
+        },
+        {
+          "id": 1329,
+          "subject": "数字电子技术",
+          "content": "（８Ｆ．ＦＦ）１６＝（"
+        },
+        {
+          "id": 1330,
+          "subject": "数字电子技术",
+          "content": "（ ２５．７）１０＝（"
+        },
+        {
+          "id": 1331,
+          "subject": "数字电子技术",
+          "content": "（＋１０１１Ｂ）原码＝（"
+        },
+        {
+          "id": 1378,
+          "subject": "数字电子技术",
+          "content": "以下代码中，为无权码的是（"
+        },
+        {
+          "id": 1379,
+          "subject": "数字电子技术",
+          "content": "当三态门输出高阻状态时，以下说法正确的是（"
+        },
+        {
+          "id": 1424,
+          "subject": "数字电子技术",
+          "content": "用卡诺图圈 0 的方法可得：Y=（ +"
+        },
+        {
+          "id": 1442,
+          "subject": "数字电子技术",
+          "content": "（代数法） （ A,B,C,"
+        },
+        {
+          "id": 1472,
+          "subject": "数字电子技术",
+          "content": "c 3． c 4． c1． c"
+        },
+        {
+          "id": 1485,
+          "subject": "数字电子技术",
+          "content": "逻辑函数Y  AC ABD BCD(E"
+        },
+        {
+          "id": 1487,
+          "subject": "数字电子技术",
+          "content": "逻辑函数Y（A，B，"
+        },
+        {
+          "id": 1524,
+          "subject": "数字电子技术",
+          "content": "发光⼆极管（LE"
+        },
+        {
+          "id": 1531,
+          "subject": "数字电子技术",
+          "content": "模数转换器（AD"
+        },
+        {
+          "id": 1629,
+          "subject": "数字电子技术",
+          "content": "32768～+32767"
+        },
+        {
+          "id": 1663,
+          "subject": "数字电子技术",
+          "content": "(2020)1o = ("
+        },
+        {
+          "id": 1687,
+          "subject": "模拟电子技术",
+          "content": "3 k² 146 2k"
+        },
+        {
+          "id": 1691,
+          "subject": "模拟电子技术",
+          "content": "1 k² A2"
+        },
+        {
+          "id": 1705,
+          "subject": "数字电子技术",
+          "content": "用卡诺图法化简 (1) F(A,B,C,"
+        },
+        {
+          "id": 1709,
+          "subject": "数字电子技术",
+          "content": "(F8.4)16 = ( ）余3BCD码。"
+        },
+        {
+          "id": 1757,
+          "subject": "模拟电子技术",
+          "content": "求中频电压放大倍数Ausm（U。/Us)；"
+        },
+        {
+          "id": 1788,
+          "subject": "数字电子技术",
+          "content": "i=Is( -Ina"
+        },
+        {
+          "id": 1798,
+          "subject": "数字电子技术",
+          "content": "19mA Re 1X103 IEQ"
+        },
+        {
+          "id": 1808,
+          "subject": "数字电子技术",
+          "content": "逻辑函数L=AB'CD'+A+B+C+D=("
+        },
+        {
+          "id": 1809,
+          "subject": "数字电子技术",
+          "content": "主从型JK触发器的特性方程Q\"+l=("
+        },
+        {
+          "id": 1818,
+          "subject": "数字电子技术",
+          "content": "下列几种A/D转换器中，转换速度最快的是（ )."
+        },
+        {
+          "id": 1821,
+          "subject": "数字电子技术",
+          "content": "逻辑函数F=A+B+CD的反函数F=（"
+        },
+        {
+          "id": 1835,
+          "subject": "数字电子技术",
+          "content": "欲使D触发器按Qn+1=Q,工作，应使输入D=（"
+        },
+        {
+          "id": 1838,
+          "subject": "数字电子技术",
+          "content": "十进制数25用8421BCD码表示为（"
+        },
+        {
+          "id": 1840,
+          "subject": "数字电子技术",
+          "content": "多谐振荡器可产生（"
+        },
+        {
+          "id": 1844,
+          "subject": "数字电子技术",
+          "content": ") 10. Y=("
+        },
+        {
+          "id": 2654,
+          "subject": "模拟电子技术",
+          "content": "25V VBB 15V"
+        },
+        {
+          "id": 2848,
+          "subject": "模拟电子技术",
+          "content": "滤波电路的种类 低通滤波器（LP"
+        },
+        {
+          "id": 2854,
+          "subject": "模拟电子技术",
+          "content": "带通滤波器（BP"
+        },
+        {
+          "id": 2855,
+          "subject": "模拟电子技术",
+          "content": "带阻滤波器（BE"
+        },
+        {
+          "id": 2856,
+          "subject": "模拟电子技术",
+          "content": "高通滤波器（HP"
+        },
+        {
+          "id": 2977,
+          "subject": "模拟电子技术",
+          "content": "UI → U2"
+        },
+        {
+          "id": 3195,
+          "subject": "模拟电子技术",
+          "content": "9 =110"
+        },
+        {
+          "id": 3236,
+          "subject": "模拟电子技术",
+          "content": "9U2 -1= 2×185"
+        },
+        {
+          "id": 3609,
+          "subject": "模拟电子技术",
+          "content": "× 16.√"
+        },
+        {
+          "id": 3610,
+          "subject": "模拟电子技术",
+          "content": "× 18.× 19.√"
+        },
+        {
+          "id": 3611,
+          "subject": "模拟电子技术",
+          "content": "× 24.√"
+        },
+        {
+          "id": 3612,
+          "subject": "模拟电子技术",
+          "content": "× 27.√"
+        },
+        {
+          "id": 3613,
+          "subject": "模拟电子技术",
+          "content": "× 30.√"
+        },
+        {
+          "id": 3614,
+          "subject": "模拟电子技术",
+          "content": "× 35.× 36.√"
+        },
+        {
+          "id": 3615,
+          "subject": "模拟电子技术",
+          "content": "× 38.√"
+        },
+        {
+          "id": 3616,
+          "subject": "模拟电子技术",
+          "content": "× 40.√"
+        },
+        {
+          "id": 3617,
+          "subject": "模拟电子技术",
+          "content": "× 42.× 43.√"
+        },
+        {
+          "id": 3618,
+          "subject": "模拟电子技术",
+          "content": "× 50.√"
+        },
+        {
+          "id": 3619,
+          "subject": "模拟电子技术",
+          "content": "× 52.√"
+        },
+        {
+          "id": 3620,
+          "subject": "模拟电子技术",
+          "content": "× 57.× 58.√"
+        },
+        {
+          "id": 3621,
+          "subject": "模拟电子技术",
+          "content": "× 60.√"
+        },
+        {
+          "id": 3622,
+          "subject": "模拟电子技术",
+          "content": "× 63.√"
+        },
+        {
+          "id": 3623,
+          "subject": "模拟电子技术",
+          "content": "× 65.√"
+        },
+        {
+          "id": 3624,
+          "subject": "模拟电子技术",
+          "content": "× 70.× 71.√"
+        },
+        {
+          "id": 3625,
+          "subject": "模拟电子技术",
+          "content": "× 74.√"
+        },
+        {
+          "id": 3626,
+          "subject": "模拟电子技术",
+          "content": "× 80.× 81.√"
+        },
+        {
+          "id": 3627,
+          "subject": "模拟电子技术",
+          "content": "× 85.√"
+        },
+        {
+          "id": 3628,
+          "subject": "模拟电子技术",
+          "content": "× 90.× 91.√"
+        },
+        {
+          "id": 3629,
+          "subject": "模拟电子技术",
+          "content": "× 93.√"
+        },
+        {
+          "id": 3630,
+          "subject": "模拟电子技术",
+          "content": "× 101.√102.× 103.√104.× 105.√106.√107.√108.× 109.√"
+        },
+        {
+          "id": 3631,
+          "subject": "模拟电子技术",
+          "content": "√112.√113.√114.× 115.√116.√117.√118.√119.× 120.× 121.√"
+        },
+        {
+          "id": 3699,
+          "subject": "数字电子技术",
+          "content": "3×18kA"
+        },
+        {
+          "id": 3702,
+          "subject": "数字电子技术",
+          "content": "27-0.7mA=0.56 mA"
+        },
+        {
+          "id": 3706,
+          "subject": "数字电子技术",
+          "content": "228 k0。"
+        },
+        {
+          "id": 3782,
+          "subject": "数字电子技术",
+          "content": "5 M 6 。 。"
+        },
+        {
+          "id": 3785,
+          "subject": "数字电子技术",
+          "content": "5 15 Lo 6o"
+        },
+        {
+          "id": 3793,
+          "subject": "数字电子技术",
+          "content": "100 100 ):"
+        },
+        {
+          "id": 3795,
+          "subject": "数字电子技术",
+          "content": "519 ×2"
+        },
+        {
+          "id": 3797,
+          "subject": "数字电子技术",
+          "content": "0382 X"
+        },
+        {
+          "id": 3799,
+          "subject": "数字电子技术",
+          "content": "076 ×2"
+        },
+        {
+          "id": 3801,
+          "subject": "数字电子技术",
+          "content": "152 ×2"
+        },
+        {
+          "id": 3803,
+          "subject": "数字电子技术",
+          "content": "3042 x"
+        },
+        {
+          "id": 3809,
+          "subject": "数字电子技术",
+          "content": "432 2 X"
+        },
+        {
+          "id": 3811,
+          "subject": "数字电子技术",
+          "content": "8 4)。 =( (2)"
+        },
+        {
+          "id": 3812,
+          "subject": "数字电子技术",
+          "content": "2512 ×"
+        },
+        {
+          "id": 3814,
+          "subject": "数字电子技术",
+          "content": "502 × 2"
+        },
+        {
+          "id": 3818,
+          "subject": "数字电子技术",
+          "content": "0082 ×"
+        },
+        {
+          "id": 3820,
+          "subject": "数字电子技术",
+          "content": "016 × 2"
+        },
+        {
+          "id": 3822,
+          "subject": "数字电子技术",
+          "content": "032 x 2"
+        },
+        {
+          "id": 3826,
+          "subject": "数字电子技术",
+          "content": "128 ×2"
+        },
+        {
+          "id": 3828,
+          "subject": "数字电子技术",
+          "content": "0376” x"
+        },
+        {
+          "id": 3830,
+          "subject": "数字电子技术",
+          "content": "0752e ×"
+        },
+        {
+          "id": 3834,
+          "subject": "数字电子技术",
+          "content": "3008 x 。"
+        },
+        {
+          "id": 3836,
+          "subject": "数字电子技术",
+          "content": "6016 × 2"
+        },
+        {
+          "id": 3838,
+          "subject": "数字电子技术",
+          "content": "20322 ×"
+        },
+        {
+          "id": 3842,
+          "subject": "数字电子技术",
+          "content": "8128 2 x"
+        },
+        {
+          "id": 3844,
+          "subject": "数字电子技术",
+          "content": "5128e ×"
+        },
+        {
+          "id": 3846,
+          "subject": "数字电子技术",
+          "content": "0256 + 。"
+        },
+        {
+          "id": 3848,
+          "subject": "数字电子技术",
+          "content": "05122 ×"
+        },
+        {
+          "id": 3852,
+          "subject": "数字电子技术",
+          "content": "2048” ×"
+        },
+        {
+          "id": 3854,
+          "subject": "数字电子技术",
+          "content": "40962 ×"
+        },
+        {
+          "id": 3856,
+          "subject": "数字电子技术",
+          "content": "81922 ×"
+        },
+        {
+          "id": 3858,
+          "subject": "数字电子技术",
+          "content": "63842 ×"
+        },
+        {
+          "id": 3874,
+          "subject": "数字电子技术",
+          "content": "000 × 2"
+        },
+        {
+          "id": 3882,
+          "subject": "数字电子技术",
+          "content": "12 × 2"
+        },
+        {
+          "id": 3890,
+          "subject": "数字电子技术",
+          "content": "48 × 2"
+        },
+        {
+          "id": 3950,
+          "subject": "数字电子技术",
+          "content": "375 +10V Ⅳa"
+        },
+        {
+          "id": 3952,
+          "subject": "数字电子技术",
+          "content": "0l AD7520 Inat E Vo"
+        },
+        {
+          "id": 3956,
+          "subject": "数字电子技术",
+          "content": "01 uF 1MHz!"
+        },
+        {
+          "id": 3987,
+          "subject": "数字电子技术",
+          "content": "5 0 0 。 √ m - -"
+        },
+        {
+          "id": 3996,
+          "subject": "数字电子技术",
+          "content": "施密特触发电路有两个能自行保持的稳定状态。（"
+        },
+        {
+          "id": 4002,
+          "subject": "数字电子技术",
+          "content": "Y(A,B,"
+        },
+        {
+          "id": 4003,
+          "subject": "数字电子技术",
+          "content": "Y(A,B,C,"
+        },
+        {
+          "id": 4004,
+          "subject": "数字电子技术",
+          "content": "Y =AB'+A'B+AB"
+        },
+        {
+          "id": 4006,
+          "subject": "数字电子技术",
+          "content": "Y、=A'C'D+A'BC+B'C'"
+        },
+        {
+          "id": 4011,
+          "subject": "数字电子技术",
+          "content": "Y=A'B'+B'C+BC'"
+        },
+        {
+          "id": 4022,
+          "subject": "数字电子技术",
+          "content": "Y=A+C+BD"
+        },
+        {
+          "id": 4024,
+          "subject": "数字电子技术",
+          "content": "(d @ e e 司 - 。 - - o - o"
+        },
+        {
+          "id": 4040,
+          "subject": "数字电子技术",
+          "content": "49 k≤R ≤50 k0"
+        },
+        {
+          "id": 4063,
+          "subject": "数字电子技术",
+          "content": "Y,(A.B,C,D)=AB'C"
+        },
+        {
+          "id": 4081,
+          "subject": "数字电子技术",
+          "content": "7ms 6V 4V 2V End"
+        },
+        {
+          "id": 4170,
+          "subject": "数字电子技术",
+          "content": "逻辑函数F(A,B,"
+        },
+        {
+          "id": 4174,
+          "subject": "数字电子技术",
+          "content": "用代数法求函数F(A,B,"
+        },
+        {
+          "id": 4234,
+          "subject": "数字电子技术",
+          "content": "A+1 = 。"
+        },
+        {
+          "id": 4280,
+          "subject": "数字电子技术",
+          "content": "下列所示触发器中属下降沿触发的是（ ）。 （"
+        },
+        {
+          "id": 4281,
+          "subject": "数字电子技术",
+          "content": "如右图所示CMOS电路，其逻辑功能是（ )。 （"
+        },
+        {
+          "id": 4282,
+          "subject": "数字电子技术",
+          "content": "十六路数据选择器应有( )选择控制端。 （"
+        },
+        {
+          "id": 4284,
+          "subject": "数字电子技术",
+          "content": "如右图电路完成的是（ ）功能。(在页顶) （"
+        },
+        {
+          "id": 4286,
+          "subject": "数字电子技术",
+          "content": "如右图所示电路其输出F=（ ）。 （"
+        },
+        {
+          "id": 4287,
+          "subject": "数字电子技术",
+          "content": "在A/D转换过程中，应包含的步骤是（ ）。 （"
+        },
+        {
+          "id": 4304,
+          "subject": "数字电子技术",
+          "content": "如右图电路所示，其逻辑功能是（ ）。 （"
+        },
+        {
+          "id": 4306,
+          "subject": "数字电子技术",
+          "content": "下列所示触发器中属上降沿触发的是（ ）。 （"
+        },
+        {
+          "id": 4309,
+          "subject": "数字电子技术",
+          "content": "求逻辑函数F=AB′ +A′C(B+C′"
+        },
+        {
+          "id": 4560,
+          "subject": "模拟电子技术",
+          "content": "8 V 615 V"
+        },
+        {
+          "id": 4664,
+          "subject": "模拟电子技术",
+          "content": "( 因为β?>1,所以可以认为复合管的跨导"
+        },
+        {
+          "id": 4709,
+          "subject": "模拟电子技术",
+          "content": "5 1| -2 V"
+        },
+        {
+          "id": 4800,
+          "subject": "模拟电子技术",
+          "content": "5~2 lo μA"
+        },
+        {
+          "id": 4801,
+          "subject": "模拟电子技术",
+          "content": "2~2 SR V/μs"
+        },
+        {
+          "id": 4802,
+          "subject": "模拟电子技术",
+          "content": "5-0.7 lm μA"
+        },
+        {
+          "id": 4831,
+          "subject": "模拟电子技术",
+          "content": "01 2 40 7 120"
+        },
+        {
+          "id": 4878,
+          "subject": "模拟电子技术",
+          "content": "-;~28S~0.057S"
+        },
+        {
+          "id": 4894,
+          "subject": "模拟电子技术",
+          "content": "=(a./^=;/β/"
+        },
+        {
+          "id": 4907,
+          "subject": "模拟电子技术",
+          "content": "5已知某电路电压放大倍数 *(高“可 试求解"
+        },
+        {
+          "id": 5104,
+          "subject": "模拟电子技术",
+          "content": "5 1 2 0 fo"
+        },
+        {
+          "id": 5241,
+          "subject": "模拟电子技术",
+          "content": "9 R6 R[ D"
+        },
+        {
+          "id": 5288,
+          "subject": "模拟电子技术",
+          "content": "02 μF +Vcc R G="
+        },
+        {
+          "id": 5356,
+          "subject": "模拟电子技术",
+          "content": "22 μF u"
+        },
+        {
+          "id": 5359,
+          "subject": "模拟电子技术",
+          "content": "0.022 uF “o2 8Ω"
+        },
+        {
+          "id": 5574,
+          "subject": "模拟电子技术",
+          "content": "11 kQ R["
+        },
+        {
+          "id": 5763,
+          "subject": "模拟电子技术",
+          "content": "5 oo Q -2V -0.5"
+        },
+        {
+          "id": 5834,
+          "subject": "模拟电子技术",
+          "content": "5k2 IkQ"
+        },
+        {
+          "id": 5913,
+          "subject": "模拟电子技术",
+          "content": "1tJt10x"
+        },
+        {
+          "id": 5926,
+          "subject": "模拟电子技术",
+          "content": "5已知某电路电压放大倍数 “(可 试求解"
+        },
+        {
+          "id": 5994,
+          "subject": "模拟电子技术",
+          "content": "5 kQ (““可” A"
+        },
+        {
+          "id": 6037,
+          "subject": "模拟电子技术",
+          "content": "5 0 5 15"
+        },
+        {
+          "id": 6063,
+          "subject": "模拟电子技术",
+          "content": "5 11 14"
+        },
+        {
+          "id": 6151,
+          "subject": "模拟电子技术",
+          "content": "01 μF 300 pF T T"
+        },
+        {
+          "id": 6156,
+          "subject": "模拟电子技术",
+          "content": "1μF 15/250pF"
+        },
+        {
+          "id": 6157,
+          "subject": "模拟电子技术",
+          "content": "5μF R["
+        },
+        {
+          "id": 6163,
+          "subject": "模拟电子技术",
+          "content": "000 pF C"
+        },
+        {
+          "id": 6172,
+          "subject": "模拟电子技术",
+          "content": "i' μF′ R"
+        },
+        {
+          "id": 6185,
+          "subject": "模拟电子技术",
+          "content": "1 -12 yc"
+        },
+        {
+          "id": 6460,
+          "subject": "模拟电子技术",
+          "content": "B 2、B 3、D 4、B 5、C"
+        },
+        {
+          "id": 6486,
+          "subject": "模拟电子技术",
+          "content": "180˙， 78.5%， 2VCC"
+        },
+        {
+          "id": 6489,
+          "subject": "模拟电子技术",
+          "content": "A 2、C 3、A 4、A 5、B"
+        },
+        {
+          "id": 6521,
+          "subject": "模拟电子技术",
+          "content": "A 2、B 3、C 4、A 5、A"
+        },
+        {
+          "id": 6550,
+          "subject": "模拟电子技术",
+          "content": "0.7，0.5"
+        },
+        {
+          "id": 6553,
+          "subject": "模拟电子技术",
+          "content": "0.45；0.9"
+        },
+        {
+          "id": 6556,
+          "subject": "模拟电子技术",
+          "content": "C 2、C 3、C 4、B 5、B"
+        },
+        {
+          "id": 6603,
+          "subject": "模拟电子技术",
+          "content": "C 2、C 3、D 4、B 5、C"
+        },
+        {
+          "id": 6612,
+          "subject": "模拟电子技术",
+          "content": ".Pom 6.7W"
+        },
+        {
+          "id": 6613,
+          "subject": "模拟电子技术",
+          "content": ". PV1 = PV2 =3.3W"
+        },
+        {
+          "id": 6616,
+          "subject": "模拟电子技术",
+          "content": ".1+R3/R4"
+        },
+        {
+          "id": 6648,
+          "subject": "模拟电子技术",
+          "content": "B 2、B 3、B 4、B 5、C"
+        },
+        {
+          "id": 6653,
+          "subject": "模拟电子技术",
+          "content": "Uim=12V"
+        },
+        {
+          "id": 6831,
+          "subject": "模拟电子技术",
+          "content": "函数F(A,B,"
+        },
+        {
+          "id": 6832,
+          "subject": "模拟电子技术",
+          "content": "已知某触发的特性表如下（"
+        },
+        {
+          "id": 6857,
+          "subject": "模拟电子技术",
+          "content": "147 93"
+        },
+        {
+          "id": 6865,
+          "subject": "模拟电子技术",
+          "content": "|FA|>1；A|F|=1"
+        },
+        {
+          "id": 6875,
+          "subject": "模拟电子技术",
+          "content": "Y=AB+AC"
+        },
+        {
+          "id": 6877,
+          "subject": "模拟电子技术",
+          "content": "100 、16"
+        },
+        {
+          "id": 6884,
+          "subject": "模拟电子技术",
+          "content": "（a） (b)"
+        },
+        {
+          "id": 6886,
+          "subject": "模拟电子技术",
+          "content": "Y=C+AB"
+        },
+        {
+          "id": 6915,
+          "subject": "数字电子技术",
+          "content": "100 100 ): 6. 9 )"
+        },
+        {
+          "id": 7149,
+          "subject": "模拟电子技术",
+          "content": "5 -100 × -7.58"
+        },
+        {
+          "id": 7157,
+          "subject": "模拟电子技术",
+          "content": "66k2 IEQ"
+        },
+        {
+          "id": 7178,
+          "subject": "模拟电子技术",
+          "content": "4 j11×106"
+        },
+        {
+          "id": 7212,
+          "subject": "模拟电子技术",
+          "content": "80dB；104倍。 （"
+        },
+        {
+          "id": 7214,
+          "subject": "模拟电子技术",
+          "content": "栅极电流；远大于 （"
+        },
+        {
+          "id": 7215,
+          "subject": "模拟电子技术",
+          "content": "3.5V. （"
+        },
+        {
+          "id": 7216,
+          "subject": "模拟电子技术",
+          "content": "差分；互补输出级/OCL；电流源。 （"
+        },
+        {
+          "id": 7217,
+          "subject": "模拟电子技术",
+          "content": "负载电阻；输入电阻 （"
+        },
+        {
+          "id": 7219,
+          "subject": "模拟电子技术",
+          "content": "P型半导体；本征半导体 （"
+        },
+        {
+          "id": 7221,
+          "subject": "模拟电子技术",
+          "content": "电容三点式；电容C1 （"
+        },
+        {
+          "id": 7222,
+          "subject": "模拟电子技术",
+          "content": "B; A （"
+        },
+        {
+          "id": 7274,
+          "subject": "数字电子技术",
+          "content": "(3C.4)μ=( ) 10"
+        },
+        {
+          "id": 7489,
+          "subject": "模拟电子技术",
+          "content": "7V ，晶体管 V 截止，输出为高电平 （"
+        },
+        {
+          "id": 7491,
+          "subject": "模拟电子技术",
+          "content": "7V ，晶体管导通，输出端为低电平 （"
+        },
+        {
+          "id": 7500,
+          "subject": "模拟电子技术",
+          "content": "3V ） 时， V1 基极电位被钳制在"
+        },
+        {
+          "id": 7504,
+          "subject": "模拟电子技术",
+          "content": "6V ） 时， V1 基极电位被钳制在"
+        },
+        {
+          "id": 7505,
+          "subject": "模拟电子技术",
+          "content": "7V+0.7V+"
+        },
+        {
+          "id": 7512,
+          "subject": "模拟电子技术",
+          "content": "6875 ） 10 = （"
+        },
+        {
+          "id": 7513,
+          "subject": "模拟电子技术",
+          "content": "1011 ） 2 例 7-8 十进制小数"
+        },
+        {
+          "id": 7515,
+          "subject": "模拟电子技术",
+          "content": "54 ） 8 例 7-9 十进制小数"
+        },
+        {
+          "id": 7517,
+          "subject": "模拟电子技术",
+          "content": "6875×16=11.0 K -1 =B 即（"
+        },
+        {
+          "id": 7540,
+          "subject": "模拟电子技术",
+          "content": "× 4.× 5. √"
+        },
+        {
+          "id": 7541,
+          "subject": "模拟电子技术",
+          "content": "× 8. √"
+        },
+        {
+          "id": 7542,
+          "subject": "模拟电子技术",
+          "content": "× 11.×"
+        },
+        {
+          "id": 7543,
+          "subject": "模拟电子技术",
+          "content": "× 77.×"
+        },
+        {
+          "id": 7544,
+          "subject": "模拟电子技术",
+          "content": "× 101. √"
+        },
+        {
+          "id": 7545,
+          "subject": "模拟电子技术",
+          "content": "× 103. √"
+        },
+        {
+          "id": 7546,
+          "subject": "模拟电子技术",
+          "content": "× 105. √"
+        },
+        {
+          "id": 7547,
+          "subject": "模拟电子技术",
+          "content": "× 109. √"
+        },
+        {
+          "id": 7548,
+          "subject": "模拟电子技术",
+          "content": "× 115. √"
+        },
+        {
+          "id": 7549,
+          "subject": "模拟电子技术",
+          "content": "× 120.× 121. √"
+        },
+        {
+          "id": 7550,
+          "subject": "模拟电子技术",
+          "content": "× 123. √"
+        },
+        {
+          "id": 7709,
+          "subject": "模拟电子技术",
+          "content": "6V，802～"
+        },
+        {
+          "id": 7710,
+          "subject": "模拟电子技术",
+          "content": "IAF|= 1，A ＋B = 2nπ"
+        },
+        {
+          "id": 7711,
+          "subject": "模拟电子技术",
+          "content": "8421BCD"
+        },
+        {
+          "id": 7712,
+          "subject": "模拟电子技术",
+          "content": "集电极开路门，TSL门（三态门电路"
+        },
+        {
+          "id": 7843,
+          "subject": "模拟电子技术",
+          "content": "7 UcES"
+        },
+        {
+          "id": 7859,
+          "subject": "模拟电子技术",
+          "content": "7 - 0.7"
+        },
+        {
+          "id": 7873,
+          "subject": "数字电子技术",
+          "content": "根据反演规则，F=A(B+"
+        },
+        {
+          "id": 7874,
+          "subject": "数字电子技术",
+          "content": "逻辑函数F=A④(A④"
+        },
+        {
+          "id": 7878,
+          "subject": "数字电子技术",
+          "content": "如图所示电路能实现的逻辑功能是（"
+        },
+        {
+          "id": 7892,
+          "subject": "数字电子技术",
+          "content": "最小项ABD的逻辑相邻最小项是（"
+        },
+        {
+          "id": 7893,
+          "subject": "数字电子技术",
+          "content": "．如图所示电路能实现的逻辑功能是（ AO"
+        },
+        {
+          "id": 7932,
+          "subject": "数字电子技术",
+          "content": "逻辑函数Y=AC+ABD+BCD(E+"
+        },
+        {
+          "id": 7944,
+          "subject": "数字电子技术",
+          "content": "以下式子中不正确的是（"
+        },
+        {
+          "id": 7945,
+          "subject": "数字电子技术",
+          "content": "已知某触发器的特性表如下（"
+        },
+        {
+          "id": 7959,
+          "subject": "数字电子技术",
+          "content": "逻辑函数的表示方法中不具有唯一性的是（"
+        },
+        {
+          "id": 7960,
+          "subject": "数字电子技术",
+          "content": "TTL或非门的多余输入端需要（ )."
+        },
+        {
+          "id": 7966,
+          "subject": "数字电子技术",
+          "content": "与八进制数（47.3）：等值的数为（"
+        },
+        {
+          "id": 7967,
+          "subject": "数字电子技术",
+          "content": "逻辑代数中与普通代数相似的定律有交换律、（"
+        },
+        {
+          "id": 8059,
+          "subject": "模拟电子技术",
+          "content": "1KΩ 100Ω"
+        },
+        {
+          "id": 8126,
+          "subject": "模拟电子技术",
+          "content": "7V 13V 15V"
+        },
+        {
+          "id": 8127,
+          "subject": "模拟电子技术",
+          "content": "7V 12V 13V"
+        },
+        {
+          "id": 8310,
+          "subject": "模拟电子技术",
+          "content": "3𝐾 = 1(m"
+        },
+        {
+          "id": 8389,
+          "subject": "模拟电子技术",
+          "content": "|𝐴𝐹| ≥ 1"
+        },
+        {
+          "id": 8390,
+          "subject": "模拟电子技术",
+          "content": "𝑌 = 𝐶 + 𝐴𝐵"
+        },
+        {
+          "id": 8442,
+          "subject": "模拟电子技术",
+          "content": "C 2、A 3、A 4、D 5、D"
+        },
+        {
+          "id": 8443,
+          "subject": "模拟电子技术",
+          "content": "A 7、D 8、C 9、C 10、C"
+        },
+        {
+          "id": 8462,
+          "subject": "模拟电子技术",
+          "content": "(91, 𝐵)16"
+        },
+        {
+          "id": 8464,
+          "subject": "模拟电子技术",
+          "content": "RAM ROM"
+        },
+        {
+          "id": 8467,
+          "subject": "模拟电子技术",
+          "content": "𝑓 = 1 2𝜋𝑅𝐶 二、【水木观畴"
+        },
+        {
+          "id": 8505,
+          "subject": "数字电子技术",
+          "content": "A 【水木观畴"
+        },
+        {
+          "id": 8508,
+          "subject": "数字电子技术",
+          "content": "76 ； 8 。"
+        },
+        {
+          "id": 8522,
+          "subject": "模拟电子技术",
+          "content": "bx166 A Z8.64A"
+        },
+        {
+          "id": 8533,
+          "subject": "模拟电子技术",
+          "content": "71 -200 (1)"
+        },
+        {
+          "id": 8551,
+          "subject": "模拟电子技术",
+          "content": "8mV 二 b39 h4 e +lH)Re"
+        },
+        {
+          "id": 8559,
+          "subject": "模拟电子技术",
+          "content": "8k l00 k R."
+        },
+        {
+          "id": 8561,
+          "subject": "模拟电子技术",
+          "content": "7V 06s R3"
+        },
+        {
+          "id": 8563,
+          "subject": "模拟电子技术",
+          "content": "7-2 =/m"
+        },
+        {
+          "id": 8680,
+          "subject": "模拟电子技术",
+          "content": "79𝐾 1𝐾+0.79𝐾 = −66"
+        },
+        {
+          "id": 8683,
+          "subject": "模拟电子技术",
+          "content": "𝐴 + 𝐵 _"
+        },
+        {
+          "id": 8688,
+          "subject": "模拟电子技术",
+          "content": "Y=𝐴 + 𝐵 _"
+        },
+        {
+          "id": 8691,
+          "subject": "模拟电子技术",
+          "content": "𝑖 = 𝐼𝑠 (𝑒 𝑢 𝑈𝑇 − 1)"
+        },
+        {
+          "id": 8692,
+          "subject": "模拟电子技术",
+          "content": "|AF|≥1"
+        },
+        {
+          "id": 8706,
+          "subject": "数字电子技术",
+          "content": "01μF C"
+        },
+        {
+          "id": 8749,
+          "subject": "真题综合",
+          "content": "简述分裂国家罪和背叛国家罪的区别（10分） 【"
+        },
+        {
+          "id": 8750,
+          "subject": "真题综合",
+          "content": "简述间接实行犯的正犯性及其表现形式（10分） 【"
+        },
+        {
+          "id": 8762,
+          "subject": "真题综合",
+          "content": "植物呼吸PPP途径，下列选项错误的是（"
+        },
+        {
+          "id": 8764,
+          "subject": "真题综合",
+          "content": "生长素得极性运输机制（"
+        },
+        {
+          "id": 8765,
+          "subject": "真题综合",
+          "content": "土壤施磷肥过多时，容易引起农作物缺（"
+        },
+        {
+          "id": 8766,
+          "subject": "真题综合",
+          "content": "下列选项中，植物体中清除活性氧的酶是（"
+        },
+        {
+          "id": 8767,
+          "subject": "真题综合",
+          "content": "下列关于韧皮部运输说法，错误的是（"
+        },
+        {
+          "id": 8768,
+          "subject": "真题综合",
+          "content": "高梁碳同化对于CO2的吸收有两个受体，依次是（"
+        },
+        {
+          "id": 8769,
+          "subject": "真题综合",
+          "content": "光呼吸中，从叶绿体中转入到过氧化物酶体的物质是（"
+        },
+        {
+          "id": 8770,
+          "subject": "真题综合",
+          "content": "在植物生长相关性中，与果树大小年相关的是（"
+        },
+        {
+          "id": 8777,
+          "subject": "真题综合",
+          "content": "水分在植物细胞间隙中流动属于（"
+        },
+        {
+          "id": 8778,
+          "subject": "真题综合",
+          "content": "下列细胞中钙的叙述，错误的是（"
+        },
+        {
+          "id": 8782,
+          "subject": "真题综合",
+          "content": "属于枯类化合物的是（"
+        },
+        {
+          "id": 8783,
+          "subject": "真题综合",
+          "content": "下列反应发生在过氧化物酶体的是（"
+        },
+        {
+          "id": 8785,
+          "subject": "真题综合",
+          "content": "以下对ABA生理功能叙述，错误的是（"
+        },
+        {
+          "id": 8786,
+          "subject": "真题综合",
+          "content": "属于感性运动的是（"
+        },
+        {
+          "id": 8798,
+          "subject": "计算机学科专业基础408",
+          "content": "BDBBA DCDCC CBAAB"
+        },
+        {
+          "id": 8799,
+          "subject": "计算机学科专业基础408",
+          "content": "ADDBC BCAAD CDDAD"
+        },
+        {
+          "id": 8802,
+          "subject": "计算机学科专业基础408",
+          "content": "CDACA ABDCD BBABB"
+        },
+        {
+          "id": 8813,
+          "subject": "计算机学科专业基础408",
+          "content": "> 8 + 4 + I (="
+        },
+        {
+          "id": 8818,
+          "subject": "计算机学科专业基础408",
+          "content": "2 = 9. 4m s 。"
+        },
+        {
+          "id": 8837,
+          "subject": "计算机学科专业基础408",
+          "content": "17 + O.Ql + 8 ="
+        },
+        {
+          "id": 8839,
+          "subject": "计算机学科专业基础408",
+          "content": "BCA DB"
+        },
+        {
+          "id": 8845,
+          "subject": "计算机学科专业基础408",
+          "content": ", 故程 序计 数器 ( P"
+        },
+        {
+          "id": 8850,
+          "subject": "计算机学科专业基础408",
+          "content": ":(1/1."
+        },
+        {
+          "id": 8853,
+          "subject": "计算机学科专业基础408",
+          "content": "ADDDD AAACD"
+        },
+        {
+          "id": 8855,
+          "subject": "计算机学科专业基础408",
+          "content": "BBDCD DACDB"
+        },
+        {
+          "id": 8872,
+          "subject": "计算机学科专业基础408",
+          "content": "118.2.2"
+        },
+        {
+          "id": 8873,
+          "subject": "计算机学科专业基础408",
+          "content": "11.120.1"
+        },
+        {
+          "id": 8943,
+          "subject": "计算机学科专业基础408",
+          "content": "14.5.0/25"
+        },
+        {
+          "id": 8944,
+          "subject": "计算机学科专业基础408",
+          "content": "14.5.128/25"
+        },
+        {
+          "id": 8945,
+          "subject": "计算机学科专业基础408",
+          "content": "14.3.2 R2 EO"
+        },
+        {
+          "id": 8947,
+          "subject": "计算机学科专业基础408",
+          "content": "17.24.2"
+        },
+        {
+          "id": 8948,
+          "subject": "计算机学科专业基础408",
+          "content": "17.20.0/25"
+        },
+        {
+          "id": 8974,
+          "subject": "计算机学科专业基础408",
+          "content": "123.15.2/24"
+        },
+        {
+          "id": 8987,
+          "subject": "计算机学科专业基础408",
+          "content": "106、108 file2 file2"
+        },
+        {
+          "id": 8996,
+          "subject": "计算机学科专业基础408",
+          "content": "168.1.126"
+        },
+        {
+          "id": 9001,
+          "subject": "计算机学科专业基础408",
+          "content": "66GB/s"
+        },
+        {
+          "id": 9031,
+          "subject": "计算机学科专业基础408",
+          "content": "若无向图G=(V,"
+        },
+        {
+          "id": 9065,
+          "subject": "计算机学科专业基础408",
+          "content": "168.3.251"
+        },
+        {
+          "id": 9066,
+          "subject": "计算机学科专业基础408",
+          "content": "168.3.129"
+        },
+        {
+          "id": 9067,
+          "subject": "计算机学科专业基础408",
+          "content": "168.3.125"
+        },
+        {
+          "id": 9068,
+          "subject": "计算机学科专业基础408",
+          "content": "168.3.12"
+        },
+        {
+          "id": 9091,
+          "subject": "英语",
+          "content": "02，解得 y=20， y+10 （2=30."
+        },
+        {
+          "id": 9125,
+          "subject": "英语",
+          "content": "1%，当然也低于中国（2.4%）。故（"
+        }
+      ]
+    }
+  ]
+}

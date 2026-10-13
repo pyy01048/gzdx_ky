@@ -1,20 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { analysisApi } from '../api/client'
 import { SubTag, Segmented, Empty, toast } from '../components/UI'
-
-const SUBJECTS = [
-  { value: '数学', name: '数学' },
-  { value: '数字电子技术', name: '数电' },
-  { value: '模拟电子技术', name: '模电' },
-  { value: '英语', name: '英语' },
-  { value: '政治', name: '政治' },
-  { value: '408', name: '408' }
-]
+import { useSubjectConfig, subjectLabel } from '../hooks/useSubjectConfig'
 
 const PREFERS = [
-  { value: 'auto', name: '自动' },
-  { value: 'local', name: '本地模型' },
-  { value: 'cloud', name: '云端 API' }
+  { value: 'auto', label: '自动' },
+  { value: 'local', label: '本地模型' },
+  { value: 'cloud', label: '云端 API' }
 ]
 
 function renderLatexText(s) {
@@ -23,7 +15,8 @@ function renderLatexText(s) {
 }
 
 export default function Analysis() {
-  const [subject, setSubject] = useState('数学')
+  const { exam, support } = useSubjectConfig()
+  const [subject, setSubject] = useState('')
   const [prefer, setPrefer] = useState('auto')
   const [question, setQuestion] = useState('')
   const [imagePath, setImagePath] = useState('')
@@ -35,6 +28,16 @@ export default function Analysis() {
   const [loadLectures, setLoadLectures] = useState(false)
   const [lecturesError, setLecturesError] = useState('')
   const [error, setError] = useState('')
+
+  const examOptions = useMemo(() => exam.map((s) => ({ value: s, label: subjectLabel(s) })), [exam])
+  const allLabels = useMemo(() => [...exam, ...support].map(subjectLabel), [exam, support])
+
+  /* 科目来自配置：首次到达、或当前选中项被移出配置时，落到第一个合法科目 */
+  useEffect(() => {
+    setSubject((prev) => (
+      prev && [...exam, ...support].includes(prev) ? prev : (exam[0] || support[0] || '')
+    ))
+  }, [exam, support])
 
   const fetchLectures = useCallback(async () => {
     setLoadLectures(true)
@@ -126,7 +129,19 @@ export default function Analysis() {
           <p className="page-sub">题目输入 → 结构化分析（已知条件 / 思路 / 分步推导 / 结论验证）→ HTML 可视化讲义（KaTeX 公式渲染）</p>
         </div>
         <div className="page-actions row">
-          <Segmented value={subject} onChange={setSubject} options={SUBJECTS} />
+          <Segmented value={subject} onChange={setSubject} options={examOptions} />
+          {support.length > 0 && (
+            <select
+              className="select"
+              style={{ width: 132 }}
+              aria-label="支撑科目"
+              value={support.includes(subject) ? subject : ''}
+              onChange={(e) => e.target.value && setSubject(e.target.value)}
+            >
+              <option value="">支撑科目…</option>
+              {support.map((s) => <option key={s} value={s}>{subjectLabel(s)}</option>)}
+            </select>
+          )}
           <Segmented value={prefer} onChange={setPrefer} options={PREFERS} />
         </div>
       </div>
@@ -137,7 +152,7 @@ export default function Analysis() {
           <textarea
             className="input"
             rows={4}
-            placeholder="粘贴题目文本（支持数学 / 数电 / 模电 / 英语 / 政治 / 408）"
+            placeholder={`粘贴题目文本（支持 ${allLabels.join(' / ')}）`}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
           />

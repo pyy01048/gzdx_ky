@@ -79,6 +79,7 @@ ALLOWED_4XX = {
     "/api/kaoyan/analysis/compare": ({422}, "缺必填查询参数 school_ids"),
     "/api/kaoyan/analysis/recommend": ({422}, "缺必填查询参数 score"),
     "/api/netdisk/search": ({422}, "缺必填查询参数 keyword"),
+    "/api/netdisk/content": ({422}, "缺必填查询参数 fs_id"),
     "/api/planner/daily": ({422}, "缺必填查询参数 date"),
     "/api/planner/daily/range": ({422}, "缺必填查询参数 start"),
     "/api/planner/month": ({422}, "缺必填查询参数 year"),
@@ -98,6 +99,9 @@ ALLOWED_4XX = {
     "/api/quiz/questions/{question_id}": ({404}, "M2-5 新端点：题目不存在时 404（测试库无题目数据），与同路径 PUT/DELETE 行为一致"),
     "/api/netdisk/files/{file_id}": ({404}, "测试库无网盘文件"),
     "/api/netdisk/preview/{file_id}": ({404}, "测试库无网盘文件"),
+    "/api/netdisk/files/{file_id}/content": ({404}, "#26 新增：网盘原文服务端代理流，测试库无该行 → 404，与 /files/{file_id} 行为一致"),
+    "/api/documents/{doc_id}/raw": ({404}, "#26 新增：原文字节流。sample_data 的 doc id=1 是 IMA 式媒体号（本地从来没有该文件）→ 404 带人话原因，正是这条端点该有的行为；有真文件时 200 由 tests/test_document_file_stream.py 锁"),
+    "/api/documents/{doc_id}/download": ({404}, "#26 新增：同上，下载分支"),
     "/api/netdisk/platform-config/{platform}": ({404}, "测试库无该平台配置"),
     "/api/ai/build-embeddings/status/{task_id}": ({404}, "内存态任务表为空，任务不存在"),
     "/api/quality/eval-runs/{run_id}": ({404}, "评测任务不存在时 404：conftest 强制重定向到临时空库，eval_runs 无数据；已核实真库 eval_runs 有 id=1~5、路由定义于 routers/quality.py:47 且已在 main.py:240 注册，属测试库预期空态而非源码缺陷"),
@@ -291,6 +295,66 @@ def test_no_get_route_is_silently_unguarded(app_module, get_cases):
     # 反向：排除规则里不该有已不存在的路由（避免死规则掩盖新问题）
     stale = (set(SKIP_PATHS) | set(KNOWN_SOURCE_BUGS)) - all_get
     assert not stale, f"以下路由已不存在，请清理 SKIP_PATHS/KNOWN_SOURCE_BUGS：{sorted(stale)}"
+
+
+#: 前端 `src/api/client.js` 实际调用的**非 GET** 接口。契约测试主体只遍历 GET，
+#: POST 一直是盲区 —— 曾经发生过装饰器被并进注释横幅（`# ---- #@router.post("/ocr")`）
+#: 导致路由静默消失、前端 404 的事故，这里补一道存在性守卫。
+CRITICAL_POST_ROUTES = (
+    "/api/documents/ocr",
+    "/api/documents/upload",
+    "/api/documents/{doc_id}/parse",
+    "/api/errors/ocr",
+    "/api/ai/chat",
+    "/api/ai/rag-search",
+    "/api/tasks",
+)
+
+
+def test_critical_post_routes_are_registered(app_module):
+    """守卫：前端要调的 POST 接口必须真的挂在 app 上。
+
+    只断言"路径 + post 方法存在"，不发请求（POST 有副作用，本文件的原则是
+    绝不发非 GET 请求）。
+    """
+    spec = app_module.openapi()
+    paths = spec["paths"]
+    missing = [p for p in CRITICAL_POST_ROUTES
+               if p not in paths or "post" not in paths[p]]
+    assert not missing, (
+        "以下前端在调的 POST 接口未在路由表里（多半是装饰器漏写/被注释吞掉）："
+        f"{missing}"
+    )
+
+
+def test_no_router_decorator_swallowed_by_comment(_routers_dir):
+    """守卫：注释横幅里不许藏 `@router.*`。
+
+    分隔线 `# ---- #@router.post("/ocr")` 这种写法在语法上完全合法 —— 整行是
+    注释，装饰器随之消失，函数变成"存在但永不注册"的死码，而调用它的前端只在
+    运行时 404。AST 看不见它，openapi 只在重启后才察觉，所以只能用文本扫。
+    """
+    offenders = []
+    for root, _dirs, files in os.walk(_routers_dir):
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(root, name)
+            with open(path, encoding="utf-8-sig") as fh:
+                for lineno, line in enumerate(fh, 1):
+                    s = line.strip()
+                    if s.startswith("#") and "@router." in s:
+                        offenders.append(f"{path}:{lineno}: {s[:90]}")
+    assert not offenders, (
+        "装饰器被并进注释行，路由不会注册：\n  " + "\n  ".join(offenders)
+    )
+
+
+@pytest.fixture(scope="module")
+def _routers_dir():
+    d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "routers")
+    assert os.path.isdir(d), f"找不到 routers 目录：{d}"
+    return d
 
 
 def test_skip_paths_actually_have_side_effects():

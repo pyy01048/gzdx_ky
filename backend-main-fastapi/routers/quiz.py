@@ -16,6 +16,7 @@ from models import (
     KnowledgePoint,
 )
 from schemas import QuizQuestionCreate, QuizQuestionUpdate, QuizSubmit, GenericResponse
+from services.quiz_content_gate import admit as gate_admit
 from services.delete_guard import require_physical_delete_enabled
 from services.review_scheduler import ReviewScheduler
 
@@ -545,9 +546,35 @@ async def update_question(
     return _serialize_question(question)
 
 
+def _gate_rows(rows: list[dict]) -> tuple[list[dict], dict[str, int]]:
+    """用题目内容闸门过滤待写入的题，返回 ``(放行列表, 拦截原因计数)``。
+
+    拦截项**不静默丢弃**：调用方必须把计数回给前端，否则用户看不到
+    「导入 20 道只进 3 道」的原因。
+
+    手工单题录入（``POST /questions``）和人工确认闭环
+    （``POST /import/confirm``）不走这里——那是人有意识覆盖闸门的入口，
+    登记在 ``tests/test_quiz_gate_ast.py`` 的白名单里。
+    """
+    kept: list[dict] = []
+    rejected: dict[str, int] = {}
+    for p in rows:
+        ok, reason = gate_admit(
+            (p.get("content") or "").strip(),
+            options=p.get("options") or [],
+            answer=p.get("answer"),
+            source=p.get("source") or "",
+        )
+        if ok:
+            kept.append(p)
+        else:
+            rejected[reason] = rejected.get(reason, 0) + 1
+    return kept, rejected
+
+
 @router.post("/questions")
 async def add_question(question: QuizQuestionCreate, db: Session = Depends(get_db)):
-    """添加题目。"""
+    """添加题目（人工单题录入，内容闸门白名单入口）。"""
     new_q = QuizQuestion(**question.model_dump())
     db.add(new_q)
     db.commit()
@@ -569,23 +596,34 @@ async def import_questions(
     """
     from services.quiz_autoclassify import autoclassify
 
-    count = 0
+    rejected_by_gate: dict[str, int] = {}
     classify_stats = None
     if auto_classify and questions:
         payloads = [q.model_dump() for q in questions]
         classify_stats = autoclassify(payloads, use_llm=True, db=db)
+        payloads, rejected_by_gate = _gate_rows(payloads)
         for p in payloads:
             db.add(QuizQuestion(**p))
         count = len(payloads)
     else:
-        for q in questions:
-            db.add(QuizQuestion(**q.model_dump()))
-        count = len(questions)
+        rows = [q.model_dump() for q in questions]
+        rows, rejected_by_gate = _gate_rows(rows)
+        for p in rows:
+            db.add(QuizQuestion(**p))
+        count = len(rows)
     db.commit()
     msg = f"成功导入 {count} 道题目"
+    if rejected_by_gate:
+        msg += f"（闸门拦截 {sum(rejected_by_gate.values())} 道）"
     if classify_stats and classify_stats["classified"]:
         msg += f"（自动分类 {classify_stats['classified']}：规则 {classify_stats['by_rules']}/AI {classify_stats['by_llm']}）"
-    return {"imported": count, "classify": classify_stats, "message": msg}
+    return {
+        "imported": count,
+        "rejected": sum(rejected_by_gate.values()),
+        "rejected_by_gate": rejected_by_gate,
+        "classify": classify_stats,
+        "message": msg,
+    }
 
 
 @router.get("/modes")
@@ -1040,25 +1078,40 @@ async def import_markdown(payload: dict, db: Session = Depends(get_db)):
 
     # —— 预览模式：只返回候选题，绝不落库 —— #
     if dry_run:
+        _, preview_rejected = _gate_rows(candidates)
         return {
             "dry_run": True,
             "imported": 0,
             "candidate_count": len(candidates),
+            "would_reject": sum(preview_rejected.values()),
+            "rejected_by_gate": preview_rejected,
             "candidates": candidates,
             "classify": classify_stats,
-            "message": f"已解析 {len(candidates)} 道候选题（未落库），请确认后调用 /api/quiz/import/confirm",
+            "message": (
+                f"已解析 {len(candidates)} 道候选题（未落库），请确认后调用 /api/quiz/import/confirm"
+                + (f"；其中 {sum(preview_rejected.values())} 道会被内容闸门拦截" if preview_rejected else "")
+            ),
         }
 
     # —— 直接落库（原有行为）—— #
+    candidates, rejected_by_gate = _gate_rows(candidates)
     count = 0
     for cand in candidates:
         db.add(QuizQuestion(**_candidate_to_model_fields(cand)))
         count += 1
     db.commit()
     msg = f"成功导入 {count} 道题目"
+    if rejected_by_gate:
+        msg += f"（闸门拦截 {sum(rejected_by_gate.values())} 道）"
     if classify_stats["classified"]:
         msg += f"（自动分类 {classify_stats['classified']}：规则 {classify_stats['by_rules']}/AI {classify_stats['by_llm']}）"
-    return {"imported": count, "classify": classify_stats, "message": msg}
+    return {
+        "imported": count,
+        "rejected": sum(rejected_by_gate.values()),
+        "rejected_by_gate": rejected_by_gate,
+        "classify": classify_stats,
+        "message": msg,
+    }
 
 
 @router.post("/import/confirm")

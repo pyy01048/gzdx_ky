@@ -12,15 +12,22 @@
    且 **scan 完全只读**：调用后 quiz_questions 行数不变；
 2. POST /confirm 只插入被勾选的候选题，source=「知识库:<文件名>」，行数增加；
 3. 重复 confirm 同一批 → inserted=0、skipped_existing=N（幂等，不重复插入）；
-4. doc_ids 不存在 → 404（/api 下 detail 被全局 SPA 处理器改写为 "Not Found"）；
+4. doc_ids 不存在 → 404，detail 为 "文档不存在: [...]"（main.py 的 SPA 处理器已改为保留路由 detail，不再压成 "Not Found"）；
 5. confirm 未传任何选择 → 400。
 """
 from __future__ import annotations
+
+import os
 
 import pytest
 
 from database import SessionLocal
 from models import Document, QuizQuestion
+from services.delete_guard import (
+    ENV_ENABLED_VALUE,
+    ENV_FLAG,
+    require_physical_delete_enabled,
+)
 
 
 PREFIX = "QA-KB-IMPORT"
@@ -90,9 +97,17 @@ def kb_docs():
         yield {"ids": created_ids, "files": created_files}
     finally:
         # 清理：删除本用例产生的题目（source 带唯一前缀）与文档
-        db.query(QuizQuestion).filter(
-            QuizQuestion.source.like(f"知识库:{PREFIX}%")
-        ).delete(synchronize_session=False)
+        # 物理删除闸门：quiz_questions 的 DELETE 不可逆，测试也不例外。
+        # 本用例只删自己用唯一前缀创建的题目（范围可验证），因此在
+        # 这里显式临时放行——测试环境本就需要这条路径可用。
+        os.environ[ENV_FLAG] = ENV_ENABLED_VALUE
+        try:
+            require_physical_delete_enabled("quiz_questions")
+            db.query(QuizQuestion).filter(
+                QuizQuestion.source.like(f"知识库:{PREFIX}%")
+            ).delete(synchronize_session=False)
+        finally:
+            os.environ.pop(ENV_FLAG, None)
         db.query(Document).filter(Document.id.in_(created_ids)).delete(
             synchronize_session=False
         )
@@ -204,10 +219,10 @@ def test_confirm_accepts_doc_ids_candidate_indexes(client, kb_docs):
 
 
 def test_scan_doc_not_found_404(client):
-    """scan 传入不存在的 doc_id → 404（/api 下 detail 被改写为 Not Found）。"""
+    """scan 传入不存在的 doc_id → 404，且 detail 是人话（不是被改写的 Not Found）。"""
     r = client.post("/api/kb-import/scan", json={"doc_ids": [99999999]})
     assert r.status_code == 404
-    assert r.json()["detail"] == "Not Found"
+    assert "文档不存在" in r.json()["detail"]
 
 
 def test_confirm_doc_not_found_404(client):
@@ -217,7 +232,7 @@ def test_confirm_doc_not_found_404(client):
         json={"selected": [{"doc_id": 99999999, "index": 0}]},
     )
     assert r.status_code == 404
-    assert r.json()["detail"] == "Not Found"
+    assert "文档不存在" in r.json()["detail"]
 
 
 def test_confirm_no_selection_400(client):

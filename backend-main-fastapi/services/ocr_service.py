@@ -8,7 +8,10 @@
 import os
 import re
 import threading
+import logging
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # 延迟导入：避免未安装时影响后端启动
 _engine = None
@@ -49,22 +52,36 @@ class OCRService:
 
     def __init__(self, device: str = "cpu"):
         self.device = device
+        #: 最近一次失败的原因（供上层可观测；成功时置 None）
+        self.last_error: Optional[str] = None
+        self._warned = False
 
     def recognize(self, image_path: str) -> str:
         """识别图片中的文字，返回拼接文本。
 
         :param image_path: 本地图片路径（png/jpg/bmp 等）
-        :return: 识别出的文本，每行以换行分隔
+        :return: 识别出的文本，每行以换行分隔；失败返回 ""（原因见 last_error）
         """
         if not os.path.exists(image_path):
+            self.last_error = "图片不存在"
             return ""
         try:
             engine = _get_engine(self.device)
             result, _ = engine(image_path)
-        except Exception:
+        except Exception as e:
+            # **可观测性修复**：旧代码 `except Exception: return ""` 把
+            # 依赖缺失（缺 six/yaml/Pillow/onnxruntime）等致命错误吞成空串，
+            # 上层只看到「0 字」，无从判断是模型坏了还是图里没字。
+            # 这里记录真实异常，并只对「首次」打印一次堆栈避免刷屏。
+            self.last_error = f"{type(e).__name__}: {e}"
+            if not getattr(self, "_warned", False):
+                logger.error("OCR 识别失败（后续同类错误不再重复打印）: %s", self.last_error,
+                             exc_info=True)
+                self._warned = True
             return ""
 
         if not result:
+            self.last_error = "引擎返回空结果"
             return ""
         lines = []
         for item in result:
@@ -72,6 +89,7 @@ class OCRService:
             text = item[1] if len(item) > 1 else ""
             if text and str(text).strip():
                 lines.append(str(text).strip())
+        self.last_error = None
         return "\n".join(lines)
 
     def recognize_bytes(self, image_bytes: bytes) -> str:

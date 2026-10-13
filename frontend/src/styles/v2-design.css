@@ -97,6 +97,21 @@
 .dash-hero-goal span { display: inline-flex; align-items: center; gap: 6px; }
 .dash-hero-cta { display: flex; flex-direction: column; gap: 14px; align-items: flex-end; }
 
+/* 未配置初试日期 / 后端估算日期的可辨识标记（避免把估算值当成官方日期） */
+.dash-hero-set,
+.ecd-unset,
+.sc-unset {
+  font-size: 12px; font-weight: 600; text-decoration: underline;
+  color: inherit; opacity: 0.9; margin-left: 8px;
+}
+.dash-hero-set { font-size: 13px; vertical-align: middle; }
+.dash-hero-est {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; opacity: 0.85;
+  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.35);
+  vertical-align: middle;
+}
+
 /* 4 张统计卡 */
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .stat-card {
@@ -123,6 +138,8 @@
 
 /* 双栏：今日任务 / 复习提醒 */
 .dash-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+/* 界面自定义把成对区块藏掉一半时，剩下的一块铺满整行，不留半空列 */
+.dash-row > *:only-child { grid-column: 1 / -1; }
 .task-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .task-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface-2); }
 .task-item.done { opacity: 0.62; }

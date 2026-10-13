@@ -80,7 +80,16 @@ const apiMocks = {
     keywords: vi.fn().mockResolvedValue({}),
   },
   reviewApi: { due: vi.fn().mockResolvedValue({ total: 0, items: [] }) },
-  goalsApi: { list: vi.fn().mockResolvedValue([]) },
+  goalsApi: {
+    list: vi.fn().mockResolvedValue([]),
+    // hooks/useSubjectConfig 首屏读取：科目下拉/分类页签/进度分母的唯一来源
+    subjects: vi.fn().mockResolvedValue({
+      exam_subjects: ['数学', '英语', '政治'],
+      support_subjects: [],
+      all_known: ['数学', '英语', '政治'],
+      using_default: true,
+    }),
+  },
 }
 
 vi.mock('../api/client', () => ({

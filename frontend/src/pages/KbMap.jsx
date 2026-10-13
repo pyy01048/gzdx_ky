@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { taxonomyApi, reviewApi, quizApi } from '../api/client'
+import { taxonomyApi, reviewApi, quizApi, qualityApi } from '../api/client'
 import { toast, Empty } from '../components/UI'
 import {
   RefreshCw, CheckCircle, ChevronRight, ChevronDown,
@@ -50,6 +50,7 @@ export default function KbMap() {
   const [progress, setProgress] = useState(null)    // 全局掌握度总览
   const [due, setDue] = useState([])                // 今日复习队列
   const [coverage, setCoverage] = useState(null)    // 结构化覆盖体检
+  const [quality, setQuality] = useState(null)      // 语料质量层（qualityApi.treeOverlay）
   const [status, setStatus] = useState('loading')  // loading | ok | error
   const [treeLoading, setTreeLoading] = useState(false)
   const [activeSubject, setActiveSubject] = useState('')
@@ -70,12 +71,13 @@ export default function KbMap() {
     setStatus('loading')
     setErrMsg('')
     try {
-      const [sj, t, p, d, c] = await Promise.all([
+      const [sj, t, p, d, c, q] = await Promise.all([
         taxonomyApi.subjects(),
         taxonomyApi.tree(),
         reviewApi.progress(),
         reviewApi.due({ limit: 30 }),
         taxonomyApi.coverage(),
+        qualityApi.treeOverlay().catch(() => null),   // 质量层失败不影响地图主体
       ])
       setSubjects(normalizeSubjects(sj))
       const tNodes = t?.tree || []
@@ -83,6 +85,7 @@ export default function KbMap() {
       setProgress(p)
       setDue(d?.items || [])
       setCoverage(c)
+      setQuality(q)
       setActiveSubject('')
       // 默认展开第一个有知识点的科目首个有知识点的章节
       const first = tNodes.find((s) => s.knowledge_point_count > 0)
@@ -217,6 +220,36 @@ export default function KbMap() {
       .filter((s) => s.knowledge_point_count > 0)
       .map((s) => ({ subject: s.subject, question_count: s.knowledge_point_count }))
   }, [subjects, tree])
+
+  /* 语料质量层：学科 → 可检索块数 / 平均打标置信 / 弃权率（/api/quality/tree-overlay）。
+     小节级用 chunk 的 l2_chapter（原文小节名），与大纲章节名对不上就不显示——不猜对应关系。 */
+  const qualityBySubject = useMemo(() => {
+    const m = new Map()
+    for (const s of (quality && quality.subjects) || []) {
+      m.set(s.subject, s)
+      const k = String(s.subject || '').replace(/\s+/g, '')
+      if (!m.has(k)) m.set(k, s)
+    }
+    return m
+  }, [quality])
+
+  /* 只对得上名字，不做模糊归一：对不上时显示"未匹配"而不是"无语料"，
+     因为很可能只是学科叫法不同（如 408 前后缀差异）。 */
+  const pickQuality = useCallback((name) => {
+    if (!name) return null
+    return qualityBySubject.get(name) || qualityBySubject.get(String(name).replace(/\s+/g, '')) || null
+  }, [qualityBySubject])
+
+  const chapterQuality = useCallback((subjectName, title) => {
+    const row = pickQuality(subjectName)
+    if (!row || !row.chapters || !row.chapters.length) return null
+    const t = String(title || '').replace(/\s+/g, '')
+    if (!t) return null
+    return row.chapters.find((c) => String(c.chapter || '').replace(/\s+/g, '') === t) || null
+  }, [pickQuality])
+
+  /* 置信分档：0.40 是后端 CONF_THRESHOLD，低于它标签视为不可信 */
+  const corpusTone = (conf) => (conf != null && conf >= 0.40 ? 'ok' : 'low')
 
   /* ---------------- 三态：加载中 ---------------- */
   if (status === 'loading') {
@@ -355,7 +388,13 @@ export default function KbMap() {
         </div>
       </div>
 
-      {/* 三态：科目为空（接口与结构树都无科目） */}
+      {quality && (
+        <div className="kb-quality-hint">
+          「语料」徽标＝知识库该学科可检索块数与自动打标置信（置信 &lt;0.40 标红，与后端 CONF_THRESHOLD 一致）；
+          弃权＝被判为垃圾/无学科而不参与检索的块。小节级语料统计依赖原文小节名回填，未回填时只显示学科级。
+        </div>
+      )}
+
       {chipSubjects.length === 0 && !treeLoading ? (
         <Empty
           icon={<Book size={44} />}
@@ -385,6 +424,21 @@ export default function KbMap() {
                       </div>
                       <div className="kb-subject-meta">
                         知识点 {subject.knowledge_point_count} · {subject.outline_chapter_count} 章节
+                        {(() => {
+                          const ql = pickQuality(subject.subject)
+                          if (ql) {
+                            const ab = ql.chunks ? Math.round((ql.abstained_chunks / ql.chunks) * 100) : 0
+                            return (
+                              <span className={`kb-corpus tone-${corpusTone(ql.avg_confidence)}`}
+                                title={`知识库该学科可检索块数 ${ql.chunks}，平均打标置信 ${ql.avg_confidence == null ? '—' : ql.avg_confidence}，弃权（判为垃圾/无学科）${ql.abstained_chunks} 块`}>
+                                语料 {ql.chunks} 块 · 置信 {ql.avg_confidence == null ? '—' : ql.avg_confidence} · 弃权 {ab}%
+                              </span>
+                            )
+                          }
+                          return quality
+                            ? <span className="kb-corpus" title="按学科名精确匹配没匹配上；可能只是叫法不同，不代表库里真没有">语料名未匹配</span>
+                            : null
+                        })()}
                       </div>
                     </div>
                     <div className="kb-subject-mastery">
@@ -411,6 +465,15 @@ export default function KbMap() {
                             <span className="kb-chapter-title">{ch.title}</span>
                             <span className="kb-chapter-meta">
                               {hasData ? `${ch.knowledge_point_count} 个知识点` : '暂无资料'}
+                              {(() => {
+                                const cq = chapterQuality(subject.subject, ch.title)
+                                return cq ? (
+                                  <span className="kb-corpus sm"
+                                    title={`原文小节「${cq.chapter}」语料 ${cq.chunks} 块 · 平均置信 ${cq.avg_confidence == null ? '—' : cq.avg_confidence}`}>
+                                    原文语料 {cq.chunks} 块
+                                  </span>
+                                ) : null
+                              })()}
                               {hasData && (
                                 <span className={`kb-bar sm tone-${tone.cls}`}>
                                   <i style={{ width: `${Math.min(100, ch.avg_mastery)}%` }} />

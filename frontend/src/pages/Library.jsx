@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { fmtBytes } from '../utils/format'
 import { documentsApi } from '../api/client'
 import { toast, Empty, Segmented } from '../components/UI'
 import {
@@ -75,15 +76,6 @@ function normalizeList(data) {
   return []
 }
 
-/** 文件大小格式化：B / KB / MB / GB（<1KB 显示字节，0 或缺失显示 —） */
-function fmtSize(n) {
-  const b = Number(n) || 0
-  if (b <= 0) return '—'
-  if (b >= 1024 * 1024 * 1024) return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`
-  if (b >= 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`
-  if (b >= 1024) return `${Math.round(b / 1024)} KB`
-  return `${b} B`
-}
 
 /** 是否已解析：正文长度或分块数任一 > 0 即视为已入库可检索 */
 function isParsed(d) {
@@ -396,7 +388,7 @@ export default function Library() {
                       </span>
                       <span className="lb-subj">{d.subject || '未分类'}</span>
                       <span className="lb-meta">
-                        {DOC_TYPE_LABEL[d.doc_type] || d.file_type || '—'} · {fmtSize(d.size)}
+                        {DOC_TYPE_LABEL[d.doc_type] || d.file_type || '—'} · {fmtBytes(d.size)}
                         {(Number(d.chunk_count) || 0) > 0 && ` · ${d.chunk_count} 分块`}
                       </span>
                       <span className={`lb-state ${parsed ? 'ok' : ''}`}>

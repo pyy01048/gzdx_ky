@@ -90,23 +90,29 @@ def set_config(
         goal = Goal()
         db.add(goal)
 
+    # 合法科目集合 = 内置池 ∪ 已注册自定义科目（subject_config 表里的）。
+    # 历史 bug：只认 taxonomy.ALL_SUBJECTS 内置白名单，用户通过
+    # POST /api/taxonomy/subjects 注册的自定义科目在这里被静默丢弃（返回 ignored），
+    # 导致「设置页加了自定义科目却保存不进去」。现已放开。
+    def _is_known(s: str) -> bool:
+        return s in taxonomy.ALL_SUBJECTS or s in taxonomy._CONFIGURED_SUBJECTS
+
     if exam_subjects is not None:
         cleaned = [taxonomy.normalize_subject(s) for s in exam_subjects if (s or "").strip()]
-        # 只保留 taxonomy 认识的科目，避免写入垃圾值
-        unknown = [s for s in cleaned if s not in taxonomy.ALL_SUBJECTS]
-        cleaned = [s for s in cleaned if s in taxonomy.ALL_SUBJECTS]
+        unknown = [s for s in cleaned if not _is_known(s)]
+        cleaned = [s for s in cleaned if _is_known(s)]
         goal.subjects = list(dict.fromkeys(cleaned)) or None
         if unknown:
             db.commit()
             return {
-                "message": "部分科目无法识别，已忽略",
+                "message": "部分科目无法识别，已忽略（可先到「科目字典」注册自定义科目）",
                 "ignored": unknown,
                 **get_config(db),
             }
 
     if support_subjects is not None:
         cleaned = [taxonomy.normalize_subject(s) for s in support_subjects if (s or "").strip()]
-        cleaned = [s for s in cleaned if s in taxonomy.ALL_SUBJECTS]
+        cleaned = [s for s in cleaned if _is_known(s)]
         goal.support_subjects = list(dict.fromkeys(cleaned)) or None
 
     db.commit()

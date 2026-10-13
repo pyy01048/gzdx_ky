@@ -52,8 +52,11 @@ export const monthMatrix = (year, month) => {
   return rows
 }
 
+/** 中文短日期。缺日期就明说，不能渲染成「NaN月NaN日」假装有时间。 */
 export const fmtDateCN = (dateStr) => {
-  const d = parseDate(dateStr)
+  if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return '日期未知'
+  const d = parseDate(dateStr.slice(0, 10))
+  if (Number.isNaN(d.getTime())) return '日期未知'
   return `${d.getMonth() + 1}月${d.getDate()}日`
 }
 

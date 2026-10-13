@@ -182,7 +182,8 @@ export default function QuizBank() {
     if (!f.content.trim()) { toast('请填写题目内容'); return }
     const body = {
       content: f.content.trim(),
-      options: f.optionsText.split('\n').map((s) => s.trim()).filter(Boolean),
+      options: f.optionsText.split('\n').map((s) => s.trim()).filter(Boolean)
+        .map((opt, i) => String(opt).replace(/^[A-F][\.、:：]\s*/, '') || String(opt)),
       answer: f.answer.trim() || null,
       analysis: f.analysis.trim() || null,
       subject: f.subject || null,
@@ -357,7 +358,7 @@ export default function QuizBank() {
                           const correct = isOpen && item.answer === letter
                           return (
                             <div key={i} style={{ marginBottom: 2 }}>
-                              {letter}. {opt}
+                              {letter}. {String(opt).replace(/^[A-F][\.、:：]\s*/, '')}
                               {correct && (
                                 <span style={{ color: 'var(--green)', marginLeft: 8, fontWeight: 600 }}>✓ 正确答案</span>
                               )}
@@ -438,7 +439,7 @@ export default function QuizBank() {
                         padding: '6px 12px', marginBottom: 4, borderRadius: 6,
                         background: correct ? 'var(--green-soft)' : 'var(--surface-2)',
                       }}>
-                        {letter}. {opt}
+                        {letter}. {String(opt).replace(/^[A-F][\.、:：]\s*/, '')}
                         {correct && <span style={{ color: 'var(--green)', marginLeft: 8 }}>✓</span>}
                       </div>
                     )

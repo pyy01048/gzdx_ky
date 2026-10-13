@@ -38,14 +38,28 @@ export default function KaoyanCompare() {
   const [result, setResult] = useState({ items: [] })
   const [loading, setLoading] = useState(false)
 
-  // 拉全量院校（仅用于名称回显 + 搜索候选），失败不阻断对比
+  // 拉全量院校（分页拉取：后端 page_size 上限 200，循环翻页直到拉完；失败不阻断对比）
   useEffect(() => {
-    kaoyanApi.schools({ page_size: 1000 })
-      .then((d) => {
-        const list = (d?.items || d?.list || d || []).map((s) => ({ id: s.id, name: s.name }))
-        setAllSchools(list)
-      })
-      .catch(() => {})
+    let alive = true
+    const fetchAll = async () => {
+      const PAGE = 200
+      let page = 1
+      const acc = []
+      try {
+        for (;;) {
+          const d = await kaoyanApi.schools({ page_size: PAGE, page })
+          const list = (d?.items || d?.list || d || [])
+          if (!Array.isArray(list) || list.length === 0) break
+          acc.push(...list.map((s) => ({ id: s.id, name: s.name })))
+          if (list.length < PAGE) break
+          page++
+          if (page > 20) break // 安全上限
+        }
+      } catch { /* 单页失败即停，已拉到的仍可用 */ }
+      if (alive) setAllSchools(acc)
+    }
+    fetchAll()
+    return () => { alive = false }
   }, [])
 
   // 名称回显：本地无 name 的 id，从 allSchools 补全
@@ -73,14 +87,39 @@ export default function KaoyanCompare() {
   }
   const removeSchool = (id) => setSelected((prev) => prev.filter((x) => String(x.id) !== String(id)))
 
-  // 从手输 id 兜底添加（旧入口）
+  // 从手输 id 或院校名添加（支持名称模糊匹配 + 数字 id 两种，均有反馈）
   const addByIds = () => {
-    const ids = keyword.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean)
-    if (!ids.length) return
-    ids.forEach((id) => {
-      if (/^\d+$/.test(id)) addSchool({ id: Number(id), name: schoolName(id) })
+    const parts = keyword.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean)
+    if (!parts.length) return
+    let added = 0
+    const notFound = []
+    parts.forEach((raw) => {
+      // 纯数字 → 按 ID 添加
+      if (/^\d+$/.test(raw)) {
+        const id = Number(raw)
+        if (!selected.some((x) => String(x.id) === String(id))) {
+          addSchool({ id, name: schoolName(id) || `院校 #${id}` })
+          added++
+        }
+        return
+      }
+      // 名称 → 模糊匹配（排除已选）
+      const kw = raw.toLowerCase()
+      const hits = allSchools.filter((s) => (s.name || '').toLowerCase().includes(kw))
+        .filter((s) => !selected.some((x) => String(x.id) === String(s.id)))
+      if (hits.length === 0) {
+        notFound.push(raw)
+      } else {
+        // 完全命中直接加；多条命中取第一条并提示
+        const exact = hits.find((s) => s.name === raw) || hits[0]
+        addSchool(exact)
+        added++
+        if (hits.length > 1) toast(`「${raw}」匹配到 ${hits.length} 所，已添加「${exact.name}」`)
+      }
     })
     setKeyword('')
+    if (notFound.length) toast(`未找到院校：${notFound.join('、')}（可输入 ID 或完整名称）`)
+    else if (added) toast(`已添加 ${added} 所院校`)
   }
 
   const compareNow = () => {
@@ -157,7 +196,7 @@ export default function KaoyanCompare() {
               padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: keyword.trim() ? 'pointer' : 'default',
               background: keyword.trim() ? 'var(--surface-2)' : 'var(--surface-2)', color: keyword.trim() ? 'var(--ink-1)' : 'var(--ink-3)',
             }}>
-            按 ID 添加
+            添加
           </button>
         </div>
 

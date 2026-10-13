@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { kaoyanApi } from '../api/kaoyanApi'
+import { qualityApi } from '../api/client'
 import { Empty } from '../components/UI'
 
 export default function KaoyanRecommend() {
@@ -10,6 +11,11 @@ export default function KaoyanRecommend() {
   const [loading, setLoading] = useState(false)
   const [goalMsg, setGoalMsg] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
+  const [cov, setCov] = useState(null)   // 知识库语料覆盖（/api/quality/major-coverage）
+
+  useEffect(() => {
+    qualityApi.majorCoverage().then(setCov).catch(() => setCov(null))
+  }, [])
 
   const run = () => {
     setLoading(true)
@@ -32,6 +38,24 @@ export default function KaoyanRecommend() {
     <div className="ky-page">
       <h1 style={{ marginBottom: '16px' }}>智能择校推荐</h1>
       <p style={{ color: 'var(--ink-3)', marginBottom: '20px' }}>输入预估分数和偏好，推荐适合的院校</p>
+
+      {cov && cov.summary && (() => {
+        const s = cov.summary
+        return (
+          <div style={{ padding: '10px 14px', marginBottom: '16px', borderRadius: '8px',
+            background: 'var(--surface)', border: '1px solid var(--line)',
+            fontSize: '13px', color: 'var(--ink-2)', lineHeight: 1.7 }}>
+            <b>语料可靠度</b>：知识库覆盖 {s.majors_covered}/{s.majors_with_professional} 个专业的初试专业课
+            （{(s.coverage_rate * 100).toFixed(1)}%）· 语料偏薄 {s.majors_thin} · 已归档未入库 {s.majors_unindexed} · 未覆盖 {s.majors_uncovered}。
+            <div style={{ color: 'var(--ink-3)', fontSize: '12px' }}>
+              覆盖口径＝专业课名与文档学科精确相等（公共课数学/英语/政治不参与）；未覆盖≠答不了，只是本库没有该科目语料。
+              {s.supply_gaps && s.supply_gaps.length > 0 && (
+                <> 供给缺口 TOP：{s.supply_gaps.slice(0, 6).map(g => `${g.subject}(${g.majors} 个专业)`).join('、')}</>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
         <div>
@@ -117,6 +141,16 @@ export default function KaoyanRecommend() {
               <div>
                 <Link to={`/kaoyan/schools/${r.school_id}`} style={{ fontWeight: 600, marginRight: '12px', color: 'var(--ink)', textDecoration: 'none' }}>{r.name}</Link>
                 <span style={{ fontSize: '13px', color: 'var(--ink-3)' }}>{r.level} · {r.province}</span>
+                {r.kb_coverage && (
+                  <div style={{ fontSize: '11px', marginTop: '2px',
+                    color: r.kb_coverage.majors === 0 ? 'var(--ink-3)'
+                      : r.kb_coverage.covered > 0 ? 'var(--green)' : 'var(--red)' }}>
+                    {r.kb_coverage.majors === 0
+                      ? '库内无该校专业方向数据'
+                      : `语料覆盖 ${r.kb_coverage.covered}/${r.kb_coverage.majors} 个专业`
+                        + (r.kb_coverage.uncovered ? ` · 未覆盖 ${r.kb_coverage.uncovered}` : '')}
+                  </div>
+                )}
                 {r.score_breakdown && (
                   <div style={{ fontSize: '11px', color: 'var(--ink-3)', marginTop: '4px' }}>
                     权重明细：分差 {r.score_breakdown.gap} · 复录比 {r.score_breakdown.retest_ratio} · 均分 {r.score_breakdown.admit_avg} · 区域 {r.score_breakdown.region} · 学科 {r.score_breakdown.subject}

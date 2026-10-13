@@ -22,14 +22,18 @@ from models import (
 
 def _to_int(val, default=None):
     try:
-        return int(float(str(val).strip())) if val not in (None, "", None) else default
+        if val is None or str(val).strip() == "":
+            return default
+        return int(float(str(val).strip()))
     except (ValueError, TypeError):
         return default
 
 
 def _to_float(val, default=None):
     try:
-        return float(str(val).strip()) if val not in (None, "") else default
+        if val is None or str(val).strip() == "":
+            return default
+        return float(str(val).strip())
     except (ValueError, TypeError):
         return default
 

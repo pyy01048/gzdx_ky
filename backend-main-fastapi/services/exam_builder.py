@@ -596,6 +596,51 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
         except Exception:
             pass
 
+    # —— 错题 ↔ 知识点联动（2026-10）—— #
+    # 模考回流此前只插 error_records、不挂知识点，导致模考错题在复盘页成「孤岛」
+    # （联调实测：20 条模考错题 0 条有链路）。此处与刷题/手动收录对齐。
+    try:
+        from services import error_linker
+        from models import ErrorRecord
+
+        qids = [wq["question_id"] for wq in wrong_questions]
+        if qids:
+            refluxed = (
+                db.query(ErrorRecord)
+                .filter(
+                    ErrorRecord.question_id.in_(qids),
+                    ErrorRecord.error_reason == "模考判错（自动/自评）",
+                )
+                .all()
+            )
+            for e in refluxed:
+                try:
+                    error_linker.auto_link_error(db, e, top_k=3)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # —— 学习行为埋点（2026-10）—— #
+    # 模考交卷此前完全不产事件，导致学习科学/成长体系拿不到模考维度数据。
+    try:
+        from services.study_event_service import record_event
+
+        record_event(
+            db,
+            "exam_submit",
+            subject=subject,
+            payload={
+                "session_id": session_id,
+                "total_count": len(rows),
+                "correct_count": correct_count,
+                "wrong_count": len(wrong_questions),
+                "score": round(score_sum, 2),
+            },
+        )
+    except Exception:
+        pass
+
     return {
         "session_id": session_id,
         "status": "submitted",

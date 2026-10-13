@@ -136,3 +136,26 @@ def run_all(db_session=None, dry_run: bool = False) -> Dict:
             logger.warning("[collect_all] %s 失败: %s", name, e)
             out[name] = {"error": str(e)[:200]}
     return out
+
+
+def summarize_schools(db_session=None, target_provinces=None, notices_limit: int = 5) -> Dict:
+    """院校汇总卡（只读聚合，供前端「院校汇总」视图一次性拉取）。
+
+    聚合六表（schools/colleges/majors/admissions/scorelines/notices）为每校一张
+    汇总卡。target_provinces 为空时默认六省目标院校。
+    """
+    from database import SessionLocal
+    from services.kaoyan.school_summarizer import SchoolSummarizer
+
+    close = False
+    if db_session is None:
+        db_session = SessionLocal()
+        close = True
+    try:
+        cards = SchoolSummarizer(db_session).summarize_all(
+            target_provinces=target_provinces, notices_limit=notices_limit
+        )
+        return {"school_count": len(cards), "cards": cards}
+    finally:
+        if close:
+            db_session.close()

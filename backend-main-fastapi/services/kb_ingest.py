@@ -119,8 +119,20 @@ def _parse_content(file_path: str, ocr_backend: str = "auto") -> Dict[str, Any]:
     try:
         text = parser.parse(file_path)
     except Exception as e:
-        text = ""
         return {"text": "", "engine": "parser", "ocr_used": "", "ocr_error": f"解析失败: {e}"}
+
+    # 关键修复（2026-10-12）：DocumentParser.parse 在失败时**返回**
+    # `[解析失败 .ppt: ...]` 这样的字符串而不是抛异常，旧逻辑会把它当正文写库，
+    # 造成"解析失败的内容"污染 documents（实测 .ppt/.doc 老格式全部中招）。
+    # 这里显式识别该标记并按失败处理，避免脏数据入库。
+    if isinstance(text, str) and text.lstrip().startswith("[解析失败"):
+        return {"text": "", "engine": "parser", "ocr_used": "",
+                "ocr_error": text.strip()[:200]}
+
+    # 解析结果过短且形如错误堆栈/占位，同样拒收
+    if isinstance(text, str) and len(text.strip()) < 8:
+        return {"text": "", "engine": "parser", "ocr_used": "",
+                "ocr_error": "解析结果为空或过短"}
     ocr_used = ""
     if ext == ".pdf" and not text:
         # 无文本层的扫描件 PDF：尝试用三层 OCR 路由逐页识别（走兜底；DocumentParser 已内置 RapidOCR，
@@ -188,6 +200,19 @@ def ingest_file(
 
     if not dry_run:
         from services import kb_service
+        from services.doc_naming import apply_display_name
+        from services.smart_ingest import gate_for_write
+
+        # 质量闸门（正文全等去重 + 空/占位/乱码/二进制残留）：拦下的文件
+        # **根本不建 Document 行**，所以库里不会再长出重复的一份正文 + 一整套分块。
+        # 状态沿用 "failed"：调用方按 ok/failed/skipped/invalid 分桶，新状态会被漏计。
+        verdict = gate_for_write(db, text, path=file_path)
+        if not verdict["ok"]:
+            return {
+                "file": file_path, "status": "failed",
+                "detail": "质量闸门拒绝入库：" + "；".join(verdict["reasons"]),
+                "engine": parsed.get("engine"), "ocr_used": parsed.get("ocr_used"), "md5": md5,
+            }
 
         subject = kb_service.classify_subject(file_name, text)
         doc_type = kb_service.classify_doc_type(file_name, ext.lstrip("."))
@@ -206,10 +231,14 @@ def ingest_file(
         )
         db.add(doc)
         db.flush()
+        apply_display_name(db, doc, text)
         doc_id = doc.id
 
         # 2) 分块入库（knowledge_chunks + FTS）
         chunks = kb_service.ingest_document(db, doc, replace=True)
+        # 没长出分块就不算入库，别让 UI 报「已入库」而 RAG 搜不到
+        doc.index_status = "indexed" if kb_service.has_searchable_chunks(
+            db, doc.id) else "failed"
         db.commit()
 
         # 3) 增量向量化（只补缺向量的分块）

@@ -1,11 +1,11 @@
 /* ============================================================
    考研档案 · 数据同步层（P0-1）
    后端优先：应用挂载时从 FastAPI 拉取真实数据回填 zustand store，
-   覆盖 localStorage 中的 SEED/历史数据；后端不可用则静默保留本地。
+   覆盖 localStorage 中的历史数据；后端不可用则静默保留本地。
    写操作的后端同步已内联在 useStore.js 各 action 中（fire-and-forget）。
    ============================================================ */
 
-import { tasksApi, errorsApi, flashcardsApi, netdiskApi, goalsApi, aiApi } from './client'
+import { tasksApi, errorsApi, flashcardsApi, netdiskApi, goalsApi, aiApi, dashboardApi } from './client'
 import useStore from '../store/useStore'
 import { todayStr } from '../utils/date'
 
@@ -68,9 +68,11 @@ function toPan(f) {
     desc: f.path || '',
     url: f.download_link || '',
     synced: true,
-    date: (f.created_at || todayStr()).slice(0, 10),
+    // 没有 created_at 就留空：写成今天会让「最近同步」把无日期项顶到第一位，
+    // 排序依据就成了编的。页面用 fmtDateCN 兜底显示「日期未知」。
+    date: f.created_at ? String(f.created_at).slice(0, 10) : '',
     remote: true,
-    fsId: f.fs_id
+    fsId: f.fs_id ?? null
   }
 }
 
@@ -90,27 +92,33 @@ function toProvider(p) {
   }
 }
 
-/* 各数据域拉取与回填（后端可用即覆盖本地 SEED，不可用静默跳过） */
+/* 各数据域拉取与回填。
+   后端成功响应即为准：空数组也要覆盖本地，否则"删光了"会被显示成"还没同步"。
+   请求抛错时该域不动（离线时保留本地已有内容）。 */
 const LOADERS = {
   tasks: async () => {
     const d = await tasksApi.list({ page: 1, page_size: 500 })
     const list = d.items || d.tasks || (Array.isArray(d) ? d : [])
-    if (Array.isArray(list) && list.length) useStore.setState({ tasks: list.map(toTask) })
+    if (Array.isArray(list)) useStore.setState({ tasks: list.map(toTask) })
   },
   notebook: async () => {
     const d = await errorsApi.list({ page: 1, page_size: 500 })
     const list = d.errors || d.items || (Array.isArray(d) ? d : [])
-    if (Array.isArray(list) && list.length) useStore.setState({ notebook: list.map(toNote) })
+    if (Array.isArray(list)) useStore.setState({ notebook: list.map(toNote) })
   },
   cards: async () => {
     const d = await flashcardsApi.list({ page: 1, page_size: 500 })
     const list = d.cards || d.items || (Array.isArray(d) ? d : [])
-    if (Array.isArray(list) && list.length) useStore.setState({ cards: list.map(toCard) })
+    if (Array.isArray(list)) useStore.setState({ cards: list.map(toCard) })
   },
   pan: async () => {
     const d = await netdiskApi.files({ page: 1, page_size: 200 })
     const list = d.local_files || d.items || (Array.isArray(d) ? d : [])
-    if (Array.isArray(list) && list.length) useStore.setState({ pan: list.map(toPan) })
+    if (Array.isArray(list)) useStore.setState({ pan: list.map(toPan) })
+  },
+  countdown: async () => {
+    const d = await dashboardApi.countdown()
+    if (d && d.exam_date) useStore.setState({ countdown: d })
   },
   settings: async () => {
     const g = await goalsApi.list()

@@ -3,6 +3,8 @@
 import asyncio
 import datetime
 import logging
+import os
+from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -14,7 +16,24 @@ from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
 
 logger = logging.getLogger("kaoyan.scheduler")
 
-scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
+# --------------------------------------------------------------------------- #
+#时区（Windows 关键修复）
+# --------------------------------------------------------------------------- #
+#历史坑：Windows 上若缺少 tzdata 包，APScheduler 用字符串 "Asia/Shanghai" 构造
+# 调度器会抛/静默失败：
+#     No time zone found with key Asia/Shanghai
+# 结果是 **定时任务根本没注册**，日志却什么都看不到（静默失败）。
+# 这里改用 **固定 +08:00 偏移** 的 tzinfo，不依赖 zoneinfo/tzdata 数据库，
+# 因此在任何平台都稳定可用（北京时间无夏令时，固定偏移是精确的）。
+try:
+    from zoneinfo import ZoneInfo
+
+    _SHANGHAI_TZ: Any = ZoneInfo("Asia/Shanghai")
+except Exception:  # noqa: BLE001  —— 缺 tzdata 时退回固定偏移
+    _SHANGHAI_TZ = datetime.timezone(datetime.timedelta(hours=8), "CST")
+
+
+scheduler = BackgroundScheduler(timezone=_SHANGHAI_TZ)
 
 
 # --------------------------------------------------------------------------- #
@@ -206,12 +225,22 @@ def _completion_selfcheck_job() -> None:
 # 启动 / 停止
 # --------------------------------------------------------------------------- #
 def _kaoyan_collect_job():
-    """T5 择校数据周期采集（每周一 06:00）：国家线回填 + 公告增量。
+    """T5 择校数据周期采集 —— 已按合规决策停用（默认 no-op）。
 
-    工科研招网全量爬取不进周期任务——耗时长且研招网数据一年一大更，
-    由「数据管理」页手动触发（POST /collection/refresh?source=engineering）。
-    周期任务只做轻量增量（国家线新年份/公告列表页），单链失败不断其余。
+    背景：原实现每周一 06:00 自动回填国家线 + 抓取 10 所院校公告列表。
+    但平台已明确「**不做爬虫**」：高校属事业单位站点，自动抓取 + 对外服务
+    会放大法律与反爬风险，且用户提供的合规分析明确建议走官方公开渠道。
+
+    保留函数与调度注册是为了不破坏既有配置，但受 KAOYAN_AUTO_COLLECT 开关
+    （默认 0/关闭）保护。院校/公告数据改为**手动导入 + 本地维护**：
+      - POST /api/kaoyan/import  手动导入官方公布数据
+      - 「数据管理」页的人工维护入口
+    若用户未来明确需要自动更新，置环境变量 KAOYAN_AUTO_COLLECT=1 并自行承担合规责任。
     """
+    if os.environ.get("KAOYAN_AUTO_COLLECT", "0") != "1":
+        logger.info("[择校采集] 已按合规策略停用（KAOYAN_AUTO_COLLECT=0）；院校数据请手动导入")
+        return
+
     from services.kaoyan.collector import backfill_national_lines_task, collect_notices_task
 
     try:
@@ -226,6 +255,34 @@ def _kaoyan_collect_job():
         logger.error("[择校采集] 公告采集失败: %s", e)
 
 
+def _notice_alert_job() -> None:
+    """通知提醒扫描（每日 07:40）。
+
+    产出「今日待办提醒」到 ``kaoyan_alert_records``：
+    临期截止 / 新发布紧急通知 / 订阅范围内更新。
+    同一notice_id + alert_kind 唯一，不会重复打扰；用户可 ack 掉单条。
+
+    时区：job 用显式 tzinfo 的 CronTrigger（不用字符串），见模块头部说明，
+    规避 Windows 缺 tzdata 导致的静默不注册。
+    """
+    from services.kaoyan.notice_alert import scan_alerts, cn_now
+
+    db = SessionLocal()
+    try:
+        result = scan_alerts(db, trigger="schedule")
+        msg = (
+            f"[通知提醒] {cn_now().strftime('%Y-%m-%d %H:%M')} "
+            f"扫描 {result['scanned']} 条 / 新增提醒 {result['created']} 条 / "
+            f"去重跳过 {result['skipped_dup']} 条（{result['elapsed_ms']}ms）"
+        )
+        logger.info(msg)
+        print(msg)
+    except Exception as e:  # noqa: BLE001
+        logger.error("通知提醒扫描任务失败: %s", e)
+    finally:
+        db.close()
+
+
 def start_scheduler():
     """启动后台调度器（幂等）。"""
     if scheduler.running:
@@ -233,7 +290,7 @@ def start_scheduler():
     # 复习提醒：每天 08:30
     scheduler.add_job(
         _review_reminder_job,
-        CronTrigger(hour=8, minute=30),
+        CronTrigger(hour=8, minute=30, timezone=_SHANGHAI_TZ),
         id="review_reminder",
         replace_existing=True,
         misfire_grace_time=3600,
@@ -241,7 +298,7 @@ def start_scheduler():
     # 网盘同步：每小时第 30 分钟
     scheduler.add_job(
         _netdisk_sync_job,
-        CronTrigger(minute=30),
+        CronTrigger(minute=30, timezone=_SHANGHAI_TZ),
         id="netdisk_sync",
         replace_existing=True,
         misfire_grace_time=3600,
@@ -249,7 +306,7 @@ def start_scheduler():
     # 完成度自检：每天 07:30
     scheduler.add_job(
         _completion_selfcheck_job,
-        CronTrigger(hour=7, minute=30),
+        CronTrigger(hour=7, minute=30, timezone=_SHANGHAI_TZ),
         id="completion_selfcheck",
         replace_existing=True,
         misfire_grace_time=3600,
@@ -257,10 +314,18 @@ def start_scheduler():
     # T5 择校数据采集：每周一 06:00（轻量增量：国家线+公告）
     scheduler.add_job(
         _kaoyan_collect_job,
-        CronTrigger(day_of_week="mon", hour=6, minute=0),
+        CronTrigger(day_of_week="mon", hour=6, minute=0, timezone=_SHANGHAI_TZ),
         id="kaoyan_collect",
         replace_existing=True,
         misfire_grace_time=86400,
+    )
+    # 通知提醒扫描：每天 07:40（时区显式，避免 Windows tzdata 静默失败）
+    scheduler.add_job(
+        _notice_alert_job,
+        CronTrigger(hour=7, minute=40, timezone=_SHANGHAI_TZ),
+        id="notice_alert_scan",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
     scheduler.start()
     logger.info("APScheduler 已启动（复习提醒 08:30 / 网盘同步每小时 / 完成度自检 07:30 / 择校采集每周一 06:00）")

@@ -5,7 +5,10 @@ import sys
 import os
 import asyncio
 import datetime
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 本文件位于 backend-main-fastapi/scripts/diagnostics/，需要把仓库根目录
+# 加进 sys.path 才能 import database / models / services —— 原先只加了自身
+# 所在目录，所以这个脚本一运行就在下一行 ImportError。
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from database import SessionLocal, engine
 from models import Document, KnowledgeChunk, NetdiskFile, Base
@@ -38,11 +41,13 @@ def parse_all_documents():
         return 0
 
     from services.document_parser import DocumentParser
-    from services.kb_service import ingest_text
+    from services.kb_service import has_searchable_chunks, ingest_text
+    from services.smart_ingest import gate_for_write
 
     parser = DocumentParser()
     parsed_count = 0
     failed_count = 0
+    rejected_count = 0
 
     for i, doc in enumerate(pending_docs):
         try:
@@ -58,24 +63,43 @@ def parse_all_documents():
             else:
                 content_text = f"[文件缺失] 文件名：{doc.file_name}"
 
+            # 质量闸门：必须在 clean_text 之前。clean_text 会把控制字符全部
+            # 抹掉，而「整份二进制当文本读」的坏文件正是靠连续控制字节识别的；
+            # 先清洗等于销毁证据。
+            verdict = gate_for_write(db, content_text,
+                                     path=doc.file_path or "", doc_id=doc.id)
+            if not verdict["ok"]:
+                # 拒绝时不覆盖 doc.content（老正文可能仍有用），只置 failed。
+                doc.index_status = "failed"
+                doc.parse_progress = 1.0
+                db.commit()
+                print("    质量闸门拒绝入库：" + "；".join(verdict["reasons"]))
+                rejected_count += 1
+                continue
+
             # 清理非法字符
             content_text = clean_text(content_text)
-            doc.content = content_text
+            doc.content = content_text[:500000]
             doc.parse_progress = 0.5
             db.commit()
 
-            # 分块入库
-            if content_text and len(content_text) > 50:
-                chunks_count = ingest_text(
-                    db, doc.id, doc.file_name, content_text, doc.subject
-                )
-                print(f"    生成 {chunks_count} 个分块")
-            else:
-                print(f"    内容太短，跳过分块")
+            # 分块入库。replace=True：重解析要先清掉本 doc 名下旧块，
+            # 否则每跑一遍就多一整套重复 knowledge_chunks。
+            chunks_count = ingest_text(
+                db, doc.id, doc.file_name, content_text, doc.subject,
+                replace=True,
+            )
+            print(f"    生成 {chunks_count} 个分块")
 
-            doc.index_status = "ready"
+            # 状态口径：旧写法有两处谎报——
+            #  * index_status="ready"：库里没有任何查询认这个值；
+            #  * doc.parsed_at / doc.parse_error：Document 表没有这些列，赋值只是
+            #    给实例挂了个不落库的属性，错误信息静默丢失。
+            # indexed 必须真的有可检索分块，否则就是 RAG 搜不到的幽灵文档。
+            doc.index_status = "indexed" if has_searchable_chunks(db, doc.id) else "failed"
+            doc.knowledge_point_count = chunks_count
             doc.parse_progress = 1.0
-            doc.parsed_at = datetime.datetime.now()
+            doc.updated_at = datetime.datetime.now()
             db.commit()
             parsed_count += 1
 
@@ -84,14 +108,13 @@ def parse_all_documents():
             try:
                 db.rollback()
                 doc.index_status = "failed"
-                doc.parse_error = str(e)[:500]
                 db.commit()
             except Exception:
                 pass
             failed_count += 1
 
     db.close()
-    print(f"\n解析完成: 成功 {parsed_count}, 失败 {failed_count}")
+    print(f"\n解析完成: 成功 {parsed_count}, 闸门拒绝 {rejected_count}, 失败 {failed_count}")
     return parsed_count
 
 
@@ -176,74 +199,33 @@ def netdisk_to_knowledge_base():
         db.close()
         return
 
-    from services.document_parser import DocumentParser
-    from services.kb_service import ingest_text
+    from routers.netdisk import _ingest_netdisk_file
 
-    parser = DocumentParser()
     imported_count = 0
+    failed_count = 0
 
+    # 这里原先自己复制了一遍「建 Document -> 解析 -> 分块 -> 标 ready」，用的列名
+    # （Document.file_size / title / source / uploaded_at、NetdiskFile.local_path）
+    # 两张表里都不存在，所以这个函数一执行就 TypeError，从未真正跑通过。
+    # 网盘入库的唯一实现在 routers/netdisk.py（含质量闸门、只按 file_path 判重、
+    # 「有可检索分块才算 indexed」）—— 脚本只批量调用它，不再复制一份会腐烂的逻辑。
     for nf in netdisk_files:
         print(f"  处理: {nf.file_name}")
-
-        # 检查是否已导入为文档
-        existing_doc = db.query(Document).filter(
-            Document.file_name == nf.file_name
-        ).first()
-
-        if existing_doc:
-            print(f"    已存在文档，跳过")
-            continue
-
-        # 检查本地文件是否存在
-        local_path = nf.local_path or ""
-        if not local_path or not os.path.exists(local_path):
-            print(f"    本地文件不存在，需要下载: {local_path}")
-            # 这里可以调用网盘下载API
-            continue
-
-        # 创建文档
-        new_doc = Document(
-            file_name=nf.file_name,
-            file_path=local_path,
-            file_type=nf.file_type or "pdf",
-            file_size=nf.file_size or 0,
-            subject=nf.category or "未分类",
-            title=nf.file_name,
-            source="netdisk",
-            index_status="pending",
-            parse_progress=0,
-            uploaded_at=datetime.datetime.now(),
-        )
-        db.add(new_doc)
-        db.commit()
-        db.refresh(new_doc)
-
-        # 解析
         try:
-            content_text = parser.parse(local_path)
-            new_doc.content = content_text
-            new_doc.parse_progress = 0.5
-            db.commit()
-
-            if content_text and len(content_text) > 50:
-                chunks_count = ingest_text(
-                    db, new_doc.id, new_doc.file_name, content_text, new_doc.subject
-                )
-                print(f"    生成 {chunks_count} 个分块")
-
-            new_doc.index_status = "ready"
-            new_doc.parse_progress = 1.0
-            new_doc.parsed_at = datetime.datetime.now()
-            db.commit()
-            imported_count += 1
+            res = asyncio.run(_ingest_netdisk_file(db, nf))
         except Exception as e:
-            print(f"    解析失败: {e}")
-            new_doc.index_status = "failed"
-            new_doc.parse_error = str(e)[:500]
-            db.commit()
+            print(f"    入库失败: {e}")
+            failed_count += 1
+            continue
+        if res.get("success"):
+            imported_count += 1
+            print(f"    {res.get('message')}")
+        else:
+            failed_count += 1
+            print(f"    未入库: {res.get('message')}")
 
     db.close()
-    print(f"\n网盘入库完成: 导入 {imported_count} 个文档")
+    print(f"\n网盘入库完成: 入库 {imported_count} 个文档, 未入库/失败 {failed_count} 个")
 
 
 def main():

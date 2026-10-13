@@ -274,6 +274,7 @@ describe('业务 API 封装路径', () => {
     ['goalsApi', 'subjects', [], '/api/goals/subjects'],
     ['flashcardsApi', 'due', [], '/api/flashcards/due'],
     ['documentsApi', 'subjects', [], '/api/documents/subjects'],
+    ['qualityApi', 'subjectAlignment', [], '/api/quality/subject-alignment'],
   ]
 
   it.each(cases)('%s.%s() → %s', async (group, method, args, expected) => {

@@ -247,6 +247,22 @@ QUIZ_QUESTIONS_ADD_COLUMNS: list[tuple[str, str]] = [
     ("quality", "TEXT"),
     ("rubric", "TEXT"),
     ("max_score", "REAL"),
+    # M6-3：复试题标记。存量题默认 0（初试），不影响既有行为。
+    ("is_retest", "INTEGER DEFAULT 0"),
+]
+
+# IMA 知识库导入：documents 表需要承载「初试/复试」阶段 + IMA 溯源信息。
+# stage        : 初试 / 复试（资料所属备考阶段）
+# ima_media_id : IMA 侧条目 ID，用于后续按需 fetch 正文（内容不落库，只存指针）
+# folder_path  : IMA 内的文件夹路径，保留原始组织结构，便于按目录浏览
+DOCUMENTS_ADD_COLUMNS: list[tuple[str, str]] = [
+    ("stage", "TEXT"),
+    ("ima_media_id", "TEXT"),
+    ("folder_path", "TEXT"),
+    # 内容性质：知识 / 试题 / 单词。
+    # 单独开列而**不复用 doc_type** —— doc_type 是既有语义(文档三层结构 raw/note/index)，
+    # 两套语义混在同一列会破坏前端既有筛选，故严格分离。
+    ("content_type", "TEXT"),
 ]
 
 ERROR_RECORDS_ADD_COLUMNS: list[tuple[str, str]] = [
@@ -335,6 +351,8 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
             _exec_with_retry(conn, stmt)
         altered_q = _alter_add_columns(conn, "quiz_questions", QUIZ_QUESTIONS_ADD_COLUMNS)
         altered_e = _alter_add_columns(conn, "error_records", ERROR_RECORDS_ADD_COLUMNS)
+        # IMA 导入所需：documents + stage/ima_media_id/folder_path（幂等，列存在则跳过）
+        altered_d = _alter_add_columns(conn, "documents", DOCUMENTS_ADD_COLUMNS)
         for stmt in _EXTRA_INDEX_SQL:
             try:
                 _exec_with_retry(conn, stmt)
@@ -343,7 +361,11 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
         db.commit()
         return {
             "created_tables": created,
-            "altered": {"quiz_questions": altered_q, "error_records": altered_e},
+            "altered": {
+                "quiz_questions": altered_q,
+                "error_records": altered_e,
+                "documents": altered_d,
+            },
         }
     except Exception as e:
         db.rollback()

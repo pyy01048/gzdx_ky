@@ -176,8 +176,8 @@ export default function SubjectManager() {
                     <td>
                       <div className="row">
                         <b>{item.subject}</b>
-                        <span className={`badge ${item.is_custom ? 'accent' : 'neutral'}`}>
-                          {item.is_custom ? '自定义' : '内置'}
+                        <span className={`badge ${item.unregistered ? 'warning' : item.is_custom ? 'accent' : 'neutral'}`}>
+                          {item.unregistered ? '未登记' : item.is_custom ? '自定义' : '内置'}
                         </span>
                       </div>
                     </td>

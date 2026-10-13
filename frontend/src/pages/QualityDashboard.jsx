@@ -37,6 +37,8 @@ export default function QualityDashboard() {
   const [kind, setKind] = useState('recognition_policy')
   const [runs, setRuns] = useState([])
   const [corpus, setCorpus] = useState(null)
+  const [align, setAlign] = useState(null)
+  const [alignError, setAlignError] = useState(false)
   const [detail, setDetail] = useState(null)
   const [status, setStatus] = useState('loading')
 
@@ -50,6 +52,15 @@ export default function QualityDashboard() {
         setStatus('ok')
       })
       .catch(() => alive && setStatus('error'))
+    return () => { alive = false }
+  }, [])
+
+  // 词表对齐单独取：它挂了不该把整页指标一起拖成「后端未响应」
+  useEffect(() => {
+    let alive = true
+    qualityApi.subjectAlignment()
+      .then((d) => alive && setAlign(d))
+      .catch(() => alive && setAlignError(true))
     return () => { alive = false }
   }, [])
 
@@ -124,6 +135,8 @@ export default function QualityDashboard() {
 
       <CorpusTable corpus={corpus} />
 
+      <SubjectAlignment data={align} error={alignError} />
+
       <Modal open={!!detail} title={detail ? `运行 #${detail.id} · ${detail.arm || ''}` : ''} onClose={() => setDetail(null)}>
         <RunDetail run={detail} />
       </Modal>
@@ -139,14 +152,28 @@ function CorpusTiles({ corpus, runs }) {
     qualityApi.evalRun(policy.id).then(setLatest).catch(() => {})
   }, [policy])
   const p = ((latest && latest.metrics) || {}).policies || {}
-  const prod = p['生产采用'] || Object.values(p).pop() || {}
+  // 只认「生产采用」这一行。以前写成 `|| Object.values(p).pop()`：没有生产口径时
+  // 会随手抓最后一个候选策略冒充生产指标，屏幕上是一个来路不明的数字。
+  const prod = p['生产采用']
+  // 样本数取自 eval_runs.n_samples，不硬编码 —— 硬编码的「147 样本」在换数据集后
+  // 会继续显示 147，等于给新数字贴上旧口径的标签。
+  const nSamples = (latest && latest.run && latest.run.n_samples) ?? policy?.n_samples ?? null
+  // ghost_index：状态写着 indexed、库里却一块都没有（列表页显示「已入库」，RAG 搜不到）
+  const ghost = corpus && corpus.ghost_index ? corpus.ghost_index.indexed_without_chunks : null
   return (
     <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-      <div className="stat-card"><b>{pct(prod.prec)}</b><span>学科池 Precision（147 样本）</span></div>
-      <div className="stat-card"><b>{pct(prod.rec)}</b><span>域内 Recall</span></div>
-      <div className="stat-card"><b>{pct(prod.pollute)}</b><span>域外污染率</span></div>
+      <div className="stat-card">
+        <b>{prod ? pct(prod.prec) : '—'}</b>
+        <span>学科池 Precision{nSamples === null ? '（无生产口径记录）' : `（${num(nSamples)} 样本）`}</span>
+      </div>
+      <div className="stat-card"><b>{prod ? pct(prod.rec) : '—'}</b><span>域内 Recall</span></div>
+      <div className="stat-card"><b>{prod ? pct(prod.pollute) : '—'}</b><span>域外污染率</span></div>
       <div className="stat-card"><b>{num(corpus && corpus.total_chunks)}</b><span>语料块总数</span></div>
       <div className="stat-card"><b>{pct(corpus && corpus.abstained_rate)}</b><span>弃权占比</span></div>
+      <div className="stat-card">
+        <b style={ghost ? { color: 'var(--warn, #d97706)' } : undefined}>{num(ghost)}</b>
+        <span>「已入库」但零分块</span>
+      </div>
     </div>
   )
 }
@@ -198,7 +225,7 @@ function CorpusTable({ corpus }) {
   return (
     <div className="card" style={{ marginTop: '18px' }}>
       <div className="card-header">
-        <span className="card-title">分学料体检（全库 {num(corpus.total_chunks)} 块 / {num(corpus.total_documents)} 篇）</span>
+        <span className="card-title">分学科体检（全库 {num(corpus.total_chunks)} 块 / {num(corpus.total_documents)} 篇）</span>
       </div>
       <div className="table-container">
         <table className="table table-striped">
@@ -226,6 +253,71 @@ function CorpusTable({ corpus }) {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+/* 学科词表对齐（docx/16 §1.5-E）。
+   为什么要有这张表：documents.subject 的写法比 knowledge_chunks.subject 多，
+   「数模电」「公共课-数学」「408」这些在分块侧没有同名值，按学科名等值关联的
+   每个入口都会把这些文档算成 0 块 —— 资料页选「数学」看不到 31 篇「公共课-数学」。
+   折叠只在查询层发生，库里标签一个字没改；所以每一行都必须把「折叠后连不连得上」
+   写清楚：kind=not_aliased/unknown_mapping 就是要人批的，不粉饰成已解决。 */
+const ALIGN_KIND = {
+  alias_folded: ['别名折叠', 'ok'],
+  combined_expanded: ['合并口径展开', 'ok'],
+  not_aliased: ['明确不归一', 'bad'],
+  unknown_mapping: ['词表未登记', 'bad'],
+}
+
+function SubjectAlignment({ data, error }) {
+  if (error) return <Empty title="词表对齐数据未加载" text="接口 /api/quality/subject-alignment 无响应（后端未重启时也是这个提示）" />
+  if (!data) return null
+  const rows = data.rows || []
+  return (
+    <div className="card" style={{ marginTop: '18px' }}>
+      <div className="card-header">
+        <span className="card-title">学科词表对齐（只读，未改动 documents.subject）</span>
+      </div>
+      <p style={{ color: 'var(--ink-3)', fontSize: '13px', margin: '0 16px 10px' }}>
+        文档侧 {num(data.document_subjects)} 个写法中，{num(data.unaligned_labels)} 个在分块侧没有同名值，
+        涉及 {num(data.unaligned_documents)} 篇；其中可按口径折叠 {num(data.foldable_documents)} 篇，
+        另有 {num(data.not_indexed_documents)} 篇还没有可检索的分块。{data.note || ''}
+      </p>
+      {rows.length === 0 ? (
+        <Empty title="没有词表分裂" text="文档学科与分块学科完全同名" />
+      ) : (
+        <div className="table-container">
+          <table className="table table-striped">
+            <thead>
+              <tr>
+                <th>文档侧写法</th><th>文档数</th><th>自带分块</th><th>有块的文档</th>
+                <th>未入库</th><th>口径</th><th>折叠目标</th><th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const [label, tone] = ALIGN_KIND[r.kind] || [r.kind, 'chip']
+                return (
+                  <tr key={r.subject}>
+                    <td>{r.subject}</td>
+                    <td>{num(r.documents)}</td>
+                    <td>{num(r.own_chunks)}</td>
+                    <td>{num(r.documents_with_chunks)}</td>
+                    <td>{num(r.not_indexed)}</td>
+                    <td><span className={`chip ${tone}`}>{label}</span></td>
+                    <td>
+                      {(r.target_chunks || []).length === 0 ? '—'
+                        : r.target_chunks.map((t) => `${t.subject} ${num(t.chunks)}`).join(' / ')}
+                    </td>
+                    <td style={{ maxWidth: 320, color: 'var(--ink-3)', fontSize: 12 }}>{r.reason}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

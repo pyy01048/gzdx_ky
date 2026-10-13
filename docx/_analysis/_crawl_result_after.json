@@ -1,0 +1,743 @@
+[
+ {
+  "name": "贵州大学",
+  "url": "https://gs.gzu.edu.cn/sszs/list.htm",
+  "notices": 10,
+  "status": "OK",
+  "samples": [
+   "2027年全国硕士研究生招生考试贵州大学考点通告（一）",
+   "贵州大学关于2027年招收退役大学生士兵计划硕士研究生的通知"
+  ]
+ },
+ {
+  "name": "电子科技大学",
+  "url": "https://yz.uestc.edu.cn/",
+  "notices": 23,
+  "status": "OK",
+  "samples": [
+   "招生宣传",
+   "招生宣讲会"
+  ]
+ },
+ {
+  "name": "西安电子科技大学",
+  "url": "https://gr.xidian.edu.cn/",
+  "notices": 61,
+  "status": "OK",
+  "samples": [
+   "硕士研究生招生",
+   "博士研究生招生"
+  ]
+ },
+ {
+  "name": "北京邮电大学",
+  "url": "https://www.bupt.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "HTTP412"
+ },
+ {
+  "name": "南京邮电大学",
+  "url": "https://yzb.njupt.edu.cn/",
+  "notices": 227,
+  "status": "OK",
+  "samples": [
+   "2027年全国硕士研究生入学考试南京邮电大学（3226）报考点网报公告",
+   "南京邮电大学2027年硕士研究生招生学院及专业方向介绍"
+  ]
+ },
+ {
+  "name": "杭州电子科技大学",
+  "url": "https://yjs.hdu.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "HTTP502"
+ },
+ {
+  "name": "重庆邮电大学",
+  "url": "https://yjs.cqupt.edu.cn/",
+  "notices": 26,
+  "status": "OK",
+  "samples": [
+   "事务通知",
+   "工程硕士"
+  ]
+ },
+ {
+  "name": "桂林电子科技大学",
+  "url": "https://www.guet.edu.cn/",
+  "notices": 72,
+  "status": "OK",
+  "samples": [
+   "寒露",
+   "徐华蕊"
+  ]
+ },
+ {
+  "name": "清华大学",
+  "url": "https://yz.tsinghua.edu.cn/",
+  "notices": 12,
+  "status": "OK",
+  "samples": [
+   "招生综合信息平台",
+   "招生信息Admissions"
+  ]
+ },
+ {
+  "name": "北京大学",
+  "url": "https://admission.pku.edu.cn/",
+  "notices": 51,
+  "status": "OK",
+  "samples": [
+   "留学生招生",
+   "硕士招生公示"
+  ]
+ },
+ {
+  "name": "浙江大学",
+  "url": "https://grs.zju.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "URLError"
+ },
+ {
+  "name": "上海交通大学",
+  "url": "https://yzb.sjtu.edu.cn/",
+  "notices": 47,
+  "status": "OK",
+  "samples": [
+   "预推免",
+   "博士生招生"
+  ]
+ },
+ {
+  "name": "复旦大学",
+  "url": "https://gsao.fudan.edu.cn/",
+  "notices": 15,
+  "status": "OK",
+  "samples": [
+   "复旦大学主页",
+   "研究生院"
+  ]
+ },
+ {
+  "name": "南京大学",
+  "url": "https://grawww.nju.edu.cn/",
+  "notices": 5,
+  "status": "OK",
+  "samples": [
+   "研究生系统管理平台",
+   "博士生招生网上报名系统"
+  ]
+ },
+ {
+  "name": "中国科学技术大学",
+  "url": "https://yz.ustc.edu.cn/",
+  "notices": 0,
+  "status": "reachable_parse0",
+  "samples": []
+ },
+ {
+  "name": "哈尔滨工业大学",
+  "url": "https://yzb.hit.edu.cn/",
+  "notices": 35,
+  "status": "OK",
+  "samples": [
+   "招生信息 Admission",
+   "招生简章 Brochure"
+  ]
+ },
+ {
+  "name": "西安交通大学",
+  "url": "https://yz.xjtu.edu.cn/",
+  "notices": 25,
+  "status": "OK",
+  "samples": [
+   "招生咨询",
+   "2027年全国硕士研究生招生考试西安交通大学（学校代码:10698）网报"
+  ]
+ },
+ {
+  "name": "华中科技大学",
+  "url": "https://gs.hust.edu.cn/",
+  "notices": 22,
+  "status": "OK",
+  "samples": [
+   "学位授权点目录",
+   "答辩公示"
+  ]
+ },
+ {
+  "name": "东南大学",
+  "url": "https://yzb.seu.edu.cn/",
+  "notices": 10,
+  "status": "OK",
+  "samples": [
+   "东南大学2027年硕士研究生考试招生专业目录及参考书目",
+   "东南大学2027年硕士研究生招生考试东南大学报考点【3202】 网上报名"
+  ]
+ },
+ {
+  "name": "北京航空航天大学",
+  "url": "https://yzb.buaa.edu.cn/",
+  "notices": 7,
+  "status": "OK",
+  "samples": [
+   "学历硕士",
+   "[置顶] 北京航空航天大学关于研究生招生工作的郑重声明"
+  ]
+ },
+ {
+  "name": "北京理工大学",
+  "url": "https://grd.bit.edu.cn/",
+  "notices": 7,
+  "status": "OK",
+  "samples": [
+   "关于评定2026年研究生学业奖学金的通知",
+   "关于举办第二届全国人工智能应用创新大赛的校赛的通知"
+  ]
+ },
+ {
+  "name": "同济大学",
+  "url": "https://yz.tongji.edu.cn/",
+  "notices": 29,
+  "status": "OK",
+  "samples": [
+   "招生新闻",
+   "同济大学研究生报考服务系统-考生入口"
+  ]
+ },
+ {
+  "name": "天津大学",
+  "url": "https://yzb.tju.edu.cn/",
+  "notices": 42,
+  "status": "OK",
+  "samples": [
+   "留学生招生",
+   "校级公告"
+  ]
+ },
+ {
+  "name": "大连理工大学",
+  "url": "https://gs.dlut.edu.cn/",
+  "notices": 24,
+  "status": "OK",
+  "samples": [
+   "2021年各学部（学院）硕士研究生复试录取办法公示",
+   "大连理工大学2027年“国优计划”专项招生选拔通知"
+  ]
+ },
+ {
+  "name": "吉林大学",
+  "url": "https://yjsy.jlu.edu.cn/",
+  "notices": 5,
+  "status": "OK",
+  "samples": [
+   "09 2026.09 关于2026年吉林大学研究生会纳新工作的通知",
+   "30 2026.04 关于公开选拔吉林大学研究生会第二十二届主席团成员及"
+  ]
+ },
+ {
+  "name": "华南理工大学",
+  "url": "https://yz.scut.edu.cn/",
+  "notices": 139,
+  "status": "OK",
+  "samples": [
+   "华南理工大学2027年全国硕士研究生招生考试网报公告",
+   "关于公布各院（系）2027年研究生招生预推免接收工作复试方案的通知"
+  ]
+ },
+ {
+  "name": "四川大学",
+  "url": "https://yz.scu.edu.cn/",
+  "notices": 29,
+  "status": "OK",
+  "samples": [
+   "夏令营&预推免",
+   "推免生（直博）专业目录"
+  ]
+ },
+ {
+  "name": "重庆大学",
+  "url": "https://yz.cqu.edu.cn/",
+  "notices": 36,
+  "status": "OK",
+  "samples": [
+   "硕士研究生招生章程及专业目录",
+   "博士研究生招生章程及专业目录"
+  ]
+ },
+ {
+  "name": "西北工业大学",
+  "url": "https://yzb.nwpu.edu.cn/",
+  "notices": 14,
+  "status": "OK",
+  "samples": [
+   "招生公告",
+   "招生学科"
+  ]
+ },
+ {
+  "name": "湖南大学",
+  "url": "https://gra.hnu.edu.cn/",
+  "notices": 26,
+  "status": "OK",
+  "samples": [
+   "录取情况",
+   "各学院研究生招生联系方式"
+  ]
+ },
+ {
+  "name": "中山大学",
+  "url": "https://graduate.sysu.edu.cn/",
+  "notices": 13,
+  "status": "OK",
+  "samples": [
+   "教育部第八期研究生招生改革政策培训班在中山大学举办",
+   "研究生院、党委学生工作部关于公布2026年中国研究生创新实践系列大赛首批"
+  ]
+ },
+ {
+  "name": "长春理工大学",
+  "url": "https://yz.cust.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "URLError"
+ },
+ {
+  "name": "华中科技大学光电学院",
+  "url": "https://oei.hust.edu.cn/",
+  "notices": 36,
+  "status": "OK",
+  "samples": [
+   "院务通知 2026-10-10 科技成果转化公示〔2026〕55号——高",
+   "院务通知 2026-10-08 华中科技大学光学与电子信息学院2025-"
+  ]
+ },
+ {
+  "name": "华北电力大学",
+  "url": "https://yjsy.ncepu.edu.cn/",
+  "notices": 12,
+  "status": "OK",
+  "samples": [
+   "【研究生院】关于2026年研究生海外访学奖学金项目录取人员名单的公示",
+   "【研究生院】关于2026年冬季博士研究生学位论文答辩工作的通知"
+  ]
+ },
+ {
+  "name": "西南交通大学",
+  "url": "https://grs.swjtu.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "URLError"
+ },
+ {
+  "name": "沈阳工业大学",
+  "url": "https://yjsxy.sut.edu.cn/",
+  "notices": 3,
+  "status": "OK",
+  "samples": [
+   "硕士研究生招生信息管理系统",
+   "博士研究生招生管理系统"
+  ]
+ },
+ {
+  "name": "东北大学",
+  "url": "https://yz.neu.edu.cn/",
+  "notices": 14,
+  "status": "OK",
+  "samples": [
+   "研究生招生信息网",
+   "东北大学2027年硕士研究生招生考试网报公告"
+  ]
+ },
+ {
+  "name": "中南大学",
+  "url": "https://gra.csu.edu.cn/",
+  "notices": 5,
+  "status": "OK",
+  "samples": [
+   "关于2026-2027学年秋季学期研究生在线课程“急救与心理技能”教学安",
+   "关于2026-2027学年秋季学期研究生在线课程“工程伦理”教学安排的通"
+  ]
+ },
+ {
+  "name": "武汉大学",
+  "url": "https://www.gs.whu.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "URLError"
+ },
+ {
+  "name": "华中师范大学",
+  "url": "https://gs.ccnu.edu.cn/",
+  "notices": 68,
+  "status": "OK",
+  "samples": [
+   "公师生在职攻读教育硕士",
+   "招生政策"
+  ]
+ },
+ {
+  "name": "北京交通大学",
+  "url": "https://yzb.bjtu.edu.cn/",
+  "notices": 23,
+  "status": "OK",
+  "samples": [
+   "研究生院招生专题",
+   "推免报名"
+  ]
+ },
+ {
+  "name": "北京科技大学",
+  "url": "https://yzxc.ustb.edu.cn/",
+  "notices": 18,
+  "status": "OK",
+  "samples": [
+   "【公开公示】",
+   "北京科技大学2027年推免生拟录取名单公示（持续更新）"
+  ]
+ },
+ {
+  "name": "中国矿业大学",
+  "url": "https://yz.cumt.edu.cn/",
+  "notices": 24,
+  "status": "OK",
+  "samples": [
+   "招生公告",
+   "历年招生宣讲回放"
+  ]
+ },
+ {
+  "name": "河海大学",
+  "url": "https://gs.hhu.edu.cn/",
+  "notices": 10,
+  "status": "OK",
+  "samples": [
+   "学位点建设风采 | 智能科学与技术：创新人才培养模式，以人工智能全面赋能",
+   "河海大学召开学位点建设工作研讨会"
+  ]
+ },
+ {
+  "name": "南京航空航天大学",
+  "url": "https://www.graduate.nuaa.edu.cn/",
+  "notices": 14,
+  "status": "OK",
+  "samples": [
+   "招生宣传",
+   "招生文件"
+  ]
+ },
+ {
+  "name": "南京理工大学",
+  "url": "https://gs.njust.edu.cn/",
+  "notices": 10,
+  "status": "OK",
+  "samples": [
+   "组织部",
+   "宣传部"
+  ]
+ },
+ {
+  "name": "苏州大学",
+  "url": "https://yjs.suda.edu.cn/",
+  "notices": 10,
+  "status": "OK",
+  "samples": [
+   "苏州大学第十七批研究生工作站拟认定名单公示",
+   "学位授予点合格评估信息公开（苏州大学2025年度报告）"
+  ]
+ },
+ {
+  "name": "江南大学",
+  "url": "https://yz.jiangnan.edu.cn/",
+  "notices": 17,
+  "status": "OK",
+  "samples": [
+   "信息公示",
+   "复试分数线"
+  ]
+ },
+ {
+  "name": "合肥工业大学",
+  "url": "https://yjsy.hfut.edu.cn/",
+  "notices": 6,
+  "status": "OK",
+  "samples": [
+   "关于组织申报2026年安徽省卓越工程师项目的通知",
+   "关于开展研究生学位论文AIGC检测工作的通知"
+  ]
+ },
+ {
+  "name": "安徽大学",
+  "url": "https://graschool.ahu.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "HTTP412"
+ },
+ {
+  "name": "福州大学",
+  "url": "https://yjsy.fzu.edu.cn/",
+  "notices": 28,
+  "status": "OK",
+  "samples": [
+   "&nbsp;博士研究生招生",
+   "&nbsp;硕士研究生招生"
+  ]
+ },
+ {
+  "name": "南昌大学",
+  "url": "https://yjsy.ncu.edu.cn/",
+  "notices": 20,
+  "status": "OK",
+  "samples": [
+   "博士研究生招生简章",
+   "硕士研究生招生简章"
+  ]
+ },
+ {
+  "name": "郑州大学",
+  "url": "https://gs.zzu.edu.cn/",
+  "notices": 3,
+  "status": "OK",
+  "samples": [
+   "关于补办郑州大学研究生证的通知",
+   "在职人员硕士招生工作流程图"
+  ]
+ },
+ {
+  "name": "武汉理工大学",
+  "url": "https://gd.whut.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "URLError"
+ },
+ {
+  "name": "广西大学",
+  "url": "https://yjsc.gxu.edu.cn/",
+  "notices": 69,
+  "status": "OK",
+  "samples": [
+   "推免生招生",
+   "招生直播"
+  ]
+ },
+ {
+  "name": "云南大学",
+  "url": "https://www.grs.ynu.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "URLError"
+ },
+ {
+  "name": "昆明理工大学",
+  "url": "https://yjs.kmust.edu.cn/",
+  "notices": 11,
+  "status": "OK",
+  "samples": [
+   "招生政策",
+   "硕士培养"
+  ]
+ },
+ {
+  "name": "太原理工大学",
+  "url": "https://www.gs.tyut.edu.cn/",
+  "notices": 14,
+  "status": "OK",
+  "samples": [
+   "关于2026年下半年增列外聘研究生指导教师遴选工作的通知",
+   "关于2026年下半年增列博士研究生指导教师遴选工作的通知"
+  ]
+ },
+ {
+  "name": "河北工业大学",
+  "url": "https://yjs.hebut.edu.cn/",
+  "notices": 18,
+  "status": "OK",
+  "samples": [
+   "硕士研究生招生",
+   "博士研究生招生"
+  ]
+ },
+ {
+  "name": "燕山大学",
+  "url": "https://gs.ysu.edu.cn/",
+  "notices": 25,
+  "status": "OK",
+  "samples": [
+   "关于2027年拟毕业研究生图像采集的通知",
+   "关于做好2026级研究生图像采集工作的通知"
+  ]
+ },
+ {
+  "name": "哈尔滨工程大学",
+  "url": "https://yjsy.hrbeu.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "URLError"
+ },
+ {
+  "name": "上海大学",
+  "url": "https://yjszs.shu.edu.cn/",
+  "notices": 16,
+  "status": "OK",
+  "samples": [
+   "招生类别",
+   "硕士招生简章"
+  ]
+ },
+ {
+  "name": "东华大学",
+  "url": "https://yjszs.dhu.edu.cn/",
+  "notices": 33,
+  "status": "OK",
+  "samples": [
+   "东华大学2026年博士研究生招生专业目录",
+   "2026年硕博连读（含长学制转博）博士研究生拟录取名单公示"
+  ]
+ },
+ {
+  "name": "南京信息工程大学",
+  "url": "https://yjs.nuist.edu.cn/",
+  "notices": 13,
+  "status": "OK",
+  "samples": [
+   "培养通知",
+   "教管通知"
+  ]
+ },
+ {
+  "name": "浙江工业大学",
+  "url": "https://www.gs.zjut.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "HTTP403"
+ },
+ {
+  "name": "宁波大学",
+  "url": "https://graduate.nbu.edu.cn/",
+  "notices": 22,
+  "status": "OK",
+  "samples": [
+   "招生首页",
+   "博士生招生"
+  ]
+ },
+ {
+  "name": "厦门大学",
+  "url": "https://gs.xmu.edu.cn/",
+  "notices": 5,
+  "status": "OK",
+  "samples": [
+   "答辩公告",
+   "关于做好2026年研究生学习年限超期警示与帮扶工作的通知 2026-09"
+  ]
+ },
+ {
+  "name": "华侨大学",
+  "url": "https://grs.hqu.edu.cn/",
+  "notices": 18,
+  "status": "OK",
+  "samples": [
+   "境内招生",
+   "我校28篇学位论文获评2025年福建省研究生优秀学位论文 日前，福建省学"
+  ]
+ },
+ {
+  "name": "山东大学",
+  "url": "https://www.yz.sdu.edu.cn/",
+  "notices": 24,
+  "status": "OK",
+  "samples": [
+   "招生拓展",
+   "公开公示"
+  ]
+ },
+ {
+  "name": "中国海洋大学",
+  "url": "https://yz.ouc.edu.cn/",
+  "notices": 5,
+  "status": "OK",
+  "samples": [
+   "勇立潮头 谋海济国",
+   "海纳百川 取则行远"
+  ]
+ },
+ {
+  "name": "深圳大学",
+  "url": "https://yz.szu.edu.cn/",
+  "notices": 54,
+  "status": "OK",
+  "samples": [
+   "研究生招生网",
+   "深圳大学2027年“退役大学生士兵专项硕士研究生招生…"
+  ]
+ },
+ {
+  "name": "广东工业大学",
+  "url": "https://yjs.gdut.edu.cn/",
+  "notices": 11,
+  "status": "OK",
+  "samples": [
+   "广东工业大学2027年硕士学位研究生招生简章09-30",
+   "广东工业大学2027年招收推免生预公告08-31"
+  ]
+ },
+ {
+  "name": "贵州师范大学",
+  "url": "https://yjsc.gznu.edu.cn/",
+  "notices": 5,
+  "status": "OK",
+  "samples": [
+   "贵州师范大学2026年研究生国家奖学金拟获奖人选名单公示",
+   "贵州师范大学“师大—师说”赋能教育硕士实践创新课堂（第六期）顺利举办"
+  ]
+ },
+ {
+  "name": "贵州财经大学",
+  "url": "https://yjsy.gufe.edu.cn/",
+  "notices": 10,
+  "status": "OK",
+  "samples": [
+   "贵州财经大学研究生院赴贵州商学院开展招生宣传",
+   "07-06 2026 贵州财经大学研究生院参加全国研究生招生工作学术研讨"
+  ]
+ },
+ {
+  "name": "贵州民族大学",
+  "url": "https://yjsy.gzmu.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "TimeoutError"
+ },
+ {
+  "name": "贵州医科大学",
+  "url": "https://yjsxy.gmc.edu.cn/",
+  "notices": 24,
+  "status": "OK",
+  "samples": [
+   "同等学力招生",
+   "工作通知"
+  ]
+ },
+ {
+  "name": "遵义医科大学",
+  "url": "https://yjsy.zmu.edu.cn/",
+  "notices": 0,
+  "status": "unreachable",
+  "samples": [],
+  "error": "URLError"
+ }
+]

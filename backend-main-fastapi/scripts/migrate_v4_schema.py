@@ -43,6 +43,10 @@ NEW_COLUMNS: list[tuple[str, str, str]] = [
     ("documents", "doc_type", "ALTER TABLE documents ADD COLUMN doc_type VARCHAR(20)"),
     ("documents", "structure_level", "ALTER TABLE documents ADD COLUMN structure_level VARCHAR(20)"),
     ("documents", "ocr_used", "ALTER TABLE documents ADD COLUMN ocr_used BOOLEAN DEFAULT 0"),
+    # 跨来源去重溯源：同一道题被多份文档承载时，把全部来源记进这个 JSON 数组。
+    # 加列前必须先备份（脚本统一在 main() 里做 src.backup()）。
+    ("quiz_questions", "source_ids",
+     "ALTER TABLE quiz_questions ADD COLUMN source_ids JSON"),
 ]
 
 # --------------------------------------------------------------------------- #

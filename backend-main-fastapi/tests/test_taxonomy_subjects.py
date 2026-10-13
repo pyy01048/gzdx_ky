@@ -60,8 +60,19 @@ def test_seed_idempotent_and_builtins_present(client):
         for key in ("question_count", "error_count"):
             assert key in by_name[name]
 
-    # 总行数 == 内置科目数（此时还没有任何自定义科目），即无重复行
-    builtin_names = {s["subject"] for s in body["subjects"] if not s["is_custom"]}
+    # 判据必须排除 unregistered 行：业务表里出现过但字典没有的科目会以
+    # {is_custom: False, unregistered: True} 带出（subject_registry 刻意不漏数据），
+    # 它们不是种子行。只用 is_custom 判定时，套件里任何写入杂科目名的测试
+    # （如 quiz 路由用例的 'QA-FILTER'/'QA-PUT数学'）都会让这个断言随执行顺序漂移。
+    # 该标志必须由端点显式透出——曾因 routers/taxonomy.py 的手写字段投影漏掉
+    # unregistered，脏科目在响应里与内置行无法区分，故这里用下标访问而非 .get。
+    for item in body["subjects"]:
+        assert "unregistered" in item, f"端点未透出 unregistered 标志: {item['subject']}"
+
+    builtin_names = {
+        s["subject"] for s in body["subjects"]
+        if not s["is_custom"] and not s["unregistered"]
+    }
     assert builtin_names == set(taxonomy.ALL_SUBJECTS)
 
     # 再次调用播种函数应为 no-op（幂等）
@@ -159,10 +170,10 @@ def test_put_rename_and_update(client, cleanup_subjects):
 
 
 def test_put_404_for_missing_subject(client):
-    """PUT 一个不存在的科目 → 404（项目既有约定：/api 下 detail 被改写为 Not Found）。"""
+    """PUT 一个不存在的科目 → 404，detail 保留路由给的人话原因。"""
     r = client.put(f"/api/taxonomy/subjects/{PREFIX}不存在的科目XYZ", json={"chapters": ["x"]})
     assert r.status_code == 404
-    assert r.json()["detail"] == "Not Found"
+    assert r.json()["detail"].startswith("科目不存在")
 
 
 def test_delete_subject(client, cleanup_subjects):
@@ -173,10 +184,10 @@ def test_delete_subject(client, cleanup_subjects):
     r = client.delete(f"/api/taxonomy/subjects/{name}")
     assert r.status_code == 200, r.text
 
-    # 再删 → 404
+    # 再删 → 404，带原因
     r2 = client.delete(f"/api/taxonomy/subjects/{name}")
     assert r2.status_code == 404
-    assert r2.json()["detail"] == "Not Found"
+    assert r2.json()["detail"].startswith("科目不存在")
 
 
 def test_normalize_preserves_custom_and_keeps_builtin_normalization(client, cleanup_subjects):

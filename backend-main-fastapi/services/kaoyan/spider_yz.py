@@ -120,35 +120,93 @@ def save_checkpoint(cp):
     CHECKPOINT_FILE.write_text(json.dumps(cp, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def fetch_schools(province_code, subject_code="08", max_pages=50):
-    """C1: 抓取某省某学科的全部院校。"""
-    schools = []
-    for page in range(1, max_pages + 1):
-        params = urllib.parse.urlencode({
+# 关键词穷举池（规避"每页10条且匿名翻页失效"）。
+# 空串先取第 1 页基线，再按"大学/学院/研究所"等机构后缀 + 省市名 + 校名特征字拆分结果集。
+# 覆盖约 60 个关键词：机构后缀、省级行政区、校名高频词。
+KEYWORDS = [
+    # —— 机构类型后缀 ——
+    "", "大学", "学院", "研究所", "科学院", "研究院", "中心", "学部", "分校", "校区",
+    # —— 省级行政区名（弥补部分院校名称含地名）——
+    "北京", "天津", "河北", "山西", "内蒙", "辽宁", "吉林", "黑龙江", "上海", "江苏",
+    "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "广西",
+    "海南", "重庆", "四川", "贵州", "云南", "西藏", "陕西", "甘肃", "青海", "宁夏", "新疆",
+    # —— 校名高频前缀/词 ——
+    "中国", "中华", "国家", "国防", "人民",
+    # —— 行业特征词 ——
+    "工业", "理工", "科技", "师范", "农业", "林业", "医科", "医药", "中医药", "财经",
+    "政法", "交通", "航空", "航天", "邮电", "电子", "海事", "海洋", "石油", "地质",
+    "矿业", "电力", "水利", "建筑", "民族", "外国语", "国际", "对外", "铁道", "工程",
+]
+
+
+def fetch_schools(province_code, subject_code="08", max_pages=50, keywords=None):
+    """C1: 抓取某省某学科的全部院校（关键词穷举版）。
+
+    背景：研招网新版接口 `zsml/rs/dws.do` 每页固定返回 10 条，且匿名翻页失效
+    （pageno 任意值均返回第 1 页；start= 参数会触发"请登录"）。但 `dwmc`
+    （单位名称模糊搜索）参数**匿名可用且有效**，故改为关键词穷举：对每个
+    关键词请求一次 pageno=1，按 dwdm（单位代码）去重合并，即可突破 10 条上限。
+
+    Args:
+        province_code: 省份代码，如 "11"（北京）。
+        subject_code: 学科门类代码，如 "08"（工学）。保留以兼容旧调用。
+        max_pages: 兼容旧调用保留；穷举模式下不再翻页，仅记录为摘要字段。
+        keywords: 关键词列表；为空时使用内置 KEYWORDS 池。
+
+    Returns:
+        list[dict]: 去重后的院校列表，每项含 dwdm/dwmc/szss/zhx/bs/syl 等原始字段。
+    """
+    kw_list = list(keywords) if keywords else list(KEYWORDS)
+    merged = {}          # dwdm -> 原始 item（保序，首次出现为准）
+    no_code = []         # 无 dwdm 的兜底条目（极少数），按名称去重
+    seen_no_code = set()
+    fail_streak = 0      # 连续失败计数，避免网络异常时死循环
+
+    for i, kw in enumerate(kw_list):
+        params = {
             "ssdm": province_code,
-            "yjxkdm": subject_code,
             "xxfs": "1",
-            "pageno": str(page),
-        })
-        url = f"{YZ_BASE}/zsml/rs/dws.do?{params}"
-        body = fetch(url)
+            "pageno": "1",
+        }
+        if kw:
+            params["dwmc"] = kw
+        # 注意：不再传 yjxkdm；该接口对学科筛选无效，传了反而可能干扰结果集。
+        url = f"{YZ_BASE}/zsml/rs/dws.do?{urllib.parse.urlencode(params)}"
+        body = fetch(url, retries=2)
         if not body:
-            break
+            fail_streak += 1
+            # 网络异常：连续 2 个关键词均失败则提前退出（不做无意义重试）
+            if fail_streak >= 2:
+                print(f"  [WARN] 连续 {fail_streak} 次请求失败，提前结束本次穷举")
+                break
+            continue
+        fail_streak = 0
         try:
             j = json.loads(body)
-            msg = j.get("msg", {})
-            page_list = msg.get("list", [])
-            if not page_list:
-                break
-            schools.extend(page_list)
-            total_page = msg.get("totalPage", 1)
-            if page >= total_page:
-                break
-            polite_delay()
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"  [WARN] 解析失败 page={page}: {e}")
-            break
-    return schools
+        except json.JSONDecodeError:
+            # 非 JSON（如"请登录"/"参数错误"页面），跳过该关键词，不计失败
+            continue
+        msg = j.get("msg")
+        if not isinstance(msg, dict):
+            # msg 非 dict 表示接口返回异常（如未登录），跳过
+            continue
+        page_list = msg.get("list") or []
+        for it in page_list:
+            dm = (it.get("dwdm") or "").strip()
+            name = (it.get("dwmc") or "").strip()
+            if dm:
+                if dm not in merged:
+                    merged[dm] = it
+            elif name and name not in seen_no_code:
+                # 极少数条目缺 dwdm，按名称兜底去重
+                seen_no_code.add(name)
+                no_code.append(it)
+        # 礼貌延迟：沿用 C2 的 2-5s 随机间隔
+        polite_delay()
+
+    result = list(merged.values()) + no_code
+    print(f"  [穷举] 省={province_code} 关键词={len(kw_list)} 去重后={len(result)}")
+    return result
 
 
 def crawl(province_codes=None, subject_codes=None, all_provinces=False, reset_checkpoint=False):
@@ -199,10 +257,13 @@ def crawl(province_codes=None, subject_codes=None, all_provinces=False, reset_ch
                     # 去重
                     existing = db.query(KaoyanSchool).filter(KaoyanSchool.name == name).first()
                     if not existing:
+                        # 注意：研招网接口返回的 schId 是「学校数字ID」，不是官网 URL。
+                        # 历史 bug：曾把 schId 直接写进 official_url，导致官网字段被
+                        # 数字 ID 污染（前端点开是死链）。研招网不提供官网地址，
+                        # 故 official_url 留空，待后续按院校名回填真实官网。
                         school = KaoyanSchool(
                             name=name,
                             province=province,
-                            official_url=item.get("schId"),
                         )
                         db.add(school)
                         added += 1

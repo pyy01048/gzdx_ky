@@ -3,7 +3,7 @@
 import datetime
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean, DateTime, Date, Time,
-    ForeignKey, JSON, Index, UniqueConstraint,
+    ForeignKey, JSON, Index, LargeBinary, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -92,10 +92,19 @@ class QuizQuestion(Base):
     source_paper = Column(String(200), nullable=True, comment="来源试卷名")
     source_page = Column(Integer, nullable=True, comment="来源页码")
     question_no = Column(Integer, nullable=True, comment="题号（试卷内序号）")
+    # —— 跨来源去重溯源（2026-11）——
+    # 同一道题可能被多份文档承载（公共课跨考题最典型）。入库时判重命中不会丢弃，
+    # 而是把新来源并入本字段（JSON 数组），供前端展示"这题也出现在 X 文档"。
+    source_ids = Column(JSON, nullable=True, comment="全部来源列表 JSON 数组（跨来源溯源）")
     confidence = Column(String(20), default="medium", comment="置信度：high/medium/low")
     answer_type = Column(String(20), default="objective", comment="作答类型：objective/subjective")
     is_available = Column(Boolean, default=True, comment="是否可用（下线标记）")
     quality = Column(String(20), nullable=True, comment="质量评级：A/B/C")
+    # —— M1-1f：OCR 碎片题标记（2026-10）—— #
+    is_junk = Column(Boolean, default=False, comment="是否 OCR 碎片/答案串（列表默认排除）")
+    # —— M6-3：复试维度标记（2026-11）—— #
+    # is_retest=1 表示复试题（复试面试/笔试），默认 0=初试。用于复试题库分区与过滤。
+    is_retest = Column(Boolean, default=False, index=True, comment="是否复试题（0 初试 / 1 复试）")
     created_at = Column(DateTime, default=_utcnow)
 
 
@@ -359,6 +368,15 @@ class KnowledgePoint(Base):
     chapter = Column(String(200), nullable=True, comment="章节")
     parent_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=True, comment="父知识点 ID")
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=True, index=True, comment="来源文档 ID")
+    # —— 溯源与留痕（2026-10 入库时知识点抽取，见 services/kp_extract.py）——
+    source_chunk_id = Column(Integer, ForeignKey("knowledge_chunks.id"), nullable=True,
+                             index=True, comment="来源知识分块 ID（可反查原文片段）")
+    source_chunk_index = Column(Integer, nullable=True,
+                                comment="来源分块在本篇文档内的序号")
+    extract_source = Column(String(32), nullable=True,
+                            comment="抽取来源：smart_ingest / batch / manual")
+    subject_source = Column(String(20), nullable=True,
+                            comment="学科判定来源：model / keyword / model_over_keyword / fallback")
     mastery = Column(Integer, default=0, comment="掌握度 0-100")
     exam_frequency = Column(Integer, default=0, comment="考频 1-5")
     description = Column(Text, nullable=True, comment="描述")
@@ -506,6 +524,14 @@ class Document(Base):
     # —— V11 模块5：内容语义分层（与 doc_type 加工层级正交）—— #
     # textbook 教材知识点 / example 典型例题 / exam 历年真题 / method 解题方法
     content_category = Column(String(20), nullable=True, index=True, comment="内容语义分类：textbook 教材 / example 例题 / exam 真题 / method 方法")
+    # —— IMA 知识库导入：阶段 / 内容性质 / 溯源 —— #
+    # 三个维度彼此正交，且都**不复用 doc_type**（doc_type 是加工层级 raw/note/index），
+    # 避免两套语义挤在同一列破坏既有筛选。
+    subject_source = Column(String(50), nullable=True, index=True, comment="资料来源：ima=IMA知识库导入 / 空=本地上传")
+    stage = Column(String(20), nullable=True, index=True, comment="备考阶段：初试 / 复试")
+    content_type = Column(String(20), nullable=True, index=True, comment="内容性质：知识 / 试题 / 单词")
+    ima_media_id = Column(String(200), nullable=True, index=True, comment="IMA 侧条目 ID，正文按需 fetch，不落库")
+    folder_path = Column(String(500), nullable=True, comment="IMA 内文件夹路径，保留原始组织结构")
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -526,9 +552,81 @@ class KnowledgeChunk(Base):
     page_start = Column(Integer, nullable=True, comment="起始页码")
     page_end = Column(Integer, nullable=True, comment="结束页码")
     summary = Column(Text, nullable=True, comment="分块摘要")
+    # —— chunk 级三层标签（docx/14 方案，幂等 ALTER 见 chunk_classifier） —— #
+    l2_chapter = Column(String(200), nullable=True, comment="L2 章节/模块，如：连续时间系统的时域分析")
+    l3_content_type = Column(String(30), nullable=True, index=True,
+                             comment="L3 内容语义类型：定义/定理/理论陈述/例题/习题/证明/公式/实验步骤/其他")
+    classify_confidence = Column(Float, nullable=True, comment="三路融合置信度 0~1")
+    classify_source = Column(String(30), nullable=True,
+                             comment="判定来源留痕：vector/keyword/fusion/llm/no_bge/fallback")
     created_at = Column(DateTime, default=_utcnow)
 
     document = relationship("Document", backref="knowledge_chunks")
+
+
+# --------------------------------------------------------------------------- #
+# 学科原型质心（subject_prototypes）—— chunk 分类路1 的种子向量库
+# --------------------------------------------------------------------------- #
+class SubjectPrototype(Base):
+    """学科原型质心向量。主键含 engine：**不同引擎的向量绝不允许混用**。
+
+    背景：knowledge_chunks_vec 里 bge 与离线哈希向量同为 512 维、dim 列不区分引擎，
+    哈希向量做相似度=噪声。质心分类对引擎一致性极其敏感，所以这里用
+    (subject, engine) 联合主键把口径锁死（docx/14 第一节问题 6）。
+    """
+    __tablename__ = "subject_prototypes"
+
+    subject = Column(String(50), primary_key=True, comment="学科（taxonomy 归一后的叶子科）")
+    engine = Column(String(30), primary_key=True, default="bge", comment="向量引擎标识（bge）")
+    dim = Column(Integer, nullable=False, comment="向量维度")
+    vector = Column(LargeBinary, nullable=False, comment="质心向量 bytes（float32，L2 归一化后）")
+    n_samples = Column(Integer, default=0, comment="参与求质的样本块数")
+    built_at = Column(DateTime, default=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# 分类标注样本（annotation_samples）—— 评估闭环 / 人工修正回流
+# --------------------------------------------------------------------------- #
+class AnnotationSample(Base):
+    """人工标注/修正的分类样本。eval 集 + 未来小模型训练集共用。"""
+    __tablename__ = "annotation_samples"
+
+    id = Column(Integer, primary_key=True, index=True)
+    chunk_id = Column(Integer, nullable=True, index=True, comment="来源 chunk（可为空：外部样本）")
+    chunk_text = Column(Text, nullable=False, comment="标注时的块文本快照")
+    label_l1 = Column(String(50), nullable=True, comment="人工学科标签")
+    label_l2 = Column(String(200), nullable=True, comment="人工章节标签")
+    label_l3 = Column(String(30), nullable=True, comment="人工内容类型标签")
+    annotate_user = Column(String(50), nullable=True, comment="标注人")
+    source = Column(String(20), default="manual_fix",
+                    comment="来源：eval_seed=评估集抽样 / manual_fix=线上人工修正")
+    created_at = Column(DateTime, default=_utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# 评测/体检运行历史（eval_runs）
+# --------------------------------------------------------------------------- #
+class EvalRun(Base):
+    """一次评测或语料体检的落库记录，供趋势页和回溯用。
+
+    metrics 原样存脚本的 report dict，不改结构；primary_metric 单独拉一列，
+    前端画趋势不必解析 JSON。
+    """
+    __tablename__ = "eval_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(24), nullable=False, index=True,
+                  comment="qa=答疑模型评测 / recognition=识别策略评测 / corpus_probe=语料体检")
+    arm = Column(String(120), nullable=True, comment="被测对象：模型名列表或策略名")
+    dataset_fingerprint = Column(String(64), nullable=True, index=True,
+                                 comment="数据集指纹 sha1（训练集内容+样本数+holdout 口径）")
+    n_samples = Column(Integer, nullable=True, comment="评测样本数")
+    primary_metric = Column(Float, nullable=True,
+                            comment="主指标：qa=held-out 准确率, recognition=学科池精确率, corpus_probe=域内可检索率")
+    metrics = Column(JSON, nullable=True, comment="脚本 report 原文 JSON")
+    report_path = Column(String(300), nullable=True, comment="导出的 markdown/JSON 报告路径")
+    notes = Column(Text, nullable=True, comment="口径说明、否决结论等")
+    created_at = Column(DateTime, default=_utcnow, index=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -675,9 +773,12 @@ class KaoyanSchool(Base):
     __tablename__ = "kaoyan_schools"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False, index=True, comment="院校名称")
-    level = Column(String(50), nullable=True, index=True, comment="层级：985/211/双一流/一本/二本/民办")
+    level = Column(String(50), nullable=True, index=True, comment="层级：985/211/双一流/双非；空=未分类（非985/211/双一流）")
     province = Column(String(50), nullable=True, index=True, comment="省份")
     city = Column(String(50), nullable=True, comment="城市")
+    # M3-1：大区（教育部国家线分区 A区/B区）+ 院校类型（公办/科研院所/军队院校）
+    region = Column(String(30), nullable=True, index=True, comment="大区：A区/B区")
+    type = Column(String(30), nullable=True, index=True, comment="院校类型：公办/科研院所/军队院校")
     logo_url = Column(String(500), nullable=True, comment="校徽URL")
     intro = Column(Text, nullable=True, comment="院校简介")
     tags = Column(JSON, nullable=True, comment="标签JSON")

@@ -126,6 +126,9 @@ class NetdiskService:
             "expires_at": extra.get("expires_at"),          # ISO 字符串
             "device_id": extra.get("device_id", "") or "",
             "scope": extra.get("scope", "basic,netdisk"),
+            # 同步根目录：库里 extra.sync_dir 配过 "/考研资料"，之前漏了这一项，
+            # 导致 /netdisk/sync 只能从 "/" 起步，永远碰不到真正的资料。
+            "sync_dir": extra.get("sync_dir", "/") or "/",
         }
 
     def _save_config(self, **fields) -> None:

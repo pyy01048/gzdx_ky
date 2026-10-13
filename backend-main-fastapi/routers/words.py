@@ -176,9 +176,12 @@ def word_stats(db: Session = Depends(get_db)):
     reviewing_count = db.query(Word).filter(Word.status == "reviewing").count()
     mastered_count = db.query(Word).filter(Word.status == "mastered").count()
     today = datetime.date.today()
+    # V12 修复：新词（status='new'，从未学习）不计入"今日待复习"。
+    # 旧逻辑把 due_date IS NULL 的新词也算作今日到期 → 全站复习调度显示
+    # "4568/4569 今日待复习"，学习数据失真。复习队列只包含已学过的词。
     due_today = db.query(Word).filter(
-        (Word.due_date <= today) | (Word.due_date.is_(None))
-    ).filter(Word.status != "mastered").count()
+        Word.due_date <= today
+    ).filter(Word.status.in_(["learning", "reviewing"])).count()
     return {
         "total": total,
         "new": new_count,
@@ -196,9 +199,10 @@ def due_words(
 ):
     """获取今日待复习单词（含新词）。"""
     today = datetime.date.today()
+    # V12 修复：due 队列排除新词（new）——新词走"学习"流程而非"复习"队列
     words = db.query(Word).filter(
-        (Word.due_date <= today) | (Word.due_date.is_(None))
-    ).filter(Word.status != "mastered").order_by(Word.status, Word.id).limit(limit).all()
+        Word.due_date <= today
+    ).filter(Word.status.in_(["learning", "reviewing"])).order_by(Word.status, Word.id).limit(limit).all()
     return words
 
 

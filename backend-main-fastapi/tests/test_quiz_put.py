@@ -74,16 +74,17 @@ def test_put_updates_only_sent_fields(client, fresh_single_question):
 
 
 def test_put_404_for_missing_question(client):
-    """PUT 不存在的题目 id 返回 404。
+    """PUT 不存在的题目 id 返回 404，并把原因带给前端。
 
-    注：main.py 注册了全局 404 处理器（SPA fallback），/api 路径下所有
-    HTTPException(404) 的 detail 都会被统一改写为 {"detail": "Not Found"}——
-    DELETE /questions/{id} 的 404 行为与此完全一致，属项目既有约定。
+    历史上 main.py 的全局 404 处理器（SPA fallback）会把 /api 路径下所有
+    HTTPException(404) 的 detail 统一压成 {"detail": "Not Found"}，前端只能看到
+    "404"三个字、分不清"记录不存在"和"接口没注册"。#26 修掉了这个改写：
+    现在保留路由原 detail，DELETE /questions/{id} 行为一致。
     """
     r = client.put("/api/quiz/questions/999999", json={"analysis": "x"})
     assert r.status_code == 404
     body = r.json()
-    assert body["detail"] == "Not Found"
+    assert body["detail"] == "题目 999999 不存在"
     assert body["path"] == "/api/quiz/questions/999999"
 
 

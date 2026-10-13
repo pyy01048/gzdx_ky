@@ -8,6 +8,7 @@ import AiServiceManager from '../components/AiServiceManager'
 import LanAccessCard from '../components/LanAccessCard'
 import ModelSelectPanel from '../components/ModelSelectPanel'
 import SubjectSettings from '../components/SubjectSettings'
+import UiCustomize from '../components/UiCustomize'
 import { getStatus as getPanStatus, getStoredPan, clearPan } from '../utils/pan'
 import { aiApi, dashboardApi } from '../api/client'
 
@@ -22,7 +23,8 @@ const SHORTCUTS = [
 
 export default function Settings() {
   const { settings, updateSettings, resetAll, tasks, notebook, pan, words, cards } = useStore()
-  const [form, setForm] = useState({ ...settings })
+  // examDate 允许为空（未配置），但 <input type="date"> 的 value 必须是字符串，null 会变非受控
+  const [form, setForm] = useState({ ...settings, examDate: settings.examDate || '' })
   const [showReset, setShowReset] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const fileRef = useRef(null)
@@ -132,7 +134,7 @@ export default function Settings() {
   }, [])
 
   const saveSettings = async () => {
-    updateSettings({ ...form, examDate: form.examDate || '2027-12-25' })
+    updateSettings({ ...form, examDate: form.examDate || null })
     // 同步写后端 goals 表：sync 加载器会用后端 goal 覆盖本地，
     // 只写 localStorage 会被旧值顶回去（此前"改了不生效"的根因）
     try {
@@ -346,6 +348,9 @@ export default function Settings() {
             </p>
           </div>
         </section>
+
+        {/* 界面自定义（P1：仪表盘/导航模块显隐与排序，偏好存本机浏览器） */}
+        <UiCustomize />
 
         {/* 本地模型（Ollama） */}
         <section className="card">

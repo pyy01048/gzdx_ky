@@ -1,0 +1,11 @@
+﻿table,id,content/title,subject,other,created_at,处置建议
+tasks,1,数学高等数学第一章复习,数学,status=pending completed_at=None,2026-08-29 15:53:41.679276,待用户逐条确认；不自动删除
+tasks,2,英语阅读理解精读 2 篇,英语,status=pending completed_at=None,2026-08-29 15:53:41.679279,待用户逐条确认；不自动删除
+tasks,3,政治马原原理梳理,政治,status=doing completed_at=None,2026-08-29 15:53:41.679281,待用户逐条确认；不自动删除
+tasks,4,数据结构链表练习,专业课,status=pending completed_at=None,2026-08-29 15:53:41.679282,待用户逐条确认；不自动删除
+tasks,5,数学线性代数复习,数学,status=pending completed_at=None,2026-08-29 15:53:41.679284,待用户逐条确认；不自动删除
+tasks,6,英语单词背诵 200 个,英语,status=done completed_at=2026-08-29 15:53:41.666422,2026-08-29 15:53:41.679286,待用户逐条确认；不自动删除
+tasks,7,政治毛中特框架整理,政治,status=done completed_at=2026-08-31 14:11:54.416813,2026-08-29 15:53:41.679287,待用户逐条确认；不自动删除
+quiz_questions,1871,设函数 f(x) 在 x=0 处连续，且 lim(x->0) (f(x) - f(0)) / x = 3，则 f'(0),数学,source=ai:variant:1,2026-10-08 08:02:29.844527,待用户逐条确认；不自动删除
+error_records,13,设函数 f(x) 在 x=0 处连续，且 lim(x->0) (f(x) - f(0)) / x = 3，则 f'(0),数学,reason=答题错误,2026-10-09 15:22:07.056103,待用户逐条确认；不自动删除
+goals,1,exam_date=2027-12-25,贵州大学,remark=目标贵大电子信息专硕，专业课 834 电子技术基础,2026-08-29 15:53:41.675995,待用户逐条确认；不自动删除

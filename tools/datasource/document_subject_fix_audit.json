@@ -1,0 +1,39 @@
+{
+  "batches": [
+    {
+      "applied_at": "2026-10-12 01:52:01",
+      "db_path": "D:/平台/database/kaoyan.db",
+      "backup": "D:\\平台\\backend-main-fastapi\\data\\backups\\kaoyan_pre_docsubjectfix_20261012_015159.db",
+      "fixed_count": 3,
+      "entries": [
+        {
+          "document_id": 167,
+          "file_name": "【电子技术基础】国家职业资格培训.txt",
+          "old_subject": "政治",
+          "new_subject": "模拟电子技术",
+          "subject_source": "corrected_source_rule",
+          "rule": "电子技术基础·国职培训 → 模电",
+          "fixed_at": "2026-10-12 01:52:01"
+        },
+        {
+          "document_id": 620,
+          "file_name": "【电子技术基础】国家职业资格培训.pdf",
+          "old_subject": "政治",
+          "new_subject": "模拟电子技术",
+          "subject_source": "corrected_source_rule",
+          "rule": "电子技术基础·国职培训 → 模电",
+          "fixed_at": "2026-10-12 01:52:01"
+        },
+        {
+          "document_id": 1059,
+          "file_name": "【电子技术基础】国家职业资格培训.pdf",
+          "old_subject": "政治",
+          "new_subject": "模拟电子技术",
+          "subject_source": "corrected_source_rule",
+          "rule": "电子技术基础·国职培训 → 模电",
+          "fixed_at": "2026-10-12 01:52:01"
+        }
+      ]
+    }
+  ]
+}
