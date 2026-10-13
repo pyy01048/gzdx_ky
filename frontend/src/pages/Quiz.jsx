@@ -327,14 +327,17 @@ export default function Quiz() {
          （后端已按 is_available 口径统计），把可作答题数与题量分别展示，避免
          「显示 2000 题、点进去 0 题可判分」的口径错位。 */
       let answerableMap = {}
+      let visibleMap = {}
       try {
         const qs = await quizApi.subjects()
         const its = Array.isArray(qs?.items) ? qs.items : (Array.isArray(qs) ? qs : [])
         answerableMap = Object.fromEntries(its.map((x) => [x.subject, x.answerable_count ?? 0]))
-      } catch { answerableMap = {} }
+        visibleMap = Object.fromEntries(its.map((x) => [x.subject, x.visible_count ?? x.question_count ?? 0]))
+      } catch { answerableMap = {}; visibleMap = {} }
       for (const s of list) {
         const name = s.subject || s.name
         if (answerableMap[name] != null) s.answerable_count = answerableMap[name]
+        if (visibleMap[name] != null) s.visible_count = visibleMap[name]
       }
       /* 排序：用户配置科目在前（按配置顺序），其余按有题优先、最后 0 题 */
       const cfgIdx = (name) => { const i = cfgOrder.indexOf(name); return i < 0 ? 9999 : i }
@@ -803,9 +806,13 @@ export default function Quiz() {
               </p>
             </div>
             <dl className="qh-hero-stats">
-              <div className="qh-hstat">
-                <dt>题库总量</dt>
-                <dd>{statsLoading ? '…' : <CountUp value={stats?.total_questions || 0} />}<small>题</small></dd>
+              <div className="qh-hstat" title="可见题：排除 OCR 碎片题后的题库总量（= /api/quiz/stats.visible_total）">
+                <dt>可见题</dt>
+                <dd>{statsLoading ? '…' : <CountUp value={stats?.visible_total ?? stats?.total_questions ?? 0} />}<small>题</small></dd>
+              </div>
+              <div className="qh-hstat" title="可作答：有答案、可用于自动判分的题（= /api/quiz/stats.answerable_total）">
+                <dt>可作答</dt>
+                <dd>{statsLoading ? '…' : <CountUp value={stats?.answerable_total ?? 0} />}<small>题</small></dd>
               </div>
               <div className="qh-hstat">
                 <dt>已完成作答</dt>
@@ -823,6 +830,7 @@ export default function Quiz() {
           </div>
           <div className="qh-hero-note">
             <span>数据来源：/api/quiz/stats</span>
+            <span>· 可见题 = 排除 OCR 碎片；可作答 = 有答案可判分（口径由后端具名字段给出）</span>
             {backendOk
               ? <span className="live-dot">· 已连接真实题库</span>
               : <span className="offline-dot">· 统计加载失败，显示为 0，可重试</span>}
@@ -946,9 +954,9 @@ export default function Quiz() {
                   <span className="qknow-subj-name">{s.subject}</span>
                   <span className="qknow-subj-cnt">{s.question_count || 0}题</span>
                 </span>
-                <span className="qknow-subj-meta">
+                <span className="qknow-subj-meta" title="可作答 = 有答案可判分；可见 = 排除 OCR 碎片后的该科目题量">
                   <span className={s.answerable_count === 0 ? 'err' : ''}>
-                    可作答 {s.answerable_count ?? '—'}
+                    可作答 {s.answerable_count ?? '—'} / 可见 {s.visible_count ?? s.question_count ?? '—'}
                   </span>
                   <span className="err">错题 {s.error_count || 0}</span>
                   {s.is_custom && <span>自定义</span>}
@@ -975,7 +983,7 @@ export default function Quiz() {
           {/* 依据明示：当前科目题量 vs 可作答题量，让用户清楚「能判分多少」 */}
           {active && (
             <p className="qnote flush" style={{ marginTop: 0 }}>
-              当前依据：科目 <strong>{active.subject}</strong> · 可见题 {active.question_count || 0} 题 ·
+              当前依据：科目 <strong>{active.subject}</strong> · 可见题 {active.visible_count ?? active.question_count ?? 0} 题 ·
               可作答 {activeAnswerable ?? '未知'} 题
               {activeAnswerable === 0 && '（该科目尚无标准答案，将进入「浏览模式」：不判分、不进错题本）'}
             </p>
