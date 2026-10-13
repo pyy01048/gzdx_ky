@@ -218,6 +218,13 @@ export const dashboardApi = {
   weakness: () => request('/dashboard/weakness')
 }
 
+/* ---------------- V11 学习洞察（今日引导/周报/智能组卷） ---------------- */
+export const insightApi = {
+  today: () => request('/insight/today'),
+  weeklyReport: () => request('/insight/weekly-report'),
+  smartPaper: (body) => request('/insight/smart-paper', { method: 'POST', body }),
+}
+
 /* ---------------- Tasks 任务 ---------------- */
 export const tasksApi = {
   list: (params) => request('/tasks', { params }),

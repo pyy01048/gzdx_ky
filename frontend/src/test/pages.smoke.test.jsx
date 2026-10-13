@@ -62,6 +62,19 @@ const apiMocks = {
     stats: vi.fn().mockResolvedValue({ week_minutes: 0, review_due: 0, errors_today: 0 }),
     weakness: vi.fn().mockResolvedValue({ items: [] }),
   },
+  /* V11 学习洞察（Dashboard 今日引导/周报） */
+  insightApi: {
+    today: vi.fn().mockResolvedValue({
+      due_review_count: 0, today_tasks_count: 0, today_answered: 0,
+      weak_top: [], suggestion: [],
+    }),
+    weeklyReport: vi.fn().mockResolvedValue({
+      summary: '', daily: [], this_week: { answered: 0, accuracy: null, duration_min: 0 },
+      last_week: { answered: 0, accuracy: null }, delta: { direction: 'flat', text: '持平' },
+      weak_delta: [],
+    }),
+    smartPaper: vi.fn().mockResolvedValue({ mode: 'random', size: 0, basis: '', questions: [] }),
+  },
   tasksApi: {
     list: vi.fn().mockResolvedValue([]),
     create: vi.fn().mockResolvedValue({ id: 1 }),
@@ -110,9 +123,17 @@ beforeEach(() => {
   }
   apiMocks.dashboardApi.countdown.mockResolvedValue(dashboardPayload.countdown)
   apiMocks.dashboardApi.todayTasks.mockResolvedValue(dashboardPayload.today_tasks)
-  apiMocks.dashboardApi.stats.mockResolvedState?.()
   apiMocks.tasksApi.list.mockResolvedValue([])
   apiMocks.tasksApi.reviewSchedule.mockResolvedValue([])
+  /* V11 insight mock：reset 后恢复默认空数据，避免 Dashboard 异步引导拿到 undefined */
+  apiMocks.insightApi?.today?.mockResolvedValue?.({
+    due_review_count: 0, today_tasks_count: 0, today_answered: 0, weak_top: [], suggestion: [],
+  })
+  apiMocks.insightApi?.weeklyReport?.mockResolvedValue?.({
+    summary: '', daily: [], this_week: { answered: 0, accuracy: null, duration_min: 0 },
+    last_week: { answered: 0, accuracy: null }, delta: { direction: 'flat', text: '持平' }, weak_delta: [],
+  })
+  apiMocks.insightApi?.smartPaper?.mockResolvedValue?.({ mode: 'random', size: 0, basis: '', questions: [] })
 })
 
 afterEach(() => {
