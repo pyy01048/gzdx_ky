@@ -186,9 +186,10 @@ export default function NoticeBoard() {
         </p>
       )}
 
-      {/* 引导到通知中心：可标记已读、只看未读、加星置顶 */}
+      {/* 引导到通知中心：可标记已读、只看未读、加星置顶
+          文案口径与导航入口名「通知中心」对齐（#105a） */}
       <Link to="/kaoyan/notices" className="notice-more">
-        管理已读 / 查看全部通知 <ChevronRight size={13} />
+        进入通知中心：管理已读 / 查看全部 <ChevronRight size={13} />
       </Link>
     </div>
   )

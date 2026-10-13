@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
-import { examDeadline, examDaysLeft, resolveExamDate } from '../utils/exam'
+import { examDeadline, examDaysLeft, examDateMD, resolveExamDate } from '../utils/exam'
 import GlobalAI from './GlobalAI'
 import CommandPalette from './CommandPalette'
 import NoticeUnreadBadge from './NoticeUnreadBadge'
@@ -49,7 +49,9 @@ function ExamCountdown() {
   const secs = Math.floor(abs / 1000) % 60
   return (
     <div className="exam-cd">
-      <span className="ecd-label">{estimated ? '考研初试倒计时（12/21 预估）' : '考研初试倒计时'}</span>
+      <span className="ecd-label">
+        {estimated && examDate ? `考研初试倒计时（${examDateMD(examDate)} 预估）` : '考研初试倒计时'}
+      </span>
       <div className="ecd-main">
         {done ? <span className="ecd-days">已开考</span> : (
           <>
@@ -205,6 +207,7 @@ const CRUMB_MAP = {
   '/quiz': '刷题中心',
   '/quiz-bank': '题库管理',
   '/panorama': '知识点全景',
+  '/quality': '评测与数据质量',
   '/profile': '学习画像',
   '/error-review': '错题复盘',
   '/notebook': '错题本',

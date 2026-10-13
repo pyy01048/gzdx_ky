@@ -36,7 +36,6 @@ const KaoyanImport = lazy(() => import('./pages/KaoyanImport'))
 const KaoyanMap = lazy(() => import('./pages/KaoyanMap'))
 const KaoyanScatter = lazy(() => import('./pages/KaoyanScatter'))
 const KaoyanAssistant = lazy(() => import('./pages/KaoyanAssistant'))
-const KaoyanNotices = lazy(() => import('./pages/KaoyanNotices'))
 const PlanPage = lazy(() => import('./pages/PlanPage'))
 const GrowthPage = lazy(() => import('./pages/GrowthPage'))
 const ErrorReview = lazy(() => import('./pages/ErrorReview'))
@@ -48,22 +47,31 @@ function PageFallback() {
 
 // D7: 考研择校模块分组布局（嵌套路由 + 各页面懒加载）
 // 择校模块内 Tab 导航（复用 Segmented/.seg，零新增样式）
+// 口径对齐（#105a）：入口清单/名称/排序一律以 Layout 的「院校数据中心」分组下拉为基准，
+// 与之逐条一致（此前存在重复「通知中心」、缺 招生散点图/考研规划/成长体系/择校 AI 问答、
+// 且用 /kaoyan/guide 代替模块主页 /kaoyan）。
 const KAOYAN_TABS = [
-  { value: '/kaoyan/guide', label: '择校中心' },
+  { value: '/kaoyan', label: '择校中心' },
   { value: '/kaoyan/notices', label: '通知中心' },
   { value: '/kaoyan/schools', label: '院校库' },
   { value: '/kaoyan/compare', label: '院校对比' },
   { value: '/kaoyan/analysis', label: '分数分析' },
-  { value: '/kaoyan/recommend', label: '智能择校' },
-  { value: '/kaoyan/notices', label: '通知中心' },
   { value: '/kaoyan/map', label: '区域热力图' },
+  { value: '/kaoyan/scatter', label: '招生散点图' },
+  { value: '/kaoyan/recommend', label: '智能择校' },
+  { value: '/kaoyan/plan', label: '考研规划' },
+  { value: '/kaoyan/growth', label: '成长体系' },
+  { value: '/kaoyan/assistant', label: '择校 AI 问答' },
   { value: '/kaoyan/import', label: '数据管理' },
 ]
 const KaoyanModuleLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  // 当前 tab：schools/:id 归到 schools，guide 是默认
-  const currentTab = KAOYAN_TABS.find((t) => location.pathname.startsWith(t.value))?.value || '/kaoyan/guide'
+  // 当前 tab：取「最长前缀匹配」，避免模块主页 /kaoyan 吞掉 /kaoyan/schools/:id 等子路由；
+  // 无匹配时回落模块主页（/kaoyan）。
+  const currentTab = KAOYAN_TABS
+    .filter((t) => location.pathname === t.value || location.pathname.startsWith(t.value + '/'))
+    .sort((a, b) => b.value.length - a.value.length)[0]?.value || '/kaoyan'
   return (
     <div>
       <Segmented options={KAOYAN_TABS} value={currentTab} onChange={(v) => navigate(v)} />
@@ -119,7 +127,10 @@ export default function App() {
           <Route path="/cards" element={<Cards />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/codebank" element={<CodeBank />} />
-          {/* D7: 考研择校模块分组（嵌套路由 + 懒加载） */}
+          {/* D7: 考研择校模块分组（嵌套路由 + 懒加载）
+              路由声明顺序与 KAOYAN_TABS / Layout「院校数据中心」分组下拉一致；
+              并移除重复的 notices 路由（此前 notices 声明了两次，
+              后一条指向旧页 KaoyanNotices，永远抢不到匹配 → 死路由）。 */}
           <Route path="/kaoyan" element={<KaoyanModuleLayout />}>
             <Route index element={<KaoyanGuide />} />
             <Route path="guide" element={<KaoyanGuide />} />
@@ -129,14 +140,13 @@ export default function App() {
             <Route path="schools/:id" element={<KaoyanSchoolDetail />} />
             <Route path="compare" element={<KaoyanCompare />} />
             <Route path="analysis" element={<KaoyanAnalysis />} />
-            <Route path="recommend" element={<KaoyanRecommend />} />
-            <Route path="import" element={<KaoyanImport />} />
             <Route path="map" element={<KaoyanMap />} />
             <Route path="scatter" element={<KaoyanScatter />} />
-            <Route path="assistant" element={<KaoyanAssistant />} />
-            <Route path="notices" element={<KaoyanNotices />} />
+            <Route path="recommend" element={<KaoyanRecommend />} />
             <Route path="plan" element={<PlanPage />} />
             <Route path="growth" element={<GrowthPage />} />
+            <Route path="assistant" element={<KaoyanAssistant />} />
+            <Route path="import" element={<KaoyanImport />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

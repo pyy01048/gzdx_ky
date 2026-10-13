@@ -406,7 +406,8 @@ export default function KbMap() {
         </div>
       </div>
 
-      {/* 顶部导航（居中置顶）：本模块三个入口互跳，知识地图为当前页 */}
+      {/* 顶部导航（居中置顶）：与「知识点全景」同模块互跳，知识地图为当前页
+          （原「考频分析」胶囊已随 ExamFrequency 页删除，docx/22 D3） */}
       <nav className="kb-topnav" aria-label="知识地图模块导航">
         <div className="kb-topnav-lead" />
         <div className="kb-topnav-inner">
@@ -417,13 +418,6 @@ export default function KbMap() {
             title="切换到知识点全景：跨章节掌握度图谱总览"
           >
             知识点全景
-          </button>
-          <button
-            className="kb-navpill"
-            onClick={() => navigate('/exam-frequency')}
-            title="切换到考频分析：知识点 / 章节 / 套卷三维考频排行"
-          >
-            考频分析
           </button>
         </div>
         <div className="kb-topnav-actions">
