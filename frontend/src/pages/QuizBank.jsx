@@ -61,7 +61,7 @@ export default function QuizBank() {
 
   const [subjects, setSubjects] = useState([])   // 后端动态科目列表
   const [chapters, setChapters] = useState([])    // 常用章节（datalist）
-  const [stats, setStats] = useState({ total: 0, active: 0, mastered: 0, graduated: 0 })
+  const [stats, setStats] = useState({ total: 0, visible: 0, answerable: 0, junk: 0, active: 0, mastered: 0, graduated: 0 })
   const [bankTotal, setBankTotal] = useState(null)   /* 题库总量：与列表同口径（可作答题） */
   const [loadError, setLoadError] = useState('')   /* 阶段2：题目列表错误就地态 */
 
@@ -83,13 +83,18 @@ export default function QuizBank() {
       .catch((e) => { setChapters([]); toast('章节列表加载失败：' + (e?.message || '未知错误')) })
   }, [])
 
-  /* 全局统计（一次即可） */
+  /* 全局统计（一次即可）。
+     口径显式化（M0-103①）：/stats 给出 visible_total（排除 OCR 碎片）/ answerable_total
+     （可判分）/ junk_total，前端不再自造数字，直接引用具名字段并标注口径。 */
   useEffect(() => {
     quizApi.stats()
       .then((d) => {
         if (!d) return
         setStats({
-          total: d.total_questions ?? 0,
+          total: d.total_questions ?? d.visible_total ?? 0,
+          visible: d.visible_total ?? d.total_questions ?? 0,
+          answerable: d.answerable_total ?? 0,
+          junk: d.junk_total ?? 0,
           active: d.active_errors ?? 0,
           mastered: Math.round(d.accuracy_rate ?? 0),
           graduated: d.graduated_errors ?? 0,
@@ -99,7 +104,7 @@ export default function QuizBank() {
   }, [])
 
   /* 题库总量：与列表接口同口径（默认 answerable=true，仅返回可作答题）。
-     优先取后端新增的 answerable_count（精确「可作答」口径），缺失时回退 total。 */
+     优先取 /stats.answerable_total；缺失时回退列表接口的 answerable_count。 */
   useEffect(() => {
     quizApi.questions({ page: 1, page_size: 1 })
       .then((d) => {
@@ -234,10 +239,19 @@ export default function QuizBank() {
   }
 
   const statCards = [
-    { icon: <Book size={28} />, label: '题库总量', value: bankTotal == null ? '—' : bankTotal, color: 'var(--accent)', title: '仅统计可作答题（与下方题目列表同口径）' },
-    { icon: <Target size={28} />, label: '待攻克题', value: stats.active, color: 'var(--red)' },
-    { icon: <CheckCircle size={28} />, label: '正确率 %', value: stats.mastered, color: 'var(--green)' },
-    { icon: <GraduationCap size={28} />, label: '已掌握题', value: stats.graduated, color: 'var(--gold)' },
+    {
+      icon: <Book size={28} />, label: '可作答题', value: bankTotal == null ? (stats.answerable || '—') : bankTotal,
+      color: 'var(--accent)',
+      title: '可作答 = 有答案可自动判分（= /api/quiz/stats.answerable_total）。与下方列表默认口径一致。',
+    },
+    {
+      icon: <FileText size={28} />, label: '可见题', value: stats.visible ?? '—',
+      color: 'var(--violet)',
+      title: '可见题 = 排除 OCR 碎片题后的题库总量（= /api/quiz/stats.visible_total）',
+    },
+    { icon: <Target size={28} />, label: '待攻克题', value: stats.active, color: 'var(--red)', title: '活跃错题数（全库）' },
+    { icon: <CheckCircle size={28} />, label: '正确率 %', value: stats.mastered, color: 'var(--green)', title: '答对次数 / 答题总次数（全库）' },
+    { icon: <GraduationCap size={28} />, label: '已掌握题', value: stats.graduated, color: 'var(--gold)', title: '已毕业错题数（全库）' },
   ]
 
   return (
@@ -252,7 +266,7 @@ export default function QuizBank() {
       </div>
 
       {/* 统计卡片 */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
         {statCards.map((s, i) => (
           <div key={i} className="stat-card" title={s.title} style={{
             background: 'var(--surface)',

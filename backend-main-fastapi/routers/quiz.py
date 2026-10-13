@@ -24,54 +24,33 @@ router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
 
 # --------------------------------------------------------------------------- #
-# 来源大类（M0 刷题中心重构）：真题 / 教材题 的**唯一**判定口径。
-#
-# 库里没有 source_kind 列，来源大类由 `source` 字段的前缀决定：
-#   * `真题:<文档名>`    → exam（历年真题）
-#   * `知识库:<文档名>`  → textbook（教材 / 讲义 / 知识库抽取题）
-#   * 其余 / NULL        → custom（ai 变式题、手工录入等）
-# 前端「一页真题、一页教材题」的 Tab 分离即按此过滤，避免两类题混在一个列表里。
+# 来源大类（真题 / 教材题 / 自建）的唯一派生规则见
+# ``services/quiz_query.py``（source_kind_of / source_kind_expr），
+# 此处仅做薄封装以保持本文件既有调用点不变，**不再维护第二份规则**。
 # --------------------------------------------------------------------------- #
-SOURCE_KIND_CHOICES = ("exam", "textbook", "custom")
-_EXAM_PREFIX = "真题:%"
-_TEXTBOOK_PREFIX = "知识库:%"
+from services.quiz_query import (  # noqa: E402
+    SOURCE_KIND_CHOICES as _SOURCE_KIND_CHOICES,
+    source_kind_expr as _source_kind_expr_shared,
+    answerable_expr as _answerable_expr_shared,
+)
+
+SOURCE_KIND_CHOICES = _SOURCE_KIND_CHOICES
 
 
 def _source_kind_expr(source_kind: Optional[str]):
-    """返回 source_kind 对应的 SQLAlchemy 过滤表达式；'all'/None 返回 None。
-
-    非法的 source_kind 抛 400（明确失败，不静默返回全部）。
-    """
-    from sqlalchemy import and_, not_, or_
-
-    if not source_kind or str(source_kind).strip().lower() in ("", "all"):
-        return None
-    kind = str(source_kind).strip().lower()
-    if kind not in SOURCE_KIND_CHOICES:
+    """转发到共享派生器；非法值转 400（明确失败，不静默返回全部）。"""
+    try:
+        return _source_kind_expr_shared(source_kind)
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail=f"不支持的 source_kind：{source_kind}；可选 {' | '.join(SOURCE_KIND_CHOICES)}",
-        )
-    if kind == "exam":
-        return QuizQuestion.source.like(_EXAM_PREFIX)
-    if kind == "textbook":
-        return QuizQuestion.source.like(_TEXTBOOK_PREFIX)
-    # custom：既非真题也非教材（含 source 为 NULL 的历史行），不丢数据。
-    # 注意：两个「非」之间必须是 AND——用 OR 会把 exam/textbook 行也放进来。
-    return or_(
-        QuizQuestion.source.is_(None),
-        and_(
-            not_(QuizQuestion.source.like(_EXAM_PREFIX)),
-            not_(QuizQuestion.source.like(_TEXTBOOK_PREFIX)),
-        ),
-    )
+            detail=f"{exc}；可选 {' | '.join(SOURCE_KIND_CHOICES)}",
+        ) from exc
 
 
 def _answerable_expr():
-    """「可作答」判定表达式：is_available 为 True 或 NULL（NULL 视为可用，向后兼容）。"""
-    from sqlalchemy import or_
-
-    return or_(QuizQuestion.is_available.is_(True), QuizQuestion.is_available.is_(None))
+    """转发到共享「可作答」判定（is_available 为 True 或 NULL）。"""
+    return _answerable_expr_shared()
 
 
 @router.get("/questions")
@@ -927,27 +906,52 @@ async def submit_answer(submission: QuizSubmit, db: Session = Depends(get_db)):
 @router.get("/stats")
 async def quiz_stats(
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题；默认排除，与列表端点口径一致"),
+    subject: Optional[str] = Query(None, description="按科目过滤统计（与 /questions 同语义；空串=不过滤）"),
+    source_kind: Optional[str] = Query(
+        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"),
     db: Session = Depends(get_db),
 ):
     """答题统计（基于真实答题记录计算正确率）。
 
-    M1-1f/g：`total_questions` 与 `subject_distribution` 默认**排除 OCR 碎片题**
-    （`is_junk=1`），与 `GET /questions` 的口径保持一致，避免"题库总数 9171
-    但可刷 8852"的前端不一致。传 `include_junk=true` 可见全量。
+    口径（M0-103①，全部**显式命名**，前端不再猜）：
+    - ``total_questions`` / ``visible_total``：可见题总数（排除 is_junk=1），二者**相等**
+      （``total_questions`` 为历史字段名，保留兼容）；
+    - ``answerable_total``：其中可自动判分的题（is_available 为 True/NULL）；
+    - ``junk_total``：被排除的 OCR 碎片题数（严格等于 raw - visible，junk 直接取 raw 差额）；
+    - ``raw_total``：不排除任何题的原始总数（= visible_total + junk_total）。
+    传 ``subject`` / ``source_kind`` 时，以上题目维度计数与 ``subject_distribution``
+    一并按同条件收窄，保证与 ``GET /questions`` 的筛选语义完全一致。
+    答题记录维度（attempts/accuracy/错题数）为**全库**口径，不随题目筛选变化。
     """
     # M1-1h：统一走共享过滤，避免口径漂移
-    from services.quiz_query import visible_quiz_filter
+    from services.quiz_query import visible_quiz_filter, answerable_expr, normalize_source_kind
 
-    def _visible(q):
-        return visible_quiz_filter(q, include_junk=include_junk)
+    sk = normalize_source_kind(source_kind)
+    sk_expr = _source_kind_expr(source_kind)  # 非法值 → 400
+    subj_norm = (str(subject).strip() if subject is not None else "")
 
     from sqlalchemy import func
 
-    total_questions = _visible(db.query(QuizQuestion)).count()
+    def _scoped(base):
+        """套上科目/来源筛选（与 /questions 一致）。"""
+        if subj_norm:
+            base = base.filter(QuizQuestion.subject == subj_norm)
+        if sk_expr is not None:
+            base = base.filter(sk_expr)
+        return base
+
+    raw_total = _scoped(db.query(QuizQuestion)).count()
+    visible_base = _scoped(visible_quiz_filter(db.query(QuizQuestion), include_junk=include_junk))
+    total_questions = visible_base.count()
+    answerable_total = _scoped(
+        visible_quiz_filter(db.query(QuizQuestion), include_junk=include_junk)
+    ).filter(answerable_expr()).count()
+    junk_total = raw_total - total_questions
+
     total_errors = db.query(ErrorRecord).filter(ErrorRecord.status == "active").count()
     graduated_errors = db.query(ErrorRecord).filter(ErrorRecord.status == "graduated").count()
 
-    # 真实正确率 = 答对次数 / 答题总次数
+    # 真实正确率 = 答对次数 / 答题总次数（全库口径）
     total_attempts = db.query(AnswerRecord).count()
     correct_attempts = db.query(AnswerRecord).filter(AnswerRecord.is_correct == True).count()  # noqa: E712
     accuracy_rate = round(correct_attempts / total_attempts * 100, 1) if total_attempts else 0
@@ -972,15 +976,36 @@ async def quiz_stats(
         for s, c, t in subject_rows
     ]
 
-    # 各科目题目数（默认排除碎片题，与 total_questions 同口径）
+    # 各科目题目数（默认排除碎片题，与 total_questions 同口径；随 subject/source_kind 收窄）
     subject_counts = (
-        _visible(db.query(QuizQuestion.subject, func.count(QuizQuestion.id)))
+        _scoped(
+            visible_quiz_filter(
+                db.query(QuizQuestion.subject, func.count(QuizQuestion.id)),
+                include_junk=include_junk,
+            )
+        )
         .group_by(QuizQuestion.subject)
         .all()
     )
 
     return {
-        "total_questions": total_questions,
+        # —— 题目维度：三个显式口径 ——
+        "total_questions": total_questions,   # = visible_total（历史字段名，保留兼容）
+        "visible_total": total_questions,     # 显式命名，与 total_questions 恒等
+        "answerable_total": answerable_total,
+        "junk_total": junk_total,
+        "raw_total": raw_total,
+        # —— 筛选回显（前端「依据明示」）——
+        "subject": subj_norm or None,
+        "source_kind": sk or "all",
+        "caliber": {
+            "total_questions": "可见题总数（排除 OCR 碎片 junk），等于 visible_total",
+            "visible_total": "可见题总数（显式命名）",
+            "answerable_total": "可自动判分的题（is_available 为 True/NULL）",
+            "junk_total": "被排除的 OCR 碎片题数",
+            "raw_total": "不排除任何题的原始总数 = visible_total + junk_total",
+        },
+        # —— 答题记录维度（全库口径）——
         "total_attempts": total_attempts,
         "active_errors": total_errors,
         "graduated_errors": graduated_errors,
@@ -1454,16 +1479,38 @@ async def quiz_subjects(db: Session = Depends(get_db)):
 
     data = subject_registry.list_subjects(db)["subjects"]
 
-    # 各科目「可作答」题数（M0）：默认列表只返回可作答题，此处给出同口径计数，
-    # 让前端科目卡片能显示「可作答 N」，与实际能刷的题数一致（避免显示 0 却被引导去练习）。
-    from services.quiz_query import visible_quiz_filter
+    # 口径显式化（M0-103①）：一科目同时给出三个明确命名的计数，前端不再靠猜。
+    #   * raw_count        ：该科目全部题（含 OCR 碎片/junk、含已下架）
+    #   * visible_count    ：排除 junk 后的可见题（= subject_registry 的 question_count 口径）
+    #   * answerable_count ：其中可自动判分的题（is_available 为 True/NULL）
+    # `question_count` 保留为 visible_count 的**同义字段**（不改语义，避免 taxonomy/
+    # documents/papers 四个共用该 registry 的页面出现口径回退）。
+    from services.quiz_query import visible_quiz_filter, answerable_expr
+
+    rows = (
+        db.query(QuizQuestion.subject, func.count(QuizQuestion.id))
+        .filter(QuizQuestion.subject.isnot(None))
+        .group_by(QuizQuestion.subject)
+        .all()
+    )
+    raw_map = {s: int(c or 0) for s, c in rows}
+
+    vis_rows = (
+        visible_quiz_filter(
+            db.query(QuizQuestion.subject, func.count(QuizQuestion.id)),
+            include_junk=False,
+        )
+        .group_by(QuizQuestion.subject)
+        .all()
+    )
+    visible_map = {s: int(c or 0) for s, c in vis_rows}
 
     avail_rows = (
         visible_quiz_filter(
             db.query(QuizQuestion.subject, func.count(QuizQuestion.id)),
             include_junk=False,
         )
-        .filter(_answerable_expr())
+        .filter(answerable_expr())
         .group_by(QuizQuestion.subject)
         .all()
     )
@@ -1473,7 +1520,9 @@ async def quiz_subjects(db: Session = Depends(get_db)):
     items = [
         {
             "subject": s["subject"],
-            "question_count": s["question_count"],
+            "question_count": s["question_count"],       # = visible_count（兼容，语义未变）
+            "visible_count": visible_map.get(s["subject"], s["question_count"]),
+            "raw_count": raw_map.get(s["subject"], s["question_count"]),
             "answerable_count": answerable_map.get(s["subject"], 0),
             "error_count": s["error_count"],
         }
@@ -1483,8 +1532,17 @@ async def quiz_subjects(db: Session = Depends(get_db)):
     items.sort(key=lambda it: (-it["question_count"], it["subject"]))
     return {
         "total": len(items),
-        # 全库可作答题总数（各科目求和）：前端「可作答 N 题」的总数口径
+        # 三个全库口径（各科目求和），语义与字段名一一对应，前端可直接引用
+        "raw_total": sum(it["raw_count"] for it in items),
+        "visible_total": sum(it["visible_count"] for it in items),
         "answerable_total": sum(it["answerable_count"] for it in items),
+        # 口径说明（供前端 tooltip / 说明文案直接采用，避免各处自造描述）
+        "caliber": {
+            "question_count": "subject 原值可见题数（排除 OCR 碎片 junk）",
+            "visible_count": "同 question_count（显式命名）",
+            "raw_count": "该科目全部题，含 junk 与已下架",
+            "answerable_count": "其中可自动判分的题（is_available 为 True/NULL）",
+        },
         "items": items,
     }
 
