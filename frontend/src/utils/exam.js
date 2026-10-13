@@ -23,3 +23,14 @@ export function examYear(examDate) {
 export function examDeadline(examDate) {
   return examDate ? parseDate(examDate).getTime() : null
 }
+
+/**
+ * 预估日期标签的 M/D 文案（如 '12/21'），供「（12/21 预估）」这类角标使用。
+ * 为什么要这个出口：此前 Layout / Dashboard / KaoyanSchools 三处**各自硬编码**字符串
+ * '12/21'，它对应后端 dashboard_service.get_countdown() 无 Goal 时兜底
+ * `date(year, 12, 21)`。一旦后端兜底规则改（或换成真实 Goal），三处文案会继续撒谎。
+ * 统一由 examDate 现算，兜底规则变了文案自动跟着变；未配置返回 ''。
+ */
+export function examDateMD(examDate) {
+  return examDate ? `${Number(examDate.slice(5, 7))}/${Number(examDate.slice(8, 10))}` : ''
+}

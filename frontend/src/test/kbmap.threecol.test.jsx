@@ -8,7 +8,8 @@ import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
  *
  * 既有测试只覆盖 KbMap 的「接口 500 / 返回 null」降级路径，成功路径零覆盖。
  * 本文件锁定重构后的信息架构契约：
- *   ① 顶部居中置顶导航（知识地图 / 知识点全景 / 考频分析）渲染；
+ *   ① 顶部居中置顶导航（知识地图 / 知识点全景）渲染，
+ *      「考频分析」胶囊已随 ExamFrequency 页删除，须**不再出现**（防回归）；
  *   ② 三栏：左「章节」/ 中「知识点」/ 右「例题·方法」都渲染出数据；
  *   ③ 中栏每张知识点卡片的「开始练习」跳 /quiz?subject=&chapter=&kp_id=（知识点级精确出题）；
  *   ④ 点中栏卡片的选中区 → 右栏切到该知识点的例题/方法；
@@ -106,7 +107,9 @@ describe('KbMap 三栏成功路径', () => {
     // ① 顶部居中置顶导航
     expect(screen.getByRole('navigation', { name: '知识地图模块导航' })).toBeInTheDocument()
     expect(screen.getByText('知识点全景')).toBeInTheDocument()
-    expect(screen.getByText('考频分析')).toBeInTheDocument()
+    // 考频分析页已删除（docx/22 D3）：残留入口不得复现
+    expect(screen.queryByText('考频分析')).toBeNull()
+    expect(screen.queryByRole('button', { name: /考频分析/ })).toBeNull()
 
     // ② 三栏
     expect(screen.getByText('章节')).toBeInTheDocument()
