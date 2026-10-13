@@ -82,13 +82,15 @@ MILESTONE_SPECS: List[Dict[str, Any]] = [
 
 
 def _exam_date(year: int) -> datetime.date:
-    """初试日：(year-1) 年 12 月倒数第二个周六。"""
-    dec = calendar.monthcalendar(year - 1, 12)
-    # 收集 12 月所有周六
-    saturdays = [w[d] for w in dec for d in range(7) if d == 5 and w[d] != 0]
-    if len(saturdays) < 2:
-        saturdays = [w[d] for w in dec if w[d] != 0 for d in range(7) if d == 5]
-    return datetime.date(year - 1, 12, saturdays[-2])
+    """初试日 —— 委托给 services.exam_calendar 这一唯一权威出口。
+
+    原先此处自己按"(year-1) 年 12 月倒数第二个周六"推导，与 dashboard_service 写死的
+    12/21 是两套规则。已公布的届（如 2027 届 = 2026-12-19）必须用官方日期，
+    不能靠规律蒙——规律对已公布的届可能给出别的答案。
+    """
+    from services import exam_calendar
+
+    return exam_calendar.resolve_exam_date(year)[0]
 
 
 def _seed_milestones(db: Session, year: int) -> List[Milestone]:
@@ -216,9 +218,24 @@ def _build_roadmap(year: int, milestones: List[Milestone]) -> Dict[str, Any]:
     }
 
 
+def _resolve_plan_year(db: Session, year: Optional[int] = None) -> int:
+    """确定计划要按哪一届生成。
+
+    优先级：显式传入 > Goal 里配置/反推出的届 > 按当前时间推断。
+    原先三个端点都写死 ``year: int = 2027``，用户改了届数复习计划还停在旧年份。
+    """
+    from services import exam_calendar
+
+    if year is not None:
+        return exam_calendar.validate_exam_year(year)
+    info = exam_calendar.resolve_for_db(db.query(Goal).order_by(Goal.id.asc()).first())
+    return exam_calendar.validate_exam_year(info["exam_year"])
+
+
 @router.get("/milestones")
-def list_milestones(year: int = 2027, db: Session = Depends(get_db)):
-    """18 节点时间线（无种子时自动生成）。"""
+def list_milestones(year: Optional[int] = None, db: Session = Depends(get_db)):
+    """18 节点时间线（无种子时自动生成）。year 不传则跟随用户配置的届。"""
+    year = _resolve_plan_year(db, year)
     rows = db.query(Milestone).filter(Milestone.year == year).all()
     if not rows:
         _seed_milestones(db, year)
@@ -236,15 +253,17 @@ def list_milestones(year: int = 2027, db: Session = Depends(get_db)):
 
 
 @router.post("/generate")
-def generate_milestones(year: int = 2027, db: Session = Depends(get_db)):
-    """显式生成/更新 18 节点种子（upsert）。"""
+def generate_milestones(year: Optional[int] = None, db: Session = Depends(get_db)):
+    """显式生成/更新 18 节点种子（upsert）。year 不传则跟随用户配置的届。"""
+    year = _resolve_plan_year(db, year)
     seeded = _seed_milestones(db, year)
     return {"year": year, "total": len(seeded), "detail": "18 节点已生成/更新"}
 
 
 @router.get("/roadmap")
-def get_roadmap(year: int = 2027, db: Session = Depends(get_db)):
-    """阶段→月→周→日 三层规划（联动 goals 目标）。"""
+def get_roadmap(year: Optional[int] = None, db: Session = Depends(get_db)):
+    """阶段→月→周→日 三层规划（联动 goals 目标）。year 不传则跟随用户配置的届。"""
+    year = _resolve_plan_year(db, year)
     rows = db.query(Milestone).filter(Milestone.year == year).all()
     if not rows:
         rows = _seed_milestones(db, year)

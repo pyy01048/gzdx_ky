@@ -1,5 +1,7 @@
 """考研目标路由。"""
 
+import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -86,6 +88,93 @@ async def get_goal(db: Session = Depends(get_db)):
         "support_subjects": goal.support_subjects,
         "remark": goal.remark,
     }
+
+
+# --------------------------------------------------------------------------- #
+# 届数 / 初试日期（用户要求「届可以随时调整」）
+# --------------------------------------------------------------------------- #
+@router.get("/exam-calendar")
+async def get_exam_calendar(db: Session = Depends(get_db)):
+    """当前届数与初试日期（只读）。
+
+    返回值由 ``services.exam_calendar`` 统一推导 —— 前端不要再自己算。
+    """
+    from services import exam_calendar
+
+    goal = db.query(Goal).first()
+    info = exam_calendar.resolve_for_db(goal)
+    info["configured"] = bool(goal and goal.exam_date)
+    # 可选届范围：当前 ±6 年，方便前端渲染下拉而不用写死
+    today_year = exam_calendar.default_exam_year()
+    info["year_options"] = list(range(today_year - 6, today_year + 7))
+    return info
+
+
+@router.put("/exam-calendar")
+async def update_exam_calendar(payload: dict, db: Session = Depends(get_db)):
+    """调整届数（或直接指定初试日期）。
+
+    两种用法：
+    1. ``{"exam_year": 2027}`` —— 只给届数，初试日按官方公布值 / 规律自动推算（推荐）。
+    2. ``{"exam_date": "2026-12-19"}`` —— 直接钉死某一天（官方临时调整时用）。
+    3. ``{"exam_year": 2027, "exam_date": "2026-12-19"}`` —— 两者都传，以 exam_date 为准，
+       同时保存届数语义。
+
+    改了届数后，复习里程碑（``/api/plan/*``）会按新届数重新推导，
+    不需要用户再去别处手动同步。
+    """
+    from services import exam_calendar
+
+    goal = db.query(Goal).first()
+    if not goal:
+        goal = Goal()
+        db.add(goal)
+
+    exam_year = payload.get("exam_year")
+    raw_date = payload.get("exam_date")
+
+    if raw_date:
+        try:
+            exam_date = datetime.date.fromisoformat(str(raw_date)[:10])
+        except ValueError:
+            raise HTTPException(status_code=422, detail="exam_date 需为 YYYY-MM-DD")
+    elif exam_year is not None:
+        try:
+            year = exam_calendar.validate_exam_year(exam_year)
+        except exam_calendar.ExamYearError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        exam_date, _ = exam_calendar.resolve_exam_date(year)
+    else:
+        raise HTTPException(status_code=400, detail="至少提供 exam_year 或 exam_date")
+
+    goal.exam_date = exam_date
+    # 分项目标自洽性：分项之和与总分不一致时（真库实测 65+65+115+115=360 但总分填 350），
+    # 不擅自改用户的分项目标，只把修正后的总分回填并明确告知，避免两个数字互相矛盾。
+    parts = [goal.politics_target, goal.english_target,
+             goal.math_target, goal.major_target]
+    old_total = goal.total_score_target
+    adjusted_total = None
+    if all(p is not None for p in parts):
+        s = sum(parts)
+        if old_total != s:
+            adjusted_total = s
+
+    if adjusted_total is not None:
+        goal.total_score_target = adjusted_total
+
+    db.commit()
+    db.refresh(goal)
+
+    info = exam_calendar.resolve_for_db(goal)
+    info["configured"] = True
+    info["total_score_adjusted_from"] = None
+    if adjusted_total is not None:
+        info["total_score_adjusted_from"] = {
+            "old": old_total,
+            "new": adjusted_total,
+            "reason": "四科分项目标之和与原总分不一致，已按分项之和回填",
+        }
+    return info
 
 
 @router.put("")
