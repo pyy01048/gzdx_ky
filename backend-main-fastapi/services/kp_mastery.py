@@ -77,6 +77,49 @@ def classify_state(mastery: Union[int, None], has_records: bool) -> str:
     return STATE_MASTERED if int(mastery or 0) >= MASTERED_THRESHOLD else STATE_WEAK
 
 
+#: 错题"已毕业"状态标记（error_records.status 的终态值），与
+#: services/review_scheduler / routers/errors.py 的用法保持一致。
+STATE_MASTERED_MARK = "graduated"
+
+
+def error_mastery_state(
+    accuracy: Union[float, None],
+    review_count: Union[int, None],
+    status: Union[str, None],
+) -> str:
+    """**错题记录**的掌握度三态（复用同一三态口径，不另立档位）。
+
+    背景：错题本的"掌握度"此前是写死的两档（active=未掌握 / graduated=已掌握），
+    没有"未学"这一档 —— 新收录、一次都没复习过的错题被打成"未掌握"，
+    与知识点的三态口径（未学=灰 / 薄弱=黄 / 已掌握=绿）割裂。
+
+    与 :func:`classify_state` 共用同一阈值（``MASTERED_THRESHOLD``）与标签，
+    只把错题的字段折算成三态模型需要的两个入参：
+
+    - ``accuracy``（0-1 正确率，``error_records.accuracy``）→ 折成 0-100 分；
+    - "有学习记录"= 复习过（``review_count>0``）或已毕业（``status=='graduated'``）：
+      前者是真实复习留痕；后者是"已掌握"的终态标记，直接归 mastered。
+
+    于是：从未复习的新错题 → 未学（灰）；复习过但正确率 < 70 → 薄弱（黄）；
+    已毕业 / 正确率 ≥ 70 → 已掌握（绿）。
+
+    >>> error_mastery_state(0.0, 0, "active")
+    'unlearned'
+    >>> error_mastery_state(0.0, 1, "active")
+    'weak'
+    >>> error_mastery_state(0.9, 1, "active")
+    'mastered'
+    >>> error_mastery_state(0.0, 0, "graduated")
+    'mastered'
+    """
+    if status == STATE_MASTERED_MARK:  # "graduated"
+        return STATE_MASTERED
+    if not review_count:
+        return STATE_UNLEARNED
+    score = round(float(accuracy or 0) * 100)
+    return classify_state(score, True)
+
+
 def learned_kp_ids(session) -> set:
     """有学习记录的知识点 ID 集合（SQLAlchemy Session）。"""
     from sqlalchemy import text

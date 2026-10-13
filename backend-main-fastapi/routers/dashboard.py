@@ -168,8 +168,12 @@ def _get_stats(db: Session) -> dict:
         .scalar()
     ) or 0
 
-    # 5. 错题数
-    error_count = db.query(ErrorRecord).filter(ErrorRecord.status == "active").count()
+    # 5. 错题数（唯一口径：services/error_linker.error_stats —— 与
+    #    DashboardService.get_stats、GET /api/errors/stats 同源，避免各算一套）
+    from services import error_linker
+
+    estats = error_linker.error_stats(db)
+    error_count = estats["active_errors"]
 
     # 6. 本周任务完成数（SQL 直接过滤）
     weekly_completed = (
@@ -188,6 +192,7 @@ def _get_stats(db: Session) -> dict:
         "subject_durations": subject_durations,
         "weekly_completed_tasks": weekly_completed,
         "active_errors": error_count,
+        "due_errors": estats["due_errors"],
         "daily_trend": daily_durations,
     }
 

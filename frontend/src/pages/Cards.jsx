@@ -1,28 +1,50 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import useStore from '../store/useStore'
 import { Modal, Segmented, Empty, toast } from '../components/UI'
-import { dueCards, GRADE } from '../utils/spaced'
+import { LoadingState, ErrorState } from '../components/States'
+import { dueCards, GRADE, CARD_STATUS } from '../utils/spaced'
 import { todayStr } from '../utils/date'
 import { noteToCard } from '../utils/words'
-import { flashcardsApi } from '../api/client'
+import { flashcardsApi, taxonomyApi } from '../api/client'
 import { ChevronLeft, ChevronRight, Book, Target, CheckCircle, Clock, RefreshCw, Play } from '../components/Icon'
 
 const PACK_COLOR = ['var(--accent)', '#e8a33d', '#5b8def', '#7a6fe8', '#43b581']
 
-// 掌握度饼图组件
-function MasteryPie({ level, size = 32 }) {
-  const percentage = Math.min(level / 7 * 100, 100)
-  const color = percentage >= 80 ? 'var(--green)' : percentage >= 50 ? 'var(--gold)' : percentage >= 20 ? 'var(--orange)' : 'var(--red)'
-  const circumference = 2 * Math.PI * 14
-  const offset = circumference - (percentage / 100) * circumference
+/* 后端 Flashcard.mastery（review_scheduler 写入）→ 前端 SM-2 状态。
+   注意：后端用的是 new/learning/review/mastered，前端 CARD_STATUS 用 reviewing。 */
+const BACKEND_MASTERY_TO_STATUS = {
+  new: CARD_STATUS.NEW,
+  learning: CARD_STATUS.LEARNING,
+  review: CARD_STATUS.REVIEWING,
+  mastered: CARD_STATUS.MASTERED,
+}
+const CARD_STATUS_LABEL = {
+  [CARD_STATUS.NEW]: '新卡',
+  [CARD_STATUS.LEARNING]: '学习中',
+  [CARD_STATUS.REVIEWING]: '复习中',
+  [CARD_STATUS.MASTERED]: '已掌握',
+}
+const CARD_STATUS_STYLE = {
+  [CARD_STATUS.NEW]: { background: 'var(--surface-3)', color: 'var(--ink-3)' },
+  [CARD_STATUS.LEARNING]: { background: 'var(--gold-soft)', color: 'var(--gold)' },
+  [CARD_STATUS.REVIEWING]: { background: 'var(--accent-soft)', color: 'var(--accent)' },
+  [CARD_STATUS.MASTERED]: { background: 'var(--green-soft)', color: 'var(--green)' },
+}
+
+/* SM-2 调度状态标签（替代此前写死 level/7 的掌握度饼图 —— 卡片本身没有
+   0-7 的"掌握档位"，用后端真实的调度状态更诚实） */
+function CardStatusTag({ status }) {
+  const s = status || CARD_STATUS.NEW
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" style={{ flexShrink: 0 }}>
-      <circle cx="16" cy="16" r="14" fill="none" stroke="var(--surface-3)" strokeWidth="3" />
-      <circle cx="16" cy="16" r="14" fill="none" stroke={color} strokeWidth="3"
-        strokeDasharray={circumference} strokeDashoffset={offset}
-        strokeLinecap="round" transform="rotate(-90 16 16)"
-        style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
-    </svg>
+    <span
+      style={{
+        flex: '0 0 auto', fontSize: 11, fontWeight: 600, borderRadius: 999,
+        padding: '1px 8px', whiteSpace: 'nowrap',
+        ...(CARD_STATUS_STYLE[s] || CARD_STATUS_STYLE[CARD_STATUS.NEW]),
+      }}
+    >
+      {CARD_STATUS_LABEL[s] || s}
+    </span>
   )
 }
 
@@ -42,7 +64,9 @@ function renderSide(val) {
 }
 
 export default function Cards() {
-  const { cards, packs, notebook, addCard, addPack, reviewCard, removeCard, removePack, setCards, setPacks } = useStore()
+  /* 注意：store 未提供 setCards/setPacks（只有 setWords/setDecks），
+     批量回填后端卡片用 useStore.setState 直接写入同一 slice，避免跨领地改 store。 */
+  const { cards, packs, notebook, addCard, addPack, reviewCard, removeCard, removePack } = useStore()
   const [view, setView] = useState('study') // study | summary | packs | list
   const [curIdx, setCurIdx] = useState(0)
   const [showBack, setShowBack] = useState(false)
@@ -50,47 +74,69 @@ export default function Cards() {
   const [packId, setPackId] = useState('all')
   const [showAddPack, setShowAddPack] = useState(false)
   const [packName, setPackName] = useState('')
-  const [packSubject, setPackSubject] = useState('math')
+  const [packSubject, setPackSubject] = useState('')
+  /* 科目（唯一源：/api/taxonomy/subjects），不再硬编码 math/english/politics... */
+  const [subjects, setSubjects] = useState([])
   const [showFromNote, setShowFromNote] = useState(false)
   const [showAddCard, setShowAddCard] = useState(false)
   const [form, setForm] = useState({ packId: '', front: '', back: '', hint: '' })
   const [loading, setLoading] = useState(false)
+  const [loadErr, setLoadErr] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
   // 学习会话统计
   const [sessionStats, setSessionStats] = useState({ again: 0, hard: 0, good: 0, easy: 0, startTime: null, cards: [] })
+
+  /* 科目清单：来自科目 API（与设置页 / 错题本同一源） */
+  useEffect(() => {
+    let alive = true
+    taxonomyApi.subjects()
+      .then((r) => {
+        if (!alive) return
+        const items = Array.isArray(r) ? r : (r && (r.subjects || r.items)) || []
+        const names = items.map((x) => x.subject).filter(Boolean)
+        setSubjects(names)
+        setPackSubject((prev) => prev || names[0] || '')
+      })
+      .catch(() => { if (alive) setSubjects([]) })
+    return () => { alive = false }
+  }, [])
 
   // 从后端加载卡片
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
+      setLoadErr('')
       try {
-        const backendCards = await flashcardsApi.list({ page: 1, page_size: 500 })
-        if (backendCards && backendCards.length > 0) {
-          const formatted = backendCards.map(c => ({
-            id: c.id,
-            front: c.front,
-            back: c.back,
-            hint: c.hint,
-            packId: c.deck_id ? String(c.deck_id) : 'default',
-            status: c.status || 'new',
-            ef: c.ease_factor || 2.5,
-            interval: c.interval || 0,
-            reps: c.reps || 0,
-            lapses: c.lapses || 0,
-            due: c.due_date ? c.due_date : todayStr(),
-            lastReview: c.last_review,
-            tags: c.tags || []
-          }))
-          setCards(formatted)
-        }
+        const resp = await flashcardsApi.list({ page: 1, page_size: 500 })
+        // 后端返回 {total,page,page_size,total_pages,items:[...]}；
+        // 修复：此前直接当数组用（resp.length 恒 undefined），649 张卡片从未真正加载。
+        const rows = Array.isArray(resp) ? resp : (resp && resp.items) || []
+        const formatted = rows.map((c) => ({
+          id: c.id,
+          front: c.front,
+          back: c.back,
+          hint: c.hint || '',
+          knowledgePointId: c.knowledge_point_id ?? null,
+          packId: c.deck_id ? String(c.deck_id) : 'default',
+          status: BACKEND_MASTERY_TO_STATUS[c.mastery] || CARD_STATUS.NEW,
+          mastery: c.mastery || 'new',
+          ef: c.ease_factor || 2.5,
+          interval: c.interval || 0,
+          reps: c.review_count || 0,
+          due: c.next_review ? String(c.next_review).slice(0, 10) : null,
+          lastReview: c.last_review || null,
+          tags: c.tags || [],
+        }))
+        useStore.setState({ cards: formatted })
       } catch (err) {
-        console.warn('从后端加载卡片失败，使用本地数据:', err.message)
-        toast('后端卡片加载失败，已显示本机数据')
+        // 加载失败必须可见（此前只 console.warn + 复用本机数据，用户以为卡片已同步）
+        setLoadErr(err?.message || '未知错误')
       } finally {
         setLoading(false)
       }
     }
     loadData()
-  }, [])
+  }, [reloadKey])
 
   // 选择包过滤
   const scope = useMemo(() => (packId === 'all' ? cards : cards.filter((c) => c.packId === packId)), [cards, packId])
@@ -178,6 +224,7 @@ export default function Cards() {
 
   const createPack = () => {
     if (!packName.trim()) return toast('请输入卡包名称')
+    if (!packSubject) return toast('请选择科目')
     addPack(packName.trim(), packSubject, 0)
     toast('卡包已创建')
     setPackName('')
@@ -235,7 +282,13 @@ export default function Cards() {
       <div className="page-head">
         <div>
           <h1 className="page-title">记忆卡片</h1>
-          <p className="page-sub">SM-2 间隔重复 · 卡片翻转 · 四档评分 · 后端同步（对标 Anki / Quizlet / 记乎）</p>
+          <p className="page-sub">
+            SM-2 间隔重复调度 · 到期卡片优先 · 四档评分（重学/困难/良好/轻松）
+          </p>
+          <p className="page-sub" style={{ color: 'var(--ink-3)' }}>
+            定位：由算法决定「今天该复习哪张卡」的记忆训练台；
+            与「知识地图」的知识结构浏览是两回事 —— 这里负责记牢，那里负责看懂。
+          </p>
         </div>
         <div className="page-actions">
           <button className="btn ghost" onClick={() => setShowFromNote(true)}>错题转卡片</button>
@@ -243,6 +296,20 @@ export default function Cards() {
           <button className="btn primary" onClick={() => setShowAddPack(true)}>新建卡包</button>
         </div>
       </div>
+
+      {/* 加载三态：失败如实呈现（不静默用本机数据冒充后端）；首次加载显示骨架 */}
+      {loadErr && (
+        <div className="card">
+          <ErrorState
+            title="卡片加载失败"
+            message={loadErr}
+            onRetry={() => setReloadKey((k) => k + 1)}
+          />
+        </div>
+      )}
+      {loading && cards.length === 0 && !loadErr && (
+        <div className="card"><LoadingState text="正在加载卡片…" rows={4} /></div>
+      )}
 
       {/* 统计条 */}
       <div className="stat-grid">
@@ -297,7 +364,7 @@ export default function Cards() {
           {/* 顶部导航 */}
           <div className="spread" style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <MasteryPie level={current.reps || 0} size={28} />
+              <CardStatusTag status={current.status} />
               <span className="badge accent">{packs.find((p) => p.id === current.packId)?.name || '卡片'}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -386,7 +453,7 @@ export default function Cards() {
             <span>复习 {current.reps || 0} 次</span>
             <span>间隔 {current.interval || 0} 天</span>
             <span>EF {(current.ef || 2.5).toFixed(1)}</span>
-            <span>遗忘 {current.lapses || 0} 次</span>
+            <span>状态 {CARD_STATUS_LABEL[current.status] || '新卡'}</span>
           </div>
 
           {/* 操作按钮 */}
@@ -543,14 +610,14 @@ export default function Cards() {
           <div className="list" style={{ padding: '0 12px 12px' }}>
             {scope.map((c) => (
               <div key={c.id} className="list-row">
-                <MasteryPie level={c.reps || 0} size={28} />
+                <CardStatusTag status={c.status} />
                 <div className="lr-main">
                   <div className="lr-title">{typeof c.front === 'string' ? c.front : (c.front?.text || '卡片')}</div>
                   <div className="lr-meta">{typeof c.back === 'string' ? c.back : (c.back?.text || '')}</div>
                 </div>
                 <div className="lr-actions">
                   <span className="badge accent">间隔 {c.interval || 0}d</span>
-                  <span className="badge neutral">连对 {c.reps || 0}</span>
+                  <span className="badge neutral">复习 {c.reps || 0} 次</span>
                   <button className="btn sm danger" onClick={() => handleRemoveCard(c.id)}>删</button>
                 </div>
               </div>
@@ -564,12 +631,14 @@ export default function Cards() {
       <Modal open={showAddPack} title="新建卡包" onClose={() => setShowAddPack(false)}>
           <input className="input" style={{ marginBottom: 8 }} placeholder="卡包名称（如：政治大题背诵）" value={packName} onChange={(e) => setPackName(e.target.value)} />
           <select className="input" value={packSubject} onChange={(e) => setPackSubject(e.target.value)}>
-            <option value="math">数学</option>
-            <option value="english">英语</option>
-            <option value="politics">政治</option>
-            <option value="major">专业课</option>
-            <option value="other">其他</option>
+            <option value="" disabled>选择科目</option>
+            {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          {subjects.length === 0 && (
+            <div className="card-sub" style={{ marginTop: 6, color: 'var(--ink-3)' }}>
+              科目接口不可用，请稍后重试（科目以「设置 → 科目管理」为唯一来源）。
+            </div>
+          )}
           <div className="row" style={{ gap: 8, marginTop: 12 }}>
             <button className="btn primary" style={{ flex: 1 }} onClick={createPack}>创建</button>
             <button className="btn ghost" onClick={() => setShowAddPack(false)}>取消</button>

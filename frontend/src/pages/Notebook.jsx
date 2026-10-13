@@ -36,6 +36,10 @@ function mapError(e) {
     analysis: e.analysis || '',
     reason: e.error_reason || '',
     status: e.status || 'active',
+    // 掌握度三态：由后端按 kp_mastery 口径算好下发，前端不再写死档位
+    masteryState: e.mastery_state || 'unlearned',
+    masteryLabel: e.mastery_label || '未学',
+    accuracy: Number(e.accuracy) || 0,
     tags,
     reviewCount: e.review_count || 0,
     lastReview: e.last_review,
@@ -59,20 +63,27 @@ function genSimilar(n) {
 const SUBJECT_CODE_MAP = { math: '数学', english: '英语', politics: '政治', major: '专业课' }
 const subjectName = (s) => SUBJECT_CODE_MAP[s] || s || '专业课'
 
-// 掌握度饼图组件
-function MasteryPie({ level, size = 32 }) {
-  const percentage = Math.min(level / 7 * 100, 100)
-  const color = percentage >= 80 ? 'var(--green)' : percentage >= 50 ? 'var(--gold)' : percentage >= 20 ? 'var(--orange)' : 'var(--red)'
-  const circumference = 2 * Math.PI * 14
-  const offset = circumference - (percentage / 100) * circumference
+/* 掌握度三态配色（灰 / 黄 / 绿），文案用后端下发的 label。
+   用内联令牌色，避免依赖 ErrorReview.css 的局部类名。 */
+const MASTERY_STYLE = {
+  unlearned: { background: 'var(--surface-3)', color: 'var(--ink-3)' },
+  weak: { background: 'var(--gold-soft)', color: 'var(--gold)' },
+  mastered: { background: 'var(--green-soft)', color: 'var(--green)' },
+}
+
+/* 掌握度三态标签（替代此前写死 level/7 的饼图） */
+function MasteryTag({ state, label }) {
+  const s = state || 'unlearned'
+  const style = MASTERY_STYLE[s] || MASTERY_STYLE.unlearned
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" style={{ flexShrink: 0 }}>
-      <circle cx="16" cy="16" r="14" fill="none" stroke="var(--surface-3)" strokeWidth="3" />
-      <circle cx="16" cy="16" r="14" fill="none" stroke={color} strokeWidth="3"
-        strokeDasharray={circumference} strokeDashoffset={offset}
-        strokeLinecap="round" transform="rotate(-90 16 16)"
-        style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
-    </svg>
+    <span
+      style={{
+        flex: '0 0 auto', fontSize: 11, fontWeight: 600, borderRadius: 999,
+        padding: '1px 8px', whiteSpace: 'nowrap', ...style,
+      }}
+    >
+      {label || (s === 'mastered' ? '已掌握' : s === 'weak' ? '薄弱' : '未学')}
+    </span>
   )
 }
 
@@ -83,6 +94,9 @@ export default function Notebook() {
   const [filter, setFilter] = useState('all')
   const [subject, setSubject] = useState('all')
   const [subjectOptions, setSubjectOptions] = useState([])
+  /* 错题统计（唯一口径：/api/errors/stats，与仪表盘同一聚合函数）。
+     后端不可用时为 null，页面回退到本地现算，保证离线模式仍可用。 */
+  const [stats, setStats] = useState(null)
   const [q, setQ] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [viewMode, setViewMode] = useState('grid') // 'list' | 'grid'
@@ -112,7 +126,7 @@ export default function Notebook() {
   const [showAnswer, setShowAnswer] = useState(false)
   const [reviewStats, setReviewStats] = useState({ again: 0, hard: 0, good: 0, easy: 0, startTime: null })
 
-  /* ---- 从后端加载错题（成功则写入 store） ---- */
+  /* ---- 从后端加载错题（成功则写入 store）+ 拉同源统计 ---- */
   const refresh = useCallback(async () => {
     try {
       const data = await errorsApi.list({ page: 1, page_size: 200 })
@@ -125,19 +139,31 @@ export default function Notebook() {
     } catch {
       setBackendOk(false)
     }
+    /* 错题统计（与仪表盘同源：/api/errors/stats）单独拉取，失败不影响列表 */
+    try {
+      const d = await errorsApi.stats()
+      setStats(d && typeof d === 'object' ? d : null)
+    } catch {
+      setStats(null)
+    }
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
 
-  /* 动态加载科目（V8：GET /api/taxonomy/subjects → 数组 [{subject,...}]，兼容旧 {items} 形态）。
-     合并当前错题里出现、但题库尚未统计到的科目，避免筛选器把真实科目漏掉。 */
+  /* 动态加载科目（V8：GET /api/taxonomy/subjects → {subjects:[...]}）。
+     只保留**有错题的科目**（error_count > 0）—— 没有错题的科目不该出现在筛选里；
+     后端不可用时回退到"当前错题里出现过的科目"，保证离线模式仍能筛选。 */
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
         const r = await taxonomyApi.subjects()
         const items = Array.isArray(r) ? r : (r && (r.subjects || r.items)) || []
-        if (alive) setSubjectOptions(items.map((x) => x.subject).filter(Boolean))
+        const withErrors = items
+          .filter((x) => Number(x.error_count || 0) > 0)
+          .map((x) => x.subject)
+          .filter(Boolean)
+        if (alive) setSubjectOptions(withErrors)
       } catch { /* 后端不可用时退化为仅用错题自身科目 */ }
     })()
     return () => { alive = false }
@@ -145,7 +171,10 @@ export default function Notebook() {
 
   const allSubjects = useMemo(() => {
     const set = new Set(subjectOptions)
-    notebook.forEach((n) => { if (n.subject) set.add(n.subject) })
+    // 离线/科目接口挂时，至少列出当前错题实际出现的科目
+    if (subjectOptions.length === 0) {
+      notebook.forEach((n) => { if (n.subject) set.add(n.subject) })
+    }
     return Array.from(set)
   }, [subjectOptions, notebook])
 
@@ -164,12 +193,24 @@ export default function Notebook() {
     return arr
   }, [notebook, filter, subject, q])
 
-  const counts = useMemo(() => ({
-    total: notebook.length,
-    due: notebook.filter((n) => isDueToday(n, today)).length,
-    reviewing: notebook.filter((n) => n.status === 'active' && (n.review_count || 0) > 0).length,
-    mastered: notebook.filter((n) => n.status === 'graduated').length
-  }), [notebook, today])
+  /* 统计：后端优先（与仪表盘同源），后端不可用时回退本地现算。
+     口径：全部=total，待复习=due_errors（active 且已排期且到期），
+     七刷中=active 且复习过，已毕业=graduated。 */
+  const counts = useMemo(() => {
+    if (stats) {
+      const active = Number(stats.active_errors || 0)
+      const due = Number(stats.due_errors || 0)
+      const graduated = Number(stats.graduated_errors || 0)
+      const total = Number(stats.total || 0)
+      return { total, due, reviewing: Math.max(0, active - due), mastered: graduated }
+    }
+    return {
+      total: notebook.length,
+      due: notebook.filter((n) => isDueToday(n, today)).length,
+      reviewing: notebook.filter((n) => n.status === 'active' && (n.review_count || 0) > 0).length,
+      mastered: notebook.filter((n) => n.status === 'graduated').length
+    }
+  }, [stats, notebook, today])
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -484,7 +525,10 @@ export default function Notebook() {
         <div className="card" style={{ borderColor: 'var(--accent)', borderWidth: 2 }}>
           <div className="spread" style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <MasteryPie level={reviewQueue[reviewIdx]?.reviewCount || 0} size={32} />
+              <MasteryTag
+                state={reviewQueue[reviewIdx]?.masteryState}
+                label={reviewQueue[reviewIdx]?.masteryLabel}
+              />
               <span className="badge accent">复习模式</span>
               <SubTag subject={reviewQueue[reviewIdx]?.subject} />
             </div>
@@ -601,7 +645,7 @@ export default function Notebook() {
             <div key={n.id} className="card">
               <div className="card-head">
                 <div className="row" style={{ gap: 8 }}>
-                  <MasteryPie level={n.reviewCount || 0} size={28} />
+                  <MasteryTag state={n.masteryState} label={n.masteryLabel} />
                   <input type="checkbox" checked={selectedIds.includes(n.id)} onChange={() => toggleSelect(n.id)} aria-label="选择" />
                   <SubTag subject={n.subject} />
                 </div>

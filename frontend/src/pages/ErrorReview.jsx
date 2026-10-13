@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { errorsApi, reviewApi, quizApi } from '../api/client'
-import { toast, Empty, Segmented } from '../components/UI'
+import { errorsApi, quizApi, taxonomyApi } from '../api/client'
+import { toast, Empty } from '../components/UI'
+import { LoadingState, ErrorState } from '../components/States'
 import {
   RefreshCw, AlertCircle, ChevronDown, ChevronRight, Brain, Map, FileText, Activity, Target
 } from '../components/Icon'
@@ -15,30 +16,40 @@ import './ErrorReview.css'
    对单题做 AI 归因与知识点挂接。
 
    数据来源（全部为后端真实接口，无 mock）：
-     - GET  /api/errors?subject=&error_reason=&status=&page=&page_size=  错题列表（分页）
-     - GET  /api/quiz/wrong-reasons                错因分布（错因筛选项 + 计数）
-     - GET  /api/review/stats                       复盘总览（在练/到期/已毕业/今日复习）
-     - GET  /api/review/weak-points                 薄弱知识点排行（错题数 / 弱度）
-     - GET  /api/errors/{id}/knowledge-points      该错题已挂接的知识点
-     - POST /api/errors/{id}/ai-analyze             AI 归因分析
-     - POST /api/errors/{id}/link-knowledge         挂接知识点 {knowledge_point_id}
-     - DELETE /api/errors/links/{link_id}           解除挂接
+     - GET  /api/errors?subject=&error_reason=&mastery_state=&page=&page_size=
+                                              错题列表（分页 + 三态筛选）
+     - GET  /api/errors/stats                  错题统计（与仪表盘同一聚合函数）
+     - GET  /api/quiz/wrong-reasons            错因分布（错因筛选项 + 计数）
+     - GET  /api/taxonomy/subjects             学科筛选（唯一科目源，只保留有错题的科目）
+     - GET  /api/taxonomy/knowledge-points     知识点挂接候选（真实知识点，非硬编码）
+     - GET  /api/errors/{id}/knowledge-points  该错题的真实关联（题目链路 + 启发式链路）
+     - POST /api/errors/{id}/ai-analyze        AI 归因分析
+     - POST /api/errors/{id}/link-knowledge    挂接知识点 {knowledge_point_id}
+     - DELETE /api/errors/links/{link_id}      解除启发式挂接
    任一接口失败都在页面上如实呈现错误态，不用假数据兜底。
    ========================================================================== */
 
 const PAGE_SIZE = 20
 
-/* 掌握度筛选：后端 status 字段取值（active=在练/未毕业，graduated=已毕业） */
-const MASTERY_OPTIONS = [
-  { value: '', label: '全部' },
-  { value: 'active', label: '未掌握' },
-  { value: 'graduated', label: '已掌握' },
-]
+/* 掌握度**三态**筛选项（口径唯一源：后端 services/kp_mastery.py，
+   标签也由后端 /api/errors/stats 下发；这里只声明可选值，不写死档位）。 */
+const MASTERY_STATES = ['unlearned', 'weak', 'mastered']
+const MASTERY_FALLBACK_LABEL = { unlearned: '未学', weak: '薄弱', mastered: '已掌握' }
+const MASTERY_TONE = { unlearned: 'muted', weak: 'warn', mastered: 'ok' }
 
-/* 状态徽标配色类（沿用 global.css 的 soft 色令牌） */
-const STATUS_CLASS = { active: 'warn', graduated: 'ok', archived: 'muted' }
+/* 知识点来源 → 中文说明（用于「这题考什么」的可信度标注） */
+const LINK_SOURCE_LABEL = {
+  question_link: '题目关联',
+  manual: '手动指定',
+  name_match: '自动·名称命中',
+  name_match_cross: '自动·跨科目兜底',
+  keyword_match: '自动·关键词命中',
+  chapter_match: '自动·同章检索',
+  search_match: '自动·检索命中',
+  subject_fallback: '自动·同科目兜底',
+}
 
-/* 错题详情可显示字段定义（后端 ErrorRecordResponse 全量 16 字段，可显隐自定义）。
+/* 错题详情可显示字段定义（后端 ErrorRecordResponse 全量字段，可显隐自定义）。
  * key 对应后端字段；default 控制默认是否显示，用户可在页面顶部切换。 */
 const DETAIL_FIELDS = [
   { key: 'id', label: 'ID', default: false },
@@ -48,10 +59,11 @@ const DETAIL_FIELDS = [
   { key: 'my_answer', label: '我的答案', default: true },
   { key: 'correct_answer', label: '正确答案', default: true },
   { key: 'accuracy', label: '正确率', default: true, fmt: (v) => `${Math.round((Number(v) || 0) * 100)}%` },
+  { key: 'mastery_label', label: '掌握度', default: true },
   { key: 'review_count', label: '复习次数', default: true },
   { key: 'last_review', label: '上次复习', default: true, fmt: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
   { key: 'next_review', label: '下次复习', default: true, fmt: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
-  { key: 'status', label: '状态', default: true, fmt: (v) => v === 'graduated' ? '已掌握' : v === 'archived' ? '已归档' : '未掌握' },
+  { key: 'status', label: '状态', default: true, fmt: (v) => v === 'graduated' ? '已毕业' : v === 'archived' ? '已归档' : '在练' },
   { key: 'analysis', label: 'AI 分析', default: true },
   { key: 'created_at', label: '录入时间', default: false, fmt: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
   { key: 'updated_at', label: '更新时间', default: false, fmt: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
@@ -76,20 +88,12 @@ function parseTags(t) {
   return []
 }
 
-/** 知识点候选下拉：从薄弱知识点排行取（后端已按弱度倒序） */
-function kpOptions(weakItems) {
-  return weakItems.map((w) => ({
-    id: w.knowledge_point_id,
-    label: `${w.name}（${w.subject || '未分类'} · 错 ${w.error_count || 0} 次）`
-  }))
-}
-
 export default function ErrorReview() {
   const [searchParams] = useSearchParams()
   const urlErrorId = searchParams.get('error_id')   // 深链：知识地图「去复盘」跳转目标
   const [subject, setSubject] = useState(() => searchParams.get('subject') || '')
   const [errorReason, setErrorReason] = useState('')
-  const [status, setStatus] = useState('')
+  const [masteryState, setMasteryState] = useState('')
   const [page, setPage] = useState(1)
 
   const [items, setItems] = useState([])
@@ -99,18 +103,27 @@ export default function ErrorReview() {
   const [listErr, setListErr] = useState('')
   const [loading, setLoading] = useState(false)
 
-  /* 统计 / 错因 / 薄弱知识点（三个独立接口，失败各自降级，不影响主列表） */
+  /* 学科筛选（唯一科目源：/api/taxonomy/subjects，只保留有错题的科目） */
+  const [subjectOptions, setSubjectOptions] = useState([])
+  const [subjectErr, setSubjectErr] = useState('')
+
+  /* 统计（错题统计唯一口径：/api/errors/stats，与仪表盘同一聚合函数） */
   const [stats, setStats] = useState(null)
   const [statsErr, setStatsErr] = useState('')
+
+  /* 错因分布（筛选项计数） */
   const [reasons, setReasons] = useState([])
-  const [weak, setWeak] = useState([])
-  const [weakErr, setWeakErr] = useState('')
+
+  /* 知识点挂接候选（真实知识点，来自 /api/taxonomy/knowledge-points） */
+  const [kpChoices, setKpChoices] = useState([])
+  const [kpChoicesErr, setKpChoicesErr] = useState('')
 
   const [selectedId, setSelectedId] = useState(null)
   const [detail, setDetail] = useState({ state: 'idle', kps: [], kpErr: '' })
   const [ai, setAi] = useState({ state: 'idle', text: '', err: '' })
   const [linkKp, setLinkKp] = useState('')
   const [linking, setLinking] = useState(false)
+
   /* 字段显隐：默认展示常用字段，可在页头「字段」里自定义看哪些（存 localStorage） */
   const [visibleFields, setVisibleFields] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(FIELD_VISIBILITY_KEY)) || DEFAULT_VISIBLE) }
@@ -129,7 +142,7 @@ export default function ErrorReview() {
   const listSeq = useRef(0)
   const detailSeq = useRef(0)
 
-  /* ---------------- 错题列表 ---------------- */
+  /* ---------------- 错题列表（三态筛选走后端） ---------------- */
   const loadList = useCallback(async () => {
     const seq = ++listSeq.current
     setLoading(true)
@@ -137,7 +150,7 @@ export default function ErrorReview() {
       const data = await errorsApi.list({
         subject: subject || undefined,
         error_reason: errorReason || undefined,
-        status: status || undefined,
+        mastery_state: masteryState || undefined,
         page,
         page_size: PAGE_SIZE
       })
@@ -157,17 +170,35 @@ export default function ErrorReview() {
     } finally {
       if (seq === listSeq.current) setLoading(false)
     }
-  }, [subject, errorReason, status, page])
+  }, [subject, errorReason, masteryState, page])
 
   useEffect(() => { loadList() }, [loadList])
 
-  /* ---------------- 复盘总览 ---------------- */
+  /* ---------------- 错题统计（与仪表盘同一聚合函数） ---------------- */
+  const loadStats = useCallback(() => {
+    errorsApi
+      .stats(subject ? { subject } : undefined)
+      .then((d) => { setStats(d || null); setStatsErr(d ? '' : '统计接口返回空数据') })
+      .catch((e) => { setStats(null); setStatsErr(e?.message || '统计接口不可用') })
+  }, [subject])
+  useEffect(() => { loadStats() }, [loadStats])
+
+  /* ---------------- 学科筛选：只列"有错题"的科目（错误数 > 0） ---------------- */
   useEffect(() => {
     let alive = true
-    reviewApi
-      .stats()
-      .then((d) => { if (alive) { setStats(d); setStatsErr('') } })
-      .catch((e) => { if (alive) { setStats(null); setStatsErr(e?.message || '统计接口不可用') } })
+    taxonomyApi
+      .subjects()
+      .then((r) => {
+        if (!alive) return
+        // 兼容 {subjects:[...]} 与直接数组两种形态
+        const list = Array.isArray(r) ? r : (r && (r.subjects || r.items)) || []
+        const withErrors = list
+          .filter((s) => Number(s.error_count || 0) > 0)
+          .map((s) => ({ subject: s.subject, count: Number(s.error_count || 0) }))
+        setSubjectOptions(withErrors)
+        setSubjectErr('')
+      })
+      .catch((e) => { if (alive) { setSubjectOptions([]); setSubjectErr(e?.message || '科目接口不可用') } })
     return () => { alive = false }
   }, [])
 
@@ -181,22 +212,30 @@ export default function ErrorReview() {
     return () => { alive = false }
   }, [])
 
-  /* ---------------- 薄弱知识点（同时作为挂接知识点候选） ---------------- */
+  /* ---------------- 知识点挂接候选：真实知识点（随学科筛选收窄） ---------------- */
   useEffect(() => {
     let alive = true
-    reviewApi
-      .weakPoints({ limit: 30 })
-      .then((d) => { if (alive) { setWeak(Array.isArray(d?.items) ? d.items : []); setWeakErr('') } })
-      .catch((e) => { if (alive) { setWeak([]); setWeakErr(e?.message || '薄弱知识点接口不可用') } })
+    taxonomyApi
+      .knowledgePoints({ subject: subject || undefined, page_size: 500 })
+      .then((d) => {
+        if (!alive) return
+        const list = Array.isArray(d?.items) ? d.items : []
+        setKpChoices(list.map((k) => ({
+          id: k.id,
+          label: `${k.name}（${k.subject || '未分类'}${k.chapter ? ' · ' + k.chapter : ''}）`,
+        })))
+        setKpChoicesErr('')
+      })
+      .catch((e) => { if (alive) { setKpChoices([]); setKpChoicesErr(e?.message || '知识点接口不可用') } })
     return () => { alive = false }
-  }, [])
+  }, [subject])
 
   /* 切换筛选回到第一页 */
   const pickSubject = (v) => { setSubject(v); setPage(1) }
   const pickReason = (v) => { setErrorReason(v); setPage(1) }
-  const pickStatus = (v) => { setStatus(v); setPage(1) }
+  const pickMastery = (v) => { setMasteryState(v); setPage(1) }
 
-  /* ---------------- 选中一条错题：拉已挂接知识点 ---------------- */
+  /* ---------------- 选中一条错题：拉真实关联的知识点 ---------------- */
   const selectError = async (err) => {
     setSelectedId(err.id)
     setAi({ state: 'idle', text: '', err: '' })
@@ -251,14 +290,18 @@ export default function ErrorReview() {
   }
 
   /* ---------------- 挂接 / 解除知识点 ---------------- */
+  const reloadDetail = async () => {
+    const d = await errorsApi.knowledgePoints(selectedId)
+    const list = Array.isArray(d?.items) ? d.items : Array.isArray(d) ? d : []
+    setDetail({ state: 'ok', kps: list, kpErr: '' })
+  }
+
   const doLink = async () => {
     if (selectedId == null || !linkKp) return
     setLinking(true)
     try {
       await errorsApi.linkKnowledge(selectedId, { knowledge_point_id: Number(linkKp) })
-      const d = await errorsApi.knowledgePoints(selectedId)
-      const list = Array.isArray(d?.items) ? d.items : Array.isArray(d) ? d : []
-      setDetail({ state: 'ok', kps: list, kpErr: '' })
+      await reloadDetail()
       setLinkKp('')
       toast('知识点已关联')
     } catch (e) {
@@ -272,18 +315,14 @@ export default function ErrorReview() {
     if (linkId == null) return
     try {
       await errorsApi.unlinkKnowledge(linkId)
-      const d = await errorsApi.knowledgePoints(selectedId)
-      const list = Array.isArray(d?.items) ? d.items : Array.isArray(d) ? d : []
-      setDetail({ state: 'ok', kps: list, kpErr: '' })
+      await reloadDetail()
       toast('已解除关联')
     } catch (e) {
       toast(`解除失败：${e?.message || '未知错误'}`)
     }
   }
 
-  const kpChoices = kpOptions(weak)
-
-  /* ---------------- 首屏加载骨架 ---------------- */
+  /* ---------------- 首屏加载骨架（复用统一三态组件） ---------------- */
   if (listState === 'loading') {
     return (
       <div className="page">
@@ -301,22 +340,14 @@ export default function ErrorReview() {
             </div>
           </div>
           <div className="card-body">
-            <div className="er-skel-list">
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <div className="er-skel-row" key={i}>
-                  <span className="er-skel w1" />
-                  <span className="er-skel w90" />
-                  <span className="er-skel w46" />
-                </div>
-              ))}
-            </div>
+            <LoadingState text="正在读取 /api/errors…" rows={6} />
           </div>
         </div>
       </div>
     )
   }
 
-  /* ---------------- 列表接口失败：三态错误页 ---------------- */
+  /* ---------------- 列表接口失败：统一错误态 + 重试 ---------------- */
   if (listState === 'error') {
     return (
       <div className="page">
@@ -326,19 +357,20 @@ export default function ErrorReview() {
             <div className="page-sub">错因分布 · 薄弱知识点 · 单题 AI 归因</div>
           </div>
         </div>
-        <div className="card er-error-card">
-          <div className="er-error-icon"><AlertCircle size={28} /></div>
-          <div>
-            <div className="er-error-title">错题列表加载失败</div>
-            <div className="er-error-desc">{listErr || '请确认后端服务已启动后重试。'}</div>
-            <button className="btn ghost" onClick={loadList}>
-              <RefreshCw size={14} /> 重新加载
-            </button>
-          </div>
+        <div className="card er-card">
+          <ErrorState
+            title="错题列表加载失败"
+            message={listErr}
+            onRetry={loadList}
+            retryText="重新加载"
+          />
         </div>
       </div>
     )
   }
+
+  /* 三态计数（来自 /api/errors/stats，标签同后端 kp_mastery.STATE_LABELS） */
+  const stateCount = (s) => (stats ? stats[s] : null)
 
   return (
     <div className="page">
@@ -369,50 +401,63 @@ export default function ErrorReview() {
               </div>
             )}
           </div>
-          <button className="btn ghost" onClick={loadList} disabled={loading}>
+          <button className="btn ghost" onClick={() => { loadList(); loadStats() }} disabled={loading}>
             <RefreshCw size={15} /> 刷新
           </button>
         </div>
       </div>
 
-      {/* 复盘总览：GET /api/review/stats */}
+      {/* 复盘总览：GET /api/errors/stats（与仪表盘同一聚合函数） */}
       <div className="er-stat-row">
         {statsErr ? (
           <div className="card er-card er-inline-error">
             <AlertCircle size={14} />
-            <span>复盘总览不可用：{statsErr}</span>
+            <span>错题统计不可用：{statsErr}</span>
           </div>
         ) : (
           <>
-            <StatTile label="错题总数" value={stats?.active_errors} />
+            <StatTile label="活跃错题" value={stats?.active_errors} />
             <StatTile label="今日待复盘" value={stats?.due_errors} tone="warn" />
-            <StatTile label="已掌握" value={stats?.graduated_errors} tone="ok" />
-            <StatTile label="累计复习次数" value={stats?.total_reviews} />
+            <StatTile label="未学" value={stateCount('unlearned')} tone="muted" />
+            <StatTile label="薄弱" value={stateCount('weak')} tone="warn" />
+            <StatTile label="已掌握" value={stateCount('mastered')} tone="ok" />
           </>
         )}
       </div>
 
-      {/* 筛选：掌握度 / 学科 / 错因 */}
+      {/* 筛选：掌握度（三态）/ 错因 / 学科（均来自 API） */}
       <div className="er-filterbar">
         <Target size={15} className="er-filterbar-icon" />
         <span className="er-filter-label">掌握度</span>
-        <div className="kb-chips">
-          {MASTERY_OPTIONS.map((o) => (
-            <button
-              key={o.value || 'all'}
-              className={`kb-chip ${status === o.value ? 'active' : ''}`}
-              onClick={() => pickStatus(o.value)}
-            >
-              {o.label}
-            </button>
-          ))}
+        <div className="kb-chips" role="group" aria-label="掌握度筛选">
+          <button
+            className={`kb-chip ${masteryState === '' ? 'active' : ''}`}
+            onClick={() => pickMastery('')}
+          >
+            全部
+            {stats && <small>{stats.total}</small>}
+          </button>
+          {MASTERY_STATES.map((s) => {
+            const label = (stats?.labels && stats.labels[s]) || MASTERY_FALLBACK_LABEL[s]
+            const count = stateCount(s)
+            return (
+              <button
+                key={s}
+                className={`kb-chip ${masteryState === s ? 'active' : ''}`}
+                onClick={() => pickMastery(s)}
+              >
+                {label}
+                {count != null && <small>{count}</small>}
+              </button>
+            )
+          })}
         </div>
       </div>
 
       <div className="er-filterbar">
         <FileText size={15} className="er-filterbar-icon" />
         <span className="er-filter-label">错因</span>
-        <div className="kb-chips">
+        <div className="kb-chips" role="group" aria-label="错因筛选">
           <button
             className={`kb-chip ${errorReason === '' ? 'active' : ''}`}
             onClick={() => pickReason('')}
@@ -435,24 +480,28 @@ export default function ErrorReview() {
       <div className="er-filterbar">
         <Activity size={15} className="er-filterbar-icon" />
         <span className="er-filter-label">学科</span>
-        <div className="kb-chips">
+        <div className="kb-chips" role="group" aria-label="学科筛选">
           <button
             className={`kb-chip ${subject === '' ? 'active' : ''}`}
             onClick={() => pickSubject('')}
           >
             全部
           </button>
-          {Array.from(new Set(items.map((e) => e.subject).filter(Boolean))).map((s) => (
+          {subjectOptions.map((s) => (
             <button
-              key={s}
-              className={`kb-chip ${subject === s ? 'active' : ''}`}
-              onClick={() => pickSubject(s)}
+              key={s.subject}
+              className={`kb-chip ${subject === s.subject ? 'active' : ''}`}
+              onClick={() => pickSubject(s.subject)}
             >
-              {s}
+              {s.subject}
+              {s.count > 0 && <small>{s.count}</small>}
             </button>
           ))}
         </div>
       </div>
+      {subjectErr && (
+        <div className="er-inline-error"><AlertCircle size={14} /><span>学科接口失败：{subjectErr}</span></div>
+      )}
 
       <div className="er-layout">
         {/* 左：错题列表 */}
@@ -477,6 +526,7 @@ export default function ErrorReview() {
               <div className="er-list">
                 {items.map((e) => {
                   const open = selectedId === e.id
+                  const state = e.mastery_state || 'unlearned'
                   return (
                     <button
                       key={e.id}
@@ -484,8 +534,8 @@ export default function ErrorReview() {
                       onClick={() => selectError(e)}
                     >
                       <div className="er-row-top">
-                        <span className={`er-status ${STATUS_CLASS[e.status] || 'muted'}`}>
-                          {e.status === 'graduated' ? '已掌握' : e.status === 'archived' ? '已归档' : '未掌握'}
+                        <span className={`er-status ${MASTERY_TONE[state] || 'muted'}`}>
+                          {e.mastery_label || MASTERY_FALLBACK_LABEL[state] || state}
                         </span>
                         <span className="er-subj">{e.subject || '未分类'}</span>
                         <span className="er-reason">{e.error_reason || '未标注错因'}</span>
@@ -524,7 +574,7 @@ export default function ErrorReview() {
               <div>
                 <div className="card-title">错题详情</div>
                 <div className="card-sub">
-                  {selected ? `#${selected.id} · ${selected.subject || '未分类'}` : '请从左侧选择一条错题'}
+                  {selected ? `#${selected.id} · ${selected.subject || '未分类'} · ${selected.mastery_label || ''}` : '请从左侧选择一条错题'}
                 </div>
               </div>
               {selected && (
@@ -605,12 +655,14 @@ export default function ErrorReview() {
             </div>
           </div>
 
-          {/* 知识点关联 */}
+          {/* 知识点关联（按实际链路展示） */}
           <div className="card er-card">
             <div className="card-head">
               <div>
                 <div className="card-title">知识点关联</div>
-                <div className="card-sub">挂接后薄弱知识点统计与间隔复习才会收敛到该考点</div>
+                <div className="card-sub">
+                  「题目关联」来自题目的人工校验链路，最可信；「自动」为启发式挂接，仅供参考
+                </div>
               </div>
             </div>
             <div className="card-body">
@@ -626,33 +678,48 @@ export default function ErrorReview() {
                     </div>
                   )}
                   {detail.state === 'ok' && detail.kps.length === 0 && (
-                    <div className="er-muted">该错题尚未关联任何知识点。</div>
+                    <div className="er-muted">该错题尚未关联任何知识点（题目侧也未校验）。</div>
                   )}
                   {detail.state === 'ok' && detail.kps.length > 0 && (
                     <div className="er-kp-list">
                       {detail.kps.map((k) => (
-                        <div className="er-kp" key={k.link_id ?? k.id ?? k.knowledge_point_id}>
+                        <div className="er-kp" key={k.link_id ?? `q-${k.knowledge_point_id}`}>
                           <Map size={14} />
                           <div className="er-kp-main">
-                            <div className="er-kp-name">{k.name || k.kp_name || `知识点 #${k.knowledge_point_id}`}</div>
+                            <div className="er-kp-name">
+                              {k.name || k.kp_name || `知识点 #${k.knowledge_point_id}`}
+                              {k.verified && <span className="er-tag" style={{ marginLeft: 6 }}>已校验</span>}
+                            </div>
                             <div className="er-kp-sub">
                               {[k.subject, k.chapter].filter(Boolean).join(' · ') || '—'}
-                              {k.mastery != null && ` · 掌握度 ${k.mastery}`}
+                              {k.state_label && (
+                                <>
+                                  {' · '}
+                                  <span className={`er-status ${MASTERY_TONE[k.state] || 'muted'}`}>{k.state_label}</span>
+                                </>
+                              )}
+                              {' · '}
+                              {LINK_SOURCE_LABEL[k.source] || k.source || '未知来源'}
+                              {k.relevance != null && ` · 关联度 ${Math.round(Number(k.relevance) * 100)}%`}
                             </div>
                           </div>
-                          <button
-                            className="btn mini ghost"
-                            onClick={() => doUnlink(k.link_id ?? k.linkId)}
-                            title="解除关联"
-                          >
-                            解除
-                          </button>
+                          {k.link_id != null ? (
+                            <button
+                              className="btn mini ghost"
+                              onClick={() => doUnlink(k.link_id)}
+                              title="解除这条自动/手动挂接"
+                            >
+                              解除
+                            </button>
+                          ) : (
+                            <span className="er-muted" style={{ fontSize: 12, flexShrink: 0 }} title="来自题目的人工校验关联，需在题库侧调整">题目侧</span>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
 
-                  {/* 挂接：候选来自 /api/review/weak-points */}
+                  {/* 挂接：候选来自 /api/taxonomy/knowledge-points（真实知识点） */}
                   <div className="er-link-row">
                     <select
                       className="form-input er-select"
@@ -660,7 +727,7 @@ export default function ErrorReview() {
                       onChange={(e) => setLinkKp(e.target.value)}
                     >
                       <option value="">
-                        {kpChoices.length ? '选择薄弱知识点…' : '薄弱知识点接口不可用，暂无候选'}
+                        {kpChoices.length ? '选择知识点…' : '知识点接口不可用，暂无候选'}
                       </option>
                       {kpChoices.map((c) => (
                         <option key={c.id} value={c.id}>{c.label}</option>
@@ -670,7 +737,7 @@ export default function ErrorReview() {
                       {linking ? '关联中…' : '关联'}
                     </button>
                   </div>
-                  {weakErr && <div className="er-inline-error"><AlertCircle size={14} /><span>薄弱知识点接口失败：{weakErr}</span></div>}
+                  {kpChoicesErr && <div className="er-inline-error"><AlertCircle size={14} /><span>知识点接口失败：{kpChoicesErr}</span></div>}
                 </>
               )}
             </div>
@@ -681,7 +748,7 @@ export default function ErrorReview() {
   )
 }
 
-/* 总览小卡（数值来自 /api/review/stats） */
+/* 总览小卡（数值来自 /api/errors/stats，与仪表盘同一聚合函数） */
 function StatTile({ label, value, tone }) {
   return (
     <div className={`card er-stat ${tone ? `er-stat-${tone}` : ''}`}>

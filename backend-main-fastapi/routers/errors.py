@@ -23,11 +23,19 @@ async def list_errors(
     error_reason: Optional[str] = None,
     tag: Optional[str] = None,
     status: Optional[str] = None,
+    mastery_state: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
 ):
-    """错题列表（支持筛选）。"""
+    """错题列表（支持筛选）。
+
+    ``mastery_state`` 按掌握度**三态**筛选（unlearned 未学 / weak 薄弱 /
+    mastered 已掌握），与 ``services/kp_mastery.error_mastery_state`` 同一口径；
+    每条也回带 ``mastery_state`` / ``mastery_label``，前端不再自行写死档位。
+    """
+    from services import kp_mastery
+
     query = db.query(ErrorRecord)
     if subject:
         query = query.filter(ErrorRecord.subject == subject)
@@ -37,6 +45,12 @@ async def list_errors(
         query = query.filter(ErrorRecord.status == status)
     if tag:
         query = query.filter(ErrorRecord.tags.like(f'%"{tag}"%'))
+    if mastery_state:
+        from services import error_linker
+
+        cond = error_linker.mastery_state_condition(mastery_state)
+        if cond is not None:
+            query = query.filter(cond)
 
     total = query.count()
     errors = (
@@ -45,32 +59,49 @@ async def list_errors(
         .limit(page_size)
         .all()
     )
+
+    def _row(e: ErrorRecord) -> dict:
+        state = kp_mastery.error_mastery_state(e.accuracy, e.review_count, e.status)
+        return {
+            "id": e.id,
+            "question_id": e.question_id,
+            "content": e.content,
+            "my_answer": e.my_answer,
+            "correct_answer": e.correct_answer,
+            "error_reason": e.error_reason,
+            "subject": e.subject,
+            "accuracy": e.accuracy,
+            "review_count": e.review_count,
+            "last_review": e.last_review.isoformat() if e.last_review else None,
+            "next_review": e.next_review.isoformat() if e.next_review else None,
+            "status": e.status,
+            "mastery_state": state,
+            "mastery_label": kp_mastery.STATE_LABELS.get(state, state),
+            "tags": e.tags,
+            "analysis": e.analysis,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
         "total_pages": (total + page_size - 1) // page_size,
-        "items": [
-            {
-                "id": e.id,
-                "question_id": e.question_id,
-                "content": e.content,
-                "my_answer": e.my_answer,
-                "correct_answer": e.correct_answer,
-                "error_reason": e.error_reason,
-                "subject": e.subject,
-                "accuracy": e.accuracy,
-                "review_count": e.review_count,
-                "last_review": e.last_review.isoformat() if e.last_review else None,
-                "next_review": e.next_review.isoformat() if e.next_review else None,
-                "status": e.status,
-                "tags": e.tags,
-                "analysis": e.analysis,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-            }
-            for e in errors
-        ],
+        "items": [_row(e) for e in errors],
     }
+
+
+@router.get("/stats")
+async def error_stats(subject: Optional[str] = None, db: Session = Depends(get_db)):
+    """错题统计（**唯一口径**，错题本 / 错题复盘 / 仪表盘共用）。
+
+    与 ``services/error_linker.error_stats`` 同一实现：
+    total / active_errors / due_errors / graduated_errors / archived_errors /
+    today_reviews / total_reviews / error_reviews + 三态计数。
+    """
+    from services import error_linker
+
+    return error_linker.error_stats(db, subject=subject)
 
 
 @router.post("")
