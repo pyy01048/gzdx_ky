@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Link, useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
 import { todayStr, weekdayIdx, WEEK_CN } from '../utils/date'
 import { examDaysLeft, examYear, resolveExamDate } from '../utils/exam'
 import { reviewStatus } from '../utils/ebbinghaus'
 import { dueCards } from '../utils/spaced'
 import { CountUp, Empty, toast } from '../components/UI'
-import { dashboardApi } from '../api/client'
+import { dashboardApi, insightApi } from '../api/client'
+import { kaoyanApi } from '../api/kaoyanApi'
 import { MiniLineChart, RingProgress } from '../components/Charts'
 import NoticeBoard from '../components/NoticeBoard'
 import {
@@ -25,6 +25,7 @@ export const MODULES = [
   { id: '/tasks', to: '/tasks', label: '任务打卡', icon: Target },
   { id: '/kbmap', to: '/kbmap', label: '知识地图', icon: MapIcon },
   { id: '/quiz', to: '/quiz', label: '刷题中心', icon: Book },
+  { id: '/codebank', to: '/codebank', label: '复试代码题库', icon: Book },
   { id: '/notebook', to: '/notebook', label: '错题本', icon: FileText },
   { id: '/words', to: '/words', label: '单词记忆', icon: GraduationCap },
   { id: '/cards', to: '/cards', label: '记忆卡片', icon: Brain },
@@ -33,19 +34,6 @@ export const MODULES = [
   { id: '/planner', to: '/planner', label: '学习计划', icon: Calendar },
   { id: '/assistant', to: '/assistant', label: 'AI 助手', icon: MessageSquare },
   { id: '/settings', to: '/settings', label: '设置', icon: Settings },
-const MODULES = [
-  { to: '/tasks', label: '任务打卡', icon: Target },
-  { to: '/kbmap', label: '知识地图', icon: MapIcon },
-  { to: '/quiz', label: '刷题中心', icon: Book },
-  { to: '/codebank', label: '复试代码题库', icon: Book },
-  { to: '/notebook', label: '错题本', icon: FileText },
-  { to: '/words', label: '单词记忆', icon: GraduationCap },
-  { to: '/cards', label: '记忆卡片', icon: Brain },
-  { to: '/documents', label: '文档知识库', icon: Folder },
-  { to: '/pan', label: '网盘联动', icon: Cloud },
-  { to: '/planner', label: '学习计划', icon: Calendar },
-  { to: '/assistant', label: 'AI 助手', icon: MessageSquare },
-  { to: '/settings', label: '设置', icon: Settings },
 ]
 
 /* 实时时钟 */
@@ -290,12 +278,18 @@ export default function Dashboard() {
         id: 'minutes', ico: Clock, tone: 'blue', trend: 'up', trendText: '本周',
         value: (weekMinutes / 60).toFixed(1), unit: 'h', label: '学习时长', to: '/kbmap',
       },
+      {
         id: 'tasks', ico: Target, tone: 'green', trend: 'flat', trendText: '今日',
         value: todayTasks.length, unit: '', label: `今日任务 · 已完成 ${doneCount}`, to: '/tasks',
+      },
+      {
         id: 'review', ico: Book, tone: 'amber', trend: 'flat', trendText: '待处理',
         value: dueReviews + dueWordCount + dueCardCount, unit: '', label: '待复习（错/词/卡）', to: '/notebook',
+      },
+      {
         id: 'streak', ico: Calendar, tone: 'violet', trend: 'up', trendText: '连续',
         value: streak, unit: '天', label: '学习打卡', to: '/planner',
+      },
     ]
     return applyOrder(all.filter((c) => !layout.statsHidden.includes(c.id)), layout.statsOrder)
   }, [weekMinutes, todayTasks, doneCount, dueReviews, dueWordCount, dueCardCount, streak,
@@ -305,31 +299,32 @@ export default function Dashboard() {
     () => applyOrder(MODULES.filter((m) => !layout.modsHidden.includes(m.id)), layout.modsOrder),
     [layout.modsHidden, layout.modsOrder],
   )
+
+  /* ---------- V11 今日学习引导 / V16 当日院校公告 / 学习周报 ---------- */
   const [today, setToday] = useState(null)
-  const [dayNotices, setDayNotices] = useState([])   // V16 当日院校公告
+  const [dayNotices, setDayNotices] = useState([])
   const [report, setReport] = useState(null)
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
-    /* V11: 今日学习引导（一次拉齐：到期复习/今日任务/今日答题/薄弱点/行动清单） */
-    import('../api/client').then(({ insightApi }) => {
-      insightApi.today().then(setToday).catch(() => setToday(null))
-    })
-    /* V16: 当日院校公告（工科/理科相关招生动态，随时可看） */
-    import('../api/client').then(({ request }) => {
-      request('/kaoyan/notices/feed', { params: { page: 1, page_size: 8 } })
-        .then(r => setDayNotices(r.items || []))
-        .catch(() => setDayNotices([]))
+    let alive = true
+    insightApi.today().then((d) => { if (alive) setToday(d) }).catch(() => {})
+    kaoyanApi.noticesFeed({ page: 1, page_size: 8 })
+      .then((r) => { if (alive) setDayNotices(r.items || []) })
+      .catch(() => {})
+    return () => { alive = false }
   }, [])
 
   const openReport = () => {
     setShowReport(true)
     if (!report) {
-        insightApi.weeklyReport().then(setReport).catch(() => setShowReport(false))
+      insightApi.weeklyReport().then(setReport).catch(() => setShowReport(false))
     }
+  }
 
   return (
     <div className="dash">
+
       {/* ===== V11 今日学习引导条（打开就知道该干什么） ===== */}
       {today && (
         <section className="dash-today" aria-label="今日学习引导">
@@ -338,7 +333,7 @@ export default function Dashboard() {
             <span className="dash-today-sub">{today.suggestion?.[0] || '按下面清单推进即可'}</span>
           </div>
           <div className="dash-today-grid">
-            <button className="dash-today-card" onClick={() => navigate('/review')}>
+            <button className="dash-today-card" onClick={() => navigate('/error-review')}>
               <em style={{ color: 'var(--gold)' }}>{today.due_review_count}</em>
               <span>到期复习</span>
             </button>
@@ -411,7 +406,7 @@ export default function Dashboard() {
         <section className="dash-today" style={{ marginBottom: 18 }} aria-label="当日院校公告">
           <div className="dash-today-head">
             <strong>📰 院校公告速递</strong>
-            <span className="dash-today-sub">工科/理科相关专业 · 最新 {dayNotices.length} 条 · 点标题看原文</span>
+            <span className="dash-today-sub">最新 {dayNotices.length} 条 · 点标题看原文</span>
             <Link to="/kaoyan/notices" style={{ marginLeft: 'auto', fontSize: 12 }}>进入通知中心 →</Link>
           </div>
           <div style={{ display: 'grid', gap: 6 }}>
@@ -426,7 +421,6 @@ export default function Dashboard() {
           </div>
         </section>
       )}
-
       {/* ===== Hero 渐变倒计时 ===== */}
       {!hidden('hero') && (
       <section className="dash-hero">
