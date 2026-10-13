@@ -64,9 +64,7 @@ function renderSide(val) {
 }
 
 export default function Cards() {
-  /* 注意：store 未提供 setCards/setPacks（只有 setWords/setDecks），
-     批量回填后端卡片用 useStore.setState 直接写入同一 slice，避免跨领地改 store。 */
-  const { cards, packs, notebook, addCard, addPack, reviewCard, removeCard, removePack } = useStore()
+  const { cards, packs, notebook, addCard, addPack, reviewCard, removeCard, removePack, setCards } = useStore()
   const [view, setView] = useState('study') // study | summary | packs | list
   const [curIdx, setCurIdx] = useState(0)
   const [showBack, setShowBack] = useState(false)
@@ -127,7 +125,7 @@ export default function Cards() {
           lastReview: c.last_review || null,
           tags: c.tags || [],
         }))
-        useStore.setState({ cards: formatted })
+        setCards(formatted)
       } catch (err) {
         // 加载失败必须可见（此前只 console.warn + 复用本机数据，用户以为卡片已同步）
         setLoadErr(err?.message || '未知错误')

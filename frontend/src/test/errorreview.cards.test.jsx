@@ -181,6 +181,29 @@ describe('Cards：正确解析后端 {items}、科目下拉来自 API', () => {
     expect(tiles.length).toBeGreaterThan(0)
   })
 
+  /* 回归核心：此前这一路径是**白屏**——flashcardsApi.list 返回 {items:[...]}
+     却被当裸数组用（cards.filter is not a function），且 setCards 在 store 里
+     根本不存在（调用即抛 TypeError 被 catch 吞掉）→ 后端 649 张卡永远加载不出来。 */
+  it('加载成功路径：{items} 写入 store 且卡片真的渲染出来（不再是白屏）', async () => {
+    const Cards = (await import('../pages/Cards')).default
+    render(<Wrapper route="/cards"><Cards /></Wrapper>)
+    await settle()
+
+    // 1) store 里的 cards 被正式 setCards 正确写入（长度 + 字段映射）
+    const stored = useStore.getState().cards
+    expect(stored).toHaveLength(2)
+    expect(stored.map((c) => c.id)).toEqual([1, 2])
+    expect(stored[0].reps).toBe(2)                      // review_count → reps
+    expect(stored[0].status).toBe('reviewing')          // mastery 'review' → reviewing
+    expect(stored[1].status).toBe('new')                // mastery 'new' → new
+
+    // 2) 切到「列表」视图，正反面文本真的渲染（曾经整页白屏 / 只有空态）
+    fireEvent.click(screen.getByRole('button', { name: /列表/ }))
+    await settle()
+    expect(screen.getByText('正面A')).toBeInTheDocument()
+    expect(screen.getByText('正面B')).toBeInTheDocument()
+  })
+
   it('新建卡包科目下拉来自科目 API，且不含硬编码的"专业课"', async () => {
     const Cards = (await import('../pages/Cards')).default
     render(<Wrapper route="/cards"><Cards /></Wrapper>)

@@ -405,6 +405,9 @@ const useStore = create(
         set((s) => ({ packs: [...s.packs, { id: uid(), name, subject, color: color ?? 0, count: 0 }] })),
       removePack: (id) =>
         set((s) => ({ packs: s.packs.filter((p) => p.id !== id), cards: s.cards.filter((c) => c.packId !== id) })),
+      // 从后端批量回填卡片/卡包（约定同 setWords：支持直接传数组或 (prev)=>next 函数）
+      setCards: (newCards) => set((s) => ({ cards: typeof newCards === 'function' ? newCards(s.cards) : newCards })),
+      setPacks: (newPacks) => set((s) => ({ packs: typeof newPacks === 'function' ? newPacks(s.packs) : newPacks })),
 
       /* ---------- 数据管理 ---------- */
       resetAll: () => set({ ...seedState() })
