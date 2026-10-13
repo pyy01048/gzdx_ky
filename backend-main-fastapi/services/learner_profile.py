@@ -8,6 +8,7 @@
   4. 复习节奏：error_records next_review 到期分布（SM-2 队列健康度）
   5. 近 N 天活跃趋势：答题/错题/任务日序列（复用 learning_traces 口径）
   6. 行为洞察建议：规则生成（不调 LLM，确定性），如错题积压/复习逾期提醒
+  7. 知识点掌握度三态：未学/薄弱/已掌握（口径见 services/kp_mastery.py）
 
 诚实口径：study_sessions 真实时长优先，无记录的天用行为量估算
 （沿用 learning_analytics_service 的 30min/任务、5min/题口径）。
@@ -16,6 +17,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+
+from services import kp_mastery
 
 
 def _pct(ok: int, total: int) -> Optional[float]:
@@ -150,6 +153,23 @@ def build_profile(db_session, days: int = 30) -> Dict:
         for r in weak_kps
     ]
 
+    # ---------- 3.5 知识点掌握度三态 ----------
+    # 口径见 services/kp_mastery.py：未学（无任何学习记录）= 灰，不计入薄弱；
+    # 上面 weak_points 来自 error_records，必然有记录，全部按薄弱处理。
+    learned_ids = kp_mastery.learned_kp_ids_raw(conn)
+    kp_state_counts = {"total": 0, "unlearned": 0, "weak": 0, "mastered": 0}
+    for kp_id, kp_mastery_val in conn.execute(
+        "SELECT id, mastery FROM knowledge_points"
+    ).fetchall():
+        kp_state_counts["total"] += 1
+        kp_state_counts[
+            kp_mastery.classify_state(kp_mastery_val, kp_id in learned_ids)
+        ] += 1
+    knowledge_points = {
+        **kp_state_counts,
+        "labels": kp_mastery.STATE_LABELS,
+    }
+
     # ---------- 4. 复习队列健康度（SM-2） ----------
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     overdue = conn.execute(
@@ -215,6 +235,7 @@ def build_profile(db_session, days: int = 30) -> Dict:
         "overview": overview,
         "subjects": subjects,
         "weak_points": weak_points,
+        "knowledge_points": knowledge_points,
         "review_queue": review_queue,
         "trend": trend,
         "suggestions": suggestions,

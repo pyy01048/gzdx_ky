@@ -48,7 +48,7 @@ export default function LearnerProfile() {
     </div>
   )
 
-  const { overview, subjects, weak_points: weakPoints, review_queue: reviewQueue, trend, suggestions } = profile
+  const { overview, subjects, weak_points: weakPoints, knowledge_points: kp3, review_queue: reviewQueue, trend, suggestions } = profile
 
   // 趋势图（答题/正确/错题三序列）
   const trendOption = trend.length ? {
@@ -99,6 +99,34 @@ export default function LearnerProfile() {
           {suggestions.map((s, i) => <li key={i}>{s}</li>)}
         </ul>
       </div>
+
+      {/* 知识点掌握度三态：未学=灰 / 薄弱=黄 / 已掌握=绿（口径见后端 services/kp_mastery.py） */}
+      {kp3 && kp3.total > 0 && (
+        <section style={{ marginBottom: 18, padding: 16, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>知识点掌握度三态</h3>
+            <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>共 {kp3.total} 个 · 未学（无学习记录）不计入薄弱统计</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 12 }}>
+            {[
+              { key: 'unlearned', label: '未学', desc: '无任何学习记录', bg: 'var(--surface-3)', color: 'var(--ink-2)' },
+              { key: 'weak', label: '薄弱', desc: '有记录但掌握度 <70', bg: 'var(--gold)22', color: 'var(--gold)' },
+              { key: 'mastered', label: '已掌握', desc: '掌握度 ≥70', bg: 'var(--green)18', color: 'var(--green)' },
+            ].map(x => (
+              <div key={x.key} style={{ textAlign: 'center', padding: '12px 6px', borderRadius: 10, background: 'var(--surface-2)' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: x.color }}>{kp3[x.key]}</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 2 }}>{x.label}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>{x.desc}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-3)', marginTop: 12 }} aria-label="掌握度三态分布">
+            <span style={{ width: `${(kp3.unlearned / kp3.total) * 100}%`, background: 'var(--ink-3)' }} />
+            <span style={{ width: `${(kp3.weak / kp3.total) * 100}%`, background: 'var(--gold)' }} />
+            <span style={{ width: `${(kp3.mastered / kp3.total) * 100}%`, background: 'var(--green)' }} />
+          </div>
+        </section>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
         {/* 科目掌握度 */}

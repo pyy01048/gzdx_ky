@@ -82,6 +82,7 @@
 .kb-stat-num.ok { color: var(--green); }
 .kb-stat-num.warn { color: var(--gold); }
 .kb-stat-num.danger { color: var(--red); }
+.kb-stat-num.new { color: var(--ink-3); }
 .kb-stat-label { font-size: 11.5px; color: var(--ink-3); }
 
 /* ---------- 科目选择条 ---------- */
@@ -191,6 +192,7 @@
 }
 .kb-bar.tone-low i { background: var(--red); }
 .kb-bar.tone-mid i { background: var(--gold); }
+.kb-bar.tone-new i { background: var(--ink-3); }
 .kb-bar.tone-ok i { background: var(--green); }
 
 /* 掌握度圆点 */
@@ -203,6 +205,7 @@
 }
 .kb-dot.tone-low { background: var(--red); }
 .kb-dot.tone-mid { background: var(--gold); }
+.kb-dot.tone-new { background: var(--ink-3); }
 .kb-dot.tone-ok { background: var(--green); }
 
 /* 掌握度胶囊 */
@@ -216,6 +219,7 @@
 }
 .kb-pill.tone-low { background: var(--red-soft); color: var(--red); }
 .kb-pill.tone-mid { background: var(--gold-soft); color: var(--gold); }
+.kb-pill.tone-new { background: var(--surface-3); color: var(--ink-2); }
 .kb-pill.tone-ok { background: var(--green-soft); color: var(--green); }
 
 /* 语料质量层（知识库侧供给：块数/置信/弃权），与掌握度胶囊区分开 */
@@ -235,6 +239,7 @@
 .kb-quality-hint { font-size: 11.5px; color: var(--ink-3); margin: -4px 0 12px; line-height: 1.6; }
 .kb-overview-num.tone-low { color: var(--red); }
 .kb-overview-num.tone-mid { color: var(--gold); }
+.kb-overview-num.tone-new { color: var(--ink-3); }
 .kb-overview-num.tone-ok { color: var(--green); }
 
 /* ---------- 章节树 ---------- */
@@ -323,6 +328,7 @@
 }
 .kb-kp-pct.tone-low { color: var(--red); }
 .kb-kp-pct.tone-mid { color: var(--gold); }
+.kb-kp-pct.tone-new { color: var(--ink-3); }
 .kb-kp-pct.tone-ok { color: var(--green); }
 .kb-kp-freq {
   font-size: 11px;
@@ -537,6 +543,7 @@
 .kb-drawer-cell-val { font-size: 16px; font-weight: 700; color: var(--ink); }
 .kb-drawer-cell-val.tone-low { color: var(--red); }
 .kb-drawer-cell-val.tone-mid { color: var(--gold); }
+.kb-drawer-cell-val.tone-new { color: var(--ink-3); }
 .kb-drawer-cell-val.tone-ok { color: var(--green); }
 
 .kb-drawer-section { margin-top: 16px; }

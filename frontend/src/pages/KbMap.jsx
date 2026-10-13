@@ -21,12 +21,39 @@ function typeLabel(t) {
   return TYPE_LABEL[t] || t || ''
 }
 
-/* 掌握度档位：与后端口径一致（<40 薄弱 / 40-69 一般 / ≥70 良好） */
+/* 掌握度三态（与后端口径一致，见 backend services/kp_mastery.py）：
+   未学（无任何学习记录）= 灰 / 薄弱（有记录但 <70）= 黄 / 已掌握（≥70）= 绿。
+   未学知识点不计入薄弱统计 —— 它们"还没开始"，不是"薄弱"。 */
+const STATE_TONE = {
+  unlearned: { cls: 'new', label: '未学' },
+  weak: { cls: 'mid', label: '薄弱' },
+  mastered: { cls: 'ok', label: '已掌握' },
+}
+/* 知识点三态：优先用后端下发的 state；旧接口没有时按 (mastery, review_count) 兜底 */
+function kpState(kp) {
+  if (kp && STATE_TONE[kp.state]) return kp.state
+  const m = Number(kp && kp.mastery) || 0
+  if (m >= 70) return 'mastered'
+  return kp && kp.review_count > 0 ? 'weak' : 'unlearned'
+}
+function stateTone(state) {
+  return STATE_TONE[state] || STATE_TONE.unlearned
+}
+/* 纯数值 → 三态 tone（均分等只有数值的场景；<70 即薄弱=黄） */
 function masteryTone(m) {
   const v = Number(m) || 0
-  if (v >= 70) return { cls: 'ok', label: '良好' }
-  if (v >= 40) return { cls: 'mid', label: '一般' }
-  return { cls: 'low', label: '薄弱' }
+  return v >= 70 ? STATE_TONE.mastered : STATE_TONE.weak
+}
+/* 科目/章节聚合节点：全部未学 → 灰；否则按已学平均掌握度取黄/绿 */
+function nodeTone(node) {
+  const total = (node && (node.knowledge_point_count ?? node.total)) || 0
+  const unlearned = (node && node.unlearned_count) || 0
+  if (total > 0 && unlearned >= total) return STATE_TONE.unlearned
+  return masteryTone((node && (node.learned_avg_mastery ?? node.avg_mastery)) || 0)
+}
+/* 聚合节点展示用均分：优先已学平均（未学不拉低均值） */
+function nodeAvg(node) {
+  return (node && (node.learned_avg_mastery ?? node.avg_mastery)) ?? 0
 }
 
 /* 复习结果三态按钮 */
@@ -201,14 +228,15 @@ export default function KbMap() {
     return () => document.removeEventListener('keydown', onKey)
   }, [detail.open, closeDetail])
 
-  /* 科目维度汇总（用于概览分布条） */
+  /* 科目维度汇总（用于概览分布条）：三态 —— 未学/薄弱/已掌握 */
   const dist = useMemo(() => {
     if (!progress) return null
     const total = progress.total_knowledge_points || 0
     const mastered = progress.mastered_count || 0
     const weak = progress.weak_count || 0
-    const mid = Math.max(0, total - mastered - weak)
-    return { total, mastered, weak, mid }
+    // 旧后端没有 unlearned_count 时用总数倒扣，保证分布条不出现负值
+    const unlearned = progress.unlearned_count ?? Math.max(0, total - mastered - weak)
+    return { total, mastered, weak, unlearned }
   }, [progress])
 
   /* 科目选择 chips：优先用 /taxonomy/subjects（阶段1 契约 {subjects:[...]}）；
@@ -283,6 +311,12 @@ export default function KbMap() {
   const coreSubjects = tree.filter((s) => s.is_core)
   const extSubjects = tree.filter((s) => !s.is_core)
   const hasAnyKp = tree.some((s) => s.knowledge_point_count > 0)
+  // 总览大数字：全部未学时置灰，否则按已学平均掌握度取黄/绿
+  const overviewTone = dist && dist.total > 0 && dist.unlearned >= dist.total
+    ? STATE_TONE.unlearned
+    : masteryTone(progress ? (progress.learned_avg_mastery ?? progress.avg_mastery) : 0)
+  // 详情抽屉里的掌握度三态
+  const dTone = stateTone(detail.data ? kpState(detail.data) : 'unlearned')
 
   return (
     <div className="page">
@@ -304,35 +338,37 @@ export default function KbMap() {
         <div className="kb-overview">
           <div className="kb-overview-main">
             <div className="kb-overview-figure">
-              <span className={`kb-overview-num tone-${masteryTone(progress.avg_mastery).cls}`}>
-                {progress.avg_mastery}
+              <span className={`kb-overview-num tone-${overviewTone.cls}`}>
+                {progress.learned_avg_mastery ?? progress.avg_mastery}
               </span>
               <span className="kb-overview-unit">%</span>
             </div>
             <div className="kb-overview-meta">
-              <div className="kb-overview-label">平均掌握度</div>
+              <div className="kb-overview-label">
+                {overviewTone.cls === 'new' ? '掌握度（尚未开始学习）' : '已学平均掌握度'}
+              </div>
               <div className="kb-overview-hint">
-                共 {dist.total} 个知识点 · 已掌握 {dist.mastered} · 薄弱 {dist.weak}
+                共 {dist.total} 个知识点 · 已掌握 {dist.mastered} · 薄弱 {dist.weak} · 未学 {dist.unlearned}
               </div>
             </div>
           </div>
           <div className="kb-overview-dist">
-            <div className="kb-dist-bar" role="img" aria-label="掌握度分布">
-              <span className="seg low" style={{ width: dist.total ? `${(dist.weak / dist.total) * 100}%` : '0%' }} />
-              <span className="seg mid" style={{ width: dist.total ? `${(dist.mid / dist.total) * 100}%` : '0%' }} />
+            <div className="kb-dist-bar" role="img" aria-label="掌握度三态分布">
+              <span className="seg new" style={{ width: dist.total ? `${(dist.unlearned / dist.total) * 100}%` : '0%' }} />
+              <span className="seg mid" style={{ width: dist.total ? `${(dist.weak / dist.total) * 100}%` : '0%' }} />
               <span className="seg ok" style={{ width: dist.total ? `${(dist.mastered / dist.total) * 100}%` : '0%' }} />
             </div>
             <div className="kb-legend">
-              <span className="kb-legend-item"><i className="dot low" />薄弱 &lt;40</span>
-              <span className="kb-legend-item"><i className="dot mid" />一般 40–69</span>
-              <span className="kb-legend-item"><i className="dot ok" />良好 ≥70</span>
+              <span className="kb-legend-item"><i className="dot new" />未学（无学习记录）</span>
+              <span className="kb-legend-item"><i className="dot mid" />薄弱 &lt;70（已学）</span>
+              <span className="kb-legend-item"><i className="dot ok" />已掌握 ≥70</span>
             </div>
           </div>
         </div>
       )}
 
       {/* 全局统计小卡 */}
-      {progress && (
+      {progress && dist && (
         <div className="kb-stats">
           <div className="kb-stat">
             <span className="kb-stat-num">{progress.total_knowledge_points}</span>
@@ -343,15 +379,15 @@ export default function KbMap() {
             <span className="kb-stat-label">已复习</span>
           </div>
           <div className="kb-stat">
-            <span className="kb-stat-num warn">{progress.new_count}</span>
-            <span className="kb-stat-label">待开始</span>
+            <span className="kb-stat-num new">{dist.unlearned}</span>
+            <span className="kb-stat-label">未学</span>
           </div>
           <div className="kb-stat">
             <span className="kb-stat-num ok">{progress.mastered_count}</span>
             <span className="kb-stat-label">已掌握</span>
           </div>
           <div className="kb-stat">
-            <span className="kb-stat-num danger">{progress.weak_count}</span>
+            <span className="kb-stat-num warn">{progress.weak_count}</span>
             <span className="kb-stat-label">薄弱</span>
           </div>
           <div className="kb-stat">
@@ -442,14 +478,14 @@ export default function KbMap() {
                       </div>
                     </div>
                     <div className="kb-subject-mastery">
-                      <span className={`kb-pill tone-${masteryTone(subject.avg_mastery).cls}`}>
-                        平均 {subject.avg_mastery}%
+                      <span className={`kb-pill tone-${nodeTone(subject).cls}`}>
+                        {nodeTone(subject).cls === 'new' ? '未学' : `平均 ${nodeAvg(subject)}%`}
                       </span>
                     </div>
                   </div>
                   {/* 科目维度掌握度条 */}
-                  <div className={`kb-bar tone-${masteryTone(subject.avg_mastery).cls}`}>
-                    <i style={{ width: `${Math.min(100, subject.avg_mastery)}%` }} />
+                  <div className={`kb-bar tone-${nodeTone(subject).cls}`}>
+                    <i style={{ width: `${Math.min(100, nodeAvg(subject))}%` }} />
                   </div>
 
                   <div className="kb-chapters">
@@ -457,7 +493,7 @@ export default function KbMap() {
                       const key = `${subject.subject}|${ch.title}`
                       const open = !!openChapters[key]
                       const hasData = ch.knowledge_point_count > 0
-                      const tone = masteryTone(ch.avg_mastery)
+                      const tone = nodeTone(ch)
                       return (
                         <div className={`kb-chapter ${hasData ? '' : 'is-empty'}`} key={key}>
                           <button className="kb-chapter-head" onClick={() => toggleChapter(key)}>
@@ -476,7 +512,7 @@ export default function KbMap() {
                               })()}
                               {hasData && (
                                 <span className={`kb-bar sm tone-${tone.cls}`}>
-                                  <i style={{ width: `${Math.min(100, ch.avg_mastery)}%` }} />
+                                  <i style={{ width: `${Math.min(100, nodeAvg(ch))}%` }} />
                                 </span>
                               )}
                             </span>
@@ -491,7 +527,7 @@ export default function KbMap() {
                                 ))}
                               </div>
                               {ch.knowledge_points.map((kp) => {
-                                const kt = masteryTone(kp.mastery)
+                                const kt = stateTone(kpState(kp))
                                 return (
                                   <div
                                     className="kb-kp kb-kp-clickable"
@@ -507,8 +543,7 @@ export default function KbMap() {
                                     }}
                                     title={`查看「${kp.name}」知识点详情`}
                                   >
-                                    <span className={`kb-dot tone-${kt.cls}`} title={`掌握度 ${kp.mastery}（${kt.label}）`} />
-                                    <div className="kb-kp-main">
+                                    <span className={`kb-dot tone-${kt.cls}`} title={`掌握度 ${kp.mastery}（${kt.label}）`} />                                    <div className="kb-kp-main">
                                       <div className="kb-kp-row1">
                                         <span className="kb-kp-name">{kp.name}</span>
                                         <span className="kb-kp-tags">
@@ -521,7 +556,9 @@ export default function KbMap() {
                                         <span className={`kb-bar tone-${kt.cls}`}>
                                           <i style={{ width: `${Math.min(100, kp.mastery)}%` }} />
                                         </span>
-                                        <span className={`kb-kp-pct tone-${kt.cls}`}>{kp.mastery}%</span>
+                                        <span className={`kb-kp-pct tone-${kt.cls}`}>
+                                          {kt.cls === 'new' ? '未学' : `${kp.mastery}%`}
+                                        </span>
                                         <span className="kb-kp-freq">
                                           {kp.review_count ? `已复习 ${kp.review_count} 次` : '未复习'}
                                         </span>
@@ -608,7 +645,9 @@ export default function KbMap() {
                       <div className="kb-weak-item" key={k.id}>
                         <span className="kb-weak-name">{k.name}</span>
                         <span className="kb-weak-ch">{k.chapter || '未归章'}</span>
-                        <span className={`kb-pill tone-${masteryTone(k.mastery).cls}`}>{k.mastery}%</span>
+                        <span className={`kb-pill tone-${stateTone(k.state ?? (Number(k.mastery) >= 70 ? 'mastered' : 'weak')).cls}`}>
+                          {k.mastery}%
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -691,8 +730,8 @@ export default function KbMap() {
                   <div className="kb-drawer-meta">
                     <div className="kb-drawer-cell">
                       <span className="kb-drawer-cell-label">掌握度</span>
-                      <span className={`kb-drawer-cell-val tone-${masteryTone(detail.data.mastery).cls}`}>
-                        {detail.data.mastery ?? 0}%
+                      <span className={`kb-drawer-cell-val tone-${dTone.cls}`} title={`状态：${dTone.label}`}>
+                        {dTone.cls === 'new' ? '未学' : `${detail.data.mastery ?? 0}%`}
                       </span>
                     </div>
                     <div className="kb-drawer-cell">
