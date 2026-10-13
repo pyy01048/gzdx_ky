@@ -8,6 +8,17 @@ A3 RAG 检索门控（services/retrieval_gate.py）
   复杂问题（解答题/多问）放宽：0.35 / 0.45
   RETRIEVAL_GATE_MODE = "observe"       —— observe 灰度（收集 would_abstain）/ enforce
 
+阈值定档实测（2026-10-13，scripts/retrieval_abstention_eval.py，50 题 gold 集，
+库副本上跑，eval_runs #12）——**enforce 暂不放行，四个数说明为什么**：
+  * 分数不是 0..1：rerank 是加法分（_term_boost 每命中 +2.0，中位 0.72、最大 198.7），
+    现网 RAG 走的 rrf 是名次分（中位 0.0164）。学科间差两个数量级（数电 38.0 vs 政治 0.0164），
+    所以一个全局阈值在任何一路都不成立。
+  * 区分度：top1 分数对"是否命中 gold"的 AUC = rerank 0.531 / rrf 0.568（定档门槛 0.75）。
+  * 弃权带 [0.50,0.60)：rrf 路 **0 条**（enforce 打开也永不拒答，只会多跑一次 step_back），
+    rerank 路 4 条且 **4/4 都是本来答得出的题**（enforce 只会误杀）。
+  → 要切 enforce，先把阈值改写到归一化信号（如学科内分位）并重跑定档；
+    在此之前 tests/test_retrieval_gate_abstention_veto.py 会钉住 "observe"。
+
 四条硬规则：
   1. 只信 rerank_score 做阈值（RRF 只定序）
   2. 拒答是节点不是 if-else：固定话术 + abstain_reason

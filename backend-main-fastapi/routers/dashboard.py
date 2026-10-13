@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Goal, Task, ErrorRecord, StudySession, StudyStats
+from models import Task, ErrorRecord, StudySession, StudyStats
 from services.review_scheduler import ReviewScheduler
 from services.dashboard_service import DashboardService
 
@@ -58,8 +58,8 @@ async def get_dashboard(db: Session = Depends(get_db)):
 
 @router.get("/countdown")
 async def get_countdown(db: Session = Depends(get_db)):
-    """倒计时数据。"""
-    return _get_countdown(db)
+    """倒计时数据。与 /dashboard 内嵌的 countdown 同一实现，避免两个端点给出两套日期。"""
+    return DashboardService.get_countdown(db)
 
 
 @router.get("/today-tasks")
@@ -83,22 +83,6 @@ async def get_weakness(db: Session = Depends(get_db)):
 # ----------------------------------------------------------------------- #
 # 内部函数
 # ----------------------------------------------------------------------- #
-def _get_countdown(db: Session) -> dict:
-    goal = db.query(Goal).first()
-    if not goal or not goal.exam_date:
-        return {"days": None, "exam_date": None, "university": None, "major": None}
-
-    today = datetime.date.today()
-    delta = (goal.exam_date - today).days
-    return {
-        "days": delta,
-        "exam_date": goal.exam_date.isoformat(),
-        "university": goal.university,
-        "major": goal.major,
-        "total_score_target": goal.total_score_target,
-    }
-
-
 def _get_today_tasks(db: Session) -> dict:
     today = datetime.date.today()
     # 今日任务 = 今日到期 + 进行中（不包括所有pending，避免数量虚高）

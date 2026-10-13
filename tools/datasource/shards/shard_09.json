@@ -1,0 +1,101 @@
+{
+  "shard": 9,
+  "items": [
+    {
+      "doc_id": 1920,
+      "media_id": "img_b6e72461ef4664490f7889896f15acdd_f6a1d82746adfa45ee1a7b1d2410040f001aa4b2d3800376",
+      "title": "微信图片_20260611000125_133_695.jpg",
+      "subject": "数模电",
+      "media_type": 9,
+      "folder_path": "考研资料数据集V1.0/博学课划重点/数电/做的笔记和后面题目的解题过程",
+      "file_size": 236026,
+      "subj_rank": 0,
+      "media_rank": 2,
+      "rank": 72
+    },
+    {
+      "doc_id": 1925,
+      "media_id": "img_b6e72461ef4664490f7889896f15acdd_9e03d98f18b51207f38fbc0bc7133ba4001aa4b2d3800376",
+      "title": "微信图片_20260611001455_178_695.jpg",
+      "subject": "数模电",
+      "media_type": 9,
+      "folder_path": "考研资料数据集V1.0/博学课划重点/模电/笔记",
+      "file_size": 233565,
+      "subj_rank": 0,
+      "media_rank": 2,
+      "rank": 73
+    },
+    {
+      "doc_id": 1914,
+      "media_id": "img_b6e72461ef4664490f7889896f15acdd_999d527d27298add2a616250d54e61ae001aa4b2d3800376",
+      "title": "微信图片_20260610235915_126_695.jpg",
+      "subject": "数模电",
+      "media_type": 9,
+      "folder_path": "考研资料数据集V1.0/博学课划重点/数电/做的笔记和后面题目的解题过程",
+      "file_size": 229706,
+      "subj_rank": 0,
+      "media_rank": 2,
+      "rank": 74
+    },
+    {
+      "doc_id": 1927,
+      "media_id": "img_b6e72461ef4664490f7889896f15acdd_be65f8eab2fcac9b56ba7f7c084adb4a001aa4b2d3800376",
+      "title": "微信图片_20260611001457_180_695.jpg",
+      "subject": "数模电",
+      "media_type": 9,
+      "folder_path": "考研资料数据集V1.0/博学课划重点/模电/笔记",
+      "file_size": 221709,
+      "subj_rank": 0,
+      "media_rank": 2,
+      "rank": 75
+    },
+    {
+      "doc_id": 1913,
+      "media_id": "img_b6e72461ef4664490f7889896f15acdd_8149b6e458353f126ba6f96e92ba3799001aa4b2d3800376",
+      "title": "微信图片_20260610235910_125_695.jpg",
+      "subject": "数模电",
+      "media_type": 9,
+      "folder_path": "考研资料数据集V1.0/博学课划重点/数电/做的笔记和后面题目的解题过程",
+      "file_size": 219418,
+      "subj_rank": 0,
+      "media_rank": 2,
+      "rank": 76
+    },
+    {
+      "doc_id": 1990,
+      "media_id": "img_b6e72461ef4664490f7889896f15acdd_bd54c827ce379a3f48d2796b0d091f8b001aa4b2d3800376",
+      "title": "微信图片_20260610235010_65_695.jpg",
+      "subject": "数模电",
+      "media_type": 9,
+      "folder_path": "考研资料数据集V1.0/博学课划重点/数电/老师的课件和题目",
+      "file_size": 219295,
+      "subj_rank": 0,
+      "media_rank": 2,
+      "rank": 77
+    },
+    {
+      "doc_id": 1906,
+      "media_id": "img_b6e72461ef4664490f7889896f15acdd_28107763486911db35906f9d91ac755b001aa4b2d3800376",
+      "title": "微信图片_20260610235821_118_695.jpg",
+      "subject": "数模电",
+      "media_type": 9,
+      "folder_path": "考研资料数据集V1.0/博学课划重点/数电/做的笔记和后面题目的解题过程",
+      "file_size": 218655,
+      "subj_rank": 0,
+      "media_rank": 2,
+      "rank": 78
+    },
+    {
+      "doc_id": 1916,
+      "media_id": "img_b6e72461ef4664490f7889896f15acdd_be69c1b9a16013e6fd4d4fe93a9b15ac001aa4b2d3800376",
+      "title": "微信图片_20260611000045_128_695.jpg",
+      "subject": "数模电",
+      "media_type": 9,
+      "folder_path": "考研资料数据集V1.0/博学课划重点/数电/做的笔记和后面题目的解题过程",
+      "file_size": 218364,
+      "subj_rank": 0,
+      "media_rank": 2,
+      "rank": 79
+    }
+  ]
+}

@@ -16,12 +16,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,6 +50,10 @@ class OCRResult:
     engine: str = ""            # 实际引擎名：local-gpu / paddleocr / rapidocr / chineseocr-lite
     backend: str = ""           # 后端标识（用于 manifest 记录）
     error: Optional[str] = None
+    #: 逐后端失败原因（可观测性）：["local-gpu:退出码 1", "paddleocr:不可用", ...]
+    attempts: List[str] = field(default_factory=list)
+    #: 实际成功的前序降级链（空表示首选后端直接成功）
+    fallback_from: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +63,8 @@ class OCRResult:
             "engine": self.engine,
             "backend": self.backend,
             "error": self.error,
+            "attempts": list(self.attempts),
+            "fallback_from": list(self.fallback_from),
         }
 
 
@@ -74,11 +83,11 @@ class LocalGPUOCRBackend:
         self.timeout = timeout
 
     def available(self) -> bool:
-        if not os.path.exists(self.run_ps1):
-            return False
-        # run.ps1 会做 AIPC 检测（platform.exe --is-aipc）；这里做轻量预检：脚本存在即可路由，
+        # run.ps1 会做 AIPC 检测（platform.exe --is-aipc）；这里只做**文件存在性**预检，
         # 真正失败由 recognize 捕获并回退（避免每次路由都跑平台检测拖慢入库）。
-        return True
+        # 注意：存在 ≠ 能跑。实测该脚本存在但执行返回码 1，因此它会「可用但失败」，
+        # 由 recognize_file 的空文本回退兜住；这里保持轻量预检以免拖慢批量入库。
+        return os.path.exists(self.run_ps1)
 
     def recognize(self, image_path: str) -> OCRResult:
         """调用 run.ps1，stdout 即识别 markdown（client.py 约定：日志写文件，不污染 stdout）。"""
@@ -126,9 +135,17 @@ class PaddleOCRBackend:
     async def available_async(self) -> bool:
         try:
             info = await self._svc.health_check()
-            return info.get("status") in ("ok", "available") or "status" in info
         except Exception:
             return False
+        # **修复**：health_check() 内部已捕获异常并返回
+        # {"status": "unavailable", "error": ...}，所以这里绝不能用
+        # `or "status" in info` 判可用——微服务挂掉时返回的 dict 里
+        # 同样含 "status" 键，会被误判为可用，导致路由每次都先打
+        # 一次注定失败的 HTTP 请求（实测端口 8888 连接被拒仍报 available）。
+        status = str((info or {}).get("status") or "").strip().lower()
+        if status in ("unavailable", "error", "down", "fail", "failed"):
+            return False
+        return status in ("ok", "available", "ready", "healthy")
 
     def available(self) -> bool:
         """同步可用性探测（带 3s 超时，路由层调用）。"""
@@ -171,17 +188,34 @@ class RapidOCRBackend:
     name = "rapidocr"
     label = "本地 RapidOCR（轻量 ONNX CPU）"
 
-    def __init__(self):
+    def __init__(self, device: str = "cpu"):
         from services.ocr_service import OCRService
 
-        self._svc = OCRService(device="cpu")
+        self._svc = OCRService(device=device)
+        self.device = device
+        self._probe_failed = False
 
     def available(self) -> bool:
-        try:
-            from services.ocr_service import _get_engine  # noqa: F401
-        except Exception:
+        """真探测：能否真的把 RapidOCR 引擎拉起来。
+
+        **修复**：旧实现只 `try: from services.ocr_service import _get_engine`
+        ——而 `_get_engine` 只是个函数定义，import 永远成功，于是 rapidocr
+        在依赖缺失（缺 yaml / six / Pillow / onnxruntime）时也报"可用"，
+        路由链每页都白跑一次再回退，表现为"全部后端 0 字"却看不出原因。
+        这里真正构造一次引擎，把真实异常暴露给日志。
+        """
+        if self._probe_failed:
             return False
-        return True
+        try:
+            from services.ocr_service import _get_engine
+
+            _get_engine(self.device)
+            return True
+        except Exception as e:  # noqa: BLE001
+            self._probe_failed = True
+            logger.warning("rapidocr 不可用（引擎初始化失败）: %s: %s",
+                           type(e).__name__, e)
+            return False
 
     def recognize(self, image_path: str) -> OCRResult:
         t0 = time.time()
@@ -294,9 +328,15 @@ class OCRRouter:
         return chain
 
     def recognize_file(self, image_path: str) -> OCRResult:
-        """识别本地图片/PDF 文件，按候选链自动路由。"""
+        """识别本地图片/PDF 文件，按候选链自动路由。
+
+        失败可观测：逐后端记录「为什么没出文字」，汇总进最终 error，
+        避免出现「0 字但不知道为什么」。
+        """
+        attempts: List[str] = []
         for name in self._ordered_candidates():
             if not self.is_available(name):
+                attempts.append(f"{name}:不可用")
                 continue
             backend = self._backend(name)
             try:
@@ -305,11 +345,19 @@ class OCRRouter:
                 result = OCRResult(text="", engine=name, backend=name,
                                    elapsed=0.0, error=f"{type(e).__name__}: {e}")
             if result.text:
+                if attempts:
+                    # 记录"前面这些后端为什么没用上"，便于排查降级
+                    logger.debug("OCR 后端降级: %s 成功（前序失败: %s）",
+                                 name, "; ".join(attempts))
                 result.backend = name
+                result.fallback_from = attempts or []
                 return result
             # 文本为空 → 视为失败，回退下一后端（快速失败切换）
-        return OCRResult(text="", engine="", backend="",
-                         error=f"全部 OCR 后端不可用或未识别到文字（候选: {self._ordered_candidates()}）")
+            attempts.append(f"{name}:{(result.error or '空结果')[:80]}")
+        msg = f"全部 OCR 后端不可用或未识别到文字（{'; '.join(attempts) or '无候选后端'}）"
+        logger.warning("OCR 失败 %s: %s", os.path.basename(image_path), msg)
+        return OCRResult(text="", engine="", backend="", error=msg,
+                         attempts=list(attempts))
 
     def recognize_bytes(self, image_bytes: bytes, filename: str = "image.png") -> OCRResult:
         """识别内存图片字节（仅支持支持 bytes 的后端：paddleocr）。"""

@@ -19,9 +19,13 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif", ".tif", ".tiff"}
 TEXT_EXTS = {".txt", ".md", ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".csv", ".xlsx", ".xls", ".xlsm"}
 ALLOWED_EXTS = IMAGE_EXTS | TEXT_EXTS
 
-# 阈值
-MAX_FILE_BYTES = 50 * 1024 * 1024      # 单文件上限 50MB，避免超大文件拖垮解析
-MIN_IMAGE_DPI = 100.0                  # 图片/扫描 PDF 最低 DPI（低于此 OCR 质量不可用）
+# 阈值（可用环境变量覆盖：大教材/高精度扫描件需要放宽）
+#   INGEST_MAX_FILE_MB  单文件上限（默认 50MB）
+#   INGEST_MIN_DPI      扫描件最低 DPI（默认 100）
+# 说明（2026-10-12）：原硬编码导致《模拟电子技术基础》康华光教材（52.3MB）
+# 等**高价值大学教材被直接拒收**。改为可配置，默认值保持不变以兼容既有行为。
+MAX_FILE_BYTES = int(float(os.environ.get("INGEST_MAX_FILE_MB", "50")) * 1024 * 1024)
+MIN_IMAGE_DPI = float(os.environ.get("INGEST_MIN_DPI", "100"))
 WARN_IMAGE_DPI = 150.0                 # 低于此值给出 warning 建议
 DEFAULT_DPI = 72.0                     # 图片无 dpi 元数据时按 72 计
 

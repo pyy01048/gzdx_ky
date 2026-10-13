@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { todayStr, addDays, uid } from '../utils/date'
+import { todayStr, uid } from '../utils/date'
 import { sm2Schedule, today as spacedToday } from '../utils/spaced'
-import { CORE_WORDS, SEED_PACKS } from '../utils/words'
 import { tasksApi, errorsApi, flashcardsApi, studyApi } from '../api/client'
 import { SEED } from '../mocks/seed'
 
@@ -15,6 +14,7 @@ const syncState = {
   lastError: null,
   failedQueue: [], // 失败的操作队列，恢复网络后可重试
   listeners: [],
+  inflight: 0, // 在飞的同步操作数：并发时决定「已同步」能不能报
 }
 
 function notifySyncStatus(status, error = null) {
@@ -27,15 +27,20 @@ function notifySyncStatus(status, error = null) {
 /* V3.0 修复：接受工厂函数（返回Promise的函数），确保失败队列重试时能重新发起请求 */
 function syncTask(promiseOrFn, operationName = 'unknown') {
   notifySyncStatus('syncing')
+  syncState.inflight += 1
   // 支持传入Promise或工厂函数；工厂函数确保重试时能重新发起请求
   const getPromise = typeof promiseOrFn === 'function' ? promiseOrFn : () => promiseOrFn
   getPromise()
     .then(() => {
-      notifySyncStatus('synced')
+      syncState.inflight -= 1
+      // 并发时先返回的那个不能把还在跑、甚至已失败的操作冒充成「已同步」：
+      // 只有在飞请求清零、失败队列也为空时才报 synced。
+      if (syncState.inflight === 0 && syncState.failedQueue.length === 0) notifySyncStatus('synced')
       // 同步成功后，尝试重试失败队列中的操作
       retryFailedQueue()
     })
     .catch((err) => {
+      syncState.inflight -= 1
       console.error(`[sync] ${operationName} 失败:`, err)
       notifySyncStatus('error', err)
       // 加入失败队列，存工厂函数确保重试时能重新发起请求
@@ -116,6 +121,9 @@ const useStore = create(
     (set, get) => ({
       /* 后端连通状态（hydrate 后更新） */
       backendOnline: false,
+
+      /* 后端 /dashboard/countdown 原样缓存：全站倒计时的单一日期来源 */
+      countdown: null,
 
       /* ---------- 设置 ---------- */
       settings: SEED.settings,
@@ -420,10 +428,21 @@ const useStore = create(
   )
 )
 
-/* reset 时重建种子（每次重置带全新相对日期） */
+/* reset 时重建初始值：只恢复配置和内置词库，
+   用户数据（任务/错题/网盘/卡片）清空后由 api/sync.js 从后端重新回填 */
 function seedState() {
   const clone = JSON.parse(JSON.stringify(SEED))
-  return { settings: clone.settings, tasks: clone.tasks, notebook: clone.notebook, pan: clone.pan, ai: clone.ai, words: clone.words, decks: clone.decks, cards: [], packs: clone.packs }
+  return {
+    settings: clone.settings,
+    tasks: [],
+    notebook: [],
+    pan: [],
+    ai: clone.ai,
+    words: clone.words,
+    decks: clone.decks,
+    cards: [],
+    packs: clone.packs,
+  }
 }
 
 export default useStore

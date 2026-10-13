@@ -15,7 +15,6 @@ from fastapi.staticfiles import StaticFiles
 
 from database import engine, Base, SessionLocal
 from models import (
-    Goal, Task, QuizQuestion, ErrorRecord,
     AIProvider, CustomLink, PlatformConfig,
 )
 from routers import (
@@ -37,6 +36,7 @@ from routers import (
     taxonomy,
     review,
     kb,
+    quality,
     backup,
     storage,
     analysis,
@@ -49,6 +49,8 @@ from routers import (
     plan,
     growth,
     kb_import,
+    notices,
+    notice_alert,
 )
 
 # --------------------------------------------------------------------------- #
@@ -230,6 +232,11 @@ app.include_router(blind_spot.router)
 app.include_router(plan.router)
 app.include_router(growth.router)
 app.include_router(kb_import.router)
+app.include_router(notice_alert.router)
+# 通知已读标记（/api/notices/*）：单用户设计，状态落在 kaoyan_notices 列上
+app.include_router(notices.router)
+# 评测与数据质量只读接口（/api/quality/*）：eval_runs 趋势 + 语料体检口径
+app.include_router(quality.router)
 
 
 # --------------------------------------------------------------------------- #
@@ -303,7 +310,11 @@ async def spa_fallback_handler(request: FastAPIRequest, exc):
     # API 路径、静态资源路径、文档路径不做 fallback
     if path.startswith("/api") or path.startswith("/docs") or path.startswith("/redoc") or path.startswith("/openapi") or "." in path.split("/")[-1]:
         from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=404, content={"detail": "Not Found", "path": path})
+        # 路由给的 detail 是人话（如 "文档不存在: [99999999]"），此前被一律压成
+        # "Not Found"：前端分不清"这条记录不存在"和"接口没注册"，用户只能看到 404。
+        return JSONResponse(status_code=404,
+                            content={"detail": getattr(exc, "detail", None) or "Not Found",
+                                     "path": path})
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
@@ -316,9 +327,9 @@ async def spa_fallback_handler(request: FastAPIRequest, exc):
 # --------------------------------------------------------------------------- #
 @app.on_event("startup")
 def on_startup():
-    """创建数据库表并初始化示例数据。"""
+    """创建数据库表并写入默认配置（不写任何学习内容，见 docx/16 §1.5-G）。"""
     Base.metadata.create_all(bind=engine)
-    _init_sample_data()
+    _init_default_config()
     # 幂等补建非ORM 映射的原生表（如 phase_daily_reviews）。
     # create_all 只能建 Base.metadata 里声明过的表，而 planner.py 的阶段
     # 复习接口直接用 text() 读写 phase_daily_reviews，该表无 ORM 模型，
@@ -331,6 +342,17 @@ def on_startup():
         print(f"[启动] 原生表DDL 补建完成: {result}")
     except Exception as e:
         print(f"[启动] 原生表 DDL 补建失败（不影响主服务）: {e}")
+    # chunk 三层标签补列（models.KnowledgeChunk 已声明新列，但 create_all 不给
+    # 存量表加列 —— 必须在任何 ORM 查询 knowledge_chunks 之前幂等 ALTER 补齐）。
+    try:
+        from services.chunk_classifier import ensure_chunk_label_columns
+        db = SessionLocal()
+        added = ensure_chunk_label_columns(db)
+        db.close()
+        if added:
+            print(f"[启动] knowledge_chunks 新增标签列: {added}")
+    except Exception as e:
+        print(f"[启动] chunk 标签列补建失败: {e}")
     # V3.0 数据库性能优化（创建缺失索引+WAL模式+缓存）
     try:
         from services.db_optimizer import init_database_optimization
@@ -415,136 +437,21 @@ def _register_ollama_providers():
         db.close()
 
 
-def _init_sample_data():
-    """插入示例数据（仅在数据库为空时）。"""
+def _init_default_config():
+    """写入平台默认配置（AI 供应商 / 快捷链接 / 网盘与平台开关）。
+
+    这里**只写配置，不写学习内容**。原先本函数还会在 goals 为空时播种
+    一条 Goal（exam_date 硬编码 2027-12-25）、7 条 Task、4 道 QuizQuestion、
+    2 条 ErrorRecord —— 那些是演示数据，不是用户数据，且已被实测确认写进了
+    生产库（tasks id 1-7 标题逐字相同、goals 行与播种同事务），而 #22 之后
+    倒计时以 Goal.exam_date 为唯一时间源，等于让假日期决定全站倒计时。
+    口径依据：docx/16 §1.5-G 与已批准的「空库必须渲染空状态，绝不播种内容」。
+    """
     db = SessionLocal()
     try:
-        # 判断是否已有数据
-        if db.query(Goal).count() > 0:
+        # 幂等判据换成配置表本身：内容播种已删除，不能再拿 goals 当判据
+        if db.query(PlatformConfig).count() > 0:
             return
-
-        # ---- 考研目标 ----
-        goal = Goal(
-            exam_date=datetime.date(2027, 12, 25),
-            total_score_target=360,
-            politics_target=65,
-            english_target=65,
-            math_target=115,
-            major_target=115,
-            university="贵州大学",
-            major="电子信息（0854）",
-            remark="目标贵大电子信息专硕，专业课 834 电子技术基础，全力以赴！",
-        )
-        db.add(goal)
-
-        # ---- 任务 ----
-        today = datetime.date.today()
-        tasks_data = [
-            Task(title="数学高等数学第一章复习", subject="数学", task_type="学习",
-                 stage="基础", status="pending", due_date=today, priority=5),
-            Task(title="英语阅读理解精读 2 篇", subject="英语", task_type="刷题",
-                 stage="基础", status="pending", due_date=today, priority=4),
-            Task(title="政治马原原理梳理", subject="政治", task_type="学习",
-                 stage="基础", status="doing", due_date=today, priority=3),
-            Task(title="数据结构链表练习", subject="专业课", task_type="刷题",
-                 stage="基础", status="pending", due_date=today + datetime.timedelta(days=1), priority=4),
-            Task(title="数学线性代数复习", subject="数学", task_type="复习",
-                 stage="基础", status="pending", due_date=today + datetime.timedelta(days=1), priority=3),
-            Task(title="英语单词背诵 200 个", subject="英语", task_type="背诵",
-                 stage="基础", status="done", due_date=today - datetime.timedelta(days=1),
-                 priority=2, completed_at=utcnow()),  # naive UTC（P0-4）
-            Task(title="政治毛中特框架整理", subject="政治", task_type="学习",
-                 stage="强化", status="pending", due_date=today + datetime.timedelta(days=2), priority=3),
-        ]
-        db.add_all(tasks_data)
-
-        # ---- 题目 ----
-        questions = [
-            QuizQuestion(
-                content="设函数 f(x) 在 x=0 处连续，且 lim(x->0) f(x)/x = 2，则 f'(0) = ?",
-                options=["0", "1", "2", "不存在"],
-                answer="C",
-                analysis="由 lim(x->0) f(x)/x = 2 且 f(x) 在 x=0 连续，可知 f(0)=0。"
-                         "因此 f'(0) = lim(x->0) [f(x)-f(0)]/x = lim(x->0) f(x)/x = 2。",
-                subject="数学",
-                chapter="高等数学-导数",
-                knowledge_point="导数定义",
-                difficulty=3,
-                source="真题",
-                question_type="single",
-            ),
-            QuizQuestion(
-                content="The word 'ubiquitous' in the passage most likely means ____.",
-                options=["rare", "everywhere", "invisible", "dangerous"],
-                answer="B",
-                analysis="ubiquitous 意为'无处不在的'，同义词为 everywhere present。",
-                subject="英语",
-                chapter="阅读理解",
-                knowledge_point="词汇理解",
-                difficulty=2,
-                source="模拟",
-                question_type="single",
-            ),
-            QuizQuestion(
-                content="马克思主义哲学区别于旧哲学的最显著特征是____。",
-                options=["阶级性", "实践性", "革命性", "科学性"],
-                answer="B",
-                analysis="实践性是马克思主义哲学区别于其他一切哲学的最显著特征。",
-                subject="政治",
-                chapter="马原",
-                knowledge_point="马克思主义哲学特征",
-                difficulty=2,
-                source="真题",
-                question_type="single",
-            ),
-            QuizQuestion(
-                content="下列关于线性表的说法正确的是____。",
-                options=[
-                    "顺序表适合随机访问",
-                    "链表适合随机访问",
-                    "顺序表插入删除效率高",
-                    "链表不支持随机访问",
-                ],
-                answer="A",
-                analysis="顺序表通过下标可以直接访问元素，时间复杂度 O(1)，适合随机访问。",
-                subject="专业课",
-                chapter="数据结构-线性表",
-                knowledge_point="顺序表特性",
-                difficulty=1,
-                source="自建",
-                question_type="single",
-            ),
-        ]
-        db.add_all(questions)
-
-        # ---- 错题记录 ----
-        errors_data = [
-            ErrorRecord(
-                question_id=1,
-                content="设函数 f(x) 在 x=0 处连续，且 lim(x->0) f(x)/x = 2，则 f'(0) = ?",
-                my_answer="A",
-                correct_answer="C",
-                error_reason="概念混淆",
-                subject="数学",
-                accuracy=0,
-                status="active",
-                tags=["导数", "极限"],
-                next_review=utcnow() + datetime.timedelta(hours=1),  # naive UTC（P0-4）
-            ),
-            ErrorRecord(
-                question_id=2,
-                content="The word 'ubiquitous' in the passage most likely means ____.",
-                my_answer="C",
-                correct_answer="B",
-                error_reason="词汇量不足",
-                subject="英语",
-                accuracy=0,
-                status="active",
-                tags=["词汇", "阅读"],
-                next_review=utcnow() + datetime.timedelta(hours=2),  # naive UTC（P0-4）
-            ),
-        ]
-        db.add_all(errors_data)
 
         # ---- AI 配置模板 ----
         ai_providers = [
@@ -667,10 +574,10 @@ def _init_sample_data():
         db.add_all(platform_configs)
 
         db.commit()
-        print("[初始化] 示例数据插入完成")
+        print("[初始化] 默认配置写入完成")
     except Exception as e:
         db.rollback()
-        print(f"[初始化] 示例数据插入失败: {e}")
+        print(f"[初始化] 默认配置写入失败: {e}")
     finally:
         db.close()
 

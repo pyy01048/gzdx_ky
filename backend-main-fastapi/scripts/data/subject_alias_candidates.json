@@ -1,0 +1,2929 @@
+{
+ "generated_from": "kaoyan_majors × subject_supply（documents ∪ knowledge_chunks）",
+ "note": "候选仅供人工逐条批准；批准前不进 major_coverage._lookup，不写 kaoyan_major_kb_link。codes_observed 为库内原值，未做任何补全。matched_rate 口径=能命中供给池；coverage_rate 口径=看板用的 covered（语料量达标）。",
+ "majors_total": 832,
+ "majors_with_professional": 825,
+ "matched_now": 370,
+ "matched_rate_now": 0.4485,
+ "covered_now": 336,
+ "coverage_rate_now": 0.4073,
+ "unmatched_kinds": 130,
+ "unmatched_majors": 455,
+ "match_ceiling_if_all_approved": 0.8473,
+ "coverage_ceiling_if_all_approved": 0.7939,
+ "rows": [
+  {
+   "major_subject": "电子技术基础",
+   "majors": 56,
+   "schools": 23,
+   "codes_observed": [
+    "080200",
+    "080400",
+    "080900",
+    "080902",
+    "080903",
+    "081000",
+    "081001",
+    "081002"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.43",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.43",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数模电",
+     "documents": 186,
+     "chunks": 0,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "半导体物理",
+   "majors": 26,
+   "schools": 15,
+   "codes_observed": [
+    "080900",
+    "080901",
+    "080903",
+    "085401",
+    "085403",
+    "087300",
+    "140100"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子技术",
+   "majors": 19,
+   "schools": 13,
+   "codes_observed": [
+    "077400",
+    "080400",
+    "080900",
+    "082804",
+    "085400",
+    "085401",
+    "085403",
+    "085407"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.60",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.60",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数模电",
+     "documents": 186,
+     "chunks": 0,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路、信号与系统",
+   "majors": 17,
+   "schools": 6,
+   "codes_observed": [
+    "080900",
+    "081000",
+    "081100",
+    "085400",
+    "085401",
+    "085402",
+    "085403",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.57"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电路",
+   "majors": 16,
+   "schools": 7,
+   "codes_observed": [
+    "080300",
+    "080400",
+    "081100",
+    "085400",
+    "085401",
+    "085402",
+    "085403",
+    "085407"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路分析",
+   "majors": 14,
+   "schools": 5,
+   "codes_observed": [
+    "080900",
+    "080901",
+    "080902",
+    "080904",
+    "085400",
+    "085401",
+    "085403",
+    "085406"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "专业基础综合",
+   "majors": 13,
+   "schools": 4,
+   "codes_observed": [
+    "080902",
+    "081000",
+    "081001",
+    "081002",
+    "083100",
+    "085400",
+    "085401",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "计算机学科专业基础408",
+     "documents": 68,
+     "chunks": 2139,
+     "signals": [
+      "剥后缀同名",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "408",
+     "documents": 8,
+     "chunks": 0,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "心理学专业基础",
+     "documents": 19,
+     "chunks": 498,
+     "signals": [
+      "字面0.38"
+     ]
+    },
+    {
+     "subject": "教育学专业基础",
+     "documents": 33,
+     "chunks": 283,
+     "signals": [
+      "字面0.38"
+     ]
+    }
+   ],
+   "suggested": "计算机学科专业基础408",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电子技术基础",
+   "majors": 11,
+   "schools": 7,
+   "codes_observed": [
+    "080900",
+    "085400",
+    "085401",
+    "085403",
+    "085407",
+    "085408"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.71",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路基础",
+   "majors": 9,
+   "schools": 5,
+   "codes_observed": [
+    "077400",
+    "080900",
+    "085400",
+    "085403",
+    "085408",
+    "140100",
+    "140500"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号与线性系统",
+   "majors": 7,
+   "schools": 4,
+   "codes_observed": [
+    "081000",
+    "085400",
+    "085401",
+    "085406",
+    "140400"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "字面0.43",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路原理",
+   "majors": 7,
+   "schools": 4,
+   "codes_observed": [
+    "080900",
+    "083100",
+    "085400",
+    "085401",
+    "085402",
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子技术综合",
+   "majors": 6,
+   "schools": 2,
+   "codes_observed": [
+    "080400",
+    "081000",
+    "085406",
+    "085407",
+    "085408"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.43",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.43",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数模电",
+     "documents": 186,
+     "chunks": 0,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电磁场与电磁波",
+   "majors": 6,
+   "schools": 4,
+   "codes_observed": [
+    "080300",
+    "080900",
+    "080904",
+    "085401"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "半导体物理与器件",
+   "majors": 6,
+   "schools": 2,
+   "codes_observed": [
+    "080900",
+    "080903",
+    "085401",
+    "085403",
+    "085408",
+    "140100"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子科学与技术综合",
+   "majors": 6,
+   "schools": 2,
+   "codes_observed": [
+    "080900",
+    "083100",
+    "085400"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数模电",
+     "documents": 186,
+     "chunks": 0,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "通信类专业综合",
+   "majors": 5,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "081000",
+    "082300",
+    "085400",
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "通信原理",
+     "documents": 4,
+     "chunks": 6,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "通信原理",
+   "suggested_state": "thin",
+   "status": "pending"
+  },
+  {
+   "major_subject": "模拟与数字电子技术",
+   "majors": 5,
+   "schools": 2,
+   "codes_observed": [
+    "080900",
+    "085401",
+    "085403",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.62",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.44",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数模电",
+     "documents": 186,
+     "chunks": 0,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "计算机学科专业基础",
+   "majors": 5,
+   "schools": 3,
+   "codes_observed": [
+    "081200",
+    "085404",
+    "085405",
+    "085410"
+   ],
+   "candidates": [
+    {
+     "subject": "计算机学科专业基础408",
+     "documents": 68,
+     "chunks": 2139,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.73",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "408",
+     "documents": 8,
+     "chunks": 0,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "计算机学科专业基础408",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子电路",
+   "majors": 5,
+   "schools": 2,
+   "codes_observed": [
+    "080900",
+    "080902",
+    "085403",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号与系统分析",
+   "majors": 5,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "085400",
+    "085401",
+    "085403",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.67",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电路与逻辑设计",
+   "majors": 5,
+   "schools": 1,
+   "codes_observed": [
+    "080300",
+    "080900",
+    "085403",
+    "085408",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号系统与信号处理",
+   "majors": 4,
+   "schools": 2,
+   "codes_observed": [
+    "081000",
+    "085400",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号系统与数字电路",
+   "majors": 4,
+   "schools": 2,
+   "codes_observed": [
+    "080900",
+    "085400",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "通信原理与信号处理",
+   "majors": 4,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "通信原理",
+     "documents": 4,
+     "chunks": 6,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.38"
+     ]
+    }
+   ],
+   "suggested": "通信原理",
+   "suggested_state": "thin",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电子",
+   "majors": 4,
+   "schools": 1,
+   "codes_observed": [
+    "085406",
+    "085410",
+    "085801"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.60",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "理论力学",
+   "majors": 4,
+   "schools": 2,
+   "codes_observed": [
+    "080100",
+    "140100"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电磁波、信号与系统",
+   "majors": 4,
+   "schools": 1,
+   "codes_observed": [
+    "080901",
+    "080904",
+    "085401",
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.50"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路理论、信号与系统",
+   "majors": 4,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085401",
+    "085402",
+    "085408"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.44"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电子技术I",
+   "majors": 4,
+   "schools": 1,
+   "codes_observed": [
+    "077401",
+    "077402",
+    "077403",
+    "081000"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.83"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.38"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "-",
+   "majors": 3,
+   "schools": 3,
+   "codes_observed": [
+    "085400",
+    "085401"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "status": "rejected_not_a_subject"
+  },
+  {
+   "major_subject": "数字电路及信号与系统",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085401",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.44"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子技术基础Ⅰ",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "077400",
+    "085401",
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.38",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.38",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数模电",
+     "documents": 186,
+     "chunks": 0,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号处理导论",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085401",
+    "085402"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "模拟与数字电路",
+   "majors": 3,
+   "schools": 2,
+   "codes_observed": [
+    "080900",
+    "083100"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子信息专业综合",
+   "majors": 3,
+   "schools": 2,
+   "codes_observed": [
+    "081000",
+    "085400",
+    "085401"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "自动控制原理",
+   "majors": 3,
+   "schools": 2,
+   "codes_observed": [
+    "081100",
+    "086100"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路理论",
+   "majors": 3,
+   "schools": 2,
+   "codes_observed": [
+    "081100",
+    "085401",
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "半导体物理与器件基础",
+   "majors": 3,
+   "schools": 2,
+   "codes_observed": [
+    "080900",
+    "085403",
+    "140100"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "专业基础综合一（信号与系统、数字电路与",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "081000",
+    "085401"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字与模拟电子技术",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "085400",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.62"
+     ]
+    },
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.44"
+     ]
+    }
+   ],
+   "suggested": "模拟电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号系统与数字逻辑",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085401",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子类专业基础综合",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "081000",
+    "085401"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子信息与通信系统综合",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085401",
+    "085402"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号与系统综合",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085401",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.67"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "生物化学",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "083100",
+    "085409",
+    "086001"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子技术一",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "080400",
+    "085400",
+    "089903"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.50"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.50"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字逻辑与信号系统",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085401",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号系统与电路",
+   "majors": 3,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "081000",
+    "085400"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电路、信号与系统",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "085401",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.44"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号分析与系统",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085401"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "字面0.43"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "通信系统原理",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "光学",
+   "majors": 2,
+   "schools": 2,
+   "codes_observed": [
+    "085408"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子电路与系统（含信号与系统，模拟电子技",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "085401",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "剥后缀同名"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路原理、模拟电子技术",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "085408"
+   ],
+   "candidates": [
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.50"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "模拟电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字系统原理与设计",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "通信与系统",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "生物信号处理",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "083100",
+    "085409"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子技术1",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "085401",
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.50"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.50"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路分析基础",
+   "majors": 2,
+   "schools": 2,
+   "codes_observed": [
+    "085408",
+    "085410"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "集成电路工程基础",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "085403",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信息与通信工程基础",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路与数字信号处理",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "工程力学基础",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "082600",
+    "085506"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "集成电路基础",
+   "majors": 2,
+   "schools": 2,
+   "codes_observed": [
+    "085403",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子线路",
+   "majors": 2,
+   "schools": 2,
+   "codes_observed": [
+    "081000",
+    "085401"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "固体电子学基础",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "085403",
+    "140100"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号系统与测量基础",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "080400",
+    "085407"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号系统与数字信号处理",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085400"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "半导体与电子电路基础",
+   "majors": 2,
+   "schools": 2,
+   "codes_observed": [
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "微电子科学与技术综合",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "085403",
+    "087300"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "半导体物理基础与数字逻辑",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "085403",
+    "140100"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "通信与信息系统专业综合",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号、系统与数字电路",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路A",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "085400"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.50"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号理论基础",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "083100",
+    "085409"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "模拟电路",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "080400",
+    "085407"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "交通工程学",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "082300",
+    "086100"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "通信专业基础",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "心理学专业基础",
+     "documents": 19,
+     "chunks": 498,
+     "signals": [
+      "字面0.38"
+     ]
+    },
+    {
+     "subject": "教育学专业基础",
+     "documents": 33,
+     "chunks": 283,
+     "signals": [
+      "字面0.38"
+     ]
+    }
+   ],
+   "suggested": "心理学专业基础",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "光学原理",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "080300",
+    "085408"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电路和信号与系统",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.44",
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "人工底稿"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "模拟电子技术基础",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "080900",
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.71",
+      "人工底稿"
+     ]
+    }
+   ],
+   "suggested": "模拟电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电路分析综合",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "083100",
+    "085409"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号分析与处理综合",
+   "majors": 2,
+   "schools": 1,
+   "codes_observed": [
+    "081000",
+    "085402"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "仪器综合",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080400"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "集成电路专业综合",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号处理基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "070700"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号与电路基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "081000"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子技术基础Ⅱ",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.38"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.38"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "工程电路基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085801"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "计算机基础与数字电路",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085400"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子综合基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085400"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子科学与技术基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080900"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "生物医学工程基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085409"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电路与信号与系统",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085401"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.44"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字逻辑与数字电路",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "077400"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "高等数学",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "077400"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字逻辑电路",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085400"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "飞行器控制与信息工程基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "082500"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子线路基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085402"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "专业综合一（信号与系统、数字电路与逻辑",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "专业综合二（半导体物理、数字电路与逻辑",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "140100"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子信息综合",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085400"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "电磁学",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080900"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "微电子技术基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.38"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.38"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字信号处理技术",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085410"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字信号处理原理",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "089901"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号与系统分析及数字信号处理",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085400"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子学基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080900"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "细胞生物学",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "086000"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "材料科学基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080500"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "现代电子技术",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085401"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.43"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.43"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "半导体器件",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085403"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字信号处理",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085409"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号与系统和数字逻辑电路",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "089902"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.36"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号与系统、电路",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085402"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.57"
+     ]
+    },
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "电子信息基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085400"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "材料化学基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085600"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号系统和数字电路",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085401"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "信号与系统和数字信号处理",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "081000"
+   ],
+   "candidates": [
+    {
+     "subject": "信号与系统",
+     "documents": 5,
+     "chunks": 4,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.40"
+     ]
+    }
+   ],
+   "suggested": "信号与系统",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "固体物理",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080903"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "高等代数",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "110500"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字图像处理",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "081002"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "半导体基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080900"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "机械制造工程基础",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085501"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "固体物理A",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080900"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "光电子技术",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "字面0.50"
+     ]
+    },
+    {
+     "subject": "模拟电子技术",
+     "documents": 199,
+     "chunks": 4561,
+     "signals": [
+      "字面0.50"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "普通物理学",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "080904"
+   ],
+   "candidates": [
+    {
+     "subject": "普通物理",
+     "documents": 3,
+     "chunks": 6,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.75"
+     ]
+    }
+   ],
+   "suggested": "普通物理",
+   "suggested_state": "thin",
+   "status": "pending"
+  },
+  {
+   "major_subject": "自控原理",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085406"
+   ],
+   "candidates": [],
+   "suggested": null,
+   "suggested_state": null,
+   "status": "pending"
+  },
+  {
+   "major_subject": "数字电子技术II",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085408"
+   ],
+   "candidates": [
+    {
+     "subject": "数字电子技术",
+     "documents": 611,
+     "chunks": 6595,
+     "signals": [
+      "包含",
+      "剥后缀同名",
+      "字面0.71"
+     ]
+    }
+   ],
+   "suggested": "数字电子技术",
+   "suggested_state": "covered",
+   "status": "pending"
+  },
+  {
+   "major_subject": "CMOS模拟集成电路设计",
+   "majors": 1,
+   "schools": 1,
+   "codes_observed": [
+    "085403"
+   ],
+   "candidates": [
+    {
+     "subject": "电路",
+     "documents": 22,
+     "chunks": 272,
+     "signals": [
+      "包含",
+      "剥后缀同名"
+     ]
+    }
+   ],
+   "suggested": "电路",
+   "suggested_state": "covered",
+   "status": "pending"
+  }
+ ]
+}

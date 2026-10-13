@@ -24,6 +24,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from models import Document, KnowledgeChunk, KnowledgePoint, PlatformConfig
+from services.doc_naming import apply_display_name
+from services.smart_ingest import gate_for_write
 
 logger = logging.getLogger(__name__)
 
@@ -380,7 +382,7 @@ class StorageWatcher:
 
             # 2. 使用本地 DocumentParser 提取全文
             from services.document_parser import DocumentParser
-            from services.kb_service import ingest_document
+            from services.kb_service import has_searchable_chunks, ingest_document
 
             logger.info(f"开始解析文件: {file_path.name}")
             parser = DocumentParser()
@@ -399,13 +401,47 @@ class StorageWatcher:
             if not content_text or not content_text.strip():
                 content_text = f"[{file_info.get('type', 'unknown')} 文件，未能提取到文本内容] 文件名：{file_path.name}"
 
+            # 质量闸门：**必须放在 clean_text 之前**。clean_text 会删掉全部控制
+            # 字符，而「整份二进制当文本读」的坏文件正是靠连续控制字节的
+            # 比例/连号长度来识别的；先清洗再校验等于把证据抹掉，坏文件会以
+            # 「一堆无意义字母」的形态静默入库。
+            verdict = gate_for_write(self.db, content_text,
+                                     path=str(file_path), doc_id=doc.id)
+            if not verdict["ok"]:
+                doc.index_status = "failed"
+                doc.parse_progress = 1.0
+                # 记下"看过且拒绝"，否则每轮扫描都重解析同一堆坏文件（解析一篇
+                # 扫描版 PDF 是几十秒级，坏文件往往是扫描件）。
+                self.processed_files[file_info['relative_path']] = {
+                    'hash': file_info['hash'],
+                    'fingerprint': file_info['hash'],
+                    'size': file_info['size'],
+                    'processed_at': datetime.now().isoformat(),
+                    'doc_id': doc.id,
+                    'chunk_count': 0,
+                    'status': 'rejected',
+                    'reason': '；'.join(verdict['reasons']),
+                }
+                self._save_processed_files()
+                self.db.commit()
+                return {
+                    "success": False,
+                    "rejected": True,
+                    "error": "质量闸门拒绝入库：" + "；".join(verdict["reasons"]),
+                    "file": file_path.name,
+                }
+
             # 清理无效Unicode字符（代理对、控制字符等）
             content_text = clean_text(content_text)
 
             # 3. 更新Document内容
-            doc.content = content_text[:5000]
+            # 旧写法 `content_text[:5000]` 是"截断副本"的来源：库里因此留下
+            # 一批只有前 5000 字的行，去重时新正文会被并进残本、整份内容丢失，
+            # 所以这里按和其它入口一致的 50 万字存储上限来。
+            doc.content = content_text[:500000]
             doc.index_status = "indexing"
             doc.parse_progress = 0.5
+            apply_display_name(self.db, doc, content_text)
             self.db.commit()
 
             # 4. 分块入库到知识库（knowledge_chunks + FTS）
@@ -417,7 +453,7 @@ class StorageWatcher:
                 logger.warning(f"文档 {doc.id} 分块入库失败: {e}")
 
             # 5. 更新Document状态
-            doc.index_status = 'indexed'
+            doc.index_status = 'indexed' if has_searchable_chunks(self.db, doc.id) else 'failed'
             doc.knowledge_point_count = chunk_count
             doc.parse_progress = 1.0
             doc.updated_at = datetime.now()

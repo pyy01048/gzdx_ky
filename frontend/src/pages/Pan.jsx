@@ -2,14 +2,22 @@
 import useStore from '../store/useStore'
 import { fmtFileSize, fmtDateCN } from '../utils/date'
 import { Modal, Empty, toast } from '../components/UI'
+import { useSubjectConfig, subjectLabel } from '../hooks/useSubjectConfig'
 import {
   getStoredPan, clearPan, getStatus, getAuthUrl, exchangeToken,
-  refreshPanToken, listPanFiles, getFileMetas
+  refreshPanToken, listPanFiles
 } from '../utils/pan'
+import { netdiskApi } from '../api/client'
 import { Cloud, Search, Plus, Folder, RefreshCw, X } from '../components/Icon'
 
-const CATS = ['全部', '真题', '数学', '英语', '政治', '专业课']
+/* 分类页签 = 固定项 + 配置的考试科目（见 hooks/useSubjectConfig）+ 存量资料已用的分类
+ * '其他' 作为无法归类时的兜底分类。 */
+const FIXED_CATS = ['全部', '真题']
+const FALLBACK_CAT = '其他'
 const ICON = { pdf: '📕', video: '🎬', doc: '📄', audio: '🎧', zip: '🗜', other: '📁' }
+
+/* 浏览器能直接渲染的才给「预览」，其余（docx/ppt/压缩包）只能下载 */
+const INLINE_PREVIEW_EXT = /\.(pdf|png|jpe?g|gif|webp|bmp|svg|txt|md|markdown|csv|html)$/i
 
 function fileIcon(name) {
   const n = (name || '').toLowerCase()
@@ -21,21 +29,35 @@ function fileIcon(name) {
   return 'other'
 }
 
-function guessCat(name) {
+/** 按文件名猜分类：名师/关键词启发式优先，其次匹配当前配置的科目，都不中则兜底。 */
+function guessCat(name, subjectCats = []) {
   const n = (name || '').toLowerCase()
   if (/真题|押题|模考|试卷/.test(n)) return '真题'
   if (/数学|高数|线代|概率|1800|660|汤|张宇/.test(n)) return '数学'
   if (/英语|恋恋|单词|词汇|阅读|作文|真题精讲/.test(n)) return '英语'
   if (/政治|马原|毛概|史纲|肖|腿|徐涛/.test(n)) return '政治'
-  return '专业课'
+  const hit = subjectCats.find((c) => !FIXED_CATS.includes(c) && c !== FALLBACK_CAT && n.includes(c.toLowerCase()))
+  return hit || FALLBACK_CAT
 }
 
 export default function Pan() {
   const { pan, addPan, removePan, updatePan } = useStore()
+  const { exam } = useSubjectConfig()
   const [cat, setCat] = useState('全部')
   const [q, setQ] = useState('')
   const [activeId, setActiveId] = useState(null)
   const [link, setLink] = useState('')
+
+  const CATS = useMemo(() => Array.from(new Set([
+    ...FIXED_CATS,
+    ...exam.map(subjectLabel),
+    ...pan.map((p) => p.cat).filter(Boolean),
+    FALLBACK_CAT,
+  ])), [exam, pan])
+  /* 科目多于配置页签时当前选中项可能失效，回落到「全部」而不是空列表 */
+  useEffect(() => {
+    if (!CATS.includes(cat)) setCat('全部')
+  }, [CATS, cat])
 
   /* ---- 百度网盘对接状态 ---- */
   const [baidu, setBaidu] = useState({ configured: false })
@@ -51,9 +73,48 @@ export default function Pan() {
 
   /* ---- 登记资料弹窗 ---- */
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ name: '', type: 'pdf', cat: '专业课', desc: '', size: 0 })
+  const [form, setForm] = useState({ name: '', type: 'pdf', cat: FALLBACK_CAT, desc: '', size: 0 })
 
   useEffect(() => { getStatus().then(setBaidu).catch(() => toast('网盘服务状态获取失败，请检查后端是否启动')) }, [])
+
+  /* ---- 平台配置（后端 platform-configs）：平台列表/密钥不再写死，从后端读 ---- */
+  const [platformCfgs, setPlatformCfgs] = useState({})
+  const [showCfg, setShowCfg] = useState(false)
+  const [cfgForm, setCfgForm] = useState({ app_key: '', secret_key: '', redirect_uri: 'oob' })
+  const [cfgSaving, setCfgSaving] = useState(false)
+
+  const loadPlatformCfgs = () => {
+    netdiskApi.platformConfigs().then((d) => setPlatformCfgs(d?.configs || {})).catch(() => setPlatformCfgs({}))
+  }
+  useEffect(() => { loadPlatformCfgs() }, [])
+
+  const openCfg = () => {
+    const c = platformCfgs.baidu || {}
+    setCfgForm({
+      app_key: c.app_key || '',
+      secret_key: c.secret_key || '',
+      redirect_uri: c.redirect_uri || 'oob',
+    })
+    setShowCfg(true)
+  }
+  const saveCfg = async () => {
+    setCfgSaving(true)
+    try {
+      await netdiskApi.updatePlatformConfig('baidu', {
+        app_key: cfgForm.app_key.trim(),
+        secret_key: cfgForm.secret_key.trim(),
+        redirect_uri: cfgForm.redirect_uri.trim() || 'oob',
+      })
+      toast('百度网盘 API 配置已保存')
+      setShowCfg(false)
+      loadPlatformCfgs()
+      getStatus().then(setBaidu).catch(() => {})
+    } catch (e) {
+      toast(`保存失败：${e.message || '未知错误'}`)
+    } finally {
+      setCfgSaving(false)
+    }
+  }
 
   const tokenValid = panToken && panToken.access_token
 
@@ -101,16 +162,10 @@ export default function Pan() {
     const parent = curPath.length > 1 ? curPath.slice(0, -1).join('/') || '/' : '/'
     setRemoteDir(parent); loadRemote(parent)
   }
-  const getDlink = async (f) => {
-    if (!tokenValid) return ''
-    try {
-      const arr = await getFileMetas(panToken.access_token, [f.fs_id])
-      if (arr[0] && arr[0].dlink) return arr[0].dlink
-    } catch (e) { toast(e.message) }
-    return ''
-  }
+  /* 浏览器直连 dlink 必 403（百度校验 UA），旧的 getFileMetas 又把人当数组取
+   * arr[0]（它其实返回 {list:[...]}），所以取流一律走后端代理。 */
   const importRemote = (f) => {
-    addPan({ name: f.name, type: fileIcon(f.name), cat: guessCat(f.name), desc: `来自百度网盘：${f.path}`, size: f.size, remote: true, fsId: f.fs_id })
+    addPan({ name: f.name, type: fileIcon(f.name), cat: guessCat(f.name, CATS), desc: `来自百度网盘：${f.path}`, size: f.size_kb, remote: true, fsId: f.fs_id })
     toast(`已登记「${f.name}」到本地资料库`)
   }
 
@@ -121,7 +176,6 @@ export default function Pan() {
   )
   const active = pan.find((p) => p.id === activeId) || null
   const syncedCount = pan.filter((p) => p.synced).length
-  const connectedCount = tokenValid ? 1 : 0
   const recentSync = useMemo(
     () => [...pan].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 5),
     [pan]
@@ -130,13 +184,13 @@ export default function Pan() {
   const submit = () => {
     if (!form.name.trim()) return toast('请填写文件名')
     addPan({ name: form.name.trim(), type: form.type, cat: form.cat, desc: form.desc.trim(), size: Number(form.size) || 0, url: '' })
-    setForm({ name: '', type: 'pdf', cat: '专业课', desc: '', size: 0 })
+    setForm({ name: '', type: 'pdf', cat: FALLBACK_CAT, desc: '', size: 0 })
     setShowAdd(false); toast('资料已登记')
   }
   const importLink = () => {
     const v = link.trim()
     if (!v) return toast('请粘贴分享链接')
-    addPan({ name: v, type: 'other', cat: '专业课', desc: '从分享链接导入', size: 0, url: v })
+    addPan({ name: v, type: 'other', cat: guessCat(v, CATS), desc: '从分享链接导入', size: 0, url: v })
     setLink(''); toast('链接已登记到资料库')
   }
 
@@ -148,27 +202,37 @@ export default function Pan() {
           <div className="pan2-title">网盘联动</div>
           <div className="pan2-sub">集中管理你的云端学习资料，一键同步到本地 · 已同步 {syncedCount}/{pan.length} 项</div>
         </div>
-        <span className="pan2-status"><span className="dot" />已连接 {connectedCount} / 4 个网盘</span>
+        {/* 平台数以后端真实注册数为准：接口失败/库里没行时不报「1 个网盘」，
+            那是 Math.max(...,1) 兜出来的假数。 */}
+        <span className="pan2-status">
+          <span className="dot" />百度网盘 {tokenValid ? '已连接' : '未连接'}
+          {Object.keys(platformCfgs).length > 0 && ` · 后端已注册 ${Object.keys(platformCfgs).length} 个平台`}
+        </span>
       </div>
 
-      {/* ===== 云盘连接卡 ===== */}
+      {/* ===== 云盘连接卡（平台列表从后端 platform-configs 读，不再写死） ===== */}
       <div className="provider-grid">
         <div className={`provider-card ${tokenValid ? 'connected' : ''}`}>
           <div className="provider-ico"><Cloud size={20} /></div>
           <div className="provider-name">百度网盘</div>
           <div className="provider-desc">{tokenValid ? 'OAuth 已授权 · 可浏览下载' : '官方 OAuth 直连'}</div>
           <span className={`provider-pill ${tokenValid ? 'on' : 'off'}`}>{tokenValid ? '已连接' : '未连接'}</span>
-          {tokenValid
-            ? <button className="provider-btn ghost" onClick={logoutPan}>退出授权</button>
-            : <button className="provider-btn primary" onClick={openAuth} disabled={!baidu.configured}>去连接</button>}
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button className="provider-btn ghost" onClick={openCfg}>API 配置</button>
+            {tokenValid
+              ? <button className="provider-btn ghost" onClick={logoutPan}>退出授权</button>
+              : <button className="provider-btn primary" onClick={openAuth} disabled={!baidu.configured}>去连接</button>}
+          </div>
         </div>
-        {['阿里云盘', 'OneDrive', '夸克网盘'].map((name) => (
-          <div key={name} className="provider-card soon">
+        {/* 后端 platform_configs 里除百度以外的真实行（实测当前库里只有表结构、0 行）。
+            本项目口径是「只做百度网盘」，所以这里不写「即将支持阿里云盘/夸克」这类
+            占位承诺：有行就按行里的真实授权状态显示，没行就什么都不显示。 */}
+        {Object.entries(platformCfgs).filter(([k]) => k !== 'baidu').map(([key, c]) => (
+          <div key={key} className={`provider-card ${c.token ? 'connected' : ''}`}>
             <div className="provider-ico"><Cloud size={20} /></div>
-            <div className="provider-name">{name}</div>
-            <div className="provider-desc">平台对接规划中</div>
-            <span className="provider-pill off">即将支持</span>
-            <button className="provider-btn ghost" disabled>敬请期待</button>
+            <div className="provider-name">{c.display_name || key}</div>
+            <div className="provider-desc">{c.token ? '已配置授权' : '已注册但未配置授权'}</div>
+            <span className={`provider-pill ${c.token ? 'on' : 'off'}`}>{c.token ? '已配置' : '未配置'}</span>
           </div>
         ))}
       </div>
@@ -195,14 +259,17 @@ export default function Pan() {
                   <span style={{ fontSize: 18 }}>{f.isdir ? '📁' : ICON[fileIcon(f.name)] || '📄'}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{f.isdir ? '文件夹' : `${fmtFileSize(f.size)} · ${fmtDateCN(f.mtime * 1000)}`}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{f.isdir ? '文件夹' : `${fmtFileSize(f.size_kb)} · ${fmtDateCN(f.date)}`}</div>
                   </div>
                   {f.isdir ? (
                     <button className="btn ghost" style={{ padding: '4px 10px' }} onClick={() => openDir(f)}>进入</button>
                   ) : (
                     <>
                       <button className="btn ghost" style={{ padding: '4px 10px' }} onClick={() => importRemote(f)}>登记</button>
-                      <button className="btn ghost" style={{ padding: '4px 10px' }} onClick={async () => { const d = await getDlink(f); d ? window.open(d, '_blank') : toast('无法获取下载链接（可能需在网盘客户端下载）') }}>下载</button>
+                      {INLINE_PREVIEW_EXT.test(f.name) && (
+                        <button className="btn ghost" style={{ padding: '4px 10px' }} disabled={!baidu.configured} title={baidu.configured ? '后端代理取流，浏览器可直接渲染' : '后端未完成百度网盘授权，无法代理取流'} onClick={() => window.open(netdiskApi.contentUrlByFsid(f.fs_id), '_blank')}>预览</button>
+                      )}
+                      <button className="btn ghost" style={{ padding: '4px 10px' }} disabled={!baidu.configured} title={baidu.configured ? '' : '后端未完成百度网盘授权，无法代理取流'} onClick={() => window.open(netdiskApi.contentUrlByFsid(f.fs_id, 'attachment'), '_blank')}>下载</button>
                     </>
                   )}
                 </div>
@@ -265,7 +332,9 @@ export default function Pan() {
               <button className="btn primary" onClick={() => updatePan(active.id, { synced: !active.synced })}>
                 {active.synced ? '标记为未同步' : '标记为已同步'}
               </button>
-              <button className="btn ghost" onClick={() => toast('可在「百度网盘文件」区域中定位并下载该文件')}>在网盘中打开</button>
+              <button className="btn ghost" onClick={() => (active.remote && active.fsId
+                ? window.open(netdiskApi.contentUrlByFsid(active.fsId), '_blank')
+                : toast('该资料没有网盘 fs_id，无法取流'))}>在网盘中打开</button>
               <button className="btn danger" onClick={() => { removePan(active.id); setActiveId(null); toast('已移除该资料') }}>移除</button>
             </div>
           </div>
@@ -311,11 +380,29 @@ export default function Pan() {
         </label>
         <label style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>分类
           <select className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={form.cat} onChange={(e) => setForm({ ...form, cat: e.target.value })}>
-            {CATS.slice(1).map((c) => <option key={c} value={c}>{c}</option>)}
+            {CATS.filter((c) => c !== '全部').map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
         <label style={{ display: 'block', fontSize: 13 }}>说明
           <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} placeholder="资料用途、使用建议" />
+        </label>
+      </Modal>
+
+      {/* ===== API 配置弹窗（app_key / secret_key / redirect_uri，不再写死） ===== */}
+      <Modal open={showCfg} title="百度网盘 API 配置" onClose={() => setShowCfg(false)}
+        footer={<><button className="btn ghost" onClick={() => setShowCfg(false)}>取消</button><button className="btn primary" onClick={saveCfg} disabled={cfgSaving}>{cfgSaving ? '保存中…' : '保存'}</button></>}>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.7, marginBottom: 12 }}>
+          填入你在百度开放平台（pan.baidu.com/union）申请的 AppKey / SecretKey。
+          留空则使用后端内置默认应用。
+        </p>
+        <label style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>App Key（client_id）
+          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={cfgForm.app_key} onChange={(e) => setCfgForm({ ...cfgForm, app_key: e.target.value })} placeholder="如：xxxxxxxxxxxxxxxx" />
+        </label>
+        <label style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>Secret Key（client_secret）
+          <input className="input" type="password" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={cfgForm.secret_key} onChange={(e) => setCfgForm({ ...cfgForm, secret_key: e.target.value })} placeholder="如：xxxxxxxxxxxxxxxx" />
+        </label>
+        <label style={{ display: 'block', fontSize: 13 }}>回调地址（redirect_uri）
+          <input className="input" style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }} value={cfgForm.redirect_uri} onChange={(e) => setCfgForm({ ...cfgForm, redirect_uri: e.target.value })} placeholder="oob（默认，表示授权后手动复制授权码）" />
         </label>
       </Modal>
 

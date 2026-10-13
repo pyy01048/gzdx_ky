@@ -46,6 +46,8 @@ from database import get_db
 from models import Document, QuizQuestion
 from services import qbank_builder as qb
 from services import taxonomy
+from services.quiz_content_gate import admit as gate_admit
+from services.quiz_content_gate import build_stem_answer_index, gate_log_summary
 
 router = APIRouter(prefix="/api/kb-import", tags=["kb-import"])
 
@@ -158,6 +160,20 @@ def _is_bank_dup(
     return False
 
 
+def _build_stem_index(db: Session):
+    """构造"归一化题干 → 已见答案集合"索引，用于入库前的同题干答案冲突检测。
+
+    只收 ``is_junk`` 不为 1 的题（隔离题不应参与冲突判定，否则被隔离的
+    错误答案会把正确的新题也拦下来），且只收答案非空的行。
+    """
+    rows = (
+        db.query(QuizQuestion.content, QuizQuestion.answer)
+        .filter(QuizQuestion.is_junk.isnot(True))
+        .all()
+    )
+    return build_stem_answer_index(rows)
+
+
 def _classify_candidate(raw: dict[str, Any], doc: Document) -> dict[str, Any]:
     """把 extract_questions 的原始一条 + 文档上下文，映射成落库字段。"""
     content = (raw.get("content") or "").strip()
@@ -176,6 +192,8 @@ def _classify_candidate(raw: dict[str, Any], doc: Document) -> dict[str, Any]:
         "knowledge_point": classified["knowledge_point"],
         "question_type": classified["question_type"],
         "difficulty": classified["difficulty"],
+        # 保留原始大题区题型：入库闸门对判断/简答等"陈述式"题目需要它
+        "section_type": raw.get("section_type") or "",
         "content_hash": qb.content_hash(content),
     }
 
@@ -193,7 +211,7 @@ def _list_doc_candidates(
 
     返回 (候选列表[带 index/already_exists], 已存在数, 是否因单篇上限截断)。
     """
-    raws = qb.extract_questions(doc.content or "")
+    raws = qb.extract_questions(doc.content or "", source_hint=doc.file_name or "")
     out: list[dict[str, Any]] = []
     local_seen: set[str] = set()  # 文档内重复题干
     already_count = 0
@@ -316,6 +334,7 @@ async def confirm(payload: ConfirmRequest, db: Session = Depends(get_db)):
 
     taxonomy.load_configured_subjects(db)
     existing_hashes, existing_by_len, existing_lengths = _build_existing_index(db)
+    stem_index = _build_stem_index(db)
 
     # 预计算每篇被引用文档的候选列表（与 scan 完全同口径，index 稳定）
     doc_cands: dict[int, list[dict[str, Any]]] = {}
@@ -327,6 +346,7 @@ async def confirm(payload: ConfirmRequest, db: Session = Depends(get_db)):
     inserted = 0
     skipped_existing = 0
     out_of_range = 0
+    rejected_by_gate: dict[str, int] = {}
     by_subject: dict[str, int] = {}
 
     for did, idx in pairs:
@@ -341,6 +361,20 @@ async def confirm(payload: ConfirmRequest, db: Session = Depends(get_db)):
             skipped_existing += 1
             continue
 
+        # ===== 入库前内容闸门（纵深防御：即便前端勾选/索引漂移绕过 scan 过滤）=====
+        _src = f"知识库:{found[did].file_name}"
+        _ok, _reason = gate_admit(
+            cand["content"],
+            options=cand.get("options") or [],
+            answer=cand.get("answer"),
+            source=_src,
+            section_type=cand.get("section_type") or "",
+            stem_answer_index=stem_index,
+        )
+        if not _ok:
+            rejected_by_gate[_reason] = rejected_by_gate.get(_reason, 0) + 1
+            continue
+
         new_q = QuizQuestion(
             content=cand["content"],
             options=cand["options"] or None,
@@ -351,7 +385,7 @@ async def confirm(payload: ConfirmRequest, db: Session = Depends(get_db)):
             knowledge_point=cand["knowledge_point"] or None,
             difficulty=cand["difficulty"],
             question_type=cand["question_type"],
-            source=f"知识库:{found[did].file_name}",
+            source=_src,
             confidence="medium",
         )
         db.add(new_q)
@@ -361,9 +395,12 @@ async def confirm(payload: ConfirmRequest, db: Session = Depends(get_db)):
         by_subject[cand["subject"]] = by_subject.get(cand["subject"], 0) + 1
 
     db.commit()
+    if rejected_by_gate:
+        gate_log_summary()
     return {
         "inserted": inserted,
         "skipped_existing": skipped_existing,
         "out_of_range": out_of_range,
+        "rejected_by_gate": rejected_by_gate,
         "by_subject": by_subject,
     }

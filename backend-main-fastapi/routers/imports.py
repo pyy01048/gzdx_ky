@@ -24,7 +24,9 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Document
 from services.document_parser import DocumentParser
-from services.kb_service import ingest_document, ingest_text
+from services.doc_naming import apply_display_name
+from services.kb_service import has_searchable_chunks, ingest_document, ingest_text
+from services.smart_ingest import gate_for_write, is_self_produced
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
@@ -103,7 +105,6 @@ class ScanRequest(BaseModel):
     use_ocr: bool = True
     enrich: bool = True                       # 用本地模型提炼要点追加进知识库
     enrich_model: str = "qwen3:8b"          # 文档处理模型（用户已下载）
-    cap_chars: int = 120000                   # 单文档入库文本上限（防 KB 膨胀）
     force: bool = False                        # 强制重新解析已导入文档
 
 
@@ -114,13 +115,13 @@ def _scan_worker(
     use_ocr: bool,
     enrich: bool,
     enrich_model: str,
-    cap_chars: int,
     force: bool,
     db_factory,
 ):
-    """后台扫描导入任务：解析 -> 切分入库(RAG) -> 可选本地模型提炼。"""
+    """后台扫描导入任务：解析 -> 质量闸门 -> 切分入库(RAG) -> 可选本地模型提炼。"""
     parser = DocumentParser()
-    stats = {"scanned": 0, "imported": 0, "skipped": 0, "failed": 0, "enriched": 0, "errors": []}
+    stats = {"scanned": 0, "imported": 0, "skipped": 0, "failed": 0,
+             "rejected": 0, "dedup_skipped": 0, "enriched": 0, "errors": []}
     start = time.time()
     try:
         if not os.path.isdir(directory):
@@ -151,6 +152,12 @@ def _scan_worker(
 
                 fname = os.path.basename(path)
                 try:
+                    # 自产文件先拦在解析之前：上一批写进 knowledge_base 的
+                    # README/回收站/切块产物再被扫回来，就是"自我喂食"式膨胀。
+                    if is_self_produced(path):
+                        stats["skipped"] += 1
+                        continue
+
                     exists = db.query(Document).filter(Document.file_path == path).first()
 
                     # 幂等：已导入且非强制则跳过
@@ -164,6 +171,18 @@ def _scan_worker(
                         stats["errors"].append(f"{path}: 解析为空")
                         continue
 
+                    # 质量闸门：拦下的文件**不写 Document、不切块**，
+                    # 所以库里不会再长出"正文一堆乱码但标着 indexed"的行。
+                    verdict = gate_for_write(db, text, path=path,
+                                             doc_id=getattr(exists, "id", None))
+                    if not verdict["ok"]:
+                        stats["rejected"] += 1
+                        stats["errors"].append(
+                            f"{path}: 质量闸门拒绝 —— {'; '.join(verdict['reasons'])}")
+                        if verdict.get("dedup_hit"):
+                            stats["dedup_skipped"] += 1
+                        continue
+
                     # 入库 Document
                     if exists:
                         doc = exists
@@ -175,14 +194,17 @@ def _scan_worker(
                             size=os.path.getsize(path),
                         )
                         db.add(doc)
+                    # 正文只设 50 万字的存储上限，不按更小额度截断：
+                    # 截断副本会让"存进去的正文"和磁盘原文件不一致，
+                    # 老导入器留下的 5000 字残本至今仍是去重隐患（见 smart_ingest）。
                     doc.content = text[:500000]
                     doc.index_status = "indexing"
                     doc.parse_progress = 0.3
+                    apply_display_name(db, doc, text)
                     db.commit()
                     db.refresh(doc)
 
                     # 切分入库：写 knowledge_chunks + FTS5，RAG 可检索
-                    body = text if len(text) <= cap_chars else text[:cap_chars]
                     chunk_count = ingest_document(db, doc, replace=True)
                     doc.knowledge_point_count = chunk_count
                     doc.parse_progress = 0.8
@@ -196,7 +218,9 @@ def _scan_worker(
                                 db, doc.id, doc.file_name + " ·AI提炼",
                                 summary, subject=doc.subject, replace=False,
                             )
-                    doc.index_status = "indexed" if chunk_count > 0 else "failed"
+                    # indexed 只认"库里真的有块"，不认本轮返回值：
+                    # 重新解析被物理删除闸门拦住时旧块仍在、RAG 照样命中。
+                    doc.index_status = "indexed" if has_searchable_chunks(db, doc.id) else "failed"
                     doc.parse_progress = 1.0
                     db.commit()
                     stats["imported"] += 1
@@ -237,7 +261,7 @@ async def start_scan(req: ScanRequest, db: Session = Depends(get_db)):
         target=_scan_worker,
         args=(
             task_id, req.directory, req.recursive, req.use_ocr,
-            req.enrich, req.enrich_model, req.cap_chars, req.force, SessionLocal,
+            req.enrich, req.enrich_model, req.force, SessionLocal,
         ),
         daemon=True,
     )

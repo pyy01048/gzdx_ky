@@ -71,10 +71,69 @@ def answer_is_copy(question: str, answer: str, *, n: int = 16) -> bool:
     return sum(1 for g in grams if g in q) / len(grams) > 0.5
 
 
+def _is_repeat(a: str, b: str, *, n: int = 12) -> bool:
+    """两段文本高度重合（任一方 12-gram 有 >60% 命中对方）→ 视为抄写。"""
+    x, y = _normalize(a), _normalize(b)
+    if len(x) < n or len(y) < n:
+        return x == y or (x and y and (x in y or y in x))
+    short, long_ = (x, y) if len(x) <= len(y) else (y, x)
+    grams = [short[i:i + n] for i in range(len(short) - n + 1)]
+    return sum(1 for g in grams if g in long_) / len(grams) > 0.6
+
+
+def _clean_zh(s: str) -> str:
+    """PDF/OCR 常在汉字中间留下换行转来的空格，训练答案里必须抹掉。"""
+    t = re.sub(r"[ \t\u3000]+(?=[\u4e00-\u9fff])|(?<=[\u4e00-\u9fff])[ \t\u3000]+", "", (s or "").strip())
+    return re.sub(r"\s+", " ", t).strip()
+
+
+#: 定义句里出现这些就是 OCR 把广告/水印/公众号水印抽进来了，不是知识
+_BODY_NOISE = ("微信", "公众号", "QQ", "www", ".com", "网学天地", "学长",
+               "初试", "复试", "扫码", "加群", "免费分享", "考试点", "答疑")
+
+
+def _body_ok(body: str) -> bool:
+    """定义句必须是完整一句：截断/带空括号的脏片段一律不进训练集。"""
+    if len(body) < 8 or "（）" in body or "( )" in body:
+        return False
+    if any(tok in body for tok in _BODY_NOISE):
+        return False
+    if re.search(r"[的与和或等为在是]$|[,，、；;：:]\s*$", body):
+        return False
+    return bool(re.search(r"[\u4e00-\u9fff]", body))
+
+
 # --------------------------------------------------------------------------- #
 # 来源 1：真题（有答案）
 # --------------------------------------------------------------------------- #
-_OPT_LETTERS = "ABCD"
+_OPT_LETTERS = "ABCDEFGH"
+
+
+def _strip_opt_prefix(s: str) -> str:
+    """去掉 "B．5421BCD码" 里的选项字母，答案里已由 letter 承担标号。"""
+    return re.sub(r"^[A-HＡ-Ｈ]\s*[.。、．）)：:]\s*", "", (s or "").strip())
+
+#: 题库 answer 字段里混着题型标题/占位符（"一、填空题"、"略"、"见解析"），
+#: 这类"答案"进训练集等于教模型答非所问。
+_JUNK_ANSWER = re.compile(
+    r"^[\s一二三四五六七八九十、\.。]*"
+    r"(填空题?|选择题?|判断题?|简答题?|名词解释|计算题|略|见解析|答案|解析|无)$"
+)
+
+
+def _answer_ok(a: str) -> bool:
+    a = (a or "").strip()
+    if _JUNK_ANSWER.match(a):
+        return False
+    # 单个字母 / 判断符号是最有价值的答案（判分就看它），绝不能被长度门槛砍掉
+    if re.fullmatch(r"[A-Ha-h]", a):
+        return True
+    if a in ("对", "错", "√", "×", "T", "F"):
+        return True
+    if len(a) < 2:
+        return False
+    return bool(re.search(r"[\u4e00-\u9fffA-Za-z0-9]", a))
+
 
 def from_quiz_questions(db) -> list[dict]:
     """真题 → Q&A。只有拿到答案（字母或文本）才可用。"""
@@ -83,28 +142,55 @@ def from_quiz_questions(db) -> list[dict]:
         QuizQuestion.answer.isnot(None), QuizQuestion.answer != ""
     ).all()
     for q in rows:
-        stem = (q.content or "").strip()
+        stem = _clean_zh(q.content)
         if len(stem) < 10:
             continue
-        ans_raw = (q.answer or "").strip()
-        opts = q.options if isinstance(q.options, list) else []
+        ans_raw = _clean_zh(q.answer)
+        if not _answer_ok(ans_raw):
+            continue
+        opts = [_clean_zh(o) for o in (q.options if isinstance(q.options, list) else []) if _clean_zh(o)]
 
-        # 把选项字母展开成选项内容，否则"答案：C"毫无信息量
-        ans_text = ans_raw
-        if re.fullmatch(r"[A-D]", ans_raw.upper()) and opts:
-            idx = _OPT_LETTERS.find(ans_raw.upper())
-            if 0 <= idx < len(opts):
-                ans_text = opts[idx]
+        # 字母必须留在答案里：客观题判分靠字母，只写选项文字会让模型学不会"选 B"
+        letter, ans_text = "", ans_raw
+        up = ans_raw.upper().replace(" ", "")
 
-        parts = [f"答案是：{ans_text}"]
-        if q.analysis:
-            parts.append(f"解析：{q.analysis}")
+        if q.question_type == "judge":
+            if _normalize(ans_raw) in ("对", "正确", "√", "true", "t", "a", "yes"):
+                letter, ans_text = "A", "正确"
+            elif _normalize(ans_raw) in ("错", "错误", "×", "x", "false", "f", "b", "no"):
+                letter, ans_text = "B", "错误"
+        elif re.fullmatch(r"[A-H]{1,3}", up) and (opts or q.question_type in ("single", "multiple")):
+            letter = up
+            texts = []
+            for ch in up:
+                i = _OPT_LETTERS.index(ch)
+                if 0 <= i < len(opts):
+                    texts.append(_strip_opt_prefix(opts[i]))
+            ans_text = "、".join(texts) if texts else up
         elif opts:
-            parts.append("解析：其余选项与题干条件不符，逐一排查即可定位唯一正确项。")
-        parts.append(
-            f"这道题考的是「{q.knowledge_point or q.chapter or q.subject}」，"
-            f"属于 {q.chapter or '本科目'} 的内容。"
-        )
+            # 答案写的是选项文字 → 反查字母（整句相等或题干答案就是选项前缀）
+            a_norm = _normalize(ans_raw)
+            for i, o in enumerate(opts):
+                on = _normalize(_strip_opt_prefix(o))
+                if a_norm and (a_norm == on or (len(a_norm) >= 4 and on.startswith(a_norm))):
+                    letter, ans_text = _OPT_LETTERS[i], _strip_opt_prefix(o)
+                    break
+
+        head = f"答案是：{letter}（{ans_text}）" if letter else f"答案是：{ans_text}"
+        parts = [head]
+
+        analysis = _clean_zh(q.analysis)
+        if analysis and any(tok in analysis for tok in _BODY_NOISE):
+            analysis = ""
+        # 题库里大量 analysis 只是把题干重抄一遍，这种"解析"进训练集就是教模型复读
+        if analysis and not _is_repeat(analysis, stem):
+            parts.append(f"解析：{analysis}")
+        elif opts:
+            parts.append("解析：把每个选项代回题干条件逐一排查，只有这一项完全成立。")
+        kp = (q.knowledge_point or "").strip()
+        chapter = (q.chapter or "").strip()
+        if kp:
+            parts.append(f"考点：{kp}" + (f"（{chapter}）" if chapter else ""))
         answer = "\n".join(parts)
 
         question = stem + ("\n" + "\n".join(opts) if opts else "")
@@ -172,46 +258,69 @@ def from_definitions(db, *, limit: int = 3000) -> list[dict]:
     """知识分块 → 「X 是什么」问答。
 
     覆盖全部主线科目（不只数电模电）—— 英语/数学的术语同样值得进训练集。
+    学科前缀必须由块级三路融合复核：文档级 subject 常把模电内容标成"政治"
+    （混排 OCR 大杂烩），照着写死会教出张冠李戴的答疑。
     """
-    out = []
+    from services import chunk_classifier as cc
+
     rows = db.query(KnowledgeChunk).filter(
         KnowledgeChunk.subject.in_(list(taxonomy.CORE_SUBJECTS))
     ).limit(limit * 4).all()
     seen: set[str] = set()
+    picked: list[tuple[str, str, str]] = []          # (term, body, doc_subject)
     for c in rows:
         text = (c.text or "").strip()
         if len(text) < 30:
             continue
         subject = taxonomy.normalize_subject(c.subject)
         for pat in _DEF_PATTERNS:
-            matched = False
+            hit = False
             for m in pat.finditer(text):
                 term = _clean_term(m.group(1))
-                body = re.sub(r"\s+", " ", m.group(2)).strip()
-                if not term or term in seen or len(body) < 8:
+                body = _clean_zh(m.group(2))
+                if not term or term in seen or not _body_ok(body):
                     continue
                 seen.add(term)
-                question = f"考研{subject}里，{term}是什么？"
-                answer = (
-                    f"{term}是指{body}。\n"
-                    f"理解时要抓住它的判定条件与典型应用场景，"
-                    f"这部分内容属于「{subject}」。"
-                )
-                if answer_is_copy(question, answer):
-                    continue
-                out.append({
-                    "messages": [
-                        {"role": "system", "content": SYSTEM},
-                        {"role": "user", "content": question},
-                        {"role": "assistant", "content": answer},
-                    ],
-                    "subject": subject,
-                    "source": "definition",
-                })
-                matched = True
+                picked.append((term, body, subject))
+                hit = True
                 break
-            if matched:
+            if hit:
                 break
+        if len(picked) >= limit:
+            break
+
+    protos = cc.load_prototypes(db)
+    hints = [f"{t}。{t}是指{b}" for t, b, _ in picked]
+    emb = cc.encode_texts(hints) if protos else None
+
+    out = []
+    for i, (term, body, doc_subject) in enumerate(picked):
+        subject = doc_subject
+        if emb is not None:
+            vec = cc.vector_scores(emb[i], protos)
+            kw_subj, kw_w = cc.keyword_scores("", hints[i])
+            lab = cc.ChunkLabel(l3_content_type=cc.l3_rules(hints[i]))
+            cc.fuse(lab, kw_subj, kw_w, vec, None)
+            if lab.subject and lab.confidence >= cc.CONF_THRESHOLD:
+                subject = lab.subject
+        if subject and subject not in ("其他", "真题综合"):
+            question = f"考研{subject}里，{term}是什么？"
+            tail = f"这部分内容属于「{subject}」。"
+        else:
+            question = f"{term}是什么？"
+            tail = ""
+        answer = f"{term}是指{body}。\n理解时要抓住它的判定条件与典型应用场景。{tail}".strip()
+        if answer_is_copy(question, answer):
+            continue
+        out.append({
+            "messages": [
+                {"role": "system", "content": SYSTEM},
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": answer},
+            ],
+            "subject": subject or "其他",
+            "source": "definition",
+        })
     return out
 
 
@@ -230,7 +339,8 @@ def from_outline_points(db) -> list[dict]:
         m = re.search(r"【考纲要求·(.+?)】(.+)", desc)
         if not m:
             continue
-        verb, requirement = m.group(1), m.group(2).strip()
+        verb, requirement = m.group(1), _clean_zh(m.group(2))
+        requirement = requirement.rstrip("，,、；;：:")
         subject = taxonomy.normalize_subject(kp.subject)
         qtypes = "、".join((kp.question_types or [])[:4]) or "综合"
         question = f"834 考纲对「{kp.name}」的要求是什么？复习时要注意什么？"
@@ -285,8 +395,10 @@ def from_exam_stats(db) -> list[dict]:
                     types.append(t)
         question = f"{subject}的「{chapter}」主要考哪些知识点？题量大吗？"
         lines = [
-            f"这一章在题库里共有 {total} 道题，是{subject}的重点章节之一。",
-            "考得最多的考点依次是：",
+            # 同一道题会挂在多个考点下，直接把 question_count 相加会虚报总量，
+            # 所以只报"考得最多的考点及其题量"，不宣称章节总题数。
+            f"这一章是{subject}的重点章节，收录了 {len(kps_sorted)} 个考点，"
+            "考得最多的依次是：",
         ]
         for i, k in enumerate(top, 1):
             lines.append(f"{i}. {k.name}（{k.question_count} 题）")
@@ -365,6 +477,20 @@ def main() -> int:
         print("  按科目:")
         for k, v in Counter(it["subject"] for it in deduped).most_common():
             print(f"     {k:<14} {v:>5}")
+
+        # —— 答案字母分布：上一版合并后的 LoRA 退化成套 B，这份分布是防线 —— #
+        lc = Counter()
+        for it in deduped:
+            if it["source"] != "quiz":
+                continue
+            mm = re.match(r"答案是：([A-D])", it["messages"][2]["content"])
+            if mm:
+                lc[mm.group(1)] += 1
+            else:
+                lc["非字母"] += 1
+        tot_letters = sum(v for k, v in lc.items() if k != "非字母") or 1
+        print("  答案字母分布:", "  ".join(
+            f"{k} {v}({v/tot_letters:.0%})" for k, v in sorted(lc.items())))
 
         # —— 长度分布 —— #
         ql = [len(it["messages"][1]["content"]) for it in deduped]

@@ -23,6 +23,15 @@ import re
 from typing import Any
 
 from services import taxonomy, kp_cleaner
+from services.quiz_content_gate import admit as _gate_admit
+from services.quiz_content_gate import gate_log_summary
+from services.extraction_noise import (
+    clean_answer as _clean_answer,
+    clean_content as _clean_content,
+    split_options_enabled as _split_options_enabled,
+    split_stem_and_options as _split_stem_options,
+    strip_cross_question_leak as _strip_cross_leak,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -47,6 +56,35 @@ SECTION_TYPES: list[tuple[str, str]] = [
 _SECTION_RE = re.compile(
     r"^\s*[一二三四五六七八九十]+\s*[、.．]\s*([^\n（(]{2,20}?)\s*(?:[（(][^）)]*[）)])?\s*$"
 )
+
+# 讲义/PPT 里形似"题型大标题"、实为知识点小标题的前缀词。
+# 这些标题一旦被 _SECTION_RE 命中，_norm_section 会把整篇讲义误判成
+# "进入某个题型区"，导致后续所有 `1. / 2、` 编号行都被当成题号切分 ——
+# 这正是 3576 条 JUNK 的源头。
+_NOT_A_SECTION_PREFIX = (
+    "设计步骤", "设计关键", "设计方法", "设计原则", "设计要求",
+    "综上所述", "综上", "小结", "本章小结", "要点", "重点", "难点",
+    "知识点", "考点", "重点难点", "内容提要", "内容盛要", "目录",
+    "引言", "绪论", "本章", "第", "复习", "回顾", "思考题", "习题",
+    "举例", "例题", "说明", "注意", "补充", "小结与", "问题",
+)
+#: 命中这些词的小标题一律不视作题型大标题
+_SECTION_VETO_RE = re.compile(
+    r"^(?:设计步骤|设计关键|设计方法|设计原则|综上所述|综上|小结|本章小结|要点|"
+    r"重点|难点|知识点|考点|内容提要|内容盛要|目录|引言|绪论|复习|回顾|"
+    r"思考题|习题|举例|例题|说明|注意|补充)"
+)
+
+
+def _is_real_section_title(title: str) -> bool:
+    """该行是否真的是"题型大标题"（而非讲义的知识点小标题）。"""
+    t = (title or "").strip()
+    if not t:
+        return False
+    if _SECTION_VETO_RE.match(t):
+        return False
+    # 归一化后必须真的能映射到一个标准题型，否则不是题型标题
+    return bool(_norm_section(t))
 
 # 题号正则：1、  12、  1.  3．
 _QNUM_RE = re.compile(r"(?:^|\n)\s*(\d{1,3})\s*[、.．)）]\s*")
@@ -76,10 +114,17 @@ def _clean_text(t: str) -> str:
     return t.strip()
 
 
-def extract_questions(text: str) -> list[dict[str, Any]]:
+def extract_questions(text: str, *, source_hint: str = "") -> list[dict[str, Any]]:
     """从一篇试卷/题库正文里抽取题目。
 
     返回 [{section_type, number, content, options, answer, analysis, raw}]
+
+    ``source_hint``：文档标题/来源描述（如 ``"…康华光 精品复习课件.txt"``）。
+    传入后闸门能识别"讲义/课件"来源并额外加严 —— 这是 JUNK 的主要来源；
+    不传时按中性来源判定（基础规则仍然生效）。
+
+    **入库前闸门**：每条候选都必须通过 ``services.quiz_content_gate.admit``，
+    不通过的直接丢弃（不返回、不入库），并计入 ``GATE_STATS``。
     """
     if not text or len(text) < 60:
         return []
@@ -92,10 +137,9 @@ def extract_questions(text: str) -> list[dict[str, Any]]:
     cur = ""
     for i, ln in enumerate(lines):
         m = _SECTION_RE.match(ln.strip())
-        if m:
-            t = _norm_section(m.group(1))
-            if t:
-                cur = t
+        # 双重判定：既要能映射到标准题型，也要排除讲义知识点小标题
+        if m and _is_real_section_title(m.group(1)):
+            cur = _norm_section(m.group(1))
         sections[i] = cur
 
     # —— 2. 收集全部题号位置 —— #
@@ -144,21 +188,39 @@ def extract_questions(text: str) -> list[dict[str, Any]]:
             ana = nm.group(1).strip()
             body = body[:nm.start()].strip()
 
-        # 抽选项
-        options: list[str] = []
-        om = list(_OPTION_RE.finditer(body))
-        if om and sec_type in ("选择", "多选", "判断"):
-            stem = body[:om[0].start()].strip()
-            for j, o in enumerate(om):
-                ostart = o.start()
-                oend = om[j + 1].start() if j + 1 < len(om) else len(body)
-                opt_text = body[ostart:oend].strip()
-                opt_text = re.sub(r"\s+", " ", opt_text)
-                if opt_text:
-                    options.append(opt_text)
-            content = stem
+        # ===== 切题源头修复 3：跨题串接检测 =====
+        # 题块末尾若出现下一个题型大标题（如「四、简答题（共4题，每题6分，共24分）」），
+        # 说明本块吃掉了下个题型区标题 —— 剔除后仍为空则视为切题失败。
+        body, _leaked = _strip_cross_leak(body)
+        if len(body) < 6:
+            continue
+
+        # ===== 切题源头修复 1：剔除页眉/页脚/试卷通知噪声 =====
+        body = _clean_content(body)
+
+        # ===== 抽选项 =====
+        # 第 2 处修复（不再依赖 sec_type 判定是否为选择题）由独立开关控制，
+        # 默认关闭（QUIZ_EXTRACT_SPLIT_OPTIONS=0）—— 取证发现该判据对 PDF
+        # 排版乱序选项（B/C/A/D）会清空库里已有的 options，属回归。
+        # 关闭时完整保留修复前的原逻辑，一行不改。
+        if _split_options_enabled():
+            stem_txt, options = _split_stem_options(body, sec_type)
         else:
-            content = body
+            options = []
+            om = list(_OPTION_RE.finditer(body))
+            if om and sec_type in ("选择", "多选", "判断"):
+                for j, o in enumerate(om):
+                    ostart = o.start()
+                    oend = om[j + 1].start() if j + 1 < len(om) else len(body)
+                    opt_text = re.sub(r"\s+", " ", body[ostart:oend]).strip()
+                    if opt_text:
+                        options.append(opt_text)
+                body = body[: om[0].start()].strip()
+            stem_txt = body
+        content = stem_txt
+
+        # ===== 答案清洗（修复 1 的另一半：脏答案置空）=====
+        ans = _clean_answer(ans)
 
         content = re.sub(r"\s+", " ", content).strip()
         if len(content) < 6:
@@ -166,6 +228,19 @@ def extract_questions(text: str) -> list[dict[str, Any]]:
 
         # 题干里如果选项被吞掉（如"（   ）。"后无内容），跳过
         if not content:
+            continue
+
+        # ===== 入库前内容闸门（防讲义/PPT/教材正文被当成题目）=====
+        # 讲义正文常以"1. / 2、"开头，上面的编号切分无法区分二者；
+        # 这里用统一的"像不像一道可回答的考试题"判据把非题目拦掉。
+        ok, _reason = _gate_admit(
+            content,
+            options=options,
+            answer=ans,
+            source=source_hint,
+            section_type=sec_type,
+        )
+        if not ok:
             continue
 
         questions.append({
@@ -177,6 +252,7 @@ def extract_questions(text: str) -> list[dict[str, Any]]:
             "analysis": ana,
         })
 
+    gate_log_summary()
     return questions
 
 
@@ -311,7 +387,33 @@ def content_hash(content: str) -> str:
 # 四、题库流水线升级（2026-10）：指纹 + 编辑距离去重 / 变式聚类 / AI 答案解析
 # --------------------------------------------------------------------------- #
 def normalize_text(content: str) -> str:
-    """去空白/标点的归一化文本，用于编辑距离相似度比较。"""
+    """去空白/标点的归一化文本，用于编辑距离相似度比较。
+
+    ==================  ⚠️ 旧口径，待废弃，禁止直接删除  ==================
+
+    **本函数是旧归一化口径**，已知缺陷：
+
+      * **不剥 OCR 乱码**（U+FFFD 等）—— 导致仅因乱码差异而"不同"的题
+        得到不同指纹，重复检测静默失效（实测全库精确重复组因此为 0）；
+      * **不归一填空位** —— ``________`` / ``＿＿`` / ``（ ）`` 被当作不同
+        文本，填空题变体永远匹配不上。
+
+    **新增判重逻辑请一律使用** ``services.quiz_content_gate.normalize_dedup``
+    （剥乱码 + 归一填空位 + 去标点）。
+
+    **不得直接删除本函数**：它仍被以下位置依赖，删除会直接报错 ——
+      - ``services/qbank_builder.py`` 内部链路：``similarity_ratio`` /
+        ``is_duplicate`` / ``dedupe_scan`` / ``group_variants``
+      - ``routers/kb_import.py``：``_build_existing_index`` / ``_is_bank_dup``
+      - ``scripts/qbank_upgrade.py``：``dedupe_scan`` / ``group_variants``
+        （**注意：这是一条能改写题库的脚本链路，却跑在旧口径上**，
+        改口径前必须先与本函数行为对齐，否则会按不同判据改数据）
+      - ``scripts/audit_quiz_duplicates.py``
+
+    口径统一（含上述调用点迁移与 ``qbank_upgrade.py`` 对齐）是独立立项，
+    在此之前保持现状、只做归档。
+    =====================================================================
+    """
     norm = re.sub(
         r"[\s（）()【】\[\]、,，。.；;：:？?！!“”\"'’‘、·—\-]+",
         "",

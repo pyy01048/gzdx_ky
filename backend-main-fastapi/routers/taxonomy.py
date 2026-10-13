@@ -13,7 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import KnowledgePoint, Document, KnowledgeChunk, SubjectConfig, QuizQuestion, ErrorRecord
+from models import KnowledgePoint, Document, KnowledgeChunk, SubjectConfig
 from services import taxonomy
 
 router = APIRouter(prefix="/api/taxonomy", tags=["知识结构"])
@@ -29,43 +29,31 @@ async def list_subjects(db: Session = Depends(get_db)):
     - 旧字段 ``core / extension / question_type_pool / doc_types`` 保持不变
       （前端「知识地图」页仍在消费，不在本任务改动范围内）。
 
-    question_count / error_count 的统计口径与 ``routers/quiz.py`` 的
-    ``GET /api/quiz/subjects`` 对齐：按 ``quiz_questions.subject`` 原值 group by 计数，
-    错题仅统计 ``error_records.status == "active"``。
+    question_count / error_count 的统计口径由 `services.subject_registry`
+    唯一聚合器统一提供，与 ``GET /api/quiz/subjects``、``GET /api/papers/subjects``、
+    ``GET /api/documents/subjects`` 完全一致（M0-4 学科统一收口）。
     """
     # 幂等播种内置默认科目（仅空库首建；不复活已删除行）
     taxonomy.ensure_subject_config_seeds(db)
-    rows = (
-        db.query(SubjectConfig)
-        .order_by(SubjectConfig.is_custom.asc(), SubjectConfig.subject.asc())
-        .all()
-    )
-    # 刷新 normalize_subject 的"已配置科目"缓存
-    taxonomy.load_configured_subjects(db)
+    # M0-4 学科统一收口：subjects 字段改由唯一聚合器生成，保证与
+    # quiz/papers/documents 三个端点口径完全一致（含 0854 等空科目与未登记脏数据）。
+    from services import subject_registry
 
-    q_rows = dict(
-        db.query(QuizQuestion.subject, func.count(QuizQuestion.id))
-        .filter(QuizQuestion.subject.isnot(None))
-        .group_by(QuizQuestion.subject)
-        .all()
-    )
-    e_rows = dict(
-        db.query(ErrorRecord.subject, func.count(ErrorRecord.id))
-        .filter(ErrorRecord.subject.isnot(None), ErrorRecord.status == "active")
-        .group_by(ErrorRecord.subject)
-        .all()
-    )
-
+    # ``unregistered`` 必须透出：subject_registry 会把"业务表里出现过但字典没有"的
+    # 脏科目以 is_custom=False + unregistered=True 带出（刻意不漏数据）。前端科目页
+    # 靠这个标志区分"内置种子"与"未登记"，聚合器一旦补字段这里就要同步透传，
+    # 否则两者在响应里完全无法分辨。
     subjects = [
         {
-            "subject": r.subject,
-            "chapters": r.chapters or [],
-            "question_types": r.question_types or [],
-            "is_custom": bool(r.is_custom),
-            "question_count": q_rows.get(r.subject, 0),
-            "error_count": e_rows.get(r.subject, 0),
+            "subject": s["subject"],
+            "chapters": s["chapters"],
+            "question_types": s["question_types"],
+            "is_custom": s["is_custom"],
+            "unregistered": s["unregistered"],
+            "question_count": s["question_count"],
+            "error_count": s["error_count"],
         }
-        for r in rows
+        for s in subject_registry.list_subjects(db)["subjects"]
     ]
 
     return {
@@ -454,17 +442,45 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db)):
 
     from services import error_linker, review_service
 
-    chunks = (
-        db.query(KnowledgeChunk)
-        .filter(KnowledgeChunk.subject == kp.subject)
-        .limit(5)
-        .all()
-    ) if not kp.document_id else (
-        db.query(KnowledgeChunk)
-        .filter(KnowledgeChunk.document_id == kp.document_id)
-        .limit(5)
-        .all()
-    )
+    # —— 知识块关联（2026-10 修复）—— #
+    # 问题：knowledge_points.subject 是归一后的主分类（数模电/408/公共课），
+    # 而 knowledge_chunks.subject 保留原始口径（数字电子技术/模拟电子技术/
+    # 计算机学科专业基础408/英语…），直接相等匹配必然为空 → 知识点详情页
+    # 长期「空心」。
+    # 修复：先把归一学科展开成原始学科别名集合，再优先取「正文命中知识点名」
+    # 的块，命中不足时用同科块补齐。
+    _SUBJECT_ALIASES = {
+        "数模电": ["数模电", "数字电子技术", "模拟电子技术", "电路", "电路分析"],
+        "408": ["408", "计算机学科专业基础408"],
+        "信号与系统": ["信号与系统", "通信原理", "光学与工程光学"],
+        "公共课": ["公共课", "英语", "政治", "数学", "普通物理"],
+    }
+    from sqlalchemy import or_ as _or
+
+    subjects = _SUBJECT_ALIASES.get(kp.subject, [kp.subject] if kp.subject else [])
+    base = db.query(KnowledgeChunk)
+    if kp.document_id:
+        chunks = base.filter(KnowledgeChunk.document_id == kp.document_id).limit(8).all()
+    else:
+        chunks = []
+    if not chunks and subjects:
+        # 1) 正文命中知识点名的块最相关
+        named = (
+            base.filter(KnowledgeChunk.subject.in_(subjects))
+            .filter(KnowledgeChunk.text.contains(kp.name))
+            .limit(5)
+            .all()
+        )
+        seen = {c.id for c in named}
+        # 2) 同科块补齐至 5 条
+        filler = (
+            base.filter(KnowledgeChunk.subject.in_(subjects))
+            .filter(~KnowledgeChunk.id.in_(seen) if seen else True)
+            .limit(max(0, 5 - len(named)))
+            .all()
+        )
+        chunks = named + filler
+    chunks = chunks[:5]
 
     return {
         "id": kp.id,

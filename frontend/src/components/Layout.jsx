@@ -1,36 +1,54 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
-import { daysBetween, todayStr } from '../utils/date'
+import { examDeadline, examDaysLeft, resolveExamDate } from '../utils/exam'
 import GlobalAI from './GlobalAI'
 import CommandPalette from './CommandPalette'
 import NoticeUnreadBadge from './NoticeUnreadBadge'
 import { useResolvedTheme } from './UI'
+import { useUiLayout, applyOrder } from '../hooks/useUiLayout'
 import {
   Home, Calendar, Book, Folder, Target,
   Settings, Sun, Moon, Plus, Brain, FileText, GraduationCap,
   MessageSquare, ChevronDown, Search, ChevronRight, Map, Activity
 } from './Icon'
 
-/* 侧边栏考研初试倒计时（27 考研初试：2026-12-19）——借鉴 gitgraduate 导航倒计时细节 */
-const EXAM_DATE = new Date(2026, 11, 19) // 2026-12-19 00:00 本地时间
+/* 侧边栏考研初试倒计时：日期取统一配置（utils/exam.js），未设置时给出设置入口 */
+function useExamDate() {
+  const cd = useStore((s) => s.countdown)
+  const settingDate = useStore((s) => s.settings.examDate)
+  return { examDate: resolveExamDate(cd?.exam_date, settingDate), estimated: !!cd?.is_default }
+}
+
 function ExamCountdown() {
+  const { examDate, estimated } = useExamDate()
+  const deadline = examDeadline(examDate)
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
-  const diff = EXAM_DATE.getTime() - now
+  const pad = (n) => String(n).padStart(2, '0')
+  if (deadline == null) {
+    return (
+      <div className="exam-cd">
+        <span className="ecd-label">考研初试倒计时</span>
+        <div className="ecd-main">
+          <Link className="ecd-unset" to="/settings">设置初试日期</Link>
+        </div>
+      </div>
+    )
+  }
+  const diff = deadline - now
   const done = diff <= 0
   const abs = Math.max(0, diff)
   const days = Math.floor(abs / 86400000)
   const hours = Math.floor(abs / 3600000) % 24
   const mins = Math.floor(abs / 60000) % 60
   const secs = Math.floor(abs / 1000) % 60
-  const pad = (n) => String(n).padStart(2, '0')
   return (
     <div className="exam-cd">
-      <span className="ecd-label">考研初试倒计时</span>
+      <span className="ecd-label">{estimated ? '考研初试倒计时（12/21 预估）' : '考研初试倒计时'}</span>
       <div className="ecd-main">
         {done ? <span className="ecd-days">已开考</span> : (
           <>
@@ -54,7 +72,7 @@ function ExamCountdown() {
    未归入 5+1 的通用能力（仪表盘 / 任务 / 计划 / 设置 / AI）放在「其他」组，
    保证任何页面都能从侧边栏到达，不产生死链。
    ========================================================================== */
-const NAV_MODULES = [
+export const NAV_MODULES = [
   {
     key: 'library',
     title: '学习文库',
@@ -106,7 +124,7 @@ const NAV_MODULES = [
     defaultTo: '/error-review',
     items: [
       { to: '/error-review', label: '错题复盘' },
-      { to: '/notebook', label: '电子错题本' },
+      { to: '/notebook', label: '错题本' },
     ],
   },
   {
@@ -132,7 +150,7 @@ const NAV_MODULES = [
 ]
 
 /* 未归入 5+1 的通用入口（保持可达，避免收敛后出现死链） */
-const NAV_OTHER = [
+export const NAV_OTHER = [
   { to: '/', label: '仪表盘', icon: Home, exact: true },
   { to: '/tasks', label: '任务打卡', icon: Target },
   { to: '/planner', label: '学习计划', icon: Calendar },
@@ -179,7 +197,7 @@ const CRUMB_MAP = {
   '/analysis': '题目分析',
   '/profile': '学习画像',
   '/error-review': '错题复盘',
-  '/notebook': '电子错题本',
+  '/notebook': '错题本',
   '/subjects': '科目管理',
   '/words': '单词记忆',
   '/cards': '记忆卡片',
@@ -250,7 +268,8 @@ export default function Layout({ children }) {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const days = daysBetween(todayStr(), settings.examDate || todayStr())
+  const { examDate, estimated } = useExamDate()
+  const days = examDaysLeft(examDate)
   // V7.0 P0-1：用解析后的主题判断深浅，theme='system' 时按钮显示才与实际渲染一致
   const resolvedTheme = useResolvedTheme(settings.theme)
   const isDark = resolvedTheme === 'dark'
@@ -259,6 +278,18 @@ export default function Layout({ children }) {
     if (exact) return location.pathname === to
     return location.pathname.startsWith(to) && to !== '/'
   }
+
+  /* 侧边栏显隐/排序偏好（设置 → 界面自定义）。只影响渲染：路由表、CRUMB_MAP、
+     模块展开判定仍读完整的 NAV_MODULES，所以藏掉一个模块不会让它的路径变成死链。 */
+  const layout = useUiLayout()
+  const navGroups = useMemo(
+    () => applyOrder(NAV_MODULES.filter((m) => !layout.navHidden.includes(m.key)), layout.navOrder),
+    [layout.navHidden, layout.navOrder],
+  )
+  const otherItems = useMemo(
+    () => NAV_OTHER.filter((n) => !layout.otherHidden.includes(n.to)),
+    [layout.otherHidden],
+  )
 
   /* 5+1 模块展开状态：初始取 localStorage，若当前路由落在某模块下则强制展开该模块 */
   const [openModules, setOpenModules] = useState(() => {
@@ -321,7 +352,7 @@ export default function Layout({ children }) {
 
         <nav className="side-nav">
           {/* 5+1 模块导航：模块标题可点击（跳模块主页 + 展开/收起子项） */}
-          {NAV_MODULES.map((mod) => {
+          {navGroups.map((mod) => {
             const open = openModules.includes(mod.key)
             // 当前路由落在该模块下 → 强制展开（用户手动收起时不记忆，状态以展开为准）
             const containsActive = mod.items.some((n) => isActive(n.to, n.exact))
@@ -361,7 +392,7 @@ export default function Layout({ children }) {
           <div className="nav-group">
             <div className="nav-divider" />
             <div className="nav-group-title">其他</div>
-            {NAV_OTHER.map((n) => (
+            {otherItems.map((n) => (
               <NavLink
                 key={n.to}
                 to={n.to}
@@ -386,9 +417,15 @@ export default function Layout({ children }) {
             <span>{isDark ? '浅色' : '深色'}</span>
           </button>
           <div className="side-countdown">
-            <span className="sc-label">距考试</span>
-            <span className="sc-num">{days > 0 ? days : 0}</span>
-            <span className="sc-label">天</span>
+            {days == null ? (
+              <Link className="sc-unset" to="/settings">未设置初试日期</Link>
+            ) : (
+              <>
+                <span className="sc-label">{estimated ? '距考试（预估）' : '距考试'}</span>
+                <span className="sc-num">{days > 0 ? days : 0}</span>
+                <span className="sc-label">天</span>
+              </>
+            )}
           </div>
         </div>
       </aside>
@@ -407,7 +444,7 @@ export default function Layout({ children }) {
           >
             <Search size={18} />
           </button>
-          <span className="mt-count">倒计时 {days > 0 ? days : 0} 天</span>
+          {days != null && <span className="mt-count">倒计时 {days > 0 ? days : 0} 天</span>}
         </div>
       </header>
 

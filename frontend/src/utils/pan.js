@@ -9,6 +9,7 @@
    ============================================================ */
 
 import { request } from '../api/client'
+import { toDateStr } from './date'
 
 export function getStoredPan() {
   try {
@@ -64,30 +65,36 @@ export async function refreshPanToken(refreshToken) {
   return null
 }
 
-/* 文件列表：GET /api/netdisk/files?path=... 返回 local_files + api_files */
+/* 文件列表：GET /api/netdisk/files?path=... 返回 local_files + api_files
+ *
+ * 两个来源字段名不一样（百度是 server_filename/server_mtime 秒级，本地记录是
+ * file_name 且没有 mtime），页面统一只吃 name / date / size_kb —— 在这里归一，
+ * 免得每个调用点各自猜。size 用 KB：fmtFileSize 的入参就是 KB。 */
+function normalize(f, dir) {
+  const mtime = f.server_mtime || f.mtime || null
+  return {
+    // 本地行的 id 是数据库主键，和百度 fs_id 不是同一个命名空间。旧写法
+    // `f.fs_id || f.id` 会把主键当 fs_id 传给取流接口，链接必然 404；
+    // 现在后端 local_files 直出真 fs_id，拿不到就留 null 让页面明说。
+    fs_id: f.fs_id ?? null,
+    name: f.server_filename || f.filename || f.file_name || '',
+    path: f.path || dir,
+    size_kb: Math.round((f.size || 0) / 1024),
+    date: mtime ? toDateStr(new Date(mtime * 1000)) : (f.created_at ? String(f.created_at).slice(0, 10) : ''),
+    category: f.category,
+    isdir: !!f.isdir,
+  }
+}
+
 export async function listPanFiles(accessToken, dir = '/') {
   const j = await request('/netdisk/files', { params: { path: dir } })
-  const local = (j.local_files || []).map((f) => ({
-    fs_id: f.fs_id || f.id,
-    server_filename: f.file_name,
-    path: f.path,
-    size: f.size,
-    category: f.category,
-    isdir: 0
-  }))
-  const api = (j.api_files || []).map((f) => ({
-    fs_id: f.fs_id,
-    server_filename: f.server_filename || f.filename,
-    path: f.path || dir,
-    size: f.size,
-    category: f.category,
-    isdir: f.isdir || 0
-  }))
-  // 合并去重
+  const api = (j.api_files || []).map((f) => normalize(f, dir))
+  const local = (j.local_files || []).map((f) => normalize(f, dir))
+  // 合并去重：有真 fs_id 就按 fs_id，否则退回文件名（不能用数据库主键冒充 fs_id）
   const seen = new Set()
   const merged = []
   for (const f of [...api, ...local]) {
-    const k = f.fs_id || f.server_filename
+    const k = f.fs_id ? `fs:${f.fs_id}` : `name:${f.name}`
     if (seen.has(k)) continue
     seen.add(k)
     merged.push(f)
@@ -95,21 +102,8 @@ export async function listPanFiles(accessToken, dir = '/') {
   return merged
 }
 
-/* 文件元信息（含 dlink 预览）：后端通过 preview 接口按 fs_id 获取 */
-export async function getFileMetas(accessToken, fsIds) {
-  const metas = {}
-  for (const id of fsIds.slice(0, 20)) {
-    try {
-      // 单个文件失败不影响整体：沿用原有"静默跳过"语义
-      const j = await request(`/netdisk/preview/${id}`)
-      if (j && j.dlink) metas[id] = { dlink: j.dlink, file_name: j.file_name }
-    } catch { /* ignore */ }
-  }
-  return { list: Object.keys(metas).map((fs_id) => ({ fs_id, ...metas[fs_id] })) }
-}
-
 export default {
   getStoredPan, storePan, clearPan,
   getStatus, getAuthUrl, exchangeToken, refreshPanToken,
-  listPanFiles, getFileMetas
+  listPanFiles
 }

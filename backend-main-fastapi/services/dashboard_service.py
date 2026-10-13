@@ -25,6 +25,7 @@ class DashboardService:
             university = goal.university
             major = goal.major
             total_score_target = goal.total_score_target
+            is_default = False
         else:
             # 默认考研日期：12月倒数第二个周末（简化为12月21日）
             today = datetime.date.today()
@@ -33,6 +34,7 @@ class DashboardService:
             university = None
             major = None
             total_score_target = None
+            is_default = True
 
         today = datetime.date.today()
         days_left = (exam_date - today).days
@@ -44,6 +46,8 @@ class DashboardService:
             "major": major,
             "total_score_target": total_score_target,
             "is_passed": days_left < 0,
+            # 未配置 Goal 时给出的是 12/21 估算值，前端必须标成「预估」而不是当成官方日期
+            "is_default": is_default,
         }
 
     @staticmethod

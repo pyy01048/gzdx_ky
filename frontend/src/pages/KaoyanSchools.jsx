@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { kaoyanApi } from '../api/kaoyanApi'
+import { request } from '../api/client'
 import EChart from '../components/EChart'
 import { useThemeTokens } from '../components/themeTokens'
 import { toast, Empty } from '../components/UI'
+import useStore from '../store/useStore'
+import { resolveExamDate } from '../utils/exam'
 import './KaoyanSchools.css'
 
 /* ==========================================================================
@@ -17,6 +20,23 @@ import './KaoyanSchools.css'
      - 排序走后端 sort 参数（热度/拟录取/复录比/录取均分/名称），切换即重新拉取。
    所有空值一律渲染「—」，前端不臆造数字。
    ========================================================================== */
+
+/* 语料可靠度徽标：口径 = 专业初试「专业课」名精确匹配知识库 documents.subject
+   （后端 services/major_coverage.py，公共课数学/英语/政治不参与匹配）。
+   未覆盖只代表"库里没有同名学科的文档"，不等于答不了，所以文案用「未覆盖」。 */
+const COV_LABEL = {
+  covered: (c) => `语料 ${c.documents} 篇`,
+  thin: (c) => `语料仅 ${c.documents} 篇`,
+  unindexed: (c) => `${c.documents} 篇已归档未入库`,
+  uncovered: () => '语料未覆盖',
+}
+
+function covTitle(c) {
+  if (!c || c.state === 'public_only') return ''
+  const conf = c.avg_confidence == null ? '—' : c.avg_confidence
+  return `专业课「${c.subject || '—'}」按名称精确匹配知识库文档学科：`
+    + `${c.documents} 篇 / ${c.chunks} 个可检索块 / 平均打标置信 ${conf}`
+}
 
 const PAGE_SIZE = 12
 const FAV_KEY = 'ky_fav_school_ids'
@@ -32,11 +52,10 @@ const SORTS = [
   { key: 'name', label: '名称' },
 ]
 
-/* 多考试倒计时默认项（用户可在界面增删，localStorage 持久化） */
-const DEFAULT_EXAMS = [
-  { id: 'kaoyan27', name: '27考研初试', date: '2026-12-19T08:30:00+08:00', main: true },
-  { id: 'cet', name: '四六级笔试', date: '2026-12-12T09:00:00+08:00', main: false },
-]
+/* 多考试倒计时的初试日期来自 utils/exam（后端 Goal → 本地设置 → 未配置）。
+   这里原先硬编码 2026-12-19 与四六级 2026-12-12，同一应用会出现两套"还剩 X 天"。
+   LEGACY_SEEDED_IDS 只用于清理旧版本自动写进 localStorage 的那两条假日期。 */
+const LEGACY_SEEDED_IDS = new Set(['kaoyan27', 'cet'])
 
 /* 倒计时：返回 {days, h, m, s} */
 function countdownParts(dateStr, nowMs) {
@@ -143,6 +162,7 @@ export default function KaoyanSchools() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sort, setSort] = useState('heat')      // 后端 sort 参数，默认热度
+  const [covMap, setCovMap] = useState(null)     // 语料覆盖 school_id → {majors, covered}
 
   /* ---- 筛选（draft→apply，对齐参考件交互） ----
      数值筛选：录取均分 / 复录比 范围（min~max，空表示不限制） */
@@ -166,10 +186,28 @@ export default function KaoyanSchools() {
   const [exams, setExams] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(EXAM_KEY) || 'null')
-      if (Array.isArray(saved) && saved.length) return saved
+      if (Array.isArray(saved)) {
+        // 只留用户自己添加的（id 形如 u_<ts>）；旧版本在这里自动播种过写死的日期，
+        // 那些条目必须清掉，否则删了常量也删不掉 localStorage 里的旧值。
+        return saved.filter((e) => e && e.date && !LEGACY_SEEDED_IDS.has(e.id))
+      }
     } catch {}
-    return DEFAULT_EXAMS
+    return []
   })
+
+  /* 主考试日期走 utils/exam 的单一口径：后端 Goal → 本地设置 → 未配置（渲染空态） */
+  const cd = useStore((s) => s.countdown)
+  const settingExamDate = useStore((s) => s.settings.examDate)
+  const mainExamDate = resolveExamDate(cd?.exam_date, settingExamDate)
+  const cdList = useMemo(() => {
+    if (!mainExamDate) return exams
+    return [{
+      id: '__main',
+      name: `考研初试${cd?.is_default ? '（12/21 预估，可在设置修改）' : ''}`,
+      date: `${mainExamDate}T08:30:00+08:00`,
+      main: true,
+    }, ...exams]
+  }, [exams, mainExamDate, cd])
   const [showAddExam, setShowAddExam] = useState(false)
   const [newExam, setNewExam] = useState({ name: '', date: '' })
 
@@ -215,11 +253,12 @@ export default function KaoyanSchools() {
   const load = useCallback(async (sortKey) => {
     setLoading(true); setError(''); setAnalysisError('')
     try {
-      const [schools, schools0854, dashboard, hot] = await Promise.all([
+      const [schools, schools0854, dashboard, hot, cov] = await Promise.all([
         fetchAllSchools({ sort: sortKey }),
         fetchAllSchools({ subject_code: '0854' }).catch(() => []),
         kaoyanApi.dashboardAnalysis().catch(() => null),
         kaoyanApi.hot({ limit: 10 }).catch(() => ({ items: [] })),
+        request('/quality/major-coverage').catch(() => null),
       ])
       // 0854 专项：按 id 集合标记，供复选框过滤
       const ids0854 = new Set((schools0854 || []).map((s) => s.id))
@@ -227,6 +266,7 @@ export default function KaoyanSchools() {
       setAnalysis(dashboard)
       if (!dashboard) setAnalysisError('数据分析聚合接口暂不可用，下方图表已隐藏')
       setHotList((hot && hot.items) || [])
+      setCovMap((cov && cov.by_school) || {})
     } catch (e) {
       setError(e?.message || '院校数据加载失败')
     } finally {
@@ -605,7 +645,14 @@ export default function KaoyanSchools() {
 
       {/* V10: 多考试倒计时 */}
       <div className="ky-countdown-strip">
-        {exams.map((e) => {
+        {cdList.length === 0 && (
+          <div className="ky-cd-card">
+            <div className="ky-cd-name">倒计时未配置</div>
+            <div className="ky-cd-pill">—</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>去「设置」填初试日期，或点右侧添加考试</div>
+          </div>
+        )}
+        {cdList.map((e) => {
           const p = countdownParts(e.date, now)
           return (
             <div key={e.id} className={`ky-cd-card ${e.main ? 'main' : ''}`}>
@@ -863,6 +910,18 @@ export default function KaoyanSchools() {
                       <span className="ky-card-star" title={`星级 ${s.star}`} style={{ color: 'var(--gold)' }}>{starText(s.star)}</span>
                     )}
                     {s.has0854 && <span className="ky-card-0854">0854 专项</span>}
+                    {covMap && (() => {
+                      const c = covMap[s.id]
+                      /* 库内只有 223/577 所院校有专业方向记录；没有记录时不渲染徽标
+                         （那是"招生数据缺失"，不是"语料缺失"，标出来只会变成 354 个同色噪声）。 */
+                      if (!c || !c.majors) return null
+                      return (
+                        <span className={`ky-cov ky-cov-${c.covered > 0 ? 'covered' : 'uncovered'}`}
+                          title={`初试专业课名精确匹配知识库文档学科：${c.majors} 个专业方向中 ${c.covered} 个有语料`}>
+                          语料覆盖 {c.covered}/{c.majors}
+                        </span>
+                      )
+                    })()}
                   </div>
 
                   <div className="ky-card-metrics">
@@ -905,7 +964,9 @@ export default function KaoyanSchools() {
 
                   {isOpen && (
                     <div className="ky-card-expand">
-                      <div className="ky-expand-title">专业方向 / 招生科目</div>
+                      <div className="ky-expand-title">专业方向 / 招生科目
+                        <span className="ky-expand-hint">徽标＝知识库语料覆盖（未覆盖＝库里没有同名科目语料，不代表答不了）</span>
+                      </div>
                       {majorsLoading === s.id ? (
                         <div className="ky-expand-empty">加载专业方向中…</div>
                       ) : majors && majors.length ? (
@@ -915,6 +976,16 @@ export default function KaoyanSchools() {
                               <span className="ky-major-code">{m.code}</span>
                               <span className="ky-major-name">{m.name}</span>
                               {m.exam_subjects && <span className="ky-major-exam">{m.exam_subjects}</span>}
+                              {m.kb_coverage && m.kb_coverage.state !== 'public_only' && (
+                                <span
+                                  className={`ky-cov ky-cov-${m.kb_coverage.state}`}
+                                  title={covTitle(m.kb_coverage)}
+                                >
+                                  {COV_LABEL[m.kb_coverage.state](m.kb_coverage)}
+                                  {m.kb_coverage.avg_confidence != null
+                                    && m.kb_coverage.avg_confidence < 0.4 && ' · 置信低'}
+                                </span>
+                              )}
                             </li>
                           ))}
                         </ul>

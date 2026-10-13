@@ -1,0 +1,101 @@
+{
+  "shard": 4,
+  "items": [
+    {
+      "doc_id": 1960,
+      "media_id": "pdf_b6e72461ef4664490f7889896f15acdd_23af753a5e50801eaa524228c752c80a001aa4b2d3800376",
+      "title": "逻辑代数的化简专题-第2部分-试题部分.pdf",
+      "subject": "数模电",
+      "media_type": 1,
+      "folder_path": "考研资料数据集V1.0",
+      "file_size": 1062857,
+      "subj_rank": 0,
+      "media_rank": 0,
+      "rank": 32
+    },
+    {
+      "doc_id": 1951,
+      "media_id": "pdf_b6e72461ef4664490f7889896f15acdd_e71eeeaeac66528681b0dc6d4db594e7001aa4b2d3800376",
+      "title": "逻辑代数专题(补充)-试题部分(1).pdf",
+      "subject": "数模电",
+      "media_type": 1,
+      "folder_path": "考研资料数据集V1.0",
+      "file_size": 1006128,
+      "subj_rank": 0,
+      "media_rank": 0,
+      "rank": 33
+    },
+    {
+      "doc_id": 1952,
+      "media_id": "pdf_b6e72461ef4664490f7889896f15acdd_f2671e4844ad113794afd17c2de95acd001aa4b2d3800376",
+      "title": "逻辑代数专题(补充)-试题部分.pdf",
+      "subject": "数模电",
+      "media_type": 1,
+      "folder_path": "考研资料数据集V1.0",
+      "file_size": 1006128,
+      "subj_rank": 0,
+      "media_rank": 0,
+      "rank": 34
+    },
+    {
+      "doc_id": 2092,
+      "media_id": "pdf_b6e72461ef4664490f7889896f15acdd_9c894f671dcf43f1520dd930ed3c86b5001aa4b2d3800376",
+      "title": "数字电子技术试题及答案.pdf",
+      "subject": "数模电",
+      "media_type": 1,
+      "folder_path": "考研资料数据集V1.0/数电资料/数电",
+      "file_size": 982124,
+      "subj_rank": 0,
+      "media_rank": 0,
+      "rank": 35
+    },
+    {
+      "doc_id": 1969,
+      "media_id": "pdf_b6e72461ef4664490f7889896f15acdd_a7bd0e8d70498cb1439fe044f97c8a83001aa4b2d3800376",
+      "title": "门电路专题-试题部分(1).pdf",
+      "subject": "数模电",
+      "media_type": 1,
+      "folder_path": "考研资料数据集V1.0",
+      "file_size": 948030,
+      "subj_rank": 0,
+      "media_rank": 0,
+      "rank": 36
+    },
+    {
+      "doc_id": 1970,
+      "media_id": "pdf_b6e72461ef4664490f7889896f15acdd_5df41232a6513b3e6abd5edccc17472b001aa4b2d3800376",
+      "title": "门电路专题-试题部分.pdf",
+      "subject": "数模电",
+      "media_type": 1,
+      "folder_path": "考研资料数据集V1.0",
+      "file_size": 948030,
+      "subj_rank": 0,
+      "media_rank": 0,
+      "rank": 37
+    },
+    {
+      "doc_id": 1955,
+      "media_id": "pdf_b6e72461ef4664490f7889896f15acdd_c8cb47771ea178d0a6bd74bc66368aa3001aa4b2d3800376",
+      "title": "逻辑代数专题-试题部分(1).pdf",
+      "subject": "数模电",
+      "media_type": 1,
+      "folder_path": "考研资料数据集V1.0",
+      "file_size": 759840,
+      "subj_rank": 0,
+      "media_rank": 0,
+      "rank": 38
+    },
+    {
+      "doc_id": 1956,
+      "media_id": "pdf_b6e72461ef4664490f7889896f15acdd_20caccacbc3e880f14a845ad3641bd5d001aa4b2d3800376",
+      "title": "逻辑代数专题-试题部分.pdf",
+      "subject": "数模电",
+      "media_type": 1,
+      "folder_path": "考研资料数据集V1.0",
+      "file_size": 759840,
+      "subj_rank": 0,
+      "media_rank": 0,
+      "rank": 39
+    }
+  ]
+}

@@ -84,10 +84,13 @@ class ReviewScheduler:
     def get_due_flashcards(db: Session, limit: int = 100) -> List[Flashcard]:
         """获取今日待复习卡片。"""
         now = utcnow()  # naive UTC，与 DB 列比较（P0-4）
+        # V12 修复：next_review 为 NULL 的卡片是"新卡"（从未学习），不计入今日待复习。
+        # 旧逻辑把 NULL 全算到期 → 500/500 卡全部"今日待复习"，调度失真。
         return (
             db.query(Flashcard)
             .filter(
-                (Flashcard.next_review == None) | (Flashcard.next_review <= now)
+                (Flashcard.next_review != None),
+                (Flashcard.next_review <= now),
             )
             .order_by(Flashcard.next_review.asc())
             .limit(limit)

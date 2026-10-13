@@ -1,0 +1,3737 @@
+[
+ {
+  "dwdm": "10001",
+  "dwmc": "北京大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10002",
+  "dwmc": "中国人民大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10003",
+  "dwmc": "清华大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10004",
+  "dwmc": "北京交通大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10005",
+  "dwmc": "北京工业大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10006",
+  "dwmc": "北京航空航天大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10007",
+  "dwmc": "北京理工大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10008",
+  "dwmc": "北京科技大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10009",
+  "dwmc": "北方工业大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10010",
+  "dwmc": "北京化工大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10055",
+  "dwmc": "南开大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10056",
+  "dwmc": "天津大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10057",
+  "dwmc": "天津科技大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10058",
+  "dwmc": "天津工业大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10059",
+  "dwmc": "中国民航大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10060",
+  "dwmc": "天津理工大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10061",
+  "dwmc": "天津农学院",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10062",
+  "dwmc": "天津医科大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10063",
+  "dwmc": "天津中医药大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10065",
+  "dwmc": "天津师范大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10075",
+  "dwmc": "河北大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10076",
+  "dwmc": "河北工程大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10077",
+  "dwmc": "河北地质大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10079",
+  "dwmc": "华北电力大学(保定)",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10080",
+  "dwmc": "河北工业大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10081",
+  "dwmc": "华北理工大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10082",
+  "dwmc": "河北科技大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10084",
+  "dwmc": "河北建筑工程学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10086",
+  "dwmc": "河北农业大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10089",
+  "dwmc": "河北医科大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10108",
+  "dwmc": "山西大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10109",
+  "dwmc": "太原科技大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10110",
+  "dwmc": "中北大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10112",
+  "dwmc": "太原理工大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10113",
+  "dwmc": "山西农业大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10114",
+  "dwmc": "山西医科大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10117",
+  "dwmc": "长治医学院",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10118",
+  "dwmc": "山西师范大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10119",
+  "dwmc": "太原师范学院",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10120",
+  "dwmc": "山西大同大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10126",
+  "dwmc": "内蒙古大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10127",
+  "dwmc": "内蒙古科技大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10128",
+  "dwmc": "内蒙古工业大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10129",
+  "dwmc": "内蒙古农业大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10132",
+  "dwmc": "内蒙古医科大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10135",
+  "dwmc": "内蒙古师范大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10136",
+  "dwmc": "内蒙古民族大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10138",
+  "dwmc": "赤峰大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10139",
+  "dwmc": "内蒙古财经大学",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10819",
+  "dwmc": "呼伦贝尔学院",
+  "province_code": "15",
+  "province": "内蒙",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10140",
+  "dwmc": "辽宁大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10141",
+  "dwmc": "大连理工大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10142",
+  "dwmc": "沈阳工业大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10143",
+  "dwmc": "沈阳航空航天大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10144",
+  "dwmc": "沈阳理工大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10145",
+  "dwmc": "东北大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10146",
+  "dwmc": "辽宁科技大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10147",
+  "dwmc": "辽宁工程技术大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10148",
+  "dwmc": "辽宁石油化工大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10149",
+  "dwmc": "沈阳化工大学",
+  "province_code": "21",
+  "province": "辽宁",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10183",
+  "dwmc": "吉林大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10184",
+  "dwmc": "延边大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10186",
+  "dwmc": "长春理工大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10188",
+  "dwmc": "东北电力大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10190",
+  "dwmc": "长春工业大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10191",
+  "dwmc": "吉林建筑大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10192",
+  "dwmc": "吉林化工大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10193",
+  "dwmc": "吉林农业大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10199",
+  "dwmc": "长春中医药大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10200",
+  "dwmc": "东北师范大学",
+  "province_code": "22",
+  "province": "吉林",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10212",
+  "dwmc": "黑龙江大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10213",
+  "dwmc": "哈尔滨工业大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10214",
+  "dwmc": "哈尔滨理工大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10217",
+  "dwmc": "哈尔滨工程大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10219",
+  "dwmc": "黑龙江科技大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10220",
+  "dwmc": "东北石油大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10222",
+  "dwmc": "佳木斯大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10223",
+  "dwmc": "黑龙江八一农垦大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10224",
+  "dwmc": "东北农业大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10225",
+  "dwmc": "东北林业大学",
+  "province_code": "23",
+  "province": "黑龙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10246",
+  "dwmc": "复旦大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10247",
+  "dwmc": "同济大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10248",
+  "dwmc": "上海交通大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10251",
+  "dwmc": "华东理工大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10252",
+  "dwmc": "上海理工大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10254",
+  "dwmc": "上海海事大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10255",
+  "dwmc": "东华大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10256",
+  "dwmc": "上海电力大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10259",
+  "dwmc": "上海应用技术大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10264",
+  "dwmc": "上海海洋大学",
+  "province_code": "31",
+  "province": "上海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10284",
+  "dwmc": "南京大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10285",
+  "dwmc": "苏州大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10286",
+  "dwmc": "东南大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10287",
+  "dwmc": "南京航空航天大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10288",
+  "dwmc": "南京理工大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10289",
+  "dwmc": "江苏科技大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10290",
+  "dwmc": "中国矿业大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10291",
+  "dwmc": "南京工业大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10292",
+  "dwmc": "常州大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10293",
+  "dwmc": "南京邮电大学",
+  "province_code": "32",
+  "province": "江苏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10335",
+  "dwmc": "浙江大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10336",
+  "dwmc": "杭州电子科技大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10337",
+  "dwmc": "浙江工业大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10338",
+  "dwmc": "浙江理工大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10340",
+  "dwmc": "浙江海洋大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10341",
+  "dwmc": "浙江农林大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10343",
+  "dwmc": "温州医科大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10344",
+  "dwmc": "浙江中医药大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10345",
+  "dwmc": "浙江师范大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10346",
+  "dwmc": "杭州师范大学",
+  "province_code": "33",
+  "province": "浙江",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10357",
+  "dwmc": "安徽大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10358",
+  "dwmc": "中国科学技术大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10359",
+  "dwmc": "合肥工业大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10360",
+  "dwmc": "安徽工业大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10361",
+  "dwmc": "安徽理工大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10363",
+  "dwmc": "安徽工程大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10364",
+  "dwmc": "安徽农业大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10366",
+  "dwmc": "安徽医科大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10367",
+  "dwmc": "蚌埠医科大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10368",
+  "dwmc": "皖南医科大学",
+  "province_code": "34",
+  "province": "安徽",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10384",
+  "dwmc": "厦门大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10385",
+  "dwmc": "华侨大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10386",
+  "dwmc": "福州大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10388",
+  "dwmc": "福建理工大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10389",
+  "dwmc": "福建农林大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10390",
+  "dwmc": "集美大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10392",
+  "dwmc": "福建医科大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10393",
+  "dwmc": "福建中医药大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10394",
+  "dwmc": "福建师范大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10395",
+  "dwmc": "闽江大学",
+  "province_code": "35",
+  "province": "福建",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10403",
+  "dwmc": "南昌大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10404",
+  "dwmc": "华东交通大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10405",
+  "dwmc": "东华理工大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10406",
+  "dwmc": "南昌航空大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10407",
+  "dwmc": "江西理工大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10408",
+  "dwmc": "景德镇陶瓷大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10410",
+  "dwmc": "江西农业大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10412",
+  "dwmc": "江西中医药大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10413",
+  "dwmc": "赣南医科大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10414",
+  "dwmc": "江西师范大学",
+  "province_code": "36",
+  "province": "江西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10422",
+  "dwmc": "山东大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10423",
+  "dwmc": "中国海洋大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10424",
+  "dwmc": "山东科技大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10425",
+  "dwmc": "中国石油大学(华东)",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10426",
+  "dwmc": "青岛科技大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10427",
+  "dwmc": "济南大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10429",
+  "dwmc": "青岛理工大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10430",
+  "dwmc": "山东建筑大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10431",
+  "dwmc": "齐鲁工业大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10433",
+  "dwmc": "山东理工大学",
+  "province_code": "37",
+  "province": "山东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10078",
+  "dwmc": "华北水利水电大学",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10459",
+  "dwmc": "郑州大学",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10460",
+  "dwmc": "河南理工大学",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10462",
+  "dwmc": "郑州轻工业大学",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10463",
+  "dwmc": "河南工业大学",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10464",
+  "dwmc": "河南科技大学",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10465",
+  "dwmc": "中原工学院",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10466",
+  "dwmc": "河南农业大学",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10467",
+  "dwmc": "河南科技学院",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10471",
+  "dwmc": "河南中医药大学",
+  "province_code": "41",
+  "province": "河南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10486",
+  "dwmc": "武汉大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10487",
+  "dwmc": "华中科技大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10488",
+  "dwmc": "武汉科技大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10489",
+  "dwmc": "长江大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10490",
+  "dwmc": "武汉工程大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10491",
+  "dwmc": "中国地质大学(武汉)",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10495",
+  "dwmc": "武汉纺织大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10496",
+  "dwmc": "武汉轻工大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10497",
+  "dwmc": "武汉理工大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10500",
+  "dwmc": "湖北工业大学",
+  "province_code": "42",
+  "province": "湖北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10530",
+  "dwmc": "湘潭大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10531",
+  "dwmc": "吉首大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10532",
+  "dwmc": "湖南大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10533",
+  "dwmc": "中南大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10534",
+  "dwmc": "湖南科技大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10536",
+  "dwmc": "长沙理工大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10537",
+  "dwmc": "湖南农业大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10538",
+  "dwmc": "中南林业科技大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10541",
+  "dwmc": "湖南中医药大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10542",
+  "dwmc": "湖南师范大学",
+  "province_code": "43",
+  "province": "湖南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10558",
+  "dwmc": "中山大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10559",
+  "dwmc": "暨南大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10560",
+  "dwmc": "汕头大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10561",
+  "dwmc": "华南理工大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10564",
+  "dwmc": "华南农业大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10566",
+  "dwmc": "广东海洋大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10570",
+  "dwmc": "广州医科大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10571",
+  "dwmc": "广东医科大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10572",
+  "dwmc": "广州中医药大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10573",
+  "dwmc": "广东药科大学",
+  "province_code": "44",
+  "province": "广东",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10593",
+  "dwmc": "广西大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10594",
+  "dwmc": "广西科技大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10595",
+  "dwmc": "桂林电子科技大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10596",
+  "dwmc": "桂林理工大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10598",
+  "dwmc": "广西医科大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10599",
+  "dwmc": "右江民族医学院",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10600",
+  "dwmc": "广西中医药大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10601",
+  "dwmc": "桂林医科大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10602",
+  "dwmc": "广西师范大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10603",
+  "dwmc": "南宁师范大学",
+  "province_code": "45",
+  "province": "广西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10589",
+  "dwmc": "海南大学",
+  "province_code": "46",
+  "province": "海南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "11100",
+  "dwmc": "海南热带海洋学院",
+  "province_code": "46",
+  "province": "海南",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "11658",
+  "dwmc": "海南师范大学",
+  "province_code": "46",
+  "province": "海南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "11810",
+  "dwmc": "海南医科大学",
+  "province_code": "46",
+  "province": "海南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "13892",
+  "dwmc": "三亚学院",
+  "province_code": "46",
+  "province": "海南",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10611",
+  "dwmc": "重庆大学",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10617",
+  "dwmc": "重庆邮电大学",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10618",
+  "dwmc": "重庆交通大学",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10631",
+  "dwmc": "重庆医科大学",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10635",
+  "dwmc": "西南大学",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10637",
+  "dwmc": "重庆师范大学",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10642",
+  "dwmc": "重庆文理学院",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10643",
+  "dwmc": "重庆三峡科技大学",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10647",
+  "dwmc": "长江师范学院",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10650",
+  "dwmc": "四川外国语大学",
+  "province_code": "50",
+  "province": "重庆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10610",
+  "dwmc": "四川大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10613",
+  "dwmc": "西南交通大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10614",
+  "dwmc": "电子科技大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10615",
+  "dwmc": "西南石油大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10616",
+  "dwmc": "成都理工大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10619",
+  "dwmc": "西南科技大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10621",
+  "dwmc": "成都信息工程大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10622",
+  "dwmc": "四川轻化工大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10623",
+  "dwmc": "西华大学",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10624",
+  "dwmc": "中国民用航空飞行学院",
+  "province_code": "51",
+  "province": "四川",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10657",
+  "dwmc": "贵州大学",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10660",
+  "dwmc": "贵州医科大学",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10661",
+  "dwmc": "遵义医科大学",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10662",
+  "dwmc": "贵州中医药大学",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10663",
+  "dwmc": "贵州师范大学",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10664",
+  "dwmc": "遵义师范学院",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10665",
+  "dwmc": "铜仁学院",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10670",
+  "dwmc": "黔南民族师范学院",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10671",
+  "dwmc": "贵州财经大学",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10672",
+  "dwmc": "贵州民族大学",
+  "province_code": "52",
+  "province": "贵州",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10673",
+  "dwmc": "云南大学",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10674",
+  "dwmc": "昆明理工大学",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10676",
+  "dwmc": "云南农业大学",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10677",
+  "dwmc": "西南林业大学",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10678",
+  "dwmc": "昆明医科大学",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10679",
+  "dwmc": "大理大学",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10680",
+  "dwmc": "云南中医药大学",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10681",
+  "dwmc": "云南师范大学",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10684",
+  "dwmc": "曲靖师范学院",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10687",
+  "dwmc": "红河学院",
+  "province_code": "53",
+  "province": "云南",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10693",
+  "dwmc": "西藏农牧大学",
+  "province_code": "54",
+  "province": "西藏",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10694",
+  "dwmc": "西藏大学",
+  "province_code": "54",
+  "province": "西藏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10695",
+  "dwmc": "西藏民族大学",
+  "province_code": "54",
+  "province": "西藏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10696",
+  "dwmc": "西藏藏医药大学",
+  "province_code": "54",
+  "province": "西藏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10697",
+  "dwmc": "西北大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10698",
+  "dwmc": "西安交通大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10699",
+  "dwmc": "西北工业大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10700",
+  "dwmc": "西安理工大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10701",
+  "dwmc": "西安电子科技大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10702",
+  "dwmc": "西安工业大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10703",
+  "dwmc": "西安建筑科技大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10704",
+  "dwmc": "西安科技大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10705",
+  "dwmc": "西安石油大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10708",
+  "dwmc": "陕西科技大学",
+  "province_code": "61",
+  "province": "陕西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10730",
+  "dwmc": "兰州大学",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10731",
+  "dwmc": "兰州理工大学",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10732",
+  "dwmc": "兰州交通大学",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10733",
+  "dwmc": "甘肃农业大学",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10735",
+  "dwmc": "甘肃中医药大学",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10736",
+  "dwmc": "西北师范大学",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10737",
+  "dwmc": "兰州城市学院",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10738",
+  "dwmc": "陇东学院",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10739",
+  "dwmc": "天水师范大学",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10740",
+  "dwmc": "河西学院",
+  "province_code": "62",
+  "province": "甘肃",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10743",
+  "dwmc": "青海大学",
+  "province_code": "63",
+  "province": "青海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10746",
+  "dwmc": "青海师范大学",
+  "province_code": "63",
+  "province": "青海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10748",
+  "dwmc": "青海民族大学",
+  "province_code": "63",
+  "province": "青海",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10749",
+  "dwmc": "宁夏大学",
+  "province_code": "64",
+  "province": "宁夏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10752",
+  "dwmc": "宁夏医科大学",
+  "province_code": "64",
+  "province": "宁夏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10753",
+  "dwmc": "宁夏师范大学",
+  "province_code": "64",
+  "province": "宁夏",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "11407",
+  "dwmc": "北方民族大学",
+  "province_code": "64",
+  "province": "宁夏",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "12544",
+  "dwmc": "宁夏理工学院",
+  "province_code": "64",
+  "province": "宁夏",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10755",
+  "dwmc": "新疆大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10757",
+  "dwmc": "塔里木大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10758",
+  "dwmc": "新疆农业大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10759",
+  "dwmc": "石河子大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10760",
+  "dwmc": "新疆医科大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10762",
+  "dwmc": "新疆师范大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10763",
+  "dwmc": "喀什大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10764",
+  "dwmc": "伊犁师范大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10766",
+  "dwmc": "新疆财经大学",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10768",
+  "dwmc": "新疆艺术学院",
+  "province_code": "65",
+  "province": "新疆",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10012",
+  "dwmc": "北京服装学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10015",
+  "dwmc": "北京印刷学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10017",
+  "dwmc": "北京石油化工学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10018",
+  "dwmc": "北京电子科技学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10020",
+  "dwmc": "北京农学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10023",
+  "dwmc": "北京协和医学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10029",
+  "dwmc": "首都体育学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10031",
+  "dwmc": "北京第二外国语学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10037",
+  "dwmc": "北京物资学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10040",
+  "dwmc": "外交学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "80901",
+  "dwmc": "中国科学技术信息研究所",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82702",
+  "dwmc": "机械科学研究总院(北京机械工业自动化研究所)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82703",
+  "dwmc": "机械科学研究总院(北京机电研究所)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82902",
+  "dwmc": "中国航空研究院(北京航空精密机械研究所)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82932",
+  "dwmc": "中国航空研究院(北京长城计量测试技术研究所)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83001",
+  "dwmc": "华北计算机系统工程研究所",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83107",
+  "dwmc": "中国兵器科学研究院(中国北方车辆研究所)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83702",
+  "dwmc": "北京市科学技术研究院资源环境研究所",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83902",
+  "dwmc": "交通运输部公路科学研究所",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "84504",
+  "dwmc": "北京生物制品研究所",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "14430",
+  "dwmc": "中国科学院大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "14596",
+  "dwmc": "中国社会科学院大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82101",
+  "dwmc": "中国农业科学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82501",
+  "dwmc": "中国地质科学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "84502",
+  "dwmc": "中国中医科学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "92101",
+  "dwmc": "军事科学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "81601",
+  "dwmc": "中国财政科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82001",
+  "dwmc": "商务部国际贸易经济合作研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82201",
+  "dwmc": "中国林业科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82301",
+  "dwmc": "中国水利水电科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82302",
+  "dwmc": "中国电力科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82401",
+  "dwmc": "中国建筑科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82402",
+  "dwmc": "中国城市规划设计研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82403",
+  "dwmc": "中国建筑设计研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82405",
+  "dwmc": "中国环境科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82605",
+  "dwmc": "冶金自动化研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "84202",
+  "dwmc": "中国电影艺术研究中心",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "84501",
+  "dwmc": "中国疾病预防控制中心",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "84512",
+  "dwmc": "国家老年医学中心",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "85304",
+  "dwmc": "国家海洋环境预报中心",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10011",
+  "dwmc": "北京工商大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10013",
+  "dwmc": "北京邮电大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10019",
+  "dwmc": "中国农业大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10033",
+  "dwmc": "中国传媒大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10041",
+  "dwmc": "中国人民公安大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10046",
+  "dwmc": "中国音乐学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10049",
+  "dwmc": "中国戏曲学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10053",
+  "dwmc": "中国政法大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "11413",
+  "dwmc": "中国矿业大学(北京)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "11414",
+  "dwmc": "中国石油大学(北京)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "11415",
+  "dwmc": "中国地质大学(北京)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "11149",
+  "dwmc": "中华女子学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "80401",
+  "dwmc": "北京国家会计学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "84601",
+  "dwmc": "国家体育总局体育科学研究所",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "85407",
+  "dwmc": "应急管理部国家自然灾害防治研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "92001",
+  "dwmc": "国防大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82803",
+  "dwmc": "核工业第二研究设计院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82806",
+  "dwmc": "核工业北京地质研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82807",
+  "dwmc": "核工业北京化工冶金研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82920",
+  "dwmc": "中国航空工业规划设计研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83504",
+  "dwmc": "北京橡胶工业研究设计院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83705",
+  "dwmc": "中国食品发酵工业研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "11232",
+  "dwmc": "北京信息科技大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83000",
+  "dwmc": "中国电子科技集团有限公司研究生院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10027",
+  "dwmc": "北京师范大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "1",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10028",
+  "dwmc": "首都师范大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "82715",
+  "dwmc": "中国农业机械化科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10022",
+  "dwmc": "北京林业大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10025",
+  "dwmc": "首都医科大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10026",
+  "dwmc": "北京中医药大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "82110",
+  "dwmc": "中国兽医药品监察所",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10034",
+  "dwmc": "中央财经大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "82901",
+  "dwmc": "中国航空研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82913",
+  "dwmc": "中国航空研究院(北京航空材料研究院)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82914",
+  "dwmc": "中国航空研究院(625所)",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "92007",
+  "dwmc": "陆军航空兵学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83221",
+  "dwmc": "中国航天科工集团第二研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83241",
+  "dwmc": "中国航天科工集团第三研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83277",
+  "dwmc": "中国航天空气动力技术研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "92033",
+  "dwmc": "军事航天部队航天工程大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83401",
+  "dwmc": "石油勘探开发科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "86301",
+  "dwmc": "石油化工科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "85402",
+  "dwmc": "中国地震局地质研究所",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10054",
+  "dwmc": "华北电力大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10016",
+  "dwmc": "北京建筑大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82602",
+  "dwmc": "中冶集团建筑研究总院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "84901",
+  "dwmc": "中国建筑材料科学研究总院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10052",
+  "dwmc": "中央民族大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10030",
+  "dwmc": "北京外国语大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "10042",
+  "dwmc": "国际关系学院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10036",
+  "dwmc": "对外经济贸易大学",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "1"
+ },
+ {
+  "dwdm": "83801",
+  "dwmc": "中国铁道科学研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82817",
+  "dwmc": "中国工程物理研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "87111",
+  "dwmc": "北京市市政工程研究院",
+  "province_code": "11",
+  "province": "北京",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10066",
+  "dwmc": "天津职业技术师范大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10071",
+  "dwmc": "天津体育学院",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10072",
+  "dwmc": "天津音乐学院",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10073",
+  "dwmc": "天津美术学院",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "92018",
+  "dwmc": "海军勤务学院",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "92037",
+  "dwmc": "武警指挥学院",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "92042",
+  "dwmc": "武警后勤学院",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "86211",
+  "dwmc": "中国舰船研究院(天津航海仪器研究所)",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82804",
+  "dwmc": "核工业理化工程研究院",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83245",
+  "dwmc": "中国航天科工集团公司第三研究院(8357所)",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83246",
+  "dwmc": "中国航天科工集团第三研究院(8358所)",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "85305",
+  "dwmc": "国家海洋技术中心",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10068",
+  "dwmc": "天津外国语大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10070",
+  "dwmc": "天津财经大学",
+  "province_code": "12",
+  "province": "天津",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10094",
+  "dwmc": "河北师范大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10092",
+  "dwmc": "河北北方学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10093",
+  "dwmc": "承德医学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10099",
+  "dwmc": "唐山师范学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10798",
+  "dwmc": "河北科技师范学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "11420",
+  "dwmc": "河北金融学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "11629",
+  "dwmc": "北华航天工业学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "11903",
+  "dwmc": "中央司法警官学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "12784",
+  "dwmc": "河北传媒学院",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "86221",
+  "dwmc": "中国舰船研究院(邯郸净化设备研究所)",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "11105",
+  "dwmc": "中国人民警察大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "14432",
+  "dwmc": "河北中医药大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10107",
+  "dwmc": "石家庄铁道大学",
+  "province_code": "13",
+  "province": "河北",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10125",
+  "dwmc": "山西财经大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10809",
+  "dwmc": "山西中医药大学",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "10123",
+  "dwmc": "运城学院",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83106",
+  "dwmc": "中国兵器科学研究院(中国北方自动控制技术研究所)",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "1",
+  "syl": "0"
+ },
+ {
+  "dwdm": "82808",
+  "dwmc": "中国辐射防护研究院",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "83704",
+  "dwmc": "中国日用化学工业研究院",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ },
+ {
+  "dwdm": "87401",
+  "dwmc": "山西省中医药研究院",
+  "province_code": "14",
+  "province": "山西",
+  "zhx": "0",
+  "bs": "0",
+  "syl": "0"
+ }
+]

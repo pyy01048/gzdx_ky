@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from models import KnowledgeChunk
 from services import search_service
+from services.delete_guard import require_physical_delete_enabled
 
 
 # --------------------------------------------------------------------------- #
@@ -58,6 +59,9 @@ _SUBJECT_STRONG: dict[str, list] = {
         "集成运算", "运算放大", "功率放大", "直流电源", "电子线路", "二极管", "三极管",
         "场效应", "差分放大", "共射", "共集", "共基", "静态工作点", "基本放大",
         "童诗白", "康华光", "pn结",
+        # 裸"电子技术(基础)"专名：无"数字/模拟"限定时按模电归类
+        #（该教材主体是模电半导体内容；若出现"数字部分"由 _MUTEX_HINTS 纠正为数电）
+        "电子技术基础", "电子技术",
     ],
     "英语": [
         "英语", "英一", "英二", "长难句", "背单词", "单词", "词汇", "作文",
@@ -163,21 +167,28 @@ _CONTENT_KW = {
 #  例：《【电子技术基础-数字部分】康华光…》里 "模拟部分" 不出现，
 #  但 "数字部分" 明确指向数电 —— 不能因为"康华光"两边都沾就判错。
 _MUTEX_HINTS = [
-    ("数字电子技术", "模拟电子技术", ["数字部分", "数字电路", "数电", "逻辑"],
+    ("数字电子技术", "模拟电子技术",
+     ["数字部分", "数字电路", "数电", "逻辑", "数字电子"],
      ["模拟部分", "模拟电路", "模电", "放大"]),
 ]
 
 
 def _apply_mutex(name: str, scores: collections.Counter) -> collections.Counter:
-    """用互斥线索纠正数电/模电这类易混判定。"""
+    """用互斥线索纠正数电/模电这类易混判定。
+
+    权重要**足够大以压过基础分**：像《【电子技术基础-数字部分】康华光…》里
+    "电子技术基础"(模电+3) 与 "康华光"(模电+3) 合计 6 分，若互斥权重太小
+    （如 ×4）会被模电基础分反超。这里给 ×10，确保"数字部分/模拟部分"这类
+    **明确指向**能决定性生效。
+    """
     n = (name or "").lower()
     for subj_a, subj_b, hints_a, hints_b in _MUTEX_HINTS:
         a = sum(1 for h in hints_a if h.lower() in n)
         b = sum(1 for h in hints_b if h.lower() in n)
         if a and not b:
-            scores[subj_a] += a * 4      # 明确指向 A，压倒性加权
+            scores[subj_a] += a * 10      # 明确指向 A，压倒性加权
         elif b and not a:
-            scores[subj_b] += b * 4
+            scores[subj_b] += b * 10
     return scores
 
 
@@ -336,9 +347,45 @@ def chunk_text(text: str, chunk_size: int = 600, overlap: int = 80) -> list[str]
     return [c for c in chunks if c]
 
 
+def has_searchable_chunks(db: Session, doc_id) -> bool:
+    """这篇文档此刻在知识库里**真的有可检索的分块**吗。
+
+    入库路径用它决定 `index_status`，而不是用本轮 `ingest_text` 的返回值：
+    重新解析被物理删除闸门拦住时，旧分块和检索镜像其实都还在、RAG 照样能搜到，
+    那种情况标 failed 是另一句谎话。口径只有一个 —— 库里有块就是 indexed。
+    """
+    if doc_id is None:
+        return False
+    return db.query(KnowledgeChunk.id).filter(
+        KnowledgeChunk.document_id == doc_id).first() is not None
+
+
 # --------------------------------------------------------------------------- #
 # 入库：文本 -> 分块 -> knowledge_chunks + FTS
 # --------------------------------------------------------------------------- #
+#: 块级质量下限。现库 61091 块实测：短于 80 字的 92 块基本是一行残句或目录点线，
+#: 进 FTS 只会把检索命中让给噪声。
+MIN_CHUNK_CHARS = 80
+#: 替换符占比上限。实测替换符占比>1% 的 131 块全是乱码块，而"500 字里混进
+#: 1 个 U+FFFD"的正常真题块必须放过 —— 不能为了干净删真正文。
+MAX_CHUNK_MOJIBAKE_RATIO = 0.01
+
+
+def chunk_is_retrievable(chunk: str) -> bool:
+    """这一块值不值得进知识库？（写侧块级闸门）
+
+    文档级闸门看整篇正文，切块之后仍会漏进"一整块都是乱码""只剩半行"这类；
+    这里拦下的块**不写 knowledge_chunks**，而 FTS/向量镜像只在同一事务里跟着
+    knowledge_chunks 写，所以块不存在 = 镜像里也不可能被搜到。
+    """
+    t = (chunk or "").strip()
+    if len(t) < MIN_CHUNK_CHARS:
+        return False
+    if t.count(chr(0xFFFD)) > len(t) * MAX_CHUNK_MOJIBAKE_RATIO:
+        return False
+    return True
+
+
 def ingest_text(
     db: Session,
     doc_id,
@@ -381,29 +428,53 @@ def ingest_text(
     if replace and doc_id is not None:
         old = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).all()
         old_ids = [c.id for c in old]
+        # 物理删除闸门只在**真要删已有分块**时才要放行：
+        # 本周曾因判重缺陷误删大量真题，所以清空旧块必须显式开 KAOYAN_ALLOW_PHYSICAL_DELETE。
+        # 但闸门原先放在查询之前，首次入库（本来一块都没有）也被它挡死 ——
+        # 而所有入库路径都传 replace=True，于是正文落库成功、分块 0 条，
+        # 文档静静进不了 RAG。删 0 行不可能是数据损失，这里按 old_ids 判定。
         if old_ids:
+            require_physical_delete_enabled("knowledge_chunks")
             conn0 = db.connection().connection
             placeholders = ','.join('?' * len(old_ids))
-            # 先清依赖表引用（向量表 / 错题-知识点关联），避免外键约束失败
-            conn0.execute(
-                f"DELETE FROM knowledge_chunks_vec WHERE chunk_id IN ({placeholders})",
-                old_ids,
-            )
-            conn0.execute(
-                f"DELETE FROM error_knowledge_links WHERE chunk_id IN ({placeholders})",
-                old_ids,
-            )
-            conn0.execute(
-                f"DELETE FROM knowledge_chunks_fts WHERE chunk_id IN ({placeholders})",
-                old_ids,
-            )
-            conn0.commit()
+            # 先清依赖表引用（向量表 / 错题-知识点关联），避免外键约束失败。
+            # 依赖表按 sqlite_master 判定存在才删：knowledge_chunks_vec / _fts 不在 ORM
+            # metadata 里，是检索侧 ensure_* 惰性建的；库还没建过它们时本就 0 行可清，
+            # 若硬删会抛 "no such table" 把整个重新解析打断。
+            _have = {r[0] for r in conn0.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            for _dep in ("knowledge_chunks_vec", "error_knowledge_links",
+                         "knowledge_chunks_fts"):
+                if _dep in _have:
+                    conn0.execute(
+                        f"DELETE FROM {_dep} WHERE chunk_id IN ({placeholders})",
+                        old_ids,
+                    )
+            # 这里**不 commit**：raw cursor 与 ORM 同一条连接，删镜像行必须和
+            # 下面的 knowledge_chunks 删除、以及新块插入进同一个事务。
+            # 原先在此 commit 会把「FTS/向量已删、分块还在」的中间态钉死：
+            # 一旦后续 flush/插入异常，调用方 rollback 也救不回镜像，
+            # 文档就会变成「块在、检索不到」的静默损坏。
         for c in old:
             db.delete(c)
         db.flush()
 
     _size, _overlap = chunk_size_for_category(content_category)
     chunks = chunk_text(text, chunk_size=_size, overlap=_overlap)
+    if not chunks:
+        return 0
+
+    # —— 块级质量谓词（写侧闸门）——
+    # 文档级闸门看的是整篇，切块之后仍可能漏进"一整块都是乱码/一行残句"这种。
+    # 阈值按现库 61091 块实测：短于 80 字的 92 块、替换符占比>1% 的 131 块，
+    # 合计 223 块（0.37%）会被拦；而"500 字里 1 个 U+FFFD"这种只掉一个字符的
+    # 正常块**不能**拦，否则等于为了干净把真题正文删掉。
+    # 拦下的块**不写 knowledge_chunks，也就不可能进 FTS/向量镜像**
+    # （镜像只在同一个事务里跟着 knowledge_chunks 写）。
+    kept = [c for c in chunks if chunk_is_retrievable(c)]
+    if len(kept) != len(chunks):
+        print(f"[kb] 块级闸门丢弃 {len(chunks) - len(kept)}/{len(chunks)} 块: {doc_name}")
+    chunks = kept
     if not chunks:
         return 0
 

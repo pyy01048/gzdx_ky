@@ -217,6 +217,22 @@
 .kb-pill.tone-low { background: var(--red-soft); color: var(--red); }
 .kb-pill.tone-mid { background: var(--gold-soft); color: var(--gold); }
 .kb-pill.tone-ok { background: var(--green-soft); color: var(--green); }
+
+/* 语料质量层（知识库侧供给：块数/置信/弃权），与掌握度胶囊区分开 */
+.kb-corpus {
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 8px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.kb-corpus.sm { font-size: 10.5px; margin-left: 6px; }
+.kb-corpus.tone-low { background: var(--red-soft); color: var(--red); }
+.kb-corpus.tone-ok { background: var(--green-soft); color: var(--green); }
+.kb-quality-hint { font-size: 11.5px; color: var(--ink-3); margin: -4px 0 12px; line-height: 1.6; }
 .kb-overview-num.tone-low { color: var(--red); }
 .kb-overview-num.tone-mid { color: var(--gold); }
 .kb-overview-num.tone-ok { color: var(--green); }

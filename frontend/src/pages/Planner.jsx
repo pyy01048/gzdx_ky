@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { plannerApi } from '../api/client'
 import { toast } from '../components/UI'
+import useStore from '../store/useStore'
 import { todayStr, daysBetween } from '../utils/date'
+import { examDaysLeft, resolveExamDate } from '../utils/exam'
+import { useSubjectConfig, subjectLabel } from '../hooks/useSubjectConfig'
 
 /* ============================================================
    学习计划表（V2 冷蓝设计系统）
@@ -17,9 +20,42 @@ const TABS = [
   { key: 'phase', label: '阶段复习', icon: '📚' },
 ]
 
-const SUBJECTS = ['英语', '政治', '专一', '专二']
+/* 每科 4 条任务格 */
+const TASK_SLOTS = 4
 
-const SUBJECT_ICO = { 英语: 'blue', 政治: 'red', 专一: 'violet', 专二: 'green' }
+/**
+ * 把某科目的任务值规整为定长数组。
+ * 后端 planner 的 tasks 是自由 JSON：存量数据既有 ["a","b"] 也有 "教材精读 + 课后题" 这种整串。
+ * 若直接按下标取值，字符串会被拆成单字（"教材精读"→"教"/"材"/"精"/"读"），
+ * 用户改一格再保存就会把整条任务写成单个字，故字符串一律落到第 1 格。
+ */
+function slotsOf(value) {
+  const base = Array.isArray(value)
+    ? value.slice(0, TASK_SLOTS).map((v) => String(v ?? ''))
+    : [String(value ?? '')].filter((v) => v !== '')
+  while (base.length < TASK_SLOTS) base.push('')
+  return base
+}
+
+/* 科目配色按顺序轮转，不再与科目名绑定 —— 科目现在来自 /api/goals/subjects 配置 */
+const SUBJECT_ICO = ['blue', 'red', 'violet', 'green', 'amber']
+const SUBJECT_BADGE = ['info', 'danger', 'accent', 'success', 'warning']
+
+/** 周/月计划的单框文本视图：数组值合并展示，避免编辑时丢内容后被保存清空。 */
+function textOf(value) {
+  return Array.isArray(value)
+    ? value.map((v) => String(v ?? '').trim()).filter(Boolean).join(' / ')
+    : String(value ?? '')
+}
+
+/**
+ * 计划表要渲染的科目 = 配置的考试科目 ∪ 已载入计划里出现过的历史科目。
+ * 历史键必须保留：后端 planner 的 tasks 是自由 JSON，若只渲染当前配置的科目，
+ * 用户之前写在一个已取消科目（如"专二"）下的任务会看不见，一保存就被清空。
+ */
+function planSubjects(examList, tasks) {
+  return Array.from(new Set([...(examList || []), ...Object.keys(tasks || {})]))
+}
 
 /* 艾宾浩斯 9 个复习周期（偏移量用于 .ics 复习点推算） */
 const CYCLES = [
@@ -327,6 +363,9 @@ export default function Planner() {
    日计划表
    ============================================================ */
 function DailyPlanTab() {
+  const countdown = useStore((s) => s.countdown)
+  const settingsExamDate = useStore((s) => s.settings.examDate)
+  const { exam } = useSubjectConfig()
   const [date, setDate] = useState(todayStr())
   const [plan, setPlan] = useState(null)
   const [tasks, setTasks] = useState({})
@@ -373,26 +412,27 @@ function DailyPlanTab() {
 
   const updateTask = (subject, idx, value) => {
     setTasks((prev) => {
-      const subjTasks = [...(prev[subject] || ['', '', '', ''])]
+      const subjTasks = slotsOf(prev[subject])
       subjTasks[idx] = value
       return { ...prev, [subject]: subjTasks }
     })
   }
 
-  /* 填写完成度（4 科 × 4 条 = 16 格） */
+  /* 填写完成度：分母随科目数变化（科目来自配置，不再是固定 4 科 × 4 条） */
+  const subjects = useMemo(() => planSubjects(exam, tasks), [exam, tasks])
   const filled = useMemo(() => {
     let n = 0
-    SUBJECTS.forEach((s) => {
-      const arr = Array.isArray(tasks[s]) ? tasks[s] : [String(tasks[s] || '').trim()]
-      arr.forEach((t) => { if (String(t || '').trim()) n++ })
+    subjects.forEach((s) => {
+      slotsOf(tasks[s]).forEach((t) => { if (t.trim()) n++ })
     })
     return n
-  }, [tasks])
-  const pct = Math.round((filled / 16) * 100)
+  }, [subjects, tasks])
+  const totalSlots = subjects.length * TASK_SLOTS
+  const pct = totalSlots ? Math.round((filled / totalSlots) * 100) : 0
 
   const remain = plan && plan.days_to_exam != null
     ? plan.days_to_exam
-    : (() => { try { return daysBetween(todayStr(), '2027-12-25') } catch (e) { return null } })()
+    : examDaysLeft(resolveExamDate(countdown && countdown.exam_date, settingsExamDate))
 
   return (
     <>
@@ -405,10 +445,11 @@ function DailyPlanTab() {
             </div>
             <div className="row" style={{ paddingTop: 18 }}>
               {remain != null && <span className="badge accent">距考研 {remain} 天</span>}
+              {remain == null && <span className="badge neutral">未设置初试日期</span>}
               {plan && plan.exists
                 ? <span className="badge success">已有记录</span>
                 : <span className="badge neutral">未填写</span>}
-              <span className="badge info">任务 {filled}/16</span>
+              <span className="badge info">任务 {filled}/{totalSlots}</span>
             </div>
           </div>
           <div className="right" style={{ paddingTop: 18 }}>
@@ -424,26 +465,26 @@ function DailyPlanTab() {
       </div>
 
       <div className="grid-2">
-        {/* 左：四科目任务 */}
+        {/* 左：各科目任务 */}
         <div className="card">
           <div className="card-head">
             <div className="card-title">今日学习任务</div>
-            <span className="card-sub">四科各 4 条，回车即写入</span>
+            <span className="card-sub">{subjects.length} 科各 {TASK_SLOTS} 条，回车即写入</span>
           </div>
           <div className="card-body">
-            {SUBJECTS.map((subj) => (
+            {subjects.map((subj, i) => (
               <div key={subj} className="list-row" style={{ alignItems: 'flex-start' }}>
-                <div className={`ico sm ${SUBJECT_ICO[subj] || 'neutral'}`}>{subj.slice(0, 1)}</div>
+                <div className={`ico sm ${SUBJECT_ICO[i % SUBJECT_ICO.length]}`}>{subjectLabel(subj).slice(0, 1)}</div>
                 <div className="lr-main">
-                  <div className="lr-title" style={{ marginBottom: 8 }}>{subj}</div>
+                  <div className="lr-title" style={{ marginBottom: 8 }}>{subjectLabel(subj)}</div>
                   <div className="grid-2" style={{ gap: 8 }}>
-                    {[0, 1, 2, 3].map((idx) => (
+                    {Array.from({ length: TASK_SLOTS }, (_, idx) => (
                       <input
                         key={idx}
                         className="input"
                         type="text"
                         placeholder={`任务 ${idx + 1}`}
-                        value={(tasks[subj] || ['', '', '', ''])[idx] || ''}
+                        value={slotsOf(tasks[subj])[idx]}
                         onChange={(e) => updateTask(subj, idx, e.target.value)}
                       />
                     ))}
@@ -511,6 +552,7 @@ function DailyPlanTab() {
    周月计划表
    ============================================================ */
 function WeekMonthPlanTab() {
+  const { exam } = useSubjectConfig()
   const [mode, setMode] = useState('month')
   const [year, setYear] = useState(new Date().getFullYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
@@ -578,6 +620,7 @@ function WeekMonthPlanTab() {
   }, [weekStart])
 
   const title = mode === 'month' ? `${year}年${month}月学习目标` : `${weekStart} ~ ${weekEnd} 本周目标`
+  const subjects = useMemo(() => planSubjects(exam, tasks), [exam, tasks])
 
   return (
     <>
@@ -617,20 +660,20 @@ function WeekMonthPlanTab() {
       <div className="card">
         <div className="card-head">
           <div className="card-title">{title}</div>
-          <span className="card-sub">{mode === 'month' ? '按月拆解四科任务量' : '周计划以周一为起点'}</span>
+          <div className="card-sub">{mode === 'month' ? '按月拆解各科任务量' : '周计划以周一为起点'}</div>
         </div>
         <div className="card-body">
-          {SUBJECTS.map((subj) => (
+          {subjects.map((subj, i) => (
             <div key={subj} className="field">
               <label>
-                <span className={`badge ${subj === '英语' ? 'info' : subj === '政治' ? 'danger' : subj === '专一' ? 'accent' : 'success'}`}>{subj}</span>
+                <span className={`badge ${SUBJECT_BADGE[i % SUBJECT_BADGE.length]}`}>{subjectLabel(subj)}</span>
               </label>
               <textarea
                 className="textarea"
                 rows="2"
                 style={{ minHeight: 62 }}
-                placeholder={`${subj}${mode === 'month' ? '本月' : '本周'}目标...`}
-                value={tasks[subj] || ''}
+                placeholder={`${subjectLabel(subj)}${mode === 'month' ? '本月' : '本周'}目标...`}
+                value={textOf(tasks[subj])}
                 onChange={(e) => setTasks((prev) => ({ ...prev, [subj]: e.target.value }))}
               />
             </div>
@@ -656,12 +699,19 @@ function WeekMonthPlanTab() {
    艾宾浩斯记忆表
    ============================================================ */
 function EbbinghausTab() {
+  const { exam } = useSubjectConfig()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)   /* 批次2-2：列表加载态 */
   const [error, setError] = useState('')           /* 阶段2：列表错误就地态 */
   const [newContent, setNewContent] = useState('')
-  const [newSubject, setNewSubject] = useState('英语')
+  const [newSubject, setNewSubject] = useState('')
   const [filterSubject, setFilterSubject] = useState('')
+
+  /* 记忆条目的科目下拉：配置科目 + 固定「其他」（后端按字符串存，不做白名单） */
+  const memorySubjects = useMemo(() => Array.from(new Set([...exam.map(subjectLabel), '其他'])), [exam])
+  useEffect(() => {
+    setNewSubject((prev) => (prev && memorySubjects.includes(prev) ? prev : memorySubjects[0]))
+  }, [memorySubjects])
 
   useEffect(() => {
     loadItems()
@@ -744,7 +794,7 @@ function EbbinghausTab() {
         </div>
         <div className="row wrap">
           <select className="select" style={{ width: 120 }} value={newSubject} onChange={(e) => setNewSubject(e.target.value)}>
-            {['英语', '政治', '专一', '专二', '其他'].map((s) => <option key={s}>{s}</option>)}
+            {memorySubjects.map((s) => <option key={s}>{s}</option>)}
           </select>
           <input
             className="input"

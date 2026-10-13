@@ -40,15 +40,20 @@ class SaveRequest(BaseModel):
 
 @router.get("/subjects")
 async def paper_subjects(db: Session = Depends(get_db)):
-    """组卷入口：题库可用科目与题目数（供前端组卷筛选）。"""
-    from sqlalchemy import func
-    rows = (
-        db.query(QuizQuestion.subject, func.count(QuizQuestion.id))
-        .group_by(QuizQuestion.subject)
-        .order_by(func.count(QuizQuestion.id).desc())
-        .all()
-    )
-    return {"items": [{"subject": s or "综合", "count": c} for s, c in rows]}
+    """组卷入口：题库可用科目与题目数（供前端组卷筛选）。
+
+    M0-4 学科统一收口：数据源改为 `services.subject_registry` 唯一聚合器，
+    响应字段结构**保持不变**（``{"items":[{"subject","count"}]}``），前端无需改动。
+
+    口径说明：科目集合以 ``subject_config`` 字典为权威（含 0854 电子信息等
+    尚无题目的科目，count=0），并按题目数降序返回；字典缺项的脏科目也会带出。
+    """
+    from services import subject_registry
+
+    data = subject_registry.list_subjects(db)["subjects"]
+    items = [{"subject": s["subject"], "count": s["question_count"]} for s in data]
+    items.sort(key=lambda it: (-it["count"], it["subject"]))
+    return {"items": items}
 
 
 @router.post("/build")

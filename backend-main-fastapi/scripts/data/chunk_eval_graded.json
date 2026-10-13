@@ -1,0 +1,1479 @@
+{
+ "arm": "三",
+ "accuracy": 0.7075,
+ "accuracy_in_taxonomy": 0.8814,
+ "macro_f1": 0.6388,
+ "low_conf_rate": 0.3129,
+ "items": [
+  {
+   "chunk_id": 26676,
+   "doc_name": "2008年中医综合考研真题及答案 .pdf",
+   "text": "燥，痰中带有血丝，口干，舌红而\n少津，苔薄黄，脉数。治疗应首选\nA．止嗽散   B．桑菊饮   C．桑杏汤   D．泻白散\n58．治疗肺阴亏损所致肺痨者，应首选\nA．百合固金汤   B．月华丸  C．沙参清肺汤    D．沙参麦冬汤\n59．患者心悸眩晕，胸闷痞满，渴不欲饮，下肢浮肿，小便短少，形寒肢冷，恶心欲吐，\n舌淡胖，苔白滑，脉弦滑。治疗宜首选\nA．苓桂术甘汤    B．参附汤    C．五苓散    D．实脾饮\n60．痰浊闭阻所致胸痹，其治法是\nA．祛痰降逆，理气宣痹    B．燥湿化痰，理气通络\nC．豁痰理气，化瘀通络    D．通阳泄浊，豁痰宣痹\n61．治疗不寐肝火扰心证，应首选\nA．栀子清肝汤    B．龙胆泻肝汤    C．当归龙荟丸    D．丹栀逍遥散\n62．患者精神抑郁，表情淡漠，沉默痴呆，时时太息，言语无序，舌红苔白腻，脉弦滑。\n治疗应首选\nA．安神定志丸合半夏厚朴汤    B．四逆散合二陈汤\nC．逍遥散合顺气导痰汤    D．涤痰汤合五磨饮子\n63．治疗心肾亏虚所致痫证，应首选\nA．大补阴丸合定痫丸    B．六味地黄丸合生脉散\nC．右归丸合交泰丸    D．左归丸合天王补心丹\n64．血厥实证的治法是\nA．平肝潜阳，理气通瘀    B．清热泻火，化瘀开窍\nC．涤痰息风，开窍通络    D．清肝泻热，凉血开窍\n65．治疗肝气犯胃所致呕吐，应首选\nA．柴胡疏肝散",
+   "pred_l1": "中医综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.181
+  },
+  {
+   "chunk_id": 18606,
+   "doc_name": "阎石《数字电子技术基础》（第6版）配套题库【考研真题精选＋章节题库】.pdf",
+   "text": "得逻辑式。\nY1（ A ， B ， C ）＝ ∑m （ 1 ， 2 ， 4 ， 7 ）＝\n＿\nA\n＿\nBC ＋\n＿\nAB\n＿\nC＋ A\n＿\nB\n＿\nC＋ ABC\nY2（ A ， B ， C ）＝ ∑m （ 3 ， 5 ， 6 ， 7 ）＝\n＿\nABC ＋ A\n＿\nBC ＋ AB\n＿\nC＋ ABC\n（ 3 ）将 Y1、 Y2的逻辑表达式同双 4 选 1 数据选择器的输出方程相比较，得\nY1： D0＝ D3＝ C ， D1＝ D2＝\n＿\nC\nY2： D0＝ 0 ， D3＝ 1 ， D1＝ D2＝ C\n电路图如图 4-51 所示。\n图 4-51 发电机供电控制逻辑图\n31 图 4-52 （ a ）所示电路为一使用奇数校验的系统方框图，图中奇数校验器的作用是检查码组经传输后是否有差错，然后在校验器的 P1\n端送出相应的信号。当数码发送端的码组 ABC （二进制码）中已经有奇数个 1 时，则送出校验位 P ＝ 0 ，使 ABCP 中仍保持奇数个 1 ；而当码\n组 ABC 中只有偶数个 1 时，则送出校验位 P ＝ 1 ，使 ABCP 中具有奇数个 1 。要求采用最少数量的异或门设计一个奇数校验器使正常时 P1端输\n出为 1 ，否则为 0 。\n图 4-52 奇数校验系统\n答：由已知，在发送端，当 ABC 中有奇数个 1 时，发送校验位 P ＝ 0 ，故\n。此校验位 P 同 ABC 一道发往接收",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5644
+  },
+  {
+   "chunk_id": 61937,
+   "doc_name": "2017.12英语六级考试第2套解析.pdf",
+   "text": "n is\n家科学基金会正是其中之一。有些among these.④Some philanthropic（慈善的）funders，\n慈善机构资助方，包括华 盛顿 州西雅including the Bill & Melinda Gates Foundation in\n图市的比 尔 及梅琳达 ·盖茨基金会Seattle, Washington, and the Wellcome Trust in\n和伦敦的威康信托基金会，也强制要London, also mandate° open data from their grant⑨\n求资助接受者开放数据。recipients9.\n38 非此店铺∶必有缺失认准淘宝店铺∶光速考研工作室\nೂਪೄ᧑ਦ੡੠੘੉ਖ਼੥੥ਗ਼੡ਖ਼ੑਫ਼੎੟੎੉ਫ਼ੋ੒੎ਫ਼੟ಎ੎੟ਜ਼੎ੋ੓੉੖੖੥੠੒ਗ਼੟੎\n੣੒ਗ਼੒੉੢੎ਖ਼ਗ਼੠੊੎੎ਖ਼ ੃ਹ੄ੋ੅੉ਹਸ\n஫ᆐᆚ\n੓ਖ਼ਗ਼ਜ਼੎ਖ਼੟ੋ੓੎ਖ਼ੋ੎ಎ੉ਫ਼੎\n੡ਖ਼ੋ੎ਫ਼੠੉੓ਖ਼੉੊ਗ਼੡੠੣੒੎੠੒੎ਫ਼੠ਗ਼੟੒੉ਫ਼੎ਗ਼ਫ਼੠ਗ਼੟੠੉੥ਜ਼ਫ਼੓੢੉੠੎಑\nಗಘ\n᧒\nਬਫ਼੉੍੡੉੠੎੟੠੡੍੎ਖ਼੠੟੉ਖ਼੍੆੅੊ੋਸ੅ਸ਼੊\n஫ᆐᆛ ಎ੣੒ਗ਼ਗ਼੏੠੎ਖ਼੉ਫ਼੎੣ਗ਼ਫ਼੕੓ਖ਼ੑ\n੅੄\n஫ᆐᆝ\n੠੒੎੓ਫ਼ੁ਴ਵ\n஫ᆐᆟ\n੒੎੉੍ሀ੟ੑਫ਼੉ਖ਼੠ಎ੘੉੥੒੉੢੎ਖ਼ਗ਼ੋ੒ਗ਼੓ੋ੎੓੏੠੒੎੓ਫ਼\n੊ੌ੆ਹ੉੍ਾ੊੅੉\n஫ᆐᆠ",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.5538
+  },
+  {
+   "chunk_id": 3849,
+   "doc_name": "模拟电子技术基础 第6版 .txt",
+   "text": "高电压放大倍数、高输人电阻、低输出电阻，能较好地抑制零点漂移现象的差分放大电路；有单电源供电和正负双电源供电之分。集成运放的输出电压u。与输入电压(即同相输入端与反相输入端之间的电位差)(up-uy)之间的关系曲线称为电压传输特性，即Uol+Uom同相输入端upo-uvo-反相输入端Asu\"o\"p- uN(a)图3.2.2集成运放的符号和电压传输特性(a)符号(b)电压传输特性-Uom(b)第3章 集成运算放大电路126u?=f(up-uy)(3.2.1)对于正、负两路电源供电的集成运放，电压传输特性如图3.2.2(b)所示。从图示曲线可以看出，集成运放有线性放大区域(称为线性区)和饱和区域(称为非线性区)两部分。在线性区，曲线的斜率为电压放大倍数；在非线性区，输出电压只有两种可能的情况，+Uow或-Uow。由于集成运放放大的是up和uy之间的差值信号，称为差模信号，且没有通过外电路引入反馈，故称其电压放大倍数为差模开环放大倍数，记作A,因而当集成运放工作在线性区时u?=Au(up-ug)(3.2.2)通常A。非常高，可达几十万倍，因此集成运放电压传输特性中的线性区非常之窄。如果输出电压的最大值±Uow=±14V,A。=5×10?,那么只有当|up-ug|<28 μV时，电路才工作在线性区。换言之，若|up-uy|>28μV,则集成运放进入非线性区，因而输出电压u?不是+14V,就",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "定义",
+   "pred_conf": 0.5904
+  },
+  {
+   "chunk_id": 45298,
+   "doc_name": "Thinking+in+C++_Vol1. 2nd Version.pdf",
+   "text": "t’s hidden, the client programmer can’t use it, which means that\nthe class creator can change the hidden portion at will without\nworrying about the impact to anyone else. The hidden portion\nusually represents the tender insides of an object that could easily\nbe corrupted by a careless or uninformed client programmer, so\nhiding the implementation reduces program bugs. The concept of\nimplementation hiding cannot be overemphasized.\nIn any relationship it’s important to have boundaries that are\nrespected by all parties involved. When you create a library, you",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5744
+  },
+  {
+   "chunk_id": 29957,
+   "doc_name": "07-09年311教育学解析 . .pdf",
+   "text": "策略，包括自我计划、自我监控、自我调节、自我评价和自我指\n导；资源管理策略是学习者辅助学生管理可用环境和资源的策略，包括时间管理\n策略、努力管理策略、学业求助策略和学习环境管理策略；精细加工策略是指对\n学习材料进行深入细致的分析加工，理解其内在的深层意义，从而促进记忆的策\n略，包括简单知识的精细加工策略和复杂知识的精细加工策略。简单知识的精细\n加工策略有位置记忆法、视觉想象法、限定词法、关键词法、首字联词法等，复\n杂知识的精细加工策略有做笔记、联系实际、利用背景知识记忆等；编码组织策\n略是采取一些方法将学习策略分成一些小的单元， 并把这些小的单元置于适当的\n类别之中，从而使每项信息都和其他信息联系在一起，如列提纲、表格、示意图\n等。答案选 A 项。\n38.D【解析】强化程序分为连续强化和间歇强化。连续强化的特点是建立快，消\n公众号【研池大叔】，免费分享考研干货！\n第\n16\n页 共\n29\n页\n退也快；间歇强化的特点是建立慢，但是消退也慢。间歇强化可以让学习者在没\n有强化物的刺激下也能产生行为，是维持学习者行为的一个方法。答案选 D 项。\n39.D【解析】识记性知识。创造性思维是创造性认知品质的核心，是指用超常规\n方法，重新组织已有知识经验，产生新方案和新成果的心理过程。创造性思维具\n有流畅性、变通性和独特性等特点。答案选 D 项。",
+   "pred_l1": "心理学专业基础",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.0571
+  },
+  {
+   "chunk_id": 10582,
+   "doc_name": "2020年真题逐题细解.pdf",
+   "text": "ge应有“缓解，减轻”之意，\n故C_正确―\n将A选成maintain （维凭了而D展折「deepen「（而裁了芬另就X旻再,-裘奈薪疫定的崟畚故乎*械有'孤蒋/\n加深这一代人心中潜藏的焦虑紧迫感”，与文意相反，故均排除；文中并未提及对这一代人心中潜藏的焦虑紧\n迫感进行定义的相关信息，故排除B。\n39. It can be learned from Paragraph 3 that Generation Zs_____ 从三段可以得知，Z世代， 。 选项出处\nA. have a clear idea about their future jobs A.对自己未来的工作有清晰的认识 三段\nB. care little about their job performance B.不太关心自己的工作表现 •原文未提\nC. give top priority to professional training C,优先考虑职业培训 三段•句\nD. think it hard to achieve work-life balance D,认为实现工作与生活的平衡很难 三段•句\n【路径一】从题干的角度解答——如何得出正解\n找关键词：Paragraph 3„回文定位：根据关键词可定位至三段。比对匹配：三段。句提到，埃森哲公司的一项\n调查发现，今年88%的应届毕业生在选择专业时考虑了工作问题；■句提到",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.5526
+  },
+  {
+   "chunk_id": 10656,
+   "doc_name": "2020年逐词逐句精讲册.pdf",
+   "text": "hey get trapped, says Quinn.奎因表示.这可能会使老鼠们更清楚地记得自己早先释放过机器鼠，并希望机器\n鼠能够在自己被困时给予回报。\n■\nO \"Rats have been shown to engage in multiple forms of reciprocal help and cooperation, including what is referred to as\ndirect reciprocity—where a rat will help another rat that has previously helped them,” says Quinn.奎因称：\"已有研究\n表明，老鼠会进行多种形式的互助与合作，包括所谓的直接互惠----只老鼠会帮助另一只曾经帮助过它们\n的老鼠。”\n三级修饰\n8\n第六段\n❶ The readiness of the rats to befriend the social robot was surprising given its minimal design.社交机器鼠的设计极为\n简约，老鼠却仍愿意与它交朋友，这令人十分意外。\nThe readiness of the rats to befriend the social robot was guip西ng （主+系+表）\n介词短语作句子主干的原因状语\n句子",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.5721
+  },
+  {
+   "chunk_id": 37812,
+   "doc_name": "25法硕真题试卷及解析(法学).pdf",
+   "text": "人领域和公共领域的各种主体的利益与价值的实现奠定了基础。法律通过\n设定明确的规则和标准，为社会成员提供了行为的指南和预期。它不仅规定了哪些行为是被允许的，哪些行为\n是被禁止的，而且通过制裁机制确保这些规则得到遵守。\n（2）实现方式：①法律通过预防和制裁犯罪来维护社会安全。如通过立法限制枪支的流通，可以降低枪击\n事件的发生率，从而保护公民的生命安全；通过惩罚犯罪来保障人民的安全。\n②法律通过保护个人权利来维护个体安全。如民法典关于隐私权保护的规定确保个人信息不被未经授权的\n披露或滥用，从而保护个人的隐私安全。\n③法律通过规范政府行为等各类公权力的行使来维护政治安全。如宪法和相关国家机关组织法通过规定政\n府的权力结构和运作机制，限制政府的权力范围，防止权力滥用和腐败现象的发生。\n52.简述我国宪法上的公民人格尊严不受侵犯。\n【参考答案】\n我国《宪法》第 38条规定，公民的人格尊严不受侵犯，禁止采用任何方法对公民进行侮辱、诽谤和诬告陷\n害。即公民享有人格权。人格权是和人的尊严紧密联系的一种宪法权利。公民的人格权包括姓名权、肖像权、\n名誉权和隐私权等。\n人格权是 20世纪以来各国普遍重视的一项基本权利。随着社会文明程度的逐步提高，各国通过立法与司法\n实践，不断地扩展了人格权的内容与范围。人格权是我国现行《宪法》的内容之一。而且我国的民事立法与刑\n事立法又进一步将人格权的保护具体化了。我国刑",
+   "pred_l1": "法律硕士专业基础",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.1041
+  },
+  {
+   "chunk_id": 41825,
+   "doc_name": "2003年数学三解析.pdf",
+   "text": "n-1(存在 n-1 阶子式不为零)，且显然 T) 1 , , 1 , 1 ( 为方程组的一个非零解，即可作\n为基础解系.\n20.. 【分析】 特征值之和为A 的主对角线上元素之和，特征值之积为A 的行列式，由\n此可求出 a,b 的值；进一步求出 A 的特征值和特征向量，并将相同特征值的特征向量正交\n化（若有必要） ，然后将特征向量单位化并以此为列所构造的矩阵即为所求的正交矩阵.\n【详解】 （1）二次型f 的矩阵为\n.\n2 0\n0 2 0\n0\n\n\n\n\n\n\n\n\n\n\n\n\nb\nb a\nA\n设A 的特征值为 ). 3 , 2 , 1 (ii 由题设，有\n1 ) 2 ( 23 2 1       a   ，\n. 12 2 4\n2 0\n0 2 0\n0\n2\n3 2 1     \n\n b a\nb\nb a\n  \n解得 a=1,b=-2.\n(2) 由矩阵A 的特征多项式\n) 3 ( ) 2 (\n2 0 2\n0 2 0\n2 0 1\n2   \n\n\n\n   \n\n\n\n A E ，\n得A 的特征值 . 3 , 232 1      \n对于 , 22 1   解齐次线性方程组 0 ) 2 ( x A E ，得其基础解系",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.5912
+  },
+  {
+   "chunk_id": 35984,
+   "doc_name": "9787565530623_000019925475_15457305.pdf",
+   "text": "—\n农业智能装备嵌入式系统原理\nattribute__((weak,alias(,,Default_Handlern)))函数。\n(5) system_ARMCM4.h> system_ARMCM4.co 主要定义了 SystemCoreClockUpdate(\nSystemlnit()函数。\n3.3.5 CMSIS的规范和工具链\n1 .CMSIS的编程规范\n为保证CMSIS支持的工具链在嵌入式软件开发过程中代码编写的安全性和健壮性 ，\nCMSIS使用以下基本编码规则和约定。\n(1)符合 ANSI C (C99)和 C++ (C++03)规范。\n(2)使用<stdint.h>中定义的ANSI C标准数据类型。\n(3)变量和参数均有完整的数据类型。\n(4) #defne常量的表达式用括号括起来。\n(5)符合MISRA C 2012,对于不符合MISRA标准的，编译器会提示错误或警告(注:\nMISRA C是由汽车产业软件可靠性协会提出的C语言开发标准，其目的是在增进嵌入式系\n统的 安全性及可移植性，针对C++语言也有对应的标准MISRA C++。目前最新有效的C语\n言规范版本是MISRAC:2012)o\n此外，CMSIS建议对标识符和源文件注释风格采用以下约定：\n(1)采用大写名称识别内核寄存器、外设寄存器和CPU指令。",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5439
+  },
+  {
+   "chunk_id": 47144,
+   "doc_name": "【横版】27张宇基础30讲做题本.pdf",
+   "text": "n < a + 1\nn\n公众号：做题本集结地 第 2 讲·数列极限\n· 第 72 页，共 407 页 ·\n习题(答案见 P97)\n1设 limn→∞an = 0,limn→∞bn = 1,则 ( ) .\nA. 对任意 n,an < bn成立 B. 存在正整数 N,当 n > N时,总有 an < bn\nC. limn→∞\nbn\nan\n必定存在 D. limn→∞anbn可能不存在\n公众号：做题本集结地 第 2 讲·数列极限\n· 第 73 页，共 407 页 ·\n2设数列 xn 满足 xn > 0,且 limn→∞\nxn+1\nxn\n= 1\n2 ,则 ( ) .\nA. limn→∞xn = 0 B. limn→∞xn存在,但不为零\nC. limn→∞xn不存在 D. limn→∞xn可能存在,也可能不存在\n公众号：做题本集结地 第 2 讲·数列极限\n· 第 74 页，共 407 页 ·\n3limn→∞ n+ n - n- n = _____.\n公众号：做题本集结地 第 2 讲·数列极限\n· 第 75 页，共 407 页 ·\n4设 limn→∞\nn99\nnk - n-1 k 存在且不为零,则常数 k = _____.\n公众号：做题本集结地 第 2 讲·数列极限\n· 第 76 页，共 407 页 ·\n5limn→∞\n1\nn2+1",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "习题",
+   "pred_conf": 0.5808
+  },
+  {
+   "chunk_id": 70891,
+   "doc_name": "六级急救班写译阅读讲义OK.pdf",
+   "text": "es．\nC)Theyare mattersthe Americangovernmenttypicallyignores when\nformulatingeducationalpolicies．\nD)Theygiveaclearsignaltochildrenandtheirfamiliesofthecrises\ntheyarelikelytofaceinthefuture．\n４９．WhatistheassumptionunderlyingeducationpoliciesintheU．S．?\nA)Children􀆳sacademicperformancedependsonreducingthenumberof\nabsences．\nB)Schoolscanboostchildren􀆳sacademicperformancebyeffectiveintervention．\n—６２—\nC)SchoolsaswellasfamiliesshouldbeheldresponsibleforoutＧofＧschool\ncrises．\nD)Children􀆳sacademicperformanceiscloselyrelatedtothequalityof\ninstruction．",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "习题",
+   "pred_conf": 0.5623
+  },
+  {
+   "chunk_id": 30245,
+   "doc_name": "2025法硕专业课回忆版真题（法本+非法本）【华研法硕】.pdf",
+   "text": "议不成立\nB 甲与乙约定以物抵债协议后，原债务消灭\nC 甲有权要求履行以物抵债协议\nD 乙有权要求甲偿还 90 万元\n【答案】C\n【考点】代物清偿\n30题：\nA 甲自行承担\nB 小船所有人全部赔偿\nC 河道管理单位全部赔偿\nD 河道管理单位和小船所有人连带赔偿\n【答案】A\n【考点】过错责任\n31题：\nA 甲自行承担\nB 小船所有人全部赔偿\nC 河道管理单位全部赔偿\nD 河道管理单位和小船所有人连带赔偿\n【答案】A\n【考点】过错责任\n32题：\nA 甲所有\nB 丙所有\nC 甲与乙共有\nD 甲与丙共有\n【答案】A\n【考点】埋藏物\n33题：\nA 居民委员会\nB 个人独资企业\nC 个体工商户\nD 农村集体经济组织\n【答案】B\n【考点】非法人组织\n38题：\nA.网络微电影属于视听作品，甲享有著作权\nB.网络电影属于摄影作品，甲和乙共同享有著作权\nC.纪录片属于摄影作品，甲享有著作权\nD.纪录片属于视听作品，甲和乙共同享有著作权\n【答案】A\n39题：\nA.不成立.\nB.无效\nC.有效\nD.可撤销\n【答案】C\n40题：\nA.网络游戏平台对游戏道具转让不承担协助义务\nB 游戏道具属于网络虚拟财产，丙有权继承\nC.因甲死亡、故甲与乙之间的转让合同无效\nD.丙不承担交付游戏道具的义务\n【答案】B\n二、多项选择题\n46题：\nA、双倍返还定金\nB、承担违反合作意向书的违约责任\nC、承担违反合作开发合同的违约",
+   "pred_l1": "法律硕士专业基础",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.0747
+  },
+  {
+   "chunk_id": 74536,
+   "doc_name": "翻译15讲之三.pdf",
+   "text": "例 147】 Our future is built, bit by bit, minute by minute, by the\nactions of human beings.\n【译文】 我们的未来世界是由人类一点一滴地、一分一秒地创造\n出来的。\n【 例 148】 Members of Congress, the President, state officials,\nand those who govern counties and cities, are elected by popular vote.\nHeads of federal departments ar e named by the President, and\njudges are either elected directly by the people or are appointed by\nelected officials.\n【译文】 国会议员、总统、州政府官员以及县长、市长均由民众\n投票选举。联邦政府各部部长由总统任命，法官由人民直接选举，或由\n当选官员任命。\n98\n红宝书 网址：www.hongbaoshu.com           通用网址：红宝书\n2、借助“为…所 ＋ 动词”或“是…（所）＋ 动词 ＋ 的”的结构",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.569
+  },
+  {
+   "chunk_id": 62065,
+   "doc_name": "2017.12英语六级考试第3套解析.pdf",
+   "text": "废气\n1. 修复，整修 2.重新采用，恢复M)restoration\nD)elimate 1. 消除，消灭 2.（在比赛中）淘汰\n动词原形 1.使精疲力竭 2.用尽，耗尽 3.详尽无遗地论述（某主题/\nE) exhaust 话题等），如∶exhaust a subject/topic\n扰乱，使混乱C) disupting\ning 分词动词 1.产生火花 2.引起，导致 3.激起（某人的兴趣/好奇等），如∶O)sparking spark sb's interest/curiosity\n执行，贯彻，实施H)) implemented\n安装〔设备、新软件〕cd 分词 J)istaled\n提供动力，驱动L) powered\n3非此店铺∶必有缺失认准淘宝店铺∶光速考研工作室\nᒎქ䃹\nਕ౲਺ੌੋਾੁਹ ᬌ⩔⮰ ಎ⮰\nਗ౲਽੅੆ਹ਺ੌੁ ಔ಑៝ᰵጸ᱇⮰ ૓ಕ಑㐅Ϧጸ᱇⮰\nਛ౲੄੅ੋਾਸ਼ਹ਴ਵੁਹ⮰ ಎᬺ᭪⮰\nਞ౲੊ੀਹ੆ੋਾਸ਼਴ੁ ᠭᔬ⪽ᔭᏒ⮰ ಎ̹Ⱔԍ⮰\n䃹\n਑౲ਸ਼ੌ੉੉ਹ੄ੋੁ੐ ⣜ᬢ ಎݹ\nਙ౲ਾ੄ਸ਼ਾਸਹ੄ੋ਴ੁੁ੐ ಔ಑䶦ӫ᣼̷̬ ૓ಕ಑♢౜\n̵ઽⱋ䷄㇪㼏\nఉ᧑ ਲ ੉ਖ਼੥਩੡ਫ਼ਗ਼ਜ਼੎੉ਖ਼ੋਗ਼੡ਖ਼੠ਫ਼੓੎੟੒੉੢੎੊੎੎ਖ਼ ੃਴ੀਾ੄਼\nੋ਽ਹ੊਽ਾ਺ੋ\n௳\n੠ਗ਼ਹੁਹਸ਼ੋ੉ਾਸ਼੍ਹ਽ਾਸ਼ੁਹ੊\n௴\n੉ਖ਼੍ਬ੎ਫ਼੘੉ਖ਼੥ ੒੉੟੔੡੟੠",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "定义",
+   "pred_conf": 0.5649
+  },
+  {
+   "chunk_id": 4316,
+   "doc_name": "模拟电子技术基础 第6版 学习辅导与习题解答.txt",
+   "text": "输入开始，而电子电路的设计需从输出开始，从负载的需求，逐级向前级电路提出性能要求，从而确定参数。因此，本电路应首先根据Uz(后级稳压电路的输人电压)、输出电压和电流求解R?取值范围，并确定其具体数值；然后根据R?、U?求解R?取值范围，并确定其具体数值；最后根据U?、R,确定整流二极管的两个极限参数I,和Uno解：(1)R?和D?组成的稳压电路的输入电压是U,基本不变；U?=U??=5V,l?=5~20 mA。因此，R?的取值范围R-30+1a=20 aR--52100=280 n按照电阻系列的值，可取240 Ω、250 Ω、270Ω中的一个。若实际确定R?=270 Ω,则R,和D??组成的稳压电路的负载电流6=27A-0026A=26mA基本不变；输入电压U?≈1.2U?=24 V。R,的取值范围R30+262×10=257aR05+2610=31 n按照电阻系列的值，可取270 Ω、300 Ω中的一个。实际确定R?=300 Ω。为什么限流电阻R?、R?均选取其取值范围中接近上限值的电阻呢?这是因为当稳压管的动态电阻r,远远小于限流电阻R时，稳压电路的稳压系数s-京·所以在U?、Uz、,均确定的情况下，R越大，在电网电压波动时输出电压的稳定性越好。(2)由U?、R?、Uz?,可知整流滤波电路负载电流I的最大值为13A=0048A=48 mA由于整流二极管的电流为负载电流的二分之一",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5933
+  },
+  {
+   "chunk_id": 5283,
+   "doc_name": "数字电子技术基础 学习辅导与习题解答 第6版 .pdf",
+   "text": "保证电路能够自启动的关键，在于必须保证每个无效状态的次态都能直接转入一个有\n效状态，或者能间接地转入一个有效状态（即经过另外的无效状态以后，最终仍能转入一个有效\n状态）。如果我们在设计过程中能做到这一点，那么设计出的时序逻辑电路就一定能自启动。\n在时序逻辑电路的设计方法中已经讲过，设计时首先要找出电路的状态方程。为此.可\n以从电路的状态转换图画出状态方程的卡诺图。然后利用卡诺图化简.即可得到电路的状态\n方程了。\n我们仍以图6-2-5的计数器为例，画出状态方程的卡诺图，即 Q;Q\"Q°的卡诺图，如\n图6-2-6所示。为了使状态方程尽量简单，图中将无效状态作为无关项处理，用\"x\"表示。\n化简过程中将这些\"×\"取作1还是取作0，视化简结果 、Q;2。临 10_1I0100是否最简单而定。为看得清楚起见，把图6-2-6 的卡诺图\n拆分为图6-2-7中的Q2、Qi\"、Q6这3个卡诺图。按照图 。 00100100 ×××\n中所示的方式合并最小项后，得到电路的状态方程为\n1n， 它××x110Q: =Q'。\n一气“公 (6-2-1) 图6-2-6 图6-2-5计数器状态方程\n一气“。 （Q5Q;Q。）的卡诺图\n第六章 时序逻辑电路 91\n9;0。 9;2。9;C。鸣 0码 多、100100 10 “11011I1 10邻人管 。。 。e 冒-自自 产To×-- x\n四 )eD-J× ，-I区 ",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5597
+  },
+  {
+   "chunk_id": 45923,
+   "doc_name": "【A4留白】27张宇基础30讲做题本(2).pdf",
+   "text": "，共 217 页 ·\nP45例 1.19设 x → 0时, etanx - esinx与 xn是同阶无穷小,则 n为 ( ) .\nA. 1 B. 2 C. 3 D. 4\nP46例 1.20证明:(1)若 lim f x \ng x \n= A,且 limg x = 0,则 limf x = 0;\n(2)若 lim f x \ng x \n= A ≠ 0,且 limf x = 0,则 limg x = 0.\nP46例 1.21设 lim\nx→0\nsinx\nex-a cosx-b = 5,则 b = ( ) .\nA. - 4 B. - 3 C. - 2 D. - 1\n公众号：做题本集结地 第一讲·函数极限连续\n· 第 9 页，共 217 页 ·\nP49例 1.22证明:\n(1)当 x → 0时, ln x+ 1+ x2 ∼ x;\n(2)当 x → 0时, 1 - cosx a ∼ 1\n2 ax2,a ≠ 0.\nP49例 1.23设 f x = ln10x,g x = x,h x = e\nx\n10，则当 x充分大时，有 ( ) .\nA. g x < h x < f x  B. h x < g x < f x ",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.5918
+  },
+  {
+   "chunk_id": 24327,
+   "doc_name": "【电子技术基础】虞文鹏 第2版).pdf",
+   "text": "结反偏),\n因此只要给出 UcE=1V\n时的输入特性就可以了。\n2.．输出特性曲线\n输出特性表示输入电流IB为参变量时，输出回路中 Ic 与 Uce 的关系，即\nIc=f( UcE )I\nIB=常数\n图 1.20 是 NPN 型硅管共射极输出特性。当IB 改变时，可得一簇曲线。由特性曲线可\n见，输出特性分截止区、饱和区和放大区三个区域\nIc/mA 来\n-50μA\n40μA\n饱和区\n-30μA\n-20μA\nI=10μA\n截止区\n图 1.20\n共射极输出特性曲线簇\n1)\n截止区\nIB=O 的特性曲线以下区域为截止区。此时晶体管的集电结处于反偏，发射结电压 UBe≤\nO，也是处于反偏状态，即 Uc>Ue>UB。由于 IB=O，Ic=βIB，严格说来也应该为零，晶体\n管无放大作用。反偏的PN 结有反向电流，因此，集电极有很小的电流IcEo流过，称为穿透\n电流。晶体管接在电路中，因 Ic=IcEo～0，犹如一个断开的开关。\n2)\n饱和区\nNPN 型三极管共发射极放大电路如图 1.18 所示，集电极(或发射极)要接入电阻，如果\n电源 Ec一定，那么当 Ic增大时，Uce将相应降低。UcE降低会削弱吸引电子的能力，即使\nIB 再增大，Ic 几乎不再增大，晶体管失去了放大作用处于饱和状态。规定 UcE= UBE 时的状\n态为临界饱和，此时，Ics=(Ec-UcEs)/Rc= βIBs，UcEs、I",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5799
+  },
+  {
+   "chunk_id": 44406,
+   "doc_name": "Imperfect C++.pdf",
+   "text": "\n失， “如果还有比没有文档更糟的情形，那就是文档是错误的” [ M e y e 1 9 9 7 ]。如果被使用的组件比较简单，\n使用得当，或者说是标准的或被普遍使用的，那么没有文档倒也不是什么大问题。例如，如果许多程序员\n需要一而再、 再而三地查找 C 库函数 m a l l o c ( ) 的用法， 那可真算是奇闻怪谈了。 然而， 这种情况毕竟很少。\n我曾经遇到一些程序员，他们非常有经验，但对 m a l l o c ( ) 的兄弟 r e a l l o c ( ) 和 f r e e ( ) 之间的细微差别却并\n不那么熟悉。\n对于这些问题，解决的方式很多。其一是通过增强的参数验证，使软件组件具有更强的抵抗错误的能力，\n但这种方式通常不那么有吸引力，因为它会损及性能，还倾向于滋生坏习惯。制作良好的文档并让它们保\n持更新当然是解决方案的一个重要组成部分，然而这种做法是远远不够的，因为它是“非强制性”的。此\n外，要想写出好文档也是一件极其困难的事情 [ H u n t 2 0 0 0 ]。软件越复杂，其原始作者要想把自己摆在对该\n软件懵懂无知的处境从而便于写出更好的说明文档就越不可能，而独立的技术作者要想抓住其所有的细微\n之处就更加困难了。因此，当情况不再单纯时，一个确保正确使用代码的更好的方式显然是必不可少的。",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.2431
+  },
+  {
+   "chunk_id": 25744,
+   "doc_name": "2.3 PN 结.md",
+   "text": "象称为 PN 结的 **反向击穿** (reverse breakdown)。发生击穿时的 $U _{\\mathrm{BR}}$ 称为 PN 结的反向击穿电压。\n\\*反向击穿分为 **齐纳击穿** (Zener breakdown) 与 **雪崩击穿** (avalanche breakdown)：\n- 齐纳击穿：在高掺杂的情况下，耗尽层较薄，较小的反向偏置电压就可在耗尽层中建立强电场，从而破坏共价键，产生电子－空穴对，致使反向电流急剧增加。\n- 雪崩击穿：如果掺杂浓度较低，耗尽层较宽，当反向偏置电压较大时，耗尽层的电场使自由电子的漂移速度加快，与价电子碰撞时，使价电子脱离共价键的束缚，产生电子－空穴对。新产生的电子－空穴对被电场加速后，又撞出其他的价电子，载流子雪崩式地倍增，致使反向电流急剧增加，这种击穿称为雪崩击穿。\n齐纳击穿和雪崩击穿都属于 **电击穿**，一般来说是可以恢复的。\n然而，当反向击穿电流过大时， PN 结会因过热而发生 **热击穿**，造成 PN 结的永久性损坏。\nPN 结的伏安特性曲线如下图，其中一些物理量将在下一节介绍。\n![[p-n-junction-voltage-current.png]]\n## PN 结的电容效应\n分为势垒电容 $C _{\\mathrm{B}}$ 与扩散电容 $C _{\\mathrm{D}}$，总电容 $C _{\\mathrm{J}}",
+   "pred_l1": "电路",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "定义",
+   "pred_conf": 0.0826
+  },
+  {
+   "chunk_id": 30958,
+   "doc_name": "3-基本放大电路.pdf",
+   "text": "率：功率放大电路再作研究\n 最大不失真输出电压Uom：交流有效值\n放大电路的性能指标：研究的是动态性能\n基本共射放大电路的组成\n及各元件的作用\nVBB、Rb：使UBE＞ Uon，且有合适的IB。\nVCC：使UCE≥UBE，同时作为负载的能源。\nRc：将ΔiC转换成ΔuCE(uo) 。\nT：有源元件，能够控制能量的元件。\n共射\n)( oCECBI c\nuuuiiu R ∆→∆→∆→∆→∆\n动态信号作用时：\n输入电压ui为零时，晶体管各极的电流、b-e间的电压、管压\n降称为静态工作点Q，记作IBQ、 ICQ（IEQ）、 UBEQ、  UCEQ。\n基本共射放大电路的\n波形分析\n输出电压必然失真！\n设置静态工作点，虽然首先要解决的是失真问题，但Q点几乎影响着所有的动态参数！\n为什么放大的对象是动态信号，却要晶体管在信号为零时有\n合适的直流电流和极间电压？\n设置静态工作点的必要性\n动态信号驮载在静态之上\n与iC变化方向相反\n输出和输入反相！\n基本共射放大电路的波形分析\nt\nuCE\nUCEQ\nVCC\nO t\nuCE\nUCEQ\nVCC\nO\n饱和失真\n底部失真\n截止失真\n顶部失真\n要想不失真，就要在信号的整个周期内保证晶体管始终\n工作在放大区！\n基本共射放大电路的波形分析\n放大电路的组成原则和\n两种实用的放大电路",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5971
+  },
+  {
+   "chunk_id": 32201,
+   "doc_name": "康华光《电子技术基础-数字部分》（第5版）配套题库【名校考研真题＋课后习题＋章节题库＋模拟试题】.pdf",
+   "text": "\nB\n为输入变量，\nY\n为输出函数。试说明当\n作为控\n制信 号时，\nY\n与\nA\n、\nB\n的逻辑关系。\n图\n4-4\n答：\n（\n1\n）由图可直接写出逻辑表达式：\n（\n2\n）\n4\n个控制变量\n有\n16\n种状态组合，各种状态组合下输出函数\nY\n的表达式如下表\n4-2\n所示，可见这是一个多功能函数发生器。\n表\n4-2\n3\n．一把密码锁有\n3\n个按键，分别为\nA\n、\nB\n、\nC\n。当\n3\n个键都不按下时，锁不打开，也不报警；当只\n有一个键按下时，锁不打开，但发出报警信 号；当有两个键同时按下时，锁打开，也不报警；当\n3\n个键同时按下时，锁被打开，但要报警。试设计此逻辑电路，要求分别用以下电路芯片实现。\n（\n1\n）门电路；（\n2\n）\n3\n线\n—8\n线译码器和与非门；（\n3\n）双\n4\n选\n1\n数据选择器和非门；（\n4\n）全加\n器。\n答：\n设键按下为\n1\n，未按下为\n0\n；令开锁信 号为\nK\n，锁开为\n1\n，锁闭为\n0\n；报警信 号为\nJ\n，报警为\n1\n，\n不报警为\n0\n。根据题意可列出真值表如图\n4-5\n（\na\n）所示。\n（\n1\n）门电路实现\n由真值表可以画出输出变量\nJ\n和\nK\n的卡诺图如图\n4-5\n（\nb\n）（\nc\n）所示，化简得\n逻辑图如图\n4-5\n（\nd\n）所示。\n（\n2\n）用\n3\n线\n—8\n线译码器实现。\n需将输出变量\nJ\n和\nK\n表示成最小项和的形式，由真值表得\n则逻辑连接图如图\n4-",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5726
+  },
+  {
+   "chunk_id": 42325,
+   "doc_name": "2015年数学三解析.pdf",
+   "text": "�P(AB),\nPCA)\n+PCB)\n两式相加，得P(A)\n+PCB)�\n2\nPCAB),\n即P(AB)�\n- .\n故应选C\n.\n(8)\nB\n解\n因为\nX�B(m,0),\n所以\nDCX)\n=\nm0Cl-0).\nl\nn\n设s\n2\n=\nex,\n—\nX几则\nE(S\n2\n)\n=\nD(X)\n=\nm0Cl-0).\n区\nn\n-\nl\ni-1\n所以\nE[\n笘\nex,\n一X\n)\n2\n]\n=\nCn\n—\nl)\nE\n[\nn\n�\n1\n言\nex,\n—\nX)\nz\n]\n=\n(n\n—\nl)E\n(S\n2\n)\n=\n(n\n—\nl)D\n(X)\n=\nm\n(n\n—\n1\n)0\n(\n1\n—\n0).\n故应选B\n.\n二、填空题\n(\n9\n)\n——\n1\n2\n解\n利用等价无穷小\n代\n换．\n1\n2\n—\n—\nx\nln(cosx\n)\nln[l\n+\n(cosx\n—\nl)]\ncosx\n—\n1\n1\nli\nm\n=l\nim\n=\nl\nim\n=\nl\ni\nm\n2\n=\n—\n—\n.\n2\n2\n工\n-o\nX\nx-o\nX\n工\n-o\nX\n2\n2\n.,· •o\nX\n2\n(\n10\n)\n2\n解\n<p\no)\n=\nI\n1\n(t)\nd\nt • 矿\n(x)\n=\n[xf:\n2\nf(t)\nd\nt]\n'\n=\nx•\nZxf(x\n2\n)+\nf\n工\n'f\n(t)\ndt\n故矿C\nl)\n=\nZJ(l)\n+\nf:J<t)\nd\nt\n=\nZJ(l)\n+\n<pCl).",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.5806
+  },
+  {
+   "chunk_id": 76291,
+   "doc_name": "英语二大作文模板教程.pdf",
+   "text": "这个意义上讲，可以期待的\n是，安全和繁荣的社会是不断努力促进（主题）的直接结果。\n137\n（2）作文模板运用\n1. 考纲样例题目\nWrite your answer in about 160-200 words on the ANSWER SHEET.\nStudies in the U.S, and the U.K. consistently show that children have lost the\nright to wander. This is why many of our youth turn to technology. They aren’t\naddicted to the computer; they’re addicted to interaction, and being around their\nfriends. Children, and especially teenagers, don’t want to only socialize with parents\nand siblings; they want to play with their peers. That’s how they make sense of the",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "其他",
+   "pred_conf": 0.5702
+  },
+  {
+   "chunk_id": 35222,
+   "doc_name": "《数据结构  C语言版  第2版》严蔚敏.pdf",
+   "text": "除操作无需移动数据， 只需要修改指针，\n时间复杂度为0(1)。而对千顺序表，进行插入或删除时，平均要移动表中近一半的结点，时间复\n杂度为 O(n)。尤 其是当每个结点的信息量较大时，移动结点的时间开销就相当可观。\n基千此，对千频繁进行插入或删除操作的线性表，宜采用链表作为存储结构。\n41\n42\n1数据结构(C语言版）（第2版）I\n2.7 线性表的应用\n2.7.1 线性表的合并\n［例 2.1 ] 求解一般集合的并集问题。\n【问题描述】\n已知两个集合 A 和 B, 现要求一个新的集合 A = AUB。例 如， 设\nA = (7, .s-, 3, 11)\nB=(2, 6, 3)\n合并后\nA = (7 , 5 , 3 , 11 , 2 , 6)\n【问题分析】\n可以利用两个线性表 LA 和 LB 分别表示集合A和 B (即线性表中的数据元素为集合中的成\n员）， 这样只需扩大线性表 LA, 将存在千 LB- 中而不存在千 LA 中的数据元素插入到 LA 中去。\n只要从 LB 中依次取得每个数据元素， 并依值在 LA 中进行查访， 若不存在， 则插入之。\n上述操作过程可用算法 2.15 来描述。具体实现时既可采用顺序形式 ， 也可采用链表形式。\n算法2.15 线性表的合并\n【算法步骤】\n心分别获取 LA 表长 m 和 LB 表长n。",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5689
+  },
+  {
+   "chunk_id": 12521,
+   "doc_name": "【电子技术基础-模拟部分】康华光 精品复习课件.pdf",
+   "text": "esday\n75\n4. 电压反馈和电流反馈的判断\n电路引入了电流负反馈\n反馈电流\n引入电压负反馈稳定输出电压，引入电流负反馈稳定\n输出电流！\n仅受基极电流的控制\n5. 串联反馈和并联反馈的判断\n在输入端，输入量、反馈量和净输入量以电压的方式\n叠加，为串联反馈；以电流的方式叠加，为并联反馈。\n引入了并联反馈 引入了串联反馈\n分立元件放大电路中反馈的分析\n图示电路有无引入反馈？是直流反馈还是交流反馈？是\n正反馈还是负反馈？若为交流负反馈，其组态为哪种？\n3. 若在第三级的射极加旁路电容，且在输出端和输入\n端跨接一电阻，则反馈的性质有何变化？\n+\n_\n_\n+ ++\n_\nuF\n1. 若从第三级射\n极输出，则电路引\n入了哪种组态的交\n流负反馈？\n2. 若在第三级的\n射极加旁路电容，\n则反馈的性质有何\n变化？引入了电流串联负反馈\n作用？\n分立元件放大电路中的净输入量和输出电流\n• 在判断分立元件反馈放大电路的反馈极性时，净输入\n电压常指输入级晶体管的b-e（e-b）间或场效应管g-\ns（s-g）间的电位差，净输入电流常指输入级晶体管\n的基极电流（射极电流）或场效应管的栅极（源极）\n电流。\n• 在分立元件电流负反馈放大电路中，反馈量常取自于\n输出级晶体管的集电极电流或发射极电流，而不是负\n载上的电流；此时称输出级晶体管的集电极电流或发\n射极电流为输出电流，反馈的结果将稳定该电流。\n§6.2 负反",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5894
+  },
+  {
+   "chunk_id": 59669,
+   "doc_name": "2016.12英语六级考试第2套解析.pdf",
+   "text": "rry\nseeds..·，并分别添加信息emergency和farawayplaces，但两项均为作者对鸟类行为特点的背景介绍，\n并非加拿大科学家发现。B）是对Ⅱ段加拿大科学家研究发现的合理概括，其中pollutants即指\ndangerous chemicals，nesting sites同义替换where the birds live。D)“海鸟濒危”在文中并未提及。\n10.关于被称为管鼻藿的海鸟，讲话者说了什么？\nA)它们在夏季迁移到北极圈。\nC)它们长途跋涉400公里寻找食物。\nB)它们起源于北极地区的德文岛。\nD)它们具备在极端天气下生存的能力。\n［设题要点」事物特点说明处（calledfulmars）。\n13\n认准淘宝店铺：光速考研工作室\n非此店铺：必有缺失\n--- 第14页(OCR) ---\n［答案精析」C)。A)利用Ⅲ、IV段ArcticCircle、migrate等片段信息干扰，但文中未提及“海鸟在夏\n季迁移”。B）把“在德文岛上筑巢（maketheirnestson）”篡改为“起源于德文岛（originatefrom）”。C）是\n对Ⅲ段内容的同义表达，其中travelasfar as4ookilometers同义替换travel some4ookilometers，in",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.566
+  },
+  {
+   "chunk_id": 5034,
+   "doc_name": "阎石《数字电子技术基础》（第6版）配套题库【考研真题精选＋章节题库】.txt",
+   "text": "0000。由于是同步置数，工作可靠。方法是用90÷16＝5…10，高位用0101作译码状态，低位用1010作译码状态，由此得到了置数端LD的连接方式，如图6-58所示。图6-58 91进制的加法计数器试用集成中规模加法计数器74LS161采用反馈归零法和置数法分别实现十二进制计数器。答：中规模加法计数器74LS161异步清零，因此采用反馈归零法设计十二进制计数器，其译码状态为1100，可写出反馈函数，见图6-59。中规模加法计数器74LS161同步置数，因此采用置数法设计十二进制计数器，其译码状态为1011，其反馈函数，见图6-60。图6-59 反馈归零法图6-60 置数法图6-61所示电路是由2-5分频十进制计数器74LS90和四位二进制加法器74LS283组成，回答下列问题：图6-61（1）列出计数器74LS90的输出QDQCQBQA和4位二进制全加器74LS283的输出。S4S3S2S1的状态转换表；（2）QDQCQBQA采用的是何种编码？S4S3S2S1采用的是何种编码？答：（1）根据题意可知，输出方程为按照全加器的逻辑功能，列电路状态转换表如表6-21所示。表6-21（2）74LS90的输出QDQCQBQA采用BCD8421码；四位二进制加法器的输出S4S3S2S1采用BCD5421码。电路如图6-62所示。分析由触发器FF1、FF2、FF3构成的计数器（Q3为高位）：写",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5746
+  },
+  {
+   "chunk_id": 54369,
+   "doc_name": "2012年12月英语六级考试答案解析(2).doc",
+   "text": "t is Andrea s attitude toward the hardships brought by the economic recession?00THhOptimistic.000p000,gecQNAndreaN[(WS1YNeO6qPNT\nNvygr0NezvSDespite unemployment and the lost of her home, Andrea Clark considers herself a blessed and happy woman.TgTNkbut she remains unfailingly optimistic.0RpS0AndreavNYfQNSvw]St1YN:NNcuNNHQfTY?QP[N[OO(WNwTegS,d[0RrN]yYvNY(Wb]O0FOfNmpvl\tgAndreamgyY]T[NvsQf[NvNvO]YsQ000sQ.lay off expenditure n.eQ9optimistic adj.PNv0\r0Section C00Mountain climbing is becoming a popular sport, but it is also a potentially dangerous one.People can fall.They may also become ill.One of ",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "习题",
+   "pred_conf": 0.5856
+  },
+  {
+   "chunk_id": 51673,
+   "doc_name": "2008年6月英语六级真题及答案.pdf",
+   "text": "en.\nC.they have to carry out intensive surveys of colleges before children make an\napplication.\nD.they care more about which college their children go to than the children\nthemselves.\n58.Why do parents urge their children to apply to more school than ever?\nA.they want to increase their children chances of entering a prestigious college.\nB.they hope their children can enter a university that offers attractive scholarships.\nC.Their children eill have have a wider choice of which college to go to.\nD.Elite universities now enroll fewer syudent than they used to.\n59.What does the author mean by kid",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "习题",
+   "pred_conf": 0.5836
+  },
+  {
+   "chunk_id": 17153,
+   "doc_name": "第2章 逻辑代数基础.pdf",
+   "text": "222222222222222222222222222222222222222222222.77.55555555555555555\nර仈ǃભ仈㿴ᖻ⤜ᇦ㿶仁䇢䀓\n䈖㿱˖㖁ᆖཙൠ˄www.e-studysky.com˅˗૘䈒QQ˖2696670126\nᮠⲴ਼ᡆѪ\n=\n$\n%&\n㺘2.7.8 YⲴ঑䈪മ\nCACBCA\nYYY\n/g99/g14/g99/g99/g14/g99/g32\n/g32 21Ĵ\nĴ\n$\n%&\n㺘2.7.4 Y1Ⲵ঑䈪മ\n$\n%&\n㺘2.7.5 Y2Ⲵ঑䈪മ\n2.7.1.ᮠⲴ䘀㇇\n㺘\n222222222222222222222222222222222222222222.777777777777.8888888888888 YYYYYYYYYYYYYYYYYYYYYYYYY\nⲴⲴⲴⲴⲴⲴⲴⲴⲴⲴⲴⲴⲴⲴ\n঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑঑\n䈪\nර仈ǃભ仈㿴ᖻ⤜ᇦ㿶仁䇢䀓\n䈖㿱˖㖁ᆖཙൠ˄www.e-studysky.com˅˗૘䈒QQ˖2696670126\n2.7.2ᮠ㺘䗮ᔿ㊫රⲴ䖜ᦒ\nᮠ㺘䗮ᔿⲴᖒᔿᴹᖸཊ⿽ˈྲоᡆᔿǃ\nᡆоᔿǃо䶎ᔿǃоᡆ䶎ᔿㅹˈн਼Ⲵ㺘䗮ᖒᔿਟ\n⭡н਼Ⲵ䰘⭥䐟ᶕᇎ⧠Ǆа㡜Ⲵ䙫䗁࠭ᮠѪоᡆᔿ\n˄҈〟઼˅ˈ䘉ṧ䴰㾱䖜ᦒᡀަᆳⲴ⭘঑\nׯⲴᇎ⧠䖜ᦒǄ\n1. оᡆᔿ䖜ᦒᡀᡆоᔿ\nᐢ⸕䙫䗁࠭ᮠ",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "其他",
+   "pred_conf": 0.5487
+  },
+  {
+   "chunk_id": 74729,
+   "doc_name": "考研大纲5500词(1).pdf",
+   "text": "iant a.光辉的,灿烂的;卓越的,有才华的\nbrim n.边缘,帽沿\nbring v.拿来，带来；产生，引起；使处于某种状态\nbrisk a.轻快的;生气勃勃的;兴隆的\nbrittle a.易碎的；脆弱的；冷淡的；(声音)尖利的\nbroad a.宽的,广阔的;广大的;宽宏的,豁达的\nbroadcast v./n.广播(节目)\nbrochure n.小册子\nbronze n.青铜；青铜色，古铜色；青铜制品，铜牌\nbrook n.小溪 vt.[常用于否定句或疑问句]容忍\nbroom n.扫帚\nbrother n.兄弟;同胞;教友\nbrow n.眉(毛);额\nbrown n./a.褐色(的),棕色(的)\nbrowse vi.随意翻阅，浏览；(牛、羊等)吃草\nbruise n.青肿，挫伤；伤痕 vt.打青；挫伤\nbrush n.刷(子),毛刷;画笔 v.刷,擦,掸,拂;掠过\nbrutal a.残忍的;严峻的;严酷的\nbubble n.泡,水泡,气泡 v.冒泡,起泡,沸腾\nbucket n.水桶,吊桶\nbud n.芽,花苞 v.发芽,含苞欲放\nbudget n.预算 v.做预算\nbuffet n.自助餐\nbug n.臭虫;小毛病;窃听器 v.窃听\nbuild vt.建造，建筑；建设，建立 vi.增大，增强",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "定义",
+   "pred_conf": 0.5644
+  },
+  {
+   "chunk_id": 56210,
+   "doc_name": "2013年真题及答案速查(1).pdf",
+   "text": "e Administration.\nC. Justices wanted to strengthen its coordination with Congress.\nD. The Administration is dominant over immigration issues.\n英语（一）试题.10.（共14页）\nPart B\nDirections:\nIn the following text, some sentences have been removed. For Questions 41-45,\nchoose the most suitable one from the list A-G to fit into each of the numbered\nblanks. There are two extra choices, which do not fit in any of the blanks. Mark\nyour answers on the ANSWER SHEET. (10 points)\nThe social sciences are flourishing. As of 2005, there were almost half a\nmillion professional social scientists from all fields in the ",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "习题",
+   "pred_conf": 0.5795
+  },
+  {
+   "chunk_id": 40164,
+   "doc_name": "003.PDF",
+   "text": "f = statetab[prefix];\nconst string& w = suf[rand() % suf.sizeOl;\nif (w == NONwORD)\nbreak;\ncout << w << \"\\n\";\nprefix.pop_front();\n// advance\nprefix.push_back(w);\n总的来说，这个版本看起来特别清楚和优雅一一代码很紧凑，数据结构清晰，算法完全\n一目了然。可惜的是，在这里也要付出一些代价：这个版本比原来的C版本慢得多，虽然它还\n不是最慢的。不久我们将回头来讨论性能测试问题。\n练习3-5STL的强项是很容易在其中做不同数据结构的试验。修改这里C++版本的马尔可夫程\n序，用不同的结构表示前缀、后缀表以及状态表。对于不同结构，程序的执行性能有什么变化？\n练习3-6另写一个C++程序，只使用类和string数据类型，不使用其他高级的库功能。从\n风格和速度方面将它与采用STL的版本做各种比较。\n3.7 Awk和Perl\n为使这个演习比较圆满，我们也用两个应用广泛的脚本语言（Awk和Perl)写了这个程序。\n--- 第15页(OCR) ---\nChinabub\n62\n.com\n程序设计实践\n下载\n这些语言都提供了本应用所需要的各种特征，包括关联数组和字符串处理等。",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "其他",
+   "pred_conf": 0.2202
+  },
+  {
+   "chunk_id": 64947,
+   "doc_name": "2018.12英语六级考试第2套解析.pdf",
+   "text": "也不应因梅里安的错误而抹杀她的成\n就\"。全段核心信息为∶（1）梅里安犯错原因\"南美之行因病缩短\";（2）她的错误不应抹杀其成就。\n【定位词定位】39题 mistakes...attributed to...对应one explanation for her mistakes;shortened stay同\n义替换 cut short...trip。\n【核心义匹配】①句梅里安出错的原因\"南美之行被迫缩短\"可与 39 题核心义匹配。\n[ N ] ④ Merian's paintings inspired artists and 梅里安的画作给艺术家和生态学家带\n来了灵感。英格兰植物学家兼动物学家乔ecologists. ②In an 1801 drawing from his book,General\nZoology Amphibia,George Shaw,an English botanist and 治· 肖在其著作《普通动物学∶两栖动物》\n所收录的一幅 1801 年画作中，称赞梅里安zoologist,credited\" Merian for describing a frog in the\n在记叙南美探险之旅时描述了一种树蛙，accountof her South American expedition\", and named",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.5731
+  },
+  {
+   "chunk_id": 2810,
+   "doc_name": "2023年真题逐题细解.txt",
+   "text": "确的：美国国家公园正处于危机之中。由此可推断出美国国家公园面临着问题，但具体面临哪方面的问题还不得而知，故需联系下文。辐射匹配：二段❷句指出，总体上美国国家公园积压的维修工作所需费用超过120亿美元；二段❸句指出，道路、小径、卫生间、游客中心和其他基础设施正在崩溃。由此可知，美国国家公园已经积压了高额费用的维修工作，现在有很多基础设施都出现了问题，没有得到修缮。因此美国国家公园面临着基础设施维护不善的问题，故D正确。【路径二】从选项的角度解答一一如何排除干扰找关键词：profits□回文定位：根据关键词可定位至三段❷句，其与该句中的revenues相对应。比对匹配：该句提到，公园的特许经营者平均只向国家公园管理局上缴其约5%的收入。由此可知，该句仅提及公园的特许经营者向美国国家公园管理局上缴的金额只占其经营收入的一小部分，并未提及美国国家公园营业利润下降,故排除A。......................................... ，:_________________________找关键词： commercialization o 回文定位：根据关键词可定位至三段•启和四段，其与三段•句中的commercializing和四段中的commercial为同根词。比对匹配：三段。句提到，将露营地私有化和商业化B 并不是万能之计；四段提到，进一步的私有化肯定会削弱每年",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.063
+  },
+  {
+   "chunk_id": 47277,
+   "doc_name": "【横版】27武忠祥强化辅导讲义做题本(1).pdf",
+   "text": "限 limn→∞\n1\nn+1 + 1\nn+2 +⋯+ 1\nn+n .\n公众号：做题本集结地 武强化讲义例题·1.函数极限连续\n· 第 25 页，共 457 页 ·\n【P21例】设 x1 > 0,xn+1 = 1\n2 xn+ 1\nxn ,n = 1,2, ⋯.求极限 limn→∞xn.\n公众号：做题本集结地 武强化讲义例题·1.函数极限连续\n· 第 26 页，共 457 页 ·\n【P21例 1】求极限 lim\nx→0\n1+tanx - 1+sinx\nxln 1+ x - x2 .\n公众号：做题本集结地 武强化讲义例题·1.函数极限连续\n· 第 27 页，共 457 页 ·\n【P22例 2】求极限 lim\nx→0\nex2\n-e2-2cosx\nx4 .\n公众号：做题本集结地 武强化讲义例题·1.函数极限连续\n· 第 28 页，共 457 页 ·\n【注：类似地,可求下列极限】\n(1)lim\nx→0\nesinx-ex\nsinx- x ; (2) lim\nx→+∞\nx2 a\n1\nx -a\n1\nx+1  a>0 ；\n(3) lim\nx→+∞\nsin x+1 -sin x ； (4)limn→∞ cos n+1 -cos n ;\n公众号：做题本集结地 武强化讲义例题·1.函数极限连续\n· 第 29 页，共 457 页 ·",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.5758
+  },
+  {
+   "chunk_id": 24482,
+   "doc_name": "从零开始学数字电子技术.pdf",
+   "text": "只能道一声“谢谢了！”感谢众多电子报刊、杂志的编辑和作者，他们为本丛书提供了许\n多有新意、有实用价值的参考文献，使得这套丛书能够别出心裁、与时俱进；感谢国防工业\n最后，祝愿本丛书的每一位读者在学习电子技术的过程中，扬起风帆，乘风破浪！\n丛书编者\nIV\n--- 第7页(OCR) ---\n前言\n随着微电子技术的飞跃发展，我们已经进入了一个以数字化电子产品为特征的数字\n化时代，电子计算机、数字化通信产品、数字化音响、数字化电视以及其他形形色色的数字\n化产品开始进人我们的日常生活之中。因此，掌握数字电路的基础知识、了解数字集成电\n路的应用，对于电子技术的爱好者是十分必要的，本书正是为了适应这种需要而编写的。\n本书写作的出发点是不讲过深的理论知识，力求做到理论和应用相结合，循序渐进、\n由浅入深、通俗实用，以指导初学者快速人门。\n按照结构清晰、层次分明的原则，本书可分为以下几部分：\n第-部分为数字电路基础篇。主要包括第一章。重点介绍了数字电路的一些基础知\n识，如数字电路与模拟电路的比较、数字电路的分类、数制与编码等，它们是分析和理解数\n字电路的基础。\n第二部分为逻辑门和组合逻辑电路篇。主要包括第二章、第三章。重点介绍了两个\n方面的内容：一是基本门电路，如分立元件门电路、集成门电路等，它们是组成组合逻辑电\n路的基本逻辑单元；二是组合逻辑电路，如编码器、译码器、显示译码器、数据选择器、加法\n第三部",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "其他",
+   "pred_conf": 0.5628
+  },
+  {
+   "chunk_id": 6776,
+   "doc_name": "2006年逐词逐句精讲册.pdf",
+   "text": "uch...that引导的结果状语从句，作句子主干的结果状语\n—级修饰  that local governments can't possibly cope.\n:词汇注释'proportion*  [ prs poifn] 〃.比例；部分 local*  [ -laokl] a.地方的；局部的\n❸ To help homeless people toward independence, the federal government must support job training programs, raise the\nminimum wage, and fund more low-cost housing.为了帮助无家可归者走向自立 ，联邦政府必须支持就业培训项\n目、提高最低工资并资助建设更多廉价住房。\n—级修饰  To help homeless people toward independence,\n[动词不定式短语作句子主干的目的状语\nthe federal government must support jo^ training programs,（主+谓+宾）\nI并列谓宾\n句子主干 （must） raise the minimum wage,\nI and连接的并列谓宾\nand （must） fund more low-cost housing.\n:词汇注释 fede",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "其他",
+   "pred_conf": 0.6261
+  },
+  {
+   "chunk_id": 70483,
+   "doc_name": "六级大纲词汇.pdf",
+   "text": "zɪliən/ adj. 巴西的；巴西人的n. 巴西人\n571 bread /bred/ n. 面包；生计vt. 在…上洒面包屑\n572 breadth /bred θ/ n. 宽度，幅度；宽宏\n573 break /bre ɪk/ n.休息,暂停,破裂,突变v.打破,违犯,折断,削弱,超过,突变\n574 breakdown / ˈbreɪkdaʊn/ n. 故障；崩溃；分解；分类；衰弱；跺脚曳步舞\n575 breakfast / ˈbrekfəst/ n. 早餐；早饭vi. 吃早餐vt. 为…供应早餐\n576 breast /brest/ n. 乳房，胸部；胸怀；心情vt. 以胸对着；与…搏斗\n577 breath /bre θ/ n. 呼吸，气息；一口气，（呼吸的）一次；瞬间，瞬息；微风；迹\n象；无声音，气音\n578 breathe /bri ːð/ vi. 呼吸；低语；松口气；（风）轻拂vt. 呼吸；使喘息；流露；低\n声说\n579 breed /bri ːd/ v.(使)繁殖,教养,抚养n.品种,种类\n580 breeze /bri ːz/ n. 微风；轻而易举的事；煤屑；焦炭渣；小风波vi. 吹微风；逃走n.\n(Breeze)人名；(法)布雷兹",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "定义",
+   "pred_conf": 0.5563
+  },
+  {
+   "chunk_id": 52786,
+   "doc_name": "2010-2024英语二真题一键打印版【已设计好排版，直接双面打印即可】.pdf",
+   "text": "ng to Paragraph 3, one problem with the policy is that it may _____.\n[A] result in students’ indifference to their report cards\n[B] undermine the authority of state tests\n[C] restrict teachers’ power in education\n[D] discourage students from doing homework\n24. As mentioned in Paragraph 4, a key question unanswered about homework is\nwhether _____.\n[A] it should be eliminated\n[B] it counts much in schooling\n[C] it places extra burdens on teachers\n[D] it is important for grades\n25. A suitable title for this text could be _____.\n[A] A Faulty Approach to Homework\n[B] A Welcomed Policy for Poor Stud",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "习题",
+   "pred_conf": 0.5751
+  },
+  {
+   "chunk_id": 51197,
+   "doc_name": "2007年逐词逐句精讲册(1).pdf",
+   "text": "d setting priorities.\n■WfEa释:delay*  [drlei] m延迟;延期n.延误的时间 deploy [drpbi] 有效地利用;部署;调动\n\"•••第五段••-\n❶Playing video games encourages immediate content.玩电子游戏会促使孩子追求即时的满足感。\n句子主干 Playing video games encourages immechate content.（主+谓+宾）\n❷ And hours of watching TV shows with canned laughter only teaches kids to process information in a passive way. 看几\n个小时带预录笑声的电视节目只会教孩子被动地处理信息。\n132\nAnd hours of watching TV shows...only teaches kids (主+谓+宾+宾补)\n句子主干 T [动词不定式短语作&ds的补足语\nto process information\n介词短语作后置定语，修饰TV shows\nwith canned laughter\n一级修饰  介词短语作process的方式状语\nin a passive way.\n词汇注释 canned [k&nd] a.（广播、电视节目中的",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.5926
+  },
+  {
+   "chunk_id": 65853,
+   "doc_name": "2018年逐词逐句精讲册(1).pdf",
+   "text": "在日后产生巨大的影响。\n句子主干\n:词汇注释:\n（1） We are still at the beginning of this revolution （主+系+表）\n| and连接的并列句\n（2） and small choices now may turn out to have 函竺 later,（主+谓+宾）\nrevolution*  [ ireva-luijn] n.革命;大变革 turn out结果是;出席;关掉\ngigantic*  [ dsai gaentik] a.巨大的;庞大的 consequence*  [ -konsikwans] n.后果;重要性\n❼A long struggle will be needed to avoid a future of digital feudalism.为避免未来的数字封建制度，我们还需要长期\n的努力。\n169\n句子主干 A long struggle will be needed （主+谓）\nI动词不定式短语作句子主干的目的状语\n—级修饰 to avoid a future of digital feudalism.\n:词汇注释:digital*  [ •didsitl] a.数字的，数码的 feudalism [ fjuzdalizam] n.封建制度;封建主义\n❽Ms Denham's report is a we",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.5978
+  },
+  {
+   "chunk_id": 66915,
+   "doc_name": "2019年考研英语二真题解析.pdf",
+   "text": "定位】第二段段首 Thankfully（值得庆幸的是）、③句 leading the way、as it does on so many\nclimate efforts（加州在明确细节方面做出了示范、如同它在气候问题上的诸多其他举措一样）、末段总评\nshould serve as a model（加州计划应成为一个典范）均体现作者对加州计划的肯定态度，【C】正确。\n「命题解密】正确项【C】合理概括了文中 Thankfully、leading the way、should serve asa model等信息\n及文章主旨所传递的作者态度。\n【A】干扰源自第二段①句\"这（森林碳计划）需要达成一种微妙的平衡（subtle balance）\"，但此处是\n指巧妙权衡\"（疏伐树木以降低）森林短期吸碳能力 VS（给剩余树木更多水分以提高）森林长期吸碳能\n力\"，而非作者对计划的态度\"微妙、不明晰\"。【B】将计划的短期影响\"降低森林碳承载力\"、具体方案\n\"年处理的森林面积比重小\"曲解为计划的缺陷，进而得出作者包容缺陷的态度。但前者是提高森林长\n期吸碳能力的途径;后者是为了凸显优先处理高风险区域的必要性，二者均非计划缺陷。【D】\"谨慎的\"\n意味着作者对加州计划心存警惕，而全文并未提及计划可能造成的风险，可排除。\n【技巧总结】观点态度题的基本解题步骤为∶一、归纳主旨，把握写作意图;二、根据作者的评述性、",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.5466
+  },
+  {
+   "chunk_id": 60853,
+   "doc_name": "2017.06英语六级考试第1套解析.pdf",
+   "text": "earch on consumer behavior.\nB) It is a chief concern of parents.\nC) Studying the hazards of young people drinking.\nC) It is getting worse year by year.\nD) Investigating the impact of media on government.\nD) It is an act of socialising.\n18. A) They spent a week studying their own purchasing behavior.\nB) They researched the impact of mobile phones on young people\nC) They analysed their family budgets over the years.\nD) They conducted a thorough research on advertising.\n[看选项关键词预测问题及听音重点］\n16.动词Observing、Conducting（research）、Studying、Investigating暗示题干询问个人或机构的研\n究行为。",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "习题",
+   "pred_conf": 0.5807
+  },
+  {
+   "chunk_id": 65655,
+   "doc_name": "2018年考研英语二真题.pdf",
+   "text": "done,\" he argues.\nSrini Pillay, an assistant professor of psychiatry at Harvard Medical School,\nbelieves this counterintuitive link between downtime and productivity may be due to\nthe way our brains operate. When our brains switch between being focused and\nunfocused on a task, they tend to be more efficient.\n\"What people don't realise is that in order to complete these tasks they need to\nuse both the focus and unfocus circuits in their brain,\" says Pillay.\n- 9 -\n36. The key to mastering the art of deep work is to .\nA. keep to your focus time\nB. list your immediate tasks\nC. make specific daily ",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.5951
+  },
+  {
+   "chunk_id": 8717,
+   "doc_name": "2013年真题逐题细解.pdf",
+   "text": "进一步论证总起句。由此可知，本段旨在强调计划的重要性，F选项与此表述一致，\n:且选项中的Planning与。句中的plan表意相同，故F为答案选项。 【答案F】\n42该段落结构不明晰，故不适合快速解题。\n43该段落结构不明晰，故不适合快速解题。\n1 :该段为总分结构，适合快速解题。\n二WW，「液展真磁巍面〒:_\n; I-----► ©Shop at. ..regularly...be super friendly.\nO...it really is a top tip for frugal eaters.\n'-----> ®Soon you'll feel comfortable asking...for free.\n44 2 :本段❶句为总起句，提到了一个针对节约型食客的好建议；❷❸句具体阐述该建议，即：经常光\n:顾食品店，并对店主非常友好，这样可以得到好处。由此可知，本段的论述重点在于提出了一个针\n:对节约型食客的好建议：对店主友好，即把店主当作你的朋友，C选项与此表述一致，且选项中的\n；friends与❷句中的friendly相呼应，故C为答案选项。 【答案C]\n45该段落结构不明晰，故不适合快速解题。\n第二步:理清段落大意，回文精解.\n:分析本段,。句指出超市及其匿名性能派上用场，紧茹❷句指明其原因：在小蔬菜店，会因为\n42 1 :购买得少而尴尬，但在超市就不会。❸句则进一",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.0605
+  },
+  {
+   "chunk_id": 38101,
+   "doc_name": "10 数电【系统课】.pdf",
+   "text": "的宽度。\n电路\n工作波形\n图\n用\n实现脉冲整形\n脉冲延时\n在某些数字系统中， 有时需要在一个脉冲信号到达后， 经一段时间的延迟后\n蜂考系统课                 官方公众号：蜂考          学习交流加 QQ 群：978080722\n207\n扫码领答案 精讲系统课\n再产生一个滞后的脉冲信号，以控制两个相继进行的操作。图\n为两个单稳\n态触发电路组成的脉冲延时电路， 图\n为其工作波形。 由工作波形可以看出，\n输出脉冲\n滞后于输入脉冲\n一段时间。延迟时间\n恰好为由\n的定时\n电路\n和\n所决定的暂稳态时间\n，且\n的脉冲宽度\n可由\n的\n和\n的值来调节。由于延时电路的延迟时间是从\n的上升沿算起的，故\n应接在\n的\n触发端。 由于\n以其\n端信号触发\n， 故应\n将\n接在\n的下降沿触发端。\n电路\n工作波形\n图\n用\n实现脉冲延时\n脉冲定时\n由于单稳态触发电路能输出一定宽度的矩形脉冲，如果利用此脉冲去控制\n某一电路，使之在有脉冲期间动作，这就起到了定时的作用。图\n为一测量电\n路示意图。利用单稳态触发电路产生的脉冲宽度为\n的正矩形脉冲来控制一个\n与门，与门的另一输入端加入待测高频信号\n，由于只有在这个矩形脉冲存在\n蜂考系统课                 官方公众号：蜂考          学习交流加 QQ 群：978080722\n208",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5777
+  },
+  {
+   "chunk_id": 38109,
+   "doc_name": "10 数电【系统课】.pdf",
+   "text": "蜂考          学习交流加 QQ 群：978080722\n218\n扫码领答案 精讲系统课\n实现\n进制计数器，电路如图所示\n蜂考系统课                 官方公众号：蜂考          学习交流加 QQ 群：978080722\n219\n扫码领答案 精讲系统课\n课时二十  练习题\n1. 集成单稳态触发器根据电路工作特性不同分为 _____触发(如\n集成器件\n)和_____触发(如\n集成器件\n)两种。\n2. 用\n定时器构成单稳态触发器，其输出脉宽为\n。\n3. 单稳态触发器的主要用途是\n。\n整形、延时、整幅\n整形、定时、整幅\n整形、整幅、波形变换\n延时、定时、整形\n4. 如图由\n定时器组成的单稳态触发器电路中，电路参数如图所示，输入信\n号\n波形如图中所绘出，试画出输出电压\n和电容\n两端电压\n的波形，并\n计算输出脉冲宽度。\n5. 由\n定时器组成的应用电路如图所示， 已知\n，\n。 求：\n说明这是由\n定时器构成的什么应用电路；\n该电路的稳态是指什\n么状态？\n确定该电路暂稳态持续的时间为多少？\n已知有输入波形如图\n所示，试画出\n和\n的波形。\n蜂考系统课                 官方公众号：蜂考          学习交流加 QQ 群：978080722\n220\n扫码领答案 精讲系统课\n6. 石英晶体多谐振荡器的主要优点是",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.4926
+  },
+  {
+   "chunk_id": 33958,
+   "doc_name": "清华大学华成英教授的模拟电子技术基础课件.pdf",
+   "text": "数的频率特性曲  线\n\n\n\n\n\n\n\n\n \n\n\n\n\n\n\n\n\n\n\n\n\nf\nf\nf\nf\nf\nf\n1\n2\n0\n0\ntg\n) ( 1\nj 1\n－\n\n\n     \n  \n\n-90   0\n-45   707 . 0\n2\n0\n0\n0\n0\n \n \n \n\n\n \n\n\n\n\n，时，；时，\n；，时，\n；时，\n\n\n\nff\nff f\nf f\nf f\no\n\n华成英 hchya@tsinghua.edu.cn\n3.\n电流放大倍数的波特图:   采用对数坐标系\n71 . 5\n，  lg 20\n采用对数坐标系，横轴为lg f，可开阔视野；纵轴为\n单位为“分贝” （dB），使得 “ ×” →“ ＋” 。\nlg\nf\ndB 3 2 lg 20\n注意折线化曲线的误差\n－20dB/十倍频\n折线化近似画法\n华成英 hchya@tsinghua.edu.cn\n三、晶体管的频率参数\n1\n0T\nT\n\n\n\n\nf f f\nf\n \n 时的频率为使 \n) C C ( rf\nf\nf μ πe b'\n0\nπ2\n1\nj 1\n\n\n\n\n\n\n\n。、 、 、) (ob T\n\n  C C f f f共射截\n止频率\n共基截\n止频率\n特征",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "公式",
+   "pred_conf": 0.5548
+  },
+  {
+   "chunk_id": 27510,
+   "doc_name": "资源2-管综试题及解析.pdf",
+   "text": "，则不选择丙。\n根据以上信息，可以得出以下哪项?\nA、甲、戊均不选。\nB．甲戊恰选其一。\nC.乙、丙均不选。\nD.乙、丙、丁恰选其一。\nE.乙、丙、丁恰选其二。\n30．当前，越来越多的网路作品将枯燥的文学转化成轻松的视听话言，不时植入段子金句或\n评论，让年轻人乐此不疲，逐渐失去忍耐枯燥的能力，进入不了深度学习的状态，但是，能\n真正滋养一个人的著述往往都带着某种枯燥，而要读者投入专注力去穿透抽象。由此有专家\n建议年轻人读书要克服前 30 页的阅读痛苦，这样才能获得知识与快乐。\n以下哪项如果为真，最能支持上述专家的观点?\nA．读书本身就很枯燥，学习就是学习，娱乐就是娱乐，所谓“娱乐式学习”并不存在。\nB．有些人拿起任何一本书都能津津有味地谈下去，即使连续读 30 页，也不会感到枯燥乏\nSeeyee思怡智库\n7\n味。\nC．一本书的前 30 页往往是该书念术语的首次展现，要想获得阅读的愉悦，就要越过这个门\n槛。\nD.那些让人很舒服、不断点头的轻松阅读，往往只是重复你既有认知的无效阅读哪怕读再多\n页也无益处\nE. 有 些 书即 使 硬 着头 皮 读 了前 30 页 后 面的 文 字 仍不 能 让 人感 到 快 乐 并有 所 收 获 , 读 者 将其\n弃置一边也不奇怪。\n31.纸箱是邮寄快递的主要包装材料之一，初次使用的纸箱大都可重复使用。目前大部分旧\n纸箱仍被当作生活垃圾处理，不利于资源的利",
+   "pred_l1": "管理类联考综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.06
+  },
+  {
+   "chunk_id": 32412,
+   "doc_name": "康华光《电子技术基础-数字部分》（第6版）笔记和课后习题详解(1).pdf",
+   "text": "器\nA\n以及必要的\n门电路组成。计数器的各位为\nA\n4\n、\nA\n3\n、\nA\n2\n、\nA\n1\n。系统开始处于初始状态，当信号\nS\n＝\n0\n时，系统保持在初始状态；当信号\nS\n＝\n1\n时，计数器\nA\n和触发器\nF\n清零。从下一个时钟脉\n冲开始，计数器进行加\n1\n计数，直到系统操作停止。\nA\n4\n和\nA\n3\n的值决定了系统的操作顺\n序。\n当\nA\n3\n＝\n0\n时，触发器\nE\n清零，计数器继续计数。\n当\nA\n3\n＝\n1\n时，触发器\nE\n置\n1\n，并检测到\nA\n4\n，\nA\n4\n＝\n0\n时，继续计数；\nA\n4\n＝\n1\n时，触发器\nF\n置\n1\n，并停止计数，回到系统初始状态。\n（\n1\n）试画出该系统的\nASM\n图。\n（\n2\n）画出该系统控制单元的状态图，并用\nD\n触发器及必要的门电路设计控制单元。\n解：\n（\n1\n）该系统的\nASM\n图如题\n11-2-2\n解图（\na\n）所示。\n题\n11-2-2\n解图（\na\n）\n系统开始处于初始状态\nT\n0\n，当\nS\n＝\n1\n时，计数器\nA\n和触发器\nF\n清零，控制单元进入\nT\n1\n状\n态。在\nT\n1\n状态，每来一个时钟脉冲，计数器增加\n1\n，同时与\nT\n1\n相连的两个判断框和两个\n条件输出框决定系统可能进行下列\n3\n种操作中的一个。\n①\n当\nA\n3\n＝\n0\n时，\nE\n清零，并且控制单元保持在\nT\n1\n状态。\n②\n当\nA\n3\nA\n4\n＝\n10\n时，\nE\n置\n1\n，控制",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5649
+  },
+  {
+   "chunk_id": 34549,
+   "doc_name": "第4章 组合电路(1).pdf",
+   "text": "    A\n10       B\n11       AB\nMN－输送血型\nXY－接受血型\nF=1  可输血\nF=0   不可输血\nMN,  XY 不能分开\nYXNMYXNMXYNMF +++⋅=\nO型输送\nAB型接受\nA型输送\nA型接受 B型输送\nB型接受\n21\n二进制译码器\n码制变换译码器\n显示译码器\n译码器\nn-bit 二进制输入  ≤ 2n  输出 convert\n§4.4    译码器    Decoders\n译码器的功能是将输入的二进制代码译成对应的\n输出信号或另一种形式的代码，译码器通常是一个\n多输入多输出的组合逻辑电路。\n22\n4.4.1    二进制译码器    Binary Decoders\nInputs: n 位二进制代码；\nOutputs:  2n 个输入的各种组合\n1.   2线 - 4线译码器    2-to-4 Decoder\n将二进制代码“翻译”成一一对应的输出高、\n低电平信号。\n用 n 个二进制输入端控制  2n 个输出端\n23\n1).  输出高电平有效译码器     Active-High\nInput          Output\nA  B        D0 D1 D2 D3\n0   0\n0   1\n1  0\n1   1\n输入数码是二进制数几，\n第几号输出就是唯一的高电\n平，其余输出皆为低电平。",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5637
+  },
+  {
+   "chunk_id": 33671,
+   "doc_name": "模拟电路学习教程.pdf",
+   "text": "/G16/Gc /G11cd/G13c2/G1ff5/G5b5/G9cb/G2c58/G1b12/Gefb/G530/G2afc\n/G13c2/G1ff5/G5b5/G9cb/G14e9 /G434b/G3f8/G3175/G2b09/G2315/G2c58/G9a1/G9e5/G9ac /G8ea/G2c4/G3d4/G3175/G2b09/G2315/G3de/G91b/G2c8/G3d4/G3175/G2b09/G2315/G3df/G4c21/G2c5/G2c8/G2315/G459b/G11d8 /G1d55/G2b09/G4c0f/G35/G48\n/G2c58/G13c2/G1ff5/G2b09/G2315/G40e/G2c/G48/G14/G10/G2c/G48/G15/G2c8/G2b05/G462/G2b09/G43c3/G11cd/G2fc4/G2c8/G1814/G4b9/G2315/G459b/G35/G48/G2c58/G13c2/G1ff5/G2b09/G2315/G40e/G4cca/G2c8/G35/G48/G3de/G2c58/G13c2/G1ff5/G5b5/G9cb/G2b09/G95f/G433",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "其他",
+   "pred_conf": 0.5298
+  },
+  {
+   "chunk_id": 45929,
+   "doc_name": "【A4留白】27张宇基础30讲做题本(2).pdf",
+   "text": "\nx\n= _____.\n9已知 a > 0,b > 0,则 lim\nx→+∞\nx a\n1\nx -b\n1\nx = _____.\n10设函数 f x =\n1-etanx\narcsin x\n2\n, x>0,\nae2x, x≤0\n\n\n\n\n\n在 x = 0处连续，则 a = _____.\n公众号：做题本集结地 第一讲·函数极限连续\n· 第 18 页，共 217 页 ·\n11设 f x = arcsin sinx ,画出 f x 的图形.\n12求极限 lim\nx→0\nex+ xex\nex-1 - 1\nx .\n13求极限 lim\nx→0\nax\n1+ax\n2+⋯+axn\nn \nn\nx\n,其中 ai > 0,i = 1,2, ⋯ ,n.\n公众号：做题本集结地 第一讲·函数极限连续\n· 第 19 页，共 217 页 ·\n14已知 lim\nx→0\na 2+e\n1\nx\n1+e\n4\nx\n+ 1+ x  \n1\nx\n\n\n\n\n\n\n\n存在,求 a的值.\n15设 lim\nx→0\nln 1+ x - ax+bx2 \nx2 = 2,求常数 a,b.\n16求常数 a和 b的值,使得函数 f x = x - a+bcosx sinx在 x → 0时是 x的 5阶无穷小.",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "习题",
+   "pred_conf": 0.608
+  },
+  {
+   "chunk_id": 34198,
+   "doc_name": "电子技术基础-数字部分讲义(1).pdf",
+   "text": " 必须满足全状态图所示关系。\n图 Ｆ所示分别为右移三位移位寄存器和四位移位寄存器的全状态图。\n例 ３： 设计模１ ０移位型计数器\n解： 模１ ０计数器需 ４级触发器， 所以从图Ｆ的四位移位寄存器全状态图上选循环中期为 １ ０的状\n态迁移序列， 当然会有多种的选取组合， 从中任选一种即可。我们选如下序列：\n→  →   →   →   →   →   →   →   →  ０ ８ ４ １ ０ １ ３ １ ４ １ ５ ７ ３ １\n其余不用的状态可作为无关项处理， 为了保证具有自启动能力， 将其移入有效循环如图Ｇ所示。\n表 ３： 状态迁移关系\n列此关系时主要列出反馈函数 Ｆ。例如现态是 ０ ０ ０ ０， 反馈函数为１， 则次态为１ ０ ０ ０， 这样就列出了\n如表 ３所示的关系， 为保证自校能力， 多余项也列出了。\n—５ ２ １—\n康华光《 电子技术基础·数字部分》 考研考点精讲\nＱ０ Ｑ１ Ｑ２ Ｑ３ Ｆ\n０ ０ ０ ０ １\n１ ０ ０ ０ ０\n０ １ ０ ０ １\n１ ０ １ ０ １\n１ １ ０ １ １\n１ １ １ ０ １\n１ １ １ １ ０\n０ １ １ １ ０\n０ ０ １ １ ０\n０ ０ ０ １ ０\n０ ０ １ ０ ０\n０ １ ０ １ １\n０ １ １ ０ ０\n１ ０ ０ １ ０\n１ ０ １ １ ０",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5602
+  },
+  {
+   "chunk_id": 3281,
+   "doc_name": "【电子技术基础-模拟部分】康华光 精品复习课件.txt",
+   "text": "称为少数载流子（少子）。？问题：磷（P）杂质半导体主要靠多数载流子导电。掺入杂质越多，多子浓度越高，导电性越强，实现导电性可控。多数载流子空穴比未加杂质时的数目多了？少了？为什么？（二）、P 型半导体在硅或锗晶体中掺入少量的三价元素，如硼（或铟），晶体点阵中的某些半导体原子被杂质取代，硼原子的最外层有三个价电子，与相邻的半导体原子形成共价键时，产生一个空穴。这个空穴可能吸引束缚电子来填补，使得硼原子成为不能移动的带负电的离子。由于硼原子接受电子，所以称为受主原子。+4+4+3+4空穴硼原子P 型半导体中空穴是多子，电子是少子。？问题：硼（B）多数载流子P型半导体主要靠空穴导电，掺入杂质越多，空穴浓度越高，导电性越强，在杂质半导体中，温度变化时，载流子的数目变化吗？少子与多子变化的数目相同吗？少子与多子浓度的变化相同吗？结论：• 对于杂质半导体，多子的浓度越高，少子的浓度就越低。• 多子的浓度约等于所掺杂质原子的浓度，故受温度变化的影响很小；• 少子由本征激发而成，尽管其浓度很低，但温度变化时，其浓度的变化很大。• 故少子对器件性能的影响却不“少”。（三）、杂质半导体的示意表示法P 型半导体N 型半导体杂质型半导体多子和少子的移动都能形成电流。但由于数量的关系，起导电作用的主要是多子。近似认为多子与杂质浓度相等。问题：杂质半导体为何呈现电中性?• N型：自由电子数目=空穴数目+正离子",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5483
+  },
+  {
+   "chunk_id": 24656,
+   "doc_name": "数电复习讲义.pdf",
+   "text": "为 0，随后是二进制数的绝对值，即原码。\n二进制负数的原码、反码和补码三种表示方法分别为符号位加原码，符号位加反\n码，符号位加补码。\n原码\n反码\n补码\n0111\n0111\n+7\n0111\n+4\n0100\n0100\n0100\n1111\n-7\n1000\n1001\n1011\n1100\n-4\n1100\n1.4 几种常用编码\n1.4.1 有权码\n知识点24：二-十进制码BCD码\n即用二进制码表示十进制码，也称BCD码。用二进制编码表示十进制的0～\n9，至少需要4位二进制码，可以组成16个状态，舍去其中的6个，即可构成各\n种 BCD码。\n①8421BCD码：用4位二进制代码表示1位十进制数，从高位到低位各位\n的权分别为8，4，2，1。只选用4位二进制码中前10组代码，即用0000～1001\n分别代表它所对应的十进制数，余下的6组代码不用。属于有权码。\n②5421BCD,码、2421BCD码：用4位二进制数代表1位十进制数。从高位\n到低位的权值分别为5，4，2，1和2，4，2，1。2421BCD码和5421BCD码是\n多值的，例如2421BCD码的5可以是1011，也可以是0101；5421BCD码的5\n可以是 1000，也可以是0101。下表中所列的BCD码是已经公认的编码，虽然有\n多值的问题，但不能再写成其他形式。\n余三码：如果用8421BCD码的权来计算余三码，得到的数值是从.3到12，\n",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "定义",
+   "pred_conf": 0.4964
+  },
+  {
+   "chunk_id": 3034,
+   "doc_name": "《数字电路》考研复习参考【参考价值不菲】，共383页.txt",
+   "text": "4312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合肥工业大学考研交流群：320-910-261，安徽大学考研交流群：134-369-350考研专业课资料淘宝网址：http://hfut001.taobao.com/ 【全国各大高校考研资料均有】合肥工业大学考研专业课真题资料考研象牙塔专供13、合工大《数字电路》考研复习参考书，厚厚一本【参考价值不菲】，共383 页——第二本考试科目：数字电路指定教材：《数字电路与逻辑设计》（第二版），林红主编，清华大学出版社，2009 年版。【淘宝网址",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "其他",
+   "pred_conf": 0.4919
+  },
+  {
+   "chunk_id": 34986,
+   "doc_name": "阎石《数字电子技术基础》（第5版）配套题库【名校考研真题＋课后习题＋章节题库＋模拟试题】.pdf",
+   "text": "全\n0\n和\n1000000000\n时对应的输出电压值。\n图\n11-3\n解：\n由题意可得\n因此，题（\n1\n）、（\n2\n）的结果如表\n11-1\n所示。\n表\n11-1\n11.4\n在图\n11-3\n由\nCB7520\n所组成的\nD\n／\nA\n转换器中，已知\nV\nREF\n＝－\n10V\n，试计算当输入数字量从全\n0\n变到\n全\n1\n时输出电压的变化范围。如果想把输出电压的变化范围缩小一半，可以采取哪些方法\n?\n解：\n由题意可得\n当输入全为\n0\n时，有\n；当输入全为\n1\n时，有\n。\n因此，电压变化范围为\n0\n～\n9.99 V\n。\n如果想把输出电压的变化范围缩小一半，可以采取以下方法：\n①\n令参考电压\n的绝对值减半；\n②\n令求和放大器的放大倍数减少一半。即在\n与放大器输出端\n之间外接一个大小等于\n的反馈电\n阻。\n11.5\n图\n11-4\n所示电路是用\nCB7520\n和同步十六进制计数器\n74LS161\n组成的波形发生器电路。已知\nCB7520\n的\nV\nREF\n＝－\n10V\n，试画出输出电压\n的波形，并标出波形图上各点电压的幅度。\nCB7520\n的电路结构见图\n11-\n3\n，\n74LS161\n的功能表与表\n6-3\n相同。\n图\n11-4\n解：\n由题意可得\n其中，\n均为\n0\n，而\n从\n0000\n～\n1111\n不断循环，可得表\n11-2\n。\n表\n11-2\n输出电压波形图，如图\n11-5\n所示。\n图\n11-5\n11.",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5355
+  },
+  {
+   "chunk_id": 40636,
+   "doc_name": "1989年数学一解析.pdf",
+   "text": ".\n(4)【答案】(B)\n【解析】 ( )S x 是函数 ( )f x 先作奇延拓后再作周期为 2 的周期延拓后的函数的傅式级数\n的和函数,由于 ( )S x 是奇函数,于是 1 1( ) ( )2 2S S  .\n当 1\n2x 时, ( )f x 连续,由傅式级数的收敛性定理, 21 1 1 1( ) ( ) ( )2 2 2 4S f   .因此,\n1 1( )2 4S   .应选(B).\n(5)【答案】(C)\n【解析】本题考查| | 0A  的充分必要条件,而选项(A) 、(B)、(D)都是充分条件,并不必\n要.\n因为对矩阵 A 来说,行和列具有等价性,所以单说列或者单说行满足什么条件就构成了\n| | 0A  的必要条件,但是不具有任意性,只需要存在一列向量是其余列向量的线性组合.\n以 3 阶矩阵为例,若\n1 1 2\n1 2 3\n1 3 4\nA\n \n    \n,\n条件(A)必有一列元素全为0,(B)必有两列元素对应成比例均不成立,但有| | 0A  ,所以(A)、\n(B)不满足题意,不可选.\n若\n1 2 3\n1 2 4\n1 2 5\nA\n \n    \n,则| | 0A  ,但第三列并不是其余两列的线性组合,可见(D)不正确.\n这样用排除法可知应选(C).",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.5755
+  },
+  {
+   "chunk_id": 42612,
+   "doc_name": "260415_191810-4.强化线代第四章解析.pdf",
+   "text": "n A ，\n12,, n\n  \n线性无关，\n1 2 1\nT\n2\nT= , , ) (nn       \nA A A A O AB O BA O      0\n.\n故\nT T T\n12,, n\n   为\n=By 0 的一组解，而\n()rn B ，\nT T T\n12,, n\n   线性无关，因此\nT T T\n12,, n\n  \n为\n=By 0 的一个基础解系，通解为\n11 21 1\n12 22 2\n1,\n12\n2 2,2 ,2\nn\nn\nn n n n\nnk\na a a\na a a\na a a\nkk\n     \n     \n     \n          \n\n\n\n\n（\n12,, nk k k\n为任意常数）.\n36. 【答案】（1）\n2, 3ab  ；\n（2）\n1\n2\n12\n3\n4\n2 2 4\n3 1 5\n0 1 0\n0 0 1\nx\nx kkx\nx\n   \n   \n   \n\n \n   \n  \n \n   （\n12,kk 为任意常数）；\n（3）\n1\n2\n12\n3\n4\n24\n15\n10\n01\nx\nx kkx\nx",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "证明",
+   "pred_conf": 0.5747
+  },
+  {
+   "chunk_id": 47103,
+   "doc_name": "【横版】27张宇基础30讲做题本(2).pdf",
+   "text": ",级数\n∞\nn=1\nan 收敛,常数 λ > 0,则级数\n∞\nn=1\n-1 n nsin λ\nn a2n( ) .\nA. 绝对收敛 B. 条件收敛 C. 发散 D. 敛散性与 λ有关\n公众号：做题本集结地 张宇基础30讲·高数篇\n· 第 453 页，共 531 页 ·\n4若级数\n∞\nn=2\nsin 1\nn -kln 1- 1\nn \n \n 收敛，则 k = ( ) .\nA. 1 B. 2 C. - 1 D. - 2\n公众号：做题本集结地 张宇基础30讲·高数篇\n· 第 454 页，共 531 页 ·\n5若 y满足微分方程 y = x + y及 y 0 = 1，且级数\n∞\nn=1\ny 1\nn +k- 1\nn\n\n \n 收敛，则 k = _____.\n公众号：做题本集结地 张宇基础30讲·高数篇\n· 第 455 页，共 531 页 ·\n6幂级数\n∞\nn=1\nn\n3n x-1 n 的收敛域为 _____.\n公众号：做题本集结地 张宇基础30讲·高数篇\n· 第 456 页，共 531 页 ·\n7(仅数学一)设 f x = x2, -π≤ x<0,\n-5, 0≤ x<π,\n 则其以 2π为周期的傅里叶级数在 x =±π处收敛于 ____.",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "习题",
+   "pred_conf": 0.5736
+  },
+  {
+   "chunk_id": 46476,
+   "doc_name": "【A4留白版】27武忠祥强化辅导讲义做题本.pdf",
+   "text": "\n\n\n\n的连续性.\n公众号：做题本集结地 武强化讲义例题·5.多元函数微分学\n· 第 109 页，共 171 页 ·\n【P171例】设 f x,y = x + 2y + y-1 arcsin x\n1+ xy ,求 f ′x 0,1 和 f ′y 0,1 .\n常考题型的方法与技巧\n题型 讨论连续性、可导性、可微性\n【P172例 1】设 f x,y =\nx2y\nx2+ y2 , x,y ≠ 0,0 ,\n0, x,y = 0,0 ,\n\n\n\n\n\n则 f x,y 在 0,0 点\nA. 不连续. B. 连续但偏导数不存在.\nC. 偏导数存在但不可微. D. 可微.\nP173注：类似地,已知函数 f x,y =\nx2+ y2 ⋅sin 1\nxy , xy≠0,\n0, xy=0,\n\n则在点 0,0 处\nA. ∂f x,y \n∂x 连续, f x,y 可微. B. ∂f x,y \n∂x 连续, f x,y 不可微.\nC. ∂f x,y \n∂x 不连续, f x,y 可微. D. ∂f x,y \n∂x 不连续, f x,y 不可微.\n公众号：做题本集结地 武强化讲义例题·5.多元函数微分学\n· 第 110 页，共 171 页 ·",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.576
+  },
+  {
+   "chunk_id": 28091,
+   "doc_name": "2020年全国硕士研究生招生考试西医综合试题 .pdf",
+   "text": "B.右侧腺叶全切，左侧腺叶部分切除\nC.右侧腺叶全切除\nD.双侧腺叶次全切除术\n100.男性，62岁，因大便有脓血1 月入院，肛门指诊在距肛缘7cm 处触及大小\n4cm的肿物，中间有溃疡，活检病理：中分化腺癌，全身检查无阳性发现，肝肺\n未见转移，下列手术方案中最合适的是（）\nA.乙状结肠造口术　B.Miles 手术　C.Dixion 手术　D.Hartmn 手术\n101.男，62岁，因有血便一个月入院，肛门指检在距肛缘7cm 处触及直径4cm\n的肿物，中间有溃疡，活检病理：中分化腺癌，全身检查无阳性发现，囊肿未见转\nTO BE A BETTERME!\n--- 第18页(OCR) ---\n移，术后化疗五个疗程，2年后复查 CT，发现右肝2个直径为23cm 结节，边\n缘清晰，强化明显，呈“牛眼征”，最可能的诊断是（）\nA.直肠癌肝转移\nB.原发性肝癌\nC.肝多发血管瘤\nD.多发肝囊肿\n102.男，62 岁，因有血便一个月入院，肛门指检在距肛缘7cm 处触及直径4cm\n的肿物，中间有溃疡，活检病理：中分化腺癌，全身检查无阳性发现，囊肿未见转\n缘清晰，强化明显，呈“牛眼征”，当前最合理的治疗是（）\nA.继续化疗\nB.左半肝切除\nC.观室\nD. 介入治疗\n103.男性，50岁，因车轮碾压致左前臂外伤5小时，查体：神志清楚，左前臂明\n明显肿胀疼痛，皮肤瘀斑，出血，成角畸形，应首先考虑的诊断为（",
+   "pred_l1": "西医综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.2182
+  },
+  {
+   "chunk_id": 33777,
+   "doc_name": "2026-08-25 163651.jpg",
+   "text": "辑电路的最大项之积恒等于0.\n2.下列不是组合逻辑电路的是（）。\nA.数据选择器\nB.编码器\nC.移位寄存器\nD.多位并联加法器\n3.要使运算放大器构成的放大电路具有较高的输入电阻，应该采用（）。\nC.差动\nA.同相输入\nB.反相输入\nD.以上三个都对\n4.信号源内阻很高，要充分发挥负反馈的作用，应合理接入（）。\nA.电流负反馈\nB.电压负反馈\nC.并联负反馈\nD，电压负反馈\n三、简答题\n1.晶体管工作在放大状态的内部条件和外部条件？\n2.直流电源是由哪几个部分组成，且分别说说它们的功能？\n3.下列计算器的模值是多少？\n（3个题）",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "习题",
+   "pred_conf": 0.4958
+  },
+  {
+   "chunk_id": 34301,
+   "doc_name": "电子技术基础-模拟部分讲义(1).pdf",
+   "text": "ＵＲ２ －ＵＢ Ｅ\nＲ３\nＩＣ１Ｑ ＝ＩＣ２Ｑ ＝１\n２ＩＣ３\nＵＣ Ｅ１Ｑ ＝ＵＣ Ｅ２Ｑ ＝ＵＣ Ｃ＋ＵＢ Ｅ－ＩＣ１ＱＲＣ\n具有电流源的差分放大电路的动态分析， 与前面的分析完全相同。有关差模指标的计算公式， 对\n电流源的差分放大电路同样适用， 由于电流源的动态内阻非常大， 因此无论双端输出还是单端输出，\n共模电压放大倍数都可近似为零， 从而使共模抑制比趋于无穷大。当实际电流源近似为理想电流源\n时， 常用图６．９（ｂ） 所示简化电路来表示具有电流源的差分放大电路。\n三、 差分放大电路的传输特性\n指差分放大电路的输出电流或输出电压与差模输入电压之间的函数关系。在图 ６．１ ０电路中， 设\n电流源电流 Ｉ小于差放管的集电极临界饱和电流， 即Ｉ＜ＵＣ Ｃ／ ＲＣ， 从而使差放管的\n工作点偏向截止区。在此条件下， 图中的两个对称差放管Ｖ１，Ｖ２的射极电流分别为\nｉＥ１ ＝ＩＳ（ｅ\nｕＢ Ｅ１／ ＵＴ － １）≈ＩＳｅ\nｕＢ Ｅ１／ ＵＴ　　　　ｉＥ２ ＝ＩＳ（ｅ\nｕＢ Ｅ２／ ＵＴ － １）≈ＩＳｅ\nｕＢ Ｅ２／ ＵＴ\n由图可知　Ｉ＝ｉＥ１ ＋ｉＥ２\n图 ６．１ ０ 　简化的电流源差分放大电路\n３ ６\nＩ＝ｉＥ１（１ ＋ｉＥ２\nｉＥ１\n）≈ｉＣ１［１ ＋ｅ\nｕＢ Ｅ２－ｕＢ Ｅ１\nＵＴ ］\nＩ＝ｉＥ２（１ ＋ｉＥ１\nｉＥ２",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5945
+  },
+  {
+   "chunk_id": 35319,
+   "doc_name": "《数据结构  C语言版  第2版》严蔚敏.pdf",
+   "text": "baabbba YES\nbaa aaabbbba YES\naabb abceaabb YES\naabb abaabcea YES\nabed cdabbbab YES\nabed cabbbbab NO\nabcde bcdedbda NO\nace bdedbcda NO\ncde cdcdcdec YES\ncced cdccdcce YES\n图4.2 病毒感染检测输出结果\n这个案例中要处理的操作对象便是字符串，将病毒的 DNA 序列看作是子串，患者的 DNA 序\n列看作是主串，检测任务的实质就是看子串是否在主串中出现过，即 4.3.3 小节讨论的字符串的模\n式匹配算法。但因为此案例中病毒的 DNA 序列是环状的， 这样需要对传统模式匹配算法进行改\n进。 案例的具体分析与实现将在 4.6 节给出。\nl第4章串、数组和广义表尸二二』\n4.3 串的类型定义、 存储结构及其运算\n4.3.1 串的抽象类型定义\n串的逻辑结构和线性表极为相似，区别仅在于串的数据对象约束为字符集。然而，串的\n基本操作和线性表有很大差别。在线性表的基本操作中，大多以 “\n单个元素”\n作为操作对象，\n例如，在线性表中查找某个元素，求取某个元素，在某个位置上插入 一个元素或删除一个元\n素等；而在串的基本操作中，通常以 “\n串的整体 ”\n作为操作对象，例如，在串中查找某个子",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "例题",
+   "pred_conf": 0.5519
+  },
+  {
+   "chunk_id": 19847,
+   "doc_name": "数电试题库笔记版.pdf",
+   "text": "\n）\n。\n（\n1\n）\n饱\n和\n区\n、\n放\n大\n区\n（\n2\n）\n击\n穿\n区\n、\n截\n止\n区\n（\n3\n）\n放\n大\n区\n、\n击\n穿\n区\n（\n4\n）\n饱\n和\n区\n、\n截\n止\n区\n3\n．\n某\nA\nD\nC\n电\n路\n的\n全\n量\n程\n为\n1\n0\nV\n，\n为\n了\n获\n得\n分\n辨\n率\n为\n1\n0\nm\nV\n，\n则\n该\n电\n路\n的\n输\n入\n数\n字\n量\n至\n少\n为\n（\n）\n位\n。\n（\n1\n）\n7\n（\n2\n）\n8\n（\n3\n）\n9\n（\n4\n）\n1\n0\n4\n．\n利\n用\nP\nA\nL\n产\n生\n一\n组\n有\n4\n个\n输\n入\n变\n量\n，\n3\n个\n输\n出\n的\n组\n合\n逻\n辑\n函\n数\n，\n每\n个\n函\n数\n所\n包\n含\n与\n项\n的\n最\n大\n数\n是\n6\n个\n，\n则\n所\n选\nP\nA\nL\n的\n输\n入\n端\n数\n，\n与\n项\n数\n，\n以\n及\n输\n出\n端\n数\n是\n（\n）\n。\n（\n1\n）\n8\n，\n1\n8\n，\n3\n（\n2\n）\n4\n，\n1\n8\n，\n3\n（\n3\n）\n4\n，\n6\n，\n3\n（\n4\n）\n8\n，\n6\n，\n3\n5\n.\n组\n合\n逻\n辑\n电\n路\n与\n时\n序\n逻\n辑\n电\n路\n的\n主\n要\n区\n别\n是\n。\n（\n1\n）\n任\n意\n时\n刻\n的\n输\n出\n信\n号\n与\n前\n一\n时\n刻\n的\n电\n路\n状\n态\n是\n否\n有\n关\n（\n2\n）\n是\n否\n包\n含\n门\n电\n路\n（\n3\n）\n输\n入\n与\n输\n出\n信\n号\n的\n个\n数\n（\n4\n）\n包\n含\n门\n电\n路\n的\n数\n量\n6\n．\n要\n构",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "习题",
+   "pred_conf": 0.5682
+  },
+  {
+   "chunk_id": 24861,
+   "doc_name": "猕猴桃高分笔记-概率论.pdf",
+   "text": "题型;超何分配问题\n有N件严品,其中m件次品,从中任取n件,恰有kLksm)件次品的概率为\n解释:N件产品中任取n件,则样粘点教为 C;要求恰有<件次显,即要从\nm没R品中取出k件, 从Nm件正中取出 n-k件,各有 Ck和 Cr-k 神取法\n题型2 抽签问题\n袋中有a个黑球b百球，从其中生后依次取出ktb球，是否\n放风,穿及抽到黑球的概库为量\n解释：有放回>每次都有放回，那第k次抽取时还是黑十b个且，抽到黑球的\n<无放回>丛t个球中共后无放回取k次，样点数则有 Aα科取法\n穿k次要求黑球,则取个中至-个C然后前面的k次再丛刺atb\n个中取出个全排列概,率为：\nAatb-1\nAiby Ch\nath\n16\n--- 第22页(OCR) ---\nNo.\nDate.\n实际上无过哪-么抽到黑球的鼻都为，这风好该明抽签问题的\n合理性(1993数-)((997数-)\n>例1\n(2ol6数三)设袋中有红,百里球各牛,从中有放回地取球,每次取个,直\n三神预色的球都取列时停止,则取球次数恰好为4的概率为\n分析］题目要术：有放回；取到三色才序止\n三绝取-色\n遇辑：最后-次取出的颜色前没取过\n日前贝取出3西神颜色\n样本空间：有放回抽了4,每贝有3种选辉，·有3神取法\n√按照翌辑：抽出-神颜色最后取C\n前三次取了两衬题色：剩临两色中选取-色(让它抽)\n前价位省中挑出两个位置（让它间抽中相同的色）C\n解：由以",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.5458
+  },
+  {
+   "chunk_id": 43300,
+   "doc_name": "C++编程思想(第2版)卷I.pdf",
+   "text": "很大问题的，因为你只知\n其然不知其所有然，在mfc和.net里面控件一拖什么都做好了，很方便，但是出了问题可能就解决不了，有些在\n网上搜都搜不到。这就是基础没打好,不知道它的原理就不知道出错的原因。在学.net的时候常会讨论那些控件\n该不该用别人说尽量别用也不知道为什么？不让用是因为你在高层开发,你不知道它的原理出错了你可能解决不\n了，但其实是应该用的，不然人家开发它干嘛，但要在了解它的原理后去用就会很方便。\n要编写出优秀的代码同样要扎实的基础，如果数据结构和算法学的不好，怎么对程序的性能进行优化,怎样\n从类库中选择合适的数据结构。如果不了解操作系统，怎样能了解这些开发工具的原理,它们都是基于操作系统\n的。不了解汇编，编译原理，怎么知道程序运行时要多长时间要多少内存，就不能编出高效的代码。\n如果没有学好基础一开始就去学.net，java这些越往后就会觉得越吃力，它们涉及的技术太多了，而且不但\n在更新，对于三层啊，mvc,orm这些架构，你只会用也不明白为什么用，就感觉心里虚，感觉没学好。而你把\n面向对象，软件工程，设计模式这些基础学好了再去看这些就可以一不变应万变。\n大家不要被新名词、新技术所迷惑.NET、XML等等技术固然诱人，可是如果自己的基础不扎实，就像是在",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.1088
+  },
+  {
+   "chunk_id": 14104,
+   "doc_name": "数电试题库.doc",
+   "text": "???????????????????8??p 8?????x????0???????????????????0????????????????????????\np????1????????????????x???????????l0g  p?00??x???????Np????????7?????0????p??????????????????????????????px??g???????????????????????????????8????0????????9????????x????0????????p????x??x???????????????????????????x???????????????????????????????????????0?0???????????0?090????????p??????0?0?8p???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????x???????7??????????x??????????????????",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "其他",
+   "pred_conf": 0.566
+  },
+  {
+   "chunk_id": 32838,
+   "doc_name": "康华光《电子技术基础-模拟部分》（第6版）配套题库【精选题目＋章节题库】.pdf",
+   "text": "的条件及复合管的特点。\n答：把两只或三只 BJT 按一定原则连接起来所构成的三端器件叫复合管。\n（ 1 ）复合管工作的条件：① 在前后两个三极管的连接关系上，应保证前级三极管的输\n出电流与后级三极管的输入电流实际方向一致；② 在正确的外加电压下，每只管子的\n各级电流均有合适的通路，且均工作在放大区或恒流区；③ 为了实现电流放大，应将\n第一只管的集电极（漏极）或发射极（源级）电流作为第二只管子的基极电流。\n（ 2 ）复合管工作的特点：① 复合管具有很高的电流放大系数，增强电流放大能力，从\n而减小了对信号源驱动电流的要求；② 提高输入电阻，降低输出电阻，扩宽电路的通\n频带；③ 当不同类型晶体管组成的复合管，等效成第一只管同类型的管子；④ 一般使\n用两只管子的复合，很少使用三只及以上。\n4 三极管导通的内部和外部条件是什么？\n答：内部导通条件：发射区浓度高，基区浓度低且薄，集电结面积大于发射结面积。\n外部导通条件：发射结正偏，集电结反偏。\n5 试述 BJT 基区宽度调制效应产生的原因， VA如何定义。\n答：基区宽度调制效应产生的原因是： BJT 工作在放大区时，随着 VCE增大，加在集电\n结上的反向电压也增大，集电结空间电荷区随之加厚，它主要向轻度掺杂的基区扩张，\n使基区变薄，导致 Ic随着 VCE增加而略有增大。\nVA是一个恒量，表示 VCE对 Ic影响程度的物理量，将晶体管共射输出特",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5761
+  },
+  {
+   "chunk_id": 41078,
+   "doc_name": "1995年数学三解析.pdf",
+   "text": " 0 1\n1 1 0\n1 1 1\nsin sin sindx dx dxx x x \n    ,\n而且\n1\n1\n1\nsin dxx 收敛的充要条件是两个反常积分\n0\n1\n1\nsin dxx 与\n1\n0\n1\nsin dxx 都收敛.\n由于广义积分\n1\n1\n0\n0\n1 ln tansin 2\nxdxx\n     ,\n即\n1\n0\n1\nsin dxx 发散,故\n1\n1\n1\nsin dxx 发散.\n在此不可误以为 1\nsin x\n是奇函数,于是\n1\n1\n1 0sin dxx\n ,从而得出它是收敛的错误结论.\n(3)【答案】(C)\n【解析】 ( )r A m 表示 A 中有m 个列向量线性无关,有 m 阶子式不等于零,并不是任意\n的,因此(A)、(B)均不正确.\n经初等变换可把 A 化成标准形,一般应当既有初等行变换也有初等列变换,只用一种不\n一定能化为标准形.例如\n0 1 0\n0 0 1\n \n  \n,只用初等行变换就不能化成 2( ,0)E 的形式,故(D)不正\n确.\n关于(C),由 0BA 知 ( ) ( )r B r A m  ,又 ( )r A m ,从而 ( ) 0r B  ,按定义又有",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.572
+  },
+  {
+   "chunk_id": 28462,
+   "doc_name": "2012年199管综真题解析 .pdf",
+   "text": "：\n【a+b=60，\nVa+6<50\n25. (A)\n【解析】母题33·一元二次函数的基本题型\n条件（1）：y=r十b与y=十a有且仅有一个交点，画图像可知（见\n图6），它是抛物线的切线，充分，\n图6\n2012年真题一第19页（共30页）\n--- 第7页(OCR) ---\n公众号：研池大叔免费分享考研课程&书籍\n条件（2）：一>b一a（zER）=→>十a>a+b，即抛物线位于直线上方，直线不是抛物线的切线，条\n件（2)不充分\n三、逻辑推理\n26. (E)\n【解析】母题17·措施目的型削弱题\n题干：用火箭弹等方式将二氧化硫充人大气层，阻挡部分阳光（措施）\n给地球表面降温（目的）。\n以求\n（A）项，措施有恶果，但是“不适”这样的恶果较小，削弱力度较弱。\n（B）、（C）项，都提出了给地球表面降温的新措施，但即使这种新措施是有效的，也无法说明题干\n中的措施无效。\n（D）项，措施有恶果，但是无法知道此种方式对大气层的影响有多大，削弱力度较小。\n（E）项，措施达不到目的，直接说明措施无效，削弱力度最大。\n27. (C)\n【解析】母题6假言命题的负命题\n题干：文学造谐^生物学专业背景读懂这篇文章，为真。\n负命题：（文学造谐V→生物学专业背景）^读懂这篇文章，为假。\n故（C）项不可能为真。\n28.(D)\n【解析】母题34·形式逻辑型结构相似题\n题干：726车间生产的产品（A）→合格（B)，所以，不",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "真题综合",
+   "label_l3": "例题",
+   "pred_conf": 0.0718
+  },
+  {
+   "chunk_id": 28308,
+   "doc_name": "2015年396经济联考综合能力真题 .pdf",
+   "text": " x2.\nA.sin x.\nD.2xcos x2.\n--- 第6页(OCR) ---\n公众号【研池大叔】，免费分享考研干货！\n24.已知）f(x)dx = 3,\nf(x)dx = 2,则 f(x)dx = (\nA. - 1.\nB.O.\nC.1.\nD.2.\n25.=f(α) 是由 α²y² += 1(> 0) 确定的,则 =f(α） 的驻点为(\nA.x = 0.\nB.x = 1.\nC.x = 0,1.\nD.不存在\nf(x,y) + f(x,y)\n26.已知f(α +,-)= - 对于任意的和 都成立,则\nA.2x - 2y.\nB.2x + 2y.\nC.x + y.\nD.x - y.\n0,\nx≤0,\n0 < x≤ 1,则F(x)(\n27.F(x)\n[1,\n>1,\nA.是离散型随机变量的分布函数.\nB.是连续型随机变量的分布函数\nC.是分布函数,但既不是离散型随机变量的分布函数,也不是连续型随机变量的分布函数\nD.不是分布函数．公众号：考研糖\n28.随机变量 服从正态分布 N(μ,²）,则概率 PIX-μ」≤（）\nA.随着 α 的增加而增加,\nB.随着 α 的减少而增加。\nC.随着 α 的增加不能确定它的变化趋势.\nD:随着 α 的增加保持不变.\n29.已知矩阵 A,B,C 是同阶方阵,下列说法错误的是(\nA.A + B = B + A.\nB.(AB)C = A(BC).\nC.(A + ",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "习题",
+   "pred_conf": 0.5676
+  },
+  {
+   "chunk_id": 24370,
+   "doc_name": "【电子技术基础】霍亮生 第3版）.pdf",
+   "text": "体管的基本结构是由两个PN结构成,按PN结的组成方式分为NPN和PNP两种\n类型，如图1-19所示。由图可知，两类晶体管内部都有三个区：集电区、基区、发射区。由\n三个区引出的电极分别称为集电极、基极、发射极，分别用c、b、e来表示。从图1-19中可以\n看出每个管有两个PN结，它们分别称为集电结和发射结。\n集电区\n集电区\n集电结\n集电结\nbo\nbo\n基区\n基区\n发射结\n发射结\n发射区\n发射区\n(a)\n(b)\n图1-19\n双极型晶体管的结构示意图和图形符号\n--- 第29页(OCR) ---\n12\n电子技术基础（第3版）\nNPN型和PNP型晶体管尽管在结构上有所不同，但其工作原理是相同的。只是注意\n在使用时,两种晶体管的电源极性是相反的。图1-19中，NPN型和PNP型晶体管电路符\n号中的箭头表示晶体管工作时发射极电流的实际方向。\n晶体管的结构在工艺上有以下两个主要特点：\n（1）位于中间的基区必须很薄，约一至几个微米，并且掺入杂质浓度最低。\n（2）发射区和集电区半导体类型相同，但发射区中杂质浓度远远大于集电区的杂质浓度。\n正是这两个特点使晶体管具备了对电流的控制和放大作用。\n国产晶体管的命名方法如下：\n3 DG 6 C\n规格号\n序号\n器件的功能类型\n半导体材料和类型\n晶体管\n其中半导体材料和类型分为A、B、C、D这4种，其含义如下：\n锗材料的PNP;\n锗材料的 NPN;\n硅材料的 PN",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "定义",
+   "pred_conf": 0.57
+  },
+  {
+   "chunk_id": 32159,
+   "doc_name": "康华光《电子技术基础-数字部分》（第5版）配套题库【名校考研真题＋课后习题＋章节题库＋模拟试题】.pdf",
+   "text": "；\n4\n位并行加法器有\n2\n9\n根列\n线，\n4×7\n根行线。\n3\n．设\nROM\n的地址为\nA0A1…A7\n，输出为\nY0\n～\nY3\n，该\nROM\n的容量为\n(\n)bit\n。\n[\n华中科技大学\n2007\n研\n]\n【答案】\n1K\n【解析】\n若\nROM\n的地址位数为\nn\n，输出位数为\nM\n，则字数为\n，字长为\nM\n，其容量常表示为字数\n与字长的乘积。题中\nn=8\n，\nM=4\n，则\nROM\n容量为\n。\n二、选择题\n1\n．为构成\n4096×16\n的\nRAM\n区，共需\n1024×4\n位的\nRAM\n芯片\n(\n)\n片。\n[\n电子科技大学\n2008\n研\n]\nA\n．\n64\nB\n．\n32\nC\n．\n16\nD\n．\n8\n【答案】\nC\n【解析】\n（\n4096×16\n）\n/\n（\n1024×4\n）\n=16\n。\n2\n．只用\nROM\n能实现的如下器件是（\n）。\n[\n北京邮电大学\n2010\n研\n]\nA\n．计数器\nB\n．译码器\nC\n．数据分配器\nD\n．脉冲分配器\n【答案】\nBCD\n【解析】\nROM\n在正常工作状态下只能从中读取数据，不能快速地随时修改或重新写入数据。计\n数器要求不停的计数改变数据。\nBCD\n三项，都可以用固定的数据工作。\n3\n．容量为\n8K×16\n位的\nROM\n共有（\n）条地址线。\n[\n北京科技大学\n2010\n年研\n]\nA\n．\n13\nB\n．\n14\nC\n．\n8\nD\n．\n16\n【答案】\nA\n【解析】\n三、分析计",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "习题",
+   "pred_conf": 0.5949
+  },
+  {
+   "chunk_id": 6634,
+   "doc_name": "2006年真题逐题细解.pdf",
+   "text": "提供饮食和住宿的收容所，代入文中，符合句意，故正确。\n【干扰排除】A选项lodging作可数名词时，常指租来的房间，入住者要向房东支付租金，结合常识可知，无家可\n归者一般都无力支付房租，故排除；C选项dwelling常指居住的地方，如住宅、住所、公寓，D选项house常指\n供一家人居住的房子，C、D两个选项均泛指“一般的住所”，，不符合语境，故都排除。\n【考点剖析】句内语义及名词辨析。\nA. searching搜索；搜查 B. strolling散步；溜达\nC. crowding挤满；聚集 D. wandering流浪；游荡\n【答案解析】看本句：分析可知，设空处关键信息点为箭头指向的空格前后部分。由空格所在句中的still可知，\n13\n大部分无家可归者即使找到了收容所，他们仍保持之前的生活状态，即每天还在街头流浪。备选项中，D选项\nwandering既可作及物动词也可作不及物动词，作及物动词时可表示“流浪；游荡”，代入文中，符合语义，故正确。\n【干扰排除】A选项searching表示为寻找某人/某东西而搜查某地，代入文中意为“搜查大街”，不符合语义，\n故排除；B选项strolling为不及物动词，表示“闲逛”时，其后须加介词，例如：stroll along the beach （沿海滩散步），\n代入文中不符合语法要求，故排除；C选项crowding可作及物动词，表示“挤满”，强调某",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.0827
+  },
+  {
+   "chunk_id": 12260,
+   "doc_name": "【电子技术基础-数字部分】康华光 考研考点精讲 讲义.pdf",
+   "text": "\n四、逻辑函数的代数法化简\n１．逻辑函数与逻辑图\nＦ＝ＡＢ＋Ａ\n－\nＢ\n－\n２．逻辑函数化简的原则\n逻辑函数化简，并没有一个严格的原则，通常遵循以下\n几条原则：\n（１）逻辑电路所用的门最少———函数项要少\n（２）各个门的输入端要少———每一项的变量数少\n—２２—\n考试点（ｗｗｗｋａｏｓｈｉｄｉａｎｃｏｍ）名师精品课程　电话：４００－６８８５－３６５\n（３）逻辑电路所用的级数要少———速度快\n（４）逻辑电路能可靠地工作\n我们主要遵循（１），（２）条\n＜１＞与或逻辑函数的化简\n①\n应用吸收定律 １ ＡＢ＋ＡＢ\n－\n( )\n＝Ａ\n任何两个相同变量的逻辑项，只有一个变量取值不同（一项以原变量形式出现，另一项以反变量\n形式出现），我们称为逻辑相邻项（简称相邻项）。如 ＡＢ与 ＡＢ\n－\n，ＡＢＣ与\nＡＢＣ都是相邻关系。如果函数\n存在相邻项，可利用吸收定律 １，将它们合并为一项，同时消去一个变量。\n例：Ｆ＝ＡＢ\n－\nＣ\n－\n＋ＡＢ\n－\nＣ＋ＡＢＣ\n－\n＋ＡＢＣ\n解：利用吸收律 １\nＡＢ\n－\nＣ\n－\n＋ＡＢ\n－\nＣ＝ＡＢ\n－\nＡＢＣ\n－\n＋ＡＢＣ＝ＡＢ\nＦ＝ＡＢ\n－\n＋ＡＢ＝Ａ 吸收律\n( )\n１\n例：Ｆ＝Ａ\n－\nＢ\n－\nＣ\n－\nＤ\n－\n＋Ａ\n－\nＢ\n－\nＣ\n－\nＤ＋Ａ\n－\nＢ\n－\nＣ\n－\nＤ\n－\n＋Ａ\n－\nＢ\n－\nＣＤ＋Ａ\n－\nＢＣ\n－\nＤ＋ＡＢ\n－\nＣ\n－\nＤ\n其中 Ａ\n－\nＢ\n－\nＣ\n－",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5534
+  },
+  {
+   "chunk_id": 35589,
+   "doc_name": "(1.5.1)--课程内容梳理4.pdf",
+   "text": "t Uee\nGND\n沿触发，对于74121（2）B=1，\n根据74121的功能表可知，对\n于74121（1）A,=A,=0则B个\nA,-A,=Q，则Q,下沿触发。\n讲课\nGND\n沿触发，对于74121（2）B=1，\n根据74121的功能表可知，对\n于74121（1）A,=A,=0则B个\nAA,=Q，则Q,下沿触发。\n故uo,和uo2的脉冲宽度分别\n=ln2×0.13×22=2ms\n555定时器（1）构成的单稳态触发器的输出脉宽为\n解：集成单稳态触发器74121的脉宽为Tw=RCln2\n555定时器（2）构成的多谐振荡器的振荡频率为\nZHY9'6 ~\n寸数电\n工作特征\n下沿触发\n保持稳态\n上沿触发\n0.7(R, +2R)C\n扬声器发出声音的频率：\n74121功能表\n延迟时间：\n--- 第7页(OCR) ---\n将5G555定时器的高触发端TH和低触发端TL连接起来作为输入就\n不变\n脉冲波形的产生与整形专题\nYcc/3不变\nDIGITAL ELECTRONICS TECHNOLOGY\n海蒂老师\nCC/3\n-施密特触发器\nHL\n施密特触发器的工作原理\n主讲人：\n0.01uF\n数字电子技术\n构成了施密特触发器。\n5G555\nHL\n安妮团队\n当输入触发信号电平达到阈值电压时(所加电位信号不得撤去)，\n使其抗",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.4931
+  },
+  {
+   "chunk_id": 18603,
+   "doc_name": "阎石《数字电子技术基础》（第6版）配套题库【考研真题精选＋章节题库】.pdf",
+   "text": " ；\n④ F1F2＝ 11 时，电路功能为进行全加运算（ S ＝ A ⊕ B ⊕ C ），虚框电路的输出 E 、 D 、 CI应分别等于 A 、 B 和 C 。\n图 4-42\n因此，虚框电路的真值表如图 4-43 （ a ）所示，由此图可直接写出电路的输出函数：\nE ＝\n＿\nF1\n＿\nF2·1 ＋\n＿\nF1F2·A ＋ F1\n＿\nF2·A ＋ F1F2·A\nD ＝\n＿\nF1\n＿\nF2·1 ＋\n＿\nF1F2·1 ＋ F1\n＿\nF2·B ＋ F1F2·B\nCI＝ F1F2·C\n（ 2 ）用卡诺图化简。 CI已经最简。 E 与 D 的卡诺图如图 4-43 （ b ）和（ c ）所示。化简后得\nE ＝\n＿\nF1\n＿\nF2＋ A\nD ＝\n＿\nF1＋ B\n图 4-43 虚框电路的功能表及输出卡诺图\n（ 3 ）画虚线框内的组合电路。用非门和与非门实现的电路图如图 4-44 所示。\n图 4-44 图 4-42 （ a ）中虚线框内的电路结构\n28 某 7 段数字显示管所显示的数字及字母设计如图 4-45 所示。请设计驱动该显示管 c 段的译码驱动电路。驱动电路的三进制输入 ABCD 与\n应显示的数字及字母的关系如图 4-46 所示。要求译码输出为 0 时字段点燃，译码输出为 1 时字段熄灭。\n图 4-45\n图 4-46\n答：由数码管的特点知，显示数字或字母 0 ， 1 ， 3 ， 4 ， 5 ， ",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5689
+  },
+  {
+   "chunk_id": 24164,
+   "doc_name": "【电子技术基础-模拟部分】康华光 第6版 学习铺导与习题解答.pdf",
+   "text": "Rz/R. =9\n(2.2.4-3)\n当R=1kΩ,有R，=9R=9kQ。将式(2.2.4-3)代人式(2.2.4-1)可得\nR, =2R,\n(2.2.4-4)\n考虑反相端和同相端电阻的平衡，一般要求\nR,//R,=R,//R2=0.9kΩ\n(2.2.45)\n由式(2.2.4-4)和式(2.2.4-5)可解出：R,=1.35kΩ,R,=2.7k2。",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5918
+  },
+  {
+   "chunk_id": 45948,
+   "doc_name": "【A4留白】27张宇基础30讲做题本(2).pdf",
+   "text": " f x f  x > 0,则 ( ) .\nA. f 1 > f -1  B. f 1 < f -1 \nC. f 1   > f -1   D. f 1   < f -1  \nP144例 5.2设函数 f x 二阶可导,且在 x = x0处取极大值,则有 ( ) .\nA. f  x0 < 0 B. f  x0 ≤ 0 C. f  x0 > 0 D. f  x0 ≥ 0\nP144例 5.3设函数 y = y x 由方程 y3 + xy2 + x2y + 6 = 0确定，求 y x 的极值.\n公众号：做题本集结地 第 5 讲·一元函数微分学的几何应用\n· 第 50 页，共 217 页 ·\nP144例 5.4设 f x = xex,求 f n  x 的极值点和极值.\nP148例 5.5设函数 f x 满足关系式 f  x + f  x  2 = sinx,且 f  0 = 0,则 ( ) .\nA. f 0 是 f x 的极大值\nB. f 0 是 f x 的极小值\nC. 点 0,f 0  是曲线 y = f x 的拐点",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "习题",
+   "pred_conf": 0.6168
+  },
+  {
+   "chunk_id": 42187,
+   "doc_name": "2011年数学三解析.pdf",
+   "text": "1\n2011 年全国硕士研究生入学统一考试数学三试题答案\n一、选择题(1～8 小题，每小题 4 分，共 32 分．下列每题给出的四个选项中，只有一个选\n项符合题目要求，请将所选项前的字母填在答题纸．．．指定位置上．)\n(1)【答案】(C)．\n【解析】因为\n0\n3sin sin 3lim kx\nx x\ncx\n\n0\n3sin sin cos 2 cos sin 2lim kx\nx x x x x\ncx\n \n \n2\n0\nsin 3 cos 2 2cos\nlim kx\nx x x\ncx\n \n\n2\n10\n3 cos 2 2coslim kx\nx x\ncx \n \n \n2 2\n10\n3 2cos 1 2cos\nlim kx\nx x\ncx \n  \n\n2 2\n1 10 0\n4 4cos 4sinlim limk kx x\nx x\ncx cx  \n \n30\n4lim 1 kx cx \n  ．\n所以 4, 3c k  ，故答案选(C).\n(2)【答案】(B)．\n【解析】\n   \n2 3\n30\n2\nlim\nx\nx f x f x\nx\n",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.56
+  },
+  {
+   "chunk_id": 39882,
+   "doc_name": "(73)--12.4笔记小结.pdf",
+   "text": "\n\n)!12(\n)1(\n!3sin\n123\nn\nxxxx\nnn\n),( x2.\n !2\n)1(\n!21cos\n22\nn\nxxx\nnn\n),( x3.\n\n\nn\nxxxx\nnn 12 )1(\n2)1ln( )1,1(x4.\n 2\n!2\n)1(1)1( xxx   nxn\nn\n!\n)1()1( \n)1,1(x\n5.\n2)( 2  xx\nxxf x例1 将 展开为 的幂级数。\nxxf sin)(  4\nx例2 将函数 在 处展开为幂级数.\n)]4(4sin[)(   xxf )]4cos()4[sin(2\n2   xx\n2\n2 ])!2(\n)4()1(\n)!12(\n)4()1(\n[\n0\n2\n0\n12\n\n\n\n\n\n \n\n\nn\nnn\nn\nnn\nn\nx\nn\nx \n),( x\n【解】\n)2ln()( 2xxxf  1x例3 将 在 展开为幂级数。\nxxf arctan)(  x例4 将 展开为 的幂级数。\n内容小结\n1. 函数展开为幂级数的两种方法\n1）直接展开法\nn\nn\nn\nxxn\nxfxf )(!\n)(~)( 0\n0\n0\n)(\n\n\n\n第二步  考查 0)()!1(\n)(lim)(lim 1\n0\n)1(\n",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "公式",
+   "pred_conf": 0.1784
+  },
+  {
+   "chunk_id": 40332,
+   "doc_name": "006.PDF",
+   "text": "的工作效率。本节将介绍一些我们最\n喜欢的东西。\n程序都应该检查数组的界限（如果语言本身不做这件事的话），但是，如果数组本身的大小\n比典型输入大得多时，这种检查代码就常常测试不到。为演习这种检查，我们可以临时地把\n数组改为很小的值，这样做比建立大的测试实例更容易些。在第2章和第4章的CSV库中，我\n们对那里的数组增长代码都使用了这种技巧。实际上我们放了一个很小的初始值，这引起的\n附加的初始代价是微不足道的。\n--- 第17页(OCR) ---\nChina-bub\n126\n.com\n程序设计实践\n下载\n让散列函数返回某个常数值，使所有元素都跑到同一个散列桶里。这种做法能演习链的\n机制，它也指明了最坏情况下的性能。\n写一个你自已的存储分配函数，有意让它早早地就失败，利用它测试在出现存储器耗尽\n错误时设法恢复系统的那些代码。下面的函数在调用10次后就会返回NULL：\n/*testma7loc:returnsNULL after10 cal1s*/\nvoid *testmalloc(size_t n)\nstatic int count = O;\nif (++count > 10)\nreturn NULL;\nelse\nreturn ma11oc(n);\n在你提交代码的时候，应该关掉其中所有的测试限制，因为它们会影响程序性能。我们",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.1169
+  },
+  {
+   "chunk_id": 39059,
+   "doc_name": "(156)--课后作业【必做题】PDF版题目.pdf",
+   "text": "线方程是________.\n6.（仅数一、二）已知一个长方形的长l 以4cm/s 的速率增加,宽 w 以2cm/s 的速率增加.\n则当 cm10l  , cm3w 时,它的面积增加的速率为________.\n7. 已知\n1tan\n2 arcsin e ex xy x   ，求 y.\n8. 设 sin 2(1 e )x xy  ，求 (0).y\n9. 设 2\n1 1ln sin1\nxy x x\n \n，则dy ________.\n10. 已知 1 e xyy x x y    ，求 0xy  及 0xy \n11. 已知 1e 1yy x   ，求 0\nd ,d\nx\ny\nx\n\n2\n02\nd\nd\nx\ny\nx\n .\n12. 已知可微函数 ( )y y x 由方程 e 2e sin 7x yy y x x   所确定，则 (0)y  ________.\n13. 设 2ln( 1 )y x x   ，求反函数的导数 d\nd\nx\ny\n.\n14. 设函数\n2\n3\n1 2 , 1,\n( ) , 1 2,\n12 16, 2.\nx x\ny f x x x\nx x\n  \n    \n  \n（1）写出 ( )f x 的反函数 ( )g x 的表达式；",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "习题",
+   "pred_conf": 0.5826
+  },
+  {
+   "chunk_id": 40948,
+   "doc_name": "1993年数学三解析.pdf",
+   "text": ",且  0 0f . \n于是  f x 在 0x 处连续.故(A)(B)不正确.\n又因为\n 2 2\n20 0 0\n1 1sin 0 sin 1 1lim lim lim sin0x x x\nx f xx x\nx x xx\n    \n\n \n不存在,所以  f x\n在 0x 处不可导,所以选(C).\n【相关知识点】 函数连续定义： 如果函数在0x 处连续,则有\n0 0\n0lim ( ) lim ( ) ( )\nx x x x\nf x f x f x\n   \n  .\n3\n(2)【答案】(A)\n【解析】      \n2 2\nln1 1 1 1 1ln .f xF x f x f fx x x x x x\n                  \n【相关知识点】积分上限函数的求导公式：\n  \n \n         \nx\nx\nd f t dt f x x f x xdx\n\n\n      .\n(3)【答案】(B)\n【解析】 A A 有n 个线性无关的特征向量.\n由于当特征值 1 2  时,特征向量 1 2,  线性无关.从而知,当 A 有n 个不同特征值时,",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.5817
+  },
+  {
+   "chunk_id": 16958,
+   "doc_name": "第11章 数－模和模－数转换.pdf",
+   "text": "D/A䖜ᦒಘⲴ㋮ᓖሿҾ0.05%ˈҏᱟ㾱≲\nD/A٬઼ࠪ⨶䇪٬ѻ䰤Ⲵ䈟ᐞ˄㔍ሩ䈟\nᐞ˅ˈа㡜ᓄվҾ 1LSB /2ˈণ\nLBSo Uv 2\n1/g100/g39\nє䗩਼䲔䗃ޕѪޘѪ1ᰦⲴᴰབྷ⭥঻ᗇ˖\nm\nLBS\nm\no\nU\nU\nU\nv\n2\n1/g100/g39\n庭㊣▩䗅ⅇ廩䋈庭㊣▩䯿ⷧ ADAD /2\n1/ /g100ণ\nLBS\noooooooooooooooooooooooooo\nL\nooooooooo\nooooooooooooooooo\nර仈ǃભ仈㿴ᖻ⤜ᇦ㿶仁䇢䀓\n䈖㿱˖㖁ᆖཙൠ˄www.e-studysky.com˅˗૘䈒QQ˖2696670126\n⭡Ҿ10սD/A䗘⦷ҏਟ㺘⽪Ѫ\n᭵\n⭡Ҿ10սD/A䖜ᦒಘ࠶䗘⦷Ѫ\n%1.0%05.02\n12\n1/ n 澵\n澥\n庭㊣▩䗅ⅇ廩䋈澵 /g117/g116AD\n%097.0%100\n12\n1\n10 /g32/g117\n/g16\n12\n1A/D\n/g16n庭㊣▩䗅ⅇ廩䋈澵\n庭㊣▩䗅ⅇ廩䋈庭㊣▩䯿ⷧ ADAD /2\n1/ /g100\n᭵ᓄਆॱսᡆॱսԕкⲴD/A䖜ᦒಘǄ\nnnnnnnnnnnnnnnnnnn\n庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭庭㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣㊣▩▩▩▩▩▩▩▩▩▩▩▩▩▩▩▩▩▩▩▩▩",
+   "pred_l1": "经济类联考综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "其他",
+   "pred_conf": 0.0696
+  },
+  {
+   "chunk_id": 39004,
+   "doc_name": "(142)--基础习题册第十章《选填题》详解.pdf",
+   "text": "第十章 无穷级数\n一. 选择题\n1.【答案】B\n【解析】 数项级数敛散性判别通常利用举反例排除， 同时可结合级数收敛性质得到正确答案.\n取\n( 1) n\nnu  ，显然\n1\nn\nn\nu\n\n\n 发散，而\n2 1 2\n1\n() nn\nn\nuu\n\n\n\n 收敛，排除①.\n由级数收敛性质：改变、增加或减少级数的有限项，不改变级数的收敛性，②正确.\n由\n1lim 1n\nn n\nu\nu\n\n\n ，可知\nnu 不趋向于零，由收敛的必要条件可知级数\n1\nn\nn\nu\n\n\n 发散，③正确.\n取\n1\nnu n ，\n1\nnv n ，\n1\n() nn\nn\nu ν\n\n\n 收敛，显然\n1\nn\nn\nu\n\n\n 和\n1\nn\nn\nv\n\n\n 均发散，排除④.\n故答案选 B.\n2.【答案】C\n【解析】由不等式\n221 ()2ab a b 可知\n \n2\n22\n111 2\nn n\nn\na a nn \n     ，\n而\n2\n1\nn\nn\na\n\n\n 和\n2\n1\n1\nn n \n\n  均收敛，则\n  21\n1\nn n\nn\na\nn \n\n\n\n 绝对收敛.\n3.【答案】C\n【解析】 （A）不对，例如：\n1( 3) n\nnu  ，显然\n1 3im 1l n\nn n\nu\nu\n\n\n  ，但\n1\nn\nn\nu\n\n",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.1223
+  },
+  {
+   "chunk_id": 12636,
+   "doc_name": "【电子技术基础】国家职业资格培训.pdf",
+   "text": "\n2\n———匝数比。\n例\n2-5\n图\n2-28\n中，若扬声器的电阻\nR\nL\n=8\nΩ\n，集电极电流有效值\nI\nc\n=10mA\n，输出\n功率为\nP\no\n=20mW\n。试求输出变压器的电压比。若将扬声器直接接在集电极电路\n里，它可获得多大功率？\n解\nR\nL\n经 输 出 变 压 器 变 换 后，变 压 器 一 次 侧 的 等 效 电 阻 阻 抗 为\nR\nL\n′=\nN\n1\nN\n（ ）\n2\n2\nR\nL\n=\nn\n2\nR\nL\n输出的功率\nP\no\n=\nI\n2\nc\nR\nL\n′\n，所以有\nR\nL\n′=\nP\no\nI\n2\nc\n= 20×10\n-3\n（\n10×10\n-3\n）\n2\nΩ\n=200\nΩ\n输出变压器的电压比为\nn\n=\nR\nL\n′\nR\n〓\nL\n= 200\n〓\n8 =5\n若将扬声器直接接入集电极电路，则获得功率为\nP\no\n′=\nI\n2\nc\nR\nL\n=\n（\n10×10\n-3\n）\n2\n×8mW =0.8mW\n可见，此时\nP\no\n′\n仅为\nP\no\n的\n1/25\n。\n下面通过图解法来分析单管功率放大电路的工作情况，如图\n2-29\n所示。\n由于变压器\nT2\n一次绕组的直流电阻以及晶体管的发射极电阻\nR\ne\n都很小，所\n以晶体管的集电极直流负载电阻很小，直流负载线很陡，几乎是一条通过点\nU\nceQ\n=\nE\nc\n并且垂直于横轴的直线。直流负载线与基极偏置电流\nI\nb\n的交点\nQ\n就是静态\n工作点。通过静态工作点\nQ\n",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5931
+  },
+  {
+   "chunk_id": 38710,
+   "doc_name": "9-功率放大电路(1).pdf",
+   "text": "\n详见：网学天地（www.e-studysky.com）；咨询QQ：2696670126讨论三：出现下列故障时，将产生什么现象?\n1.  R2短路；\n2.  R2断路；\n3.  D1短路；\n4.  D1断路；\n5.  T1集电极开路。\nT2、T5的极限参数：\nPCM＝1.5W，ICM＝600mA，UBR（CEO）＝40V。\n故障分析的问题，答案具有多样性，需多方面思考！\n功放的故障问题，特别需要考虑故障的产生是否影响功\n放管的安全工作！\n清华大学 华成英\nhchya@tsinghua.edu.cn",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "习题",
+   "pred_conf": 0.5589
+  },
+  {
+   "chunk_id": 47921,
+   "doc_name": "考研数学公式大全 (概率统计).pdf",
+   "text": "\nn \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n21\n2\n2\n1lim\n\n\n82\n第六章 样本及抽样分布\n一、总体、样本和统计量\n1.总体：研究对象的某项数量指标 X 取值的全体称为总体， X 是一个随机变量。总体中的每个元素称为个体，每个个体是一个实数\n2.简单随机样本： nXXX ,,, 21  来自总体 X ，且独立同分布。它们的观测值 nxxx ,,, 21  称为样本值\n3.统计量：设 nXXX ,,, 21  来自总体 X 的样本， ),,,( 21 nXXXg  是 nXXX ,,, 21  的函数，\n若 g 中不含任何未知参数，则称 ),,,( 21 nXXXgY  是一个统计量\n注：统计量是样本的函数，不含任何未知参数，是一个随机变量，统计量的分布称为抽样分布\n4.常用统计量\n（1）样本均值： \n\n\nn\ni\niXnX\n1\n1\n（2）样本方差： \n\n\n  \n\n2\n1\n22\n1\n2 )(1\n1)(1\n1 XnXnXXnS\nn\ni\ni\nn\ni\ni\n注：常用的结论，设 2)(,)(   XDXE ，则\nnXDXE\n2\n)(,)(   ；\nnXE\n2\n22))((   ； 22)( SE",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "定义",
+   "pred_conf": 0.5557
+  },
+  {
+   "chunk_id": 3955,
+   "doc_name": "模拟电子技术基础 第6版 .txt",
+   "text": "。图6.1.32所示是A。和KcyR为有限值时同相比例运算电路的等效电路。由于r为无穷大，i?=0,故R'上电压为零，up=u?。输出电压是差模信号和共模信号两部分6.1 基本运算电路作用的结果，其中Uu=up-uNR N=2igAdld Ae输出电压的表达式为R'u?=A?(u,-u?)+A.“2(6.1.32)图6.1.32w,=a,4=g+g·U=RA.,因为考虑Am和 Kcun为有限值时同相比例运算电路的等效电路所以a=AAu-ALBM2整理可得(6.1.33)理想运放情况下的输出电压-(14)“(6.1.34)所以相对误差(6.1.35)若R=10kΩ,R,=100kΩ,R'=R//R,Aa?=2×10?,Kcwn=10?,则δ≈0.004 5??式(6.1.35)表明，A。和Kcnn愈大，相对误差的数值愈小。三、失调参数对积分运算电路运算误差的影响考虑集成运放失调电压U。和失调电流Io的影响，积分运算电路在输入电压为零时的等效电路如UoigHioog图6.1.33 所示，此时输出电压仅取决于失调因素。因为up=0V,集成运放的差模输人电阻为无穷大，电流源Io上的电压可忽略不计，所以uy=Uo。N点的电流方程为图6.1.33R*=k考虑U?和1o时，积分运算电路在输入电压为零时的等效电路第6日 信号的运算和处理 274输出电压=-\"+)(6.1.36)若仅考虑失调温漂，则",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5649
+  },
+  {
+   "chunk_id": 28716,
+   "doc_name": "2023年199真题及答案 .pdf",
+   "text": "（2）联合起来也不充分，\n-4－「公众号：研池大叔，免费分享」\n--- 第5页(OCR) ---\n公众号：研池大叔免费分享考研课程&书籍\n23年管综考研真题答案\n16.有体育、美术、音乐、舞蹈4个兴趣班，每名同学至少参加2个，则至少有12名同学参加的兴\n趣班完全相同.\n（1）参加兴趣班的同学共有125人.\n（2）参加2个兴趣班的同学有70人，\n【答案】 (D）\n17. 关于x的方程x²-px+q =0 有两个实根a,b. 则 p-q>1.\n(1) a>1.\n(2) b<1.\n【答案】（C）\n18.已知等比数列α的公比大于1.则a，为递增数列.\n（1）α是方程x²-x-2=0的根.\n（2）α是方程x²+x-6=0的根.\n【答案】 (C）\n19.设x，y是实数.则√x²+y2有最小值和最大值.\n(1) (x-1)² +(y-1)² =1.\n(2) y=x+1.\n【答案】（A）\n20. 设集合M ={(x,y)](x-a)?+(y-b)²≤ 4),N=(x,y)x>0,y>0). 则 M I N ±.\n(1) a<-2.\n(2) b>2.\n【答案】(E）\n-5－「公众号：研池大叔，免费分享」\n--- 第6页(OCR) ---\n公众号：研池大叔免费分享考研课程&书籍\n23 年管综考研真题答案\n21.甲、乙辆车分别从A、B两地同时出发，相向而行，1小时后，甲车到达C点，乙车到达D点.则\n能确",
+   "pred_l1": "管理类联考综合",
+   "pred_l3": null,
+   "label_l1": "真题综合",
+   "label_l3": "习题",
+   "pred_conf": 0.0596
+  },
+  {
+   "chunk_id": 27936,
+   "doc_name": "2014年全国硕士研究生招生考试西医综合试题 .pdf",
+   "text": "\n71. C\n72. C\n--- 第22页(OCR) ---\n公众号【研池大叔】免费分享\n73. B\n74. A\n75. D\n76. A\n77. C\n78. C\n79. D\n80. B\n81.D\n82. B\n83. A\n84. D\n85. B\n86. A\n87. D\n88. B\n89. B\n90. B\n91. D\n92. C\n93. C\n94. B\n95. A\n96. B\n97. C\n98. A\n99. C\n100. C\n101. A\n102. C\n--- 第23页(OCR) ---\n公众号【研池大叔】免费分享\n103. A\n104. A\n105. A\n106. A\n107. B\n108. C\n109. B\n110. B\n111. D\n112. A\n113. C\n114. A\n115. C\n116. B\n117. B\n118. C\n119. C\n120. D\n二、B型题\n121. C\n122. D\n123. B\n124. D\n125. D\n126. C\n127. A\n128. C\n129. A\n130. C\n131. A\n--- 第24页(OCR) ---\n公众号【研池大叔】免费分享\n132. A\n133. D\n134. C\n135. D\n136. A\n137. A\n138. B\n139. B\n140. A\n141. D\n142. A\n143. D\n144. B\n145. A\n14",
+   "pred_l1": "西医综合",
+   "pred_l3": null,
+   "label_l1": "真题综合",
+   "label_l3": "习题",
+   "pred_conf": 0.1193
+  },
+  {
+   "chunk_id": 3393,
+   "doc_name": "【电子技术基础】国家职业资格培训.txt",
+   "text": "细心调节RP，用直流电压表测量输出电压，使其为零。如果集成运放没有调零端子，可按图4-30所示电路进行调零。图4-30 调零电路如果某个集成运放不能调零，通常有以下几个方面的原因：1）调零电位器故障。2）电路接线有误或有虚焊。3）反馈极性接错或负反馈开环。4）集成运放内部损坏。5）输入信号过大。2.集成运放的消振对于集成运放，其输入信号为零而输出信号并不为零的现象叫做自激。自激现象的存在，使集成运放的各种运算功能无法实现，严重时还会损坏元器件。为了消除集成运放的自激现象，通常采用如下措施进行消振：1）若集成运放有相位补偿端子，可外接RC补偿电路。2）合理安排电路布线与元器件布局，尽量减小分布电容。3）在正、负电源进线与地之间接上适当的电容，减小电源引线的影响。4）正确接线，避免反馈极性接错以及过大的负反馈。第四章 集成运算放大电路及其应用复习思考题1.简述基本差动放大电路的静态与动态分析。2.差动放大电路的输入输出方式有哪些类型？3.简述集成运放的电路组成与性能指标。4.集成运放的理想化条件是什么？5.集成运放的基本运算电路有几种？6.简述矩形波发生器的工作原理。7.集成运放的非线性应用重要理论是什么？8.集成运放选用时应遵循的基本原则是什么？9.集成运放不能调零的原因有哪些？10.集成运放的消振措施有哪些？第五章整流稳压电路培训学习目标 掌握整流的概念，以及单相整流电路、三相整流",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "实验步骤",
+   "pred_conf": 0.5774
+  },
+  {
+   "chunk_id": 26040,
+   "doc_name": "2023考研政治真题及答案解析.md",
+   "text": "度契合性，不是、也不可能完整体现马 克思主义的立场、观点和方法，A、C错误。\n27. 【答案】ACD\n【考点知识还原】见表78\n【考点点拨】革命派与改良派的论战\n【试题简析】在资产阶级民主革命思潮广泛传播、革命形势日益成熟的时候，康有为、梁启超等 人坚持走改良道路，反对用革命手段推翻清朝统治。1905年至1907年间，围绕中国究竟是采用 革命手段还是改良方式这个问题，革命派与改良派分别以《民报》《新民丛报》为主要舆论阵 地，展开了一场大论战。投入这场论战的还有其他十几种报刊。双方论战问题包括要不要以革 命手段推翻清王朝，要不要推翻帝制、实行共和，要不要进行社会革命，焦点是要不要以革命 手段推翻清王朝，A正确。这场论战具有重大的意义。通过这场论战，划清了革命与改良的界 限，传播了民主革命思想，促进了革命形势的发展。但这场论战也暴露了革命派在思想理论方 面的弱点。比如，他们主张推翻清政府，但对“革命是否会招致帝国主义干涉”的问题不敢作 出理直气壮的正面回答，只是希望通过“有秩序的革命”来避免动乱和帝国主义的干涉。他们 所说的“国民”，主要还是指资产阶级及其知识分子，而不是广大的劳动群众。他们对封建地主 土地所有制是否应该改革的问题也是语焉不详，并且反对贫苦农民“夺富人之田为己有”。这些 理论和认识的局限不可避免地会影响辛亥革命的进程和结局。C、D正确。这场论战是资产阶级 内部革命派与改",
+   "pred_l1": "政治",
+   "pred_l3": null,
+   "label_l1": "政治",
+   "label_l3": "例题",
+   "pred_conf": 0.5811
+  },
+  {
+   "chunk_id": 24173,
+   "doc_name": "【电子技术基础-模拟部分】康华光 第7版 学习铺导与习题解答.pdf",
+   "text": "极管、稳压二极管、晶体管和场效应管的工作原理，掌握它们的特性和主要\n参数。\n2.基本放大电路\n（1）理解晶体管和场效应管基本放大电路的组成、工作原理及性能特点。\n（2）掌握放大电路静态工作点和动态参数（A.、R，、R。、Vm）的分析方法。\n3.多级放大电路\n（1）了解直接耦合、阻容耦合、变压器耦合和光电耦合的基本原理及特点。\n（2）理解多级放大电路动态参数的分析方法。\n4.集成运算放大电路\n（1）理解差分放大电路的组成和工作原理，掌握静态和动态参数的分析方法。\n（2）了解典型集成运放的组成及其各部分的特点，掌握其电压传输特性和主参数。\n5.放大电路的频率响应\n（1）掌握放大电路频率响应的有关概念。\n（2）理解单管放大电路频率响应的分析方法。\n（3）了解多级放大电路的频率响应。\n6.放大电路中的反馈\n（1）掌握反馈的基本概念和反馈类型的判断方法。\n（2）掌握深度负反馈条件下放大电路的分析方法。\n（3）理解负反馈对放大电路性能的影响。\n（4）学会根据需要在放大电路中引入反馈的方法。\n（5）了解负反馈放大电路产生自激振荡的原因、稳定判据和消除自激振荡的方法。\n①这是教育部高等学校电子电气基础课程教学指导分委员会于2010年制定的。这里所谓基本要求是指最低课程质量\n要求，各校在教学上留有发展空间。\n--- 第8页(OCR) ---\n6一如何学习模拟电子技术基础\n7.正弦波振荡电路\n（1）掌",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.6043
+  },
+  {
+   "chunk_id": 37448,
+   "doc_name": "2011年312心理学答案 .pdf",
+   "text": "2011年全国硕士研究生招生考试\n心理学专业基础综合参考答案与解析\n一、单项选择题\n1. 【答案】A\n【解析】本题主要考查：神经系统的基本结构。丘脑是感觉神经重要的中转站，除嗅觉以外，所有输入信息都通过\n丘脑传向大脑皮层。下丘脑，调节交感神经和副交感神经的皮下中枢。海马，与记忆有关。桥脑，对睡眠具有调\n节和控制的作用。本题为常识性知识，需要考生对各种生理器官的功能精确记忆。\n2. 【答案】D\n【解析】本题主要考查：大脑皮层及其机能。初级视觉区位于枕叶内，接受眼睛输入的神经冲动，产生视觉；初级听\n觉区位于颗叶内，产生听觉；躯体感觉区位于顶叶内，产生不同形式的感觉；言语运动区位于额叶内，功能是发出\n运动指令，支配和调节身体各部分的运动。本题为常识题，需考生熟记大脑皮层各区的位置及其功能。考生在记\n忆时，可边记，边在自己的大脑上指出相对应的脑区帮助记忆。\n3. 【答案】D\n【解析】本题主要考查：听觉理论。位置理论包括行波理论和共鸣理论。共鸣理论认为基底膜的横纤维长短不同，\n靠近耳蜗底部的纤维较短，靠近蜗顶的纤维较长。像竖琴的琴弦一样，能对不同的声音产生共鸣。当声音频率高\n时，短纤维发生共鸣；而当声音频率低时，长纤维发生共鸣。行波理论认为声波传到人耳，将引起整个基底膜的振\n动。振动从耳蜗底部开始，逐渐向蜗顶推进，振动的幅度也逐渐增高。振动运行到基底膜的某 一部位，振幅达到\n最大值，然后停止",
+   "pred_l1": "心理学专业基础",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "例题",
+   "pred_conf": 0.0736
+  },
+  {
+   "chunk_id": 74705,
+   "doc_name": "考研大纲5500词(1).pdf",
+   "text": "议事日程，记事册\nagent n.代理人；代理商；产生作用的人或事物\naggravate vt.加重(剧),使恶化；激怒,使恼火\naggressive a.侵略的，好斗的，有进取心的，敢作敢为的\n共 43 页 第 1 页\nagitate v.摇动(液体)；使焦虑不安；困扰；鼓动\nago ad.(常和一般过去时的动词连用)以前，„前\nagony n.(精神或肉体的)极大痛苦，创伤\nagree vi.答应，赞同；适合，一致；商定，约定\nagreeable a.符合的；一致的；欣然同意的；令人愉快的\nagreement n.协定；协议；契约；达成协议；同意，一致\nagriculture n.农业，农艺，农耕\nahead ad.在前面(头)；向(朝)前；提前\nAid n.援助，救护；助手，辅助物 vi.援助，救援\nAim n.目的；瞄准 vi.(at)目的在于 vt.把„瞄准\nAir n.空气；(复数)神气 vt.(使)通风；晾干\nair-conditioning n.空调设备，空调系统\naircraft n.飞机，飞船，飞行器\nairline n.(飞机)航线 a.(飞机)航线的\nairport n.机场，航空站，航空港\nAisle n.(教堂、教室、戏院等里的)过道，通道\nalarm n.惊恐；警报(器) vt.惊动，惊吓；向„报警",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "定义",
+   "pred_conf": 0.1149
+  },
+  {
+   "chunk_id": 42749,
+   "doc_name": "27考研数学高数基础知识前探习题解析(3~4章）.pdf",
+   "text": "式= .\n3.8【答案】\n【解析】\n.\n3.9 解：根据定积分的几何意义， 表示的是由上半圆周 以及 轴\n所围成的半圆的面积，因此有 .\n3.10【答案】D\n【解析】 是 上的奇函数，故 ， 是 上的奇函数，\n是 上的偶函数，故 ， ，所以\n. 故选 D.\n3.11【答案】D\n【解析】曲线 在横坐标 对应的点 处切线为 . 选项 D 中函\n数记为 . 由 ， ， 知曲线 在横坐标 对应点处\n2arctan 3\nln 2 ln 3\nx\nC\n +−\n2222\n2 2 2 d arctan2 3 1 3 3 3d d = 23 2 ln 2 ln 3 22 ln11 333\nx x x\nxx\nxxxx x x C\n               = = ++−    ++      \n  \ntan 2\nxxC  +\n2\nsin sind d d d tan d1 cos 1 cos 1 cos 2 2cos 2\nx x x x x xx x x x x xx x x\n+ = + = + + + +     \n2= sec d tan d d tan tan d2 2 2 2 2\nx x x x xx x x x          + = +    ",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.5872
+  },
+  {
+   "chunk_id": 28073,
+   "doc_name": "2020年全国硕士研究生招生考试西医综合试题 .pdf",
+   "text": "FIIB\nC. TFIID\nD. TFIIF\n25.在肽链合成中，原核生物核糖体中具有结合新进入的位氨基酰-tRNA的是（）\nA.A 位\nB.P 位\nC.E 位\nD.核糖体结合位点\n26.在乳糖操纵子的负性调节机制中，阻遏蛋白结合的结构是（）\nA启动子\nB.操纵序列\nC.CAP 结合位点\nD.Z 基因\n27.下列属于酶偶联受体的配体是（）\nA.乙酰胆碱\nB.-干扰素\nC.肾上腺素\nD.甲状腺激素\n28.分析蛋白质表达量的实验室技术是（）\nA. Southern bolting\nB. Western bolting\nC. Northern bolting\nD.PCR 扩增\n29.左下肢股骨干骨折固定6个周后，左下肢明显比右下肢细小，发生的病变是（）\nB.失用性萎缩\nC.去神经性萎缩\nA.压迫性萎缩\nD.损伤性萎缩\n30.下列病变中，被称为血栓的是（）\nA.活体血管中的血凝块\nB.活体关节腔中的血凝块\n（号【研\nB.活体组织中的血凝块\nC.D.活体腹膜腔中的血凝块\n31.肾贫血性梗死的病理组织分型是（）\nA.凝固性坏死\nB.液化性坏死\nC.溶解性坏死\nD.纤维素样坏死\n32.下列情况中与肿瘤分期有关的是（）\nA.肿瘤细胞分化程度低\nB.肿瘤细胞分泌黏液\nC.肿瘤细胞核分裂象明显增多\nD.肿瘤细胞浸润深度\n33.下列淋巴细胞中，与急性细胞型排斥反应密切相关的是（）\nA. CD3 细胞\nC",
+   "pred_l1": "西医综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.1556
+  },
+  {
+   "chunk_id": 16008,
+   "doc_name": "模拟电子技术基础 第6版 .pdf",
+   "text": "5.2.9所示电路中，当输出电压为零时，电阻R?上电压不为零。为什么认\n为这个电路引入的是电压负反馈，而不是电流负反馈?\n5.3负反馈放大电路的框图及一般表达式\n因为负反馈放大电路有四种基本组态，而且对于同一种组态，具体电路也各不相同；所以为\n研究负反馈放大电路的共同规律，可以利用框图来描述所有电路。本节将讲述负反馈放大电路\n的框图及其一般表达式。\n5.3 负反馈放大电路的框图及一般表达式 213\n5.3.1负反馈放大电路的框图表示法\n任何负反馈放大电路都可以用图5.3.1所示的框图来\n表示，上面一个方块是负反馈放大电路的基本放大电路，下\n面一个方块是负反馈放大电路的反馈网络。负反馈放大电\n路的基本放大电路是在断开反馈且考虑了反馈网络的负载\n效应①的情况下所构成的放大电路；反馈网络是指与反馈系\n数 户有关的所有元器件构成的网络。\n店 启 i\n安\n广\n图5.3.1\n负反馈放大电路的框图图中 X;为输入量，X,为反馈量，X;为净输入量，X。为\n输出量。图中连线的箭头表示信号的流通方向，说明框图中的信号是单向流通的，即输入信号\nx,仅通过基本放大电路传递到输出，而输出信号x。仅通过反馈网络传递到输入；换言之，X,不\n通过反馈网络传递到输出，而文。也不通过基本放大电路传递到输入。输入端的圆圈田表示信\n号X;和，在此叠加，“+”号和“-”号表明了X、X,和x!之间的关系为\nx{=X?-X? ",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5897
+  },
+  {
+   "chunk_id": 47442,
+   "doc_name": "【横版】27武忠祥强化辅导讲义做题本(2).pdf",
+   "text": "70例 1】 (数学三不要求)设 f  t ≠ 0,有 x= f  t ,\ny=tf  t - f t ,\n 求 d2y\ndx2 .\n公众号：做题本集结地 武强化讲义例题·2.一元函数微分学\n· 第 137 页，共 543 页 ·\n【P70例 2】 (数学三不要求)已知 y = f x 由 x=2t+ t ,\ny= t sint\n 确定,则\nA. f x 连续, f  0 不存在. B. f  0 存在, f  x 在 x = 0处不连续.\nC. f  x 连续, f  0 不存在. D. f  0 存在, f  x 在 x = 0处不连续.\n公众号：做题本集结地 武强化讲义例题·2.一元函数微分学\n· 第 138 页，共 543 页 ·\n【P71例 3】 (数学三不要求)设 y = y x 由 x=3t2+2t+3\neysint- y+1=0\n 确定,求 d2y\ndx2 t=0\n.\n公众号：做题本集结地 武强化讲义例题·2.一元函数微分学\n· 第 139 页，共 543 页 ·\n【P72例】设 y = f x 的反函数是 x = φ y ,且 f x =\n2x\n1\net2",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "例题",
+   "pred_conf": 0.594
+  },
+  {
+   "chunk_id": 3299,
+   "doc_name": "【电子技术基础-模拟部分】康华光 精品复习课件.txt",
+   "text": "可以短路吗？（2）什么情况下Ad为“＋”？（3）双端输出时的Ad是单端输出时的2倍吗？可以2. 单端输入双端输出共模输入电压差模输入电压输入差模信号的同时总是伴随着共模信号输入：在输入信号作用下发射极的电位变化吗？说明什么？2. 单端输入双端输出问题讨论：（1）UOQ产生的原因？（2）如何减小共模输出电压？测试:差模输出共模输出静态时的值3. 四种接法的比较：电路参数理想对称条件下输入方式：Ri均为2(Rb+rbe)；双端输入时无共模信号输入，单端输入时有共模信号输入。输出方式：Q点、Ad、Ac、KCMR、Ro均与之有关。五、具有恒流源的差分放大电路Re 越大，每一边的漂移越小，共模负反馈越强，单端输出时的Ac越小，KCMR越大，差分放大电路的性能越好。但为使静态电流不变，Re 越大，VEE越大，以至于Re太大就不合理了。需在低电源条件下，设置合适的IEQ，并得到得到趋于无穷大的Re。解决方法：采用电流源取代Re！具有恒流源差分放大电路的组成等效电阻为无穷大近似为恒流(4-359)1. 恒流源相当于阻值很大的电阻。2. 恒流源不影响差模放大倍数。3. 恒流源影响共模放大倍数，使共模放大倍数减小，从而增加共模抑制比，理想的恒流源相当于阻值为无穷的电阻，所以共模抑制比是无穷。恒流源的作用1) RW取值应大些？还是小些？2) RW对动态参数的影响？3) 若RW滑动端在中点，写出Ad、Ri",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "习题",
+   "pred_conf": 0.5747
+  },
+  {
+   "chunk_id": 32653,
+   "doc_name": "康华光《电子技术基础-模拟部分》（第6版）复习笔记和课后习题详解.pdf",
+   "text": "标上分别画出各种类型 FET （包括 N 沟道、 P 沟道 MOS\n增强型和耗尽型， JFETP 沟道、 N 沟道耗尽型）的转移特性示意图，并标明各自的开启\n电压或夹断电压。\n解：各类场效应管转移特性曲线，如题 4-8-4 解图所示。\n题 4-8-4 解图\n4-8-5 四个 FET 的转移特性分别如题 4-8-5 图（ a ）、（ b ）、（ c ）、（ d ）所示，其中漏\n极电流 iD的参考方向是它的实际方向。试问它们各是哪种类型的 FET ？\n题 4-8-5 图\n解：（ 1 ）图（ a ）， vGS正向增大， iD减小，故为 P 沟道； vGS＝ 0 时， iD≠0 ，故为结型或\n耗尽型； P 沟道耗尽型需 vGS＜ 0 时， iD增大，因此，该管为 P 沟道结型场效应管。\n（ 2 ）图（ b ）， vGS＜ 0 时， iD减小，故为 N 沟道； vGS＝ 0 时， iD≠0 ，故为结型或耗尽\n型； vGS＞ 0 时， iD增大，因此，该管为 N 沟道耗尽型绝缘栅场效应管。\n（ 3 ）图（ c ），根据图（ b ）的判断方法可知，该管为 P 沟道耗尽型绝缘栅场效应管。\n（ 4 ）图（ d ）， vGS＝ 0 时， iD＝ 0 ，故为增强型； vGS－ VT＞ 0 时， iD不断增大，故为 N 沟\n道，因此，该管为 N 沟道增强型绝缘栅场效应管。\n4-8-6 已知电路形式如题 4",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.5639
+  },
+  {
+   "chunk_id": 10205,
+   "doc_name": "2019年真题逐题细解.pdf",
+   "text": "应注意区分动词短语和短语动词。关于动词短\n语和短语动词的区别，下面将通过两个例子进行说明：learn English］学英语）是一个动词短语，由动词learn与\n其宾语English构成，可拆分，拆分后，learn仍有“学习”之意，English仍有“英语”之意；put out （熄灭）是\n一个短语动词，在使用时作为一个整体不可拆分，拆分后put无“熄灭”之意。\n6\nA. share分享；共享 B. adjust调整；调节\nC. confirm证实，证明 D. prepare使做好准备；把.... 预备好\n【答案解析】看本句：分析可知，空格所在句句意不完整，且句首的代词That指代不明确，需结合上文进行分析，\n故进入第2步。看上下句：分析可知，设空处关键信息点为箭头指向的空格前后部分。❸句指出，每隔一周称\n体重一次使我能够观察并解释体重的任何明显变化；空格所在句则提到，这可以提示我是否需要 自己的\n训练计划。由此可知，定期称体重、观察并了解体重变化的原因可以判断自己的训练计划是否合理，是否需要\n调整，故空格所填词应表示“调整”之意。B选项adjust代入文中，语义通顺，故正确。\n【干扰排除】A选项share代入文中，表示“分享自己的训练计划”，与语境不符，本文并未提及与他人分享训\n练计划，故排除。C选项confirm和D选项prepare代入文中，分别意为“证实/准备好自己的训练计",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.0686
+  },
+  {
+   "chunk_id": 28362,
+   "doc_name": "2019年396经济联考综合能力真题 .pdf",
+   "text": "，那么司机平均支付的保险费用就会上升。\nB.对保险公司来讲,花在驾驶距离少于平均水平的人身上的成本低于花在驾驶距离多于平均水平的\n人身上的成本。公众号：考研糖·\nC.司机年龄越小，支付的保险费用越高。\nD.如果按照每年驾驶距离进行分类，那么保险公司的利润会显著上升。\nE.那些让保险公司付出昂贵的赔偿款的司机支付的事故保险费用等于或低于其他司机。\n11.校务委员会决定,除非是少数民族贫困生,否则不能获得特别奖学金。\n以下哪项如果为真，说明校务委员会的上述决定没有得到贯彻？\nI.赵明是少数民族贫困生,没有获得特别奖学金。\nⅡ.刘斌是汉族贫困生,获得了特别奖学金。\nⅢ.熊强不是贫困生,获得了特别奖学金。\nB.只有 I 和 I 。\nA.只有 I。\nC.只有Ⅱ和Ⅲ。\nD.只有 I 和Ⅲ。\nE. I 、Ⅱ和ⅢⅡ。\n12.舞蹈学院的张教授批评本市芭蕾舞团最近的演出没能充分表现古典芭蕾舞的特色。他的同事林教\n授认为这一批评是个人偏见。作为芭蕾舞技巧专家，林教授考察过芭蕾舞团的表演者，结论是每一\n位表演者都拥有足够的技巧和才能来展现古典芭蕾舞的特色。\n以下哪项最为恰当地概括了林教授反驳中的漏洞？\nA.他是对张教授的批评风格进行攻击而不是对其观点加以批驳。\nB.他无视张教授的批评意见与实际情况是相符的。\nC.他仅从维护自己的权威地位的角度加以反驳。\nD.他依据一个特殊的事例轻率地概括出一个普遍结论。\n",
+   "pred_l1": "经济类联考综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.0568
+  },
+  {
+   "chunk_id": 46875,
+   "doc_name": "【横版】27张宇基础30讲做题本(1).pdf",
+   "text": "分条件 D. 既非充分又非必要条件\n公众号：做题本集结地 第 3 讲·一元函数微分学的概念\n· 第 99 页，共 458 页 ·\n3设函数 f x 可导,且曲线 y = f x 在点 x0,f x0  处的切线与直线 y = 2 - x垂直,则当 Δx → 0时，\n该函数在 x = x0处的微分 dy是 ( ) .\nA. 与 Δx同阶但非等价的无穷小 B. 与 Δx等价的无穷小\nC. 比 Δx高阶的无穷小 D. 比 Δx低阶的无穷小\n公众号：做题本集结地 第 3 讲·一元函数微分学的概念\n· 第 100 页，共 458 页 ·\n4设函数 y = f x 在点 x0处可导,且 f  x0 ≠ 0.当自变量有增量 Δx时,函数 y = f x 的增量为 Δy,则\n当 Δx → 0时, Δy - dy是 dy的 ( ) .\nA. 高阶无穷小 B. 低阶无穷小\nC. 同阶非等价无穷小 D. 等价无穷小\n公众号：做题本集结地 第 3 讲·一元函数微分学的概念\n· 第 101 页，共 458 页 ·\n5设 f x = x-a ⋅ φ x ，其中 φ x 连续，则 f  a = _____.\n公众号：做题本集结地 第 3 讲·一元函数微分学的概念\n· 第 102 页，共 458 页 ·",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "数学",
+   "label_l3": "习题",
+   "pred_conf": 0.5913
+  },
+  {
+   "chunk_id": 32943,
+   "doc_name": "康华光《电子技术基础-模拟部分》（第6版）配套题库【精选题目＋章节题库】.pdf",
+   "text": "用 “√” 、 “×” 表示判断结果。\n（ 1 ）为使电压比较器的输出电压不是高电平就是低电平，就应在其电路中使集成运放不\n是工作在开环状态，就是仅仅引入正反馈。（   ）\n（ 2 ）如果一个滞回比较器的两个阈值电压和一个窗口比较器的相同，那么当它们的输入\n电压相同时，它们的输出电压波形也相同。（   ）\n（ 3 ）输入电压在单调变化的过程中，单限比较器和滞回比较器的输出电压均只可能跃变\n一次。（   ）\n（ 4 ）单限比较器比滞回比较器抗干扰能力强，而滞回比较器比单限比较器灵敏度高。\n（   ）\n（ 1 ） √ ；（ 2 ） × ；（ 3 ） √ ；（ 4 ） ×【答案】\n单限比较器具有电路简单、灵敏度高等优点，但其抗干扰能力差。为了克服这\n个缺点，可以采用滞回比较器，这种比较器有两个不同的门限电平，故传输特性呈滞回\n形状，抗干扰能力强。双限比较器也有两个门限电平，它可以检测输入模拟信号的电平\n是否处在两个给定的电平之间。\n【解析】\n三、选择题\n1 LC 正弦波振荡电路如图 2-10-2 所示，则（   ）。\n图 2-10-2\nA ．该电路由于无选频网络，不能产生正弦波振荡\nB ．该电路由于不满足相位平衡条件，不能产生正弦波振荡\nC ．该电路满足振荡条件能产生正弦波振荡\nD ．该电路由于放大器不能正常工作，不能产生正弦波振荡\nD【答案】\n静态条件下，三极管的射极电压为 VCC，使",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "习题",
+   "pred_conf": 0.5917
+  },
+  {
+   "chunk_id": 27659,
+   "doc_name": "2010年全国法律硕士（非法学）联考真题答案详解专业基础课刑法学 .pdf",
+   "text": "处罚的描述，而 B 项则是对于从轻处罚的错误描述，从轻处罚只是在\n法定量刑幅度范围内判处相对较轻的刑罚，该种“相对较轻的刑罚”未必是法定刑中最轻的刑罚，所以 B\n项错误。\n8． 【答案】  C\n【解析】  我国确立了以限制加重原则为主，以吸收原则和并科原则为补充的折中原则，而并非单纯地采\n用限制加重原则，所以A 项错误。依据刑法的规定，吸收原则只适用于死刑和无期徒刑，数罪中有被判处\n死刑的，对主刑应当采用吸收原则，所以C 项正确；限制加重原则适用于有期徒刑、拘役和管制三种自由\n刑，而不仅仅适用于有期徒刑，所以 D 项错误；并科原则只适用于附加刑，所以 B 项错误。\n9． 【答案】  B\n【解析】  故意毁坏财物罪，是指故意毁坏或者损坏公私财物，数额较大或者情节严重的行为。A 项中的\n破坏交通工具罪要求足以引起交通工具倾覆的危险，题中甲的破坏行为显然未到该程度；C 项中破坏交通\n设施罪的犯罪对象要求是正在使用中的交通设施，公交车不属于交通设施而是交通工具；D 项中以危险方\n法危害公共安全罪要求足以造成对不特定多数人的人身财产的危险，甲的行为亦未到该程度。故意破坏正\n在使用中的交通工具，交通设施的，如果没有造成交通工具倾覆、毁坏的危险从而威胁交通运输安全的，\n应当以故意毁坏财物罪论处，故B 项正确；若是造成了该类危险，则以破坏交通工具罪或破坏交通设施罪\n论处。\n10.【答案】  A\n【",
+   "pred_l1": "法律硕士专业基础",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "例题",
+   "pred_conf": 0.0819
+  },
+  {
+   "chunk_id": 8040,
+   "doc_name": "2011年真题逐题细解.pdf",
+   "text": "ce, his brother is\nabsolutely hopeless.汤姆很擅长理科，而他的兄弟绝对是不可救药。还可用于句首，表示“尽管；虽然\"，例如：\nWhile I am willing to help, I do not have much time available.尽管我愿意帮忙，但是没有多少时间。\nA. careless粗心的 B. lawless不受法律制约的\nC. pointless无意义的 D. helpless无助的\n【答案解析】看本句：分析可知，空格所在句单句成段，且句中的a world指代不明，需联系上段进行分析，故进\n入第4步。看上下句、看本段：略。看上下段：一段提到，席卷整个互联网的网络犯罪激增，由此可知，a world\n指代互联网世界，且由空格前的bringing safety and security （带来安全和保障）可知，互联网世界的安全保障不足，\n故空格所在部分应表示“当前的互联网世界是不安全和无保障的”。B选项lawless代入文中，表示“日渐不受\n法律控制的互联网世界”，而缺少法律约束会导致人们的各项权益得不到保护（安全和保障不足），该选项符\n合语义要求，故正确。\n【干扰排除】A选项careless与D选项helpless代入文中，分别表示“日渐粗心的/无助的互联网世界”,不符合\n上下文语义，故都排除；C选项pointless代入",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.0793
+  },
+  {
+   "chunk_id": 16146,
+   "doc_name": "模拟电子技术基础 第6版 学习辅导与习题解答.pdf",
+   "text": " R?\nlo\nT;\n(b)\n]R\n+Vcc\nlco Ici Ic?\n9+Vo\nIl R\n(c)\nHoi /o?\n(d)\nIn?\nT?J T? T? T?\n(e)\n图3.1.7 集成运放中常见的电流源电路\n(a)镜像电流源 (b)微电流源 (c)晶体管组成的多路电流源\n(d)多集电极组成的多路电流源 (e)MOS 管组成的多路电流源\n88 第三章 集成运算放大电路\n图3.1.7(a)所示为镜像电流源，1,为基准电流，输出电流\n=品1-品 (3.1.7)\n若β>2,则lg=lc\n图(b)所示为微电流源，输出电流\n1=“, (3.1.8)\n由于U和Um?的差值很小，因而在R。取值不大的情况下就可得到很小的输出电流，来满\n足输入级静态电流的需要。图(c)所示为晶体管组成的多路电流源，在Ug、UmEi、UE?、UBE?差别\n不大且β远大于1的情况下，三路输出电流与射极电阻的关系近似为\n(3.1.9)Ic?R?≈lcR?≈lc?R?≈lc?R?\n图(d)所示为多集电极晶体管组成的多路电流源，当基极电流一定时，集电极电流之比等于\n它们的集电区面积之比，即设各集电区面积分别为S。、S?、S?,则\n会安会安 (3.1.10)\n图(e)所示为场效应管组成的多路电流源，漏极电流正比于沟道的宽长比。设沟道的宽长\n比 W/L=S,各管子宽长比分别为S?、S?、S?,则\nSFSS (3.1.11)\n二、以电流",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "模拟电子技术",
+   "label_l3": "定义",
+   "pred_conf": 0.5934
+  },
+  {
+   "chunk_id": 26707,
+   "doc_name": "2012年中医综合考研真题及答案 .pdf",
+   "text": "解毒消痈，化痰散结\nB.清热散结，逐瘀排脓\nC.清热解毒，消肿溃坚\nD.泻热破瘀，散结消肿\n49.温经汤的功用是\nA.温经散寒，行气活血\nB.活血化瘀，温经止痛\nC.温经散寒，养血祛瘀\nD.温经散寒，益气通脉\n50.小青龙汤中“温肺化饮”的药物组合是\nA.桂枝、麻黄 B.桂枝、芍药\nC.干姜、细辛 D.干姜、五味子\n51.阳和汤中配伍白芥子的用意是\nA.化痰利气，活血通络 B.温通经络，消肿散结\nC.温肺散寒，化痰逐饮 D.温化寒痰，通络散结\n52.张锡纯在镇肝熄风汤中配伍生麦芽的用意是\nA.疏达肝气 B.消食化积\nC.健脾开胃 D.和胃调中\n53.大秦艽汤中配伍白芷的主要用意是\nA.祛风散邪 B.祛风止痉\nC.散寒除湿 D.散寒通痹\n54.下列各项中，适宜用桂枝茯苓丸治疗的是\nA.脾失健运，聚湿成痰，流溢四肢，臂痒肢肿者\nB.中阳不足，饮停心下，胸胁支满，心悸目眩者\nC.瘀阻胞宫，胎动不安，漏血不止，腹痛拒按者\nD.下焦虚寒，小便白浊，频数无度，凝如膏糊者\n55.头痛身热，微恶风寒，无汗，咳嗽，心烦，口渴，咽干，舌红少苔，脉细数者。治\n宜选用\nA.桑菊饮 B.银翘散\nC.柴葛解肌汤 D.加减葳蕤汤\n56.阴虚有火，发热盗汗，面赤心烦，口干唇燥，大便干结，小便黄赤，舌红苔黄，脉\n数者，治宜选用\nA.清骨散 B.秦艽鳖甲散\nC.当归六黄汤 D.大补阴丸\n57.明确提出“时行感冒”病名",
+   "pred_l1": "中医综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.1587
+  },
+  {
+   "chunk_id": 35490,
+   "doc_name": "《数据结构  C语言版  第2版》严蔚敏.pdf",
+   "text": "lowcost 。 5 。 。 6 。 { V1, V3, Y6, 对 {v2, 巧｝ I (v3, v2)\nadjvex V2\nlowcost 。 。 。 。 3 。 { V1, VJ, V6, V4, V2} 伈｝ 4 (v2, 巧）\nadjvex\nlowcost 。 。 。 。 。 。 {v1, VJ, V6, V4, V2, 巧｝ {}\n初始状态时， 由千U = {叫，则到 v-u中各顶点的最小边，即为从依附于顶点v, 的各条边\n中， 找到一条权值最小的边（凶 ，巧）为生成树 上的第一条边， 同时将顶点 V3 并入集合 U中。然后\n修改辅助数组中的值，首先将 closedge[2] .lowcost 改为0, 表明顶点 V3 己并入U。由于边(v3, 迈）上\n的权值小千 closedge[1] .lowcost, 则需修改 clcisedge[ 1]为边(v3, 巧）及其权值。 同理修改 closedge[4]\n和 closedge[5]。依次类推， 直到U=V。\n2. 克鲁斯卡尔算法\n(1) 克鲁斯卡尔算法的构造过程\n假设连通网N=(V,E), 将N中的边按权值从小到大的顺序排列。\nO初始状态为只有n个顶点而无边的非连通图 T= (V, {}), 图中每个顶点自成一个连通分量。",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "例题",
+   "pred_conf": 0.5635
+  },
+  {
+   "chunk_id": 37707,
+   "doc_name": "2018年全国法律硕士（法学）综合课解析 .pdf",
+   "text": "教育程度、财产状况和居住期限，都\n有选举权和被选举权。\n第二，选举权的平等性原则。\n选举权的平等性是指在选举中， 一切选民具有同\n等的法律地位，法律在程序上 对所 有 的选民同等对\n待，选民所投的选票具有同等的法律效力的原则。\n第三，直接选举与间接选举并用的原则。\n我国在县级以及县级以下实行直接选举，县级以\n上实行间接选举。\n第四，差额选举的原则。\n差额选举是指民意 机关代表或公职人员选举中\n候选人的人数多于应选代表名额的选举。\n第五，秘密投票的原则。\n秘密投票也称为无记名投票， 是选民不署自己的\n姓名，亲自书写选票并投入密封票箱的 一 种投票方\n法。全国和地方各级人民代表大会的选举，一律采用\n无记名投票的方法。\n【点评］ 本题考查的知识点是中国的选举基本\n原则，虽然是宪法的常规考点，但是往年很少出现在\n简答题中。但是选举作为宪法的重要内容，考生有必\n要掌握，而且选举原则还有可能以其他的题型形式出\n现在今后的考题中。\n33. ［答案］ （ 1) 以孙中山的\n＂\n遗教\n”\n为立法的\n根本原则。《中华民国宪法》声称\n“\n中华民国国民大\n会受全体国民之托付，依据孙中山先生创立中华民国\n之遗教，为巩固国权，保障民权，奠定社会安宁，增进\n人民福利，制定本宪法，颁行全国永矢咸遵。”\n(2)特别法多于普通法，其效力往往也高于普通",
+   "pred_l1": "法律硕士专业基础",
+   "pred_l3": null,
+   "label_l1": "政治",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.0706
+  },
+  {
+   "chunk_id": 37380,
+   "doc_name": "2003考研政治真题.pdf",
+   "text": "\n在\n其\n他\n条\n件\n不\n便\n的\n情\n况\n下\n，\n资\n本\n有\n机\n构\n成\n的\n提\n高\n会\n导\n致\nA\n．\n相\n对\n过\n剩\n人\n口\n的\n形\n成\nB\n．\n利\n润\n率\n提\n高\nC\n．\n可\n变\n资\n本\n在\n总\n资\n本\n中\n的\n比\n例\n的\n降\n低\nD\n．\n资\n本\n周\n转\n速\n度\n的\n减\n缓\nE\n．\n平\n均\n利\n润\n率\n下\n降\n2\n1\n．\n股\n票\n价\n格\nA\n．\n与\n银\n行\n存\n款\n利\n息\n率\n成\n反\n比\nB\n．\n与\n预\n期\n股\n息\n收\n入\n成\n正\n比\nC\n．\n是\n股\n息\n收\n入\n的\n资\n本\n化\nD\n．\n是\n它\n所\n代\n表\n的\n实\n际\n资\n本\n价\n值\n的\n货\n币\n表\n现\nE\n．\n不\n是\n股\n票\n的\n票\n面\n额\n2\n2\n．\n毛\n泽\n东\n思\n想\n、\n邓\n小\n平\n理\n论\n是\n中\n国\n化\n了\n的\n马\n克\n思\n主\n义\n，\n它\n们\n都\nA\n．\n体\n现\n了\n马\n克\n思\n列\n宁\n主\n义\n的\n基\n本\n原\n理\nB\n．\n反\n映\n了\n近\n代\n中\n国\n的\n时\n代\n要\n求\nC\n．\n揭\n示\n了\n中\n国\n革\n命\n的\n特\n殊\n规\n律\nD\n．\n包\n含\n了\n中\n华\n民\n族\n的\n优\n秀\n思\n想\nE\n．\n包\n含\n了\n中\n国\n共\n产\n党\n人\n的\n实\n践\n经\n验\n2\n3\n．\n1\n9\n4\n5\n年\n4\n月\n，\n毛\n泽\n东\n在\n《\n论\n联\n合\n政\n府\n》\n中\n提\n出\n的\n党\n的\n优\n良\n作\n风\n有\nA\n．\n理\n论\n和\n实\n践\n相\n结\n合\n的\n作",
+   "pred_l1": "政治",
+   "pred_l3": null,
+   "label_l1": "政治",
+   "label_l3": "习题",
+   "pred_conf": 0.5668
+  },
+  {
+   "chunk_id": 37415,
+   "doc_name": "2025年312心理学统考真题 .pdf",
+   "text": "的正式阶段。正确答案为 A。\n50．变量 x、y 转换为变量 x'、y'，则相关系数 rxy和 rx'y'不同的情况为（）\n9\nA．x、y的单位\nB．x 或 y乘一个正数\nC．x 或 y加一个常数\nD．x或 y减一个随机变量\n50．D【解析】Pearson 相关系数只受变量间相对位置的变化（如加减随机变量）影响。A 单\n位变化和 B 乘正数不影响相关系数，因为标准化处理消除了单位差异。C 加常数也不会改变\n相关系数。但如果 D X 或 Y 减一个随机变量，可能会改变数据的分布，影响相关性。正确\n答案为 D。\n51．两组数据：第一组 8、12、15、17，第二组 2、4、7、9、10，对这两组数据的差异进行\nU 检验，需计算（）\nA．平方和 B总和 C秩和 D 离差平方和\n51．C【解析】U 检验是一种非参数检验，主要通过对两组数据的秩和进行比较来判断两组\n数据是否有显著差异。A 平方和、B 总和和 D 离差平方和都不是 U 检验的关键步骤。正确\n答案为 C。\n52．可以同时比较多组样本集中趋势和离散程度的统计图是（   ）\nA．线形图     B．条形图     C．圆形图     D．箱型图\n52．D【解析】箱型图（箱须图）可以同时显示数据的集中趋势（如中位数）和离散程度（如\n四分位距和极差） 。A 线形图适合趋势分析，B 条形图适合类别数据的比较，C 圆形图展示\n比例分布，不反",
+   "pred_l1": "数学",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.0522
+  },
+  {
+   "chunk_id": 40295,
+   "doc_name": "006.PDF",
+   "text": "f ((s[i] = getchar()) == '\\n' Il s[i] = EOF)\nbreak;\ns[i] = \"\\o';\n边界检查可以捕捉到许多错误，但是未必是所有的错误。第8章我们还要回到这个例子，在那\n里要说明，在这段代码里实际上还有一个移植性错误。\n下一步应该是在另一端的边界上检查输入：检查数组接近满了、正好满了或者超过了的\n情况，特别是如果换行字符正好在这个时候出现。我们不准备在这里写出所有的细节，不过，\n这个例子是一个很好的训练。对于边界条件的思考将会提出一个问题：如果在“\\n'出现前缓\n冲区已满，程序应该做些什么？这是早在规范描述里就应该解决的问题，而测试边界条件能\n帮助我们识别它。\n边界条件检查对发现“超出一个”的错误特别有效。在实践中，做这种检查已经变成了\n许多人的习惯。这样，大量的小错误在它们还没有真正发生前就已经被清除了。\n测试前条件和后条件。防止问题发生的另一个方法，是验证在某段代码执行前所期望的或必\n须满足的性质（前条件）、执行后的性质（后条件）是否成立。保证输入取值在某个范围之内是前\n条件测试的一类常见例子，下面的函数计算一个数组里n个元素的平均值，如果n小于或者等\n于0，就会有问题：\n--- 第3页(OCR) ---\nChina'bub\n112\n.com\n程序设计实践\n下载",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.2371
+  },
+  {
+   "chunk_id": 29897,
+   "doc_name": "2023年教育学311真题 . .pdf",
+   "text": "\n质\n立\n案\n，\n所\n有\n学\n生\n概\n不\n给\n予\n奖\n励\n②\n注\n释\n：\n①\n无\n庸\n立\n案\n：\n不\n给\n予\n注\n册\n②\n奖\n励\n：\n指\n给\n予\n学\n生\n科\n举\n出\n身\n，\n认\n可\n学\n生\n在\n中\n国\n学\n制\n体\n系\n中\n的\n升\n学\n资\n格\n。\n(\nI\n)\n评\n述\n早\n期\n教\n会\n学\n校\n的\n性\n质\n。\n(\n2\n)\n评\n述\n上\n述\n咨\n文\n的\n用\n意\n及\n影\n响\n。\n(\n3\n)\n评\n述\n2\n0\n世\n纪\n2\n0\n年\n代\n返\n回\n教\n育\n权\n的\n主\n要\n措\n施\n及\n其\n影\n响\n。\n5\n6\n.\n请\n在\nI\n、\nⅡ\n两\n道\n试\n题\n中\n任\n选\n一\n题\n作\n答\n。\n若\n两\n题\n都\n答\n，\n只\n按\n第\nI\n道\n题\n的\n成\n绩\n计\n分\nI\n.\n阅\n读\n材\n料\n，\n并\n按\n要\n求\n回\n答\n问\n题\n。\n党\n的\n二\n十\n大\n明\n确\n要\n求\n，\n实\n施\n科\n教\n兴\n国\n战\n略\n，\n强\n化\n现\n代\n化\n建\n设\n人\n才\n支\n撑\n，\n健\n全\n学\n校\n家\n庭\n社\n会\n教\n育\n机\n制\n，\n为\n家\n庭\n教\n育\n事\n业\n指\n明\n了\n发\n展\n方\n向\n中\n华\n人\n民\n共\n和\n国\n家\n庭\n教\n育\n促\n进\n法\n》\n(\n2\n0\n2\n2\n年\n1\n月\n1\n日\n)\n第\n十\n七\n条\n规\n定\n：\n未\n成\n年\n人\n的\n父\n母\n或\n者\n其\n他\n监\n护\n人\n实\n施\n家\n庭\n教\n育\n，\n应\n当\n关\n注\n未\n成\n年\n人\n的\n生\n理\n、\n心\n理\n、",
+   "pred_l1": "教育学专业基础",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.069
+  },
+  {
+   "chunk_id": 9394,
+   "doc_name": "2016年真题逐题细解.pdf",
+   "text": "to-do lists A.更新他们的待办事项清单 三段❹句\nB. make passing time fulfilling B.让消逝的时间充实起来 三段❺句\nC. carry their plans through C.完成他们的计划 三段❹句\nD. pursue carefree reading D.追求无忧无虑的阅读 三段❺句\n找关键词：empty bottles和feel a pressureo回文定位：根据关键词可定位至三段❺句。比对匹配：该句指出，\n加里•埃伯利在他书中写道：“未来像永不停歇、几近无穷的传送带上的空瓶子一样向我们走来，当这些不同\n大小的瓶子（天、小时、分钟）经过时，要填满它们让我们感到有压力，因为如果它们没有被填满就过去了的\n话，我们就是浪费了时间。”由此可见，作者用“传送带上的空瓶子”来比喻“未来的时间”，“空瓶子”被\n浪费让人们感到有压力，即“时间”被浪费让人们感到有压力，换言之，人们希望让消逝的时间充实起来，为\n此人们感到有压力，故B正确。\n21\n【路径二】从选项的角度解答一如何排除干扰\n找关键词：to-do lists。回文定位：根据关键词可定位至三段❹句。比对匹配：该句提到，试 图把它（阅\nA 读）作为一个待办事项列在清单上，你将只能进行目标性强的阅读一有时有用，但却并非最让人满意\n的四谡*’ 一苗里里据以发力蔓现溟戛，J墅芝妻昆困零更莉他但",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "例题",
+   "pred_conf": 0.1086
+  },
+  {
+   "chunk_id": 35473,
+   "doc_name": "《数据结构  C语言版  第2版》严蔚敏.pdf",
+   "text": "\n(1)从图中某个顶点v出发， 访问v。\n(2)找出刚访问过的顶点的第一个未被访问的邻接点， 访问该顶点。 以该顶点为新顶点，重\n复此步骤， 直至刚访问过的顶点没有未被访问的邻接点为止。\n(3)返回前一个访问过的且仍有未被访问的邻接点的顶点，找出该顶点的下一个未被访问的\n邻接点， 访问该顶点。\n(4)重复步骤 (2) 和(3), 直至图中所有顶点都被访问过，搜索结束。\n以图6.17 (a) 中所示的无向图 G4 为例，深度优先搜索遍 历图的过程如图6.17 (b) 所示气\n具体过程如下。\n(a)无向图G4 (b)深度优先搜索的过程\n图6.17 遍历图的过程\n4\n(C)广度优先搜索的过程\n(1)从顶点 VJ出发， 访问 V10\n(2)在访问了顶点 VJ 之后，选择第一个未被访问的邻接点 V2, 访问 V2。以 V2为新顶点，重复\n此步， 访问 V4, Vs、 V5。在 访问了 V5 之后， 由于 V5 的邻接点都已被访问， 此步结束。\n(3)搜索从 Vs 回到 Vs, 由千同样的理由，搜索继续回到 V4, V2 直至 VJ, 此时由千 VJ 的另 一个\n邻接点未被访问， 则搜索又从 VJ 到 V3, 再继续进行下去。 由此， 得到的顶点访间序列为：",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "定义",
+   "pred_conf": 0.5684
+  },
+  {
+   "chunk_id": 26712,
+   "doc_name": "2013年中医综合考研真题及答案 .pdf",
+   "text": "\n10.根据《素问·生气通天论》饮食偏嗜伤及五脏的论述，味过于苦则\nA、大骨气劳，短肌  B、脾气不濡，胃气乃厚 C、筋脉沮驰，精神乃央  D、\n心气喘满，色黑\n11.多出现气逆病变的脏腑是\nA、肺、脾、胃  B、肝、胃、肺  C、肺、脾、胆   D、胃、肝、心\n12.脾脏功能失常的病理变化中，易致脾阳不振的是\nA、脾阴亏损   B、胃阴不足 C、脾气虚弱 D、胃气不足\n13.病人正虚邪实而又不耐攻伐时，其治疗原则是\nA、扶助正气   B、祛除邪气 C、攻补兼施 D、先补后攻\n14.“法于阴阳，和于术数”属于\nA、顺应气机的调养原则 B、顺应自然的调养原则 C、顺应情志的调养原则\nD、顺应体质的调养原则\n15.某女性患者表情淡漠，喃喃自语，哭笑无常，属于\nA、癫病   B、狂病    C、痫病  D、脏躁\n16.面色淡黄面虚浮的常见原因是\nA、阳气不足 B、脾虚湿盛 C、寒湿困脾  D、气血亏虚\n17.热入营分的常见舌象是\nA、舌红苔黄   B、舌绛苔灰  C、舌绛少苔   D、舌紫苔黑\n18.肝火挟痰证的典型脉象是\nA、洪数 B、滑数  C、弦细数  D、弦滑数\n19.下列各项中，不属于导致强硬舌常见原因的是\nA、热入心包  B、高热伤津  C、寒凝筋脉   D、风痰阻络\n20.下列各项中，属于伤风表证特点的是\nA、恶寒重发热轻   B、发热重而恶风   C、恶寒而不发热 D、发",
+   "pred_l1": "中医综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.1634
+  },
+  {
+   "chunk_id": 43343,
+   "doc_name": "Code Complete中文版.pdf",
+   "text": "非常迅速的，但是开发实践却并非如此。许多程序\n仍然是错误百出，充斥着过时的技术，从而无法满足用户需要。软件工业界和学术界的研究者\n们，基本上已经解决了七十年代和八十年代在编程中遇到的问题，并发展了相应的技术。但是\n直到现在，这些技术中的大部分仍然没有在软件编程中广泛采用，其主要原因是这些研究成果\n主要发表在高度专业性的学术刊物中，普通的程序员们无心顾及。Sridhar Raghavan 和 Donald\nChand（1989） 的研究表明， 一项新技术从诞生到被工业界广泛采用大约需要5 到 15 年的时间。\n本书的目的就是希望能够缩短新技术推广周期，使广大的程序员们可以迅速地获得软件开发的\n最新方法与手段。\n本书所面向的对象\n本书中所收集的研究和编程经验，将有助于你编写出高质量的软件，并且使得开发周期缩\n短。通过阅读本书，你将会对自己过去所犯过的错误有更深刻的理解，并懂得今后如何避免它\n们。同时，书中所收集的丰富的编程经验也将使你在控制大规模项目和按要求对软件进行修改\n和维护时感到得心应手。下面是适合阅读本书的几类人：\n经验丰富的程序员\n本书适合于想要得到一本全面易用的软件设计指南的那些资深程序员们阅读。由于本书的\n中心内容是广大程序员们所熟知的实现过程，因此，无论是受过正规训练而已经验丰富的程序",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.1984
+  },
+  {
+   "chunk_id": 44963,
+   "doc_name": "More Effective C++中文版.pdf",
+   "text": "是要判断是否可以\n调用“delete this”，你不可能在内建类型上调用它，因为内建类型没有 this 指针。\nz 禁止堆对象\n判断对象是否在堆中的测试到现在就结束了。与此相反的领域是“禁止在堆中建立对\n象”。通常对象的建立这样三种情况：对象被直接实例化；对象做为派生类的基类被实例化；\n对象被嵌入到其它对象内。我们将按顺序地讨论它们。\n禁止用户直接实例化对象很简单，因为总是调用 new 来建立这种对象，你能够禁止用户\n调用 new。你不能影响 new 操作符的可用性（这是内嵌于语言的），但是你能够利用 new 操\n作符总是调用 operator new 函数这点（参见条款 M8），来达到目的。你可以自己声明这个\n函数，而且你可以把它声明为 private。例如，如果你想不想让用户在堆中建立 UPNumber\n对象，你可以这样编写：\nclass UPNumber {\nprivate:\nstatic void *operator new(size_t size);\nstatic void operator delete(void *ptr);\n...\n};\n现在用户仅仅可以做允许它们做的事情：\nUPNumber n1;                         // okay",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.1903
+  },
+  {
+   "chunk_id": 26073,
+   "doc_name": "2024年考研政治真题及答案.md",
+   "text": "在主持学习时强调，加强基础研究是实现高水平科 技自立自强的迫切要求，是建设世界科技强国的必由之路。加强基础研究，归根到底要靠\n【分数】1\n【选项】\nA、体制机制\nB、国际合作平台\nC、学科建设布局\nD、高水平人才\n【答案】D\n【解析】\n16、2023年9月18日至26日，第78届联合国大会高级别周在联合国总部进行。相比以往，本 届联大将更多目光投向了“全球南方”，议程主要着眼于“全球南方”国家提出的需求，讨 论气候变化、主权债务减免、如何帮助陷入困境的国家实现联合国在繁荣、健康、发展、教 育、性别平等方面的发展目标。中国作为世界上最大的发展中国家，在本届联大期间出席多 场会议，表达“全球南方”天然成员的诉求与主张。“全球南方”国家的声音更响亮，是本 届联大的亮点。这表明\n【分数】1\n【选项】\nA、全球南北对话的僵局已经破解\nB、“全球南方”国家在国际组织中的话语权和影响力占据了主导地位 C、南方国家改变国际秩序游戏规则的议题成为了国际社会的普遍共识 D、国际力量对比正在发生深刻变化，百年变局正在深入发展演进\n【答案】D\n【解析】\n二、多选题",
+   "pred_l1": "政治",
+   "pred_l3": null,
+   "label_l1": "政治",
+   "label_l3": "习题",
+   "pred_conf": 0.5703
+  },
+  {
+   "chunk_id": 44899,
+   "doc_name": "More Effective C++中文版.pdf",
+   "text": "，他们宣布“我还是应该使用 C”。很好。但是请\n记住如果没有这些特性所提供的功能，你必须手工编码来实现。在多数情况下，你的人工模\n拟可能比编译器生成的代码效率更低，稳定性更差。例如使用嵌套的 switch 语句或层叠的\nif－then－else 语句模拟虚函数的调用，其产生的代码比虚函数的调用还要多，而且代码\n运行速度也更慢。再有，你必须自己人工跟踪对象类型，这意味着对象会携带它们自己的类\n型标签（type tag）。因此你不会得到更小的对象。\n理解虚函数、多继承、虚基类、RTTI 所需的代价是重要的，但是如果你需要这些功能，\n不管采取什么样的方法你都得为此付出代价，理解这点也同样重要。有时你确实有一些合理\n的原因要绕过编译器生成的服务。例如隐藏的 vptr 和指向虚基类的指针会使得在数据库中\n存储 C++对象或跨进程移动它们变得困难，所以你可能希望用某种方法模拟这些特性，能更\n加容易地完成这些任务。不过从效率的观点来看，你自己编写代码不可能做得比编译器生成\n的代码更好。\n7. 技巧（Techniques，又称 Idioms 或 Pattern）\n本书涉及的大多数内容都是编程的指导准则。这些准则虽是重要的，但是程序员不能单\n靠准则生活。有一个很早以前的卡通片叫做“菲利猫”（Felix the Cat）, 菲利猫无论何时",
+   "pred_l1": "模拟电子技术",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.2019
+  },
+  {
+   "chunk_id": 26968,
+   "doc_name": "2010年计算机408统考真题解析. .pdf",
+   "text": "t-\ndouble,\n从低到高的转换通常可以保持其\n值不变，\nI和\nIII正\n确，\n而从高到低的转换可能会有数据的舍入，\n从而损失精度。\n对\n于\nII\n,\n先将\nflo\nat\n型的f转换为in\nt型，\n小数点后的数位丢失，\n故其结果不\n为真。\n对于IV\n,\n初看似乎没有问\n题，\n但浮点运算d+f时需要对阶\n，\n对阶后f的尾数有效位被舍去而变为\no,\n故d+f仍然为d,\n再减去d后结果为\no,\n故I\nV结果不为真。\n此外，根据不同类型数据混合运算\n的\n”\n类型提升\n”\n原则，\n在\nIV中，等号左端\n的类型为double\n型，结果不为真。\n15.\n解析：\n用\n2Kx4位的芯片组成\n一\n个\n8Kx8位存储器，共需\n8片2Kx4位的芯片\n，\n分为\n4组\n，每组由\n2片2Kx4位的\n芯片并\n联组成2Kx8位的芯片，各组芯片的地址分配如下\n：\n第\n一\n组(2个芯片\n并\n联）：\nOOOOH�\n0\n7FFH\n。\n第二组(2个\n芯\n片并\n联）：\n08\n00\nH�OFFFH\n。\n公众号【研池大叔】，免费分享考研干货！\n第三组(2个芯片并\n联）：\n1\nOOO\nH-1\n7FFH\n。\n第四组(2个芯片并\n联\n）：\n1800\nH-\nIFFFH\n。\n地址\nO\nBI\nF\nH\n所\n在的\n芯片属于第二组，故\n其所\n在芯\n片\n的\n最小地址为\n0800\nH\n。\n16.\n解析：\nRAM\n(分为D\nRA\nM和S\nRAM)\n断",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "例题",
+   "pred_conf": 0.57
+  },
+  {
+   "chunk_id": 35845,
+   "doc_name": "9787565530623_000019925475_15457305.pdf",
+   "text": "嵌入式系统设计 与开发 ................................................ 280\n11.1 嵌入式操作系统 ......................................................... 280\n11.1.1 基本概念 .......................................................... 280\n11.1.2 实时操作系统 之RTX ............................................................................................... 282\n11.1.3 实时操作系统 之FreeRTOS....................................................................................... 283\n11.2 农田信息监测物联网系统 .................................................284",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "其他",
+   "pred_conf": 0.0745
+  },
+  {
+   "chunk_id": 35354,
+   "doc_name": "《数据结构  C语言版  第2版》严蔚敏.pdf",
+   "text": "存储结构和扩展线性\n链表的存储结构。\nI占\n,,\n呵__\n103\n1 数据结构(C语言版）（第2版）1\n1. 头尾链表的存储结构\n由千广义表中的数据元素可能为原子或广义表，由此需要两种结构 的结点：一种是表结\n点， 用以表示广义表； 一种是原子结点， 用以表示原子。从上节得知：若广义表不空 ，则 可\n分解成表头和表尾， 因此， 一对确定的表头和表尾可唯 一确定广义表。 一个表结点可由3个\n域组成：标志域、 指示表头 的指针域和指示表尾的指针域。而原子结点只需两个域 ：标志域\n和值域。如图4.15 所示， 其中tag是标志域 ， 值为1时表明结点是子表， 值为0时表明结点\n是原子。\ntag=! 厂百勹 tp\n表组点\n了atom\n原子结点\n图4.15 头尾链表表示的结点结构\n其形式定义说明如下：\n／／ －－－－－ 广义表的头尾链表存储表示 －－－－－\ntypedef enum{ATOM, LIS T I ElemTag; / /ATOM==O: 原子； LIST==l: 子表\ntypedef struct GLNode\n｛\nElemTag tag;\nunion\n／／公共部分 ， 用千区分原子结点和表结点\n／／原子结点和表结点的联合部分\nAtomType atom; //atom 是原子结点的值域，AtomType由用户定义",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5627
+  },
+  {
+   "chunk_id": 35464,
+   "doc_name": "《数据结构  C语言版  第2版》严蔚敏.pdf",
+   "text": "表\n／／输入顶点值\n／／初始化表头结点的指针域为NULL\n//for\n／／输入各边， 构造邻接表\n／／输入 一条边依附的两个顶点\ni=LocateVex(G,vl); j =LocateVex(G,v2);\n／／确定vl和 v2在G中位置， 即顶点在G.vertices中的序号\npl=new ArcNode; I I生成一个新的边结点*pl\npl->adjvex=j; II邻接点序号为］\npl->nextarc=G. vertices [ i] . firstarc; G. vertices [ i] . firstarc=pl;\n／／将新结点*pl插入顶点Vi的边表头部\np2=new ArcNode;\np2->adjvex=i;\n／／生成另一个对称的新的边结点*p2\nII邻接点序号为1\np2->nextarc=G.vertices[j] .firstarc; G.vertices[j] .firstarc=p2;\n／／将新结点*p2插入顶点Vj的边表头部\nI /for\nreturn OK;\n【算法分析】\n该算法的时间复杂度是O(n + e)。\n建立有向图的邻接表与此类似， 只是更加简单， 每读入一个顶点对序号<i,j>'仅需生成一\n个邻接点序号为］的边表结点， 并将其插入到 V; 的边链表头部即可。若要创建网的邻接表， 可以\n157",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.5725
+  },
+  {
+   "chunk_id": 27804,
+   "doc_name": "2026政治真题及答案.pdf",
+   "text": "2025年10月30日，中美两国领导人在釜山举行会唔，习近平指出，中美作为世界前两\n大经济体，时而也会有摩擦，这很正常。面对风浪和挑战，两国元首作为掌舵人，应当\n把握好方向、驾驭住大局，让中美关系这艘大船平稳前行。\n摘编自《习近平谈治国理政》第五卷，《人民日报》（2025年5月14日，10月31日）\n材料2：\n2025年9月1日，习近平主席在“上海合作组织+”会议上郑重提出全球治理倡议，\n其核心理念与联合国宪章宗旨和原则一脉相承，顺应了绝大多数国家的共同期待。全球\n治理倡议具有鲜明的时代性，是对现有全球治理体系的有关补充和创新完善。回望历史，\n全球治理是国际体系建议和完善进程中产生的，也应随着国际格局和形势变化而动态调\n整。当前，百年变局向纵深演进，新兴市场国家和发展中国家群体性崛起，国际力量对\n比发生革命性变化。广大发展中国家的和发言权却未能充分体现，全球治理体系不适应、\n不匹配的问题空前突出。与此同时，国际形势变乱交织，强权霸凌行径危害深重，严重\n冲击联合国等多边机制，国际社会面临的问题挑战更趋复杂多元，没有哪个国家可以独\n善其身。立足国际格局变化，着眼应对全球性挑战需要，在广泛协商、凝聚共识的基础\n上改革和完善全球治理体系，反映发展中国家群体性崛起的国际政治现实，是弥补治理\n赤字的应有之义。\n摘编自《人民日报》（2025年9月2日，9月6日）\n（1）结合中华优秀传统文化，说明",
+   "pred_l1": "政治",
+   "pred_l3": null,
+   "label_l1": "政治",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.6087
+  },
+  {
+   "chunk_id": 44602,
+   "doc_name": "Imperfect C++.pdf",
+   "text": "个函数采用了操纵键的习惯做法。然而，这些函数提供了额外的功能。T s s _ C r e a t e K e y ( ) 的参数\np f n C l o s e 接受一个可选的回调函数，以便提供线程终止时的清理能力，如果你不需要，那么传递 N U L L 就\n行了。此外，如果你希望在槽位值被覆写的时候调用清理函数，就必须指定 b C l o s e O n A s s i g n 参数为 t r u e 。\np f n C l i e n t C o n n e c t 和 p f n C l i e n t D i s c o n n e c t 两个参数接受可选的回调函数，用于防止代码过早地消失。你\n可以以任何恰当的方式来实现这两个回调函数， 只要能够确保 p f n C l o s e 所指的函数在被需要时仍存在于内\n存中并可调用即可。我在使用该 A P I 的过程中曾遇到过这样的情况：为其他 A P I 指定 I n i t / U n i n i t 函数，\n或者去锁定和解锁一个位于内存中的动态库，或者必要时二者兼而有之。",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.1189
+  },
+  {
+   "chunk_id": 4646,
+   "doc_name": "第2章.txt",
+   "text": "、扇出系数、传输延时、功耗等。1 )直流电源电压 U CC 一般 TTL 电路的直流电源电压为 5V ，最低 4.5V ，最高 5. 5V 。CMOS 电路的直流电源电压有 5V 和 3.3V 两种。CMOS 电路的一个优点是电源电压的变化范围比 TTL 电路大，如 5VCMOS 电路当其电源电压在 2~6V 范围内时能正常工作， 3.3VCMOS 电路当其电源电压在 2~3.6V 范围内时能正常工作。2 )输入/输出逻辑电平 数字集成电路有如下四个不同的输入/输出逻辑电平参数: 低电平输入电压 U IL :能被输入端确认为低电平的电压范围。高电平输入电压 U IH :能被输入端确认为高电平的电压范围。低电平输出电压 U OL :正常工作时低电平输出的电压范围。高电平输出电压 U OH :正常工作时高电平输出的电压范围。图 2-2 和图 2-3 分别给出了 TTL 电路和 CMOS 电路的输入/输出逻辑电平。图 2-2 标准 TTL 电路的输入/输出逻辑电平图 2-3 CMOS 电路的输入/输出逻辑电平(a ) 5VCMOS 电路;( b ) 3. 3VCMOS 电路当输入电平在 U IL ( max ) 和 U IH ( min ) 之间时，逻辑电路可能把它当作 0 ，也可能把它当作 1 ，而当逻辑电路因所接负载过多等原因不能正常工作时，高电平输出可能低于 U OH (min )",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "定义",
+   "pred_conf": 0.242
+  },
+  {
+   "chunk_id": 38169,
+   "doc_name": "12个例子教会你看电路图.PDF",
+   "text": "\n插头座。（ d ）表示一个 3 极插头座，\n也就是常用的 3 芯立体声耳机插头座。\n（ e ）表示一个 6 极插头座。为了简化\n也可以用图（ f ）表示，在符号上方标上\n数字 6 ，表示是 6 极。接插件的文字符\n号是 X 。为了区分，可以用“ XP ”表示\n插头，用“ XS ”表示插座。\n继电器的符号\n因为继电器是由线圈和触点组两部分\n组成的，所以继电器在电路图中的图形符\n号也包括两部分：一个长方框表示线圈；\n一组触点符号表示触点组合。当触点不多\n电路比较简单时，往往把触点组直接画在\n线圈框的一侧，这种画法叫集中表示法，\n如图 9 （ a ）。当触点较多而且每对触\n点所控制的电路又各不相同时，为了方\n便，常常采用分散表示法。就是把线圈画\n在控制电路中，把触点按各自的工作对象\n分别画在各个受控电路里。这种画法对简\n化和分析电路有利。但这种画法必须在每\n对触点旁注上继电器的编号和该触点的\n编号，并且规定所有的触点都应该按继电\n器不通电的原始状态画出。图 9 （ b ）\n是一个触摸开关。当人手触摸到金属片\nA 时， 555 时基电路输出（ 3 端）高电位，使继电器 KR1 通电，触点闭合\n使灯点亮使电铃发声。 555 时基电路是控制部分，使用的是 6 伏低压电。电灯",
+   "pred_l1": "电路",
+   "pred_l3": null,
+   "label_l1": "电路",
+   "label_l3": "定义",
+   "pred_conf": 0.5819
+  },
+  {
+   "chunk_id": 69374,
+   "doc_name": "2024年6月第1套听力原文译文.pdf",
+   "text": "--- 第1页(OCR) ---\n2024年6月大学英语四级考试真题第一套听力原文译文\nSection A\nNews Report One\n官员们说，周六主街上的一栋建筑发生火灾后，六人不得不从家中搬到另一个地方。据诺沃克消防\n局副局长亚当·马科维茨称，因为有报告称建筑物起火，消防员在下午1点刚过就赶到了这栋三层建筑。\n马科维茨说，消防人员到达现场时发现二楼冒出浓烟。由大约25名消防员组成的消防队随后花了\n大约25分钟灭火。据官方描述，该建筑是一栋多功能建筑，其建筑特色是一楼为商用，二楼和三楼为\n居民住宅。\n城镇记录显示，该建筑内有四套公寓。[1]官员们说，由于烟雾和高温的破坏，这四套公寓被宣布\n无法居住，六名居民不得不搬到其他地方。这起火灾无人员伤亡报告。[2]诺沃克消防局局长正在调查\n起火原因。\nNews Report Two\n一项新的研究对过去研究提出了质疑，过去研究表明，一个人出生的季节或月份与某些心理健康状\n况的风险增加有关。新研究调查了欧洲7万多名老年人的焦虑和抑郁症状。[3]过去的一些研究发现了\n出生季节与精神健康诊断之间的联系。",
+   "pred_l1": "英语",
+   "pred_l3": null,
+   "label_l1": "英语",
+   "label_l3": "习题",
+   "pred_conf": 0.1928
+  },
+  {
+   "chunk_id": 37388,
+   "doc_name": "2010考研政治真题.pdf",
+   "text": "\n作\n为\n炎\n黄\n子\n孙\n的\n一\n员\n，\n只\n能\n追\n随\n先\n烈\n的\n足\n迹\n，\n在\n千\n万\n般\n艰\n险\n中\n，\n探\n索\n追\n求\n，\n不\n顾\n及\n其\n他\n。\n再\n看\n看\n共\n和\n国\n的\n缔\n造\n者\n和\n建\n设\n者\n们\n，\n在\n百\n废\n待\n兴\n的\n贫\n瘠\n土\n地\n上\n，\n顶\n住\n国\n内\n的\n贫\n穷\n，\n国\n外\n的\n封\n锁\n，\n经\n过\n多\n少\n个\n风\n风\n雨\n雨\n的\n春\n秋\n，\n让\n一\n个\n社\n会\n主\n义\n新\n中\n国\n屹\n立\n于\n世\n界\n东\n方\n。\n想\n到\n这\n些\n，\n还\n有\n什\n么\n个\n人\n利\n益\n不\n能\n丢\n弃\n呢\n？\n”\n钱\n学\n森\n发\n自\n肺\n腑\n的\n言\n语\n，\n对\n我\n们\n在\n新\n时\n期\n弘\n扬\n爱\n国\n主\n义\n精\n神\n的\n启\n示\n是\n：\nA\n．\n科\n学\n没\n有\n国\n界\n，\n但\n科\n学\n家\n有\n祖\n国\nB\n．\n个\n人\n的\n理\n想\n要\n与\n国\n家\n命\n运\n、\n民\n族\n命\n运\n相\n结\n合\nC\n．\n爱\n国\n主\n义\n与\n爱\n社\n会\n主\n义\n具\n有\n深\n刻\n的\n内\n在\n一\n致\n性\nD\n．\n爱\n国\n主\n义\n是\n爱\n国\n情\n感\n、\n爱\n国\n思\n想\n和\n爱\n国\n行\n为\n的\n高\n度\n统\n一\n3\n1\n.\n政\n治\n权\n利\n和\n自\n由\n是\n指\n公\n民\n作\n为\n国\n家\n政\n治\n生\n活\n主\n体\n依\n法\n享\n有\n的\n参\n加\n国\n家\n政\n治\n生\n活\n的\n权\n利\n和\n自\n由\n，\n是\n国\n家\n为\n公\n民\n直\n接",
+   "pred_l1": "政治",
+   "pred_l3": null,
+   "label_l1": "政治",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.6016
+  },
+  {
+   "chunk_id": 28026,
+   "doc_name": "2018年全国硕士研究生招生考试西医综合试题 .pdf",
+   "text": "6U胰岛素\nB.10%葡萄糖酸钙20ml\n--- 第7页(OCR) ---\n公众号【研池大叔】免费分享\nC.11.2%乳酸钠50ml\nD.5%碳酸氢钠100ml\n60.男性，65岁。3个月前有3次无痛性血尿，近来出现腰痛及尿频、尿痛、\n血尿和排尿困难，有时尿有血块。最可能的诊断是（）\nA.前列腺癌\nB.膀胱肿瘤C.膀胱结石D.肾癌\n61.出现反常呼吸运动的胸部损伤是（）\nA.张力性气胸\nB.多根多处肋骨骨折\nC.开放性气胸\nD.闭合性气胸\n62.男性，65岁。患胆总管结石，手术切开胆总管探查、取石，并放置T管\n引流。术后T管造影发现仍有0.5cm残余结石。可经T管痿管取出残余结石的\n最短时间是（）\nA.术后2周\nB.术后4周C.术后6周D.术后8周\n63.男性，30岁。上腹部饨器伤3小时来院，曾呕吐少量鲜血，诉上腹及腰\n部疼痛。查体上腹压痛，轻度肌紧张，肠鸣音弱。腹部平片见右肾及腰大肌轮\n廓模糊。最可能的诊断是（）\nA.胃破裂\nB.十二指肠破裂\nC.脾脏破裂D.空肠破裂\n64.女性，35岁。甲状腺乳头状癌根治手术后第一天，发现饮水时有呛咳，\n说话音调降低。最可能的原因是（）\nA.喉返神经损伤\nB.喉上神经损伤\nC.声带损伤\nD.插管致声门水肿\n65.关于化脓性关节类的叙述、正确的是（）\nA关指液外观可为透明或浑浊黄白色\nB.关节液培养最常见白色葡萄球菌\nC.关节液镜检见多量革兰阴性",
+   "pred_l1": "西医综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "习题",
+   "pred_conf": 0.3015
+  },
+  {
+   "chunk_id": 34632,
+   "doc_name": "第8章 系统.pdf",
+   "text": "无条件\n操作。是此状态下将要实现\n的操作, 将在下一个CLK 到\n来时执行。\nR ← SR    (R shift right)\nCounter 操作对象 FF\nRegister\nMemory\n001\nA ← A+1\nT1\nZ = 0\n8\n2.  判断框    (prism 棱形)\n控制器根据判断框内容(条件)决定下一个 CLK 到\n时状态转换或者赋值语句\n2 输出 3 输出 4 输出\nT0\nXY 0Φ\n10\n11\nT1\nT2\nT3\n条件 0 1\nT0\nX 1 0\nT1 T2\nT1\nMN\n00\n10\n11\nT2 T3 T5\n01\nT4\n判断框后面可接状态框或者条件框\n有条件状态转换的条件语句\n9\n3. 条件框      (ellipse 椭圆 )\n它的入口只能接判断框的分支\n条件框内的操作为条件操作\n条件操作\n输出\nR←0\nT1\nS 0 1\n01\nR←SL\nZ=1\n通常是对数据的操作\n10\n练习:  分析下面 ASM图.\n在T1状态下(001),\n输出 : START\n若输入 E = 1,\n下一个 CLK 到来\nR 复位 (清0),\n否则 R 保持,\n新状态为 T2 (010)\nT1\nE 0 1\n010 T2\n001\nR←0\nSTART\n11\n8.2.3  ASM图表的建立\n例 1 ASM:\nT0\nXY\nR←SL\n01\nT1\n0\n1",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.1222
+  },
+  {
+   "chunk_id": 44511,
+   "doc_name": "Imperfect C++.pdf",
+   "text": "定的版本的话，事情会变得险象环生。\n因此，虽说在有限尺度上可以通过为同一个动态库提供多个编译器特定的版本的方式来“解决”动态库的\nC + +  A B I问题，但是这条路却危机四伏，并且我从未听说过有哪个系统实际采用了这种方法。看起来，对\n于一个给定的操作系统而言， 如果要达成库的可移植性， 我们必须依靠 C 连接方式。 这么做的显著缺点是，\n由于 C 并没有名字重整，所以我们无法导出/ 导入重载函数或者任何类方法。\n到目前为止， 我们似乎一直是在同意我的朋友所指出的 “厄运的征兆” ， 不过幸运的是确实存在一些补救措\n施，我们只需稍作一点回顾。\n7 . 4  I  C a n  C  C l e a r l y  N o w\n在考察了 C 和 C + + 的动态/ 静态连接之后，可以被称为“编译器无关”的东西很明显就是通过 C 接口来进行\n动态连接了。\n现在我们就来考察如何实现编译器无关性，不过首先让我们对 C 和 C + + 的兼容性进行一次快速的回顾。\n7 . 4 . 1  e x t e r n  \" C \"\nC + + 作为一门近乎 C 的超集的语言，自然存在着和 C 函数交互的方式。由于 C + + 会对每一个函数进行名字重",
+   "pred_l1": "计算机学科专业基础408",
+   "pred_l3": null,
+   "label_l1": "计算机学科专业基础408",
+   "label_l3": "理论陈述",
+   "pred_conf": 0.1212
+  },
+  {
+   "chunk_id": 17040,
+   "doc_name": "第1章.pptx",
+   "text": "1－17  例 1.33 函数 F 的卡诺图\n[图片:image.tmp]\n--- 第140页 ---\n[图片:image.tmp]\n--- 第141页 ---\n【例 1.34 】 用图形法化简函数　　　　( 0 ， 1 ， 2 ， 5 ， 6 ， 7 ， 8 ， 10 ， 11 ， 12 ， 13 ， 15 )，写出其最简与或表达式。　　解 画出函数 F 的卡诺图，如图 1－18 所示。\n图 1－18  例 1.34 函数 F 的卡诺图\n[图片:image.tmp]\n[图片:image.tmp]\n--- 第142页 ---\n由图 1－18 ( a )和( b )可以看出，函数 F 的卡诺图有两种可行的合并方案。　　根据图 1－18 ( a )得到:　　根据图 1－18 ( b )得到:　　本例说明，一个函数的最简与或表达式可以不是惟一的。\n[图片:image.tmp]\n[图片:image.tmp]\n--- 第143页 ---\n2. 用卡诺图化简法求函数的最简或与表达式　　求函数的最简或与表达式时，可以先求出其反函数的最简与或表达式，然后取反得到函数的最简或与表达式。在函数的卡诺图中，函数值为 0 意味着其反函数的值为 1 ，因此，利用卡诺图化简法求函数的最简或与表达式时，应对函数卡诺图中的 0 方格对应的最小项进行分组合并。一般的步骤如下:　　(1)画出函数的卡诺图。　　(2)对",
+   "pred_l1": "数字电子技术",
+   "pred_l3": null,
+   "label_l1": "数字电子技术",
+   "label_l3": "例题",
+   "pred_conf": 0.163
+  },
+  {
+   "chunk_id": 36376,
+   "doc_name": "2004年考研政治真题及答案解析.docx",
+   "text": "2004年硕士研究生入学考试政治试题答案及解析\n一、单项选择题\n1. 唯物史观认为，人类的第一个历史活动是\nA. 吃喝穿住  B. 物质生活资料的生产\nC.人的自觉意识活动  D. 结成社会关系\n【答案】 B\n【解析】 本题考查的知识点是对唯物史观关于社会生产在社会赖以存在和发展中的地位 和作用的确认。地理环境、人口因素、生产实践都是社会存在和发展的必要的物质生活条件，都是不可缺少的。其中“物质生活资料的生产是人类社会赖以存在和发展的物质基础，是人类历史的前提，是人类的第一个历史活动；社会生产实践制约着整个社会经济生活、政治生活和 精神生活过程。根据这一基本理论分析题中所给定的四个选项：“吃喝穿住”必须以生产实践为前提；“人的自觉意识活动”属于人的精神生活过程，也是由人的生产实践活动所制约的；人与人之间所“结成的社会关系”项也不是从来就有的，恰恰是在人们的生产实践活动中所形 成的。所以正确选项为B项。\n2. 20世纪50年代，北大荒人烟稀少、一片荒凉。由于人口剧增，生产力水平低下，吃饭问题成为中国面临的首要问题，于是人们不得不靠扩大耕地面积增加粮食产量，经过半个世纪 的开垦，北大荒成了全国闻名的“北大仓”。然而由于过度开垦已经造成了许多生态问题。现 在，黑龙江垦区全面停止开荒，退耕还“荒”。这说明\nA.人与自然的和谐最终以恢复原始生态为归宿\nB.人们改造自然的一切行为都会遭到“自然",
+   "pred_l1": "政治",
+   "pred_l3": null,
+   "label_l1": "政治",
+   "label_l3": "例题",
+   "pred_conf": 0.5691
+  },
+  {
+   "chunk_id": 70909,
+   "doc_name": "六级模拟卷全5套（带书签，可复制可查词）.pdf",
+   "text": "G27/G32/G2D/G2A/G34/G2C/G25/G26/G2B/G35/G2D/G32/G2F/G2C/G22\n/G3F/G23/G46/G2B/G2D/G3C/G2F/G2B/G26/G27/G3A/G2B/G34/G42/G25/G32/G2B/G27/G2F/G33/G47/G2B/G2C/G25/G26/G2B/G28/G2B/G32/G33/G2D/G2A/G28/G34/G2B/G28/G28/G2D/G2E/G25/G26/G2B/G2E/G2F/G2A/G44/G2B/G25/G22\n/G39/G22/G23/G23/G45/G26/G2B/G35/G2D/G32/G36/G27/G26/G2D/G2F/G33/G29/G28/G22 /G3B /G23/G45/G26/G2D/G28/G2B/G35/G26/G2D/G2F/G27/G29/G36/G3C/G26/G44/G28/G33/G29/G27/G2F/G2B/G48/G2B/G32/G29/G33/G28/G2B/G22\n/G37/G23/G45/G26/G2B/G27/G2F/G29/G2D/G26/G2D/G2F/G33/G29/G28/G22 /G3F /G23/G46/G32/G2B/G43/G34/G27/G34/G25/G35/G2D/G31/G2B/G34/G22\n/G49/G22/",
+   "pred_l1": "西医综合",
+   "pred_l3": null,
+   "label_l1": "其他",
+   "label_l3": "其他",
+   "pred_conf": 0.0955
+  }
+ ]
+}

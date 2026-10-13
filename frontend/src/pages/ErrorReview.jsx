@@ -38,6 +38,27 @@ const MASTERY_OPTIONS = [
 /* 状态徽标配色类（沿用 global.css 的 soft 色令牌） */
 const STATUS_CLASS = { active: 'warn', graduated: 'ok', archived: 'muted' }
 
+/* 错题详情可显示字段定义（后端 ErrorRecordResponse 全量 16 字段，可显隐自定义）。
+ * key 对应后端字段；default 控制默认是否显示，用户可在页面顶部切换。 */
+const DETAIL_FIELDS = [
+  { key: 'id', label: 'ID', default: false },
+  { key: 'subject', label: '学科', default: true },
+  { key: 'question_id', label: '关联题目 ID', default: false },
+  { key: 'error_reason', label: '错因', default: true },
+  { key: 'my_answer', label: '我的答案', default: true },
+  { key: 'correct_answer', label: '正确答案', default: true },
+  { key: 'accuracy', label: '正确率', default: true, fmt: (v) => `${Math.round((Number(v) || 0) * 100)}%` },
+  { key: 'review_count', label: '复习次数', default: true },
+  { key: 'last_review', label: '上次复习', default: true, fmt: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+  { key: 'next_review', label: '下次复习', default: true, fmt: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+  { key: 'status', label: '状态', default: true, fmt: (v) => v === 'graduated' ? '已掌握' : v === 'archived' ? '已归档' : '未掌握' },
+  { key: 'analysis', label: 'AI 分析', default: true },
+  { key: 'created_at', label: '录入时间', default: false, fmt: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+  { key: 'updated_at', label: '更新时间', default: false, fmt: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+]
+const DEFAULT_VISIBLE = DETAIL_FIELDS.filter((f) => f.default).map((f) => f.key)
+const FIELD_VISIBILITY_KEY = 'er_field_visibility'
+
 /** 兼容 /api/errors 的多种返回形态：数组 / {items:[]} / {errors:[]} */
 function normalizeList(data) {
   if (Array.isArray(data)) return data
@@ -90,6 +111,20 @@ export default function ErrorReview() {
   const [ai, setAi] = useState({ state: 'idle', text: '', err: '' })
   const [linkKp, setLinkKp] = useState('')
   const [linking, setLinking] = useState(false)
+  /* 字段显隐：默认展示常用字段，可在页头「字段」里自定义看哪些（存 localStorage） */
+  const [visibleFields, setVisibleFields] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(FIELD_VISIBILITY_KEY)) || DEFAULT_VISIBLE) }
+    catch { return new Set(DEFAULT_VISIBLE) }
+  })
+  const [showFieldPicker, setShowFieldPicker] = useState(false)
+  const toggleField = (key) => {
+    setVisibleFields((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      localStorage.setItem(FIELD_VISIBILITY_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }
 
   const listSeq = useRef(0)
   const detailSeq = useRef(0)
@@ -313,7 +348,27 @@ export default function ErrorReview() {
           <h1 className="page-title">错题复盘</h1>
           <div className="page-sub">错因分布 · 薄弱知识点 · 单题 AI 归因与知识点挂接</div>
         </div>
-        <div className="page-actions">
+        <div className="page-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
+            <button className="btn ghost" onClick={() => setShowFieldPicker((v) => !v)}>
+              <FileText size={15} /> 字段 {showFieldPicker ? '▴' : '▾'}
+            </button>
+            {showFieldPicker && (
+              <div className="panel" style={{ position: 'absolute', right: 0, top: '110%', zIndex: 20, minWidth: 200, padding: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)' }}>
+                <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 8 }}>勾选要在详情里显示的字段</div>
+                {DETAIL_FIELDS.map((f) => (
+                  <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '4px 0', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={visibleFields.has(f.key)} onChange={() => toggleField(f.key)} />
+                    {f.label}
+                  </label>
+                ))}
+                <button className="btn ghost" style={{ marginTop: 6, fontSize: 12, padding: '4px 8px' }}
+                  onClick={() => { setVisibleFields(new Set(DEFAULT_VISIBLE)); localStorage.setItem(FIELD_VISIBILITY_KEY, JSON.stringify(DEFAULT_VISIBLE)) }}>
+                  恢复默认
+                </button>
+              </div>
+            )}
+          </div>
           <button className="btn ghost" onClick={loadList} disabled={loading}>
             <RefreshCw size={15} /> 刷新
           </button>
@@ -496,14 +551,24 @@ export default function ErrorReview() {
                     </div>
                   </div>
                   <div className="er-kv">
-                    <span>错因</span><b>{selected.error_reason || '未标注'}</b>
-                    <span>下次复习</span><b>{selected.next_review ? new Date(selected.next_review).toLocaleString('zh-CN') : '—'}</b>
+                    {DETAIL_FIELDS.filter((f) => visibleFields.has(f.key)).map((f) => (
+                      <React.Fragment key={f.key}>
+                        <span>{f.label}</span>
+                        <b>{f.fmt ? f.fmt(selected[f.key]) : (selected[f.key] ?? '—') || '—'}</b>
+                      </React.Fragment>
+                    ))}
+                    {visibleFields.has('tags') && parseTags(selected.tags).length > 0 && (
+                      <span>标签</span>
+                    )}
+                    {visibleFields.has('tags') && parseTags(selected.tags).length > 0 && (
+                      <b className="er-tags" style={{ gridColumn: '2' }}>
+                        {parseTags(selected.tags).map((t) => <span className="er-tag" key={t}>{t}</span>)}
+                      </b>
+                    )}
                   </div>
-                  {parseTags(selected.tags).length > 0 && (
+                  {parseTags(selected.tags).length > 0 && !visibleFields.has('tags') && (
                     <div className="er-tags">
-                      {parseTags(selected.tags).map((t) => (
-                        <span className="er-tag" key={t}>{t}</span>
-                      ))}
+                      {parseTags(selected.tags).map((t) => <span className="er-tag" key={t}>{t}</span>)}
                     </div>
                   )}
 

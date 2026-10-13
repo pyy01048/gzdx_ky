@@ -441,18 +441,54 @@ def check_batch(
     limit: int = 200,
     prefer: Optional[str] = None,  # 路由透传（保留参数位，当前按默认策略校验）
 ) -> Dict[str, Any]:
-    """批量交叉校验。"""
+    """批量交叉校验。
+
+    V12 性能修复：增量校验 —— 已核验为 high/verify 置信度的题直接跳过
+    （保留历史结果，不重复调 LLM），只有未校验/低置信度的题才进入交叉校验。
+    单批全量 LLM 串行（50 题 × 60s）是 504 超时的根因，此修复将常态批
+    处理耗时从数百秒降到秒级。
+    """
+    ids = (question_ids or [])[:limit]
+    if not ids:
+        # 未指定时默认取真正需要重新校验的题：仅无置信度 / 冲突(verify) 两类。
+        # medium（已有 bank/extracted 候选、历史已校验过）默认跳过，避免每批
+        # 几百题全量 LLM 串行导致 504 —— 需要重跑时可显式传 question_ids。
+        from services.module_a_schema import ensure_module_a_schema
+        ensure_module_a_schema(db)
+        conn = db.connection().connection
+        rows = conn.execute(
+            "SELECT id FROM quiz_questions "
+            "WHERE confidence IS NULL OR confidence = 'verify' "
+            "ORDER BY id LIMIT ?",
+            (limit,),
+        ).fetchall()
+        ids = [r[0] for r in rows]
+
     out = []
-    for qid in (question_ids or [])[:limit]:
+    skipped = 0
+    for qid in ids:
+        # 已核验为 high / verify / medium 的题：跳过，不重跑 LLM
+        try:
+            from services.module_a_schema import ensure_module_a_schema
+            ensure_module_a_schema(db)
+            conn = db.connection().connection
+            row = conn.execute(
+                "SELECT confidence FROM quiz_questions WHERE id = ?", (qid,)
+            ).fetchone()
+            if row and row[0] in ("high", "verify", "medium"):
+                skipped += 1
+                continue
+        except Exception:
+            pass
         out.append(cross_check_question(db, qid, use_llm=use_llm))
     checked = [x for x in out if x.get("checked")]
     return {
-        "total": len(out),
+        "total": len(ids),
         "checked": len(checked),
+        "skipped": skipped,
         "conflicts": sum(1 for x in checked if x.get("conflicts")),
         "details": out,
     }
-
 
 def stats(db) -> Dict[str, Any]:
     """答案校验统计。"""

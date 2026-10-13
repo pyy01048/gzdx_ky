@@ -33,6 +33,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import Document, KnowledgeChunk
+from services.doc_naming import apply_display_name
+from services.smart_ingest import gate_for_write
 from utils.timeutil import utcnow_aware  # 统一 naive UTC 时间规范（P0-4）
 
 #: index_status 的**唯一合法取值**。
@@ -277,7 +279,7 @@ def reparse_empty(
     它们当初解析出来是空字符串，直接标 indexed 但没有任何内容。
     """
     from services.document_parser import DocumentParser
-    from services.kb_service import ingest_text, detect_doc_meta
+    from services.kb_service import detect_doc_meta, has_searchable_chunks, ingest_text
 
     q = db.query(Document).filter(
         (Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0)
@@ -286,7 +288,7 @@ def reparse_empty(
         q = q.limit(limit)
     docs = q.all()
 
-    stats = {"total": len(docs), "reparsed": 0, "chunks": 0,
+    stats = {"total": len(docs), "reparsed": 0, "chunks": 0, "rejected": 0,
              "no_file": 0, "empty_again": 0, "failed": 0}
 
     for i, doc in enumerate(docs, 1):
@@ -311,10 +313,22 @@ def reparse_empty(
         if not text or not text.strip():
             stats["empty_again"] += 1
             doc.index_status = "failed"
+            db.commit()          # 不 commit 这行 failed 会随下一轮的 rollback 一起丢
+            continue
+
+        # 质量闸门：OCR 重新解析出来的"正文"有相当一部分是占位错误提示或乱码，
+        # 以前直接覆盖 doc.content 并切块，等于把空文档换成假文档。
+        verdict = gate_for_write(db, text, path=path, doc_id=doc.id)
+        if not verdict["ok"]:
+            stats["rejected"] += 1
+            doc.index_status = "failed"
+            db.commit()
+            print(f"  [x] {doc.file_name} 质量闸门拒绝：{'；'.join(verdict['reasons'])}")
             continue
 
         doc.content = text
         doc.index_status = "indexing"
+        apply_display_name(db, doc, text)
         db.commit()
 
         try:
@@ -332,7 +346,7 @@ def reparse_empty(
             detect_doc_meta(db, doc)
         except Exception:
             pass
-        doc.index_status = "indexed"
+        doc.index_status = "indexed" if has_searchable_chunks(db, doc.id) else "failed"
         doc.parse_progress = 1.0
         db.commit()
         stats["reparsed"] += 1

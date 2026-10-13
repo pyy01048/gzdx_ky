@@ -26,6 +26,7 @@ from models import (
     ErrorKnowledgeLink,
 )
 from services import taxonomy, kp_cleaner
+from services.delete_guard import require_physical_delete_enabled
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
 
 
@@ -181,6 +182,9 @@ def auto_link_error(
          宁可不挂，也不要挂错（挂错会污染"薄弱考点"统计）
     """
     if replace:
+        # 物理删除闸门：replace=True 会物理删除既有关联行，不可逆。
+        # 该表为错题-知识点关联表，属受控重建语义，加闸防止误触。
+        require_physical_delete_enabled("error_knowledge_links")
         db.query(ErrorKnowledgeLink).filter(
             ErrorKnowledgeLink.error_id == err.id
         ).delete(synchronize_session=False)

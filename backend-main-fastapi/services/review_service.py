@@ -197,6 +197,27 @@ def apply_review(
         db.commit()
         db.refresh(rec)
 
+    # 学习行为埋点（2026-10）：复习提交此前完全不产事件，
+    # 导致「复习」这一高频动作在学习科学/成长体系里没有流水。
+    try:
+        from services.study_event_service import record_event
+
+        record_event(
+            db,
+            "review",
+            subject=payload.get("subject"),
+            knowledge_point_id=item_id if item_type == "knowledge" else None,
+            payload={
+                "item_type": item_type,
+                "item_id": item_id,
+                "result": result,
+                "mastery_before": payload.get("mastery_before", 0),
+                "mastery_after": payload.get("mastery_after", 0),
+            },
+        )
+    except Exception:
+        pass
+
     payload["review_id"] = rec.id
     payload["next_review"] = next_dt.isoformat()
     return payload

@@ -19,6 +19,9 @@ from typing import Optional, List, Dict, Any, Callable
 from sqlalchemy.orm import Session
 
 from models import Document, KnowledgePoint, QuizQuestion, KnowledgeChunk
+from services.quiz_content_gate import admit as gate_admit
+from services.quiz_content_gate import gate_log_summary
+from services import quiz_dedupe
 
 logger = logging.getLogger(__name__)
 
@@ -309,11 +312,22 @@ async def extract_questions(
     """从文档分块中AI识别题目并分类入库（去重）。"""
     extracted = []
     # 去重：基于题干内容前100字
+    #
+    # 【根因修复 2026-11】旧逻辑的判重集合被
+    #   QuizQuestion.source.like(f"%{document.file_name}%")
+    # 限死在**当前这一篇文档**内。同一道题（公共课跨考题最典型）承载在A 文档和
+    # B 文档时，处理 B 的查询只匹配 source 含 B 的行，而那条题在库里 source 是 A
+    #   → 不命中 → 同一题入库两次。
+    # 现在叠加一层跨来源指纹判重（services/quiz_dedupe）：命中即合并溯源、不插入。
+    # 开关：QUIZ_DEDUPE_CROSS_SOURCE（默认开，置 off 退回旧行为）。
     existing_contents = {
         (q.content or "")[:100] for q in db.query(QuizQuestion).filter(
             QuizQuestion.source.like(f"%{document.file_name}%")
         ).all()
     }
+    cross_dedupe = quiz_dedupe.dedupe_enabled()
+    dd_index = quiz_dedupe.build_index_from_db(db) if cross_dedupe else None
+    dd_stats = quiz_dedupe.DedupeStats()
 
     total = len(chunks)
     for i, chunk in enumerate(chunks):
@@ -398,6 +412,21 @@ async def extract_questions(
                     else:
                         source = f"文档提取：{document.file_name}"
 
+                # ===== 入库前内容闸门（AI 抽取同样会把讲义正文当题）=====
+                # source 已经定稿，闸门据此对"声称真题"的内容额外加严。
+                gate_ok, gate_reason = gate_admit(
+                    content,
+                    options=options,
+                    answer=answer,
+                    source=source,
+                )
+                if not gate_ok:
+                    logger.info(
+                        "内容闸门拦截（source=%s）：%s | %s",
+                        source[:40], gate_reason, content[:60],
+                    )
+                    continue
+
                 q = QuizQuestion(
                     content=content[:5000],
                     options=options,  # 使用清洗后的选项
@@ -410,6 +439,20 @@ async def extract_questions(
                     source=source[:200],
                     question_type=q_type[:50],
                 )
+                # ===== 跨来源判重（入库前最后一道闸）=====
+                # 命中则不插入：把本源并入已有题的溯源（source_ids），
+                # 并在已有题缺答案/解析时用本副本补齐。不静默丢弃。
+                decision = quiz_dedupe.decide_insert(
+                    db, content, source, dd_index,
+                    answer=answer, analysis=analysis, options=options,
+                    stats=dd_stats,
+                )
+                if not decision.is_insert:
+                    logger.info(
+                        "跨来源判重命中，合并溯源不入库：%s", decision.reason
+                    )
+                    continue
+
                 db.add(q)
                 existing_contents.add(content_key)
                 extracted.append(q)
@@ -418,6 +461,14 @@ async def extract_questions(
             continue
 
     db.commit()
+    gate_log_summary(logger)
+    # 跨来源去重计数上报（不静默：重复被合并而非丢弃，可从日志核对）
+    if cross_dedupe:
+        logger.info(
+            "跨来源去重：入库 %d / 合并重复 %d / 过短跳过 %d / 补齐 %s",
+            dd_stats.inserted, dd_stats.merged, dd_stats.too_short,
+            dd_stats.enriched or '无',
+        )
     return extracted
 
 

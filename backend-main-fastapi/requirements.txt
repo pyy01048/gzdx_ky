@@ -25,8 +25,17 @@ Pillow==10.3.0
 # 自检：python tests/check_ocr_deps.py
 rapidocr-onnxruntime==1.2.3
 onnxruntime>=1.20
+# rapidocr-onnxruntime 1.2.3 的**未声明**传递依赖，缺任一都会让引擎初始化
+# 抛ModuleNotFoundError，进而被OCRService.recognize 吞成空串（表现为「0 字」）。
+# 实测缺这三者时：缺 six → ch_ppocr_v3_det 导入失败；缺 PyYAML → 读配置失败；
+# 缺 urllib3 → 本地 bge 向量加载失败（连带入库去重静默跳过）。
+six==1.17.0
+PyYAML==6.0.2
+urllib3>=2.0
 # ---- 定时任务 ----
 APScheduler==3.10.4
+# Windows 必须显式装：APScheduler 用字符串时区名(如 Asia/Shanghai)时缺 tzdata 会静默不注册
+tzdata==2025.2
 # ---- 环境变量 ----
 python-dotenv==1.0.1
 # ---- 本地 Embedding（bge-small-zh，数据不出网）----

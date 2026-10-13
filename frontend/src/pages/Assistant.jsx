@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import useStore from '../store/useStore'
-import { todayStr, daysBetween, uid } from '../utils/date'
+import { uid } from '../utils/date'
+import { examDaysLeft, resolveExamDate } from '../utils/exam'
 import { Modal, toast } from '../components/UI'
 import { chatCompletion, chatStream, defaultProvider, hasAiConfigured, recordUsage } from '../utils/api'
 import { aiApi } from '../api/client'
@@ -24,11 +25,11 @@ const KB = [
   },
   {
     keys: ['英语', '单词', '词汇', '真题', '阅读', '作文'],
-    reply: (ctx) => `【英语 · 备考策略】\n1. 词汇：每天 100 个（快速过 + 睡前回顾），重点背真题高频词；\n2. 真题：近 20 年真题精读，每篇做完逐句翻译、标记生词；\n3. 作文：大小作文各背 3 套模板 + 万能替换句，考前 2 个月每周写 1 篇。\n当前距考试 ${ctx.days} 天，真题精读建议按「每天 2 篇 + 复盘 1 篇」推进。`
+    reply: (ctx) => `【英语 · 备考策略】\n1. 词汇：每天 100 个（快速过 + 睡前回顾），重点背真题高频词；\n2. 真题：近 20 年真题精读，每篇做完逐句翻译、标记生词；\n3. 作文：大小作文各背 3 套模板 + 万能替换句，考前 2 个月每周写 1 篇。\n当前${ctx.when}，真题精读建议按「每天 2 篇 + 复盘 1 篇」推进。`
   },
   {
     keys: ['政治', '马原', '毛概', '史纲', '思修', '肖'],
-    reply: (ctx) => `【政治 · 复习节奏】\n1. 现阶段（${ctx.days} 天）：主攻选择题，刷《1000题》选择题，马原重理解；\n2. 中后期：肖八选择题 + 肖四大题背诵，结合时政；\n3. 技巧：马原大题「原理 + 方法论 + 材料」三段式作答。\n建议每天政治 1.5h，安排在上午或晚间注意力中等时段。`
+    reply: (ctx) => `【政治 · 复习节奏】\n1. 现阶段（${ctx.when}）：主攻选择题，刷《1000题》选择题，马原重理解；\n2. 中后期：肖八选择题 + 肖四大题背诵，结合时政；\n3. 技巧：马原大题「原理 + 方法论 + 材料」三段式作答。\n建议每天政治 1.5h，安排在上午或晚间注意力中等时段。`
   },
   {
     keys: ['专业课', '834', '数据结构', '计算机网络', '计算机', '408', '电子信息'],
@@ -36,15 +37,15 @@ const KB = [
   },
   {
     keys: ['计划', '规划', '安排', '时间表', '每天', '作息'],
-    reply: (ctx) => `【学习计划建议】\n距考研 ${ctx.days} 天，推荐每日节奏（约 9h 有效学习）：\n· 08:00-09:40  数学（上午头脑最清醒）\n· 10:00-11:40  专业课\n· 13:30-15:10  英语真题\n· 15:30-17:10  政治\n· 18:30-20:00  专业课强化 / 错题\n· 20:10-21:40  数学刷题 + 错题复盘\n· 21:50-22:30  单词 + 睡前回顾\n建议每 50 分钟休息 10 分钟。要不要我把这套计划加入任务打卡？`
+    reply: (ctx) => `【学习计划建议】\n${ctx.when}，推荐每日节奏（约 9h 有效学习）：\n· 08:00-09:40  数学（上午头脑最清醒）\n· 10:00-11:40  专业课\n· 13:30-15:10  英语真题\n· 15:30-17:10  政治\n· 18:30-20:00  专业课强化 / 错题\n· 20:10-21:40  数学刷题 + 错题复盘\n· 21:50-22:30  单词 + 睡前回顾\n建议每 50 分钟休息 10 分钟。要不要我把这套计划加入任务打卡？`
   },
   {
     keys: ['焦虑', '压力', '坚持', '心态', '放弃', '累'],
-    reply: (ctx) => `【心态调整】\n距考试还有 ${ctx.days} 天，焦虑是很正常的信号，说明你在乎。\n1. 把大目标拆成今天能完成的小事——完成一件就划掉一件；\n2. 每天固定「复盘 10 分钟」，看到自己的进步；\n3. 每周留半天彻底休息，不内疚。\n你已经在用错题本和知识地图记录进度，这就比大多数人强了。继续就好。`
+    reply: (ctx) => `【心态调整】\n${ctx.when}，焦虑是很正常的信号，说明你在乎。\n1. 把大目标拆成今天能完成的小事——完成一件就划掉一件；\n2. 每天固定「复盘 10 分钟」，看到自己的进步；\n3. 每周留半天彻底休息，不内疚。\n你已经在用错题本和知识地图记录进度，这就比大多数人强了。继续就好。`
   }
 ]
 
-const DEFAULT_REPLY = (ctx) => `收到。这个问题先帮你拆解一下：\n1. 明确考查目标：结合你当前复习阶段（距考试 ${ctx.days} 天），建议先回归教材/真题定位；\n2. 拆成可执行的小步骤，同步到「任务打卡」里；\n3. 相关错题可收录进「错题本」，我会按艾宾浩斯帮你安排复习。\n你可以更具体地描述问题（比如涉及哪个科目、哪个考点），我给出更精准的解答。`
+const DEFAULT_REPLY = (ctx) => `收到。这个问题先帮你拆解一下：\n1. 明确考查目标：结合你当前复习阶段（${ctx.when}），建议先回归教材/真题定位；\n2. 拆成可执行的小步骤，同步到「任务打卡」里；\n3. 相关错题可收录进「错题本」，我会按艾宾浩斯帮你安排复习。\n你可以更具体地描述问题（比如涉及哪个科目、哪个考点），我给出更精准的解答。`
 
 const QUICK = ['怎么安排每天的复习？', '英语真题怎么刷最有效？', '834 专业课重点是什么？', '数学极限总出错怎么办？', '最近有点焦虑怎么办？']
 
@@ -121,8 +122,10 @@ export default function Assistant() {
   const [showSummary, setShowSummary] = useState(false)
 
   const settings = useStore((s) => s.settings)
-  const days = daysBetween(todayStr(), settings.examDate || todayStr())
-  const ctx = { days: Math.max(days, 0) }
+  const countdown = useStore((s) => s.countdown)
+  // 未设置初试日期时 days 为 null，各文案统一用 ctx.when（"未设置初试日期"），不再假装有天数
+  const days = examDaysLeft(resolveExamDate(countdown?.exam_date, settings.examDate))
+  const ctx = { days, when: days == null ? '未设置初试日期' : `距考试 ${days} 天` }
 
   /* 批次1-2：把会话列表与激活 id 写回 store（ai.localSessions / ai.activeSessionId），随 persist 落 localStorage */
   const persistSessions = (list, activeId) => {
@@ -151,7 +154,11 @@ export default function Assistant() {
     const hit = KB.find((k) => k.keys.some((key) => lower.includes(key)))
     if (hit) return hit.reply(ctx)
     if (mode === '规划') {
-      return `【${ctx.days} 天冲刺规划 · 生成中】\n基于你当前数据：${settings.school} ${settings.major}，目标 ${settings.targetScore} 分。\n· 阶段一（${Math.max(1, Math.round(ctx.days * 0.5))} 天）：基础强化，主攻数学与专业课，英语真题精读；\n· 阶段二（${Math.max(1, Math.round(ctx.days * 0.3))} 天）：真题模考 + 错题集中攻克；\n· 阶段三（${Math.max(1, Math.round(ctx.days * 0.2))} 天）：政治大题背诵 + 全真模拟。\n建议：错题坚持七刷，定期看知识地图的薄弱考点。需要我细化某阶段吗？`
+      if (ctx.days == null) {
+        return '【规划 · 缺少初试日期】\n本地规则模式按剩余天数拆分阶段，请先在「设置」里填写考研初试日期；也可以切换到 API 引擎，由 AI 结合你的科目直接给规划。'
+      }
+      const schoolLine = [settings.school, settings.major].filter(Boolean).join(' ')
+      return `【${ctx.days} 天冲刺规划 · 生成中】\n${schoolLine ? `基于你当前数据：${schoolLine}${settings.targetScore ? `，目标 ${settings.targetScore} 分` : ''}。\n` : ''}· 阶段一（${Math.max(1, Math.round(ctx.days * 0.5))} 天）：基础强化，主攻数学与专业课，英语真题精读；\n· 阶段二（${Math.max(1, Math.round(ctx.days * 0.3))} 天）：真题模考 + 错题集中攻克；\n· 阶段三（${Math.max(1, Math.round(ctx.days * 0.2))} 天）：政治大题背诵 + 全真模拟。\n建议：错题坚持七刷，定期看知识地图的薄弱考点。需要我细化某阶段吗？`
     }
     return DEFAULT_REPLY(ctx)
   }
@@ -252,7 +259,12 @@ export default function Assistant() {
       // API模式总是可用：前端配置了provider用前端的，否则后端使用默认provider
       if (engine === 'api') {
         const summaryBlock = useSummary && summary ? `\n\n【此前对话摘要（已压缩上下文）】\n${summary}` : ''
-        const system = `你是考研备考助手「${ai.persona}」。用户正在备考 ${settings.school} ${settings.major}（目标 ${settings.targetScore} 分），距考研 ${ctx.days} 天。当前模式：${mode}。${mode === '规划' ? '请给出分阶段可执行的复习计划。' : '请专业、简洁地解答考研相关问题，必要时用列表。'}${summaryBlock}`
+        const profile = [
+          [settings.school, settings.major].filter(Boolean).join(' '),
+          settings.targetScore ? `目标 ${settings.targetScore} 分` : '',
+          ctx.days == null ? '' : `距考研 ${ctx.days} 天`
+        ].filter(Boolean).join('，')
+        const system = `你是考研备考助手「${ai.persona}」。${profile ? `用户正在备考 ${profile}。` : ''}当前模式：${mode}。${mode === '规划' ? '请给出分阶段可执行的复习计划。' : '请专业、简洁地解答考研相关问题，必要时用列表。'}${summaryBlock}`
         // 开启摘要后只带最近 4 条原文，其余靠摘要承载
         const keep = useSummary && summary ? -4 : -8
         const history = ai.messages.slice(keep).map((m) => ({ role: m.role === 'bot' ? 'assistant' : 'user', content: m.content }))
@@ -285,7 +297,8 @@ export default function Assistant() {
         }, 700 + Math.random() * 500)
       }
     } catch (e) {
-      replyAi(`⚠ ${e.message}\n\n（已回退本地模式）\n\n${think(q)}`)
+      // 失败时不再自动拼一段本地规则文案冒充 AI 回答：只报错，本地内容由用户显式切换引擎获得
+      replyAi(`⚠ AI 调用失败：${e.message}\n\n可切换到「本地」引擎查看离线规则建议，或在设置中检查 AI 服务商配置。`)
     }
     setTyping(false)
   }
@@ -457,7 +470,8 @@ export default function Assistant() {
                   <div className="e-ico">🎓</div>
                   <div className="e-title">你好，我是你的考研画像助手「{ai.persona}」</div>
                   <div className="e-text">
-                    已知你在备考 {settings.school} {settings.major}（目标 {settings.targetScore} 分），距考研 {ctx.days} 天。<br />
+                    已知你在备考 {[settings.school, settings.major].filter(Boolean).join(' ') || '（尚未设置目标院校，去设置填写）'}
+                    {settings.targetScore ? `（目标 ${settings.targetScore} 分）` : ''}，{ctx.when}。<br />
                     可以问我学习方法、阶段规划、科目难点，或点右侧快捷问题。
                   </div>
                 </div>
@@ -651,7 +665,7 @@ export default function Assistant() {
               <div className="spread"><span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>目标院校</span><b style={{ fontSize: 12.5 }}>{settings.school || '未设置'}</b></div>
               <div className="spread"><span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>专业</span><b style={{ fontSize: 12.5 }}>{settings.major || '未设置'}</b></div>
               <div className="spread"><span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>目标分数</span><b style={{ fontSize: 12.5 }}>{settings.targetScore || '—'}</b></div>
-              <div className="spread"><span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>距考研</span><span className="badge warning">{ctx.days} 天</span></div>
+              <div className="spread"><span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>距考研</span><span className={`badge ${ctx.days == null ? 'neutral' : 'warning'}`}>{ctx.days == null ? '未设置' : `${ctx.days} 天`}</span></div>
               <div className="hr" />
               <div className="spread"><span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>错题 / 单词 / 卡片</span><b style={{ fontSize: 12.5 }}>{notebook.length} / {words.length} / {cards.length}</b></div>
             </div>

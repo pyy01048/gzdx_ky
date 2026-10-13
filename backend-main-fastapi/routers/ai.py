@@ -385,8 +385,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             except Exception:
                 kb_hit_count = 0
         # observe 模式：meta 事件带上检索门控判定，便于灰度观测 would_abstain 率
-        yield json.dumps({"type": "meta", "rag": rag_used, "retrieval_gate": gate_meta},
-                         ensure_ascii=False)
+        # V12 修复：SSE 必须按 "data: {json}\n\n" 逐事件输出，前端按行切分。
+        # 旧实现 yield 紧凑 JSON 无换行 → 前端 indexOf('\n') 永远 -1 → 流永不渲染，
+        # AI 助手卡"生成中…"。
+        yield f"data: {json.dumps({'type': 'meta', 'rag': rag_used, 'retrieval_gate': gate_meta}, ensure_ascii=False)}\n\n"
         try:
             async for ev in ai.chat_stream(
                 messages,
@@ -395,9 +397,9 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 kb_hit_count=kb_hit_count,
                 force_local=request.force_local,
             ):
-                yield json.dumps(ev, ensure_ascii=False)
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         except Exception as e:
-            yield json.dumps({"type": "error", "message": f"AI 对话失败：{str(e)}"}, ensure_ascii=False)
+            yield f"data: {json.dumps({'type': 'error', 'message': f'AI 对话失败：{str(e)}'}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_gen(),

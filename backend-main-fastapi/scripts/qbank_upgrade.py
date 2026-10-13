@@ -24,6 +24,7 @@ from database import SessionLocal  # noqa: E402
 from models import QuizQuestion  # noqa: E402
 from services import qbank_builder  # noqa: E402
 from services.model_gateway import get_gateway  # noqa: E402
+from services.quiz_content_gate import admit as gate_admit  # noqa: E402
 
 DUP_THRESHOLD = 0.86       # 题干编辑距离相似度 ≥ 此值判重复
 VARIANT_THRESHOLD = 0.75   # ≥ 此值聚为变式组
@@ -169,7 +170,17 @@ def generate_variants(db, n: int) -> dict:
             content = data.get("content") or ""
             if len(content) < 6:
                 raise ValueError("模型输出无有效变式题干")
-            h = qbank_builder.content_hash(content)
+            variant_src = "ai:variant:" + str(q.id)
+            # 入库前内容闸门（docx/16 §1.5-H）：变式题由模型产出，此前
+            # 直接 db.add，是两条未接闸写入路径之一。
+            ok, reason = gate_admit(
+                content,
+                options=data.get("options") or [],
+                answer=data.get("answer"),
+                source=variant_src,
+            )
+            if not ok:
+                raise ValueError(f"闸门拦截：{reason}")
             exists = db.query(QuizQuestion).filter(
                 QuizQuestion.content.like(content[:40] + "%")
             ).first()
@@ -184,16 +195,17 @@ def generate_variants(db, n: int) -> dict:
                 chapter=q.chapter,
                 knowledge_point=data.get("knowledge_point") or q.knowledge_point or "",
                 difficulty=q.difficulty,
-                source="ai:variant:" + str(q.id),
+                source=variant_src,
                 question_type=q.question_type or "single",
                 ai_generated=True,
                 verified=False,
                 variant_group=q.variant_group,
             ))
+            db.commit()
             created += 1
         except Exception as e:
+            db.rollback()
             failed.append({"id": q.id, "err": str(e)[:120]})
-        db.commit()
 
     return {"generated": created, "failed": failed}
 

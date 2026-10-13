@@ -78,6 +78,22 @@ function getAppPassword() {
 }
 
 /**
+ * 浏览器自己发起的字节流地址（iframe / 新窗口 / a[download]）。
+ * 这类请求不走 fetch，拿不到 X-App-Password 头，所以认证启用时必须把密码放 query，
+ * 后端 SimpleAuthMiddleware 同时接受 ?password=（utils/auth.py）。
+ */
+export function fileUrl(path, params = {}) {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') q.set(k, String(v))
+  })
+  const pwd = getAppPassword()
+  if (pwd) q.set('password', pwd)
+  const s = q.toString()
+  return `${BASE}${path}${s ? `?${s}` : ''}`
+}
+
+/**
  * 统一请求封装。
  *
  * 健壮性约定（所有下游调用方可依赖）：
@@ -288,6 +304,9 @@ export const documentsApi = {
   knowledgePoints: (id) => request(`/documents/${id}/knowledge-points`),
   chunks: (id) => request(`/documents/${id}/chunks`),
   getContent: (id, limit) => request(`/documents/${id}/content`, { params: { limit } }),
+  // 原文字节流：浏览器直接打开的地址（预览用 inline、下载用 attachment）
+  rawUrl: (id) => fileUrl(`/documents/${id}/raw`),
+  downloadUrl: (id) => fileUrl(`/documents/${id}/download`),
   generateQuiz: (id, body) => request(`/documents/${id}/generate-quiz`, { method: 'POST', body }),
   remove: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
   ocrImage: (formData) => request('/documents/ocr', { method: 'POST', formData }),
@@ -331,6 +350,12 @@ export const netdiskApi = {
   quota: () => request('/netdisk/quota'),
   sync: (path = '/') => request('/netdisk/sync', { method: 'POST', params: { path } }),
   preview: (fileId) => request(`/netdisk/preview/${fileId}`),
+  // 网盘原文取流必须走后端代理：百度 dlink 强制 User-Agent: pan.baidu.com，浏览器直连必 403
+  contentUrl: (fileId, disposition = 'inline') =>
+    fileUrl(`/netdisk/files/${fileId}/content`, { disposition }),
+  // 目录浏览页只有 fs_id，没有本地记录 id，所以后端还有一条按 fs_id 取流的入口
+  contentUrlByFsid: (fsId, disposition = 'inline') =>
+    fileUrl('/netdisk/content', { fs_id: fsId, disposition }),
   classify: () => request('/netdisk/classify', { method: 'POST' }),
   // 网盘文件 → 本地知识库
   ingest: (fsId) => request('/netdisk/ingest', { method: 'POST', body: { fs_id: fsId } }),
@@ -551,6 +576,10 @@ export const qualityApi = {
   latest: (kind) => request('/quality/latest', { params: { kind } }),
   corpus: () => request('/quality/corpus', { timeout: 60000 }),
   treeOverlay: () => request('/quality/tree-overlay', { timeout: 60000 }),
+  // 择校可靠度：专业初试科目 ↔ 知识库语料覆盖（L1 精确口径）
+  majorCoverage: () => request('/quality/major-coverage', { timeout: 60000 }),
+  // 学科词表对齐（只读）：documents.subject 哪些写法在分块侧没有同名值
+  subjectAlignment: () => request('/quality/subject-alignment', { timeout: 60000 }),
 }
 
 /* ---------------- 聚合导出 ---------------- */

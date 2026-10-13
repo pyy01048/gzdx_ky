@@ -77,7 +77,11 @@ export default function KaoyanAssistant() {
   return (
     <div className="ky-page" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
       <h1 style={{ marginBottom: '4px' }}>择校 AI 助手</h1>
-      <p style={{ color: 'var(--ink-3)', marginBottom: '16px' }}>基于 217 所院校分数线（其中 5 所来自官网），智能回答择校问题</p>
+      <p style={{ color: 'var(--ink-3)', marginBottom: '16px' }}>
+        {stats
+          ? `基于本地库 ${stats.school_count} 所院校 / ${stats.major_count} 个专业 / ${stats.scoreline_records} 条分数线记录`
+          : '数据概览加载中…'}
+      </p>
 
       {/* 预设问题 */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>

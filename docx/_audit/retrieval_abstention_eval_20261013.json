@@ -1,0 +1,1846 @@
+{
+  "eval_set": "D:\\平台\\backend-main-fastapi\\scripts\\data\\retrieval_eval_set.json",
+  "db": "D:/tmp/kaoyan_eval_corpus.db",
+  "top_k": 6,
+  "gate_constants": {
+    "mode": "observe",
+    "relevance_threshold": 0.5,
+    "accept_threshold": 0.6,
+    "complex_relevance": 0.35,
+    "complex_accept": 0.45
+  },
+  "arms": {
+    "rerank": {
+      "n_cases": 50,
+      "n_with_results": 50,
+      "n_empty_recall": 0,
+      "score_scale": {
+        "min": 0.0063,
+        "p25": 0.3314,
+        "median": 0.7231,
+        "p75": 65.1372,
+        "p90": 110.8257,
+        "max": 198.6685
+      },
+      "by_subject_median_score": {
+        "信号与系统": 0.3663,
+        "政治": 0.2733,
+        "数字电子技术": 81.2102,
+        "数学": 0.6698,
+        "模拟电子技术": 74.8492,
+        "电路": 0.2925,
+        "英语": 0.438,
+        "计算机学科专业基础408": 0.6007,
+        "通信原理": 0.2566
+      },
+      "decision_bands": {
+        "below_relevance_走retry": {
+          "n": 19,
+          "gold_n": 14,
+          "non_gold_n": 5
+        },
+        "abstain带_relevance<=s<accept": {
+          "n": 4,
+          "gold_n": 4,
+          "non_gold_n": 0
+        },
+        "above_accept_放行": {
+          "n": 27,
+          "gold_n": 14,
+          "non_gold_n": 13
+        }
+      },
+      "discrimination": {
+        "top1_gold_hit_rate": 0.64,
+        "any_topk_gold_hit_rate": 0.96,
+        "auc_top1_score_vs_gold": 0.5312,
+        "pos_median": 0.5578,
+        "neg_median": 0.808,
+        "n_pos": 32,
+        "n_neg": 18
+      },
+      "threshold_curve": [
+        {
+          "threshold": 0.05,
+          "abstain_rate": 0.02,
+          "false_abstain_n": 1,
+          "false_abstain_rate": 0.0312,
+          "missed_abstain_n": 18,
+          "missed_abstain_rate": 1.0
+        },
+        {
+          "threshold": 0.1,
+          "abstain_rate": 0.02,
+          "false_abstain_n": 1,
+          "false_abstain_rate": 0.0312,
+          "missed_abstain_n": 18,
+          "missed_abstain_rate": 1.0
+        },
+        {
+          "threshold": 0.134,
+          "abstain_rate": 0.04,
+          "false_abstain_n": 1,
+          "false_abstain_rate": 0.0312,
+          "missed_abstain_n": 17,
+          "missed_abstain_rate": 0.9444
+        },
+        {
+          "threshold": 0.15,
+          "abstain_rate": 0.04,
+          "false_abstain_n": 1,
+          "false_abstain_rate": 0.0312,
+          "missed_abstain_n": 17,
+          "missed_abstain_rate": 0.9444
+        },
+        {
+          "threshold": 0.2,
+          "abstain_rate": 0.1,
+          "false_abstain_n": 3,
+          "false_abstain_rate": 0.0938,
+          "missed_abstain_n": 16,
+          "missed_abstain_rate": 0.8889
+        },
+        {
+          "threshold": 0.3,
+          "abstain_rate": 0.2,
+          "false_abstain_n": 7,
+          "false_abstain_rate": 0.2188,
+          "missed_abstain_n": 15,
+          "missed_abstain_rate": 0.8333
+        },
+        {
+          "threshold": 0.4,
+          "abstain_rate": 0.34,
+          "false_abstain_n": 13,
+          "false_abstain_rate": 0.4062,
+          "missed_abstain_n": 14,
+          "missed_abstain_rate": 0.7778
+        },
+        {
+          "threshold": 0.408,
+          "abstain_rate": 0.34,
+          "false_abstain_n": 13,
+          "false_abstain_rate": 0.4062,
+          "missed_abstain_n": 14,
+          "missed_abstain_rate": 0.7778
+        },
+        {
+          "threshold": 0.5,
+          "abstain_rate": 0.38,
+          "false_abstain_n": 14,
+          "false_abstain_rate": 0.4375,
+          "missed_abstain_n": 13,
+          "missed_abstain_rate": 0.7222
+        },
+        {
+          "threshold": 0.558,
+          "abstain_rate": 0.42,
+          "false_abstain_n": 16,
+          "false_abstain_rate": 0.5,
+          "missed_abstain_n": 13,
+          "missed_abstain_rate": 0.7222
+        },
+        {
+          "threshold": 0.6,
+          "abstain_rate": 0.46,
+          "false_abstain_n": 18,
+          "false_abstain_rate": 0.5625,
+          "missed_abstain_n": 13,
+          "missed_abstain_rate": 0.7222
+        },
+        {
+          "threshold": 1.0,
+          "abstain_rate": 0.66,
+          "false_abstain_n": 18,
+          "false_abstain_rate": 0.5625,
+          "missed_abstain_n": 3,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 2.0,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 18,
+          "false_abstain_rate": 0.5625,
+          "missed_abstain_n": 1,
+          "missed_abstain_rate": 0.0556
+        },
+        {
+          "threshold": 5.0,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 18,
+          "false_abstain_rate": 0.5625,
+          "missed_abstain_n": 1,
+          "missed_abstain_rate": 0.0556
+        },
+        {
+          "threshold": 10.0,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 18,
+          "false_abstain_rate": 0.5625,
+          "missed_abstain_n": 1,
+          "missed_abstain_rate": 0.0556
+        },
+        {
+          "threshold": 30.0,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 18,
+          "false_abstain_rate": 0.5625,
+          "missed_abstain_n": 1,
+          "missed_abstain_rate": 0.0556
+        },
+        {
+          "threshold": 70.0,
+          "abstain_rate": 0.8,
+          "false_abstain_n": 23,
+          "false_abstain_rate": 0.7188,
+          "missed_abstain_n": 1,
+          "missed_abstain_rate": 0.0556
+        },
+        {
+          "threshold": 120.0,
+          "abstain_rate": 0.94,
+          "false_abstain_n": 29,
+          "false_abstain_rate": 0.9062,
+          "missed_abstain_n": 0,
+          "missed_abstain_rate": 0.0
+        }
+      ],
+      "current_threshold_effect": {
+        "accept_threshold": 0.6,
+        "would_abstain_n": 23,
+        "would_abstain_rate": 0.46,
+        "false_abstain_among_answerable": 0.5625
+      }
+    },
+    "rrf": {
+      "n_cases": 50,
+      "n_with_results": 50,
+      "n_empty_recall": 0,
+      "score_scale": {
+        "min": 0.0164,
+        "p25": 0.0164,
+        "median": 0.0164,
+        "p75": 36.516,
+        "p90": 67.5156,
+        "max": 99.0164
+      },
+      "by_subject_median_score": {
+        "信号与系统": 0.0164,
+        "政治": 0.0164,
+        "数字电子技术": 38.0161,
+        "数学": 0.0164,
+        "模拟电子技术": 40.5161,
+        "电路": 0.0164,
+        "英语": 0.0164,
+        "计算机学科专业基础408": 0.0164,
+        "通信原理": 0.0164
+      },
+      "decision_bands": {
+        "below_relevance_走retry": {
+          "n": 35,
+          "gold_n": 25,
+          "non_gold_n": 10
+        },
+        "abstain带_relevance<=s<accept": {
+          "n": 0,
+          "gold_n": 0,
+          "non_gold_n": 0
+        },
+        "above_accept_放行": {
+          "n": 15,
+          "gold_n": 13,
+          "non_gold_n": 2
+        }
+      },
+      "discrimination": {
+        "top1_gold_hit_rate": 0.76,
+        "any_topk_gold_hit_rate": 0.98,
+        "auc_top1_score_vs_gold": 0.568,
+        "pos_median": 0.0164,
+        "neg_median": 0.0164,
+        "n_pos": 38,
+        "n_neg": 12
+      },
+      "threshold_curve": [
+        {
+          "threshold": 0.016,
+          "abstain_rate": 0.0,
+          "false_abstain_n": 0,
+          "false_abstain_rate": 0.0,
+          "missed_abstain_n": 12,
+          "missed_abstain_rate": 1.0
+        },
+        {
+          "threshold": 0.05,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 0.1,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 0.15,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 0.2,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 0.3,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 0.4,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 0.5,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 0.6,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 1.0,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 2.0,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 5.0,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 10.0,
+          "abstain_rate": 0.7,
+          "false_abstain_n": 25,
+          "false_abstain_rate": 0.6579,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 30.0,
+          "abstain_rate": 0.72,
+          "false_abstain_n": 26,
+          "false_abstain_rate": 0.6842,
+          "missed_abstain_n": 2,
+          "missed_abstain_rate": 0.1667
+        },
+        {
+          "threshold": 70.0,
+          "abstain_rate": 0.92,
+          "false_abstain_n": 35,
+          "false_abstain_rate": 0.9211,
+          "missed_abstain_n": 1,
+          "missed_abstain_rate": 0.0833
+        },
+        {
+          "threshold": 120.0,
+          "abstain_rate": 1.0,
+          "false_abstain_n": 38,
+          "false_abstain_rate": 1.0,
+          "missed_abstain_n": 0,
+          "missed_abstain_rate": 0.0
+        }
+      ],
+      "current_threshold_effect": {
+        "accept_threshold": 0.6,
+        "would_abstain_n": 35,
+        "would_abstain_rate": 0.7,
+        "false_abstain_among_answerable": 0.6579
+      }
+    }
+  },
+  "verdict": {
+    "auc_by_arm": {
+      "rerank": 0.5312,
+      "rrf": 0.568
+    },
+    "best_auc": 0.568,
+    "min_auc_for_enforce": 0.75,
+    "abstain_band": {
+      "rerank": {
+        "n": 4,
+        "gold_n": 4,
+        "non_gold_n": 0
+      },
+      "rrf": {
+        "n": 0,
+        "gold_n": 0,
+        "non_gold_n": 0
+      }
+    },
+    "can_set_threshold": false,
+    "reason": "两条分数路对 gold 的区分度都接近抛硬币（AUC < 0.75）：rerank 弃权带 4 条（其中可答 4 条）；rrf 弃权带 0 条（其中可答 0 条） —— 阈值切在加法分/名次分上，enforce 要么永不拒答、要么只拒可答题，所以保持 observe；要定档得先把阈值改写到归一化信号上（如学科内分位）"
+  },
+  "cases": {
+    "rerank": [
+      {
+        "id": 1,
+        "query": "TTL门电路 噪声容限 扇出系数",
+        "subject": "数字电子技术",
+        "gold_count": 135,
+        "recall_n": 6,
+        "top1_score": 143.9913,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 2,
+        "query": "卡诺图化简 逻辑函数 最小项",
+        "subject": "数字电子技术",
+        "gold_count": 231,
+        "recall_n": 6,
+        "top1_score": 105.3066,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 3,
+        "query": "D触发器 JK触发器 时序逻辑电路",
+        "subject": "数字电子技术",
+        "gold_count": 167,
+        "recall_n": 6,
+        "top1_score": 158.6178,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 4,
+        "query": "555定时器 多谐振荡器 波形产生",
+        "subject": "数字电子技术",
+        "gold_count": 118,
+        "recall_n": 6,
+        "top1_score": 111.385,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 5,
+        "query": "模数转换 逐次逼近 量化 分辨率",
+        "subject": "数字电子技术",
+        "gold_count": 62,
+        "recall_n": 6,
+        "top1_score": 0.9696,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 6,
+        "query": "格雷码 数制转换 二进制",
+        "subject": "数字电子技术",
+        "gold_count": 192,
+        "recall_n": 6,
+        "top1_score": 54.9357,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 7,
+        "query": "组合逻辑电路 竞争冒险",
+        "subject": "数字电子技术",
+        "gold_count": 188,
+        "recall_n": 6,
+        "top1_score": 1.4607,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 8,
+        "query": "移位寄存器 寄存器 存储单元",
+        "subject": "数字电子技术",
+        "gold_count": 114,
+        "recall_n": 6,
+        "top1_score": 93.5356,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 9,
+        "query": "编码器 译码器 数据选择器",
+        "subject": "数字电子技术",
+        "gold_count": 195,
+        "recall_n": 6,
+        "top1_score": 68.8848,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 10,
+        "query": "计数器 状态转换图 同步计数",
+        "subject": "数字电子技术",
+        "gold_count": 162,
+        "recall_n": 6,
+        "top1_score": 64.0786,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 11,
+        "query": "共射放大电路 静态工作点 Q点",
+        "subject": "模拟电子技术",
+        "gold_count": 122,
+        "recall_n": 6,
+        "top1_score": 109.5665,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 12,
+        "query": "差分放大电路 共模抑制比",
+        "subject": "模拟电子技术",
+        "gold_count": 102,
+        "recall_n": 6,
+        "top1_score": 81.3853,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 13,
+        "query": "负反馈 反馈组态 深度负反馈",
+        "subject": "模拟电子技术",
+        "gold_count": 115,
+        "recall_n": 6,
+        "top1_score": 198.6685,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 14,
+        "query": "集成运放 虚短 虚断",
+        "subject": "模拟电子技术",
+        "gold_count": 100,
+        "recall_n": 6,
+        "top1_score": 110.9656,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 15,
+        "query": "放大电路频率响应 波特图 通频带",
+        "subject": "模拟电子技术",
+        "gold_count": 78,
+        "recall_n": 6,
+        "top1_score": 68.313,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 16,
+        "query": "功率放大 甲乙类 交越失真",
+        "subject": "模拟电子技术",
+        "gold_count": 77,
+        "recall_n": 6,
+        "top1_score": 1.0163,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 17,
+        "query": "直流电源 稳压 整流 滤波",
+        "subject": "模拟电子技术",
+        "gold_count": 112,
+        "recall_n": 6,
+        "top1_score": 89.3385,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 18,
+        "query": "有源滤波 低通滤波器",
+        "subject": "模拟电子技术",
+        "gold_count": 65,
+        "recall_n": 6,
+        "top1_score": 50.3572,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 19,
+        "query": "正弦波振荡 文氏桥 RC振荡",
+        "subject": "模拟电子技术",
+        "gold_count": 61,
+        "recall_n": 6,
+        "top1_score": 0.9696,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 20,
+        "query": "电流源 镜像电流源 恒流源",
+        "subject": "模拟电子技术",
+        "gold_count": 70,
+        "recall_n": 6,
+        "top1_score": 0.4332,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 21,
+        "query": "数列极限 洛必达法则 等价无穷小",
+        "subject": "数学",
+        "gold_count": 147,
+        "recall_n": 6,
+        "top1_score": 0.3491,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 22,
+        "query": "泰勒展开 麦克劳林公式",
+        "subject": "数学",
+        "gold_count": 56,
+        "recall_n": 6,
+        "top1_score": 0.3335,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 23,
+        "query": "中值定理 罗尔定理 拉格朗日",
+        "subject": "数学",
+        "gold_count": 96,
+        "recall_n": 6,
+        "top1_score": 0.1336,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 24,
+        "query": "不定积分 换元积分 分部积分",
+        "subject": "数学",
+        "gold_count": 68,
+        "recall_n": 6,
+        "top1_score": 0.808,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 25,
+        "query": "二重积分 极坐标 交换积分次序",
+        "subject": "数学",
+        "gold_count": 93,
+        "recall_n": 6,
+        "top1_score": 0.8079,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 26,
+        "query": "二阶常系数微分方程 通解 特征方程",
+        "subject": "数学",
+        "gold_count": 130,
+        "recall_n": 6,
+        "top1_score": 0.847,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 27,
+        "query": "行列式 范德蒙行列式 代数余子式",
+        "subject": "数学",
+        "gold_count": 61,
+        "recall_n": 6,
+        "top1_score": 0.5317,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [
+          "below_accept"
+        ],
+        "would_abstain": true
+      },
+      {
+        "id": 28,
+        "query": "特征值 特征向量 二次型 正定",
+        "subject": "数学",
+        "gold_count": 103,
+        "recall_n": 6,
+        "top1_score": 0.8793,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 29,
+        "query": "完形填空 固定搭配 词汇",
+        "subject": "英语",
+        "gold_count": 148,
+        "recall_n": 6,
+        "top1_score": 0.3662,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 30,
+        "query": "阅读理解 主旨题 细节题",
+        "subject": "英语",
+        "gold_count": 251,
+        "recall_n": 6,
+        "top1_score": 0.7105,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 31,
+        "query": "新题型 七选五 匹配",
+        "subject": "英语",
+        "gold_count": 21,
+        "recall_n": 6,
+        "top1_score": 0.1639,
+        "top1_is_gold": false,
+        "any_topk_is_gold": false,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 32,
+        "query": "翻译 长难句 定语从句拆分",
+        "subject": "英语",
+        "gold_count": 289,
+        "recall_n": 6,
+        "top1_score": 0.7356,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 33,
+        "query": "小作文 应用文 书信 通知",
+        "subject": "英语",
+        "gold_count": 71,
+        "recall_n": 6,
+        "top1_score": 0.2956,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 34,
+        "query": "大作文 图表作文 图画作文 模板",
+        "subject": "英语",
+        "gold_count": 22,
+        "recall_n": 6,
+        "top1_score": 0.5098,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [
+          "below_accept"
+        ],
+        "would_abstain": true
+      },
+      {
+        "id": 35,
+        "query": "马克思主义 唯物辩证法 矛盾",
+        "subject": "政治",
+        "gold_count": 62,
+        "recall_n": 6,
+        "top1_score": 0.5839,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [
+          "below_accept"
+        ],
+        "would_abstain": true
+      },
+      {
+        "id": 36,
+        "query": "剩余价值 资本积累 垄断",
+        "subject": "政治",
+        "gold_count": 58,
+        "recall_n": 6,
+        "top1_score": 0.1703,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 37,
+        "query": "认识论 实践 真理",
+        "subject": "政治",
+        "gold_count": 59,
+        "recall_n": 6,
+        "top1_score": 0.3496,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 38,
+        "query": "商品 价值规律 货币",
+        "subject": "政治",
+        "gold_count": 59,
+        "recall_n": 6,
+        "top1_score": 0.197,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 39,
+        "query": "基尔霍夫定律 节点电压法",
+        "subject": "电路",
+        "gold_count": 2,
+        "recall_n": 6,
+        "top1_score": 0.4558,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 40,
+        "query": "戴维南定理 诺顿定理 等效电路",
+        "subject": "电路",
+        "gold_count": 4,
+        "recall_n": 6,
+        "top1_score": 0.3252,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 41,
+        "query": "正弦稳态电路 相量法 阻抗",
+        "subject": "电路",
+        "gold_count": 3,
+        "recall_n": 6,
+        "top1_score": 0.2597,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 42,
+        "query": "一阶电路 暂态 三要素法",
+        "subject": "电路",
+        "gold_count": 1,
+        "recall_n": 6,
+        "top1_score": 0.2599,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 43,
+        "query": "傅里叶变换 频谱 周期信号",
+        "subject": "信号与系统",
+        "gold_count": 2,
+        "recall_n": 1,
+        "top1_score": 0.2799,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 44,
+        "query": "拉普拉斯变换 零极点 收敛域",
+        "subject": "信号与系统",
+        "gold_count": 1,
+        "recall_n": 1,
+        "top1_score": 0.896,
+        "top1_is_gold": false,
+        "any_topk_is_gold": false,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 45,
+        "query": "卷积 冲激响应 线性时不变系统",
+        "subject": "信号与系统",
+        "gold_count": 1,
+        "recall_n": 3,
+        "top1_score": 0.3663,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 46,
+        "query": "香农公式 信道容量 信息论",
+        "subject": "通信原理",
+        "gold_count": 1,
+        "recall_n": 2,
+        "top1_score": 0.3237,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 47,
+        "query": "抽样定理 奈奎斯特 采样",
+        "subject": "通信原理",
+        "gold_count": 1,
+        "recall_n": 1,
+        "top1_score": 0.0063,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 48,
+        "query": "幅度调制 解调 AM 频谱搬移",
+        "subject": "通信原理",
+        "gold_count": 1,
+        "recall_n": 2,
+        "top1_score": 0.2566,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 49,
+        "query": "二叉树 遍历 前序中序后序",
+        "subject": "计算机学科专业基础408",
+        "gold_count": 39,
+        "recall_n": 6,
+        "top1_score": 0.584,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [
+          "below_accept"
+        ],
+        "would_abstain": true
+      },
+      {
+        "id": 50,
+        "query": "进程调度 算法 操作系统 死锁",
+        "subject": "计算机学科专业基础408",
+        "gold_count": 36,
+        "recall_n": 6,
+        "top1_score": 0.6174,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      }
+    ],
+    "rrf": [
+      {
+        "id": 1,
+        "query": "TTL门电路 噪声容限 扇出系数",
+        "subject": "数字电子技术",
+        "gold_count": 135,
+        "recall_n": 6,
+        "top1_score": 97.0152,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 2,
+        "query": "卡诺图化简 逻辑函数 最小项",
+        "subject": "数字电子技术",
+        "gold_count": 231,
+        "recall_n": 6,
+        "top1_score": 75.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 3,
+        "query": "D触发器 JK触发器 时序逻辑电路",
+        "subject": "数字电子技术",
+        "gold_count": 167,
+        "recall_n": 6,
+        "top1_score": 68.0156,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 4,
+        "query": "555定时器 多谐振荡器 波形产生",
+        "subject": "数字电子技术",
+        "gold_count": 118,
+        "recall_n": 6,
+        "top1_score": 40.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 5,
+        "query": "模数转换 逐次逼近 量化 分辨率",
+        "subject": "数字电子技术",
+        "gold_count": 62,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 6,
+        "query": "格雷码 数制转换 二进制",
+        "subject": "数字电子技术",
+        "gold_count": 192,
+        "recall_n": 6,
+        "top1_score": 24.0156,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 7,
+        "query": "组合逻辑电路 竞争冒险",
+        "subject": "数字电子技术",
+        "gold_count": 188,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 8,
+        "query": "移位寄存器 寄存器 存储单元",
+        "subject": "数字电子技术",
+        "gold_count": 114,
+        "recall_n": 6,
+        "top1_score": 63.0159,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 9,
+        "query": "编码器 译码器 数据选择器",
+        "subject": "数字电子技术",
+        "gold_count": 195,
+        "recall_n": 6,
+        "top1_score": 35.0152,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 10,
+        "query": "计数器 状态转换图 同步计数",
+        "subject": "数字电子技术",
+        "gold_count": 162,
+        "recall_n": 6,
+        "top1_score": 36.0159,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 11,
+        "query": "共射放大电路 静态工作点 Q点",
+        "subject": "模拟电子技术",
+        "gold_count": 122,
+        "recall_n": 6,
+        "top1_score": 78.0161,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 12,
+        "query": "差分放大电路 共模抑制比",
+        "subject": "模拟电子技术",
+        "gold_count": 102,
+        "recall_n": 6,
+        "top1_score": 46.0161,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 13,
+        "query": "负反馈 反馈组态 深度负反馈",
+        "subject": "模拟电子技术",
+        "gold_count": 115,
+        "recall_n": 6,
+        "top1_score": 99.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 14,
+        "query": "集成运放 虚短 虚断",
+        "subject": "模拟电子技术",
+        "gold_count": 100,
+        "recall_n": 6,
+        "top1_score": 40.0161,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 15,
+        "query": "放大电路频率响应 波特图 通频带",
+        "subject": "模拟电子技术",
+        "gold_count": 78,
+        "recall_n": 6,
+        "top1_score": 41.0161,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 16,
+        "query": "功率放大 甲乙类 交越失真",
+        "subject": "模拟电子技术",
+        "gold_count": 77,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 17,
+        "query": "直流电源 稳压 整流 滤波",
+        "subject": "模拟电子技术",
+        "gold_count": 112,
+        "recall_n": 6,
+        "top1_score": 60.0156,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 18,
+        "query": "有源滤波 低通滤波器",
+        "subject": "模拟电子技术",
+        "gold_count": 65,
+        "recall_n": 6,
+        "top1_score": 38.0161,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "accept",
+        "reason_codes": [],
+        "would_abstain": false
+      },
+      {
+        "id": 19,
+        "query": "正弦波振荡 文氏桥 RC振荡",
+        "subject": "模拟电子技术",
+        "gold_count": 61,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 20,
+        "query": "电流源 镜像电流源 恒流源",
+        "subject": "模拟电子技术",
+        "gold_count": 70,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 21,
+        "query": "数列极限 洛必达法则 等价无穷小",
+        "subject": "数学",
+        "gold_count": 147,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 22,
+        "query": "泰勒展开 麦克劳林公式",
+        "subject": "数学",
+        "gold_count": 56,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 23,
+        "query": "中值定理 罗尔定理 拉格朗日",
+        "subject": "数学",
+        "gold_count": 96,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 24,
+        "query": "不定积分 换元积分 分部积分",
+        "subject": "数学",
+        "gold_count": 68,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 25,
+        "query": "二重积分 极坐标 交换积分次序",
+        "subject": "数学",
+        "gold_count": 93,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 26,
+        "query": "二阶常系数微分方程 通解 特征方程",
+        "subject": "数学",
+        "gold_count": 130,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 27,
+        "query": "行列式 范德蒙行列式 代数余子式",
+        "subject": "数学",
+        "gold_count": 61,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 28,
+        "query": "特征值 特征向量 二次型 正定",
+        "subject": "数学",
+        "gold_count": 103,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 29,
+        "query": "完形填空 固定搭配 词汇",
+        "subject": "英语",
+        "gold_count": 148,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 30,
+        "query": "阅读理解 主旨题 细节题",
+        "subject": "英语",
+        "gold_count": 251,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 31,
+        "query": "新题型 七选五 匹配",
+        "subject": "英语",
+        "gold_count": 21,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 32,
+        "query": "翻译 长难句 定语从句拆分",
+        "subject": "英语",
+        "gold_count": 289,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 33,
+        "query": "小作文 应用文 书信 通知",
+        "subject": "英语",
+        "gold_count": 71,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 34,
+        "query": "大作文 图表作文 图画作文 模板",
+        "subject": "英语",
+        "gold_count": 22,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 35,
+        "query": "马克思主义 唯物辩证法 矛盾",
+        "subject": "政治",
+        "gold_count": 62,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 36,
+        "query": "剩余价值 资本积累 垄断",
+        "subject": "政治",
+        "gold_count": 58,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 37,
+        "query": "认识论 实践 真理",
+        "subject": "政治",
+        "gold_count": 59,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 38,
+        "query": "商品 价值规律 货币",
+        "subject": "政治",
+        "gold_count": 59,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 39,
+        "query": "基尔霍夫定律 节点电压法",
+        "subject": "电路",
+        "gold_count": 2,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 40,
+        "query": "戴维南定理 诺顿定理 等效电路",
+        "subject": "电路",
+        "gold_count": 4,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 41,
+        "query": "正弦稳态电路 相量法 阻抗",
+        "subject": "电路",
+        "gold_count": 3,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 42,
+        "query": "一阶电路 暂态 三要素法",
+        "subject": "电路",
+        "gold_count": 1,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 43,
+        "query": "傅里叶变换 频谱 周期信号",
+        "subject": "信号与系统",
+        "gold_count": 2,
+        "recall_n": 1,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 44,
+        "query": "拉普拉斯变换 零极点 收敛域",
+        "subject": "信号与系统",
+        "gold_count": 1,
+        "recall_n": 1,
+        "top1_score": 0.0164,
+        "top1_is_gold": false,
+        "any_topk_is_gold": false,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 45,
+        "query": "卷积 冲激响应 线性时不变系统",
+        "subject": "信号与系统",
+        "gold_count": 1,
+        "recall_n": 3,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 46,
+        "query": "香农公式 信道容量 信息论",
+        "subject": "通信原理",
+        "gold_count": 1,
+        "recall_n": 2,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 47,
+        "query": "抽样定理 奈奎斯特 采样",
+        "subject": "通信原理",
+        "gold_count": 1,
+        "recall_n": 1,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 48,
+        "query": "幅度调制 解调 AM 频谱搬移",
+        "subject": "通信原理",
+        "gold_count": 1,
+        "recall_n": 2,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 49,
+        "query": "二叉树 遍历 前序中序后序",
+        "subject": "计算机学科专业基础408",
+        "gold_count": 39,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      },
+      {
+        "id": 50,
+        "query": "进程调度 算法 操作系统 死锁",
+        "subject": "计算机学科专业基础408",
+        "gold_count": 36,
+        "recall_n": 6,
+        "top1_score": 0.0164,
+        "top1_is_gold": true,
+        "any_topk_is_gold": true,
+        "decision": "retry",
+        "reason_codes": [
+          "low_relevance"
+        ],
+        "would_abstain": false
+      }
+    ]
+  }
+}

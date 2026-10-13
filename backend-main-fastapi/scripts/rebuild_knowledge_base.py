@@ -178,7 +178,7 @@ def main() -> int:
                 skipped_binary += 1
                 continue
             try:
-                qs = qbank_builder.extract_questions(content)
+                qs = qbank_builder.extract_questions(content, source_hint=doc.file_name or "")
             except Exception as e:
                 print(f"    [!] {doc.file_name[:40]} 抽取失败: {e}")
                 continue
