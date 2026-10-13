@@ -1,13 +1,13 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 
 import {
   useSubjectConfig,
   refreshSubjectConfig,
   subjectLabel,
 } from '../hooks/useSubjectConfig'
-import Analysis from '../pages/Analysis'
+import SubjectSwitcher from '../components/SubjectSwitcher'
 
 /* ------------------------------------------------------------------ *
  * 科目配置单一来源（hooks/useSubjectConfig）
@@ -16,16 +16,17 @@ import Analysis from '../pages/Analysis'
  * 现在统一由 GET /api/goals/subjects 驱动。这里锁住两条底线：
  *   ① 后端不可达时必须退回静态口径 —— 否则页面变成「没有科目」；
  *   ② 后端返回残缺体时不能覆盖已生效口径 —— 否则一次 500 就把列表清空。
+ *
+ * 注：原「Analysis 页科目选项跟随配置」用例随 Analysis(题目分析) 页删除
+ *     （docx/22 D3/D4）改测新的全局消费方「顶部科目切换器」。
  * ------------------------------------------------------------------ */
 
 const apiMocks = vi.hoisted(() => ({
   goalsSubjects: vi.fn(),
-  analysisLectures: vi.fn(),
 }))
 
 vi.mock('../api/client', () => ({
   goalsApi: { subjects: apiMocks.goalsSubjects },
-  analysisApi: { lectures: apiMocks.analysisLectures },
 }))
 
 const CONFIG = {
@@ -63,7 +64,7 @@ describe('useSubjectConfig', () => {
   beforeEach(() => {
     cleanup()
     apiMocks.goalsSubjects.mockReset()
-    apiMocks.analysisLectures.mockReset().mockResolvedValue({ items: [] })
+    localStorage.clear()
   })
 
   it('接口挂掉时退回静态口径，且 ready=false', async () => {
@@ -98,14 +99,28 @@ describe('useSubjectConfig', () => {
   })
 })
 
-describe('Analysis 页科目选项跟随配置', () => {
-  it('分段器渲染配置里的考试科目，而不是页面写死的旧列表', async () => {
+describe('顶部科目切换器跟随配置', () => {
+  beforeEach(() => { cleanup(); localStorage.clear() })
+
+  it('渲染配置里的考试科目+支撑科目，而不是页面写死的旧列表', async () => {
     apiMocks.goalsSubjects.mockResolvedValue(CONFIG)
     await refreshSubjectConfig(true)
-    render(<Analysis />)
+    render(<SubjectSwitcher />)
     expect(await screen.findByText('数据结构')).toBeInTheDocument()
-    expect(screen.getByLabelText('支撑科目')).toBeInTheDocument()
+    expect(screen.getByText('操作系统')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '全部科目' })).toBeInTheDocument()
     // 写死时代的产物不应再出现
     expect(screen.queryByText('数电')).not.toBeInTheDocument()
+  })
+
+  it('可收起：点「收起」后科目列表折叠，状态写入 localStorage', async () => {
+    apiMocks.goalsSubjects.mockResolvedValue(CONFIG)
+    await refreshSubjectConfig(true)
+    const { container } = render(<SubjectSwitcher />)
+    expect(await screen.findByText('数据结构')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('收起'))
+    expect(container.querySelector('.sb-list')).toBeNull()
+    expect(localStorage.getItem('subject_bar_collapsed')).toBe('1')
   })
 })

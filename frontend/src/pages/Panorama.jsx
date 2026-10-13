@@ -251,7 +251,8 @@ export default function Panorama() {
         </div>
       </div>
 
-      {/* 顶部导航（居中置顶）：与「知识地图」「考频分析」同模块互跳 */}
+      {/* 顶部导航（居中置顶）：与「知识地图」同模块互跳
+          （原「考频分析」入口已随 ExamFrequency 页面下线，docx/22 D3） */}
       <nav className="kb-topnav" aria-label="知识地图模块导航">
         <div className="kb-topnav-lead" />
         <div className="kb-topnav-inner">
@@ -263,13 +264,6 @@ export default function Panorama() {
             知识地图
           </button>
           <span className="kb-navpill active" aria-current="page">知识点全景</span>
-          <button
-            className="kb-navpill"
-            onClick={() => navigate('/exam-frequency')}
-            title="切换到考频分析：知识点 / 章节 / 套卷三维考频排行"
-          >
-            考频分析
-          </button>
         </div>
         <div className="kb-topnav-actions" />
       </nav>

@@ -129,6 +129,14 @@ const useStore = create(
       settings: SEED.settings,
       updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
 
+      /* ---------- 当前科目（全局口径） ----------
+         顶部「科目切换器」(components/SubjectSwitcher.jsx) 写入这里，
+         作为全站页面共享的当前科目；'' 表示「全部科目」。
+         科目清单本身由后端 /api/goals/subjects 提供（hooks/useSubjectConfig），
+         这里只存"选了哪一个"，不重复存清单，避免与设置页的双数据源打架。 */
+      currentSubject: '',
+      setCurrentSubject: (subject) => set({ currentSubject: subject || '' }),
+
       /* ---------- 任务 ---------- */
       tasks: SEED.tasks,
       addTask: (task) => {
@@ -415,6 +423,8 @@ const useStore = create(
       partialize: (state) => ({
         backendOnline: state.backendOnline,
         settings: { ...state.settings, aiProviders: stripApiKeys(state.settings.aiProviders) },
+        // 当前科目是用户显式选择，跨刷新保持（与导航展开/布局偏好同属"设备无关的显式选择"）
+        currentSubject: state.currentSubject,
         tasks: state.tasks,
         notebook: state.notebook,
         pan: state.pan,

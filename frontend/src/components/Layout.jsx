@@ -5,6 +5,7 @@ import { examDeadline, examDaysLeft, resolveExamDate } from '../utils/exam'
 import GlobalAI from './GlobalAI'
 import CommandPalette from './CommandPalette'
 import NoticeUnreadBadge from './NoticeUnreadBadge'
+import SubjectSwitcher from './SubjectSwitcher'
 import { useResolvedTheme } from './UI'
 import { useUiLayout, applyOrder } from '../hooks/useUiLayout'
 import {
@@ -108,8 +109,6 @@ export const NAV_MODULES = [
     items: [
       { to: '/kbmap', label: '知识地图' },
       { to: '/panorama', label: '知识点全景' },
-      { to: '/exam-frequency', label: '考频分析' },
-      { to: '/analysis', label: '题目分析' },
       // 数据质量：识别口径/答疑评测的历史运行与语料体检，知识地图同源的置信层
       { to: '/quality', label: '评测与数据质量' },
     ],
@@ -206,8 +205,6 @@ const CRUMB_MAP = {
   '/quiz': '刷题中心',
   '/quiz-bank': '题库管理',
   '/panorama': '知识点全景',
-  '/exam-frequency': '考频分析',
-  '/analysis': '题目分析',
   '/profile': '学习画像',
   '/error-review': '错题复盘',
   '/notebook': '错题本',
@@ -250,8 +247,7 @@ const RELATED = {
   '/library': ['/kbmap', '/documents', '/quiz'],
   '/quiz': ['/error-review', '/words', '/cards'],
   '/quiz-bank': ['/quiz', '/panorama', '/error-review'],
-  '/panorama': ['/quiz', '/kbmap', '/analysis'],
-  '/exam-frequency': ['/panorama', '/quiz', '/kbmap'],
+  '/panorama': ['/quiz', '/kbmap', '/quality'],
   '/error-review': ['/notebook', '/quiz', '/kbmap'],
   '/notebook': ['/quiz', '/kbmap', '/error-review'],
   '/words': ['/cards', '/quiz', '/error-review'],
@@ -467,6 +463,8 @@ export default function Layout({ children }) {
 
       {/* 主内容 */}
       <main className="main-area" key={location.pathname}>
+        {/* 顶部科目切换器（可收缩）：全站统一科目入口，科目来自后端 /api/goals/subjects */}
+        <SubjectSwitcher />
         <nav className="breadcrumb" aria-label="面包屑">
           <Link to="/">首页</Link>
           {location.pathname !== '/' && (
