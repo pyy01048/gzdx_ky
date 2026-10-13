@@ -90,6 +90,10 @@ vi.mock('../api/kaoyanApi', () => ({
     // 首页「院校公告」栏（NoticeBoard）调用：跨校聚合 + 近期更新概览
     notices: vi.fn().mockResolvedValue({ items: [], stats: { total: 0, school_count: 0, by_type: {} } }),
     noticeUpdates: vi.fn().mockResolvedValue({ days: 7, total_schools: 0, total_notices: 0, schools: [] }),
+    // 首页「今日公告」栏（Dashboard useEffect 调用 kaoyanApi.noticesFeed）。
+    // 0bef498 起 Dashboard 调用该方法，mock 缺失会抛 TypeError 被 ErrorBoundary
+    // 捕获 → 整页降级 → 本用例 5s 超时（存量缺口，此处补齐）。
+    noticesFeed: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 8 }),
     // 全局未读角标：Layout 侧边栏「院校数据中心」模块任何页面都会渲染 NoticeUnreadBadge
     // → useUnreadNotices() 在首屏调用 noticeUnreadStats()。mock 缺失该方法会抛
     // "noticeUnreadStats is not a function" 未捕获异常（vitest 报 unhandled error）。
