@@ -23,12 +23,68 @@ from services.review_scheduler import ReviewScheduler
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
 
+# --------------------------------------------------------------------------- #
+# 来源大类（M0 刷题中心重构）：真题 / 教材题 的**唯一**判定口径。
+#
+# 库里没有 source_kind 列，来源大类由 `source` 字段的前缀决定：
+#   * `真题:<文档名>`    → exam（历年真题）
+#   * `知识库:<文档名>`  → textbook（教材 / 讲义 / 知识库抽取题）
+#   * 其余 / NULL        → custom（ai 变式题、手工录入等）
+# 前端「一页真题、一页教材题」的 Tab 分离即按此过滤，避免两类题混在一个列表里。
+# --------------------------------------------------------------------------- #
+SOURCE_KIND_CHOICES = ("exam", "textbook", "custom")
+_EXAM_PREFIX = "真题:%"
+_TEXTBOOK_PREFIX = "知识库:%"
+
+
+def _source_kind_expr(source_kind: Optional[str]):
+    """返回 source_kind 对应的 SQLAlchemy 过滤表达式；'all'/None 返回 None。
+
+    非法的 source_kind 抛 400（明确失败，不静默返回全部）。
+    """
+    from sqlalchemy import and_, not_, or_
+
+    if not source_kind or str(source_kind).strip().lower() in ("", "all"):
+        return None
+    kind = str(source_kind).strip().lower()
+    if kind not in SOURCE_KIND_CHOICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的 source_kind：{source_kind}；可选 {' | '.join(SOURCE_KIND_CHOICES)}",
+        )
+    if kind == "exam":
+        return QuizQuestion.source.like(_EXAM_PREFIX)
+    if kind == "textbook":
+        return QuizQuestion.source.like(_TEXTBOOK_PREFIX)
+    # custom：既非真题也非教材（含 source 为 NULL 的历史行），不丢数据。
+    # 注意：两个「非」之间必须是 AND——用 OR 会把 exam/textbook 行也放进来。
+    return or_(
+        QuizQuestion.source.is_(None),
+        and_(
+            not_(QuizQuestion.source.like(_EXAM_PREFIX)),
+            not_(QuizQuestion.source.like(_TEXTBOOK_PREFIX)),
+        ),
+    )
+
+
+def _answerable_expr():
+    """「可作答」判定表达式：is_available 为 True 或 NULL（NULL 视为可用，向后兼容）。"""
+    from sqlalchemy import or_
+
+    return or_(QuizQuestion.is_available.is_(True), QuizQuestion.is_available.is_(None))
+
+
 @router.get("/questions")
 async def list_questions(
     subject: Optional[str] = None,
     chapter: Optional[str] = None,
     difficulty: Optional[int] = None,
     source: Optional[str] = None,
+    source_kind: Optional[str] = Query(
+        None,
+        description="来源大类：exam(真题) | textbook(教材/知识库) | custom(自建/ai)；不传=全部。"
+                    "用于「真题 / 教材题」分页隔离",
+    ),
     question_type: Optional[str] = None,
     mode: Optional[str] = None,
     q: Optional[str] = None,
@@ -44,6 +100,10 @@ async def list_questions(
 ):
     """题目列表（支持筛选与刷题模式）。
 
+    统一查询参数（M0 刷题中心）：前端所有刷题入口收敛到同一套参数——
+    ``subject`` / ``source`` / ``source_kind`` / ``answerable`` / ``kp_id`` /
+    ``year`` / ``paper`` / ``mode``。
+
     新增筛选：
     - q：题干/解析关键词模糊搜索（修复题库管理页搜索框无效的问题）
     - year：按真题年份（回填后的 year 列）
@@ -54,41 +114,50 @@ async def list_questions(
       避免碎片/答案串污染刷题；题库管理需排查时可传 true。
     - is_retest：初试/复试分区过滤（M6-3）。None=全部（默认，向后兼容）；False=仅初试
       （含 is_retest 为 NULL 的存量题）；True=仅复试。可与 subject/chapter/kp_id 等叠加（AND）。
+    - source_kind：来源大类 exam/textbook/custom。真题与教材题分页隔离的**唯一**依据。
+
+    返回体在原有 ``{total, page, page_size, mode, questions}`` 基础上**新增**：
+    - ``total_count``：当前筛选（不含 answerable 限制）的可见题数；
+    - ``answerable_count``：其中「可作答」的题数（前端「可作答 N 题」据此显示，保证真实）；
+    - ``source_kind`` / ``subject`` / ``applied``：回显本次生效的筛选（前端「依据明示」）。
+    原有字段语义不变（``total`` 仍为应用 answerable 后的结果总数，分页依赖它）。
     """
     from sqlalchemy import func, or_
     from services.quiz_query import visible_quiz_filter
 
-    query = db.query(QuizQuestion)
+    # —— 基础筛选（不含 answerable 限制，用于口径计数）——
+    base = db.query(QuizQuestion)
     # M1-1f/h：默认排除 OCR 碎片题（碎片/答案串不参与刷题）——统一走共享过滤
-    query = visible_quiz_filter(query, include_junk=include_junk)
-    # 刷题口径（2026-10）：默认只返回「可作答」的题（有答案，is_available=1）。
-    # 无答案题（quality=C）在真题浏览/审计场景才需要，默认不进入刷题池，
-    # 避免用户刷到题后点「看答案」却是空的。
-    if answerable:
-        query = query.filter(or_(QuizQuestion.is_available.is_(True),
-                                 QuizQuestion.is_available.is_(None)))
-    if subject:
-        query = query.filter(QuizQuestion.subject == subject)
+    base = visible_quiz_filter(base, include_junk=include_junk)
+    # 科目严格过滤：空白串一律视为「未指定」，避免前端传空串导致全表裸返回
+    subj_norm = (str(subject).strip() if subject is not None else "")
+    if subj_norm:
+        base = base.filter(QuizQuestion.subject == subj_norm)
     if chapter:
-        query = query.filter(QuizQuestion.chapter == chapter)
+        base = base.filter(QuizQuestion.chapter == chapter)
     if difficulty:
-        query = query.filter(QuizQuestion.difficulty == difficulty)
+        base = base.filter(QuizQuestion.difficulty == difficulty)
     if source:
-        query = query.filter(QuizQuestion.source == source)
+        base = base.filter(QuizQuestion.source == source)
+    sk_expr = _source_kind_expr(source_kind)
+    if sk_expr is not None:
+        base = base.filter(sk_expr)
     # M6-3：初试/复试分区过滤。None=不过滤（向后兼容，行为完全不变）。
     # is_retest 列约定：1/True=复试，0/False=初试；存量题默认 0。
     if is_retest is not None:
         if is_retest:
-            query = query.filter(QuizQuestion.is_retest.is_(True))
+            base = base.filter(QuizQuestion.is_retest.is_(True))
         else:
-            query = query.filter(or_(QuizQuestion.is_retest.is_(False),
-                                     QuizQuestion.is_retest.is_(None)))
+            base = base.filter(or_(QuizQuestion.is_retest.is_(False),
+                                   QuizQuestion.is_retest.is_(None)))
     if question_type:
-        query = query.filter(QuizQuestion.question_type == question_type)
+        base = base.filter(QuizQuestion.question_type == question_type)
     if year:
-        query = query.filter(QuizQuestion.year == year)
+        base = base.filter(QuizQuestion.year == year)
     if paper:
-        query = query.filter(QuizQuestion.paper == paper)
+        base = base.filter(QuizQuestion.paper == paper)
+
+    # kp_id / q 也纳入 base，保证 total_count / answerable_count 与结果集同口径
     if kp_id is not None:
         # M2-3：知识点过滤——经 question_knowledge_links 反查关联的题目 ID 集合。
         # 用 select 构造子查询内联，避免大 IN 列表与 SAWarning；与其余筛选参数可叠加（AND 语义）。
@@ -97,16 +166,27 @@ async def list_questions(
         linked_ids = select(QuestionKnowledgeLink.question_id).where(
             QuestionKnowledgeLink.knowledge_point_id == kp_id
         )
-        query = query.filter(QuizQuestion.id.in_(linked_ids))
+        base = base.filter(QuizQuestion.id.in_(linked_ids))
     if q:
         like = f"%{q.strip()}%"
-        query = query.filter(
+        base = base.filter(
             or_(
                 QuizQuestion.content.like(like),
                 QuizQuestion.analysis.like(like),
                 QuizQuestion.knowledge_point.like(like),
             )
         )
+
+    # —— 口径计数：total_count（可见全量）/ answerable_count（可作答）——
+    total_count = base.count()
+    answerable_count = base.filter(_answerable_expr()).count()
+
+    # —— 应用 answerable 限制，得到实际结果集 query ——
+    # 刷题口径（2026-10）：默认只返回「可作答」的题（有答案，is_available=1）。
+    # 无答案题（quality=C / incomplete）在真题浏览/审计场景才需要，默认不进入刷题池。
+    query = base
+    if answerable:
+        query = query.filter(_answerable_expr())
 
     # 错题强化模式：优先返回错题相关知识点/章节的题目
     weakness_kps = []
@@ -123,7 +203,6 @@ async def list_questions(
         weakness_kps = [kp for kp, _ in weak_rows if kp]
         if weakness_kps:
             # 先取命中薄弱知识点的题目
-            from sqlalchemy import or_
             weak_query = query.filter(
                 or_(
                     QuizQuestion.knowledge_point.in_(weakness_kps),
@@ -156,11 +235,26 @@ async def list_questions(
                 "page": 1,
                 "page_size": page_size,
                 "mode": mode,
+                "total_count": total_count,
+                "answerable_count": answerable_count,
+                "source_kind": source_kind or "all",
+                "subject": subj_norm or None,
+                "applied": _applied_filters(
+                    subject=subj_norm or None, chapter=chapter, source=source,
+                    source_kind=source_kind, answerable=answerable, kp_id=kp_id,
+                    year=year, paper=paper, question_type=question_type, mode=mode,
+                ),
                 "weakness_knowledge_points": weakness_kps,
                 "questions": [_serialize_question(q) for q in questions],
             }
 
     total = query.count()
+
+    applied = _applied_filters(
+        subject=subj_norm or None, chapter=chapter, source=source,
+        source_kind=source_kind, answerable=answerable, kp_id=kp_id,
+        year=year, paper=paper, question_type=question_type, mode=mode,
+    )
 
     # 随机模式
     if mode == "random":
@@ -170,6 +264,11 @@ async def list_questions(
             "page": page,
             "page_size": page_size,
             "mode": mode,
+            "total_count": total_count,
+            "answerable_count": answerable_count,
+            "source_kind": source_kind or "all",
+            "subject": subj_norm or None,
+            "applied": applied,
             "questions": [_serialize_question(q) for q in questions],
         }
 
@@ -192,12 +291,35 @@ async def list_questions(
         "page": page,
         "page_size": page_size,
         "mode": mode,
+        "total_count": total_count,
+        "answerable_count": answerable_count,
+        "source_kind": source_kind or "all",
+        "subject": subj_norm or None,
+        "applied": applied,
         "questions": [_serialize_question(q) for q in questions],
     }
 
 
+def _applied_filters(**kw) -> dict:
+    """归一化「本次生效的筛选」，供前端「依据明示」展示（不暴露内部实现）。"""
+    out: dict = {}
+    for k in ("subject", "chapter", "source", "source_kind", "kp_id",
+              "year", "paper", "question_type", "mode"):
+        v = kw.get(k)
+        if v not in (None, "", 0):
+            out[k] = v
+    if kw.get("answerable") is False:
+        out["answerable"] = False
+    return out
+
+
 def _serialize_question(q):
-    """题目序列化。"""
+    """题目序列化。
+
+    M0 刷题中心：新增 ``answer_type`` / ``quality`` / ``is_available``，供前端
+    区分「可作答客观题 / 仅记忆参考（无选项有答案）/ 不可作答（空题假题）」，避免
+    渲染空白选项按钮。
+    """
     return {
         "id": q.id,
         "content": q.content,
@@ -210,6 +332,9 @@ def _serialize_question(q):
         "difficulty": q.difficulty,
         "source": q.source,
         "question_type": q.question_type,
+        "answer_type": getattr(q, "answer_type", None),
+        "quality": getattr(q, "quality", None),
+        "is_available": getattr(q, "is_available", None),
         "year": getattr(q, "year", None),
         "paper": getattr(q, "paper", None),
         "question_no": getattr(q, "question_no", None),
@@ -418,6 +543,8 @@ async def quiz_frequency(
 @router.get("/papers-index")
 async def papers_index(
     subject: Optional[str] = None,
+    source_kind: Optional[str] = Query(
+        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"),
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题；默认排除，口径同列表"),
     db: Session = Depends(get_db),
 ):
@@ -427,6 +554,7 @@ async def papers_index(
     点击某套卷 → /questions?paper=xxx&mode=sequential 得到题号网格。
     诚实口径：paper 来自 source 文档名回填，question_no 为套卷内录入顺序号。
     题数默认排除 OCR 碎片题（``is_junk=1``）。
+    ``source_kind`` 用于「真题 / 教材题」分页隔离（教材题通常无 paper，默认列表为空属正常）。
     """
     from sqlalchemy import func
     from services.quiz_query import visible_quiz_filter
@@ -442,6 +570,9 @@ async def papers_index(
     ).filter(QuizQuestion.paper.isnot(None))
     if subject:
         query = query.filter(QuizQuestion.subject == subject)
+    sk_expr = _source_kind_expr(source_kind)
+    if sk_expr is not None:
+        query = query.filter(sk_expr)
     rows = query.group_by(QuizQuestion.paper).order_by(func.count(QuizQuestion.id).desc()).all()
 
     # 每份套卷的科目分布（一次查回，避免 N+1）
@@ -451,6 +582,8 @@ async def papers_index(
     ).filter(QuizQuestion.paper.isnot(None))
     if subject:
         subj_query = subj_query.filter(QuizQuestion.subject == subject)
+    if sk_expr is not None:
+        subj_query = subj_query.filter(sk_expr)
     subj_map: dict[str, dict[str, int]] = {}
     for p, s, c in subj_query.group_by(QuizQuestion.paper, QuizQuestion.subject).all():
         subj_map.setdefault(p, {})[s or "未分类"] = c
@@ -475,6 +608,8 @@ async def papers_index(
 
 @router.get("/years")
 async def years_index(
+    source_kind: Optional[str] = Query(
+        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"),
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题；默认排除，口径同列表"),
     db: Session = Depends(get_db),
 ):
@@ -488,15 +623,14 @@ async def years_index(
     from sqlalchemy import func
     from services.quiz_query import visible_quiz_filter
 
-    rows = (
-        visible_quiz_filter(
-            db.query(QuizQuestion.year, QuizQuestion.subject, func.count(QuizQuestion.id)),
-            include_junk=include_junk,
-        )
-        .filter(QuizQuestion.year.isnot(None))
-        .group_by(QuizQuestion.year, QuizQuestion.subject)
-        .all()
-    )
+    yquery = visible_quiz_filter(
+        db.query(QuizQuestion.year, QuizQuestion.subject, func.count(QuizQuestion.id)),
+        include_junk=include_junk,
+    ).filter(QuizQuestion.year.isnot(None))
+    sk_expr = _source_kind_expr(source_kind)
+    if sk_expr is not None:
+        yquery = yquery.filter(sk_expr)
+    rows = yquery.group_by(QuizQuestion.year, QuizQuestion.subject).all()
     by_year: dict[int, dict] = {}
     for year, subject, cnt in rows:
         node = by_year.setdefault(int(year), {"year": int(year), "total": 0, "subjects": {}})
@@ -1316,13 +1450,31 @@ async def quiz_subjects(db: Session = Depends(get_db)):
     但字典未登记"的科目（``unregistered``），并按题目数降序返回，确保不漏数据。
     """
     from services import subject_registry
+    from sqlalchemy import func
 
     data = subject_registry.list_subjects(db)["subjects"]
+
+    # 各科目「可作答」题数（M0）：默认列表只返回可作答题，此处给出同口径计数，
+    # 让前端科目卡片能显示「可作答 N」，与实际能刷的题数一致（避免显示 0 却被引导去练习）。
+    from services.quiz_query import visible_quiz_filter
+
+    avail_rows = (
+        visible_quiz_filter(
+            db.query(QuizQuestion.subject, func.count(QuizQuestion.id)),
+            include_junk=False,
+        )
+        .filter(_answerable_expr())
+        .group_by(QuizQuestion.subject)
+        .all()
+    )
+    answerable_map = {(s or "未分类"): int(c or 0) for s, c in avail_rows}
+
     # 逐项带出 subject/question_count/error_count，保持既有契约
     items = [
         {
             "subject": s["subject"],
             "question_count": s["question_count"],
+            "answerable_count": answerable_map.get(s["subject"], 0),
             "error_count": s["error_count"],
         }
         for s in data
@@ -1331,6 +1483,8 @@ async def quiz_subjects(db: Session = Depends(get_db)):
     items.sort(key=lambda it: (-it["question_count"], it["subject"]))
     return {
         "total": len(items),
+        # 全库可作答题总数（各科目求和）：前端「可作答 N 题」的总数口径
+        "answerable_total": sum(it["answerable_count"] for it in items),
         "items": items,
     }
 
