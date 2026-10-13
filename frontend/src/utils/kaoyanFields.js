@@ -90,6 +90,78 @@ export function needsSourceBadge(kind) {
   return kind === 'line' || kind === 'count'
 }
 
+/**
+ * 归一化「初试/复试考试科目」为结构化数组（V8.0 P0-2）。
+ * ---------------------------------------------------------------------------
+ * 背景：`kaoyan_majors.exam_subjects` 在库内的真实存储形态是**竖线分隔文本**
+ *   `"(302)数学（二） | (204)英语（二） | (857)电子技术基础"`
+ * 而 `/schools/{id}/enrollment-plan` 端点返回的是结构化数组 `[{code, name}]`。
+ *
+ * 历史事故：前端直接 `{m.exam_subjects}` 渲染——遇到对象元素就输出
+ * `[object Object]`；遇到文本形态则整串挤成一个巨大徽标。两种都不对。
+ *
+ * 本函数是前端**唯一**的考试科目归一入口，统一吃下：
+ *   - 竖线/中文分号/换行分隔的字符串
+ *   - `[{code, name}]` 结构化数组
+ *   - 纯字符串数组
+ * 输出统一为 `[{code, name}]`（`code` 为 3 位科目代码，缺失为 null）。
+ *
+ * @param {string|Array} [raw]
+ * @returns {Array<{code: string|null, name: string}>}
+ */
+export function examSubjects(raw) {
+  if (raw == null) return []
+  const CODE_RE = /^[（(]?\s*(\d{3})\s*[)）]?\s*(.*)$/
+
+  const flatten = (value) => {
+    if (value == null) return []
+    if (Array.isArray(value)) return value.flatMap(flatten)
+    if (typeof value === 'object') {
+      const name = String(value.name ?? value.label ?? '').trim()
+      return name ? [name] : []
+    }
+    return String(value).split(/\s*\|\s*/)
+  }
+
+  const seen = new Set()
+  const out = []
+  for (const seg of flatten(raw)) {
+    const text = String(seg).replace(/[；\n]/g, '|')
+    for (const piece of text.split('|')) {
+      const s = piece.trim()
+      if (!s) continue
+      const m = s.match(CODE_RE)
+      const code = m ? m[1] : null
+      const name = (m ? m[2] : s).replace(/^[、·\s]+/, '').trim()
+      if (!name) continue
+      const key = `${code ?? ''}|${name}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ code, name })
+    }
+  }
+  return out
+}
+
+/**
+ * 考试科目 → 纯科目名数组（展示用，已剥掉 3 位科目代码）。
+ * @param {string|Array} [raw]
+ * @returns {string[]}
+ */
+export function examSubjectNames(raw) {
+  return examSubjects(raw).map((s) => s.name)
+}
+
+/**
+ * 考试科目 → 单个展示串（用于列表页紧凑展示）。
+ * @param {string|Array} [raw]
+ * @param {string} [sep=' · ']
+ * @returns {string}
+ */
+export function examSubjectText(raw, sep = ' · ') {
+  return examSubjectNames(raw).join(sep)
+}
+
 /** 趋势分析可选指标（仅暴露可信字段） */
 export const TRUSTED_TREND_METRICS = [
   { value: 'total_line', label: '进面最低分', kind: 'line' },

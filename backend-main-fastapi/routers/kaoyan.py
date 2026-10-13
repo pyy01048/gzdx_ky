@@ -1409,11 +1409,11 @@ def analysis_dashboard(db: Session = Depends(get_db)):
     majors = db.query(KaoyanMajor).all()
     math_agg, english_agg, major2_agg = {}, {}, {}
     for m in majors:
-        subs = m.exam_subjects or []
-        if not isinstance(subs, list):
-            continue
-        for idx, raw in enumerate(subs):
-            s = re.sub(r"^\(?\d{3}\)?\s*", "", str(raw or "")).strip()
+        # 库内 exam_subjects 实为竖线分隔文本 "(302)数学（二） | (204)英语（二） | ..."，
+        # 不能用 isinstance(list) 判断（那会让数学/英语/专业课统计**恒为空**）。
+        # 统一走 _parse_exam_subjects：兼容文本与 JSON 数组两种存储形态。
+        for idx, item in enumerate(_parse_exam_subjects(m.exam_subjects)):
+            s = (item.get("name") or "").strip()
             if not s:
                 continue
             if "数学" in s:
