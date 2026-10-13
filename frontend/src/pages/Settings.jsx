@@ -29,6 +29,46 @@ export default function Settings() {
   const [showShortcuts, setShowShortcuts] = useState(false)
   const fileRef = useRef(null)
 
+  /* ---- 届数 / 初试日期（唯一权威出口是后端 services/exam_calendar）----
+   * 此前这里只有一个裸 <input type="date">，用户要自己算"我要考的届对应哪天"，
+   * 而且后端三处（仪表盘写死 12/21、复习计划按规律推、库里存的值）各说各话。
+   * 现在届数是一等控件：选届 → 后端推官方初试日 → 自动回填并可微调。 */
+  const [cal, setCal] = useState(null)
+  const [calYear, setCalYear] = useState('')
+  const [calSaving, setCalSaving] = useState(false)
+  useEffect(() => {
+    let alive = true
+    goalsApi.examCalendar()
+      .then((d) => {
+        if (!alive) return
+        setCal(d)
+        setCalYear(String(d.exam_year || ''))
+        // 后端是唯一权威，前端日期以它为准（本地设置仅作离线兜底）
+        if (d.exam_date) setForm((f) => ({ ...f, examDate: d.exam_date }))
+      })
+      .catch(() => { /* 后端不可达时保留本地设置，不阻塞页面 */ })
+    return () => { alive = false }
+  }, [])
+
+  const applyExamYear = async (year) => {
+    setCalYear(String(year))
+    setCalSaving(true)
+    try {
+      const d = await goalsApi.updateExamCalendar({ exam_year: Number(year) })
+      setCal(d)
+      setForm((f) => ({ ...f, examDate: d.exam_date }))
+      updateSettings({ ...form, examDate: d.exam_date })
+      toast(`已切换到 ${d.exam_year} 届 · 初试 ${d.exam_date}${d.is_official ? '（教育部公布）' : '（预估）'}`)
+      if (d.total_score_adjusted_from) {
+        toast(`总分目标已按四科之和校正为 ${d.total_score_adjusted_from.new}`, 4000)
+      }
+    } catch (e) {
+      toast(`切换失败：${e?.message || e}`)
+    } finally {
+      setCalSaving(false)
+    }
+  }
+
   /* ---- 后端聚合数据（今日学习时长等）---- */
   const [live, setLive] = useState(null)
   const [liveLoading, setLiveLoading] = useState(true)   /* 批次2-2：实时数据加载态 */
@@ -273,8 +313,43 @@ export default function Settings() {
                 <input className="input" value={form.major} onChange={(e) => setForm({ ...form, major: e.target.value })} placeholder="如：电子信息（0854）" />
               </div>
               <div className="field">
-                <label>考试日期</label>
+                <label>
+                  考研届数
+                  <span style={{ fontWeight: 400, color: 'var(--ink-3)', fontSize: 12 }}>
+                    （{calYear ? `${calYear} 届` : '未配置'} · 指入学年份，初试在上一年 12 月）
+                  </span>
+                </label>
+                <select
+                  className="input"
+                  value={calYear}
+                  disabled={calSaving}
+                  onChange={(e) => applyExamYear(e.target.value)}
+                >
+                  {!calYear && <option value="">未配置</option>}
+                  {(cal?.year_options || []).map((y) => (
+                    <option key={y} value={y}>{y} 届</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>
+                  初试日期
+                  <span style={{ fontWeight: 400, color: 'var(--ink-3)', fontSize: 12 }}>
+                    {cal ? `（${cal.source}${cal.is_official ? '' : ' · 仅供参考，以研招网公告为准'}）` : ''}
+                  </span>
+                </label>
                 <input className="input" type="date" value={form.examDate} onChange={(e) => setForm({ ...form, examDate: e.target.value })} />
+                {cal && (
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 4 }}>
+                    距初试 <b style={{ color: cal.days_left < 0 ? 'var(--ink-3)' : 'var(--red)' }}>
+                      {cal.days_left < 0 ? `已过 ${-cal.days_left} 天` : `${cal.days_left} 天`}
+                    </b>
+                    {cal.signup_hint ? ` · 报名窗口 ${cal.signup_hint}` : ''}
+                    {cal.official_date && cal.official_date !== cal.exam_date ? (
+                      <span style={{ color: 'var(--gold)' }}> · 教育部公布的是 {cal.official_date}</span>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <div className="field">
                 <label>目标分数</label>

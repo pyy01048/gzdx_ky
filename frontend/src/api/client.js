@@ -248,6 +248,9 @@ export const goalsApi = {
   // 备考科目配置（考试口径 + 专业课支撑）
   subjects: () => request('/goals/subjects'),
   updateSubjects: (body) => request('/goals/subjects', { method: 'PUT', body }),
+  // 届数 / 初试日期（唯一权威出口 services/exam_calendar；届可随时调整）
+  examCalendar: () => request('/goals/exam-calendar'),
+  updateExamCalendar: (body) => request('/goals/exam-calendar', { method: 'PUT', body }),
   university: () => request('/goals/university'),
   universitySearch: (params) => request('/goals/university/search', { params }),
   // AI 生成备考策略：后端同步阻塞真实 AI 调用，实测 19.9s~29.4s，需放宽超时

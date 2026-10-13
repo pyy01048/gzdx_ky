@@ -18,36 +18,48 @@ class DashboardService:
 
     @staticmethod
     def get_countdown(db: Session, exam_date: Optional[datetime.date] = None) -> dict:
-        """获取考研倒计时 - 从Goal表读取用户配置"""
+        """获取考研倒计时。
+
+        初试日期与届数**一律走 services.exam_calendar**（唯一权威出口），
+        绝不在这里写死 12/21 —— 此前这里写死、routers/plan.py 按"12 月倒数第二个周六"
+        推导、真库存的是 2027-12-25，三处给出三个答案，用户数的是哪一天都搞不清。
+
+        ``exam_date`` 入参保留为"显式覆盖"（仅当 Goal 未配置时生效），
+        供需要按指定日期预览的调用方使用。
+        """
+        from services import exam_calendar
+
         goal = db.query(Goal).first()
-        if goal and goal.exam_date:
-            exam_date = goal.exam_date
-            university = goal.university
-            major = goal.major
-            total_score_target = goal.total_score_target
-            is_default = False
-        else:
-            # 默认考研日期：12月倒数第二个周末（简化为12月21日）
-            today = datetime.date.today()
-            year = today.year if today.month < 12 else today.year + 1
-            exam_date = exam_date or datetime.date(year, 12, 21)
-            university = None
-            major = None
-            total_score_target = None
-            is_default = True
+        info = exam_calendar.resolve_for_db(goal)
 
-        today = datetime.date.today()
-        days_left = (exam_date - today).days
+        # 显式入参可覆盖（Goal 未配置时）
+        if goal is None and exam_date is not None:
+            if isinstance(exam_date, datetime.datetime):
+                exam_date = exam_date.date()
+            days = (exam_date - datetime.date.today()).days
+            info = {
+                **info,
+                "exam_date": exam_date.isoformat(),
+                "exam_year": exam_calendar.exam_year_of(exam_date),
+                "days_left": days,
+                "is_estimated": False,
+                "source": "调用方显式指定",
+            }
 
+        days_left = info["days_left"]
         return {
             "days": max(0, days_left),
-            "exam_date": exam_date.isoformat(),
-            "university": university,
-            "major": major,
-            "total_score_target": total_score_target,
+            "exam_date": info["exam_date"],
+            "exam_year": info["exam_year"],
+            "is_official": info["is_official"],
+            "source": info["source"],
+            "university": getattr(goal, "university", None),
+            "major": getattr(goal, "major", None),
+            "total_score_target": getattr(goal, "total_score_target", None),
             "is_passed": days_left < 0,
-            # 未配置 Goal 时给出的是 12/21 估算值，前端必须标成「预估」而不是当成官方日期
-            "is_default": is_default,
+            # 未配置 Goal 时给出的是推算值，前端必须标成「预估」而不是当成官方日期
+            "is_default": info["is_estimated"],
+            "signup_hint": info["signup_hint"],
         }
 
     @staticmethod
