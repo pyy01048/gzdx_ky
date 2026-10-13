@@ -10,6 +10,7 @@ from database import get_db
 from models import ErrorRecord, QuizQuestion
 from schemas import ErrorRecordCreate, ErrorRecordUpdate, GenericResponse
 from services.review_scheduler import ReviewScheduler
+from services import review_service  # SM-2 变体排程（AI 分析后的下次复习）
 from services.ocr_service import OCRService
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
 
@@ -79,7 +80,10 @@ async def add_error(error: ErrorRecordCreate, db: Session = Depends(get_db)):
 
     new_error = ErrorRecord(**error.model_dump())
     if not new_error.next_review:
-        new_error.next_review = ReviewScheduler.ebinghaus_next_review(0)
+        # V12 同族修复：新错题首入库按掌握度排首次复习（≥1 天），
+        # 不再用 ebinghaus_next_review(0)（20 分钟后即当日到期）——
+        # 那会让新错题当天全部涌入"今日复习队列"。
+        new_error.next_review = ReviewScheduler.first_review_at(new_error.accuracy)
     db.add(new_error)
     db.commit()
     db.refresh(new_error)
@@ -238,7 +242,16 @@ async def ai_analyze_error(error_id: int, db: Session = Depends(get_db)):
         db_error.analysis = result["analysis"]
         db_error.last_review = utcnow()  # naive UTC，与 DB 列对齐（P0-4）
         db_error.review_count = (db_error.review_count or 0) + 1
-        db_error.next_review = ReviewScheduler.ebinghaus_next_review(db_error.review_count - 1)
+        # V12 同族修复：AI 分析也是一次复习，首次复习后排程同样不能落到
+        # 20 分钟后（ebinghaus_next_review(0)）——否则新错题分析完立刻
+        # 又算"今日到期"。改用 SM-2 变体：首复习 +1 天，之后逐级拉长。
+        _, _, nxt = review_service.next_review_at(
+            review_count=db_error.review_count - 1,
+            ease_factor=2.5,
+            interval=0,
+            result="fuzzy",
+        )
+        db_error.next_review = nxt
         db.commit()
         return {
             "analysis": result["analysis"],
