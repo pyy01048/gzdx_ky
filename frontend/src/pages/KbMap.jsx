@@ -633,48 +633,43 @@ export default function KbMap() {
                     <div
                       key={kp.id}
                       className={`kb3-kp-card ${isSel ? 'is-sel' : ''}`}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openDetail(kp)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          openDetail(kp)
-                        }
-                      }}
-                      title={`查看「${kp.name}」的例题与方法`}
                     >
-                      <div className="kb3-kp-head">
-                        <span className={`kb-dot tone-${kt.cls}`} title={`掌握度 ${kp.mastery}（${kt.label}）`} />
-                        <span className="kb3-kp-name">{kp.name}</span>
-                        <span className={`kb3-kp-pct tone-${kt.cls}`}>
-                          {kt.cls === 'new' ? '未学' : `${kp.mastery}%`}
+                      {/* 选中区：点它 → 右栏展示该知识点的例题 / 方法（可键盘操作） */}
+                      <button
+                        type="button"
+                        className="kb3-kp-select"
+                        onClick={() => openDetail(kp)}
+                        title={`查看「${kp.name}」的例题与方法`}
+                      >
+                        <span className="kb3-kp-head">
+                          <span className={`kb-dot tone-${kt.cls}`} title={`掌握度 ${kp.mastery}（${kt.label}）`} />
+                          <span className="kb3-kp-name">{kp.name}</span>
+                          <span className={`kb3-kp-pct tone-${kt.cls}`}>
+                            {kt.cls === 'new' ? '未学' : `${kp.mastery}%`}
+                          </span>
                         </span>
-                      </div>
-                      <div className="kb3-kp-row">
-                        <span className={`kb-bar tone-${kt.cls}`}>
-                          <i style={{ width: `${Math.min(100, kp.mastery)}%` }} />
+                        <span className="kb3-kp-row">
+                          <span className={`kb-bar tone-${kt.cls}`}>
+                            <i style={{ width: `${Math.min(100, kp.mastery)}%` }} />
+                          </span>
+                          <span className="kb-kp-freq">
+                            {kp.review_count ? `已复习 ${kp.review_count} 次` : '未复习'}
+                          </span>
                         </span>
-                        <span className="kb-kp-freq">
-                          {kp.review_count ? `已复习 ${kp.review_count} 次` : '未复习'}
-                        </span>
-                      </div>
-                      {(kp.question_types || []).length > 0 && (
-                        <div className="kb-kp-tags">
-                          {(kp.question_types || []).slice(0, 4).map((t) => (
-                            <span className="kb-qtype sm" key={t}>{typeLabel(t)}</span>
-                          ))}
-                        </div>
-                      )}
+                        {(kp.question_types || []).length > 0 && (
+                          <span className="kb-kp-tags">
+                            {(kp.question_types || []).slice(0, 4).map((t) => (
+                              <span className="kb-qtype sm" key={t}>{typeLabel(t)}</span>
+                            ))}
+                          </span>
+                        )}
+                      </button>
                       <div className="kb3-kp-foot">
-                        <span className="kb3-kp-hint">点卡片看例题 / 方法</span>
+                        <span className="kb3-kp-hint">点上方看例题 / 方法</span>
                         <button
                           type="button"
                           className="btn primary mini"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            goQuiz(activeChapterData.subject, activeChapterData.chapter.title, kp)
-                          }}
+                          onClick={() => goQuiz(activeChapterData.subject, activeChapterData.chapter.title, kp)}
                           title="按该知识点精确出题"
                         >
                           <Play size={12} /> 开始练习
