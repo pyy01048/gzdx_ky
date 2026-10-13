@@ -158,6 +158,9 @@ export default function Documents() {
   const [snapshot, setSnapshot] = useState({ state: 'idle', md: '', path: '', exists: false })
   const [bulkBusy, setBulkBusy] = useState(false)
   const [scanningRoot, setScanningRoot] = useState(false)
+  // apply 模式会**同步**触发一次全库备份（真库实测 ~639MB / 30-40s），期间请求阻塞。
+  // 用独立标志驱动"正在备份，请勿关闭"提示，避免用户以为卡死而刷新（dry-run 不备份，不提示）。
+  const [scanBacking, setScanBacking] = useState(false)
   const [subjMgrOpen, setSubjMgrOpen] = useState(false)
   const [subjList, setSubjList] = useState([])
   const [subjBusy, setSubjBusy] = useState(false)
@@ -704,8 +707,9 @@ export default function Documents() {
   /* 扫描 knowledge_base 根目录 → 按科目归档（dryRun 预览） */
   const runScanRoot = async (dryRun) => {
     if (!backendOk) return toast('需连接后端扫描')
-    if (!dryRun && !confirm('扫描 knowledge_base 根目录并按科目归档？文件会被移动到 {科目}/ 目录，DB 路径同步更新（断链记录只统计不动）。')) return
+    if (!dryRun && !confirm('扫描 knowledge_base 根目录并按科目归档？文件会被移动到 {科目}/ 目录，DB 路径同步更新（断链记录只统计不动）。\n\n注意：归档前会先做一次全库备份（约 30-40 秒，其间请勿关闭页面）。')) return
     setScanningRoot(true)
+    setScanBacking(!dryRun)
     try {
       const r = await governanceApi.scanRoot(dryRun)
       const msg = r.message || `移动 ${r.moved}，跳过 ${r.skipped}，断链 ${r.broken}，失败 ${r.errors}`
@@ -715,6 +719,7 @@ export default function Documents() {
       toast(`扫描失败：${e.message}`)
     } finally {
       setScanningRoot(false)
+      setScanBacking(false)
     }
   }
 
@@ -827,6 +832,10 @@ export default function Documents() {
         .doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
         /* V3 治理：批量操作栏 / 选择框 / 详情抽屉 / 内联科目维护 */
         .doc-bulkbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+        /* 归档前的备份等待提示（同步全库备份约 30-40s，避免用户误判卡死） */
+        .doc-scanhint { display: flex; align-items: center; gap: 10px; padding: 11px 15px; margin-bottom: 14px; background: var(--accent-soft, var(--surface-2)); border: 1px solid var(--accent); border-radius: var(--r-md); color: var(--ink); font-size: 12.8px; line-height: 1.6; }
+        .doc-scanhint i { flex: none; width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--accent); border-top-color: transparent; animation: doc-spin 0.8s linear infinite; }
+        @keyframes doc-spin { to { transform: rotate(360deg); } }
         .doc-check-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
         .doc-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); flex: none; }
         .doc-card-checked { border-color: var(--accent) !important; box-shadow: 0 0 0 1px var(--accent) inset; }
@@ -880,8 +889,8 @@ export default function Documents() {
           <span className="badge info">{overview.total} 篇 · {overview.chunks} 分块</span>
           <button className="btn ghost" onClick={parseAll} disabled={!backendOk || !overview.pending}>批量解析未入库</button>
           <button className="btn ghost" onClick={() => runScanRoot(false)} disabled={!backendOk || scanningRoot}
-            title="扫描 knowledge_base 根目录，按科目归档到 {科目}/ 并同步 DB 路径（断链只统计）">
-            {scanningRoot ? '扫描中…' : '🗂 扫描归档根目录'}
+            title="扫描 knowledge_base 根目录，按科目归档到 {科目}/ 并同步 DB 路径（断链只统计；归档前先全库备份，约 30-40s）">
+            {scanBacking ? '备份中，请勿关闭…' : (scanningRoot ? '扫描中…' : '🗂 扫描归档根目录')}
           </button>
           <button className="btn ghost" onClick={openSubjectMgr} disabled={!backendOk} title="内联维护科目（增删改）">
             科目维护
@@ -896,6 +905,14 @@ export default function Documents() {
             onChange={(e) => { const fs = e.target.files; if (fs && fs.length > 1) enqueue(fs); else upload(fs && fs[0]) }} />
         </div>
       </div>
+
+      {/* 归档前同步全库备份：明确告知用户别关页面（真库实测约 30-40 秒） */}
+      {scanBacking && (
+        <div className="doc-scanhint" role="status">
+          <i />
+          正在备份数据库（真库约 639 MB，首次约 30-40 秒），完成后自动按科目归档。<b>请勿关闭或刷新页面。</b>
+        </div>
+      )}
 
       {/* 知识库健康：缺口体检 + 一键修复 */}
       <KbHealthPanel />

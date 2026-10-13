@@ -1484,9 +1484,17 @@ async def scan_root(payload: dict | None = None, db: Session = Depends(get_db)):
 
     body: ``{"dry_run": false}``（缺省 false，dry_run=true 时只预览不落盘）。
 
+    ⚠️ 性能/交互：``dry_run=false`` 时**同步**执行一次全库 SQLite 备份
+    （``ensure_write_backup`` → ``services/backup_service.create_backup``，走
+    ``sqlite3 src.backup()``；真库实测约 639 MB、耗时 **30-40 秒**，期间该请求
+    阻塞直至备份完成）。**前端必须给"正在备份，请勿关闭"的等待提示**，避免用户
+    以为卡死而刷新/关闭。本轮有意**不做异步化**：异步会让"备份成功"与"开始写入"
+    之间出现竞态（写入可能先于备份落盘），风险大于收益。
+
     Returns:
         ``{moved, skipped, broken, unclassified, errors, moved_items, ...}``。
-        ``broken`` = file_path 指向知识库内但文件已不存在的文档数（断链，只统计）。
+        ``broken`` = file_path 指向知识库内但文件已不存在的文档数（**逐条实测**
+        ``os.path.isfile``，非抽样估算；明细见 ``broken_items`` 前 50 条）。
     """
     from services.kb_service import ensure_write_backup, scan_root_and_archive
 
