@@ -27,9 +27,14 @@ from sqlalchemy.orm import Session
 from models import Document
 
 # --------------------------------------------------------------------------- #
-# 路径常量（可用环境变量覆盖，默认 D:\平台\knowledge_base）
+# 路径常量（一律经 services.kb_service.resolve_kb_root 推导）
 # --------------------------------------------------------------------------- #
-KB_ROOT = os.environ.get("KB_ROOT", r"D:\平台\knowledge_base")
+# 单一权威解析：KAOYAN_KB_ROOT > 仓库同级 knowledge_base。本模块曾自带
+# ``os.environ.get("KB_ROOT", r"D:\平台\knowledge_base")`` —— 同一个目录两个环境变量、
+# 其中一个是本机绝对路径，换机器即失效、测试也无法注入临时目录。
+from services.kb_service import resolve_kb_root
+
+KB_ROOT = resolve_kb_root()
 INBOX_DIR = os.path.join(KB_ROOT, "inbox")
 DOCUMENTS_DIR = os.path.join(KB_ROOT, "documents")
 CHUNKS_DIR = os.path.join(KB_ROOT, "chunks")

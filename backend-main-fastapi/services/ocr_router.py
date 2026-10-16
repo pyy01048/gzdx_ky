@@ -76,13 +76,16 @@ class LocalGPUOCRBackend:
     label = "本地 GPU OCR（PP-DocLayoutV3 + PaddleOCR-VL-1.5）"
 
     def __init__(self, run_ps1: Optional[str] = None, timeout: float = 300.0):
-        self.run_ps1 = run_ps1 or os.environ.get(
-            "LOCAL_OCR_GPU_RUN_PS1",
-            r"C:\Users\33884\AppData\Roaming\Tencent\Marvis\User\oAN1i2T40ogJFVM4CCm9d72iRr_I\skills\market\local-ocr-gpu\scripts\run.ps1",
-        )
+        # 不写死任何机器专属路径：本机 Marvis/本地 GPU 的安装位置只存在于调用方
+        # 传入的 run_ps1 或环境变量 LOCAL_OCR_GPU_RUN_PS1 里。两者都没给 →
+        # available() 直接 False，路由按既有降级链走下一个后端（而不是每次都报错）。
+        self.run_ps1 = (run_ps1 or os.environ.get("LOCAL_OCR_GPU_RUN_PS1", "")).strip()
         self.timeout = timeout
 
     def available(self) -> bool:
+        # 没配路径就是"这台机器没有这个后端"，直接短路，别让诊断面板把它列成可用候选。
+        if not self.run_ps1:
+            return False
         # run.ps1 会做 AIPC 检测（platform.exe --is-aipc）；这里只做**文件存在性**预检，
         # 真正失败由 recognize 捕获并回退（避免每次路由都跑平台检测拖慢入库）。
         # 注意：存在 ≠ 能跑。实测该脚本存在但执行返回码 1，因此它会「可用但失败」，

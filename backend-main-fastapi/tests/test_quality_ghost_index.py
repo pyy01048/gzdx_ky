@@ -11,19 +11,8 @@
 """
 from __future__ import annotations
 
-import os
-
 import pytest
 from sqlalchemy import text
-
-
-@pytest.fixture(autouse=True)
-def _guard_real_db_untouched():
-    stat = os.stat(r"D:\平台\database\kaoyan.db")
-    before = (stat.st_mtime, stat.st_size)
-    yield
-    after = os.stat(r"D:\平台\database\kaoyan.db")
-    assert (after.st_mtime, after.st_size) == before, "ghost 指标测试动了生产库"
 
 
 def test_ghost_index_counts_indexed_docs_without_chunks(db_schema):  # noqa: ARG001

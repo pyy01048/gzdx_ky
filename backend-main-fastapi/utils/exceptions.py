@@ -21,6 +21,9 @@ class ErrorCode:
     FORBIDDEN = "FORBIDDEN"
     CONFLICT = "CONFLICT"
     RATE_LIMITED = "RATE_LIMITED"
+    #: 依赖不可用导致请求被**主动拒绝**（如写前备份做不成）。
+    #: 503 原先落进 UNKNOWN_ERROR，前端无法区分"服务坏了"和"服务故意挡下"。
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
 
     # AI 相关 2000-2999
     AI_PROVIDER_NOT_FOUND = "AI_PROVIDER_NOT_FOUND"
@@ -93,6 +96,21 @@ def register_exception_handlers(app):
             status_code=exc.status_code,
         )
 
+    # 写前备份不可用 → 503。写点直接调 services.kb_service.ensure_write_backup()
+    # 即可，失败由这里统一转成**可机读**的拒绝响应：没有回滚点的写一律不执行，
+    # 也不许在每个路由里各写一遍 try/except（当年就是这么吞成静默放行的）。
+    from services.kb_service import WriteBackupBlocked
+
+    @app.exception_handler(WriteBackupBlocked)
+    async def write_backup_blocked_handler(request: Request, exc: WriteBackupBlocked):
+        from utils.logger import error as log_error
+        log_error(f"写前备份闸门 [{exc.__class__.__name__}]: {exc} | path={request.url.path}")
+        return create_error_response(
+            code=ErrorCode.SERVICE_UNAVAILABLE,
+            message=str(exc),
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         """HTTP 异常处理"""
@@ -103,6 +121,7 @@ def register_exception_handlers(app):
             404: ErrorCode.RESOURCE_NOT_FOUND,
             409: ErrorCode.CONFLICT,
             429: ErrorCode.RATE_LIMITED,
+            503: ErrorCode.SERVICE_UNAVAILABLE,
         }
         code = code_map.get(exc.status_code, ErrorCode.UNKNOWN_ERROR)
         # 结构化 detail 要原样保留（如网盘返回的

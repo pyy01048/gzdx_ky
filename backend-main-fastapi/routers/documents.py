@@ -1,5 +1,6 @@
 """文档路由。"""
 
+import logging
 import mimetypes
 import os
 import re
@@ -49,8 +50,12 @@ def _safe_filename(filename: str) -> str:
 #: knowledge_base 1484 篇，故白名单就列这两个；不把整个项目根放进来，
 #: 免得 kaoyan.db / 模型权重这类文件有机会被这个端点读出去。
 #: 测试通过 monkeypatch 本常量换成临时目录。
+#: KB 根走 resolve_kb_root() 而不是自行拼 ``../knowledge_base``：入库写哪儿，
+#: 预览白名单就得允许哪儿，否则把知识库放到别的盘后文件能入库却读不出来。
+from services.kb_service import resolve_kb_root
+
 LOCAL_FILE_ROOTS = [os.path.realpath(BASE_DIR)]
-_KB_ROOT = os.path.realpath(os.path.join(BASE_DIR, os.pardir, "knowledge_base"))
+_KB_ROOT = os.path.realpath(resolve_kb_root())
 if os.path.isdir(_KB_ROOT):
     LOCAL_FILE_ROOTS.append(_KB_ROOT)
 
@@ -204,6 +209,7 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
 
 
 @router.get("")
+# 参数按依赖顺序（无默认值的必须在前）；新增参数一律给默认值。
 async def list_documents(
     subject: str = None,
     doc_type: str = None,
@@ -211,6 +217,7 @@ async def list_documents(
     stage: str = None,
     content_type: str = None,
     subject_source: str = None,
+    include_junk: bool = False,
     db: Session = Depends(get_db),
 ):
     """文档列表（可按学科 / 资料层级 / 是否扫描件 / 备考阶段 / 内容性质 / 来源过滤）。
@@ -219,8 +226,13 @@ async def list_documents(
       - stage        : 初试 / 复试
       - content_type : 知识 / 试题 / 单词
       - subject_source : ima（IMA 导入）/ 其它
+
+    ``include_junk=False``（默认）：过滤违禁/废弃文档（红线 3，非 0854 学科），
+    传 True 可专门查看这批待清理文档（治理/审计用）。
     """
     q = db.query(Document)
+    if not include_junk:
+        q = q.filter(Document.is_junk.isnot(True))
     if subject:
         # 词表对齐（docx/16 §1.5-E）：documents.subject 的写法比 knowledge_chunks.subject 多，
         # 「公共课-数学」「数模电」「408」这些在分块侧没有同名值。等值过滤会让选「数学」的人
@@ -1068,8 +1080,12 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
                         "selected": True,
                     })
                     existing_contents.add(_ck)
-            except Exception:
-                pass
+            except Exception as _exc:  # noqa: BLE001
+                # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+                # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+                logging.getLogger(__name__).warning(
+                    '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+                )
             continue
 
     return {
@@ -1395,6 +1411,9 @@ async def bulk_documents(payload: dict, db: Session = Depends(get_db)):
     行为边界（对齐 delete_guard 铁律）：``archive`` / ``mark_delete`` 只移动源文件，
     不物理删除任何数据；``purge`` 是**物理删除**，必须由环境变量
     ``KAOYAN_ALLOW_PHYSICAL_DELETE=1`` 显式开启，否则 403。
+
+    四种 action 一律先做写前备份；备份不可用（如 ``PG_BIN_DIR`` 未配、PG 未启动）
+    直接 **503 SERVICE_UNAVAILABLE 拒绝**，不产生「没备份却写进去」的中间态。
     """
     from services.delete_guard import PhysicalDeleteBlocked, require_physical_delete_enabled
     from services.kb_service import (
@@ -1484,12 +1503,17 @@ async def scan_root(payload: dict | None = None, db: Session = Depends(get_db)):
 
     body: ``{"dry_run": false}``（缺省 false，dry_run=true 时只预览不落盘）。
 
-    ⚠️ 性能/交互：``dry_run=false`` 时**同步**执行一次全库 SQLite 备份
-    （``ensure_write_backup`` → ``services/backup_service.create_backup``，走
-    ``sqlite3 src.backup()``；真库实测约 639 MB、耗时 **30-40 秒**，期间该请求
-    阻塞直至备份完成）。**前端必须给"正在备份，请勿关闭"的等待提示**，避免用户
-    以为卡死而刷新/关闭。本轮有意**不做异步化**：异步会让"备份成功"与"开始写入"
-    之间出现竞态（写入可能先于备份落盘），风险大于收益。
+    ⚠️ 性能/交互：``dry_run=false`` 时**同步**执行一次全库备份
+    （``ensure_write_backup`` → ``services/backup_service.create_backup``，按后端分派：
+    PG 走 ``pg_dump --format=custom``，SQLite 走 ``sqlite3 src.backup()``）。实测耗时
+    与**数据量**成正比：当前空库（仅 77 张表的 schema）约 **0.5–0.6 秒 / 0.48 MB**，
+    满库（约 639 MB）时预计回到数十秒量级。**前端必须给"正在备份，请勿关闭"的等待
+    提示**，避免用户以为卡死而刷新/关闭。本轮有意**不做异步化**：异步会让"备份成功"
+    与"开始写入"之间出现竞态（写入可能先于备份落盘），风险大于收益。
+
+    备份不可用（缺 ``pg_dump``、PG 未启动、产物未过完整性校验…）时**整个请求以
+    503 SERVICE_UNAVAILABLE 拒绝**，不落一行盘 —— 批量归档会移动真实文件，没有回滚点
+    就不能动。
 
     Returns:
         ``{moved, skipped, broken, unclassified, errors, moved_items, ...}``。
@@ -1588,7 +1612,7 @@ async def repair_document_file_paths(dry_run: bool = True, db: Session = Depends
     - ``dry_run=true``（**默认**）：只读，返回 ``old → new`` 计划与
       ``recoverable / not_found``，**不写库**。用户先看计划再决定。
     - ``dry_run=false``：先 ``ensure_write_backup()`` 做一次全库备份
-      （与 archive / bulk / scan-root 同一红线，实测约 30-40s），再写库提交。
+      （与 archive / bulk / scan-root 同一红线，**备份失败即 503 拒绝**），再写库提交。
 
     匹配逻辑复用 ``services/kb_pipeline`` 的同一份索引与文件名回退规则，
     计划与执行结果一致；``repair_file_paths()`` 既有语义不变，只是索引更完整。

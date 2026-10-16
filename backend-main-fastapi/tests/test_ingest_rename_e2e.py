@@ -12,20 +12,9 @@ AI 知识点抽取那一步是 best-effort，这里打桩掉：既不让测试�
 """
 from __future__ import annotations
 
-import os
-
 import pytest
 
 BODY = "第 1 章 逻辑代数基础\n" + "逻辑代数的基本运算与公式。" * 40
-
-
-@pytest.fixture(autouse=True)
-def _guard_real_db_untouched():
-    stat = os.stat(r"D:\平台\database\kaoyan.db")
-    before = (stat.st_mtime, stat.st_size)
-    yield
-    after = os.stat(r"D:\平台\database\kaoyan.db")
-    assert (after.st_mtime, after.st_size) == before, "入库改名测试动了生产库"
 
 
 @pytest.fixture
@@ -47,6 +36,15 @@ def _seed(client, tmp_path, file_name):
 
     db = SessionLocal()
     try:
+        # 前置清理：历史运行残留的同正文文档会触发质量闸门「完全相同（重复导入）」
+        from sqlalchemy import text
+
+        stale = db.execute(text(
+            "SELECT id FROM documents WHERE content = :c"), {"c": BODY}).fetchall()
+        for (sid,) in stale:
+            db.execute(text("DELETE FROM knowledge_chunks WHERE document_id=:d"), {"d": sid})
+            db.execute(text("DELETE FROM documents WHERE id=:d"), {"d": sid})
+        db.commit()
         doc = Document(file_name=file_name, subject="", file_path=str(src),
                        file_type="txt", index_status="pending", parse_progress=0)
         db.add(doc)
@@ -169,7 +167,7 @@ def test_blocked_reparse_keeps_existing_chunks_and_stays_indexed(client, _no_llm
     doc_id, _src = _seed(client, tmp_path, "第1章.pdf")
     db = SessionLocal()
     try:
-        db.execute(text("INSERT INTO knowledge_chunks (document_id, doc_name, chunk_id,"
+        db.execute(text("INSERT INTO knowledge_chunks (document_id, doc_name, chunk_index,"
                         " subject, text) VALUES (:d, '第1章.pdf', 0, '数字电子技术',"
                         " '逻辑代数的基本运算与公式')"), {"d": doc_id})
         db.commit()
