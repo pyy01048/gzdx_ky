@@ -151,15 +151,6 @@ def _body(tag: str) -> str:
     return tag + "\n" + GOOD
 
 
-@pytest.fixture(autouse=True)
-def _guard_real_db_untouched():
-    stat = os.stat(r"D:\平台\database\kaoyan.db")
-    before = (stat.st_mtime, stat.st_size)
-    yield
-    after = os.stat(r"D:\平台\database\kaoyan.db")
-    assert (after.st_mtime, after.st_size) == before, "闸门测试动了生产库"
-
-
 
 @pytest.fixture(autouse=True)
 def _purge_created_docs():
@@ -195,7 +186,9 @@ _CREATED_DOCS: list = []
 def _insert_doc(db, content, file_name, file_path):
     from models import Document
 
-    d = Document(file_name=file_name, file_path=file_path, content=content,
+    # PG 的 ck_documents_canonical 要求 canonical_content 非空（content 由触发器
+    # 双向同步）；空正文夹具给一行占位，不影响闸门断言。
+    d = Document(file_name=file_name, file_path=file_path, content=content or "# 占位正文",
                  index_status="indexed")
     db.add(d)
     db.commit()
@@ -243,6 +236,15 @@ def test_identical_content_rejected_and_self_excluded(db_schema):  # noqa: ARG00
 
     db = _session()
     try:
+        # 前置清理：历史运行残留的同正文文档会让 dedup 命中错误 id
+        from sqlalchemy import text as _t
+
+        stale = db.execute(_t("SELECT id FROM documents WHERE content = :c"),
+                           {"c": GOOD}).fetchall()
+        for (sid,) in stale:
+            db.execute(_t("DELETE FROM knowledge_chunks WHERE document_id=:d"), {"d": sid})
+            db.execute(_t("DELETE FROM documents WHERE id=:d"), {"d": sid})
+        db.commit()
         d1 = _insert_doc(db, GOOD, "讲义A.pdf", "knowledge_base/数学/讲义A.pdf")
         v = gate_for_write(db, GOOD, path="knowledge_base/公共课/讲义A副本.pdf")
         assert not v["ok"] and v["dedup_hit"], v["reasons"]

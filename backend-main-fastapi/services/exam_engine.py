@@ -2,9 +2,15 @@
 """
 A7 真题双引擎（services/exam_engine.py）
 ========================================
-将 D:\\真题（公共课）\\专有答疑模型\\index.pkl（2-gram 字符倒排，2712 题）直接挂进
-FastAPI 进程（lru 单例，避免 HTTP 往返），作为检索第 4 路 lane 与现有三路
+把真题 2-gram 字符倒排索引（``index.pkl``，2712 题）直接挂进 FastAPI 进程
+（lru 单例，避免 HTTP 往返），作为检索第 4 路 lane 与现有三路
 （chunks/points/documents）RRF 融合。
+
+索引位置**不写死任何机器专属路径**，解析顺序见 :func:`resolve_index_file`：
+``KAOYAN_EXAM_INDEX``（指向 pkl 文件）> ``KAOYAN_EXAM_DIR``（目录下的 index.pkl）
+> 仓库内 ``backend-main-fastapi/data/exam_index/index.pkl``。
+都没命中时索引退化为**空**（``loaded=False``，``retrieve`` 返回 ``[]``），
+第 4 路自动缺席，三路检索照常工作 —— 缺数据不该让整个检索挂掉。
 
 四阶段检索（与 qa_engine.py 同口径，代码自研重写）：
   ① NFKC 归一 + 去空白 + 小写（构建与查询同口径）
@@ -25,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import pickle
 import re
 import unicodedata
@@ -37,7 +44,29 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 # 路径与常量（qa_engine 同口径）
 # --------------------------------------------------------------------------- #
-INDEX_FILE = Path(r"D:\真题（公共课）\专有答疑模型\index.pkl")
+INDEX_FILE_ENV = "KAOYAN_EXAM_INDEX"
+INDEX_DIR_ENV = "KAOYAN_EXAM_DIR"
+#: 仓库内的默认落位（``data/`` 已被 .gitignore 忽略，属于本机资产，不入库）。
+_DEFAULT_INDEX_DIR = Path(__file__).resolve().parent.parent / "data" / "exam_index"
+
+
+def resolve_index_file() -> Optional[Path]:
+    """解析真题索引文件；**找不到就返回 None**，由调用方退化成空索引。
+
+    历史缺陷：这里曾写死 ``D:\\真题（公共课）\\专有答疑模型\\index.pkl``。换台机器
+    （或换目录）后第 4 路检索直接抛 FileNotFoundError，而它藏在检索链路里，
+    表现是"搜索偶发 500"，排查成本极高。
+    """
+    raw = (os.environ.get(INDEX_FILE_ENV) or "").strip()
+    if raw:
+        p = Path(raw).expanduser()
+        return p if p.is_file() else None
+    cands: list[Path] = []
+    d_raw = (os.environ.get(INDEX_DIR_ENV) or "").strip()
+    if d_raw:
+        cands.append(Path(d_raw).expanduser() / "index.pkl")
+    cands.append(_DEFAULT_INDEX_DIR / "index.pkl")
+    return next((p for p in cands if p.is_file()), None)
 
 SUBJECTS = ["math2", "english1", "english2", "politics"]
 SUBJECT_ALIAS = {
@@ -120,11 +149,23 @@ def detect_subject(query: str) -> Optional[str]:
 # 真题索引
 # --------------------------------------------------------------------------- #
 class ExamIndex:
-    """2-gram 真题索引（直接加载 index.pkl，零第三方依赖）。"""
+    """2-gram 真题索引（直接加载 index.pkl，零第三方依赖）。
 
-    def __init__(self, index_file: Path = INDEX_FILE):
-        self.index_file = index_file
-        idx = pickle.loads(index_file.read_bytes())
+    ``index_file=None`` 时走 :func:`resolve_index_file`；解析不到（或文件已不存在）
+    则退化成空索引而不是抛异常 —— 这一路藏在检索链路里，让它崩等于让搜索 500。
+    """
+
+    def __init__(self, index_file: Optional[Path] = None):
+        self.index_file = resolve_index_file() if index_file is None else index_file
+        raw = None
+        if self.index_file is not None and self.index_file.is_file():
+            raw = pickle.loads(self.index_file.read_bytes())
+        if raw is None:
+            self._load_empty()
+            return
+
+        idx = raw
+        self.loaded = True
         self.docs: List[Dict[str, Any]] = idx["docs"]
         self.doc_grams: List[set] = idx["doc_grams"]
         self.postings: Dict[str, list] = idx["postings"]
@@ -139,6 +180,23 @@ class ExamIndex:
         self.doc_len = [len(g) for g in self.doc_grams]
         self.avg_doc_len = sum(self.doc_len) / max(1, self.n_docs)
         logger.info("真题索引加载完成：%d 题，postings %d 项", self.n_docs, len(self.postings))
+
+    def _load_empty(self) -> None:
+        """缺 index.pkl 时的退化态：结构齐全但零题，``retrieve`` 自然返回空。"""
+        self.loaded = False
+        self.docs = []
+        self.doc_grams = []
+        self.postings = {}
+        self.total = 0
+        self.n_docs = 0
+        self.idf = {}
+        self.doc_len = []
+        self.avg_doc_len = 0.0
+        logger.warning(
+            "真题索引缺失，第 4 路检索缺席。期望位置：%s（文件）/ %s（目录）/ %s；"
+            "构建好 index.pkl 后用 KAOYAN_EXAM_INDEX 指过来即可。",
+            INDEX_FILE_ENV, INDEX_DIR_ENV, _DEFAULT_INDEX_DIR / "index.pkl",
+        )
 
     # ---- 工具 ----
     def _q(self, doc_id: int) -> Dict[str, Any]:

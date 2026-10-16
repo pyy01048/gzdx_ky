@@ -343,6 +343,12 @@ async def confirm(payload: ConfirmRequest, db: Session = Depends(get_db)):
             found[did], existing_hashes, existing_by_len, existing_lengths
         )
 
+    # 写前备份：批量入库后要清理错入库的题，只能靠物理删除（历史上就因判重缺陷
+    # 误删过 158 条真题）。留一个回滚点，比事后删干净安全得多。备份做不成即 503 拒绝。
+    from services.kb_service import ensure_write_backup
+
+    ensure_write_backup()
+
     inserted = 0
     skipped_existing = 0
     out_of_range = 0

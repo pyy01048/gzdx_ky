@@ -31,17 +31,46 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 MAX_DOWNLOAD_BYTES = int(os.getenv("NETDISK_MAX_DOWNLOAD_MB", "200")) * 1024 * 1024
 
 
+#: 百度网盘「授权/鉴权」类 errno —— 应映射为 401，前端据此引导重新授权。
+_AUTH_ERRNOS = frozenset({-6, -10, 110, 111})
+
+#: 百度网盘「资源不存在/不可访问」类 errno —— 应映射为 404，而不是 502。
+#: 实测：file 记录存在但网盘侧已删除/是目录时，上游返回 errno=-9，
+#: 原先统一落进 502 分支 → 前端只能显示"服务器错误"，
+#: 用户以为后端挂了，实则是"这个文件在网盘上没了"。
+_NOT_FOUND_ERRNOS = frozenset({-9, -7, 12, 31066})
+
+
 def _netdisk_http_error(e: Exception) -> HTTPException:
-    """把网盘异常翻译成带人话提示的 HTTP 错误。"""
+    """把网盘异常翻译成带人话提示的 HTTP 错误。
+
+    映射原则：**按"调用方该做什么"定状态码**，而不是按"上游返回了什么"。
+      * 授权失效 → 401 + action=reauthorize（前端跳授权页）
+      * 资源不存在 → 404（前端显示"文件不存在"）
+      * 其余上游错误 → 502（确实是网关式失败）
+    """
     if isinstance(e, NetdiskAuthError):
         return HTTPException(
             status_code=401,
             detail={"message": e.errmsg, "errno": e.errno, "action": "reauthorize"},
         )
     if isinstance(e, NetdiskError):
+        errno = getattr(e, "errno", None)
+        if errno in _AUTH_ERRNOS:
+            return HTTPException(
+                status_code=401,
+                detail={"message": e.errmsg, "errno": errno, "action": "reauthorize"},
+            )
+        if errno in _NOT_FOUND_ERRNOS:
+            return HTTPException(
+                status_code=404,
+                detail={"message": e.errmsg, "errno": errno,
+                        "request_id": getattr(e, "request_id", "")},
+            )
         return HTTPException(
             status_code=502,
-            detail={"message": e.errmsg, "errno": e.errno, "request_id": e.request_id},
+            detail={"message": e.errmsg, "errno": errno,
+                    "request_id": getattr(e, "request_id", "")},
         )
     return HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
@@ -698,7 +727,15 @@ async def ingest_netdisk_file(file_id: int, db: Session = Depends(get_db)):
 
 @router.post("/ingest-all")
 async def ingest_all_netdisk(db: Session = Depends(get_db)):
-    """批量将网盘文件（支持的类型）下载并入库到本地知识库。"""
+    """批量将网盘文件（支持的类型）下载并入库到本地知识库。
+
+    写前备份是**整批一次**（不是每个文件一次）：这批操作会新建文档、切分块，
+    重新解析时还会删旧块，是整个平台 blast radius 最大的一条路径。备份做不成
+    就直接 503 拒绝，绝不出现「下了一半、写了一半、没有回滚点」的状态。
+    """
+    from services.kb_service import ensure_write_backup
+
+    ensure_write_backup()
     supported = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt", ".md"}
     files = db.query(NetdiskFile).all()
     results = []
@@ -762,8 +799,9 @@ def _serialize_config(cfg: PlatformConfig) -> dict:
 @router.get("/platform-configs")
 async def list_platform_configs(db: Session = Depends(get_db)):
     """获取所有平台配置。"""
-    configs = db.query(PlatformConfig).all()
-    # 以 platform_name 为键返回
+    # 网盘页面只展示真正支持的网盘平台；内部服务不得伪装成网盘。
+    allowed = {"baidu_netdisk", "quark_netdisk"}
+    configs = db.query(PlatformConfig).filter(PlatformConfig.platform_name.in_(allowed)).all()
     result = {}
     for cfg in configs:
         key = cfg.platform_name
@@ -776,15 +814,16 @@ async def list_platform_configs(db: Session = Depends(get_db)):
 @router.get("/platform-config/{platform}")
 async def get_platform_config(platform: str, db: Session = Depends(get_db)):
     """获取指定平台配置。"""
-    name = _PLATFORM_MAP.get(platform, platform)
-    cfg = (
-        db.query(PlatformConfig)
-        .filter(PlatformConfig.platform_name == name)
-        .first()
-    )
+    if platform not in {"baidu", "quark"}:
+        raise HTTPException(status_code=404, detail="仅支持百度网盘和夸克网盘")
+    name = _PLATFORM_MAP[platform]
+    cfg = db.query(PlatformConfig).filter(PlatformConfig.platform_name == name).first()
     if not cfg:
-        raise HTTPException(status_code=404, detail=f"平台 {platform} 配置不存在")
-    return _serialize_config(cfg)
+        return {"platform": name, "authorized": False, "configured": False, "extra": {}}
+    payload = _serialize_config(cfg)
+    payload["authorized"] = bool(cfg.token) if platform == "baidu" else bool((cfg.extra or {}).get("web_view_url"))
+    payload["configured"] = payload["authorized"]
+    return payload
 
 
 @router.put("/platform-config/{platform}")
@@ -794,7 +833,9 @@ async def update_platform_config(platform: str, body: dict, db: Session = Depend
     请求体可包含标准字段（token/app_key/secret_key/sync_enabled/sync_frequency）
     以及平台专属字段（存入 extra JSON）。
     """
-    name = _PLATFORM_MAP.get(platform, platform)
+    if platform not in {"baidu", "quark"}:
+        raise HTTPException(status_code=404, detail="仅支持百度网盘和夸克网盘")
+    name = _PLATFORM_MAP[platform]
     cfg = (
         db.query(PlatformConfig)
         .filter(PlatformConfig.platform_name == name)
@@ -847,7 +888,9 @@ async def test_platform_connection(platform: str, db: Session = Depends(get_db))
     """
     import httpx
 
-    name = _PLATFORM_MAP.get(platform, platform)
+    if platform not in {"baidu", "quark"}:
+        raise HTTPException(status_code=404, detail="仅支持百度网盘和夸克网盘")
+    name = _PLATFORM_MAP[platform]
     cfg = (
         db.query(PlatformConfig)
         .filter(PlatformConfig.platform_name == name)

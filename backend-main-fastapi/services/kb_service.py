@@ -17,6 +17,7 @@ import collections
 
 from sqlalchemy.orm import Session
 
+from services.dbapi_compat import wrap_conn
 from models import Document, KnowledgeChunk
 from services import search_service
 from services.delete_guard import require_physical_delete_enabled
@@ -436,14 +437,14 @@ def ingest_text(
         # 文档静静进不了 RAG。删 0 行不可能是数据损失，这里按 old_ids 判定。
         if old_ids:
             require_physical_delete_enabled("knowledge_chunks")
-            conn0 = db.connection().connection
+            conn0 = wrap_conn(db.connection().connection)
             placeholders = ','.join('?' * len(old_ids))
             # 先清依赖表引用（向量表 / 错题-知识点关联），避免外键约束失败。
             # 依赖表按 sqlite_master 判定存在才删：knowledge_chunks_vec / _fts 不在 ORM
             # metadata 里，是检索侧 ensure_* 惰性建的；库还没建过它们时本就 0 行可清，
             # 若硬删会抛 "no such table" 把整个重新解析打断。
-            _have = {r[0] for r in conn0.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'")}
+            from services.dbapi_compat import list_tables as _list_tables
+            _have = {r[0] for r in _list_tables(conn0)}
             for _dep in ("knowledge_chunks_vec", "error_knowledge_links",
                          "knowledge_chunks_fts"):
                 if _dep in _have:
@@ -479,7 +480,7 @@ def ingest_text(
     if not chunks:
         return 0
 
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     # 若 FTS 尚未初始化则先全量同步一次（仅首次，避免重复）
     search_service.ensure_fts_table(conn)
 
@@ -649,7 +650,9 @@ def ingest_document(db: Session, doc, *, replace: bool = True) -> int:
 #   · 真库约 1561 篇 file_path 指向 knowledge_base，实测 315 篇文件已不在盘上（断链）。
 #     所以「按科目归档」必须是「**先移动成功 → 再写回 DB file_path**」的原子流程，
 #     失败要回滚文件移动；对断链记录**跳过并计入报告**，绝不因找不到文件整体抛异常。
-#   · 任何真库写入前先 create_backup()（SQLite backup API，禁 cp/copy2）。
+#   · 任何真库写入前先 :func:`ensure_write_backup`（PG 走 pg_dump 自定义格式，
+#     SQLite 走 backup API，禁 cp/copy2）。备份失败即抛 ``WriteBackupBlocked``，
+#     **不允许"警告后继续写"**。
 # --------------------------------------------------------------------------- #
 
 #: 知识库根目录（仓库根/knowledge_base）。可用环境变量覆盖，便于测试注入临时目录。
@@ -664,6 +667,14 @@ TRASH_DIRNAME = "_trash"
 PENDING_SUBJECT = "待分类"
 #: 根目录下不参与归档的保留文件名（仓库自带的说明/状态文件）。
 RESERVED_ROOT_FILES = {"readme.md", "readme.txt", "readme", ".processed_files.json"}
+
+
+class WriteBackupBlocked(RuntimeError):
+    """写前备份不可用 → 真库写入必须中止。
+
+    继承 ``RuntimeError``，与 :class:`services.delete_guard.PhysicalDeleteBlocked`
+    同一约定：调用方即使只按 ``RuntimeError`` 兜底也不会漏接。
+    """
 
 
 def _backend_dir() -> str:
@@ -938,25 +949,30 @@ def soft_delete_source_file(doc, *, kb_root: str | None = None) -> dict:
 
 
 def ensure_write_backup() -> str | None:
-    """真库写入前备份（SQLite backup API）。测试库（temp 目录）跳过，避免污染真实备份。
+    """真库写入**之前**必须有一次可回滚备份；备份做不成就别让写。
+
+    V3.1 起改为「失败即抛」。旧实现 ``print(...) + return None`` 静默放行，
+    于是 PostgreSQL 后端下（备份层只会 SQLite、必然抛 FileNotFoundError）批量导入
+    **全程无备份裸写**——误删/误覆盖后再无退路，等于没有防护。
 
     Returns:
-        备份路径；跳过或失败时返回 None（调用方不应因此中断写操作，
-        但真实生产库的失败会打印告警，便于排查）。
+        备份文件路径；测试沙箱库返回 ``None``（刻意跳过：不在 ``data/backups``
+        堆 dump，也不触发生产备份清理）。
+
+    Raises:
+        WriteBackupBlocked: 备份失败或被环境阻断（缺 ``pg_dump`` / PG 未启动 /
+            源库缺失或为空 / 产物未通过完整性校验）。消息含原因与下一步动作。
     """
-    try:
-        import tempfile
+    from services.backup_service import create_backup, is_test_database
 
-        from services.backup_service import DB_PATH, create_backup
-
-        db_abs = os.path.abspath(DB_PATH)
-        tmp_root = os.path.abspath(tempfile.gettempdir())
-        if _is_under(db_abs, tmp_root):
-            return None  # 隔离测试库，不产生真实备份、也不触发旧备份清理
-        return create_backup()
-    except Exception as e:  # noqa: BLE001
-        print(f"[kb-governance] 写前备份失败（继续但请留意）：{e}")
+    if is_test_database():
         return None
+    try:
+        return create_backup()
+    except Exception as e:  # noqa: BLE001 —— 统一成调用方必须接住的闸门异常
+        raise WriteBackupBlocked(
+            f"写前备份失败，写入已中止（不可回滚的写一律挡在门外）：{e}"
+        ) from e
 
 
 def scan_root_and_archive(

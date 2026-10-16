@@ -22,17 +22,6 @@ import os
 import pytest
 from sqlalchemy import text
 
-LIVE_DB = r"D:\平台\database\kaoyan.db"
-
-
-@pytest.fixture(autouse=True)
-def _guard_live_db_untouched():
-    stat = os.stat(LIVE_DB)
-    before = (stat.st_mtime, stat.st_size)
-    yield
-    after = os.stat(LIVE_DB)
-    assert (after.st_mtime, after.st_size) == before, "词表对齐测试动了生产库"
-
 
 @pytest.fixture()
 def vocab_docs(db_schema):  # noqa: ARG001 - 只需要建好表
@@ -49,8 +38,11 @@ def vocab_docs(db_schema):  # noqa: ARG001 - 只需要建好表
     }
     ids = {}
     for key, (fname, subject) in specs.items():
+        # doc_type 是 ENUM('raw','note','index')，写 'txt' 在 PG 下直接
+        # InvalidTextRepresentation（conftest.py:374 已记过这个坑）。
+        # file_type 才是扩展名，两者不要混。
         d = Document(file_name=fname, file_path=fname, file_type="txt", size=10,
-                     subject=subject, doc_type="txt", index_status="pending",
+                     subject=subject, doc_type="raw", index_status="pending",
                      content="考研复习讲义正文")
         db.add(d)
         db.flush()

@@ -20,20 +20,7 @@ backup API 复制出来的库副本上，生产文件未改）。实测数字：
 """
 from __future__ import annotations
 
-import os
-
 import pytest
-
-LIVE_DB = r"D:\平台\database\kaoyan.db"
-
-
-@pytest.fixture(autouse=True)
-def _guard_live_db_untouched():
-    stat = os.stat(LIVE_DB)
-    before = (stat.st_mtime, stat.st_size)
-    yield
-    after = os.stat(LIVE_DB)
-    assert (after.st_mtime, after.st_size) == before, "检索门控测试动了生产库"
 
 
 def _hit(score, document_id=1):

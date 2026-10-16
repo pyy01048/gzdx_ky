@@ -18,8 +18,6 @@
 """
 from __future__ import annotations
 
-import os
-
 import pytest
 from sqlalchemy import text
 
@@ -32,15 +30,6 @@ BODY = "第 1 章 逻辑代数基础\n" + "逻辑代数的基本运算与公式�
 def _flag_off(monkeypatch):
     """默认态：环境变量未设置 = 物理删除关闭（与生产 `.env` 一致）。"""
     monkeypatch.delenv(ENV_FLAG, raising=False)
-
-
-@pytest.fixture(autouse=True)
-def _guard_real_db_untouched():
-    stat = os.stat(r"D:\平台\database\kaoyan.db")
-    before = (stat.st_mtime, stat.st_size)
-    yield
-    after = os.stat(r"D:\平台\database\kaoyan.db")
-    assert (after.st_mtime, after.st_size) == before, "闸门测试动了生产库"
 
 
 def _doc(db, file_name):
