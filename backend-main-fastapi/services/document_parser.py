@@ -9,8 +9,10 @@
 便于追溯哪些内容来自 OCR（OCR 有噪声，检索时要区别对待）。
 """
 
+import logging
 import os
 import re
+import tempfile
 from typing import Optional
 
 
@@ -116,8 +118,12 @@ class DocumentParser:
                     try:
                         image = shape.image
                         slide_texts.append(f"[图片:{image.filename or 'image'}]")
-                    except Exception:
-                        pass
+                    except Exception as _exc:  # noqa: BLE001
+                        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+                        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+                        logging.getLogger(__name__).warning(
+                            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+                        )
             if slide_texts:
                 parts.append(f"--- 第{idx}页 ---")
                 parts.extend(slide_texts)
@@ -193,8 +199,12 @@ class DocumentParser:
                     continue
             if parts:
                 return "\n".join(parts)
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
         # 引擎2：pdfplumber
         try:
@@ -215,35 +225,50 @@ class DocumentParser:
         成功后把 self.used_ocr 置为 True，调用方可据此在 documents.ocr_used
         上打标记 —— 扫描件 OCR 文本有识别噪声，RAG 引用时需要区别对待。
         """
-        try:
-            import pypdfium2 as pdfium
+        import pypdfium2 as pdfium
 
-            ocr = self._get_ocr()
+        ocr = self._get_ocr()
+        pdf = None
+        try:
             pdf = pdfium.PdfDocument(file_path)
             n_pages = min(len(pdf), max_pages)
             parts = []
             for i in range(n_pages):
                 page = pdf[i]
-                bitmap = page.render(scale=2.0)
-                img = bitmap.to_pil()
-                # 暂存临时图片
-                import tempfile
-
-                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                img.save(tmp.name)
-                tmp.close()
                 try:
-                    text = ocr.recognize(tmp.name)
-                    if text.strip():
-                        parts.append(f"--- 第{i+1}页(OCR) ---")
-                        parts.append(text)
-                finally:
+                    bitmap = page.render(scale=2.0)
+                    img = bitmap.to_pil()
+                    # 用 mkstemp 先拿到路径并立即关闭 fd，避免 Windows 下
+                    # NamedTemporaryFile 独占句柄导致 PIL 写入时 Permission denied
+                    fd, tmp_path = tempfile.mkstemp(suffix=".png")
+                    os.close(fd)
                     try:
-                        os.remove(tmp.name)
-                    except OSError:
+                        img.save(tmp_path)
+                        text = ocr.recognize(tmp_path)
+                        if text.strip():
+                            parts.append(f"--- 第{i+1}页(OCR) ---")
+                            parts.append(text)
+                    finally:
+                        try:
+                            os.remove(tmp_path)
+                        except OSError:
+                            pass
+                finally:
+                    # 及时释放每页位图，避免句柄/内存堆积
+                    try:
+                        page.close()
+                    except Exception:  # noqa: BLE001
                         pass
             if parts:
                 self.used_ocr = True
             return "\n".join(parts)
         except Exception as e:
             return f"[扫描版 PDF OCR 失败: {e}]"
+        finally:
+            # 关键：无论如何都要关闭 pypdfium 文档，否则 PDFium 文件句柄泄漏，
+            # 后续同文件再次打开会报 "PDFium: File access error" -> 0 字符
+            if pdf is not None:
+                try:
+                    pdf.close()
+                except Exception:  # noqa: BLE001
+                    pass

@@ -26,7 +26,9 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import tempfile
+from services.dbapi_compat import wrap_conn
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import func, or_
@@ -34,6 +36,37 @@ from sqlalchemy import func, or_
 from services import kp_extract
 from services import chunk_classifier
 from services.doc_naming import apply_display_name
+
+# --- 文件格式 → doc_format 枚举归一（修复 PG 迁移 schema 漂移）---
+# 历史代码写的是 Document.file_type，但 PG `documents` 表与 ORM `Document` 模型
+# 都没有该列（正确列是 source_format，类型是 doc_format ENUM）。直接写 file_type
+# 会在全量入库时 100% 抛 TypeError。这里把扩展名归一为合法枚举值，超出枚举的
+# 图片/矢量扩展名（jpeg/bmp/webp/tif/tiff…）兜底回 'other'，避免违反枚举约束。
+_DOC_FORMAT_VALUES = {
+    "pdf", "txt", "doc", "docx", "md", "image", "pptx", "ppt",
+    "xlsx", "html", "json", "jpg", "png", "other",
+}
+
+
+def _norm_doc_format(ext: str) -> str:
+    """扩展名 → 合法 doc_format 枚举值；非法值兜底 'other'。"""
+    val = (ext or "").lstrip(".").lower()
+    return val if val in _DOC_FORMAT_VALUES else "other"
+
+
+# structure_level 枚举合法值：structured(已按章节解析) / flat(扁平文本) / ocr(扫描件)。
+# 历史代码用 "document" 表示「整篇文档、尚未章节解析」，PG 迁移后该值不合法，
+# 语义等价于 flat，统一归一。
+_STRUCTURE_LEVEL_VALUES = {"structured", "flat", "ocr"}
+_STRUCTURE_LEVEL_FALLBACK = "flat"
+
+
+def _norm_structure_level(val: str) -> str:
+    val = (val or "").strip().lower()
+    if val == "document":
+        return _STRUCTURE_LEVEL_FALLBACK
+    return val if val in _STRUCTURE_LEVEL_VALUES else _STRUCTURE_LEVEL_FALLBACK
+
 
 logger = logging.getLogger(__name__)
 
@@ -320,8 +353,12 @@ def recognize_image(path: str, *, preprocess: bool = True,
             d = _describe_figure(src)
             if d:
                 res["figure_desc"].append(d)
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
     return res
 
@@ -615,6 +652,9 @@ def find_content_duplicate(db, model, text: str, *, exclude_id: Optional[int] = 
     t = (text or "").strip()
     if len(t) < MIN_FINGERPRINT_CHARS:
         return None
+    # PG 的 text 类型禁止绑定含 NUL 的参数（DataError）。库内已存内容必然无 NUL
+    # （PG 存不进去），故比对前把 NUL 从样本里剥掉不影响正确性；SQLite 无影响。
+    t = t.replace("\x00", "")
     q = (db.query(model.id, model.file_path, model.content)
          .filter(func.substr(model.content, 1, head_chars) == t[:head_chars]))
     if exclude_id is not None:
@@ -766,7 +806,7 @@ def _dedup_check(db, text: str, subject: str) -> Optional[Tuple[int, float]]:
         return None
     q = q / qn
 
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     sql = ("SELECT document_id, embedding, dim FROM knowledge_chunks_vec "
            "WHERE embedding IS NOT NULL AND dim = ?")
     params: List[Any] = [len(q)]
@@ -939,32 +979,42 @@ def smart_ingest_file(
             out["dedup_reused"] = True
             # 刷新文档级字段
             doc.content = text
-            doc.file_type = ext.lstrip(".")
+            doc.source_format = _norm_doc_format(ext)
             doc.subject = meta.get("subject", "") or doc.subject
             doc.doc_type = kb_service.classify_doc_type(
                 os.path.basename(path), ext.lstrip(".")
             )
             doc.index_status = "indexed"
             doc.ocr_used = bool(out["ocr_used"])
-            doc.structure_level = "document"
+            doc.structure_level = _norm_structure_level("document")
         else:
             doc = Document(
                 file_name=os.path.basename(path),
                 file_path=file_path_abs,
-                file_type=ext.lstrip("."),
+                source_format=_norm_doc_format(ext),
                 content=text,
                 subject=meta.get("subject", ""),
                 doc_type=kb_service.classify_doc_type(os.path.basename(path),
                                                       ext.lstrip(".")),
                 index_status="indexed",
                 ocr_used=bool(out["ocr_used"]),
-                structure_level="document",
+                structure_level=_norm_structure_level("document"),
             )
             db.add(doc)
         db.flush()
         # #27 按内容定显示名：必须在分块前改，chunk.doc_name 才会带上新名
         apply_display_name(db, doc, text)
-        n_chunks = kb_service.ingest_document(db, doc, replace=True)
+        # 幂等增强（2026-10-17）：已成功入库（库里已有分块）的复用文档不再重切分。
+        # ingest_document(replace=True) 会先物理删除旧块，被 KAOYAN_ALLOW_PHYSICAL_DELETE
+        # 闸门拦截，导致整篇入库失败——而重切分对「已Indexed」的文档既无必要也危险，
+        # 直接复用既有分块即可。仅当复用文档还没有任何分块（上次入库被中断/失败）时才重切。
+        if doc is not None and kb_service.has_searchable_chunks(db, doc.id):
+            from models import KnowledgeChunk
+            n_chunks = db.query(KnowledgeChunk).filter(
+                KnowledgeChunk.document_id == doc.id).count()
+            out["reused_skip_ingest"] = True
+        else:
+            n_chunks = kb_service.ingest_document(db, doc, replace=True)
         # 分块是「可被 RAG 检索」的唯一凭据：库里一块都没有就不许标 indexed，
         # 否则又会多一篇「UI 说已入库、检索搜不到」的文档。
         doc.index_status = "indexed" if kb_service.has_searchable_chunks(
@@ -1016,8 +1066,12 @@ def smart_ingest_file(
     except Exception as e:  # noqa: BLE001
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
         out["status"] = "error"
         out["reasons"].append(f"入库失败: {type(e).__name__}: {e}")
     return out
@@ -1054,6 +1108,7 @@ def _ocr_pdf_pages(path: str, ocr_backend: str,
         logger.error("pypdfium2 不可用，扫描件 PDF 无法渲染: %s", e)
         return "", [], [], ""
 
+    tmpdir = None
     pdf = None
     try:
         pdf = pdfium.PdfDocument(path)
@@ -1114,8 +1169,21 @@ def _ocr_pdf_pages(path: str, ocr_backend: str,
     finally:
         try:
             pdf.close()
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
+        # 清理渲染出的页面 PNG 临时目录：原先 mkdtemp 后从不删除，
+        # 全量入库（数千篇 × 每篇上百页）会在临时目录堆积数十 GB。
+        if tmpdir:
+            try:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            except Exception as _exc2:  # noqa: BLE001
+                logging.getLogger(__name__).warning(
+                    '清理 PDF 渲染临时目录失败 %s: %s', tmpdir, str(_exc2)[:200]
+                )
 
     n_pages = n
     if not texts:
