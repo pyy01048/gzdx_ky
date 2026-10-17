@@ -28,6 +28,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections import Counter
 from services.dbapi_compat import wrap_conn
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -519,17 +520,62 @@ _CONTENT_TYPE_RULES: List[Tuple[str, Tuple[str, ...]]] = [
 ]
 
 
-def extract_metadata(file_name: str, text: str) -> Dict[str, Any]:
-    """从文件名 + 正文抽取结构化标签，用于知识地图与检索过滤。"""
+#: 书名里的来源/营销噪声，命中即丢弃
+_BOOK_NAME_NOISE = re.compile(
+    r"公众号|整理自|免费分享|水印|QQ群|加群|领取|网盘|链接|淘宝|店铺")
+
+
+def _pick_book_name_from_text(head: str) -> str:
+    """从正文里挑书名，挑不出就返回 ""（宁缺勿错）。
+
+    为什么不能直接取正文**首个**《》：正文里的《》绝大多数是**引用**
+    （「因新版《全国硕士研究生招生考试英语（一）考试大纲》已明确…」），
+    实测把 `1000题：学习打卡表（新思想）.pdf` 的书名取成了「思维导图」。
+    三条闸门，过不了就留空：
+      1. 同一书名出现 ≥2 次 → 是本书，不是顺带一提的引用；
+      2. 出现在正文开头 300 字内 → 封面/页眉书名；
+      3. 独立成行 → 标题行。
+    """
+    if not head:
+        return ""
+    matches = list(_BOOK_RE.finditer(head))
+    if not matches:
+        return ""
+    counts = Counter(m.group(1).strip() for m in matches)
+    lines = {ln.strip() for ln in head.split("\n")}
+    for m in matches:
+        nm = m.group(1).strip()
+        if counts[nm] >= 2 or m.start() <= 300:
+            return nm
+    for m in matches:
+        nm = m.group(1).strip()
+        if f"《{nm}》" in lines or f"【{nm}】" in lines:
+            return nm
+    return ""
+
+
+def extract_metadata(file_name: str, text: str, path: str = "") -> Dict[str, Any]:
+    """从文件名 + 正文抽取结构化标签，用于知识地图与检索过滤。
+
+    `path` 可选：给完整文件路径时，学科判定会**优先采信路径里的学科目录名**
+    （`.../政治/xxx.pdf` → 政治）。此前调用方只传 `os.path.basename(path)`，
+    目录里的学科信息被整段丢掉，是政治资料被判成数学的直接原因之一。
+    """
     from services.kb_service import classify_subject, classify_content_category
 
     head = text[:4000]
 
-    # 教材名：优先文件名里的《》，其次正文首个《》
+    # 教材名：优先文件名里的《》，其次正文里"经得起验证"的书名（引用不算）
     book_name = ""
-    m = _BOOK_RE.search(file_name) or _BOOK_RE.search(head)
+    m = _BOOK_RE.search(file_name)
     if m:
         book_name = m.group(1).strip()
+    else:
+        book_name = _pick_book_name_from_text(head)
+    # 公众号/来源标注不是书名（`新思想思维导图：【公众号：学长小谭考研】.pdf`
+    # 实测被取成 `公众号：学长小谭考研`），命中就丢弃。
+    if book_name and _BOOK_NAME_NOISE.search(book_name):
+        book_name = ""
 
     # 作者 / 版次
     author = ""
@@ -561,7 +607,7 @@ def extract_metadata(file_name: str, text: str) -> Dict[str, Any]:
     if not ctype:
         ctype = classify_content_category(file_name, head) or "教材正文"
 
-    subject = classify_subject(file_name, text)
+    subject = classify_subject(file_name, text, path=path or file_name)
     return {
         "subject": subject,
         "major": MAJOR_DIRECTION.get(subject, ""),
@@ -933,7 +979,10 @@ def smart_ingest_file(
         text += "\n\n## 图表解析\n" + "\n".join(f"- {x}" for x in fig_desc)
 
     # --- 结构化抽取 ---
-    meta = extract_metadata(os.path.basename(path), text)
+    # ⚠️ 必须传**完整路径**而不是 basename：路径里的学科目录（`.../政治/xxx.pdf`）
+    # 是最准的学科信号。只传 basename 时，`1000题：学习打卡表（新思想）.pdf`
+    # 这类文件名不含科目词的资料只能靠正文兜底，实测被判成数学。
+    meta = extract_metadata(os.path.basename(path), text, path=path)
     out.update({k: meta.get(k, "") for k in
                 ("subject", "book_name", "chapter", "content_type")})
     out["major"] = meta.get("major", "")

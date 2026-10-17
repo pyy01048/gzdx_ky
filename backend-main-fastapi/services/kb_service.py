@@ -71,12 +71,23 @@ _SUBJECT_STRONG: dict[str, list] = {
     ],
     "数学": [
         "数学", "高数", "高等数学", "线代", "线性代数", "概率论", "数理统计",
-        "张宇", "660", "1000题", "基础30讲", "数一", "数二", "数三",
+        "张宇", "660", "基础30讲", "数一", "数二", "数三",
         "概统", "概率统计", "微积分", "同济", "复习全书",
+        # ⚠️ 裸「1000题」是**跨科歧义词**：肖秀荣1000题是政治、张宇1000题是数学，
+        # 写法完全一样。2026-10 实测它把
+        # `专业课-其他/政治/1000题：学习打卡表（新思想）.pdf` 直接判成数学，
+        # 同期一批肖1000 / 政治课堂笔记被误归到数学。裸词一律**不记分**，
+        # 只认带科目限定的写法，其余交给路径目录与正文特征。
+        "张宇1000题", "数学1000题",
     ],
     "政治": [
         "政治", "马原", "毛中特", "史纲", "思修", "肖秀荣", "徐涛", "腿姐",
         "辩证法", "唯物史观", "近代史纲要",
+        # 补（2026-10）：政治五大板块里的「新思想」（习思想）此前完全不在词表，
+        # 配合上面被数学抢走的「1000题」，政治资料一旦文件名不含「政治/马原/史纲」
+        # 就没有任何强信号可命中，只能掉进正文兜底被判成别的科。
+        "新思想", "毛概", "马哲", "时政", "考研政治", "政治理论", "思修法基",
+        "肖1000", "帽子题", "优题库",
     ],
     # ---- 专业课支撑科目 ----
     "电路": [
@@ -194,6 +205,77 @@ def _apply_mutex(name: str, scores: collections.Counter) -> collections.Counter:
     return scores
 
 
+#: 路径目录名 → 学科。**目录名是人工整理时已经给出的学科归属**，是可信度最高的
+#: 一路信号（比文件名关键词和正文关键词都强）。
+#:
+#: 为什么必须有它（2026-10）：`smart_ingest.process_file` 调用
+#: `extract_metadata(os.path.basename(path), text)` —— 只传文件名，把
+#: `.../政治/xxx.pdf` 里的「政治」整段丢掉了。于是像
+#: `1000题：学习打卡表（新思想）.pdf` 这种文件名里没有「政治」二字的资料，
+#: 只能靠正文兜底，被判成数学。目录名是白送的强信号，不该丢。
+_PATH_DIR_SUBJECTS: dict[str, str] = {
+    # ---- 公共课 ----
+    "政治": "政治", "考研政治": "政治", "政治理论": "政治",
+    "马原": "政治", "马克思主义基本原理": "政治", "马哲": "政治",
+    "毛概": "政治", "毛中特": "政治", "毛泽东思想": "政治",
+    "史纲": "政治", "近代史纲要": "政治", "中国近现代史纲要": "政治",
+    "思修": "政治", "思修法基": "政治", "思想道德与法治": "政治",
+    "新思想": "政治", "新思想概论": "政治", "习思想": "政治", "时政": "政治",
+    "数学": "数学", "考研数学": "数学", "数学辅导": "数学",
+    "高数": "数学", "高等数学": "数学",
+    "线代": "数学", "线性代数": "数学", "概率": "数学", "概率论": "数学",
+    "英语": "英语", "考研英语": "英语", "英语一": "英语", "英语二": "英语",
+    # ---- 专业课 ----
+    "数字电子技术": "数字电子技术", "数电": "数字电子技术", "数字电路": "数字电子技术",
+    "模拟电子技术": "模拟电子技术", "模电": "模拟电子技术", "模拟电路": "模拟电子技术",
+    "模电试题": "模拟电子技术",
+    # 「电子技术基础」是模电+数电的合并课，按 taxonomy.SUBJECT_ALIASES 的既有口径
+    # 归一到数字电子技术（834 同理，见下）。
+    "电子技术基础": "数字电子技术", "电子技术": "数字电子技术",
+    "电路": "电路", "电路分析": "电路", "电路原理": "电路", "电路理论": "电路",
+    "信号与系统": "信号与系统", "信号系统": "信号与系统", "信号": "信号与系统",
+    "通信原理": "通信原理", "通信": "通信原理", "通信系统": "通信原理",
+    "光学": "光学与工程光学", "工程光学": "光学与工程光学", "物理光学": "光学与工程光学",
+    "普通物理": "普通物理", "大学物理": "普通物理", "物理": "普通物理",
+    "408": "计算机学科专业基础408", "计算机408": "计算机学科专业基础408",
+    "计算机专业课": "计算机学科专业基础408", "计算机": "计算机学科专业基础408",
+    "数据结构": "计算机学科专业基础408", "操作系统": "计算机学科专业基础408",
+    "计算机网络": "计算机学科专业基础408", "软件工程": "计算机学科专业基础408",
+    # 院校自命题科目代码：贵州大学 834 = 电子技术基础
+    "834": "数字电子技术", "贵大834": "数字电子技术",
+    # 真题集合：不指科目，但显式目录名也算一种归属
+    "真题综合": "真题综合",
+}
+
+#: 目录名里混着的序号前缀（「01.马原」「16.电路」「27计算机408」「(2.1)—」…）
+_PATH_DIR_NOISE_PREFIX = re.compile(r"^\s*[\(（]?\d+(?:[.\-_]\d+)*[)）]?\s*[.、_\-\s]*")
+
+
+def _subject_from_path(path: str):
+    """从**文件路径的目录段**推断学科，命中返回标准科目名，否则 None。
+
+    从最深层目录往浅层找，第一个命中即返回 —— 深层目录更具体
+    （`专业课-其他/通信/信号/xxx.pdf` 里「信号」比「通信」准）。
+    """
+    if not path:
+        return None
+    segs = [s for s in str(path).replace("\\", "/").split("/") if s]
+    if len(segs) < 2:          # 只有文件名，没有目录信息
+        return None
+    for seg in reversed(segs[:-1]):
+        s = _PATH_DIR_NOISE_PREFIX.sub("", seg).strip()
+        if not s:
+            continue
+        hit = _PATH_DIR_SUBJECTS.get(s)
+        if hit:
+            return hit
+        # 「27计算机408」「考研政治历年真题」这类带修饰词的目录名再做一次包含匹配
+        for key, subj in _PATH_DIR_SUBJECTS.items():
+            if len(key) >= 2 and key in s:
+                return subj
+    return None
+
+
 def _subject_scores(name: str) -> collections.Counter:
     """按文件名给各科打分（强信号 3 分，弱信号 1 分）。"""
     n = (name or "").lower()
@@ -229,7 +311,8 @@ def _latin_ratio(text: str) -> float:
 
 
 def classify_subject_confidence(
-    name: str, content_text: str = '', *, allow_weak: bool = False
+    name: str, content_text: str = '', *, allow_weak: bool = False,
+    path: str = '',
 ) -> tuple[str, bool]:
     """返回 `(科目, 是否高置信)`。
 
@@ -238,6 +321,10 @@ def classify_subject_confidence(
 
     批量重标存量数据时应该**只用高置信结果** ——
     否则会把原本合理的标注改成臆测值，越改越乱。
+
+    判定优先级（2026-10 修）：**路径目录名 > 文件名强信号 > 正文补分 > 兜底**。
+    `path` 是可选的第 0 路信号：目录名是人工整理时给出的学科归属，比从文件名
+    猜准得多；传了就优先采信。
     """
     from services import taxonomy
 
@@ -245,6 +332,13 @@ def classify_subject_confidence(
     content = content_text or ""
     if is_parse_failure(content):
         content = ""      # 报错信息不参与判定
+
+    # -1. 路径目录名（最强信号）：`.../政治/xxx.pdf` → 政治。
+    #     实测没它的时候，`1000题：学习打卡表（新思想）.pdf` 会被判成数学。
+    if path:
+        dir_subj = _subject_from_path(path)
+        if dir_subj:
+            return taxonomy.normalize_subject(dir_subj), True
 
     # 0. 英语的决定性信号（文件名无科目信息时，靠正文拉丁字母密度）。
     #    加最小长度门槛：几十个字符的 OCR 碎片或报错片段不足以定科，
@@ -282,13 +376,16 @@ def classify_subject_confidence(
     return "其他", False
 
 
-def classify_subject(name: str, content_text: str = '') -> str:
+def classify_subject(name: str, content_text: str = '', path: str = '') -> str:
     """根据文件名 + 正文推断学科分类（对外主入口）。
 
     先按文件名打分（强信号优先），分数不足时用正文关键词补足。
     文档类型词（真题/讲义/答案…）不参与科目判定。
+
+    `path` 可选：给完整文件路径时会**优先采信路径里的学科目录名**
+    （`.../政治/xxx.pdf` → 政治），这是实测下来最准的一路信号。
     """
-    return classify_subject_confidence(name, content_text)[0]
+    return classify_subject_confidence(name, content_text, path=path)[0]
 
 
 # --------------------------------------------------------------------------- #
@@ -483,22 +580,31 @@ def ingest_text(
     conn = wrap_conn(db.connection().connection)
     # 若 FTS 尚未初始化则先全量同步一次（仅首次，避免重复）
     search_service.ensure_fts_table(conn)
+    # PG 侧 FTS 走 knowledge_chunks.search_vector 生成列（插入时自动填充），
+    # 生产库默认**没有** knowledge_chunks_fts 镜像表；SQLite 侧才维护 FTS5 镜像虚表。
+    # 但镜像表一旦存在（兼容层 / 旧数据导入），就必须跟着块一起写：
+    # 上面 replace 分支在 PG 下同样会按「表存在」去删镜像行，若这里只删不写，
+    # 重新解析后镜像会整篇丢失 —— 与 sync_mirror_subjects 同一口径，按表存在判定。
+    from services.dbapi_compat import table_exists as _table_exists
+    write_fts_mirror = (not search_service._is_pg(conn)) or _table_exists(
+        conn, "knowledge_chunks_fts")
 
     count = 0
     for idx, ch in enumerate(chunks):
         kc = KnowledgeChunk(
             document_id=doc_id,
             doc_name=doc_name,
-            chunk_id=idx,
+            chunk_index=idx,
             subject=subject,
             text=ch,
         )
         db.add(kc)
         db.flush()  # 取得自增 id
-        conn.execute(
-            "INSERT INTO knowledge_chunks_fts (chunk_id, document_id, subject, content) VALUES (?,?,?,?)",
-            (kc.id, doc_id, subject, ch),
-        )
+        if write_fts_mirror:
+            conn.execute(
+                "INSERT INTO knowledge_chunks_fts (chunk_id, document_id, subject, content) VALUES (?,?,?,?)",
+                (kc.id, doc_id, subject, ch),
+            )
         count += 1
 
     db.commit()
@@ -622,7 +728,8 @@ def ingest_document(db: Session, doc, *, replace: bool = True) -> int:
     """对已有 Document 记录重新分块入库。"""
     if not doc or not doc.content:
         return 0
-    subject = doc.subject or classify_subject(doc.file_name, doc.content)
+    subject = doc.subject or classify_subject(
+        doc.file_name, doc.content, path=getattr(doc, "file_path", "") or "")
     if not doc.subject:
         doc.subject = subject
     category = getattr(doc, "content_category", None) or classify_content_category(
