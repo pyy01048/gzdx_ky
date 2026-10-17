@@ -7,6 +7,8 @@
 
 import os
 import re
+import sys
+import tempfile
 import threading
 import logging
 from typing import Any, Dict, List, Optional
@@ -19,6 +21,29 @@ _engine_lock = threading.Lock()
 _engine_device = None
 
 
+def _reserve_project_utils() -> None:
+    """抢先在 ``sys.modules`` 里占住项目的 ``utils`` 包。
+
+    ``rapidocr_onnxruntime`` 在被 import 时会把**自己的包目录**追加到
+    ``sys.path``（该目录下恰好有个 ``utils.py``）。一旦它排在前面，项目根
+    的 ``utils`` 包就被遮蔽，之后任何 ``from utils.secret_codec import ...``
+    都会抛::
+
+        ModuleNotFoundError: No module named 'utils.secret_codec';
+        'utils' is not a package
+
+    实测：只要本进程跑过一次 OCR，随后的入库（``kb_service`` → ``models``
+    → ``utils.secret_codec``）就必然崩，3584 篇全量入库无法进行。
+    抢先 import 一次即可让项目 utils 永久占据该名字。
+    """
+    if "utils" in sys.modules:
+        return
+    try:
+        import utils  # noqa: F401
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("预占项目 utils 包失败（项目根不在 sys.path）: %s", exc)
+
+
 def _get_engine(device: str = "cpu"):
     """懒加载 RapidOCR 引擎（单例）。"""
     global _engine, _engine_device
@@ -27,6 +52,8 @@ def _get_engine(device: str = "cpu"):
     with _engine_lock:
         if _engine is not None and _engine_device == device:
             return _engine
+        # 必须在 import rapidocr_onnxruntime 之前调用：见 _reserve_project_utils 注释
+        _reserve_project_utils()
         from rapidocr_onnxruntime import RapidOCR
 
         params = {}
@@ -94,19 +121,19 @@ class OCRService:
 
     def recognize_bytes(self, image_bytes: bytes) -> str:
         """识别内存中的图片字节（Base64 解码后）"""
-        import tempfile
-
         if not image_bytes:
             return ""
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        # 用 mkstemp 先拿到路径并立即关闭 fd，避免 Windows 下
+        # NamedTemporaryFile 独占句柄导致后续识别时 Permission denied
+        fd, tmp_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
         try:
-            tmp.write(image_bytes)
-            tmp.flush()
-            return self.recognize(tmp.name)
+            with open(tmp_path, "wb") as f:
+                f.write(image_bytes)
+            return self.recognize(tmp_path)
         finally:
-            tmp.close()
             try:
-                os.remove(tmp.name)
+                os.remove(tmp_path)
             except OSError:
                 pass
 
@@ -174,10 +201,10 @@ class PaddleOCRService:
     微服务不可用时自动回退到本地 RapidOCR。
     """
 
-    DEFAULT_URL = "http://127.0.0.1:8888"
-
     def __init__(self, service_url: Optional[str] = None, fallback_to_local: bool = True):
-        self.service_url = (service_url or self.DEFAULT_URL).rstrip("/")
+        from utils.compute_nodes import ocr_service_url, service_headers
+        self.service_url = (service_url or ocr_service_url()).rstrip("/")
+        self._headers = service_headers()
         self.fallback_to_local = fallback_to_local
         self._local_service: Optional[OCRService] = None
 
@@ -190,7 +217,7 @@ class PaddleOCRService:
         """检查 PaddleOCR 微服务是否可用。"""
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=5.0, headers=self._headers) as client:
                 resp = await client.get(f"{self.service_url}/health")
                 return resp.json()
         except Exception as e:
@@ -203,7 +230,7 @@ class PaddleOCRService:
 
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=120.0, headers=self._headers) as client:
                 resp = await client.post(
                     f"{self.service_url}/ocr",
                     files={"file": (filename, image_bytes)},
