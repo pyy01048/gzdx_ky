@@ -112,9 +112,10 @@ def _body_ok(body: str) -> bool:
         return False
     if re.search(r"[的与和或等为在是]$|[,，、；;：:]\s*$", body):
         return False
-    # 入库时插进正文的页码标记（"---第6页(OCR) ---"）。
+    # 入库时插进正文的页码标记（"---第6页(OCR) ---"）、以及"标注的页码是指…
+    # 书的页码"这类把书的排版说明当成了术语的定义句。
     # 只在这里挡定义句：chunk 级再用会把整块（其余内容是好的）误杀掉。
-    if "(OCR" in body or "---" in body:
+    if "(OCR" in body or "---" in body or "页码" in body:
         return False
     return bool(re.search(r"[\u4e00-\u9fff]", body))
 
