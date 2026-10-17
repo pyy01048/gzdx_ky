@@ -112,6 +112,10 @@ def _body_ok(body: str) -> bool:
         return False
     if re.search(r"[的与和或等为在是]$|[,，、；;：:]\s*$", body):
         return False
+    # 入库时插进正文的页码标记（"---第6页(OCR) ---"）。
+    # 只在这里挡定义句：chunk 级再用会把整块（其余内容是好的）误杀掉。
+    if "(OCR" in body or "---" in body:
+        return False
     return bool(re.search(r"[\u4e00-\u9fff]", body))
 
 
@@ -226,7 +230,12 @@ _TERM_NOISE = [
     "本节", "本章", "小结", "作业", "思考题", "如图所示", "如下图",
 ]
 # 明显不是术语的开头/结尾
-_TERM_BAD_PREFIX = re.compile(r"^(的|了|是|在|和|与|或|这|那|其|该|本|如下|例如|因此|所以)")
+#: 补"故/则/即"等承接词：OCR 断句常把"故所求平面方程"、"则函数"整段切下来，
+#: 这类片段当术语会得到"故所求平面方程是什么"这种不通顺的问题。
+_TERM_BAD_PREFIX = re.compile(
+    r"^(的|了|是|在|和|与|或|这|那|其|该|本|如下|例如|因此|所以"
+    r"|故|则|即|而|且|于|以|之|所|将|把|被|从|向|对|由|但|若|如|又|再|才|就|也)"
+)
 _TERM_BAD_SUFFIX = re.compile(r"(的|了|是|在|和|与|或|等|中|上|下|里)$")
 
 
@@ -460,6 +469,8 @@ def _split_sentences(text: str) -> list[str]:
             continue
         if len(re.findall(r"了解|掌握|熟悉", s)) >= 2:
             continue
+        if "(OCR" in s or "---" in s:      # 入库时留下的页码标记
+            continue
         out.append(s)
     return out
 
@@ -505,9 +516,40 @@ def _pick_topic(text: str) -> str | None:
             continue
         for g, _k in sorted(cands, key=lambda kv: -kv[1]):
             t = _clean_term(g)
-            if t and _topic_ok(t):
+            if t and _topic_ok(t) and not _truncated(zh, g):
                 return t
     return None
+
+
+#: 高频但不是术语的词：n-gram 统计最容易把这类虚词/动词捞成"主题"
+_FAKE_TERMS = {
+    "分别", "各自", "其中", "通过", "由于", "对于", "关于", "并且", "或者",
+    "因此", "而且", "但是", "如果", "那么", "这样", "那样", "什么", "怎么",
+    "哪些", "可以", "应该", "必须", "需要", "进行", "实现", "表示", "说明",
+    "指出", "认为", "如下", "上述", "这种", "那种", "某种", "一般", "通常",
+    "主要", "重要", "基本", "直接", "间接", "不同", "相同", "有关", "所有",
+    "任何", "每个", "一个", "两个", "三个", "以及", "同时", "并且",
+}
+
+
+def _truncated(zh: str, term: str) -> bool:
+    """术语是否是从一个更长的词里截出来的（"函数的定"←"函数的定义域"、
+    "应的函数"←"对应的函数"）。
+
+    判据：片段每次出现时，前面或后面都只跟着同一个字 —— 真术语的上下文不会
+    这么单一（"函数"前面会有"的/个/设/若"等多种字，后面同理）。
+    """
+    if term in _FAKE_TERMS:
+        return True
+    heads: set[str] = set()
+    tails: set[str] = set()
+    i = zh.find(term)
+    while i != -1:
+        heads.add(zh[i - 1] if i > 0 else "")
+        j = i + len(term)
+        tails.add(zh[j] if j < len(zh) else "")
+        i = zh.find(term, i + 1)
+    return len(heads) == 1 or len(tails) == 1
 
 
 #: (问法, 该问法在原文里的命中关键词, 问题模板候选) ——
@@ -521,8 +563,10 @@ _QA_KINDS = (
      ("{sub}里，{t}是什么？", "能给我讲讲{t}吗？", "{t}的定义到底是什么？")),
     ("怎么理解", ("因为", "由于", "所以", "因此", "原理", "本质", "从而", "意味着"),
      ("怎么理解{t}？", "{t}为什么是这样？", "{t}背后的原理是什么？")),
+    # 只有数学/电类才谈得上"求解"；问政治概念"该怎么求解"是不通的
     ("怎么做", ("先", "首先", "然后", "再", "步骤", "代入", "求解", "方法", "求得"),
-     ("{t}这类问题该怎么做？", "遇到{t}，解题步骤是什么？", "{t}该怎么求解？")),
+     ("{t}这类问题该怎么做？", "遇到{t}，解题步骤是什么？", "{t}该怎么求解？"),
+     ("{t}这类问题该怎么做？", "{t}该怎么把握？", "复习{t}时该抓什么？")),
     ("要注意什么", ("注意", "不能", "否则", "易错", "常见错误", "避免"),
      ("处理{t}时容易踩哪些坑？", "{t}有什么需要特别注意的？", "做{t}时最容易错在哪？")),
     ("怎么区分", ("区别", "不同", "不同于", "相比", "而不是", "两者"),
@@ -563,9 +607,12 @@ def from_chunks(db, *, per_chunk: int = 5) -> list[dict]:
         rel = [s for s in sents if topic in s] or sents
 
         made = 0
-        for kind, kws, tpls in _QA_KINDS:
+        # 只有数学/电类谈得上"求解"；问政治概念"该怎么求解"是不通的
+        mathy = subject in ("数学", "数字电子技术", "模拟电子技术")
+        for kind, kws, *tpl_groups in _QA_KINDS:
             if made >= per_chunk:
                 break
+            tpls = tpl_groups[0] if (mathy or len(tpl_groups) == 1) else tpl_groups[1]
             hits = [s for s in rel if any(k in s for k in kws)]
             if not hits:
                 # 含主题的句子太少（n-gram 主题常只出现在 1-2 句里），
