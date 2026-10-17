@@ -43,6 +43,7 @@
 | `SMART_INGEST_KP_MAX_PER_DOC` | `15` | 单文档知识点上限 |
 | `SMART_INGEST_KP_MAX_CHUNKS` | `8` | 单文档最多抽多少块（封顶模型负载，均匀取样） |
 | `SMART_INGEST_KP_MIN_DOC_CHARS` | `800` | 正文短于此值不抽（省模型负载） |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | 本地模型地址；缺 scheme 会自动补，通配监听地址（`0.0.0.0`）自动换 `127.0.0.1` |
 
 ## 网络注意
 
@@ -118,7 +119,35 @@ KP_MAX_CHUNKS_PER_DOC = _env_int("SMART_INGEST_KP_MAX_CHUNKS", 8)
 #: 交给模型的单块字符上限
 KP_CHUNK_CHARS = 4000
 
-_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+def _resolve_ollama_host() -> str:
+    """规范化 Ollama 地址。
+
+    实测踩到的坑：本机**用户级**环境变量 `OLLAMA_HOST=0.0.0.0:11434`（为开放局域网
+    访问而设）。它是**监听地址**（服务端语义），直接当客户端目标用有两处硬伤：
+      1. 缺 `http://` scheme -> `urllib` 抛 `unknown url type: 0.0.0.0`，
+         模型调用**秒败**（0.1-0.4s），表现为 `knowledge_points` 恒为 0 且无超时告警；
+      2. 即便补了 scheme，Windows 上连 `0.0.0.0` 也不可达（Linux 才等价 localhost）。
+
+    所以这里统一：缺 scheme 则补 `http://`；主机名是通配监听地址则换 `127.0.0.1`。
+    """
+    from urllib.parse import urlparse
+
+    raw = (os.environ.get("OLLAMA_HOST") or "").strip().rstrip("/")
+    if not raw:
+        return "http://127.0.0.1:11434"
+    if "://" not in raw:
+        raw = "http://" + raw
+    parts = urlparse(raw)
+    if (parts.hostname or "") in ("0.0.0.0", "::"):
+        auth = ""
+        if parts.username:
+            auth = parts.username + (f":{parts.password}" if parts.password else "") + "@"
+        port = f":{parts.port}" if parts.port else ""
+        raw = f"{parts.scheme}://{auth}127.0.0.1{port}{parts.path}"
+    return raw
+
+
+_OLLAMA_HOST = _resolve_ollama_host()
 
 #: **进程级**模型并发闸门 —— 6 个 ingest worker 共用，避免把本地模型打爆
 _MODEL_SEM = threading.BoundedSemaphore(KP_MODEL_SLOTS)
