@@ -43,6 +43,32 @@ MANIFEST_PATH = os.path.join(META_DIR, "manifest.jsonl")
 
 #: 图片类扩展名（直接走 OCR 路由）
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif", ".tif", ".tiff"}
+
+# 文件格式 → doc_format 枚举归一（与 services.smart_ingest._norm_doc_format 同口径）。
+# 历史代码写 `file_type=`，但 PG documents 表与 ORM 均无该列（正确列是 source_format，
+# doc_format ENUM）。jpeg/bmp/webp/tif/tiff 等扩展名不在枚举内，必须兜底 'other'。
+_DOC_FORMAT_VALUES = {
+    "pdf", "txt", "doc", "docx", "md", "image", "pptx", "ppt",
+    "xlsx", "html", "json", "jpg", "png", "other",
+}
+
+
+def _norm_doc_format(ext: str) -> str:
+    val = (ext or "").lstrip(".").lower()
+    return val if val in _DOC_FORMAT_VALUES else "other"
+
+
+# structure_level 枚举合法值：structured / flat / ocr。"document" 是 PG 迁移前的旧值，
+# 语义等价于 flat（整篇文档、尚未章节解析），统一归一避免违反枚举约束。
+_STRUCTURE_LEVEL_VALUES = {"structured", "flat", "ocr"}
+
+
+def _norm_structure_level(val: str) -> str:
+    val = (val or "").strip().lower()
+    if val == "document":
+        return "flat"
+    return val if val in _STRUCTURE_LEVEL_VALUES else "flat"
+
 #: 文本类扩展名（DocumentParser 直接解析）
 TEXT_EXTS = {".txt", ".md", ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".csv", ".xlsx", ".xls", ".xlsm"}
 #: 允许入库的扩展名全集
@@ -219,20 +245,21 @@ def ingest_file(
                 "engine": parsed.get("engine"), "ocr_used": parsed.get("ocr_used"), "md5": md5,
             }
 
-        subject = kb_service.classify_subject(file_name, text)
+        # 传完整路径：路径里的学科目录（`.../政治/xxx.pdf`）优先于文件名/正文猜科
+        subject = kb_service.classify_subject(file_name, text, path=file_path)
         doc_type = kb_service.classify_doc_type(file_name, ext.lstrip("."))
 
         # 1) 建 Document 记录
         doc = Document(
             file_name=file_name,
             file_path=file_path,
-            file_type=ext.lstrip("."),
+            source_format=_norm_doc_format(ext),
             content=text,
             subject=subject,
             doc_type=doc_type,
             index_status="indexed",
             ocr_used=bool(parsed.get("ocr_used")),
-            structure_level="document",
+            structure_level=_norm_structure_level("document"),
         )
         db.add(doc)
         db.flush()

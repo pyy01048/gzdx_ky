@@ -1,0 +1,102 @@
+[
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/政治/1000题：学习打卡表（新思想）.pdf",
+    "expected_subject": "政治",
+    "note": "已知错判样本：文件名含「1000题」被数学强信号词表命中"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/政治/27肖1000帽子题新思想@空卡空卡空空卡.pdf",
+    "expected_subject": "政治",
+    "note": "肖1000 系列"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/政治/新思想思维导图：知识点版【公众号：学长小谭考研】.pdf",
+    "expected_subject": "政治",
+    "note": "文件名含「思维导图」，用于检验 book_name 是否被误取"
+  },
+  {
+    "path": "D:/平台/knowledge_base/政治/(2.1.11)--徐涛《26优题库》题前背- 马原第2章..pdf",
+    "expected_subject": "政治",
+    "note": "马原"
+  },
+  {
+    "path": "D:/平台/knowledge_base/政治/(2.1.32)--框架课3-史纲-课堂笔记..pdf",
+    "expected_subject": "政治",
+    "note": "史纲课堂笔记，同事反馈过被判错"
+  },
+  {
+    "path": "D:/平台/knowledge_base/数学/1987年考研数学三真题及解析 .pdf",
+    "expected_subject": "数学",
+    "note": "数学真题"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/高等数学 第七版 上册 习题全解指南 同济.pdf",
+    "expected_subject": "数学",
+    "note": "同济高数，路径目录名无学科（专业课-其他）"
+  },
+  {
+    "path": "D:/平台/knowledge_base/英语/2005-2026年英语一新题型真题【整理自：公众号小舟学长】.pdf",
+    "expected_subject": "英语",
+    "note": "英语真题"
+  },
+  {
+    "path": "D:/平台/knowledge_base/英语/2001-2009年英语一手译本.pdf",
+    "expected_subject": "英语",
+    "note": "英语手译本"
+  },
+  {
+    "path": "D:/平台/knowledge_base/数字电子技术/数字电子技术知识点.pdf",
+    "expected_subject": "数字电子技术",
+    "note": "数电"
+  },
+  {
+    "path": "D:/平台/knowledge_base/数字电子技术/教材/数字电子技术基础同步辅导 课后习题全解答案 高教阎石第5版 新版.pdf",
+    "expected_subject": "数字电子技术",
+    "note": "阎石数电"
+  },
+  {
+    "path": "D:/平台/knowledge_base/模拟电子技术/课件讲义/【电子技术基础-模拟部分】康华光 知识点总结.pdf",
+    "expected_subject": "模拟电子技术",
+    "note": "康华光模电，含互斥线索「模拟部分」"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/自动控制/01.【第1节】电路模型和电路定律一.pdf",
+    "expected_subject": "电路",
+    "note": "电路课件，目录名是「自动控制」不指示学科"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/通信/信号/(3.2)--第1节_连续信号的表示、分类与运算（留白版）.pdf",
+    "expected_subject": "信号与系统",
+    "note": "信号与系统课件"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/计算机专业课/2009年计算机408统考真题. .pdf",
+    "expected_subject": "计算机学科专业基础408",
+    "note": "408 统考真题"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/政治/800题-重点题勾画（新思想）.pdf",
+    "expected_subject": "政治",
+    "note": "文件名无「政治/马原/史纲」，只有 800题 + 新思想"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-其他/政治/27肖1000挖空版-新思想@空卡空卡空空卡.pdf",
+    "expected_subject": "政治",
+    "note": "肖1000 挖空版"
+  },
+  {
+    "path": "D:/平台/knowledge_base/数字电子技术/38.强化特殊三章：均匀传输线一（分布参数电路及电报方程）.pdf",
+    "expected_subject": "数字电子技术",
+    "note": "文件名含「电路」，检验是否会被判成电路理论"
+  },
+  {
+    "path": "D:/平台/knowledge_base/未分类/#2027基础系列#修齐“小橙书”附赠-5月时政汇总.pdf",
+    "expected_subject": "政治",
+    "note": "时政汇总；路径目录「未分类」不给任何学科提示，只能靠文件名/正文"
+  },
+  {
+    "path": "D:/平台/knowledge_base/专业课-贵大834/真题/贵大2022年834真题.pdf",
+    "expected_subject": "数字电子技术",
+    "note": "贵大834=电子技术基础（模电+数电合卷）；按 taxonomy.SUBJECT_ALIASES 既有的「电子技术基础→数字电子技术」口径取值（该科目本身模数混合，标签无法两全）"
+  }
+]
