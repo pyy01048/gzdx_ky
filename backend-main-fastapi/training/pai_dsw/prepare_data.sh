@@ -14,8 +14,11 @@ DEST="${DEST:-$WORKSPACE/train_data}"
 SRC="${TRAIN_DATA_DIR:-}"
 if [ -z "$SRC" ]; then
   for cand in \
+      "$SCRIPT_DIR/data/lora_finetune_v3" \
       "$SCRIPT_DIR/data/lora_finetune_v2" \
+      "$REPO/data/lora_finetune_v3" \
       "$REPO/data/lora_finetune_v2" \
+      "/mnt/data/考研资料数据集/lora_finetune_v3" \
       "/mnt/data/考研资料数据集/lora_finetune_v2" \
       "/mnt/data/考研资料数据集/lora_data"; do
     if [ -f "$cand/train.jsonl" ] && [ -f "$cand/val.jsonl" ]; then
