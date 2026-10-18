@@ -117,3 +117,58 @@ OSS 上的 knowledge_base（79GB 原始文件）进模型要三段，每段独�
    上传 OSS → 回 DSW 训 v3。
 
 > 大文件（>200MB 扫描件 78 个，红宝书 1655MB）OCR 超时方案待定：A 页数封顶 / C 动态超时结合。
+
+## 远程串联模式（本电脑 AI Agent 直连 DSW）
+
+不想手动复制粘贴时，让本电脑的 AI Agent 通过 SSH 直接操作 DSW——Agent 的
+命令执行环境就是本电脑，缺的只是一条「本电脑 → DSW」网络路径 + 一把专用密钥。
+**推荐 Tailscale（你已在用）**，不要把 22 端口裸暴露公网。
+
+### 1. DSW 加入 Tailscale（VSCode 终端执行）
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up
+tailscale ip -4        # 记下输出，如 100.x.x.x
+```
+
+容器缺 TUN 设备时报错则用用户态网络：
+
+```bash
+tailscaled --tun=userspace-networking & tailscale up
+```
+
+### 2. 本电脑生成专用密钥对（不要复用现有私钥）
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/dsw_key -N ""
+```
+
+### 3. 公钥装进 DSW（VSCode 终端执行，粘贴本机 `~/.ssh/dsw_key.pub` 的内容）
+
+```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+echo "ssh-ed25519 AAAA...（你的公钥内容）" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+### 4. 本电脑验证连通
+
+```bash
+ssh -i ~/.ssh/dsw_key -o StrictHostKeyChecking=no root@100.x.x.x nvidia-smi
+```
+
+### 5. 之后 Agent 可直接执行（输出回到 Agent 侧，无需人工中转）
+
+```bash
+ssh -i ~/.ssh/dsw_key root@100.x.x.x \
+  "cd /mnt/workspace/gzdx_ky/backend-main-fastapi/training/pai_dsw && bash probe_env.sh"
+```
+
+### 安全边界
+
+- 私钥只存本机 `~/.ssh/dsw_key`，Agent 只引用路径、不读取内容，不出现在对话里
+- Tailscale 是加密内网；若改用 EIP，安全组只放行你家 IP，别开 0.0.0.0/0
+- 备选方案说明：阿里云 MCP 生态只有 PAI 实例生命周期 API（创建/启停），
+  **没有远程执行命令的 API**，所以 SSH 是唯一执行通道，配 MCP 替代不了
+
