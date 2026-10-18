@@ -44,10 +44,16 @@ from models import QuizQuestion, KnowledgeChunk, KnowledgePoint  # noqa: E402
 from services import taxonomy  # noqa: E402
 
 DRY_RUN = "--dry-run" in sys.argv
+# 输出目录可经 --out-dir 指定：v3 起换新目录，避免覆盖已进 git 的 v2 数据集
+# （training/pai_dsw/data/lora_finetune_v2 有 276 条，是 DSW 包自带数据）。
 OUT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "lora_finetune_v2",
 )
+if "--out-dir" in sys.argv:
+    _i = sys.argv.index("--out-dir")
+    if _i + 1 < len(sys.argv) and not sys.argv[_i + 1].startswith("--"):
+        OUT_DIR = os.path.abspath(sys.argv[_i + 1])
 
 # 答疑教学法（融入参考项目方法论）：
 #   - 角色化自适应 tutor：先判断学生卡在"概念"还是"计算"，再决定讲法
