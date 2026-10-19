@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from services.dbapi_compat import wrap_conn
 from database import SessionLocal, get_db
 from models import AIProvider, PlatformConfig
 from schemas import (
@@ -31,6 +32,51 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 # 向量构建异步任务状态（P2：避免阻塞主服务）
 _embedding_tasks: dict = {}
+
+# ---------------------------------------------------------------------------
+# AI 调用失败原因分类（P0-5）
+#
+# 线上实测：POST /api/ai/chat 直接 502，但响应体只有一句「AI 服务暂时不可用」，
+# 真实原因（哪个服务商失败、是 Key 缺失还是连不上、本地 Ollama 是否可用）只在
+# 服务端日志里 —— 前端拿不到任何可区分的信息，只能对用户显示一句空话。
+#
+# 这里把异常归到**可安全对外展示**的原因码：
+#   · 原始异常文本仍不回传（含服务商地址 / 401 原文 / Key 片段，见 E2E2-002）；
+#   · 分类码同时写进响应体 detail 与 X-AI-Error-Code 响应头，SSE 也带 code 字段，
+#     前端据此给用户不同的可操作提示。
+# ---------------------------------------------------------------------------
+_AI_ERROR_HINTS = {
+    "no_provider": "没有可用的 AI 服务商（未配置，或全部被停用）",
+    "provider_auth": "已配置服务商的 API Key 缺失或无效（上游返回 401/403）",
+    "provider_unreachable": "连不上已配置的服务商（网络不可达、DNS 失败或超时）",
+    "local_unavailable": "本地 Ollama 不可用（未启动，或模型未下载完成）",
+    "all_providers_failed": "已启用的服务商全部调用失败，且本地 Ollama 也不可用",
+    "upstream_error": "服务商返回了错误响应",
+    "internal_error": "服务端内部错误",
+}
+
+
+def _classify_ai_error(exc: BaseException) -> Tuple[str, str]:
+    """把 AI 调用异常归类为 (reason_code, 可展示提示)。"""
+    text = str(exc) or ""
+    low = f"{type(exc).__name__}: {text}".lower()
+    t = text.lower()
+    if "没有可用的 ai 服务商" in t or "服务商" in t and "不存在" in t:
+        return "no_provider", _AI_ERROR_HINTS["no_provider"]
+    if "本地模型调用失败" in text:
+        return "local_unavailable", _AI_ERROR_HINTS["local_unavailable"]
+    if "所有 ai 服务商调用失败" in text.lower():
+        # 兜底错误里仍带着最后一个服务商的失败原因，二次归类便于用户直接定位
+        if "401" in text or "403" in text or "unauthorized" in low or "forbidden" in low:
+            return "provider_auth", _AI_ERROR_HINTS["provider_auth"]
+        if "timed out" in low or "timeout" in low or "connect" in low or "name or service not known" in low:
+            return "provider_unreachable", _AI_ERROR_HINTS["provider_unreachable"]
+        return "all_providers_failed", _AI_ERROR_HINTS["all_providers_failed"]
+    if "401" in text or "403" in text or "unauthorized" in low or "forbidden" in low:
+        return "provider_auth", _AI_ERROR_HINTS["provider_auth"]
+    if "timed out" in low or "timeout" in low or "connect" in low or "name or service not known" in low:
+        return "provider_unreachable", _AI_ERROR_HINTS["provider_unreachable"]
+    return "upstream_error", _AI_ERROR_HINTS["upstream_error"]
 
 
 async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict]:
@@ -233,12 +279,69 @@ async def set_routing(req: RoutingModeRequest, db: Session = Depends(get_db)):
     return {"mode": req.mode, "message": f"路由模式已切换为 {gw.ROUTING_MODE_LABELS[req.mode]}，立即生效"}
 
 
+def _format_bank_answer(b: dict) -> str:
+    """题库确定性答案 → 用户可读文本直出（不经过模型，零幻觉）。"""
+    lines = ["【题库命中 · 确定性答案】", ""]
+    lines.append((b.get("content") or "").strip())
+    opts = b.get("options")
+    if isinstance(opts, dict) and opts:
+        lines.append("")
+        lines.append("选项：" + "  ".join(f"{k}. {v}" for k, v in sorted(opts.items(), key=lambda kv: str(kv[0]))))
+    elif isinstance(opts, list) and opts:
+        lines.append("")
+        lines.append("选项：" + "  ".join(str(o) for o in opts))
+    ans = (b.get("answer") or "").strip()
+    if ans:
+        lines.append("")
+        lines.append(f"答案：{ans}")
+    an = (b.get("analysis") or "").strip()
+    if an:
+        lines.append("")
+        lines.append(f"解析：{an}")
+    meta = []
+    if b.get("subject"):
+        meta.append(str(b["subject"]))
+    if b.get("year"):
+        meta.append(f"{b['year']}年")
+    if b.get("source_label"):
+        meta.append(str(b["source_label"]))
+    meta.append(f"题库 #{b.get('id')} · answer_source={b.get('answer_source')}")
+    lines.append("")
+    lines.append(f"（来源：{' · '.join(meta)}；如需针对本题深入讲解，请继续提问）")
+    return "\n".join(lines)
+
+
 @router.post("/chat")
 async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     """AI 对话（统一接口，自动选择启用的服务商，可选 RAG 知识库增强 + 智能路由）。"""
     ai = AIService(db)
     try:
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
+        # —— 答疑「题库确定性答案优先」（云端方案第三步①）——
+        # 高置信来源（bank/source_extract/user_confirmed）的题被用户问题句级命中时，
+        # 直接返回「题目+答案+解析」，不进模型自由发挥；查不到才走 RAG + 模型。
+        if request.use_rag and messages:
+            _last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+            try:
+                from services.qa_foundation import find_bank_answer
+                _bank = find_bank_answer(db, _last_user)
+            except Exception as _be:
+                logger.warning("bank_answer 查询失败，继续 RAG: %s", _be)
+                _bank = None
+            if _bank:
+                return {
+                    "content": _format_bank_answer(_bank),
+                    "answer_source": _bank["answer_source"],
+                    "bank_answer": {
+                        "id": _bank["id"], "subject": _bank["subject"],
+                        "question_type": _bank["question_type"],
+                        "answer_source": _bank["answer_source"],
+                        "answer_confidence": _bank["answer_confidence"],
+                        "year": _bank["year"], "source_label": _bank["source_label"],
+                    },
+                    "rag": False,
+                    "bank_hit": True,
+                }
         # RAG：把最后一条用户消息作为查询，检索本地知识库注入 system
         rag_prompt = ""
         gate_meta = None
@@ -269,8 +372,19 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         if gate_meta is not None:
             result["retrieval_gate"] = gate_meta
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI 对话失败：{str(e)}")
+        # E2E2-002：detail 不再透传原始异常（会暴露服务商地址与 401 原文），原文只进服务端日志。
+        # P0-5：但也不能只回一句笼统的「暂时不可用」——把**分类后的原因码**回传，
+        # 让前端能区分「没配服务商 / Key 失效 / 连不上 / 本地 Ollama 没起」，给用户可操作的提示。
+        code, hint = _classify_ai_error(e)
+        logger.exception("AI 对话失败（reason=%s）", code)
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 服务暂时不可用（{code}）：{hint}。请到「设置 → AI 服务」检查配置后重试。",
+            headers={"X-AI-Error-Code": code},
+        )
 
 
 # ---------------- T4：电路读图图片上传 ---------------- #
@@ -318,6 +432,36 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
         last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
 
+        # —— 题库确定性答案优先（第三步①）：命中即直返，不走引擎状态机 ——
+        try:
+            from services.qa_foundation import find_bank_answer
+            _bank = find_bank_answer(db, last_user)
+        except Exception as _be:
+            logger.warning("bank_answer 查询失败，继续路由引擎: %s", _be)
+            _bank = None
+        if _bank:
+            return {
+                "content": _format_bank_answer(_bank),
+                "engine_used": "bank",
+                "classification": "bank_answer",
+                "fallback_used": False,
+                "latency_ms": 0,
+                "reason": "题库确定性答案命中，跳过模型",
+                "reasoning_steps": [],
+                "retrieved_chunks": [],
+                "cache_hit": False,
+                "from_cache": False,
+                "reranker_backend": "none",
+                "answer_source": _bank["answer_source"],
+                "bank_answer": {
+                    "id": _bank["id"], "subject": _bank["subject"],
+                    "question_type": _bank["question_type"],
+                    "answer_source": _bank["answer_source"],
+                    "answer_confidence": _bank["answer_confidence"],
+                    "year": _bank["year"], "source_label": _bank["source_label"],
+                },
+            }
+
         # 强制引擎
         force_engine = None
         if request.force_local:
@@ -354,8 +498,16 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
             "from_cache": result.get("from_cache", False),
             "reranker_backend": result.get("reranker_backend", "none"),
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI路由对话失败：{str(e)}")
+        code, hint = _classify_ai_error(e)
+        logger.exception("AI 路由对话失败（reason=%s）", code)
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 服务暂时不可用（{code}）：{hint}。请到「设置 → AI 服务」检查配置后重试。",
+            headers={"X-AI-Error-Code": code},
+        )
 
 
 @router.post("/chat/stream")
@@ -364,32 +516,36 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
     ai = AIService(db)
 
     async def event_gen():
-        messages = [{"role": m.role, "content": m.content} for m in request.messages]
-        rag_used = False
-        gate_meta = None
-        if request.use_rag and messages:
-            last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-            rag_prompt, gate_meta = await _rag_system_prompt(last_user, ai)
-            if rag_prompt:
-                messages = [
-                    {"role": "system", "content": rag_prompt},
-                    *messages,
-                ]
-                rag_used = True
-        # KB 感知路由：统计命中数
-        kb_hit_count = 0
-        if request.use_routing and not request.provider_id and messages:
-            last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-            try:
-                kb_hit_count = len(ai.search_knowledge_base(last_user, limit=4))
-            except Exception:
-                kb_hit_count = 0
-        # observe 模式：meta 事件带上检索门控判定，便于灰度观测 would_abstain 率
-        # V12 修复：SSE 必须按 "data: {json}\n\n" 逐事件输出，前端按行切分。
-        # 旧实现 yield 紧凑 JSON 无换行 → 前端 indexOf('\n') 永远 -1 → 流永不渲染，
-        # AI 助手卡"生成中…"。
-        yield f"data: {json.dumps({'type': 'meta', 'rag': rag_used, 'retrieval_gate': gate_meta}, ensure_ascii=False)}\n\n"
+        # P0-5：整段包在 try 里。旧实现只把 ai.chat_stream(...) 包了 try，
+        # 而 RAG 检索（_rag_system_prompt）在 try **之外**——它一抛异常，
+        # StreamingResponse 就在发出任何事件前直接断开：HTTP 状态仍是 200，
+        # 但流里既没有 delta 也没有 error 事件，前端表现为"点了没反应、也不报错"。
         try:
+            messages = [{"role": m.role, "content": m.content} for m in request.messages]
+            rag_used = False
+            gate_meta = None
+            if request.use_rag and messages:
+                last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+                rag_prompt, gate_meta = await _rag_system_prompt(last_user, ai)
+                if rag_prompt:
+                    messages = [
+                        {"role": "system", "content": rag_prompt},
+                        *messages,
+                    ]
+                    rag_used = True
+            # KB 感知路由：统计命中数
+            kb_hit_count = 0
+            if request.use_routing and not request.provider_id and messages:
+                last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+                try:
+                    kb_hit_count = len(ai.search_knowledge_base(last_user, limit=4))
+                except Exception:
+                    kb_hit_count = 0
+            # observe 模式：meta 事件带上检索门控判定，便于灰度观测 would_abstain 率
+            # V12 修复：SSE 必须按 "data: {json}\n\n" 逐事件输出，前端按行切分。
+            # 旧实现 yield 紧凑 JSON 无换行 → 前端 indexOf('\n') 永远 -1 → 流永不渲染，
+            # AI 助手卡"生成中…"。
+            yield f"data: {json.dumps({'type': 'meta', 'rag': rag_used, 'retrieval_gate': gate_meta}, ensure_ascii=False)}\n\n"
             async for ev in ai.chat_stream(
                 messages,
                 provider_id=request.provider_id,
@@ -399,7 +555,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             ):
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'AI 对话失败：{str(e)}'}, ensure_ascii=False)}\n\n"
+            # 与 /chat 同源分类：code 让前端区分失败原因，原始异常只进日志。
+            code, hint = _classify_ai_error(e)
+            logger.exception("AI 流式对话失败（reason=%s）", code)
+            yield f"data: {json.dumps({'type': 'error', 'code': code, 'message': f'AI 服务暂时不可用（{code}）：{hint}。请到「设置 → AI 服务」检查配置后重试。'}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_gen(),
@@ -429,7 +588,7 @@ async def search_status(db: Session = Depends(get_db)):
 async def rebuild_fts(db: Session = Depends(get_db)):
     """重建 FTS5 全文检索索引（删除并重新同步 5164 条分块）。"""
     from services.search_service import ensure_fts_table
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     conn.execute("DROP TABLE IF EXISTS knowledge_chunks_fts")
     conn.commit()
     ensure_fts_table(conn)
@@ -554,8 +713,12 @@ async def model_catalog(db: Session = Depends(get_db)):
                 installed = {m.get("name", "") for m in r.json().get("models", [])}
                 # Ollama 有时给 name 带 ":latest"，统一裁掉便于匹配
                 installed |= {n.split(":")[0] for n in list(installed)}
-    except Exception:
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
 
     return mr.full_report(installed=installed)
 
@@ -601,12 +764,19 @@ async def model_hardware():
 
 @router.get("/local/status")
 async def local_model_status(db: Session = Depends(get_db)):
-    """本地 Ollama 模型可用性检测（强制实时探测，不吃 5 分钟缓存）。"""
+    """本地 Ollama 模型可用性检测。
+
+    2026-10-14 变更：原先 ``force_check=True`` 完全绕过缓存，导致该接口
+    **每次调用都真连一次 Ollama**；Ollama 未启动时连接挂到超时，
+    实测单请求 27 秒。这里改为 ``force_recent=True``：
+    只在缓存超过 30 秒时才重新探测，既保证"用户点按钮能立刻看到
+    Ollama 刚启动的状态"，又不会把接口变成慢查询。
+    """
     import os
 
     ai = AIService(db)
     host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-    available = await ai._check_ollama_available(force_check=True)
+    available = await ai._check_ollama_available(force_recent=True)
 
     # 可用时顺带把已装模型列出来，用户一眼看到"本地有什么能用"
     models: list = []
@@ -621,8 +791,12 @@ async def local_model_status(db: Session = Depends(get_db)):
                          "size_gb": round((m.get("size") or 0) / (1024 ** 3), 2)}
                         for m in resp.json().get("models", [])
                     ]
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
     return {
         "available": available,

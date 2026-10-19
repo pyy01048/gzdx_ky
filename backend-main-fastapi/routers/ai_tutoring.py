@@ -20,13 +20,17 @@ M0-103②：区分「真题 / 教材题」两种作答风格——
 from __future__ import annotations
 
 import json as _json
+import logging
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from services.dbapi_compat import wrap_conn
 from database import get_db
+
+logger = logging.getLogger(__name__)
 from models import QuizQuestion
 from services.ai_service import AIService
 from services.error_analyzer import _guess_category, _practice_questions
@@ -171,7 +175,7 @@ def _local_fallback(db: Session, q: QuizQuestion, my_answer: Optional[str], angl
                     mode: str = "general") -> Dict:
     """无模型环境下的结构化讲解包（错因分类 + 参考解析 + 相似题指向）。"""
     cat = _guess_category("答题错误", q.content or "", my_answer or "", q.answer or "")
-    similar = _practice_questions(db, db.connection().connection, q.id,
+    similar = _practice_questions(db, wrap_conn(db.connection().connection), q.id,
                                  None, q.subject, limit=3)
     head = {"exam": "（真题模式 · 按评分视角）", "textbook": "（教材模式 · 按概念理解）",
             "general": ""}[mode]
@@ -192,7 +196,18 @@ def _local_fallback(db: Session, q: QuizQuestion, my_answer: Optional[str], angl
         "route": "local",
         "mode": mode,
         "source_kind": source_kind_of(q.source),
-        "similar": [{"id": s["id"], "content": str(s["content"])[:120]} for s in similar],
+        # 键名对齐：error_analyzer._practice_questions 返回的是 ``question_id``
+        # （不是 ``id``）。此前直接读 s["id"] 会 KeyError，被外层 except 吞掉后
+        # 整个 /api/ai/tutoring/explain 返回 500（实测 3 个 angle 全挂）。
+        # 兼容两种键名，输出仍用 ``id`` 保持对外契约不变。
+        "similar": [
+            {
+                "id": s.get("question_id", s.get("id")),
+                "content": str(s.get("content") or "")[:120],
+            }
+            for s in similar
+            if s.get("question_id", s.get("id")) is not None
+        ],
     }
 
 
@@ -225,8 +240,12 @@ async def explain(req: ExplainReq, db: Session = Depends(get_db)):
                 "mode": mode, "source_kind": sk}
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
+        # P0-5：降级到本地讲解包是合理的兜底，但**必须留痕并告知前端**——
+        # 否则用户看到一段像模像样的"AI 讲解"，实际是规则生成的，出问题无从排查。
+        logger.exception("AI 讲题失败，已降级本地讲解包")
         return {"question_id": q.id, "angle": req.angle,
+                "degraded": True, "ai_error": str(e)[:200],
                 **_local_fallback(db, q, req.my_answer, req.angle, mode)}
 
 
@@ -251,8 +270,10 @@ async def followup(req: FollowupReq, db: Session = Depends(get_db)):
         return {"question_id": q.id, "content": r["content"],
                 "provider": r.get("provider"), "route": r.get("route"),
                 "mode": mode, "source_kind": sk}
-    except Exception:
-        return {"question_id": q.id,
+    except Exception as e:
+        # 同上：离线兜底文案必须标记为降级，避免被当成模型真实回答。
+        logger.exception("AI 追问失败，已降级离线话术")
+        return {"question_id": q.id, "degraded": True, "ai_error": str(e)[:200],
                 "content": ("当前处于离线模式，无法追问。可用的本地线索：\n"
                             f"· 参考解析：{str(q.analysis)[:300] or '无'}\n"
                             f"· 考点：{q.knowledge_point or '见题干'}\n"

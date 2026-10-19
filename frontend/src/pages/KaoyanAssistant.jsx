@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { kaoyanApi } from '../api/kaoyanApi'
 import { aiApi } from '../api/client'
+import useStore from '../store/useStore'
 import { toast } from '../components/UI'
 
 export default function KaoyanAssistant() {
@@ -20,11 +21,13 @@ export default function KaoyanAssistant() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages])
 
-  // 预设问题
+  // 预设问题：专业取自用户在「设置」里填报的报考专业。
+  // 此前写死「电子信息」和「我考320分」，等于替每个用户假设专业方向与分数。
+  const myMajor = useStore((s) => s.settings.major)
   const presets = [
-    '我考320分，推荐几所稳妥的学校',
+    '推荐几所稳妥的学校',
     '哪些985院校复录比较低？',
-    '电子信息专业哪些学校招生人数多？',
+    myMajor ? `${myMajor}专业哪些学校招生人数多？` : '我报考的专业哪些学校招生人数多？',
     '帮我分析北京地区的院校难度',
   ]
 
@@ -66,7 +69,18 @@ export default function KaoyanAssistant() {
           const sourceNote = reliesOnUnverified ? '\n\n数据来源：第三方聚合，未核验' : ''
           setMessages(m => [...m, { role: 'assistant', content: `【AI 深度解读】\n${reply}${sourceNote}` }])
         }
-      } catch {}
+      } catch (e) {
+        // P0-5：这里原来是空的 `catch {}` —— /api/ai/chat 返回 502 时界面完全静默，
+        // 用户只看到引擎结论、看不到任何"AI 解读失败"的提示，只能以为卡住了。
+        // 502 多为服务商 Key 未配置或本地 Ollama 未启动（后端现已把原因码放进 detail）。
+        const hint = e?.status === 502
+          ? '\n常见原因：AI 服务商 API Key 未配置/失效，或本地 Ollama 未启动（详见「设置 → AI 服务」）。'
+          : ''
+        setMessages(m => [...m, {
+          role: 'assistant',
+          content: `【AI 深度解读】暂时不可用：${e?.message || '未知错误'}${hint}\n\n上面的择校结论来自本地引擎，可正常使用。`,
+        }])
+      }
     } catch (e) {
       setMessages(m => [...m, { role: 'assistant', content: `出错了：${e.message}` }])
     } finally {
@@ -76,21 +90,21 @@ export default function KaoyanAssistant() {
 
   return (
     <div className="ky-page" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
-      <h1 style={{ marginBottom: '4px' }}>择校 AI 助手</h1>
-      <p style={{ color: 'var(--ink-3)', marginBottom: '16px' }}>
+      <h1 style={{ marginBottom: 'var(--space-1)' }}>择校 AI 助手</h1>
+      <p style={{ color: 'var(--muted)', marginBottom: 'var(--space-4)' }}>
         {stats
           ? `基于本地库 ${stats.school_count} 所院校 / ${stats.major_count} 个专业 / ${stats.scoreline_records} 条分数线记录`
           : '数据概览加载中…'}
       </p>
 
       {/* 预设问题 */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
         {presets.map((p, i) => (
           <button key={i} onClick={() => send(p)} disabled={loading}
             style={{
-              padding: '8px 14px', borderRadius: '20px', border: '1px solid var(--line)',
+              padding: 'var(--space-2) var(--space-4)', borderRadius: '20px', border: '1px solid var(--border)',
               background: 'var(--surface)', cursor: loading ? 'default' : 'pointer',
-              fontSize: '13px', color: 'var(--ink-2)',
+              fontSize: 'var(--text-sm)', color: 'var(--fg-2)',
             }}>
             {p}
           </button>
@@ -98,36 +112,37 @@ export default function KaoyanAssistant() {
       </div>
 
       {/* 消息区 */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '16px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--line)', marginBottom: '12px' }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-4)', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: 'var(--space-3)' }}>
         {messages.map((m, i) => (
-          <div key={i} style={{ marginBottom: '12px', display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+          <div key={i} style={{ marginBottom: 'var(--space-3)', display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{
-              maxWidth: '75%', padding: '10px 14px', borderRadius: '12px',
+              maxWidth: '75%', padding: 'var(--space-3) var(--space-4)', borderRadius: '12px',
               background: m.role === 'user' ? 'var(--accent)' : 'var(--surface-2)',
-              color: m.role === 'user' ? '#fff' : 'var(--ink)',
-              whiteSpace: 'pre-wrap', fontSize: '14px', lineHeight: '1.6',
+              color: m.role === 'user' ? '#fff' : 'var(--fg)',
+              whiteSpace: 'pre-wrap', fontSize: 'var(--text-base)', lineHeight: '1.6',
             }}>
               {m.content}
             </div>
           </div>
         ))}
-        {loading && <div style={{ color: 'var(--ink-3)', fontSize: '13px' }}>AI 思考中…</div>}
+        {loading && <div style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)' }}>AI 思考中…</div>}
       </div>
 
       {/* 输入区 */}
-      <div style={{ display: 'flex', gap: '8px' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <input
           value={input}
+          aria-label="输入你的择校问题"
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send(input)}
           placeholder="输入你的择校问题，如：350分能上哪些211？"
-          style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--line)' }}
+          style={{ flex: 1, padding: 'var(--space-3) var(--space-4)', borderRadius: '8px', border: '1px solid var(--border)' }}
         />
         <button onClick={() => send(input)} disabled={loading || !input.trim()}
           style={{
-            padding: '10px 24px', borderRadius: '8px', border: 'none', cursor: (loading || !input.trim()) ? 'default' : 'pointer',
+            padding: 'var(--space-3) var(--space-6)', borderRadius: '8px', border: 'none', cursor: (loading || !input.trim()) ? 'default' : 'pointer',
             background: (loading || !input.trim()) ? 'var(--surface-2)' : 'var(--accent)',
-            color: (loading || !input.trim()) ? 'var(--ink-3)' : '#fff',
+            color: (loading || !input.trim()) ? 'var(--muted)' : '#fff',
           }}>
           {loading ? '发送中' : '发送'}
         </button>
