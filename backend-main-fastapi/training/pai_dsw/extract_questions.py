@@ -25,6 +25,14 @@
 - **C**：题干完整但没抽到答案 —— 待补答案，本地侧走 answer_review_queue
 - **JUNK**：像解析/目录/例题说明、题干过短 —— 丢弃
 
+### 输出契约（务必遵守，改动前先读）
+
+| 字段 | 形态 | 说明 |
+|---|---|---|
+| `options` | `[{"key": "A", "text": "..."}]` | **对象数组**，不是字符串数组。本地 `scripts/import_exam_questions.py` 按 `o["key"]/o["text"]` 读，`services/content_sanitizer.normalize_options` 也收敛到同一形态。 |
+| `answer` | `"A"` / `"ACD"` | **纯字母**。混入选项文字（如 `"A（全0）"`）会让入库前的答案校验 `set(answer) <= {o["key"]}` 失败。 |
+| `answer_text` | `"全0"` | 正确项对应的选项文字，仅人工核对/展示，不参与判分。 |
+
 ### 用法
 
     python3 extract_questions.py --ocr-dir /mnt/workspace/ocr_out \
@@ -191,8 +199,42 @@ def grade_question(q: dict) -> str:
     return "C"
 
 
-def normalize_answer(q: dict) -> str:
-    """把答案归一成"字母 + 选项文字"，本地入库时前端能直接显示。"""
+def build_options(opts: dict) -> list[dict]:
+    """输出**规范形态** ``[{"key": "A", "text": "..."}]``。
+
+    契约依据（本地侧两处都按这个形态读）：
+      * ``scripts/import_exam_questions.py`` —— ``o["text"]`` 做去重指纹、
+        ``set(q.answer) <= {o["key"]}`` 做答案校验；
+      * ``services/content_sanitizer.normalize_options`` —— 规整结果同样为
+        ``[{"key": ..., "text": ...}]``（注释写明"对齐 DB is_canonical_options"）。
+
+    历史 bug：这里曾输出 ``"A. 全0"`` 这类**字符串数组**，本地入库脚本按
+    ``o["text"]`` 取值全部失败 → options 被置空 → 前端只能显示空选项/异常。
+    """
+    return [{"key": k, "text": v} for k, v in sorted(opts.items())]
+
+
+def answer_key(q: dict) -> str:
+    """客观题入库答案：**纯字母**（``"A"`` / ``"ACD"``）。
+
+    必须与 answer_text 分开。历史 bug：``normalize_answer`` 把答案写成
+    ``"A（全0）"``，选项文字混进答案列——判分按字母比对时直接失败
+    （``import_exam_questions.py`` 的 ``set(q.answer) <= {o["key"]}`` 必然为假）。
+
+    无选项或非字母答案（填空/判断/简答）原样返回原串。
+    """
+    ans = (q["answer"] or "").strip()
+    if not q["options"]:
+        return ans
+    up = re.sub(r"[^A-H]", "", ans.upper())
+    return up or ans
+
+
+def answer_text(q: dict) -> str:
+    """正确答案对应的**选项文字**（多选以「、」连接），仅供人工核对/展示。
+
+    不写进答案列——它只做展示，入库答案一律用 answer_key。
+    """
     ans = (q["answer"] or "").strip()
     if not q["options"]:
         return ans
@@ -200,8 +242,17 @@ def normalize_answer(q: dict) -> str:
     if not up:
         return ans
     texts = [q["options"].get(ch, "") for ch in up]
-    joined = "、".join(t for t in texts if t)
-    return f"{up}（{joined}）" if joined else up
+    return "、".join(t for t in texts if t)
+
+
+def normalize_answer(q: dict) -> str:
+    """已废弃：答案与选项文字混写会让本地判分失败。
+
+    仅为兼容历史调用保留，新代码请用 answer_key / answer_text。
+    """
+    key = answer_key(q)
+    text = answer_text(q)
+    return f"{key}（{text}）" if key != text and text else key
 
 
 def guess_type(q: dict) -> str:
@@ -342,7 +393,7 @@ def main() -> int:
             if g == "JUNK" or grade_rank[g] < min_rank:
                 continue
             content = b["content"]
-            opts = b["options"]
+            opts = build_options(b["options"])
             qtype = guess_type(b)
             image = img_map.get(b["page"], "")
             has_fig = any(h in content for h in _FIGURE_HINT) or bool(image)
@@ -351,8 +402,10 @@ def main() -> int:
                 "subject": subject, "chapter": "",
                 "question_no": b["no"], "question_type": qtype,
                 "content": content,
-                "options": [f"{k}. {v}" for k, v in sorted(opts.items())],
-                "answer": normalize_answer(b),
+                "options": opts,
+                # 答案列只存纯字母 key；选项文字单独放 answer_text（展示用）
+                "answer": answer_key(b),
+                "answer_text": answer_text(b),
                 "grade": g,
                 "has_figure": has_fig,
                 "image": image,
@@ -363,8 +416,8 @@ def main() -> int:
                 vl_rows.append({
                     "image": image,
                     "question": content,
-                    "options": [f"{k}. {v}" for k, v in sorted(opts.items())],
-                    "answer": normalize_answer(b),
+                    "options": opts,
+                    "answer": answer_key(b),
                     "doc": src, "page": b["page"],
                 })
 
@@ -383,11 +436,15 @@ def main() -> int:
     csv_p = out_dir / "quiz_questions.csv"
     with open(csv_p, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
+        # options 列输出 JSON（与 jsonl 同一份契约文本 [{key,text}]），
+        # 幂等于本地入库脚本 json.loads 后的期望结构；answer 列为纯字母 key，
+        # 选项文字在 answer_text 列，供 Excel 人工核对。
         w.writerow(["subject", "chapter", "question_type", "content", "options",
-                    "answer", "grade", "doc", "page", "image", "source"])
+                    "answer", "answer_text", "grade", "doc", "page", "image", "source"])
         for r in rows:
             w.writerow([r["subject"], r["chapter"], r["question_type"], r["content"],
-                        " | ".join(r["options"]), r["answer"], r["grade"],
+                        json.dumps(r["options"], ensure_ascii=False),
+                        r["answer"], r["answer_text"], r["grade"],
                         r["doc"], r["page"], r["image"], r["source"]])
 
     vlp = out_dir / "vl_dataset.jsonl"
