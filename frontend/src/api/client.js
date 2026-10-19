@@ -35,10 +35,18 @@ export class ApiError extends Error {
   }
 }
 
-/** 从 FastAPI 错误体中提取可展示给用户的文本。 */
+/**
+ * 从后端错误体中提取可展示给用户的文本。
+ *
+ * 权威壳是 utils/exceptions.py 的 ``{code, message, detail?}``（#19 接口约定巡检把
+ * 全站 GET/POST 的非 2xx 都收口到这个形状），所以 **message 优先**。
+ * ``detail`` 现在只剩结构化附注（``{path}``、``{action}``），排在 message 之后——
+ * 早先它排第一，于是 404 toast 会把 ``{"path": "/api/..."}`` 直接甩给用户看。
+ * 保留 ``detail`` 分支是为了兼容尚未迁移的历史端点与 422 校验数组。
+ */
 function extractDetail(data, fallback) {
   if (data === null || data === undefined) return fallback
-  const detail = data.detail || data.error || data.message
+  const detail = data.message || data.detail || data.error
   if (detail === undefined || detail === null || detail === '') return fallback
   if (typeof detail === 'string') return detail
   // FastAPI 422 校验错误为对象数组，压平为可读文本
@@ -68,30 +76,38 @@ function composeSignals(external, controller) {
   return controller.signal
 }
 
-// 从 localStorage 读取应用密码（认证启用时使用）
-function getAppPassword() {
-  try {
-    return localStorage.getItem('app_password') || ''
-  } catch {
-    return ''
-  }
-}
-
 /**
  * 浏览器自己发起的字节流地址（iframe / 新窗口 / a[download]）。
- * 这类请求不走 fetch，拿不到 X-App-Password 头，所以认证启用时必须把密码放 query，
- * 后端 SimpleAuthMiddleware 同时接受 ?password=（utils/auth.py）。
+ * 会话走 httpOnly cookie（同源自动携带），地址里不再放任何凭据。
  */
 export function fileUrl(path, params = {}) {
   const q = new URLSearchParams()
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '') q.set(k, String(v))
   })
-  const pwd = getAppPassword()
-  if (pwd) q.set('password', pwd)
   const s = q.toString()
   return `${BASE}${path}${s ? `?${s}` : ''}`
 }
+
+// access 过期时并发请求共用同一次 refresh，避免 N 个 401 打出 N 次刷新
+let refreshing = null
+function refreshSession() {
+  if (!refreshing) {
+    refreshing = fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'same-origin' })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => { setTimeout(() => { refreshing = null }, 0) })
+  }
+  return refreshing
+}
+
+// 精确路径：这些接口的 401 是业务语义（登录失败/刷新失败），不是 session 过期信号
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/refresh', '/auth/logout', '/auth/status']
+// 前缀路径：整域的 401 都可能来自第三方资源状态（如网盘授权失效），
+// 绝不能触发全局 session 修复把用户踢下线（2026-10-18 登录后卡死事故）
+const NO_REFRESH_PREFIXES = ['/netdisk/']
+const isNoRefreshPath = (p) =>
+  NO_REFRESH_PATHS.includes(p) || NO_REFRESH_PREFIXES.some((pre) => p.startsWith(pre))
 
 /**
  * 统一请求封装。
@@ -111,12 +127,13 @@ export function fileUrl(path, params = {}) {
  * @param {number}   [options.timeout]  超时毫秒数，0 表示不限制
  * @param {AbortSignal} [options.signal] 外部中断信号
  * @returns {Promise<any>} 解析后的响应体
- * @throws  {ApiError} code为 'timeout' | 'network' | 'aborted' | 'http_error'
+ * @throws  {ApiError} code 为 'timeout' | 'network' | 'aborted'，
+ *          HTTP 层失败时为后端错误壳的 code（缺省时 'http_error'）
  */
-async function request(
-  path,
-  { method = 'GET', body, params, formData, timeout = DEFAULT_TIMEOUT, signal: externalSignal } = {}
-) {
+async function request(path, options = {}) {
+  const {
+    method = 'GET', body, params, formData, timeout = DEFAULT_TIMEOUT, signal: externalSignal, _retried = false,
+  } = options
   let url = `${BASE}${path}`
   if (params) {
     const qs = new URLSearchParams()
@@ -126,12 +143,7 @@ async function request(
     const s = qs.toString()
     if (s) url += `?${s}`
   }
-  const opts = { method, headers: {} }
-  // 注入认证头（如果有密码）
-  const password = getAppPassword()
-  if (password) {
-    opts.headers['X-App-Password'] = password
-  }
+  const opts = { method, headers: {}, credentials: 'same-origin' }
   if (formData) {
     opts.body = formData // 浏览器自动设置 multipart boundary
   } else if (body !== undefined) {
@@ -187,18 +199,24 @@ async function request(
      *     const d = await api.get(); if (!d) { /* 降级 *\/ }else { d.items.map(...) }
      * - 保持 null 的另一个理由：向后兼容。既有调用方（如 Words.jsx 的
      *   `backendDecks && backendDecks.length`）已按null 语义编写。
-     * 错误场景（非 2xx）由下方 !resp.ok 分支抛出带 detail 的 ApiError。
+     * 错误场景（非 2xx）由下方 !resp.ok 分支抛出带人类可读 message 的 ApiError。
      */
     data = null
   }
   if (!resp.ok) {
-    // 401 未授权：清除本地密码并触发登录事件
-    if (resp.status === 401) {
-      try { localStorage.removeItem('app_password') } catch {/* 忽略隐私模式异常 */}
+    const authPath = isNoRefreshPath(path)
+    if (resp.status === 401 && !authPath) {
+      if (!_retried && await refreshSession()) {
+        return request(path, { ...options, _retried: true })
+      }
       window.dispatchEvent(new CustomEvent('auth:required', { detail: data }))
+    } else if (resp.status === 403 && data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+      window.dispatchEvent(new CustomEvent('auth:password-change', { detail: data }))
     }
     throw new ApiError(extractDetail(data, `HTTP ${resp.status}`), {
-      code: 'http_error',
+      // 后端错误壳里的 code（RESOURCE_NOT_FOUND / DATA_CONFLICT…）透传给调用方分支；
+      // 缺失时仍回退 'http_error'，让既有 `e.code === 'timeout'` 之类判断语义不变。
+      code: (data && data.code) || 'http_error',
       status: resp.status,
       data,
     })
@@ -209,13 +227,196 @@ async function request(
 // 统一导出 request，供各业务 API client 复用（消除重复请求逻辑）
 export { request, DEFAULT_TIMEOUT }
 
+/* --------------------------------------------------------------------------
+ * AI 流式对话（SSE）—— 显式错误分支（P0-5）
+ *
+ * 旧实现（utils/api.js 的 chatStream）把 SSE 的 error 事件**吞掉了**：
+ *     try { handleEvent(JSON.parse(payload)) } catch (e) {
+ *       if (e.message && e.message.includes('流式调用失败')) throw e
+ *       /* 非 JSON 数据忽略 *\/
+ *     }
+ * 后端 error 事件带的真实文案是「AI 服务暂时不可用（xxx）：…」，并不含
+ * 「流式调用失败」四个字，于是被当成噪声行静默丢弃。结果：HTTP 200 + 空流，
+ * 用户点了快捷问题后界面既不出现回答也不出现错误提示，只能以为"卡住了"。
+ *
+ * 这里把流式失败显式分成四种可区分的 code，交给调用方分别渲染：
+ *   network          —— fetch 直接失败 / 超时 / 连接中断
+ *   http_error       —— 非 2xx（含 UNAUTHORIZED / 502 等，message 取后端壳的 message）
+ *   ai_stream_error  —— HTTP 200 但 SSE 里带 type=error 事件（后端已带 code）
+ *   ai_empty_stream  —— HTTP 200 但整条流没有任何 delta，也没有 error 事件
+ * -------------------------------------------------------------------------- */
+export async function aiChatStream(body, { onDelta, signal, timeout = AI_TIMEOUT } = {}) {
+  const url = `${BASE}/ai/chat/stream`
+  const useTimeout = Number(timeout) > 0 && typeof AbortController !== 'undefined'
+  const controller = useTimeout ? new AbortController() : null
+  let timedOut = false
+  let timer = null
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(body || {}),
+  }
+  if (controller) {
+    opts.signal = composeSignals(signal, controller)
+    timer = setTimeout(() => { timedOut = true; controller.abort() }, Number(timeout))
+  } else if (signal) {
+    opts.signal = signal
+  }
+
+  let resp
+  try {
+    resp = await fetch(url, opts)
+  } catch (e) {
+    if (timedOut) {
+      throw new ApiError(`AI 响应超时（${Math.round(Number(timeout) / 1000)}s）`, { code: 'network' })
+    }
+    if (e && (e.name === 'AbortError' || signal?.aborted)) {
+      throw new ApiError('AI 请求已取消', { code: 'aborted' })
+    }
+    throw new ApiError(`网络异常，无法连接 AI 服务（${e?.message || e}）`, { code: 'network' })
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+
+  if (!resp.ok) {
+    let data = null
+    try { data = await resp.json() } catch { data = null }
+    if (resp.status === 401) {
+      window.dispatchEvent(new CustomEvent('auth:required', { detail: data }))
+    }
+    throw new ApiError(extractDetail(data, `AI 接口错误 ${resp.status}`), {
+      code: (data && data.code) || 'http_error',
+      status: resp.status,
+      data,
+    })
+  }
+
+  // 没有 ReadableStream（老浏览器 / 反代缓冲了整条流）时不能静默返回空串
+  if (!resp.body || typeof resp.body.getReader !== 'function') {
+    throw new ApiError('当前环境不支持流式响应，AI 未返回任何内容', { code: 'ai_empty_stream' })
+  }
+
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  let full = ''
+
+  const handleEvent = (ev) => {
+    if (!ev || typeof ev !== 'object') return
+    if (ev.type === 'error') {
+      // ← 关键：error 事件必须向上抛，绝不吞掉
+      throw new ApiError(ev.message || 'AI 流式调用失败', {
+        code: 'ai_stream_error',
+        data: ev,
+      })
+    }
+    if (ev.type === 'delta') {
+      full += ev.content || ''
+      onDelta?.({ content: ev.content || '' })
+      return
+    }
+    if (ev.type === 'meta') { onDelta?.({ meta: true, rag: !!ev.rag }); return }
+    if (ev.type === 'provider') { onDelta?.({ provider: ev.name || '' }); return }
+    onDelta?.(ev)
+  }
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx).trim()
+        buf = buf.slice(idx + 1)
+        if (!line.startsWith('data:')) continue
+        const payload = line.slice(5).trim()
+        if (!payload) continue
+        try {
+          handleEvent(JSON.parse(payload))
+        } catch (e) {
+          if (e instanceof ApiError) throw e
+          /* 单行解析失败：忽略噪声行，不中断整条流 */
+        }
+      }
+    }
+  } catch (e) {
+    if (e instanceof ApiError) throw e
+    if (e && e.name === 'AbortError') throw new ApiError('AI 请求已取消', { code: 'aborted' })
+    throw new ApiError(`AI 流式连接中断（${e?.message || e}）`, { code: 'network' })
+  } finally {
+    reader.releaseLock()
+  }
+
+  // 200 但一个 delta 都没有：显式报空流，而不是让调用方拿到空串后静默
+  if (!full) {
+    throw new ApiError('AI 服务返回了空回复（HTTP 200 但没有输出任何内容）', { code: 'ai_empty_stream' })
+  }
+  return { text: full }
+}
+
+/* ---------------- 分页取全量（与后端 MAX_PAGE_SIZE 同一口径） ----------------
+ *
+ * 后端 utils/response.py 把所有分页/limit 入参钉成 ``ge=1, le=200``，且
+ * tests/test_api_conventions.py 会巡检这条。关键一点：**page_size=500 不是
+ * "服务端帮你截到 200"，而是 422 校验失败**。
+ *
+ * 这正是此前的真实故障：sync 的 tasks/notebook/cards 三个域、Cards 页、
+ * 错题本页的知识点候选、真题按套卷取题都写死 page_size=500/1000，
+ * 请求一律 422，被 catch 成空数组 —— 用户看到的就是"后端有数据，页面永远空"。
+ * 要全量就得逐页翻，所以下面这个 helper 是唯一合法入口。
+ */
+export const MAX_PAGE_SIZE = 200
+
+/** 从一页响应里取出条目数组；裸数组响应也算一页。 */
+function pageItems(resp, aliasKeys) {
+  if (Array.isArray(resp)) return resp
+  if (!resp || typeof resp !== 'object') return []
+  for (const key of ['items', ...aliasKeys]) {
+    if (Array.isArray(resp[key])) return resp[key]
+  }
+  return []
+}
+
+/**
+ * 逐页取回一个分页端点的全部条目。
+ *
+ * @param {(params: {page: number, page_size: number}) => Promise<any>} fetchPage 单页请求
+ * @param {{keys?: string[], pageSize?: number, maxItems?: number}} [opts]
+ *        keys      —— items 之外的条目字段别名（部分老端点用 questions/errors/cards）；
+ *        maxItems  —— 安全上限，total 异常或后端返回巨大页数时不至于无限翻页。
+ * @returns {Promise<any[]>} 全部条目（顺序 = 后端分页顺序）
+ */
+export async function fetchAllPages(fetchPage, opts = {}) {
+  const pageSize = Math.min(opts.pageSize || MAX_PAGE_SIZE, MAX_PAGE_SIZE)
+  const aliasKeys = opts.keys || []
+  const cap = opts.maxItems || 5000
+  const out = []
+  let page = 1
+  for (;;) {
+    const resp = await fetchPage({ page, page_size: pageSize })
+    out.push(...pageItems(resp, aliasKeys))
+    if (Array.isArray(resp)) break // 无分页壳：这一包就是全量
+    const pages = typeof resp?.total_pages === 'number'
+      ? resp.total_pages
+      : (typeof resp?.total === 'number' ? Math.ceil(resp.total / pageSize) : 1)
+    page += 1
+    if (page > pages || out.length >= cap) break
+  }
+  return out
+}
+
 /* ---------------- Dashboard 驾驶舱 ---------------- */
 export const dashboardApi = {
+  /** 首屏唯一聚合出口（D-01…D-11）：倒计时/目标/KPI/进度环/热力图/趋势/未来负荷 */
+  summary: () => request('/dashboard/summary'),
   get: () => request('/dashboard'),
   countdown: () => request('/dashboard/countdown'),
   todayTasks: () => request('/dashboard/today-tasks'),
   stats: () => request('/dashboard/stats'),
-  weakness: () => request('/dashboard/weakness')
+  weakness: () => request('/dashboard/weakness'),
+  reviewQueue: (limit = 50) => request(`/dashboard/review-queue?limit=${limit}`)
 }
 
 /* ---------------- V11 学习洞察（今日引导/周报/智能组卷） ---------------- */
@@ -270,16 +471,51 @@ export const quizApi = {
   stats: () => request('/quiz/stats'),
   subjects: () => request('/quiz/subjects'),
   sections: (params) => request('/quiz/sections', { params }),
-  years: () => request('/quiz/years'),
+  years: (params) => request('/quiz/years', { params }),
   papersIndex: (params) => request('/quiz/papers-index', { params }),
   // 考频聚合：dimension = kp | chapter | paper（M2-7 考频分析页消费）
   frequency: (params) => request('/quiz/frequency', { params }),
   // 错因分布（错题复盘页筛选项）：{total, items:[{reason, count}]}
-  wrongReasons: () => request('/quiz/wrong-reasons')
+  wrongReasons: (params) => request('/quiz/wrong-reasons', { params }),
+  // 题库 CSV 导出（blob 下载，Excel 兼容 BOM）
+  exportCsv: async (params) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params || {})) {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v)
+    }
+    const s2 = qs.toString()
+    const resp = await fetch(`${BASE}/quiz/export${s2 ? '?' + s2 : ''}`, { credentials: 'same-origin' })
+    if (!resp.ok) throw new Error(`导出失败（HTTP ${resp.status}）`)
+    const blob = await resp.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `quiz_questions_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  },
+  // 题库批量删除（硬删除，上限 500）
+  batchDelete: (ids) => request('/quiz/batch-delete', { method: 'POST', body: ids })
 }
 
 /* ---------------- Errors 错题本 ---------------- */
 export const errorsApi = {
+  exportCsv: async (params) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params || {})) {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v)
+    }
+    const s2 = qs.toString()
+    const resp = await fetch(`${BASE}/errors/export${s2 ? '?' + s2 : ''}`, { credentials: 'same-origin' })
+    if (!resp.ok) throw new Error(`导出失败（HTTP ${resp.status}）`)
+    const blob = await resp.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `errors_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  },
+  batchDelete: (ids) => request('/errors/batch-delete', { method: 'POST', body: ids }),
+
   list: (params) => request('/errors', { params }),
   // 错题统计（唯一口径：与仪表盘 stats.active_errors/due_errors 同一聚合函数）
   stats: (params) => request('/errors/stats', { params }),
@@ -315,7 +551,8 @@ export const documentsApi = {
   parseAll: () => request('/documents/parse-all', { method: 'POST' }),
   knowledgePoints: (id) => request(`/documents/${id}/knowledge-points`),
   chunks: (id) => request(`/documents/${id}/chunks`),
-  getContent: (id, limit) => request(`/documents/${id}/content`, { params: { limit } }),
+  // max_chars：正文字符数上限（后端按字符截断并回 truncated 标记），不是行分页参数
+  getContent: (id, maxChars) => request(`/documents/${id}/content`, { params: { max_chars: maxChars } }),
   // 原文字节流：浏览器直接打开的地址（预览用 inline、下载用 attachment）
   rawUrl: (id) => fileUrl(`/documents/${id}/raw`),
   downloadUrl: (id) => fileUrl(`/documents/${id}/download`),
@@ -387,6 +624,10 @@ export const importsApi = {
 }
 
 /* ---------------- AI 服务 ---------------- */
+export const statsApi = {
+  overview: (params) => request('/stats/overview', { params }),
+}
+
 export const aiApi = {
   providers: () => request('/ai/providers'),
   saveProvider: (body) => request('/ai/providers', { method: 'POST', body }),
@@ -504,6 +745,26 @@ export const taxonomyApi = {
   coverage: () => request('/taxonomy/coverage'),
 }
 
+/* 科目清单的统一取法在 api/subjects.js —— 不放本文件，是因为测试会整体 mock
+   api/client，helper 放这里就拿不到被 mock 的 taxonomyApi（等于绕过了注入点）。 */
+
+/* ---------------- 教材目录（电子通信考研核心专业课教材） ----------------
+ * 对应后端 routers/textbooks.py：26 本教材 / 初试复试分类 / 院校关联。
+ * exam_stage 是教材属性（同书可初试复试两用），后端返回 stages 数组。
+ */
+export const textbooksApi = {
+  // 教材清单（可按科目 / 阶段 / 院校 / 关键词筛选）
+  list: (params) => request('/textbooks', { params }),
+  // 按科目分组的教材清单——知识地图「教材」维度数据源
+  bySubject: (stage) => request('/textbooks/by-subject', { params: { stage } }),
+  // 教材详情（含院校使用清单与关联文档）
+  detail: (id) => request(`/textbooks/${id}`),
+  // 某院校涉及的全部教材——择校页用
+  ofSchool: (schoolId) => request(`/textbooks/school/${schoolId}`),
+  // 教材域概览统计
+  stats: () => request('/textbooks/stats/overview'),
+}
+
 /* ---------------- 复习进度追踪 ---------------- */
 export const reviewApi = {
   due: (params) => request('/review/due', { params }),
@@ -530,8 +791,29 @@ export const systemApi = {
   // 本机与局域网访问地址（含二维码），用于「手机访问」面板
   accessInfo: () => request('/access-info'),
   health: () => request('/health'),
-  authStatus: () => request('/auth/status'),
-  login: (password) => request('/auth/login', { method: 'POST', body: { password } }),
+  computeNodes: () => request('/admin/system/compute-nodes'),
+}
+
+/* ---------------- 账号与会话（doc 11） ---------------- */
+export const authApi = {
+  status: () => request('/auth/status'),
+  login: (username, password) => request('/auth/login', { method: 'POST', body: { username, password } }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  refresh: () => request('/auth/refresh', { method: 'POST' }),
+  me: () => request('/auth/me'),
+  changePassword: (oldPassword, newPassword) =>
+    request('/auth/change-password', { method: 'POST', body: { old_password: oldPassword, new_password: newPassword } }),
+}
+
+/* ---------------- 用户管理（仅管理员） ---------------- */
+export const adminUsersApi = {
+  list: (params) => request('/admin/users', { params }),
+  create: (body) => request('/admin/users', { method: 'POST', body }),
+  update: (id, body) => request(`/admin/users/${id}`, { method: 'PATCH', body }),
+  resetPassword: (id) => request(`/admin/users/${id}/reset-password`, { method: 'POST' }),
+  /* 软删除（2026-10-19 补：原先无删除端点，DELETE 返回 405）——写 deleted_at，可恢复 */
+  remove: (id) => request(`/admin/users/${id}`, { method: 'DELETE' }),
+  restore: (id) => request(`/admin/users/${id}/restore`, { method: 'POST' }),
 }
 
 
@@ -551,8 +833,8 @@ export const quizSectionApi = {
   sections: (params) => request('/quiz/sections', { params }),
   // start: 后端无 /api/quiz/start 接口，分项刷题请用 questions + submit
   submit: (body) => request('/quiz/submit', { method: 'POST', body }),
-  wrongReasons: () => request('/quiz/wrong-reasons'),
-  weakPoints: () => request('/quiz/weak-points'),
+  wrongReasons: (params) => request('/quiz/wrong-reasons', { params }),
+  weakPoints: (params) => request('/quiz/weak-points', { params }),
   reviews: (params) => request('/review/due', { params }),
   submitReview: (body) => request('/review/submit', { method: 'POST', body }),
   reviewStats: () => request('/review/stats')
@@ -594,10 +876,42 @@ export const qualityApi = {
   subjectAlignment: () => request('/quality/subject-alignment', { timeout: 60000 }),
 }
 
+/* ---------------- 全站收藏（S7：/api/favorites） ----------------
+ * 弱引用模型：item_type + item_id 指向任意实体，无外键。
+ * item_type 允许值由后端白名单校验：document/question/error/kp/word/flashcard/link。
+ */
+export const favoritesApi = {
+  list: (params) => request('/favorites', { params }),
+  add: (body) => request('/favorites', { method: 'POST', body }),
+  // 是否收藏（单项；仅用于详情页等单个实体的场景）
+  check: (itemType, itemId) =>
+    request('/favorites/check', { params: { item_type: itemType, item_id: itemId } }),
+  // 批量查询收藏态（P0-3）：一次拿回整页实体的收藏状态。
+  // 此前列表页对每一行各发一次 /favorites/check —— 文档知识库 383 篇就是
+  // 383 路并发，把 PG 连接池打满后连累所有个人数据接口 500。
+  // 后端返回 { item_type, requested, map: { '<id>': bool }, favorited_ids: [...] }，
+  // map 对未收藏的 id 显式给 false，调用方据此把缓存落成确定态。
+  checkMany: (itemType, ids) =>
+    request('/favorites/check', { params: { item_type: itemType, ids: (ids || []).join(',') } }),
+  // 当前用户已收藏的全部 id（可选按类型收窄）
+  ids: (itemType) => request('/favorites/ids', { params: { item_type: itemType } }),
+  // 切换收藏：返回 { favorited: bool }
+  toggle: (body) => request('/favorites/toggle', { method: 'POST', body }),
+  remove: (itemType, itemId) =>
+    request(`/favorites/${encodeURIComponent(itemType)}/${itemId}`, { method: 'DELETE' }),
+}
+
+/* ---------------- 学习轨迹（S7：/api/growth/timeline） ----------------
+ * 按日聚合 study_events 事件流水 + 连续学习天数 + 科目分布。
+ */
+export const growthApi = {
+  timeline: (days = 30) => request('/growth/timeline', { params: { days } }),
+}
+
 /* ---------------- 聚合导出 ---------------- */
 export default {
   dashboardApi, tasksApi, goalsApi, quizApi, errorsApi, flashcardsApi,
   documentsApi, netdiskApi, importsApi, aiApi, customizationApi, plannerApi, wordsApi,
   studyApi, taxonomyApi, reviewApi, systemApi, kbApi, analysisApi, quizSectionApi, paperApi, planningApi,
-  kbImportApi, qualityApi
+  kbImportApi, qualityApi, favoritesApi, growthApi
 }
