@@ -307,12 +307,28 @@ async def performance_stats():
 # --------------------------------------------------------------------------- #
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+# 题目配图出口：quiz_questions.images[].path 形如 question_pages/xxx.png，
+# 实际文件在 data/storage/images/ 下，前端按 /media/images/<path> 取图。
+# 路径相对本文件计算，换机器不失效。
+MEDIA_IMAGES_DIR = os.path.join(BASE_DIR, "data", "storage", "images")
 # P0 修复：Windows 下 FastAPI StaticFiles 将 .js 返回为 text/plain 导致前端白屏，
 # 挂载前显式注册 MIME 类型（strict=True 覆盖内置映射）
 import mimetypes
 mimetypes.add_type("application/javascript", ".js", strict=True)
 mimetypes.add_type("application/javascript", ".mjs", strict=True)
 mimetypes.add_type("text/css", ".css", strict=True)
+# Windows 注册表里的图片 MIME 不一定可靠，显式钉死，避免浏览器当成下载流
+mimetypes.add_type("image/png", ".png", strict=True)
+mimetypes.add_type("image/jpeg", ".jpg", strict=True)
+mimetypes.add_type("image/jpeg", ".jpeg", strict=True)
+mimetypes.add_type("image/webp", ".webp", strict=True)
+# 注意：必须先于下面的 "/" 根挂载注册，否则所有路径都会被根挂载先吃掉。
+os.makedirs(MEDIA_IMAGES_DIR, exist_ok=True)
+app.mount(
+    "/media/images",
+    StaticFiles(directory=MEDIA_IMAGES_DIR),
+    name="media_images",
+)
 if os.path.exists(STATIC_DIR):
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
