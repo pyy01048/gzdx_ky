@@ -119,6 +119,61 @@ class OCRService:
         self.last_error = None
         return "\n".join(lines)
 
+    def recognize_lines(self, image_path: str) -> List[Dict[str, Any]]:
+        """识别图片并返回**逐行**结果（带 bbox 与置信度）。
+
+        为什么要有这个方法（2026-10-20）
+        -------------------------------
+        :meth:`recognize` 只回文本，把 RapidOCR 的 ``[box, text, score]`` 三元组
+        里的**框和分数全丢了**。于是走 rapidocr 后端的扫描件（数学类 PDF 的主路径）
+        拿不到任何置信度，下游无法判断「这段 OCR 文本能不能信」——
+        而 RapidOCR 在数学公式上恰恰会读错（``x``→``α``、``f(x)``→``fLg(）``）。
+
+        本方法**不改变** :meth:`recognize` 的行为，只是把引擎原始结果原样透出来：
+        返回 ``[{"text": str, "box": list|None, "score": float|None}, ...]``。
+
+        失败时返回空列表，原因写进 ``self.last_error``（与 recognize 一致）。
+        """
+        if not os.path.exists(image_path):
+            self.last_error = "图片不存在"
+            return []
+        try:
+            engine = _get_engine(self.device)
+            result, _ = engine(image_path)
+        except Exception as e:  # noqa: BLE001
+            self.last_error = f"{type(e).__name__}: {e}"
+            if not getattr(self, "_warned", False):
+                logger.error("OCR 识别失败（后续同类错误不再重复打印）: %s", self.last_error,
+                             exc_info=True)
+                self._warned = True
+            return []
+
+        if not result:
+            self.last_error = "引擎返回空结果"
+            return []
+        out: List[Dict[str, Any]] = []
+        for item in result:
+            try:
+                text = str(item[1]) if len(item) > 1 else ""
+            except Exception:  # noqa: BLE001 - 结构异常就跳过这一行
+                continue
+            if not text.strip():
+                continue
+            box = item[0] if len(item) > 0 else None
+            score = None
+            if len(item) > 2:
+                try:
+                    score = float(item[2])
+                except (TypeError, ValueError):
+                    score = None
+            out.append({
+                "text": text.strip(),
+                "box": list(box) if isinstance(box, (list, tuple)) else None,
+                "score": score,
+            })
+        self.last_error = None
+        return out
+
     def recognize_bytes(self, image_bytes: bytes) -> str:
         """识别内存中的图片字节（Base64 解码后）"""
         if not image_bytes:

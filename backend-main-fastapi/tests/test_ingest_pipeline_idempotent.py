@@ -179,3 +179,67 @@ def test_grades_and_stats(fake_parse_fn, document_id):
         assert stats["elapsed_seconds"] >= 0
     finally:
         db.close()
+
+
+def test_corrupted_block_flag_lands_in_db(fake_parse_fn, document_id):
+    """坏块的质检标记要落库，好把坏块挑出来重解析。
+
+    对应查询：SELECT * FROM document_blocks WHERE extra->>'math_corrupted' = 'true'
+    """
+    from database import SessionLocal
+    from models import DocumentBlock
+
+    def fake_corrupt(pdf_path, **kwargs):  # noqa: ARG001
+        result = _fake_result()
+        result.pages[0].blocks[0].extra = {"math_corrupted": True, "math_corrupt_reasons": ["empty_call"]}
+        return result
+
+    db = SessionLocal()
+    try:
+        ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
+                   parse_fn=fake_corrupt, write=True)
+        row = db.query(DocumentBlock).filter(
+            DocumentBlock.document_id == document_id,
+            DocumentBlock.block_id == "b1",
+        ).first()
+        assert row is not None
+        assert row.extra.get("math_corrupted") is True
+        assert "empty_call" in row.extra.get("math_corrupt_reasons", [])
+    finally:
+        db.close()
+
+
+def test_json_columns_roundtrip_as_dict(fake_parse_fn, document_id):
+    """JSON 列必须原样落成 dict。
+
+    踩坑记录：原先这几列用的是 ``NullSafeJSON``，而它的 bind_processor 是给
+    ``quiz_questions.options`` 设计的 —— 任何 dict 都会被规整成选项数组
+    ``[{"key": "M", "text": "True"}]``，读回来 ``row.extra.get(...)`` 直接
+    AttributeError。现在这些列改用 ``RawJSON``（只把 None 短路成 SQL NULL）。
+    """
+    from database import SessionLocal
+    from models import DocumentBlock, DocumentPage
+
+    def fake_with_layout(pdf_path, **kwargs):  # noqa: ARG001
+        result = _fake_result()
+        result.pages[0].layout_json = {"text_blocks": 3, "body_font_size": 10.5}
+        result.pages[0].blocks[0].extra = {"math_corrupted": True}
+        return result
+
+    db = SessionLocal()
+    try:
+        ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
+                   parse_fn=fake_with_layout, write=True)
+        page_row = db.query(DocumentPage).filter(
+            DocumentPage.document_id == document_id,
+            DocumentPage.page_no == 1,
+        ).first()
+        block_row = db.query(DocumentBlock).filter(
+            DocumentBlock.document_id == document_id,
+            DocumentBlock.block_id == "b1",
+        ).first()
+        assert page_row.layout_json == {"text_blocks": 3, "body_font_size": 10.5}
+        assert block_row.extra == {"math_corrupted": True}
+        assert isinstance(block_row.extra, dict)
+    finally:
+        db.close()

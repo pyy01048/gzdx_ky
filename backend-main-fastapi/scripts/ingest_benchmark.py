@@ -107,7 +107,8 @@ def main(argv: List[str] | None = None) -> int:
 
     results: List[Dict[str, Any]] = []
     failures: List[Dict[str, Any]] = []
-    totals = {"pages": 0, "blocks": 0, "questions": 0, "figures_bound": 0, "figure_missing": 0}
+    totals = {"pages": 0, "blocks": 0, "questions": 0, "figures_bound": 0, "figure_missing": 0,
+              "math_corrupted_blocks": 0, "math_corrupted_questions": 0, "low_confidence_blocks": 0}
     grades = {"A": 0, "B": 0, "C": 0, "JUNK": 0}
     started = time.time()
 
@@ -142,12 +143,18 @@ def main(argv: List[str] | None = None) -> int:
                 "grades": stats.get("grades"),
                 "document_id": stats.get("document_id"),
                 "issues": len(stats.get("issues", []) or []),
+                "math_corrupted_blocks": stats.get("math_corrupted_blocks", 0),
+                "math_suspect_blocks": stats.get("math_suspect_blocks", 0),
+                "math_corrupted_questions": stats.get("math_corrupted_questions", 0),
+                "low_confidence_blocks": stats.get("low_confidence_blocks", 0),
             })
             print(
                 f"[{index}/{len(pdfs)}] {name}｜kind={stats.get('pdf_kind')}"
                 f" engine={stats.get('engine')} 用时={_fmt_secs(stats.get('elapsed_seconds') or 0)}"
                 f" 页={stats.get('pages')} 块={stats.get('blocks')} 题={stats.get('questions')}"
                 f" 配图={stats.get('figures_bound')} 缺图={stats.get('figure_missing')}"
+                f" 公式损坏块={stats.get('math_corrupted_blocks', 0)}"
+                f" 缺置信块={stats.get('low_confidence_blocks', 0)}"
             )
         except Exception as exc:  # noqa: BLE001 - 单份失败不中断整批
             failures.append({
@@ -178,6 +185,8 @@ def main(argv: List[str] | None = None) -> int:
     print(f"成功 {len(results)} / 失败 {len(failures)}｜总用时 {_fmt_secs(report['total_elapsed_seconds'])}")
     print(f"页 {totals['pages']}｜块 {totals['blocks']}｜题 {totals['questions']}"
           f"｜配图命中 {totals['figures_bound']}｜缺图 {totals['figure_missing']}")
+    print(f"公式损坏：块 {totals['math_corrupted_blocks']}｜题 {totals['math_corrupted_questions']}"
+          f"｜缺置信度块 {totals['low_confidence_blocks']}")
     print(f"门禁分布：A={grades['A']} B={grades['B']} C={grades['C']} JUNK={grades['JUNK']}")
     if failures:
         print("\n失败清单：")

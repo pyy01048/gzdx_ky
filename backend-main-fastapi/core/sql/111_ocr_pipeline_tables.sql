@@ -61,9 +61,16 @@ CREATE INDEX IF NOT EXISTS ix_document_blocks_block_type
     ON document_blocks (block_type);
 CREATE INDEX IF NOT EXISTS ix_document_blocks_id ON document_blocks (id);
 
+-- 块级质检留痕（2026-10-20 数学扫描件实测追加）：
+-- 数学 PDF 全是扫描件，RapidOCR 会把公式读坏（x→α、f(x)→fLg(））。
+-- 这列把解析层的质检标记落库，好把坏块挑出来重解析：
+--   SELECT * FROM document_blocks WHERE extra->>'math_corrupted' = 'true';
+ALTER TABLE document_blocks ADD COLUMN IF NOT EXISTS extra JSONB;
+
 COMMENT ON TABLE document_blocks IS '文档版面块级数据（docx/34 §6）';
 COMMENT ON COLUMN document_blocks.block_type IS
     'text/title/table/figure/formula/list/header/footer/page_no/unknown';
+COMMENT ON COLUMN document_blocks.extra IS '块级附加信息 JSON（math_corrupted / math_suspect / ocr_confidence_missing 等质检标记）';
 
 -- ---------------------------------------------------------------------------
 -- 题目配图

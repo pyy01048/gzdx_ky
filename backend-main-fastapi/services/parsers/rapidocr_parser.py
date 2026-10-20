@@ -64,7 +64,23 @@ def ocr_result_to_blocks(result: Any, page_no: int) -> List[ParsedBlock]:
 
     OCR 后端有的只回文本不回框（``RapidOCRBackend`` 就是），这时把文本按行拆成
     块、bbox 留空 —— 下游仍能拿到文字，只是拿不到精确位置。
+
+    **数学公式不可信标记（2026-10-20）**
+    ---------------------------------
+    数学类 PDF 全部是纯扫描件，RapidOCR 在公式上会**读错**（``x``→``α``、
+    ``-``→汉字「一」、``f(x)``→``fLg(）``）。所以这里**不把 OCR 文本当权威内容**：
+    一律用 ``services.ocr_math_guard`` 判一遍，把结果写进 ``ParsedBlock.extra``：
+
+    * ``math_corrupted=True`` —— 公式结构已坏（强信号），下游必须重解析；
+    * ``math_suspect=True`` —— 疑似损坏（弱信号），下游建议复核；
+    * ``ocr_confidence_missing=True`` —— 后端没给逐行置信度（如 rapidocr 只回文本），
+      文本可信度未知，下游不得当权威。
+
+    置信度本身照常带上（``ParsedBlock.confidence``）；拿不到时保持 ``None``
+    并用上面的标记显式说明「缺」，而不是留个空白让人误以为是 1.0。
     """
+    from services.ocr_math_guard import detect_math_corruption
+
     blocks: List[ParsedBlock] = []
     raw_blocks = list(getattr(result, "blocks", None) or [])
     for i, b in enumerate(raw_blocks):
@@ -76,6 +92,9 @@ def ocr_result_to_blocks(result: Any, page_no: int) -> List[ParsedBlock]:
             confidence = float(score) if score is not None else None
         except (TypeError, ValueError):
             confidence = None
+        extra = detect_math_corruption(text).to_extra()
+        if confidence is None:
+            extra["ocr_confidence_missing"] = True
         blocks.append(
             ParsedBlock(
                 page_no=page_no,
@@ -85,6 +104,7 @@ def ocr_result_to_blocks(result: Any, page_no: int) -> List[ParsedBlock]:
                 block_id=f"p{page_no}-ocr{i}",
                 reading_order=i,
                 confidence=confidence,
+                extra=extra,
             )
         )
     if blocks:
@@ -94,13 +114,19 @@ def ocr_result_to_blocks(result: Any, page_no: int) -> List[ParsedBlock]:
     if not text:
         return []
     for i, line in enumerate(t for t in text.splitlines() if t.strip()):
+        stripped = line.strip()
+        extra = detect_math_corruption(stripped).to_extra()
+        # 只回文本的后端（rapidocr）拿不到逐行置信度 → 显式标记「缺」
+        extra["ocr_confidence_missing"] = True
         blocks.append(
             ParsedBlock(
                 page_no=page_no,
                 block_type=BLOCK_TEXT,
-                text=line.strip(),
+                text=stripped,
                 block_id=f"p{page_no}-ocr{i}",
                 reading_order=i,
+                confidence=None,
+                extra=extra,
             )
         )
     return blocks

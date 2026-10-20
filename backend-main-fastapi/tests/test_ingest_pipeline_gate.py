@@ -131,3 +131,62 @@ def test_normalize_options_variants():
 @pytest.mark.parametrize("grade", [GRADE_A, GRADE_B, GRADE_C, GRADE_JUNK])
 def test_grade_is_one_of_four_levels(grade):
     assert grade in {GRADE_A, GRADE_B, GRADE_C, GRADE_JUNK}
+
+
+# --------------------------------------------------------------------------- #
+# OCR 可信度标记（数学扫描件主路径：公式会被 RapidOCR 读坏）
+# --------------------------------------------------------------------------- #
+def test_math_corrupted_downgrades_a_to_c():
+    """题干公式被读坏 → 最高只能 C（进复核队列，不直接可刷）。"""
+    from services.ingest_pipeline import apply_ocr_trust_flags
+
+    grade, codes = apply_ocr_trust_flags({"_math_corrupted": True}, GRADE_A)
+    assert grade == GRADE_C
+    assert "math_corrupted" in codes
+
+
+def test_math_corrupted_keeps_junk_as_junk():
+    from services.ingest_pipeline import apply_ocr_trust_flags
+
+    grade, _codes = apply_ocr_trust_flags({"_math_corrupted": True}, GRADE_JUNK)
+    assert grade == GRADE_JUNK
+
+
+def test_low_confidence_only_leaves_trace():
+    """缺置信度只留痕，不改等级。"""
+    from services.ingest_pipeline import apply_ocr_trust_flags
+
+    grade, codes = apply_ocr_trust_flags({"_low_confidence": True}, GRADE_A)
+    assert grade == GRADE_A
+    assert codes == ["low_ocr_confidence"]
+
+
+def test_clean_question_keeps_grade():
+    from services.ingest_pipeline import apply_ocr_trust_flags
+
+    grade, codes = apply_ocr_trust_flags({}, GRADE_A)
+    assert grade == GRADE_A
+    assert codes == []
+
+
+def test_ingest_marks_corrupted_question():
+    """整条管线：题干来自被标记为损坏的块 → 统计 + 留痕。"""
+    from services.ingest_pipeline import ingest_pdf
+    from services.parsers.base import BLOCK_TEXT, ParseResult, ParsedBlock, ParsedPage
+
+    def fake(pdf_path, **kwargs):  # noqa: ARG001
+        page = ParsedPage(
+            page_no=1,
+            blocks=[ParsedBlock(
+                page_no=1, block_type=BLOCK_TEXT,
+                text="1. 恒有f（一）=f()，则称f(α)为偶函数（　）",
+                bbox=(50, 100, 500, 130), block_id="b1", reading_order=0,
+                extra={"math_corrupted": True},
+            )],
+        )
+        return ParseResult(pages=[page], engine="fake", pdf_kind="scanned", total_pages=1)
+
+    stats = ingest_pdf(None, "fake.pdf", parse_fn=fake, write=False)
+    assert stats["math_corrupted_questions"] == 1
+    assert any(item["code"] == "math_corrupted" for item in stats["issues"])
+    assert stats["grades"]["C"] == 1

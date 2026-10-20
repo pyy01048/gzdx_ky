@@ -273,6 +273,26 @@ def grade_question(q: Dict[str, Any]) -> str:
     return check_question(q)[0]
 
 
+def apply_ocr_trust_flags(q: Dict[str, Any], grade: str) -> Tuple[str, List[str]]:
+    """把 OCR 可信度标记应用到门禁结果上（数学扫描件主路径）。
+
+    * ``math_corrupted``（题干公式被 OCR 读坏）→ 最高只能 **C**（进复核队列，
+      不直接可刷）。题干本身就是坏的，A/B 会把错公式当成能做的题。
+      （已是 C/JUNK 时不改等级，但仍**留痕**，方便统计有多少题被读坏。）
+    * ``low_confidence``（后端没给逐行置信度）→ **只留痕，不改等级**。
+
+    返回 ``(等级, 追加的问题码列表)``。
+    """
+    codes: List[str] = []
+    if q.get("_math_corrupted"):
+        codes.append("math_corrupted")
+        if grade in (GRADE_A, GRADE_B):
+            grade = GRADE_C
+    if q.get("_low_confidence"):
+        codes.append("low_ocr_confidence")
+    return grade, codes
+
+
 # --------------------------------------------------------------------------- #
 # 配图绑定（docx/34 §4.5 第 7 条：三信号）
 # --------------------------------------------------------------------------- #
@@ -554,6 +574,7 @@ def _replace_blocks(db, document_id: int, blocks: Sequence[Any], page_nos: Seque
         if page_no < 1:
             continue
         bbox = _as_bbox(_get(block, "bbox", None))
+        extra = _get(block, "extra", None)
         rows.append(DocumentBlock(
             document_id=document_id,
             page_no=page_no,
@@ -565,6 +586,7 @@ def _replace_blocks(db, document_id: int, blocks: Sequence[Any], page_nos: Seque
             image_path=_get(block, "image_path", None) or None,
             reading_order=_get(block, "reading_order", None),
             confidence=_as_float(_get(block, "confidence", None)),
+            extra=extra if isinstance(extra, dict) and extra else None,
         ))
     if rows:
         db.bulk_save_objects(rows)
@@ -625,6 +647,11 @@ def _cut_questions(pages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], List[Dic
     """把解析块适配成 ``cut_questions_from_blocks`` 的入参并切题。
 
     返回 ``(questions, issues)``；切题失败不抛，只记 issue 并返回空列表。
+
+    顺带做两件质检的事（2026-10-20 数学扫描件实测）：
+    * 块带 ``extra['math_corrupted']``（公式被 OCR 读坏）→ 该题题干不可信；
+    * 块带 ``extra['ocr_confidence_missing']``（后端没给置信度）→ 该题低可信。
+    两者都用**题干文本**回连到题（切题模块只回传 text/box/score）。
     """
     from services.ocr_layout import cut_questions_from_blocks
 
@@ -635,6 +662,8 @@ def _cut_questions(pages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], List[Dic
         if page_no < 1:
             continue
         blocks_in: List[Dict[str, Any]] = []
+        corrupted_texts: set = set()
+        low_conf_texts: set = set()
         for block in _get(page, "blocks", None) or []:
             block_type = str(_get(block, "block_type", "") or "")
             if block_type in ("header", "footer", "page_no", "unknown", "figure"):
@@ -643,9 +672,16 @@ def _cut_questions(pages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], List[Dic
             text = str(_get(block, "latex", "") or "") or str(_get(block, "text", "") or "")
             if not text.strip():
                 continue
+            text = text.strip()
+            extra = _get(block, "extra", None) or {}
+            if isinstance(extra, dict):
+                if extra.get("math_corrupted"):
+                    corrupted_texts.add(text)
+                if extra.get("ocr_confidence_missing"):
+                    low_conf_texts.add(text)
             bbox = _as_bbox(_get(block, "bbox", None))
             blocks_in.append({
-                "text": text.strip(),
+                "text": text,
                 "box": list(bbox) if bbox else None,
                 "score": _as_float(_get(block, "confidence", None)),
             })
@@ -658,6 +694,11 @@ def _cut_questions(pages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], List[Dic
             continue
         for q in page_questions or []:
             q["page"] = page_no
+            texts = {str((b or {}).get("text") or "") for b in (q.get("blocks") or [])}
+            if texts & corrupted_texts:
+                q["_math_corrupted"] = True
+            if texts & low_conf_texts:
+                q["_low_confidence"] = True
             questions.append(q)
     return questions, issues
 
@@ -712,6 +753,21 @@ def ingest_pdf(
     engine = str(_get(result, "engine", "") or "")
     pdf_kind = str(_get(result, "pdf_kind", "") or "")
 
+    # —— 块级 OCR 可信度盘点（数学扫描件主路径）——
+    math_corrupted_blocks = 0
+    math_suspect_blocks = 0
+    low_confidence_blocks = 0
+    for block in blocks:
+        extra = _get(block, "extra", None)
+        if not isinstance(extra, dict):
+            continue
+        if extra.get("math_corrupted"):
+            math_corrupted_blocks += 1
+        elif extra.get("math_suspect"):
+            math_suspect_blocks += 1
+        if extra.get("ocr_confidence_missing"):
+            low_confidence_blocks += 1
+
     # —— 切题 ——
     questions: List[Dict[str, Any]] = []
     if cut_questions:
@@ -719,10 +775,18 @@ def ingest_pdf(
         issues.extend(cut_issues)
 
     # —— 质量门禁 ——
+    math_corrupted_questions = 0
+    low_confidence_questions = 0
     for q in questions:
         grade, q_issues = check_question(q)
+        # OCR 可信度：题干公式被读坏 → 最高只能 C（进复核队列，不直接可刷）
+        grade, trust_codes = apply_ocr_trust_flags(q, grade)
+        if "math_corrupted" in trust_codes:
+            math_corrupted_questions += 1
+        if "low_ocr_confidence" in trust_codes:
+            low_confidence_questions += 1
         grades[grade] = grades.get(grade, 0) + 1
-        for code in q_issues:
+        for code in trust_codes + q_issues:
             issues.append({
                 "code": code,
                 "qno": q.get("qno"),
@@ -792,4 +856,10 @@ def ingest_pdf(
         "pages_written": pages_written,
         "blocks_written": blocks_written,
         "images_written": images_written,
+        # —— OCR 可信度留痕（数学扫描件主路径：公式可能被读坏）——
+        "math_corrupted_questions": math_corrupted_questions,
+        "low_confidence_questions": low_confidence_questions,
+        "math_corrupted_blocks": math_corrupted_blocks,
+        "math_suspect_blocks": math_suspect_blocks,
+        "low_confidence_blocks": low_confidence_blocks,
     }

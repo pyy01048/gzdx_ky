@@ -110,6 +110,40 @@ class NullSafeJSON(TypeDecorator):
         return process
 
 
+class RawJSON(TypeDecorator):
+    """**任意** JSON 结构的 JSONB 列：None → SQL NULL，其余原样落库。
+
+    为什么不能直接用 :class:`NullSafeJSON`
+    ------------------------------------
+    ``NullSafeJSON`` 是**为 quiz_questions.options 设计的**：它的 bind_processor
+    会把「字符串形态的 JSON」「dict 形态的选项」「字符串数组」一律规整成
+    **选项数组** ``[{"key": "A", "text": "..."}]``。于是任何**普通 dict**
+    都会被改写：
+
+        {"math_corrupted": True}  →  [{"key": "M", "text": "True"}]
+
+    实测踩坑（2026-10-20）：``document_blocks.extra`` 用 NullSafeJSON 时，
+    落库后变成 list，读取时 ``row.extra.get(...)`` 直接 AttributeError。
+
+    本类型只做一件事：``None`` 短路成 SQL NULL（与库里既有 NULL 语义一致），
+    **不对内容做任何规整**。给 bbox / layout_json / extra / payload 这类
+    「结构由调用方决定」的列用。
+    """
+
+    impl = postgresql.JSONB
+    cache_ok = True
+
+    def bind_processor(self, dialect):
+        impl_processor = self.impl_instance.bind_processor(dialect)
+
+        def process(value):
+            if value is None:
+                return None  # SQL NULL，不走 JSON 序列化
+            return impl_processor(value) if impl_processor else value
+
+        return process
+
+
 def _utcnow():
     """timezone-aware 当前 UTC 时间（替代已弃用的 datetime.utcnow）。"""
     return datetime.datetime.now(datetime.timezone.utc)
@@ -1357,7 +1391,7 @@ class DocumentPage(Base):
     width = Column(Float, nullable=True, comment="页宽（渲染像素）")
     height = Column(Float, nullable=True, comment="页高（渲染像素）")
     text = Column(Text, nullable=True, comment="整页文本")
-    layout_json = Column(NullSafeJSON, nullable=True, comment="版面结构 JSON")
+    layout_json = Column(RawJSON, nullable=True, comment="版面结构 JSON")
     image_path = Column(String(1000), nullable=True, comment="整页图相对路径")
     ocr_engine = Column(String(50), nullable=True, comment="解析引擎：mineru/paddle/rapidocr/digital")
     ocr_confidence = Column(Float, nullable=True, comment="页级置信度 0-1")
@@ -1381,12 +1415,16 @@ class DocumentBlock(Base):
     block_id = Column(String(64), nullable=True, comment="解析引擎给出的块 ID")
     block_type = Column(String(32), nullable=True, index=True,
                         comment="块类型：text/title/table/figure/formula/list/header/footer/page_no/unknown")
-    bbox = Column(NullSafeJSON, nullable=True, comment="bbox JSON：[x0,y0,x1,y1]")
+    bbox = Column(RawJSON, nullable=True, comment="bbox JSON：[x0,y0,x1,y1]")
     text = Column(Text, nullable=True, comment="块文本")
     latex = Column(Text, nullable=True, comment="块内公式 LaTeX")
     image_path = Column(String(1000), nullable=True, comment="块图相对路径（figure 块）")
     reading_order = Column(Integer, nullable=True, comment="阅读顺序")
     confidence = Column(Float, nullable=True, comment="块级置信度 0-1")
+    # 块级质检留痕：math_corrupted（公式被 OCR 读坏）/ math_suspect /
+    # ocr_confidence_missing（后端没给置信度）等标记。用于把坏块挑出来重解析：
+    #   SELECT * FROM document_blocks WHERE extra->>'math_corrupted' = 'true'
+    extra = Column(RawJSON, nullable=True, comment="块级附加信息 JSON（质检标记等）")
     created_at = Column(DateTime, default=_utcnow)
 
     __table_args__ = (
@@ -1413,7 +1451,7 @@ class QuestionImage(Base):
     image_path = Column(String(1000), nullable=True, comment="图片相对路径")
     image_hash = Column(String(64), nullable=True, index=True, comment="图片内容 sha256")
     phash = Column(String(32), nullable=True, index=True, comment="感知哈希（去重用）")
-    bbox = Column(NullSafeJSON, nullable=True, comment="bbox JSON：[x0,y0,x1,y1]")
+    bbox = Column(RawJSON, nullable=True, comment="bbox JSON：[x0,y0,x1,y1]")
     image_kind = Column(String(32), nullable=True, comment="figure_crop/page_thumb/equation/table")
     caption = Column(String(1000), nullable=True, comment="图注文本")
     width = Column(Integer, nullable=True, comment="图宽（像素）")
@@ -1474,5 +1512,5 @@ class CrawlDeadLetter(Base):
     source_key = Column(String(64), nullable=True, index=True, comment="来源键")
     error = Column(Text, nullable=True, comment="错误详情")
     attempts = Column(Integer, nullable=False, default=0, server_default="0", comment="已尝试次数")
-    payload = Column(NullSafeJSON, nullable=True, comment="失败时的任务负载 JSON")
+    payload = Column(RawJSON, nullable=True, comment="失败时的任务负载 JSON")
     created_at = Column(DateTime, default=_utcnow)
