@@ -68,6 +68,24 @@ def _media_root() -> str:
     return os.path.join(base, "data", "storage", "images")
 
 
+# 已回填的块里，公式被写成了 LaTeX 或图片链接。要重新定位就得先剥掉它们，
+# 还原成 docx 原文的纯文本形态——否则 locate() 一定失败（文本已经变了）。
+_RENDERED_IMG_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_RENDERED_TEX_RE = re.compile(r"\${1,2}[^$]*\${1,2}")
+
+
+def strip_rendered(text: str) -> str:
+    """把已回填的块还原成纯文本（去掉图片标记与 LaTeX），用于重新定位。
+
+    这是「重复回填」的前提：第一次回填后块文本已变成
+    ``设$\\{x_n\\}$是数列``，直接拿它去 docx 原文里找必然失败；
+    剥掉 ``$...$`` / ``![..](..)`` 后就能重新对上原文。
+    """
+    t = _RENDERED_IMG_RE.sub("", text or "")
+    t = _RENDERED_TEX_RE.sub("", t)
+    return t
+
+
 def _norm(text: str) -> str:
     return _WS_RE.sub("", (text or "").replace(_FW_SPACE, " "))
 
@@ -220,6 +238,7 @@ def process_document(
     min_formula_aspect: float = 0.0,
     max_formula_height: int = 0,
     max_formula_aspect: float = 0.0,
+    min_formula_side: int = 0,
     log=None,
 ) -> dict:
     """处理单个 docx 文档，返回统计。
@@ -240,6 +259,7 @@ def process_document(
         "skipped_shape": 0,
         "skipped_tall": 0,
         "skipped_wide": 0,
+        "skipped_tiny": 0,
         "errors": [],
     }
     path = doc_row["file_path"]
@@ -268,6 +288,11 @@ def process_document(
         span = locate(
             aligned, ch["text"] or "", norm_plain, norm_idx, expected_pos=cursor
         )
+        if not span:
+            # 已回填过的块：剥掉 LaTeX/图片标记再试一次（重复回填的关键）
+            stripped = strip_rendered(ch["text"] or "")
+            if stripped and stripped != (ch["text"] or ""):
+                span = locate(aligned, stripped, norm_plain, norm_idx, expected_pos=cursor)
         if not span:
             continue
         mids = markers_in(aligned, span[0], span[1])
@@ -302,6 +327,10 @@ def process_document(
                 with Image.open(img.out_path) as im:
                     w, h = im.size
             except Exception:  # noqa: BLE001
+                continue
+            # 极小图直接丢：1×1、2×3 这种是段落装饰/空白占位，识别只会得到 \cdot
+            if min_formula_side > 0 and (w < min_formula_side or h < min_formula_side):
+                stat["skipped_tiny"] += 1
                 continue
             if max_side_for_formula > 0 and max(w, h) > max_side_for_formula:
                 stat["skipped_big"] += 1
@@ -394,8 +423,15 @@ def main() -> int:
     ap.add_argument(
         "--min-formula-aspect",
         type=float,
-        default=1.2,
-        help="宽高比低于此值的近方形图不当作公式（电路图/示意图，0=不过滤，默认 1.2）",
+        default=0.0,
+        help="宽高比低于此值不当作公式（0=不过滤，默认 0）。"
+             "**别再用 1.2 那种值**：短公式本身就是近方形的，实测误杀 766 个真公式",
+    )
+    ap.add_argument(
+        "--min-formula-side",
+        type=int,
+        default=4,
+        help="宽或高小于此值的极小图跳过（噪声，默认 4px）",
     )
     ap.add_argument(
         "--max-formula-height",
@@ -475,6 +511,7 @@ def main() -> int:
                 min_formula_aspect=args.min_formula_aspect,
                 max_formula_height=args.max_formula_height,
                 max_formula_aspect=args.max_formula_aspect,
+                min_formula_side=args.min_formula_side,
                 log=print,
             )
             ups = stat.pop("_updates", [])
@@ -487,19 +524,22 @@ def main() -> int:
                 f"LaTeX={stat['latexs']:>4} 图={stat['images']:>4} "
                 f"略大={stat['skipped_big']:>3} 略方={stat['skipped_shape']:>3} "
                 f"略高={stat['skipped_tall']:>4} 略扁={stat['skipped_wide']:>4} "
+                f"极小={stat['skipped_tiny']:>4} "
                 f"{stat['seconds']}s {stat['errors'] or ''}"
             )
 
         total = {
             k: sum(s[k] for s in all_stats)
             for k in ("repaired", "latexs", "images", "kept",
-                      "skipped_big", "skipped_shape", "skipped_tall", "skipped_wide")
+                      "skipped_big", "skipped_shape", "skipped_tall",
+                      "skipped_wide", "skipped_tiny")
         }
         print(
             f"[回填] 合计：修复 {total['repaired']} 块 | "
             f"LaTeX {total['latexs']} | 图片兜底 {total['images']} | "
             f"略过大图 {total['skipped_big']} | 略过方形 {total['skipped_shape']} | "
             f"略过高图 {total['skipped_tall']} | 略过极扁 {total['skipped_wide']} | "
+            f"极小 {total['skipped_tiny']} | "
             f"占位保留 {total['kept']}"
         )
         if total["latexs"] + total["images"]:
