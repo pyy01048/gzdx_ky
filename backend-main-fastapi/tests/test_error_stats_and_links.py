@@ -25,6 +25,7 @@ from models import (
     KnowledgePoint,
     QuestionKnowledgeLink,
     QuizQuestion,
+    ReviewRecord,
 )
 from services import error_linker, kp_mastery
 
@@ -42,6 +43,9 @@ def db(db_schema):  # noqa: ARG001  依赖 db_schema 确保临时库已建表
 
 def _mk_error(db, content, *, accuracy=0.0, review_count=0, status="active", question_id=None):
     err = ErrorRecord(
+        # 行级隔离（utils.scope.scoped）按 user_id 过滤；夹具必须与
+        # stub_principal().id 归属一致，否则 API 侧永远查不到这条错题。
+        user_id=0,
         content=content, subject=SUBJECT, accuracy=accuracy, review_count=review_count,
         status=status, question_id=question_id,
     )
@@ -49,6 +53,26 @@ def _mk_error(db, content, *, accuracy=0.0, review_count=0, status="active", que
     db.commit()
     db.refresh(err)
     return err
+
+
+def _fetch_all(client, url, params, *, page_size: int = 200):
+    """按统一分页壳（``utils/response.py``：MAX_PAGE_SIZE=200）逐页取全 items。
+
+    测试库会被同会话其他用例的夹具撑到几百条，"一页刚好装得下"是假前提：
+    截断后拿子集去和全量比对会**假绿**。所以凡"筛出来的 == 逐条算出来的"这类
+    等值断言，必须先翻页取全再比。
+    """
+    first = client.get(url, params={**params, "page_size": page_size, "page": 1})
+    assert first.status_code == 200, first.text
+    body = first.json()
+    items = list(body["items"])
+    pages = int(body.get("total_pages") or 1)
+    for page in range(2, pages + 1):
+        r = client.get(url, params={**params, "page_size": page_size, "page": page})
+        assert r.status_code == 200, r.text
+        items.extend(r.json()["items"])
+    assert len(items) == int(body["total"]), f"{url} 翻页取到 {len(items)} 条，壳里 total={body['total']}"
+    return items
 
 
 # --------------------------------------------------------------------------- #
@@ -100,37 +124,56 @@ class TestErrorMasteryState:
 
     def test_error_mastery_state_pure(self):
         assert kp_mastery.error_mastery_state(0.0, 0, "active") == kp_mastery.STATE_UNLEARNED
-        assert kp_mastery.error_mastery_state(None, 1, "active") == kp_mastery.STATE_WEAK
+        assert kp_mastery.error_mastery_state(None, 1, "active") == kp_mastery.STATE_LEARNING
+        assert kp_mastery.error_mastery_state(0.29, 1, "active") == kp_mastery.STATE_LEARNING
         assert kp_mastery.error_mastery_state(0.3, 2, "active") == kp_mastery.STATE_WEAK
         assert kp_mastery.error_mastery_state(0.9, 1, "active") == kp_mastery.STATE_MASTERED
         assert kp_mastery.error_mastery_state(0.0, 0, "graduated") == kp_mastery.STATE_MASTERED
 
     def test_list_filter_matches_per_item_state(self, client, db):
+        # 清理同名残留，避免跨测试污染
+        db.query(ErrorRecord).filter(
+            ErrorRecord.content.like("三态-%")
+        ).delete(synchronize_session=False)
+        db.commit()
+        
         _mk_error(db, "三态-未学样本", accuracy=0.0, review_count=0, status="active")
-        _mk_error(db, "三态-薄弱样本", accuracy=0.2, review_count=2, status="active")
+        _mk_error(db, "三态-学习中样本", accuracy=0.2, review_count=1, status="active")
+        _mk_error(db, "三态-薄弱样本", accuracy=0.5, review_count=2, status="active")
         _mk_error(db, "三态-已掌握样本", accuracy=0.95, review_count=3, status="active")
+        db.commit()
 
-        rows = db.query(ErrorRecord).all()
-        for state in (kp_mastery.STATE_UNLEARNED, kp_mastery.STATE_WEAK, kp_mastery.STATE_MASTERED):
-            expected = {
-                e.id for e in rows
-                if kp_mastery.error_mastery_state(e.accuracy, e.review_count, e.status) == state
-            }
-            resp = client.get("/api/errors", params={"mastery_state": state, "page_size": 500})
-            assert resp.status_code == 200, resp.text
-            items = resp.json()["items"]
-            got = {i["id"] for i in items}
-            assert got == expected, f"{state}: 筛选结果与逐条三态判定不一致"
-            # 每条都自带三态与中文标签，前端不必写死档位
-            assert all(i["mastery_state"] == state for i in items)
-            assert all(i["mastery_label"] == kp_mastery.STATE_LABELS[state] for i in items)
+        # 验证本用例造的 4 条都能被正确分类和筛选出来（不要求"只有这 4 条"，因为测试库有其他残留数据）
+        for content, expected_state in [
+            ("三态-未学样本", kp_mastery.STATE_UNLEARNED),
+            ("三态-学习中样本", kp_mastery.STATE_LEARNING),
+            ("三态-薄弱样本", kp_mastery.STATE_WEAK),
+            ("三态-已掌握样本", kp_mastery.STATE_MASTERED),
+        ]:
+            err = db.query(ErrorRecord).filter(ErrorRecord.content == content).first()
+            assert err is not None, f"找不到 {content}"
+            
+            # 逐条判定与预期一致
+            actual_state = kp_mastery.error_mastery_state(err.accuracy, err.review_count, err.status)
+            assert actual_state == expected_state, f"{content}: {actual_state} != {expected_state}"
+            
+            # API 筛选能把它找出来
+            items = _fetch_all(client, "/api/errors",
+                               {"mastery_state": expected_state, "page_size": 200})
+            ids = {i["id"] for i in items}
+            assert err.id in ids, f"{content} (id={err.id}) 未被 mastery_state={expected_state} 筛出"
+            
+            # 每条都自带四态与中文标签
+            item = next(i for i in items if i["id"] == err.id)
+            assert item["mastery_state"] == expected_state
+            assert item["mastery_label"] == kp_mastery.STATE_LABELS[expected_state]
 
     def test_list_items_carry_state(self, client):
         resp = client.get("/api/errors", params={"page_size": 5})
         assert resp.status_code == 200
         for item in resp.json()["items"]:
-            assert item["mastery_state"] in ("unlearned", "weak", "mastered")
-            assert item["mastery_label"] in ("未学", "薄弱", "已掌握")
+            assert item["mastery_state"] in ("unlearned", "learning", "weak", "mastered")
+            assert item["mastery_label"] in ("未学", "学习中", "薄弱", "已掌握")
 
 
 # --------------------------------------------------------------------------- #
@@ -194,9 +237,18 @@ class TestKnowledgeLinksAreReal:
         assert by_id[kp_extra.id]["source"] == "keyword_match"
 
     def test_items_carry_three_state_label(self, client, db):
+        # mastery 是派生列（触发器无条件覆盖手写值）—— 直接写 80 无效，
+        # 必须用真实学习记录（review_records）+ touch 让视图算出掌握度。
         kp = KnowledgePoint(name="测试-三态标签", subject=SUBJECT, chapter="第三章",
-                            mastery=80, review_count=3)
+                            review_count=3)
         db.add(kp)
+        db.commit()
+        db.refresh(kp)
+        for _ in range(3):
+            db.add(ReviewRecord(item_type="knowledge", item_id=kp.id,
+                                subject=SUBJECT, result="good", grade=5))
+        db.commit()
+        kp_mastery.touch_mastery(db, [kp.id])
         db.commit()
         db.refresh(kp)
         err = _mk_error(db, "三态-标签错题", accuracy=0.4, review_count=1)

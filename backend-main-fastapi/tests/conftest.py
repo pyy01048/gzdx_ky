@@ -52,6 +52,19 @@ PROD_PG_DB = "kaoyan"
 #: 专用测试库名（与生产同机同实例，靠库名隔离）。
 TEST_PG_DB = os.environ.get("TEST_PG_DATABASE", "kaoyan_test")
 
+#: 测试主体的用户 ID —— 必须与 ``utils.security.stub_principal()['id']`` 一致。
+#:
+#: 为什么要在测试库里真的插一行 users（2026-10-20 修）
+#: ------------------------------------------------
+#: 个人域表（error_records / favorites / goals / answer_records / words …）
+#: 都有 ``user_id REFERENCES users(id)``。SQLite 时代外键默认不生效，
+#: ``stub_principal()`` 用一个不存在的 id=0 也能写进去；迁到 PostgreSQL 后
+#: 外键真的生效，所有写入型用例直接 500（ForeignKeyViolation）。
+#: 同时「行级隔离」上线后 ``scoped(model, user)`` 会过滤 ``user_id == user.id``，
+#: 种子数据若不带 user_id 就查不到（表现为 404 / 空列表）。
+#: 因此测试库必须与生产同构：先有用户，再有归属该用户的数据。
+TEST_USER_ID = 0
+
 _TMP_DB_DIR = tempfile.mkdtemp(prefix="kaoyan_qa_testdb_")
 TEST_DB_PATH = os.path.join(_TMP_DB_DIR, "qa_test.db")
 
@@ -62,7 +75,7 @@ def _env_or_dotenv(key: str, default: str = "") -> str:
     必须读 ``.env``：本机 PG 用的是开发专用账号口令（写在 ``.env`` 里，不进 git），
     而 ``core.db_session`` 的默认值是 ``postgres/postgres``。
     若这里只用 ``os.environ.get(key, 默认值)``，建库会拿默认凭据连上去，
-    因��失败——而旧实现把异常静默吞掉，最终表现为
+    因此失败——而旧实现把异常静默吞掉，最终表现为
     "database kaoyan_test does not exist" 的 194 个用例级联 ERROR。
     """
     val = (os.environ.get(key, "") or "").strip()
@@ -80,13 +93,28 @@ def _env_or_dotenv(key: str, default: str = "") -> str:
 
 
 def _ensure_test_pg_database() -> None:
-    """确保 ``kaoyan_test`` 存在；不存在则连 postgres 库创建。
+    """每个测试会话都把 ``kaoyan_test`` **删掉重建**成空库。
 
     失败时**告警但不阻断**：PG 不可用时测试仍可退回临时 SQLite，
     只是失去 PG 覆盖。真正的红线由下面的 ``_assert_not_production`` 兜底。
 
     注意：这里必须把异常打出来。静默 ``pass`` 会让"建库失败"退化成
     后面几百个看不懂的 ERROR，排查成本极高。
+
+    为什么每次重建（2026-10-17 实测）
+    --------------------------------
+    旧实现"存在即复用"。某次会话里 ``apply_schema`` 半途失败后，
+    ``create_all()`` 按 **ORM 口径**把 ``subject_prototypes`` 等表建了出来
+    （列是 ``subject`` 而非权威 SQL 的 ``subject_id``）。此后每一次会话：
+
+        apply_schema → 010 分片 CREATE TABLE IF NOT EXISTS 被跳过
+                     → COMMENT ON COLUMN subject_prototypes.subject_id
+                     → UndefinedColumn，整份 DDL 中止
+
+    于是 textbooks / subjects / watermark_lexicon、``trg_kp_mastery_sync``
+    触发器等 SQL-only 对象**永远建不出来**，测试库被永久"毒化"，
+    表现为 30+ 个用例散落在各处失败。测试库是可丢弃的沙箱，
+    每次从空库按生产同一条 DDL 链自举，才能保证与生产 schema 同构。
     """
     try:
         import psycopg
@@ -100,16 +128,45 @@ def _ensure_test_pg_database() -> None:
         "password": _env_or_dotenv("PG_PASSWORD", "postgres"),
     }
     try:
+        # 标识符不能参数化；库名受 TEST_PG_DB 控制，此处做白名单校验。
+        if not TEST_PG_DB.replace("_", "").isalnum():
+            raise ValueError(f"非法测试库名：{TEST_PG_DB!r}")
+        # 红线：DROP 只允许落在测试库上，绝不允许是生产库。
+        if TEST_PG_DB == PROD_PG_DB:
+            raise RuntimeError(f"测试库名不得等于生产库名 {PROD_PG_DB!r}")
         with psycopg.connect(dbname="postgres", autocommit=True, **params) as conn:
-            exists = conn.execute(
-                "SELECT 1 FROM pg_database WHERE datname = %s", (TEST_PG_DB,)
-            ).fetchone()
-            if not exists:
-                # 标识符不能参数化；库名受 TEST_PG_DB 控制，此处做白名单校验。
-                if not TEST_PG_DB.replace("_", "").isalnum():
-                    raise ValueError(f"非法测试库名：{TEST_PG_DB!r}")
+            # 并发保护（2026-10-17 实测）：多个工作流会同时跑 pytest。若无条件
+            # ``DROP ... WITH (FORCE)``，后启动的会话会把正在跑的会话连接踢断、
+            # 库删掉重建，对方随即满屏 "server closed the connection" /
+            # "relation ... does not exist"。所以：
+            #   * 用会话级 advisory lock 串行化各会话的"检查 + 重建"；
+            #   * 库上已有别的连接 → 视为另一会话正在使用（它已自举过），只复用不重建；
+            #   * DROP 不带 FORCE：检查与删除之间若有人连上，DROP 报错并回落到复用。
+            conn.execute("SELECT pg_advisory_lock(hashtext('kaoyan_test_bootstrap'))")
+            try:
+                exists = conn.execute(
+                    "SELECT 1 FROM pg_database WHERE datname = %s", (TEST_PG_DB,)
+                ).fetchone() is not None
+                busy = conn.execute(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = %s AND pid <> pg_backend_pid()",
+                    (TEST_PG_DB,),
+                ).fetchone()[0]
+                if exists and busy:
+                    print(
+                        f"[conftest] 测试库 {TEST_PG_DB} 正被另一测试会话使用（{busy} 个连接），"
+                        f"本次复用不重建"
+                    )
+                    return
+                try:
+                    conn.execute(f'DROP DATABASE IF EXISTS "{TEST_PG_DB}"')
+                except psycopg.errors.ObjectInUse:
+                    print(f"[conftest] 测试库 {TEST_PG_DB} 刚被占用，本次复用不重建")
+                    return
                 conn.execute(f'CREATE DATABASE "{TEST_PG_DB}"')
-                print(f"[conftest] 已创建测试库 {TEST_PG_DB}")
+                print(f"[conftest] 已重建空测试库 {TEST_PG_DB}")
+            finally:
+                conn.execute("SELECT pg_advisory_unlock(hashtext('kaoyan_test_bootstrap'))")
     except Exception as exc:  # noqa: BLE001 — PG 缺席不应让整个测试会话崩掉
         print(
             f"[conftest] 警告：无法确保测试库 {TEST_PG_DB} 存在（{type(exc).__name__}: {exc}）。"
@@ -228,6 +285,27 @@ def production_db_untouched():
     _assert_not_production()
 
 
+@pytest.fixture(autouse=True)
+def db_session_cleanup():
+    """每个测试后清理数据库会话状态，防止 InFailedSqlTransaction 级联失败。
+
+    问题根因：PG 事务中一旦有 SQL 错误，整个事务进入 aborted 状态，
+    后续所有语句都会失败直到 ROLLBACK。pytest 默认不自动回滚，
+    导致第一个失败的测试会让同 session 里的后续测试全部炸掉。
+
+    解决方案：每个测试结束后强制 rollback 任何残留的未提交事务。
+    """
+    from database import SessionLocal
+    yield
+    # 测试结束后清理：rollback 任何未提交的事务
+    try:
+        session = SessionLocal()
+        session.rollback()  # 即使没有活跃事务也是安全的
+        session.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
     """会话结束清理临时库目录（best-effort，Windows 上文件句柄可能延迟释放）。"""
     try:
@@ -247,9 +325,22 @@ def app_module():
     return fastapi_app
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
+def auth_bypass(app_module):
+    """全站默认拒绝之后，业务用例统一以管理员身份跑；鉴权本身由 test_auth*.py 覆盖。"""
+    from utils.access_policy import enforce_access
+    from utils.security import current_user, stub_principal
+
+    app_module.dependency_overrides[enforce_access] = lambda: None
+    app_module.dependency_overrides[current_user] = lambda: stub_principal()
+    yield
+    app_module.dependency_overrides.pop(enforce_access, None)
+    app_module.dependency_overrides.pop(current_user, None)
+
+
+@pytest.fixture(scope="session", autouse=True)
 def db_schema(app_module):
-    """在测试库上建表。
+    """在测试库上建表。**session 级 autouse**：每个测试会话都必须先建权威 schema。
 
     2026-10-14 重大修正
     ------------------
@@ -263,12 +354,61 @@ def db_schema(app_module):
     而这些接口在生产库（由迁移建全）是正常的。
     换句话说：**测试环境比生产环境少了一整层表，覆盖率是虚的**。
 
+    2026-10-18 二次修正：改为 autouse
+    --------------------------------
+    曾有 6 个测试文件（test_kaoyan_ext 等）在模块夹具里自带
+    ``Base.metadata.create_all()``，**从不请求本夹具**。双 Base 体系下
+    （``database.Base``=存量 models.py / ``core.models.Base``=目标态），
+    自带 create_all 按**旧 ORM 口径**建表（如 kaoyan_schools 无
+    deleted_at/enabled），而测试代码查询 ``core.models.KaoyanSchool``
+    （新口径）→ ``UndefinedColumn: deleted_at``，15 个用例集体 ERROR。
+    测试库必须与生产 schema 同构：权威 SQL 链 + 增量分片 + ORM 兜底，
+    对每个会话无条件执行，不再依赖测试文件自觉请求。
+
     现在两条路都走：SQL 建权威 schema，create_all 兜底 ORM 里
     SQL 未覆盖的历史表。
+
+    2026-10-17 新增：Pydantic V2 前向引用修复
+    ---------------------------------------
+    由于大量router使用 ``from __future__ import annotations``，
+    Pydantic V2无法自动解析类型注解，需要在导入后调用 model_rebuild()。
     """
     from database import Base, engine, SessionLocal
     import models  # noqa: F401  确保所有 ORM 模型被注册到 Base.metadata
     from services.module_a_schema import ensure_module_a_schema
+    
+    # Pydantic V2: rebuild all models with forward references
+    try:
+        from pydantic import BaseModel
+        
+        def rebuild_pydantic_models():
+            """递归rebuild所有Pydantic模型"""
+            import sys
+            
+            # 收集所有已加载模块中的Pydantic模型
+            all_models = []
+            for module_name, module in sys.modules.items():
+                if module and hasattr(module, '__dict__'):
+                    for name, obj in module.__dict__.items():
+                        if isinstance(obj, type) and issubclass(obj, BaseModel) and obj is not BaseModel:
+                            all_models.append(obj)
+            
+            # Rebuild每个模型
+            rebuilt = 0
+            for model_cls in all_models:
+                try:
+                    if hasattr(model_cls, 'model_rebuild'):
+                        model_cls.model_rebuild()
+                        rebuilt += 1
+                except Exception:
+                    pass  # 有些模型可能不需要rebuild或已经rebuild过
+            
+            return rebuilt
+        
+        count = rebuild_pydantic_models()
+        print(f"[conftest] 已rebuild {count} 个Pydantic模型")
+    except Exception as exc:
+        print(f"[conftest] 警告：Pydantic rebuild失败（{type(exc).__name__}: {exc}）")
 
     # 1) 先应用 core/sql/*.sql —— 权威 schema（含 SQL-only 的表/索引/触发器）
     try:
@@ -279,6 +419,31 @@ def db_schema(app_module):
     except Exception as exc:  # noqa: BLE001
         # 不能静默：否则会退回"少表"状态，症状漂移到几十个接口 500 上。
         print(f"[conftest] 警告：apply_schema 失败（{type(exc).__name__}: {exc}）")
+
+    # 1b) 未被 pg_schema.sql \ir 收编的增量迁移分片（生产库已逐个执行过）。
+    #     旧实现手写 4 个文件名，漏掉 096_papers_year_type（paper_attempts）/
+    #     097_code_oj（code_problems / code_submissions）/ 102_review_schedules_fsrs，
+    #     测试库因此比生产少表。这里按文件名序自动发现，新增分片无需再改本文件。
+    #     逐个文件独立执行：单个分片坏掉只告警，不连累其余分片。
+    import glob
+    import re
+
+    from core.db_session import apply_schema as _apply_sql
+
+    core_dir = os.path.join(BACKEND_DIR, "core")
+    with open(os.path.join(core_dir, "pg_schema.sql"), encoding="utf-8") as fh:
+        included = set(re.findall(r"^\\ir\s+sql/(\S+)", fh.read(), re.M))
+    extra = sorted(
+        os.path.basename(p)
+        for p in glob.glob(os.path.join(core_dir, "sql", "*.sql"))
+        if os.path.basename(p) not in included
+    )
+    for name in extra:
+        try:
+            _apply_sql(os.path.join(core_dir, "sql", name))
+            print(f"[conftest] 已执行迁移: {name}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[conftest] 警告：迁移 {name} 失败（{type(exc).__name__}: {exc}）")
 
     # 2) 再用 ORM 兜底 SQL 未覆盖的历史表
     Base.metadata.create_all(bind=engine)
@@ -308,6 +473,29 @@ def db_schema(app_module):
         print(f"[conftest] 警告：科目播种失败（{type(exc).__name__}: {exc}）")
     finally:
         session.close()
+
+    # 4) 播种测试主体本人。
+    #    个人域表都有 user_id 外键（core/sql/108），stub_principal() 的 id 必须
+    #    在 users 里真实存在，否则 PG 上写 favorites / goals / answer_records
+    #    全部 ForeignKeyViolation（SQLite 时代外键不生效所以一直没暴露）。
+    session = SessionLocal()
+    try:
+        from models import User
+
+        if session.query(User).filter(User.id == TEST_USER_ID).first() is None:
+            session.add(User(
+                id=TEST_USER_ID, username="pytest",
+                password_hash="!disabled-test-principal",
+                display_name="pytest", role="admin", is_active=True,
+                must_change_password=False, token_version=0,
+            ))
+            session.commit()
+            print(f"[conftest] 已播种测试主体 user id={TEST_USER_ID}")
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        print(f"[conftest] 警告：测试主体播种失败（{type(exc).__name__}: {exc}）")
+    finally:
+        session.close()
     return engine
 
 
@@ -329,6 +517,8 @@ def sample_data(db_schema):  # noqa: ARG001
     幂等：重复执行不会重复插入（先查后插）。
     """
     import datetime
+
+    from utils.timeutil import local_today
     from database import SessionLocal
     from models import (
         Goal, Task, QuizQuestion, ErrorRecord, Document, Word, WordDeck,
@@ -338,11 +528,12 @@ def sample_data(db_schema):  # noqa: ARG001
 
     db = SessionLocal()
     try:
-        today = datetime.date.today()
+        today = local_today()
 
         # ---- Goal（/api/goals 期望恰好一条）----
         if db.query(Goal).count() == 0:
             db.add(Goal(
+                user_id=TEST_USER_ID,
                 exam_date=today + datetime.timedelta(days=180),
                 total_score_target=360,
                 politics_target=65, english_target=65,
@@ -358,9 +549,11 @@ def sample_data(db_schema):  # noqa: ARG001
         # SQLite 无类型约束所以一直没暴露；切到独立测试库后必炸。
         if db.query(Task).count() == 0:
             db.add_all([
-                Task(title="QA-数学复习", subject="数学", task_type="学习",
+                Task(user_id=TEST_USER_ID,
+                     title="QA-数学复习", subject="数学", task_type="学习",
                      stage="basic", status="pending", due_date=today, priority=5),
-                Task(title="QA-英语刷题", subject="英语", task_type="刷题",
+                Task(user_id=TEST_USER_ID,
+                     title="QA-英语刷题", subject="英语", task_type="刷题",
                      stage="basic", status="done", due_date=today,
                      priority=3,
                      completed_at=datetime.datetime.now(datetime.UTC)),
@@ -390,6 +583,7 @@ def sample_data(db_schema):  # noqa: ARG001
         if db.query(ErrorRecord).count() == 0:
             q = db.query(QuizQuestion).filter(QuizQuestion.subject == "数学").first()
             db.add(ErrorRecord(
+                user_id=TEST_USER_ID,
                 question_id=q.id if q else None,
                 content="QA 错题内容",
                 my_answer="A", correct_answer="B",
@@ -426,15 +620,18 @@ def sample_data(db_schema):  # noqa: ARG001
         # ---- WordDeck / Word ----
         # WordDeck 字段：word_count（不是 total_words）
         if db.query(WordDeck).count() == 0:
-            db.add(WordDeck(name="QA-核心词汇", description="QA deck",
+            db.add(WordDeck(user_id=TEST_USER_ID,
+                            name="QA-核心词汇", description="QA deck",
                             source="manual", word_count=2, color="#1890ff"))
         if db.query(Word).count() == 0:
             deck = db.query(WordDeck).first()
             db.add_all([
-                Word(word="ubiquitous", meaning="无处不在", phonetic="/juːˈbɪkwɪtəs/",
+                Word(user_id=TEST_USER_ID,
+                     word="ubiquitous", meaning="无处不在", phonetic="/juːˈbɪkwɪtəs/",
                      pos="adj", deck_id=deck.id if deck else None,
                      status="not_mastered", ease_factor=2.5, interval=0, reps=0, lapses=0),
-                Word(word="ephemeral", meaning="短暂的", phonetic="/ɪˈfemərəl/",
+                Word(user_id=TEST_USER_ID,
+                     word="ephemeral", meaning="短暂的", phonetic="/ɪˈfemərəl/",
                      pos="adj", deck_id=deck.id if deck else None,
                      status="not_mastered", ease_factor=2.5, interval=0, reps=0, lapses=0),
             ])
@@ -455,6 +652,7 @@ def sample_data(db_schema):  # noqa: ARG001
             now = datetime.datetime.now(datetime.UTC)
             past = now - datetime.timedelta(days=2)
             db.add(EbbinghausItem(
+                user_id=TEST_USER_ID,
                 seq=1,
                 learn_date=past,
                 content="QA 艾宾浩斯条目",
@@ -476,13 +674,15 @@ def sample_data(db_schema):  # noqa: ARG001
         db.query(EarlyBirdRecord).delete(synchronize_session=False)
         db.add_all([
             EarlyBirdRecord(
-                day_num=1, date=_dt.date.today(),
+                user_id=TEST_USER_ID,
+                day_num=1, date=local_today(),
                 wake_time=_dt.time(6, 30), sleep_time=_dt.time(23, 0),
                 note="QA today",
             ),
             EarlyBirdRecord(
+                user_id=TEST_USER_ID,
                 day_num=2,
-                date=_dt.date.today() - _dt.timedelta(days=1),
+                date=local_today() - _dt.timedelta(days=1),
                 wake_time=_dt.time(7, 0), sleep_time=_dt.time(23, 30),
                 note="QA yesterday",
             ),
@@ -491,9 +691,10 @@ def sample_data(db_schema):  # noqa: ARG001
         # ---- PhasePlan（/api/planner/phase/{plan_id}/reviews 需要）----
         if db.query(PhasePlan).count() == 0:
             db.add(PhasePlan(
+                user_id=TEST_USER_ID,
                 name="QA 阶段一",
-                start_date=datetime.date.today(),
-                end_date=datetime.date.today() + datetime.timedelta(days=40),
+                start_date=local_today(),
+                end_date=local_today() + datetime.timedelta(days=40),
                 cycle_days=40,
                 tasks=[],
             ))
@@ -503,6 +704,7 @@ def sample_data(db_schema):  # noqa: ARG001
         if db.query(Flashcard).count() == 0:
             kp = db.query(KnowledgePoint).first()
             db.add(Flashcard(
+                user_id=TEST_USER_ID,
                 front="QA 正面", back="QA 背面",
                 knowledge_point_id=kp.id if kp else None,
                 next_review=datetime.datetime.now(datetime.UTC),
@@ -536,6 +738,32 @@ def sample_data(db_schema):  # noqa: ARG001
             "ebbinghaus_id": _id(EbbinghausItem),
         }
         return ids
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def chunk_fts_mirror(db_schema):  # noqa: ARG001
+    """确保 ``knowledge_chunks_fts`` 检索镜像表存在（PG 兼容普通表）。
+
+    PG 生产库默认不建该镜像（全文检索走 ``knowledge_chunks.search_vector``），
+    但 ``kb_service.ingest_text`` / ``sync_mirror_subjects`` 的契约是
+    「镜像表存在就必须与块同事务同步」。锁这条契约的用例需要一张镜像表承载断言。
+
+    此前这些用例能过，只是因为测试库被长期复用、恰好残留了别的用例建的表；
+    测试库改为每会话重建后，这种隐式的顺序依赖必须显式化。
+    列结构与 ``tests/test_chunk_mirror_sync.py::_make_mirrors`` 一致。
+    """
+    from sqlalchemy import text
+
+    from database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS knowledge_chunks_fts ("
+            " chunk_id INTEGER, document_id INTEGER, subject VARCHAR, content TEXT)"))
+        db.commit()
     finally:
         db.close()
 
