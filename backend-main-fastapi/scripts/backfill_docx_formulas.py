@@ -176,6 +176,57 @@ def locate(
     return p_start, norm_idx[nend - 1] + 1
 
 
+def locate_by_prefix(
+    aligned: AlignedText,
+    text: str,
+    norm_plain: str,
+    norm_idx: List[int],
+    *,
+    expected_pos: int = 0,
+    probe_len: int = 60,
+) -> Optional[Tuple[int, int]]:
+    """用「去空白后的前 N 个字符」定位起点，长度按原文估算。
+
+    **为什么需要这个**：重复回填时块文本已经被写过一遍（含 ``$...$`` 和
+    图片链接）。用正则剥掉标记后，只要有一个不配对的 ``$``（LaTeX 里的
+    ``\\$``、OCR 残留、或块首尾截断），后半段就会错位——实测
+    ``$f(-x)=f(x)$`` 剥完残留 ``f ( - x )   =   - \\ove``，
+    导致全长匹配必然失败（而前 40 字符在原文里找得到）。
+
+    所以退一步：只要**开头对得上**就认为定位成功，末尾按长度估算。
+    ``markers_in`` 只是按区间取占位符，多取/少取一两个不影响整块替换。
+    """
+    norm_text = _norm(text)
+    if len(norm_text) < 10:
+        return None
+    probe = norm_text[:probe_len]
+    positions = _all_positions(norm_plain, probe)
+    if not positions:
+        # 前缀也找不到：退到更短的前缀（防止开头几个字就被污染）
+        for shorter in (40, 24, 12):
+            if len(norm_text) < shorter:
+                continue
+            positions = _all_positions(norm_plain, norm_text[:shorter])
+            if positions:
+                break
+    if not positions:
+        return None
+
+    chosen = None
+    for np_ in positions:
+        if norm_idx[np_] >= expected_pos:
+            chosen = np_
+            break
+    if chosen is None:
+        chosen = positions[-1]
+
+    start = norm_idx[chosen]
+    # 长度估算：用原始（未剥离）文本长度更接近块在文档中的实际跨度
+    est = max(1, len(text))
+    end = min(len(aligned.plain), start + est)
+    return start, end
+
+
 def markers_in(aligned: AlignedText, plain_start: int, plain_end: int) -> List[int]:
     """给定 plain 区间，返回该区间覆盖的公式占位符序号。"""
     if plain_start >= plain_end:
@@ -289,10 +340,21 @@ def process_document(
             aligned, ch["text"] or "", norm_plain, norm_idx, expected_pos=cursor
         )
         if not span:
-            # 已回填过的块：剥掉 LaTeX/图片标记再试一次（重复回填的关键）
+            # 已回填过的块：剥掉 LaTeX/图片标记再试一次（重复回填）
             stripped = strip_rendered(ch["text"] or "")
             if stripped and stripped != (ch["text"] or ""):
                 span = locate(aligned, stripped, norm_plain, norm_idx, expected_pos=cursor)
+                if not span:
+                    # 剥离后首尾仍可能有残留（不配对的 $ 会让正则错位），
+                    # 退到「前缀定位 + 长度估算」
+                    span = locate_by_prefix(
+                        aligned, stripped, norm_plain, norm_idx, expected_pos=cursor
+                    )
+        if not span:
+            # 最后兜底：即使剥离不干净，原始文本的开头一般还可信
+            span = locate_by_prefix(
+                aligned, ch["text"] or "", norm_plain, norm_idx, expected_pos=cursor
+            )
         if not span:
             continue
         mids = markers_in(aligned, span[0], span[1])
