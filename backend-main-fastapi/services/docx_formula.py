@@ -182,6 +182,7 @@ def parse_docx_with_images(
     max_images: Optional[int] = None,
     keep_all: bool = True,
     table_position: str = "after",
+    only_indices: Optional[set] = None,
 ) -> DocxParseResult:
     """解析 .docx，按文档顺序还原「文字 + 公式占位符」。
 
@@ -198,6 +199,10 @@ def parse_docx_with_images(
     keep_all:
         True 时连装饰性小图也导出；False 时跳过宽或高小于 ``MIN_FORMULA_SIDE``
         的图片（分隔线、项目符号），这类图不是公式。
+    only_indices:
+        只导出这些序号的图片（``set``）。``None`` 表示全导。回填场景用得上：
+        一篇题库 docx 可能有近万张公式图，但真正被引用的只有几百张，
+        按需导出能省掉大量磁盘 IO。
     table_position:
         ``"after"``（默认）复刻旧管线 ``_parse_docx`` 的顺序——**先所有段落、再所有表格**。
         这样去掉占位符后的文本与库里已有的 ``documents.content`` **逐字符一致**，
@@ -251,7 +256,9 @@ def parse_docx_with_images(
                             part.related_parts[rid], "partname", rid
                         )
                         img.source_name = os.path.basename(str(img.source_name))
-                        if out_dir and (max_images is None or exported < max_images):
+                        if out_dir and (
+                            max_images is None or exported < max_images
+                        ) and (only_indices is None or img.index in only_indices):
                             ext = os.path.splitext(img.source_name)[1].lower()
                             if ext not in IMAGE_EXTS:
                                 ext = ".png"
@@ -356,23 +363,26 @@ class AlignedText:
         return delta
 
     def plain_to_marked(self, pos: int) -> int:
-        """把 plain 里的字符偏移换算成 marked 里的偏移。"""
+        """把 plain 里的字符偏移换算成 marked 里的偏移。
+
+        注意用 ``<=`` 闭区间：plain 里每行之间有 1 个换行字符形成的间隙，
+        落在间隙上的偏移属于**上一行的末尾**，必须由上一行认领；
+        否则会掉进兜底分支算出完全错误的位置。
+        """
         if pos <= 0 or not self._lines:
             return 0
         for p_start, p_len, m_start, _m_len, spans, lead in self._lines:
-            if p_start <= pos < p_start + p_len:
+            if p_start <= pos <= p_start + p_len:
                 core_pos = (pos - p_start) + lead
                 return m_start + core_pos + self._delta_before(spans, core_pos)
-        p_start, p_len, m_start, _m_len, spans, lead = self._lines[-1]
-        core_pos = (pos - p_start) + lead
-        return m_start + core_pos + self._delta_before(spans, core_pos)
+        return len(self.marked)
 
     def marked_to_plain(self, pos: int) -> int:
         """把 marked 里的字符偏移换算成 plain 里的偏移。"""
         if pos <= 0 or not self._lines:
             return 0
         for p_start, p_len, m_start, m_len, spans, lead in self._lines:
-            if m_start <= pos < m_start + m_len:
+            if m_start <= pos <= m_start + m_len:
                 rel = pos - m_start
                 delta = 0
                 for m_s, m_e, _core_start in spans:
