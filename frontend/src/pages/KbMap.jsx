@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { taxonomyApi, reviewApi, quizApi, qualityApi } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
+import { chatCompletion, defaultProvider, recordUsage } from '../utils/api'
 import { toast, Empty } from '../components/UI'
+import { LoadingState } from '../components/States'
 import {
   RefreshCw, CheckCircle, ChevronRight,
   Book, Brain, AlertCircle, Map as MapIcon, Play, Target,
@@ -82,6 +85,7 @@ function normalizeSubjects(data) {
 }
 
 export default function KbMap() {
+  const { user } = useAuth()
   const [subjects, setSubjects] = useState([])      // 动态科目列表（taxonomyApi.subjects）
   const [tree, setTree] = useState([])              // 结构树（taxonomyApi.tree）
   const [progress, setProgress] = useState(null)    // 全局掌握度总览
@@ -108,6 +112,11 @@ export default function KbMap() {
   const [detailReviewing, setDetailReviewing] = useState(false)
   const detailSeq = useRef(0)
 
+  /* 知识点 AI 精讲：调 utils/api 的 chatCompletion（与 GlobalAI 同链路，走后端 /api/ai/chat），
+     结果在详情面板内嵌展示、可折叠；切换知识点时重置。 */
+  const [aiExplain, setAiExplain] = useState({ open: false, loading: false, text: '', error: '' })
+  const resetAiExplain = () => setAiExplain({ open: false, loading: false, text: '', error: '' })
+
   /* 首帧是否已完成初始化选择：URL 深链与默认选中只应用一次，
      后续刷新/复习回写不会把用户当前所在的章节与知识点冲掉。 */
   const bootstrappedRef = useRef(false)
@@ -122,6 +131,7 @@ export default function KbMap() {
     if (id == null) return
     selectedIdRef.current = id
     setSelectedKpId(id)
+    resetAiExplain()
     const seq = ++detailSeq.current
     setDetail({ loading: true, error: '', data: null })
     setKpQCount(null)
@@ -163,10 +173,11 @@ export default function KbMap() {
       const [sj, t, p, d, c, q] = await Promise.all([
         taxonomyApi.subjects(),
         taxonomyApi.tree(),
-        reviewApi.progress(),
-        reviewApi.due({ limit: 30 }),
+        /* 访客（未登录）：复习进度/到期队列/语料质量层是登录态数据，跳过不打后端 */
+        user ? reviewApi.progress() : Promise.resolve(null),
+        user ? reviewApi.due({ limit: 30 }) : Promise.resolve(null),
         taxonomyApi.coverage(),
-        qualityApi.treeOverlay().catch(() => null),   // 质量层失败不影响地图主体
+        user ? qualityApi.treeOverlay().catch(() => null) : Promise.resolve(null),
       ])
       setSubjects(normalizeSubjects(sj))
       const tNodes = t?.tree || []
@@ -219,7 +230,8 @@ export default function KbMap() {
       setErrMsg(e?.message || '未知错误')
       setStatus('error')
     }
-  }, [openDetail, closeDetail])
+    // user 入依赖：登录态就绪后重拉，访客切登录后掌握度/队列不再空白
+  }, [openDetail, closeDetail, user])
 
   useEffect(() => { loadAll() }, [loadAll])
 
@@ -298,6 +310,26 @@ export default function KbMap() {
     navigate(`/quiz?${params.toString()}`)
   }, [navigate])
 
+  /* AI 精讲：prompt 携带知识点名称、科目/章节、掌握度三态，走后端 /api/ai/chat 代理 */
+  const runAiExplain = async () => {
+    const d = detail.data
+    if (!d || aiExplain.loading) return
+    setAiExplain({ open: true, loading: true, text: '', error: '' })
+    const tone = stateTone(kpState(d))
+    const prompt = [
+      `请为考研知识点「${d.name}」（科目：${d.subject || '未分类'}${d.chapter ? ' · ' + d.chapter : ''}）做一次精讲。`,
+      `该知识点当前掌握度 ${d.mastery ?? 0}%（状态：${tone.label}），考频 ${d.exam_frequency ?? '未知'}，难度 ${d.difficulty ?? '未知'}。`,
+      '请给出：1）核心概念与直觉解释；2）常用方法/公式；3）易错点；4）结合当前掌握状态给出 1-2 条针对性复习建议。用 markdown 列表，简洁。'
+    ].join('\n')
+    try {
+      const r = await chatCompletion(defaultProvider(), [{ role: 'user', content: prompt }])
+      recordUsage(r.usage, defaultProvider()?.id)
+      setAiExplain((s) => ({ ...s, loading: false, text: r.text || '（AI 未返回内容）' }))
+    } catch (e) {
+      setAiExplain((s) => ({ ...s, loading: false, error: `AI 精讲失败：${e?.message || '未知错误'}` }))
+    }
+  }
+
   /* 科目维度汇总（用于概览分布条）：三态 —— 未学/薄弱/已掌握 */
   const dist = useMemo(() => {
     if (!progress) return null
@@ -309,15 +341,49 @@ export default function KbMap() {
     return { total, mastered, weak, unlearned }
   }, [progress])
 
-  /* 科目选择 chips：优先用 /taxonomy/subjects（阶段1 契约 {subjects:[...]}）；
-     若该表为空（旧库未播种 SubjectConfig），回退用结构树里已存在的科目，
-     避免有大量知识点却误报「暂未配置科目」。 */
+  /* 科目选择 chips：/taxonomy/subjects 同时返回 knowledge_point_count 与
+     question_count；知识地图并列标注两种口径，避免把题量误认为知识点数。
+     兼容旧后端：缺 knowledge_point_count 时从 coverage/tree 补，仍不复用题量。 */
   const chipSubjects = useMemo(() => {
-    if (subjects.length > 0) return subjects
+    const fallbackKpCounts = new Map()
+    for (const s of (coverage?.subjects || [])) {
+      fallbackKpCounts.set(s.subject, s.knowledge_points)
+    }
+    for (const s of tree) {
+      fallbackKpCounts.set(s.subject, s.knowledge_point_count)
+    }
+    if (subjects.length > 0) {
+      return subjects.map((s) => ({
+        ...s,
+        knowledge_point_count: typeof s.knowledge_point_count === 'number'
+          ? s.knowledge_point_count
+          : fallbackKpCounts.get(s.subject),
+      }))
+    }
     return tree
       .filter((s) => s.knowledge_point_count > 0)
-      .map((s) => ({ subject: s.subject, question_count: s.knowledge_point_count }))
-  }, [subjects, tree])
+      .map((s) => ({ subject: s.subject, knowledge_point_count: s.knowledge_point_count }))
+  }, [subjects, tree, coverage])
+
+  /* 「全部」chip 的合计：知识点数与题量分别累加，任一字段缺失都跳过而不是当 0，
+     避免把"没这个字段"显示成"0 个知识点"。 */
+  const chipTotals = useMemo(() => {
+    let kp = 0
+    let q = 0
+    let hasKp = false
+    let hasQ = false
+    for (const s of chipSubjects) {
+      if (typeof s?.knowledge_point_count === 'number') { kp += s.knowledge_point_count; hasKp = true }
+      if (typeof s?.question_count === 'number') { q += s.question_count; hasQ = true }
+    }
+    return { kp, q, hasKp, hasQ }
+  }, [chipSubjects])
+
+  /* 当前科目的 chip（空态文案要用它的题量解释"为什么是 0 知识点"） */
+  const activeChip = useMemo(
+    () => (activeSubject ? chipSubjects.find((s) => s.subject === activeSubject) || null : null),
+    [chipSubjects, activeSubject]
+  )
 
   /* 左栏：章节分组（按科目；选科后仅该科） */
   const chapterGroups = useMemo(() => {
@@ -358,13 +424,7 @@ export default function KbMap() {
 
   /* ---------------- 三态：加载中 ---------------- */
   if (status === 'loading') {
-    return (
-      <div className="page">
-        <div className="card">
-          <div className="loading-inline">知识结构加载中…</div>
-        </div>
-      </div>
-    )
+    return <LoadingState text="知识结构加载中…" />
   }
 
   /* ---------------- 三态：失败（toast + 就地提示 + 重试） ---------------- */
@@ -404,28 +464,14 @@ export default function KbMap() {
             与「知识点全景」（跨章节图谱总览）互跳
           </div>
         </div>
-      </div>
-
-      {/* 顶部导航（居中置顶）：与「知识点全景」同模块互跳，知识地图为当前页
-          （原「考频分析」胶囊已随 ExamFrequency 页删除，docx/22 D3） */}
-      <nav className="kb-topnav" aria-label="知识地图模块导航">
-        <div className="kb-topnav-lead" />
-        <div className="kb-topnav-inner">
-          <span className="kb-navpill active" aria-current="page">知识地图</span>
-          <button
-            className="kb-navpill"
-            onClick={() => navigate('/panorama')}
-            title="切换到知识点全景：跨章节掌握度图谱总览"
-          >
-            知识点全景
-          </button>
-        </div>
-        <div className="kb-topnav-actions">
+        {/* 模块内的「知识图谱」胶囊已移除（与面包屑/页标题重复）；
+            保留 nav 地标供辅助技术与自动化用例定位当前模块。 */}
+        <nav className="page-actions" aria-label="知识图谱">
           <button className="btn ghost" onClick={loadAll}>
             <RefreshCw size={15} /> 刷新
           </button>
-        </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* 掌握度总览卡 */}
       {progress && dist && (
@@ -502,20 +548,56 @@ export default function KbMap() {
           <button
             className={`kb-chip ${!activeSubject ? 'active' : ''}`}
             onClick={() => selectSubject('')}
+            title="知识点数＝知识库结构化抽取的知识点；题量＝题库题目数，两者口径不同"
           >
             全部
+            {chipTotals.hasKp && (
+              <small>
+                {chipTotals.kp} 知识点
+                {chipTotals.hasQ ? ` · ${chipTotals.q} 题` : ''}
+              </small>
+            )}
           </button>
-          {chipSubjects.map((s) => (
-            <button
-              key={s.subject}
-              className={`kb-chip ${activeSubject === s.subject ? 'active' : ''}`}
-              onClick={() => selectSubject(s.subject)}
-            >
-              {s.subject}
-              {typeof s.question_count === 'number' && <small>{s.question_count}</small>}
-            </button>
-          ))}
+          {chipSubjects.map((s) => {
+            const kpCount = typeof s.knowledge_point_count === 'number'
+              ? s.knowledge_point_count
+              : null
+            const questionCount = typeof s.question_count === 'number'
+              ? s.question_count
+              : null
+            return (
+              <button
+                key={s.subject}
+                className={`kb-chip ${activeSubject === s.subject ? 'active' : ''}`}
+                onClick={() => selectSubject(s.subject)}
+                title="知识点数＝知识库结构化抽取的知识点；题量＝题库题目数，两者口径不同"
+              >
+                {s.subject}
+                <small>
+                  {kpCount == null ? '— 知识点' : `${kpCount} 知识点`}
+                  {questionCount != null ? ` · ${questionCount} 题` : ''}
+                </small>
+              </button>
+            )
+          })}
         </div>
+        {/* 教材↔知识地图双向打通入口：
+            当前选中科目时，可直接跳到教材目录看该科指定书目
+            （数据源 /api/textbooks/by-subject，26 本核心专业课教材）。
+            未选科目则进入教材总目录。 */}
+        <button
+          type="button"
+          className="kb-textbook-link"
+          title={activeSubject
+            ? `查看「${activeSubject}」的核心教材书目`
+            : '查看电子通信考研核心专业课教材总目录'}
+          onClick={() => navigate(
+            activeSubject ? `/textbooks?subject=${encodeURIComponent(activeSubject)}` : '/textbooks'
+          )}
+        >
+          <Book size={14} />
+          {activeSubject ? '本科教材' : '教材总目录'}
+        </button>
       </div>
 
       {quality && (
@@ -530,6 +612,11 @@ export default function KbMap() {
           icon={<Book size={44} />}
           title="暂未配置科目"
           desc="请先在「科目管理」中添加考试科目与大纲章节，知识地图会自动生成三级结构。"
+          action={(
+            <button className="btn primary" onClick={() => navigate('/subjects')}>
+              去科目管理
+            </button>
+          )}
         />
       ) : (
         <div className="kb3-layout">
@@ -537,12 +624,24 @@ export default function KbMap() {
           <section className="kb3-col" aria-label="章节">
             <div className="kb3-col-title">章节</div>
             {treeLoading ? (
-              <div className="card"><div className="loading-inline">结构加载中…</div></div>
+              <LoadingState text="结构加载中…" rows={0} />
             ) : !hasAnyKp ? (
               <Empty
                 icon={<Brain size={44} />}
-                title={activeSubject ? `「${activeSubject}」暂无知识点` : '暂无知识结构数据'}
-                desc="上传资料并解析后，这里会按章节展开知识点与掌握度。"
+                title={activeSubject ? `「${activeSubject}」暂无知识点` : '知识点库为空'}
+                desc={activeSubject
+                  ? `该科目${typeof activeChip?.question_count === 'number'
+                    ? `题库已有 ${activeChip.question_count} 题`
+                    : '题库可能有题'}，但知识点数为 0 —— 题量 ≠ 知识点数。`
+                    + '知识点来自教材/讲义的结构化抽取，题库题目不会自动生成知识结构。'
+                    + '请到资料库上传该科资料并执行知识点抽取，完成后返回刷新。'
+                  : '知识点数与题库题量是两个口径：这里统计的是从教材/讲义中抽取的结构化知识点。'
+                    + '当前还没有任何知识点，请到资料库上传资料并执行知识点抽取，完成后返回刷新。'}
+                action={(
+                  <button className="btn primary" onClick={() => navigate('/documents')}>
+                    去资料库导入
+                  </button>
+                )}
               />
             ) : (
               chapterGroups.map((g) => (
@@ -605,7 +704,7 @@ export default function KbMap() {
               知识点{activeChapter ? ` · ${activeChapter.title}` : ''}
             </div>
             {treeLoading ? (
-              <div className="card"><div className="loading-inline">结构加载中…</div></div>
+              <LoadingState text="结构加载中…" rows={0} />
             ) : !activeChapterData ? (
               <Empty
                 icon={<Target size={40} />}
@@ -616,7 +715,12 @@ export default function KbMap() {
               <Empty
                 icon={<Brain size={40} />}
                 title="该章节暂无知识点"
-                desc="上传并解析该章节的资料后，知识点会出现在这里。"
+                desc="请到知识库上传对应章节资料并执行知识点抽取，完成后返回刷新。"
+                action={(
+                  <button className="btn primary" onClick={() => navigate('/documents')}>
+                    去知识库导入
+                  </button>
+                )}
               />
             ) : (
               <div className="kb3-kp-cards">
@@ -628,12 +732,14 @@ export default function KbMap() {
                       key={kp.id}
                       className={`kb3-kp-card ${isSel ? 'is-sel' : ''}`}
                     >
-                      {/* 选中区：点它 → 右栏展示该知识点的例题 / 方法（可键盘操作） */}
+                      {/* 主区：点它 → 进入知识点阅读页（学术阅读版式，对标 gitgraduate）
+                          原行为是展开右栏例题区，但「读概念」是复习主线动作，
+                          阅读页承载考纲/教材原文/主动回忆/掌握度自评，比右栏更完整。 */}
                       <button
                         type="button"
                         className="kb3-kp-select"
-                        onClick={() => openDetail(kp)}
-                        title={`查看「${kp.name}」的例题与方法`}
+                        onClick={() => navigate(`/knowledge/${kp.id}`)}
+                        title={`阅读「${kp.name}」：考纲要求 · 教材原文 · 主动回忆`}
                       >
                         <span className="kb3-kp-head">
                           <span className={`kb-dot tone-${kt.cls}`} title={`掌握度 ${kp.mastery}（${kt.label}）`} />
@@ -686,11 +792,11 @@ export default function KbMap() {
                     <Target size={18} /> 请从中间选择一个知识点
                   </div>
                 ) : detail.loading ? (
-                  <div className="loading-inline">详情加载中…</div>
+                  <LoadingState text="详情加载中…" rows={0} />
                 ) : detail.error ? (
                   <div className="kb-drawer-err">
                     <AlertCircle size={16} /> {detail.error}
-                    <div style={{ marginTop: 10 }}>
+                    <div style={{ marginTop: 'var(--space-3)' }}>
                       <button className="btn ghost" onClick={() => openDetail({ id: selectedKpId })}>重试</button>
                     </div>
                   </div>
@@ -735,7 +841,23 @@ export default function KbMap() {
                       >
                         <Play size={14} /> 开始练习
                       </button>
+                      <button className="btn outline" disabled={aiExplain.loading} onClick={runAiExplain}>
+                        {aiExplain.loading ? '生成中…' : 'AI 精讲'}
+                      </button>
                     </div>
+
+                    {aiExplain.open && (
+                      <div className="kb-drawer-section">
+                        <div className="kb-drawer-section-title">AI 精讲</div>
+                        {aiExplain.loading ? (
+                          <div className="loading-inline">正在生成讲解…</div>
+                        ) : aiExplain.error ? (
+                          <div style={{ color: 'var(--danger)', fontSize: 'var(--text-sm)' }}>{aiExplain.error}</div>
+                        ) : (
+                          <p className="kb-drawer-desc" style={{ whiteSpace: 'pre-wrap' }}>{aiExplain.text}</p>
+                        )}
+                      </div>
+                    )}
 
                     {(detail.data.question_types || []).length > 0 && (
                       <div className="kb-drawer-section">
@@ -882,7 +1004,7 @@ export default function KbMap() {
             <div className="card">
               <div className="card-head">
                 <div>
-                  <div className="card-title">薄弱知识点</div>
+                  <div className="card-title">掌握度最低的知识点</div>
                   <div className="card-sub">按掌握度升序，优先攻克</div>
                 </div>
               </div>
@@ -892,7 +1014,8 @@ export default function KbMap() {
                     <div className="kb-weak-item" key={k.id}>
                       <span className="kb-weak-name">{k.name}</span>
                       <span className="kb-weak-ch">{k.chapter || '未归章'}</span>
-                      <span className={`kb-pill tone-${stateTone(k.state ?? (Number(k.mastery) >= 70 ? 'mastered' : 'weak')).cls}`}>
+                      {/* state 由 services/kp_mastery 判定并随响应下发，前端不再自己抄一份阈值 */}
+                      <span className={`kb-pill tone-${stateTone(k.state).cls}`}>
                         {k.mastery}%
                       </span>
                     </div>
@@ -914,6 +1037,7 @@ export default function KbMap() {
                 </div>
               </div>
               <div className="card-body">
+                <div className="table-container">
                 <table className="kb-cov-table">
                   <thead>
                     <tr><th>科目</th><th>分块</th><th>知识点</th><th>章节覆盖</th></tr>
@@ -934,6 +1058,7 @@ export default function KbMap() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}
