@@ -529,7 +529,10 @@ def main() -> int:
         if args.doc_id:
             q = q.filter(Document.id.in_(args.doc_id))
         docs = q.all()
-        if not args.all_docs:
+        # 显式指定 --doc-id 时不要再用污染特征过滤：
+        # 第一轮回填后块文本已变成 LaTeX/图片，不再含 f(α) 这类特征，
+        # 过滤会把「已经修好但想用新参数再优化」的文档全排除（实测 doc 36 被漏掉）。
+        if not args.all_docs and not args.doc_id:
             polluted = (
                 db.query(KnowledgeChunk.document_id)
                 .filter(
