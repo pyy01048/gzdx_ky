@@ -353,12 +353,16 @@ export default function KbMap() {
       fallbackKpCounts.set(s.subject, s.knowledge_point_count)
     }
     if (subjects.length > 0) {
-      return subjects.map((s) => ({
-        ...s,
-        knowledge_point_count: typeof s.knowledge_point_count === 'number'
-          ? s.knowledge_point_count
-          : fallbackKpCounts.get(s.subject),
-      }))
+      return subjects.map((s) => {
+        const direct = typeof s.knowledge_point_count === 'number' ? s.knowledge_point_count : null
+        const fallback = fallbackKpCounts.get(s.subject)
+        // 后端给 0 但结构树里有 KP（科目别名/归一差异）时以结构树为准，
+        // 保证 chip 数字与左栏「知识点 N」不打架。
+        const kp = direct == null
+          ? fallback
+          : (direct === 0 && typeof fallback === 'number' && fallback > 0 ? fallback : direct)
+        return { ...s, knowledge_point_count: kp }
+      })
     }
     return tree
       .filter((s) => s.knowledge_point_count > 0)
