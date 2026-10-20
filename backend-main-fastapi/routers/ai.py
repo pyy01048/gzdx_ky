@@ -79,12 +79,59 @@ def _classify_ai_error(exc: BaseException) -> Tuple[str, str]:
     return "upstream_error", _AI_ERROR_HINTS["upstream_error"]
 
 
-async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict]:
+def _citation_location(c: dict) -> str:
+    """引用位置的可读描述：优先页码，缺失时退化为段号。"""
+    ps = c.get("page_start")
+    pe = c.get("page_end")
+    if ps:
+        if pe and pe != ps:
+            return f"第{ps}-{pe}页"
+        return f"第{ps}页"
+    idx = c.get("chunk_index")
+    if idx is not None:
+        try:
+            return f"第{int(idx) + 1}段"
+        except (TypeError, ValueError):
+            pass
+    return "位置未标注"
+
+
+def _build_citations(hits: list) -> list:
+    """把召回片段收敛成结构化引用（前端可直接渲染，回答末尾也会附上）。"""
+    out = []
+    for i, h in enumerate(hits or [], 1):
+        out.append({
+            "index": i,
+            "doc_name": h.get("doc_name") or h.get("title") or "",
+            "page_start": h.get("page_start"),
+            "page_end": h.get("page_end"),
+            "chunk_index": h.get("chunk_index"),
+            "chunk_id": h.get("chunk_id"),
+            "document_id": h.get("doc_id"),
+            "score": round(float(h.get("score") or 0), 4),
+            "snippet": (h.get("content") or "").strip()[:120],
+        })
+    return out
+
+
+def _format_citation_footer(citations: list) -> str:
+    """回答末尾的「参考来源」块（文档名 + 页码/段号）。"""
+    if not citations:
+        return ""
+    lines = ["", "---", "参考来源："]
+    for c in citations:
+        title = c.get("doc_name") or "未命名文档"
+        lines.append(f"[{c['index']}] 《{title}》{_citation_location(c)}")
+    return "\n".join(lines)
+
+
+async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict, list]:
     """构建带本地知识库上下文的 system prompt（RAG，异步混合检索）。
 
-    返回 ``(prompt, gate_meta)``：
+    返回 ``(prompt, gate_meta, citations)``：
       - prompt：注入 system 的检索上下文（无可注入片段时为 ""）；
-      - gate_meta：检索门控（B-1）的判定结果，用于 observe 打点 / 暴露 would_abstain 率。
+      - gate_meta：检索门控（B-1）的判定结果，用于 observe 打点 / 暴露 would_abstain 率；
+      - citations：结构化引用（文档名 + 页码/段号），供接口回传与回答末尾标注。
 
     门控策略（见 retrieval_gate.py / §5.3）：
       - 当前 RETRIEVAL_GATE_MODE="observe"：只记录 would_abstain 率，不做硬拦截，
@@ -95,8 +142,17 @@ async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict]:
     # 优先使用 FTS5+向量混合检索，失败回退到同步 FTS
     try:
         hits = await ai.search_knowledge_base_hybrid(query, limit=4)
-    except Exception:
+    except Exception as exc:
+        # 旧实现静默吞掉异常，线上无法判断检索到底走没走通；这里必须留痕。
+        logger.warning("混合检索失败，回退同步 FTS：%s", exc)
         hits = ai.search_knowledge_base(query, limit=4)
+
+    citations = _build_citations(hits)
+    logger.info(
+        "[rag] query=%r hits=%d docs=%s",
+        query[:40], len(hits),
+        [c.get("doc_name") for c in citations][:4],
+    )
 
     # B-1：对检索结果跑质量门控。这里复用现有 hits（其 score 为 RRF 分，
     # evaluate_gate 会走 score 回退分支），仅做 observe 打点，不改变检索本身。
@@ -122,17 +178,20 @@ async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict]:
                      "reason_codes": [], "metrics": {}, "would_abstain": False}
 
     if not hits:
-        return "", gate_meta
+        return "", gate_meta, citations
 
     # enforce 模式 + 应拒答 → 返回拒答话术，不让模型基于不足依据硬编（§5.3）
     if (retrieval_gate.RETRIEVAL_GATE_MODE == "enforce"
             and gate_meta.get("decision") == "abstain"):
-        return retrieval_gate.build_abstain_message(query), gate_meta
+        return retrieval_gate.build_abstain_message(query), gate_meta, citations
 
     blocks = []
     for i, h in enumerate(hits, 1):
+        # 引用标签直接带「文档名 + 页码/段号」，模型照抄即可，避免只给"片段1"
+        # 而用户不知道出处。
+        loc = _citation_location(citations[i - 1])
         blocks.append(
-            f"[片段{i}｜来源：{h['source']}｜{h['title']}]\n{h['content']}"
+            f"[片段{i}｜《{h['title'] or '未命名文档'}》｜{loc}]\n{h['content']}"
         )
     context = "\n\n".join(blocks)
     return (
@@ -142,8 +201,8 @@ async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict]:
         "若用户询问的是题目作答/答疑类问题，请遵守：\n"
         "1. 只针对题目作答，选择题给出选项字母与内容，主观题给出结论与分步推导；\n"
         "2. 严禁编造答案，条件不足时明确标注“存疑”并说明需补充的信息；\n"
-        "3. 引用检索片段时注明来源编号，不输出片段之外未经授权的内容。"
-    ), gate_meta
+        "3. 引用检索片段时，在相应句子末尾标注 [片段i]；不要编造片段之外的文档名或页码。"
+    ), gate_meta, citations
 
 
 @router.get("/providers")
@@ -341,13 +400,15 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                     },
                     "rag": False,
                     "bank_hit": True,
+                    "citations": [],
                 }
         # RAG：把最后一条用户消息作为查询，检索本地知识库注入 system
         rag_prompt = ""
         gate_meta = None
+        citations: list = []
         if request.use_rag and messages:
             last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-            rag_prompt, gate_meta = await _rag_system_prompt(last_user, ai)
+            rag_prompt, gate_meta, citations = await _rag_system_prompt(last_user, ai)
             if rag_prompt:
                 messages = [
                     {"role": "system", "content": rag_prompt},
@@ -368,6 +429,13 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             force_local=request.force_local,
         )
         result["rag"] = bool(rag_prompt) if request.use_rag else False
+        # 引用溯源：结构化字段 + 回答末尾可读来源（文档名 + 页码/段号）
+        if request.use_rag:
+            result["citations"] = citations
+            if citations and result.get("content"):
+                result["content"] = (
+                    result["content"].rstrip() + "\n" + _format_citation_footer(citations)
+                )
         # observe 模式：把门控判定（would_abstain 率）透传给前端，便于灰度观测
         if gate_meta is not None:
             result["retrieval_gate"] = gate_meta
@@ -524,9 +592,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             messages = [{"role": m.role, "content": m.content} for m in request.messages]
             rag_used = False
             gate_meta = None
+            citations: list = []
             if request.use_rag and messages:
                 last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-                rag_prompt, gate_meta = await _rag_system_prompt(last_user, ai)
+                rag_prompt, gate_meta, citations = await _rag_system_prompt(last_user, ai)
                 if rag_prompt:
                     messages = [
                         {"role": "system", "content": rag_prompt},
@@ -545,7 +614,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             # V12 修复：SSE 必须按 "data: {json}\n\n" 逐事件输出，前端按行切分。
             # 旧实现 yield 紧凑 JSON 无换行 → 前端 indexOf('\n') 永远 -1 → 流永不渲染，
             # AI 助手卡"生成中…"。
-            yield f"data: {json.dumps({'type': 'meta', 'rag': rag_used, 'retrieval_gate': gate_meta}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'meta', 'rag': rag_used, 'rag_hits': len(citations), 'retrieval_gate': gate_meta, 'citations': citations}, ensure_ascii=False)}\n\n"
             async for ev in ai.chat_stream(
                 messages,
                 provider_id=request.provider_id,
@@ -553,6 +622,26 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 kb_hit_count=kb_hit_count,
                 force_local=request.force_local,
             ):
+                # 流结束时把「参考来源」作为最后一段正文补上：前端只渲染 delta，
+                # 不在正文里补的话用户看不到引用；同时 done 事件带结构化 citations。
+                if ev.get("type") == "done" and citations:
+                    footer = _format_citation_footer(citations)
+                    if footer:
+                        yield f"data: {json.dumps({'type': 'delta', 'content': footer}, ensure_ascii=False)}\n\n"
+                    ev = {
+                        **ev,
+                        "content": (ev.get("content") or "") + footer,
+                        "citations": citations,
+                    }
+                # 服务商层抛出的 error 事件只有原始英文信息，补齐可展示的原因码，
+                # 保证前端拿到的不是一句无法行动的 "All connection attempts failed"。
+                if ev.get("type") == "error" and not ev.get("code"):
+                    code, hint = _classify_ai_error(RuntimeError(ev.get("message") or ""))
+                    ev = {
+                        **ev,
+                        "code": code,
+                        "message": f"AI 服务暂时不可用（{code}）：{hint}。请到「设置 → AI 服务」检查配置后重试。",
+                    }
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         except Exception as e:
             # 与 /chat 同源分类：code 让前端区分失败原因，原始异常只进日志。

@@ -6,6 +6,7 @@
 
 import asyncio
 import json
+import os
 import re
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
@@ -17,6 +18,23 @@ from models import AIProvider, Document, KnowledgePoint, KnowledgeChunk
 from services import search_service
 from services.embedding_service import EmbeddingService
 from utils.http_client import get_async_client
+
+# --------------------------------------------------------------------------- #
+# Ollama 可用性探测的模块级共享缓存（2026-10-14）
+#
+# 原实现把缓存挂在 AIService 实例上，但路由每次请求都新建实例，
+# 导致"5 分钟缓存"从不生效 —— Ollama 未启动时每个请求都要真连一次，
+# 实测把 GET /api/ai/local/status 拖到 27 秒。
+# 改成模块级后，跨实例跨请求真正生效。
+# --------------------------------------------------------------------------- #
+_OLLAMA_CACHE: Dict[str, float | bool] = {"value": False, "time": 0.0}
+_OLLAMA_TTL = 300.0        # 默认缓存有效期（秒）
+_FORCE_RECENT_TTL = 30.0   # 用户点"检测"时的最大容忍陈旧度（秒）
+_OLLAMA_TIMEOUT = 3.0      # 单次探测超时（秒）—— 必须远小于上游网关阈值
+
+# qwen3 思维链标签：成对剥离；模型被 max_tokens 截断时只剩开标签，也要清掉
+_THINK_TAG_RE = re.compile(r"<think\b[^>]*>.*?</think\s*>", re.S | re.I)
+_THINK_OPEN_RE = re.compile(r"<think\b[^>]*>", re.I)
 
 
 class AIService:
@@ -46,7 +64,7 @@ class AIService:
 
     # 智能路由配置
     ROUTING_CONFIG = {
-        "local_max_tokens": 500,       # 本地模型最大输出 token
+        "local_max_tokens": 900,       # 本地模型最大输出 token（500 时答疑常被截断）
         "local_max_input_chars": 2000, # 本地模型最大输入字符数
         "simple_keywords": [            # 简单问题关键词，优先走本地
             "你好", "hello", "hi", "谢谢", "感谢", "再见", "bye",
@@ -126,6 +144,22 @@ class AIService:
     # ------------------------------------------------------------------ #
     # 内部辅助
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _is_local_provider(p: AIProvider) -> bool:
+        return (p.provider_type or "") in ("ollama", "local")
+
+    @classmethod
+    def _provider_usable(cls, p: AIProvider) -> bool:
+        """服务商是否真的可调用。
+
+        2026-10-20 答疑链路 502 根因之一：库里「豆包 / DeepSeek」两个云端
+        服务商是启用状态但 **api_key 为空**，请求必然 401；旧实现把它们排在
+        降级链最前面，每个问题都先白打两次 401，本地 Ollama 一旦探测失败
+        就直接 `所有 AI 服务商调用失败` → 502。这里把「无 Key 的云端服务商」
+        视为不可用，直接跳过（显式 provider_id 仍原样返回，便于设置页测连通性）。
+        """
+        return cls._is_local_provider(p) or bool((p.api_key or "").strip())
+
     def _get_provider(self, provider_id: Optional[int] = None) -> AIProvider:
         """获取指定服务商或默认/最高优先级启用的服务商。"""
         if provider_id:
@@ -134,35 +168,31 @@ class AIService:
                 raise ValueError(f"AI 服务商 {provider_id} 不存在")
             return provider
 
-        # 优先默认且启用的
-        provider = (
-            self.db.query(AIProvider)
-            .filter(AIProvider.is_default == True, AIProvider.is_enabled == True)
-            .first()
-        )
-        if provider:
-            return provider
-
-        # 按 fallback_priority 排序取第一个启用的
-        provider = (
+        enabled = (
             self.db.query(AIProvider)
             .filter(AIProvider.is_enabled == True)
             .order_by(AIProvider.fallback_priority.asc())
-            .first()
+            .all()
         )
-        if provider:
-            return provider
+        usable = [p for p in enabled if self._provider_usable(p)]
+        # 默认服务商优先，但必须是可调用的（有 Key 或本地模型）
+        for p in usable:
+            if p.is_default:
+                return p
+        if usable:
+            return usable[0]
 
-        raise ValueError("没有可用的 AI 服务商配置，请先在设置中添加")
+        raise ValueError("没有可用的 AI 服务商配置（已启用的服务商均缺少 API Key，且本地 Ollama 未配置）")
 
     def _get_fallback_providers(self, exclude_id: int) -> List[AIProvider]:
-        """获取备用服务商列表（按降级优先级排序）。"""
-        return (
+        """获取备用服务商列表（按降级优先级排序，跳过无 Key 的云端服务商）。"""
+        rows = (
             self.db.query(AIProvider)
             .filter(AIProvider.is_enabled == True, AIProvider.id != exclude_id)
             .order_by(AIProvider.fallback_priority.asc())
             .all()
         )
+        return [p for p in rows if self._provider_usable(p)]
 
     def _build_headers(self, provider: AIProvider) -> Dict[str, str]:
         """构造请求头。"""
@@ -203,43 +233,54 @@ class AIService:
                 if "9b" in (p.model_name or ""):
                     return p
             return providers[0]
-        # 数据库没有则临时创建（不写入数据库）；默认用本机已下载的 kaoyan-assistant 微调模型
+        # 数据库没有则临时创建（不写入数据库）。
+        # 2026-10-20 配置对齐：本机 Ollama 实际模型名是 kaoyan-assistant-v4，
+        # 旧默认值 kaoyan-assistant 在 /api/tags 里不存在（404→502）。改由
+        # OLLAMA_MODEL 环境变量指定，默认取已安装的 v4。
         return AIProvider(
             name="本地考研微调模型",
             provider_type="ollama",
             base_url="http://127.0.0.1:11434/v1",
             api_key="ollama",  # Ollama 不需要真实 key
-            model_name="kaoyan-assistant",
+            model_name=os.getenv("OLLAMA_MODEL", "kaoyan-assistant-v4"),
             temperature=0.7,
             is_enabled=True,
             fallback_priority=99,
         )
 
-    async def _check_ollama_available(self, force_check: bool = False) -> bool:
+    async def _check_ollama_available(
+        self,
+        force_check: bool = False,
+        force_recent: bool = False,
+) -> bool:
         """检查本地 Ollama 服务是否可用（默认 5 分钟缓存）。
 
-        :param force_check: 忽略缓存强制探测。
-            路由决策走缓存（省 3 秒延迟）；用户在界面上点"检测本地模型"
-            时必须 force_check=True，否则会拿到 5 分钟前的陈旧结论，
-            出现"Ollama 明明启动了却显示不可用"。
+        :param force_check: 忽略缓存强制探测。**仅供后台任务使用**——
+            同步接口请用 ``force_recent``，否则会把单次探测的延迟
+            直接摊到用户请求上。
+        :param force_recent: 仅当缓存已超过 ``_FORCE_RECENT_TTL``（30 秒）
+            时才重新探测。用于"用户点了检测按钮"这类既要新鲜、
+            又不能每次都付一次超时的场景。
         """
         import os
         import time
 
         now = time.time()
+        # 模块级缓存：见函数 docstring「历史缺陷」
+        cache = _OLLAMA_CACHE
         if not force_check:
-            if hasattr(self, '_ollama_cache') and hasattr(self, '_ollama_cache_time'):
-                if now - self._ollama_cache_time < 300:  # 5分钟缓存
-                    return self._ollama_cache
+            ttl = _FORCE_RECENT_TTL if force_recent else _OLLAMA_TTL
+            if now - cache["time"] < ttl:
+                return cache["value"]
         host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
         try:
             client = get_async_client()
-            resp = await client.get(f"{host}/api/tags", timeout=3.0)
+            resp = await client.get(f"{host}/api/tags", timeout=_OLLAMA_TIMEOUT)
             result = resp.status_code == 200
         except Exception:
             result = False
-        self._ollama_cache = result
-        self._ollama_cache_time = now
+        cache["value"] = result
+        cache["time"] = now
         return result
 
     def _route_query(
@@ -317,6 +358,11 @@ class AIService:
 
         choices = data.get("choices", [])
         content = choices[0]["message"]["content"] if choices else ""
+        # qwen3 系列会在正文前输出 <think>…</think> 思维链。答疑接口面向学生，
+        # 思维链属于内部推理，直接展示既冗长又容易把未定稿的猜测当成结论；
+        # 非流式出口统一剥离（流式不动，避免破坏增量渲染）。
+        content = _THINK_TAG_RE.sub("", content or "")
+        content = _THINK_OPEN_RE.sub("", content).strip()
         usage = data.get("usage", {})
         return {"content": content, "usage": usage}
 
@@ -742,6 +788,12 @@ class AIService:
                     "doc_id": h.get("document_id"),
                     "chunk_id": h.get("chunk_id"),
                     "subject": h.get("subject"),
+                    # 引用溯源字段（2026-10-20）：回答末尾的来源标注依赖这三项
+                    "doc_name": h.get("doc_name") or h.get("document_title") or "",
+                    "page_start": h.get("page_start"),
+                    "page_end": h.get("page_end"),
+                    "chunk_index": h.get("chunk_index"),
+                    "source_type": h.get("source_type"),
                 }
                 for h in chunk_hits
             ]
@@ -752,61 +804,57 @@ class AIService:
         # 2) 知识点：TF 检索（数据量小，TF 足够）
         kp_results = []
         kp_q = self.db.query(KnowledgePoint).filter(KnowledgePoint.description.isnot(None))
-        if subject:
-            kp_q = kp_q.filter(KnowledgePoint.subject == subject)
-        kps = kp_q.limit(3000).all()
+        # 2) 知识点：SQL 侧精确过滤（2026-10-14 重构）
+        #
+        # 原实现把知识点整表拉进 Python 逐行分词算 Jaccard（`limit(3000)`），
+        # 实测导致 /api/ai/rag-search 单次耗时 16.7 秒。改为在 SQL 侧按关键词
+        # 过滤后再打分，返回行数从 3000 降到个位数量级。
+        #
+        # 3) 文档段落级检索：**已移除**。
+        #    原因：分块检索（第 1 步的 hybrid_search）本就是按 chunk 粒度做的，
+        #    而 chunk 正是文档切分而来 —— 再用 `limit(2000)` 把整篇文档拉回来
+        #    逐段重扫，是同一份内容的重复检索，纯属浪费（且它最慢）。
+        #    文档级的"按文件名命中"需求由分块结果的 document_title 覆盖。
+        kp_results = []
         q_tokens = set(self._tokenize(query))
         if not q_tokens:
             # 查询词无法分词，直接返回分块结果
-            all_results = sorted(chunk_results, key=lambda x: -x["score"])[:limit]
-            return all_results
-        for kp in kps:
-            hay = f"{kp.name or ''} {kp.description or ''} {kp.chapter or ''}"
-            tokens = set(self._tokenize(hay))
-            if not tokens:
-                continue
-            score = len(q_tokens & tokens) / len(q_tokens)
-            if score >= 0.15:
-                kp_results.append(
-                    {
-                        "score": score,
-                        "source": "知识点",
-                        "title": kp.name or "",
-                        "content": (kp.description or "")[:600],
-                        "doc_id": kp.document_id,
-                    }
-                )
+            return sorted(chunk_results, key=lambda x: -x["score"])[:limit]
 
-        # 3) 文档内容：TF 检索（按段落）
-        doc_results = []
-        doc_q = self.db.query(Document).filter(
-            Document.index_status == "indexed", Document.content.isnot(None)
-        )
-        if subject:
-            doc_q = doc_q.filter(Document.subject == subject)
-        docs = doc_q.limit(2000).all()
-        for doc in docs:
-            content = doc.content or ""
-            paragraphs = [p.strip() for p in re.split(r"\n+", content) if len(p.strip()) >= 20]
-            for para in paragraphs[:150]:
-                tokens = set(self._tokenize(para))
+        # 取查询里最长的 3 个词做 SQL LIKE 预筛（长词区分度高，漏召回少）
+        probe_terms = sorted({t for t in q_tokens if len(t) >= 2},
+                             key=len, reverse=True)[:3]
+        if probe_terms:
+            from sqlalchemy import or_ as _or
+            cond = _or(*[
+                KnowledgePoint.name.ilike(f"%{t}%")
+                for t in probe_terms
+            ] + [
+                KnowledgePoint.description.ilike(f"%{t}%")
+                for t in probe_terms
+            ])
+            kp_q = self.db.query(KnowledgePoint).filter(cond)
+            if subject:
+                kp_q = kp_q.filter(KnowledgePoint.subject == subject)
+            # SQL 侧已筛过，上限 200 足够（原 3000 是全表扫描）
+            for kp in kp_q.limit(200).all():
+                hay = f"{kp.name or ''} {kp.description or ''} {kp.chapter or ''}"
+                tokens = set(self._tokenize(hay))
                 if not tokens:
                     continue
                 score = len(q_tokens & tokens) / len(q_tokens)
-                if score >= 0.25:
-                    doc_results.append(
+                if score >= 0.15:
+                    kp_results.append(
                         {
                             "score": score,
-                            "source": "文档",
-                            "title": doc.file_name,
-                            "content": para[:600],
-                            "doc_id": doc.id,
+                            "source": "知识点",
+                            "title": kp.name or "",
+                            "content": (kp.description or "")[:600],
+                            "doc_id": kp.document_id,
                         }
                     )
 
-        all_results = sorted(
-            chunk_results + kp_results + doc_results, key=lambda x: -x["score"]
-        )[:limit]
+        all_results = sorted(chunk_results + kp_results, key=lambda x: -x["score"])[:limit]
         return all_results
 
     def _tf_search_chunks(self, query: str, subject: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -836,6 +884,11 @@ class AIService:
                         "doc_id": c.document_id,
                         "chunk_id": c.chunk_id,
                         "subject": c.subject,
+                        "doc_name": c.doc_name or "",
+                        "page_start": getattr(c, "page_start", None),
+                        "page_end": getattr(c, "page_end", None),
+                        "chunk_index": getattr(c, "chunk_index", None),
+                        "source_type": "chunk",
                     }
                 )
         return results
@@ -874,6 +927,12 @@ class AIService:
                     "doc_id": h.get("document_id"),
                     "chunk_id": h.get("chunk_id"),
                     "subject": h.get("subject"),
+                    # 引用溯源字段（2026-10-20）
+                    "doc_name": h.get("doc_name") or h.get("document_title") or "",
+                    "page_start": h.get("page_start"),
+                    "page_end": h.get("page_end"),
+                    "chunk_index": h.get("chunk_index"),
+                    "source_type": h.get("source_type"),
                 }
                 for h in hits[:limit]
             ]
