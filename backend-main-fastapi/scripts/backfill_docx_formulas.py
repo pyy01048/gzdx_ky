@@ -558,6 +558,13 @@ def main() -> int:
 
         all_stats = []
         all_updates: List[Tuple[str, int]] = []
+        # 写库前先备份（**只做一次**，在循环之前）：备份失败就抛异常，
+        # 不允许「没备份就改数据」。
+        if args.apply and docs:
+            from services.backup_service import create_backup
+
+            backup = create_backup()
+            print(f"[回填] 已备份: {backup}")
         for d in docs:
             t0 = time.time()
             chunks = (
@@ -581,6 +588,19 @@ def main() -> int:
             )
             ups = stat.pop("_updates", [])
             all_updates.extend(ups)
+            # **逐篇提交**：原来把所有文档累积到最后一次性 commit，一篇 300 页的
+            # 题库要跑 1 小时，这期间任何中断（进程被杀/断电/系统休眠）都会让
+            # 全部计算白费——实测跑完 3 篇后第 4 篇仍在跑，此时库里一行都没变。
+            # 逐篇提交的代价只是多几次事务，换来的是「跑一篇落一篇」。
+            if args.apply and ups:
+                for new_text, chunk_id in ups:
+                    db.execute(
+                        KnowledgeChunk.__table__.update()
+                        .where(KnowledgeChunk.__table__.c.id == chunk_id)
+                        .values(text=new_text)
+                    )
+                db.commit()
+                stat["applied"] = len(ups)
             stat["seconds"] = round(time.time() - t0, 1)
             all_stats.append(stat)
             print(
@@ -612,18 +632,7 @@ def main() -> int:
             print(f"[回填] LaTeX 覆盖率：{ratio:.1%}")
 
         if args.apply and all_updates:
-            from services.backup_service import create_backup
-
-            backup = create_backup()
-            print(f"[回填] 已备份: {backup}")
-            for new_text, chunk_id in all_updates:
-                db.execute(
-                    KnowledgeChunk.__table__.update()
-                    .where(KnowledgeChunk.__table__.c.id == chunk_id)
-                    .values(text=new_text)
-                )
-            db.commit()
-            print(f"[回填] 已写库 {len(all_updates)} 块")
+            print(f"[回填] 逐篇已写库 {len(all_updates)} 块（每篇完成即提交）")
         elif all_updates:
             print("[回填] 干跑结束，加 --apply 才会写库")
         return 0
