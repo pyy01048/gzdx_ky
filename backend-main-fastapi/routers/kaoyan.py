@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """考研择校数据中心 API 路由（增强版）。
 
 D1: 择校推荐算法增强（复录比+录取均分+区域+学科权重）
@@ -9,22 +9,29 @@ C5: 数据版本管理（历史对比）
 """
 from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from typing import Optional, List
-import datetime
 import json
 import re
 
+from services.dbapi_compat import wrap_conn
+from utils.timeutil import (
+    day_bucket_text_expr,
+    iso_utc_z,
+    local_today,
+    utcnow,
+)
 from database import SessionLocal
 from models import (
     KaoyanSchool, KaoyanCollege, KaoyanMajor,
-    KaoyanAdmission, KaoyanScoreLine, KaoyanSubject, Goal,
+    KaoyanAdmission, KaoyanAdmissionDetail, KaoyanScoreLine, KaoyanSubject, Goal,
     KaoyanCollectionRun, SchoolAlias,
 )
 from services.kaoyan.datasource_registry import (
     list_datasources, register_datasource, get_datasource, resolve_source_type,
 )
 from services.kaoyan.school_alias import normalize_alias, match_aliases
+from services.kaoyan.data_years import available_years, resolve_year
 
 router = APIRouter(prefix="/api/kaoyan", tags=["考研择校"])
 
@@ -52,6 +59,25 @@ def _derive_star(level: Optional[str]) -> float:
     return _STAR_BY_LEVEL.get(level.strip(), 3.0)
 
 
+def _coverage_score(agg: dict, school) -> int:
+    """资料完整度（列表卡片用，5 项/100 分）。
+
+    口径透明：专业目录 25 + 招生数据 25 + 分数线 20 + 简介 15 + 官网 15。
+    """
+    score = 0
+    if int(agg.get("major_count") or 0) > 0:
+        score += 25
+    if int(agg.get("admit") or 0) > 0 or int(agg.get("enroll") or 0) > 0:
+        score += 25
+    if int(agg.get("scoreline_count") or 0) > 0:
+        score += 20
+    if getattr(school, "intro", None):
+        score += 15
+    if getattr(school, "official_url", None):
+        score += 15
+    return score
+
+
 def _aggregate_schools(db: Session, school_ids: List[int]) -> dict:
     """按学校聚合学院数/专业方向数/招生指标（取每校最近有数据的年份）。
 
@@ -70,6 +96,10 @@ def _aggregate_schools(db: Session, school_ids: List[int]) -> dict:
     major_cnt = dict(
         db.query(KaoyanMajor.school_id, func.count(KaoyanMajor.id))
         .filter(KaoyanMajor.school_id.in_(ids)).group_by(KaoyanMajor.school_id).all()
+    )
+    scoreline_cnt = dict(
+        db.query(KaoyanScoreLine.school_id, func.count(KaoyanScoreLine.id))
+        .filter(KaoyanScoreLine.school_id.in_(ids)).group_by(KaoyanScoreLine.school_id).all()
     )
     # 每校最近年份
     latest_year = dict(
@@ -115,6 +145,7 @@ def _aggregate_schools(db: Session, school_ids: List[int]) -> dict:
         out[sid] = {
             "college_count": int(college_cnt.get(sid, 0)),
             "major_count": int(major_cnt.get(sid, 0)),
+            "scoreline_count": int(scoreline_cnt.get(sid, 0)),
             "heat": heat,
             **a,
         }
@@ -208,6 +239,8 @@ def list_schools(
             "major_avg_score": a.get("major_avg"),# 专业课均分
             "heat": a.get("heat", 0),             # 热度（派生）
             "star": _derive_star(s.level),        # 星级（层级派生）
+            "scoreline_count": a.get("scoreline_count", 0),
+            "coverage_score": _coverage_score(a, s),
         }
 
     rows = [enriched(s) for s in schools]
@@ -271,6 +304,49 @@ def get_school(school_id: int, db: Session = Depends(get_db)):
     colleges = db.query(KaoyanCollege).filter(KaoyanCollege.school_id == school_id).all()
     # 复用列表页同款聚合：详情页顶部汇总卡片直接可用，口径与列表一致
     agg = _aggregate_schools(db, [school_id]).get(school_id, {})
+
+    # 资料完整度：把用户清单里的核心项逐项标出，页面直接告诉用户缺什么。
+    notice_rows = db.execute(text(
+        "SELECT notice_type, COUNT(*) FROM kaoyan_notices "
+        "WHERE school_id = :sid GROUP BY notice_type"
+    ), {"sid": school_id}).fetchall()
+    notice_types = {str(t or "公告"): int(n or 0) for t, n in notice_rows}
+    notice_count = sum(notice_types.values())
+    textbook_count = int(db.execute(text(
+        "SELECT COUNT(*) FROM textbook_schools WHERE school_id = :sid"
+    ), {"sid": school_id}).scalar() or 0)
+    detail_count = int(db.query(KaoyanAdmissionDetail)
+                       .filter(KaoyanAdmissionDetail.school_id == school_id).count())
+    refbook_count = int(db.execute(text("""
+        SELECT COUNT(*) FROM kaoyan_majors
+         WHERE school_id = :sid
+           AND reference_books IS NOT NULL
+           AND reference_books::text NOT IN ('', '[]', 'null', '{}')
+    """), {"sid": school_id}).scalar() or 0)
+    major_count = int(agg.get("major_count") or 0)
+    admit_count = int(agg.get("admit") or 0)
+    scoreline_count = int(agg.get("scoreline_count") or 0)
+    coverage_items = [
+        {"key": "majors", "label": "招生计划 / 专业目录", "ok": major_count > 0,
+         "detail": f"{major_count} 个专业方向"},
+        {"key": "scorelines", "label": "近 3–5 年复试线", "ok": scoreline_count > 0,
+         "detail": f"{scoreline_count} 条分数线"},
+        {"key": "admissions", "label": "报录比 / 录取人数", "ok": admit_count > 0,
+         "detail": f"拟录取 {admit_count} 人"},
+        {"key": "retest", "label": "复试细则", "ok": bool(notice_types.get("复试")),
+         "detail": f"{notice_types.get('复试', 0)} 条复试公告"},
+        {"key": "reference", "label": "参考书 / 考试大纲", "ok": refbook_count > 0 or textbook_count > 0,
+         "detail": f"参考书 {refbook_count} 条 · 教材关联 {textbook_count} 本"},
+        {"key": "score_dist", "label": "录取分数分布", "ok": detail_count > 0,
+         "detail": f"{detail_count} 条考生明细"},
+        {"key": "notices", "label": "招生公告 / 简章", "ok": notice_count > 0,
+         "detail": f"{notice_count} 条公告"},
+        {"key": "intro", "label": "院校简介", "ok": bool(s.intro),
+         "detail": "已收录" if s.intro else "暂无简介"},
+        {"key": "official", "label": "官网 / 数据来源", "ok": bool(s.official_url),
+         "detail": s.official_url or "未配置"},
+    ]
+    coverage_score = round(100 * sum(1 for x in coverage_items if x["ok"]) / len(coverage_items))
     return {
         "id": s.id, "name": s.name, "level": s.level,
         "province": s.province, "city": s.city,
@@ -287,6 +363,13 @@ def get_school(school_id: int, db: Session = Depends(get_db)):
         "major_avg_score": agg.get("major_avg"),
         "heat": agg.get("heat", 0),
         "star": _derive_star(s.level),
+        "scoreline_count": scoreline_count,
+        "notice_count": notice_count,
+        "notice_types": notice_types,
+        "textbook_count": textbook_count,
+        "admission_detail_count": detail_count,
+        "coverage_score": coverage_score,
+        "coverage_items": coverage_items,
     }
 
 
@@ -351,6 +434,32 @@ def get_school_admissions(school_id: int, db: Session = Depends(get_db)):
         "major_name": name or "未标注专业",
         "data_source": a.data_source,
     } for a, code, name in items]
+
+
+@router.get("/schools/{school_id}/admissions/details")
+def get_school_admission_details(school_id: int, year: int | None = None,
+                                 name: str | None = None,
+                                 limit: int = Query(200, ge=1, le=200),
+                                 db: Session = Depends(get_db)):
+    """院校拟录取/复试名单逐人明细（DeepSeek-OCR 扫描件名单）。"""
+    q = db.query(KaoyanAdmissionDetail).filter(KaoyanAdmissionDetail.school_id == school_id)
+    if year is not None:
+        q = q.filter(KaoyanAdmissionDetail.year == year)
+    if name:
+        q = q.filter(KaoyanAdmissionDetail.name.like(f"%{name}%"))
+    limit = max(1, min(limit, 5000))
+    items = q.order_by(KaoyanAdmissionDetail.year.desc(), KaoyanAdmissionDetail.id).limit(limit).all()
+    return [{
+        "id": d.id,
+        "year": d.year,
+        "exam_no": d.exam_no,
+        "name": d.name,
+        "major_name": d.major_name,
+        "score_initial": d.score_initial,
+        "score_retest": d.score_retest,
+        "score_total": d.score_total,
+        "data_source": d.data_source,
+    } for d in items]
 
 
 # ---- M3-4: 招生计划聚合（院系 → 专业 → 拟招人数 → 考试科目） ----
@@ -563,7 +672,7 @@ def analysis_trend(
     years: int = Query(5, description="近N年"),
     db: Session = Depends(get_db),
 ):
-    end_year = datetime.date.today().year
+    end_year = local_today().year
     start_year = end_year - years + 1
     if metric in ("total_line", "retest_line", "national_line"):
         rows = db.query(KaoyanScoreLine).filter(
@@ -618,10 +727,21 @@ def analysis_recommend(
     subject_code: Optional[str] = Query(None, description="学科代码（学科匹配）"),
     target_avg_score: Optional[int] = Query(None, description="目标录取均分（匹配录取均分）"),
     max_retest_ratio: Optional[float] = Query(1.5, description="最大可接受复录比"),
-    year: int = Query(2026, description="参考年份"),
+    year: Optional[int] = Query(None, description="参考年份；不传则用库里最新的年份"),
     db: Session = Depends(get_db),
 ):
     """D1: 多维权重择校推荐。一次 JOIN 查询消除 N+1。"""
+    year = resolve_year(db, year)
+    years = available_years(db)
+    if year is None:
+        # 库里还没有择校数据：给空结果 + 空年份列表，让前端显示导入空态，
+        # 而不是拿一个写死的年份去查出一个「0 所院校推荐」的假结论。
+        return {
+            "score": score, "year": None, "available_years": [],
+            "recommendations": [],
+            "algorithm": "多维权重: 分差40% + 复录比20% + 录取均分20% + 区域10% + 学科10%",
+            "note": "院校库为空：导入招生/分数线数据后这里会按库里最新年份给出推荐",
+        }
     # 子查询：按学校去重，取最低分数线
     subq = db.query(
         KaoyanScoreLine.school_id,
@@ -749,7 +869,7 @@ def analysis_recommend(
                             for k in ("majors", "covered", "thin", "unindexed", "uncovered")}
 
     return {
-        "score": score, "year": year,
+        "score": score, "year": year, "available_years": years,
         "recommendations": top,
         "algorithm": "多维权重: 分差40% + 复录比20% + 录取均分20% + 区域10% + 学科10%",
     }
@@ -767,14 +887,14 @@ def set_recommend_as_goal(
     if not s:
         raise HTTPException(404, "院校不存在")
 
-    goal = db.query(Goal).first()
+    goal = db.query(Goal).order_by(Goal.id.asc()).first()
     if not goal:
         goal = Goal()
         db.add(goal)
     goal.university = s.name
     if target_score:
         goal.total_score_target = target_score
-    goal.updated_at = datetime.datetime.now()
+    goal.updated_at = utcnow()
     db.commit()
     return {"success": True, "goal_university": s.name, "target_score": target_score}
 
@@ -837,6 +957,9 @@ def assistant_query(question: str = Query(..., description="自然语言择校�
     parsed = _parse_question(question)
     answer = ""
     extra = []
+    # 年份一律由库里数据决定（见 services/kaoyan/data_years.py）。
+    # 以前这里三处写死 2026，用户导入的是别的年份时答案仍在讲「2026 年」。
+    ref_year = resolve_year(db)
 
     if parsed["score"]:
         rec_data = analysis_recommend(
@@ -846,7 +969,7 @@ def assistant_query(question: str = Query(..., description="自然语言择校�
             subject_code=None,
             target_avg_score=None,
             max_retest_ratio=None,
-            year=2026,
+            year=None,
             db=db,
         )
         recs = rec_data.get("recommendations", [])
@@ -862,28 +985,30 @@ def assistant_query(question: str = Query(..., description="自然语言择校�
         )
         extra = recs[:5]
     elif parsed["retest_intent"]:
-        # 复录比低优先：按当年复录比升序
-        rows = db.query(
-            KaoyanSchool.name, KaoyanSchool.level, KaoyanSchool.province,
-            KaoyanAdmission.retest_ratio, KaoyanAdmission.enroll_count,
-        ).join(KaoyanAdmission, KaoyanAdmission.school_id == KaoyanSchool.id).filter(
-            KaoyanAdmission.year == 2026, KaoyanAdmission.retest_ratio.isnot(None)
-        ).order_by(KaoyanAdmission.retest_ratio.asc()).limit(8).all()
+        # 复录比低优先：按库里最新年份的复录比升序
+        rows = []
+        if ref_year is not None:
+            rows = db.query(
+                KaoyanSchool.name, KaoyanSchool.level, KaoyanSchool.province,
+                KaoyanAdmission.retest_ratio, KaoyanAdmission.enroll_count,
+            ).join(KaoyanAdmission, KaoyanAdmission.school_id == KaoyanSchool.id).filter(
+                KaoyanAdmission.year == ref_year, KaoyanAdmission.retest_ratio.isnot(None)
+            ).order_by(KaoyanAdmission.retest_ratio.asc()).limit(8).all()
         if parsed["level"]:
             rows = [r for r in rows if r[1] == parsed["level"]][:8]
         lines = [
             f"{i}. {r[0]}（{r[1] or '-'} · {r[2] or '-'}）复录比 {r[3]} 招生 {r[4] or '-'}"
             for i, r in enumerate(rows, 1)
         ]
-        answer = "2026 年复录比最低的院校参考（复试竞争越小越友好）：\n" + "\n".join(lines) if lines else "暂无复录比数据"
+        answer = f"{ref_year} 年复录比最低的院校参考（复试竞争越小越友好）：\n" + "\n".join(lines) if lines else "暂无复录比数据（院校库还没导入对应年份的招生记录）"
     elif parsed["admission_intent"]:
-        sc = analysis_scatter(year=2026, db=db)
+        sc = analysis_scatter(year=None, db=db)
         items = sorted(sc.get("items", []), key=lambda x: -(x.get("enroll") or 0))[:8]
         lines = [
             f"{i}. {r['name']}（{r.get('level') or '-'} · {r.get('province') or '-'}）拟招 {r.get('enroll')} 人 均分 {r.get('admit_avg') or '-'}"
             for i, r in enumerate(items, 1)
         ]
-        answer = "2026 年招生人数较多的院校参考：\n" + "\n".join(lines) if lines else "暂无招生数据"
+        answer = f"{sc.get('year')} 年招生人数较多的院校参考：\n" + "\n".join(lines) if lines else "暂无招生数据（院校库还没导入招生记录）"
     else:
         stats = kaoyan_stats(db=db)
         answer = (
@@ -898,10 +1023,12 @@ def assistant_query(question: str = Query(..., description="自然语言择校�
 # ---- D5: 区域择校地图热力图数据 ----
 @router.get("/analysis/heatmap")
 def analysis_heatmap(
-    year: int = Query(2026, description="年份"),
+    year: Optional[int] = Query(None, description="年份；不传则用库里最新的年份"),
     db: Session = Depends(get_db),
 ):
     """D5: 按省份统计院校数、平均分数线、平均复录比。单次聚合查询。"""
+    year = resolve_year(db, year)
+    years = available_years(db)
     rows = db.query(
         KaoyanSchool.province,
         func.count(KaoyanSchool.id).label("school_count"),
@@ -926,16 +1053,20 @@ def analysis_heatmap(
             "avg_retest_ratio": round(avg_ratio, 2) if avg_ratio else None,
         })
 
-    return {"year": year, "items": result}
+    return {"year": year, "available_years": years, "items": result}
 
 
 # ---- D6: 招生人数分布散点图数据 ----
 @router.get("/analysis/scatter")
 def analysis_scatter(
-    year: int = Query(2026, description="年份"),
+    year: Optional[int] = Query(None, description="年份；不传则用库里最新的年份"),
     db: Session = Depends(get_db),
 ):
     """D6: 招生人数 vs 录取均分散点图数据。JOIN 院校信息一次查询。"""
+    year = resolve_year(db, year)
+    years = available_years(db)
+    if year is None:
+        return {"year": None, "available_years": [], "items": []}
     rows = db.query(
         KaoyanAdmission.school_id,
         KaoyanSchool.name,
@@ -967,7 +1098,18 @@ def analysis_scatter(
             "retest_ratio": round(avg_ratio, 2) if avg_ratio else None,
         })
 
-    return {"year": year, "items": items}
+    return {"year": year, "available_years": years, "items": items}
+
+
+@router.get("/analysis/years")
+def analysis_years(db: Session = Depends(get_db)):
+    """择校数据里真实存在的年份（倒序）。
+
+    择校推荐/地图/散点三个页面的年份下拉都取这里，不在前端写死 ``[2026,2025,2024,2023]``：
+    写死意味着用户导入 2027 数据后仍只能选到 2026，而选 2026 又查不到东西。
+    空库返回空列表，前端据此显示导入空态而不是假年份。
+    """
+    return {"items": available_years(db)}
 
 
 # ---- 统计概览 ----
@@ -1119,7 +1261,8 @@ def collection_refresh(
     province: Optional[str] = Query(None, description="省份代码逗号分隔（yz 源），如 11,12,13"),
     all_provinces: bool = Query(False, description="yz 源是否全量省份"),
     school: Optional[str] = Query(None, description="院校名（school 源），如 清华大学"),
-    year: int = Query(2026, description="school 源采集年度"),
+    year: Optional[int] = Query(None, description="school 源采集年度；不传则按当前届推断，不写死年份"),
+    max_schools: int = Query(20, ge=1, le=500, description="notices 源单次采集的院校数上限"),
     dry_run: bool = Query(False, description="仅参数校验并登记采集版本，不实际发起网络请求"),
     db: Session = Depends(get_db),
 ):
@@ -1169,9 +1312,9 @@ def collection_refresh(
                 results.append({"source": "notices", "status": "skipped", "detail": "dry_run 校验通过"})
                 continue
             try:
-                stats = collect_notices_task(
-                    max_schools=int((year or 20) if str(year).isdigit() else 20)
-                )
+                # 原先写的是 int((year or 20) if str(year).isdigit() else 20)：
+                # year 默认 2026 是数字，于是 max_schools 变成 2026，公告采集会遍历全站院校。
+                stats = collect_notices_task(max_schools=max_schools)
                 results.append({"source": "notices", "status": "success", **stats})
             except Exception as e:
                 results.append({"source": "notices", "status": "failed", "error": str(e)})
@@ -1206,11 +1349,15 @@ def collection_refresh(
         elif src_lower in ("school", "school_official"):
             # ---- 院校官网 ----
             from services.kaoyan.spider_school import crawl_school
+            from services import exam_calendar
+
             if not school:
                 raise HTTPException(400, "school 源必须提供 school 院校名参数")
+            # 采集目标是「下一届简章」，所以默认跟着时间走，而不是停在某个写死的年份上
+            target_year = exam_calendar.validate_exam_year(year) if year is not None else exam_calendar.default_exam_year()
             if dry_run:
                 db.add(KaoyanCollectionRun(source="spider_school", scope=school, item_type="scoreline",
-                                           row_count=0, detail={"dry_run": True, "year": year}, status="skipped"))
+                                           row_count=0, detail={"dry_run": True, "year": target_year}, status="skipped"))
                 db.commit()
                 results.append({"source": "school", "status": "skipped", "detail": f"dry_run 校验通过（{school}）"})
                 continue
@@ -1220,16 +1367,16 @@ def collection_refresh(
                     raise HTTPException(404, f"院校不存在: {school}")
                 before = db.query(KaoyanScoreLine).filter(
                     KaoyanScoreLine.school_id == school_obj.id,
-                    KaoyanScoreLine.year == year,
+                    KaoyanScoreLine.year == target_year,
                 ).count()
-                crawl_school(school, year=year)
+                crawl_school(school, year=target_year)
                 after = db.query(KaoyanScoreLine).filter(
                     KaoyanScoreLine.school_id == school_obj.id,
-                    KaoyanScoreLine.year == year,
+                    KaoyanScoreLine.year == target_year,
                 ).count()
                 db.add(KaoyanCollectionRun(source="spider_school", scope=school, item_type="scoreline",
                                            row_count=max(0, after - before),
-                                           detail={"year": year, "scorelines_before": before, "scorelines_after": after},
+                                           detail={"year": target_year, "scorelines_before": before, "scorelines_after": after},
                                            status="success"))
                 db.commit()
                 results.append({"source": "school", "status": "success", "school": school,
@@ -1276,7 +1423,7 @@ def get_school_notices(
     from services.kaoyan.spider_notices import ensure_notices_schema
 
     ensure_notices_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     sql = "SELECT id, title, notice_type, publish_date, url, source FROM kaoyan_notices WHERE school_id = ?"
     args: list = [school_id]
     if notice_type:
@@ -1298,11 +1445,49 @@ def notice_type_stats(db: Session = Depends(get_db)):
     from services.kaoyan.spider_notices import ensure_notices_schema
 
     ensure_notices_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     rows = conn.execute(
         "SELECT notice_type, COUNT(*) FROM kaoyan_notices GROUP BY notice_type ORDER BY 2 DESC"
     ).fetchall()
     return {"total": sum(r[1] for r in rows), "by_type": dict(rows)}
+
+
+@router.get("/notices/stats")
+def notices_center_stats(db: Session = Depends(get_db)):
+    """通知中心统计卡（2026-10-19 信息架构精简）：总数/未读/星标/覆盖院校 + 四类分计数。
+
+    口径：NOT is_read（双方言可移植，PG boolean / SQLite 0/1）；
+    覆盖院校 = 有通知挂接的院校数（采集总量见 KaoyanCollectionRun）。
+    """
+    from services.kaoyan.spider_notices import ensure_notices_schema
+
+    ensure_notices_schema(db)
+    conn = wrap_conn(db.connection().connection)
+    rows = conn.execute(
+        "SELECT notice_type, COUNT(*), "
+        "COALESCE(SUM(CASE WHEN NOT is_read THEN 1 ELSE 0 END), 0) "
+        "FROM kaoyan_notices GROUP BY notice_type ORDER BY 2 DESC"
+    ).fetchall()
+    total = conn.execute("SELECT COUNT(*) FROM kaoyan_notices").fetchone()[0]
+    unread = conn.execute(
+        "SELECT COUNT(*) FROM kaoyan_notices WHERE NOT is_read"
+    ).fetchone()[0]
+    starred = conn.execute(
+        "SELECT COUNT(*) FROM kaoyan_notices WHERE is_starred"
+    ).fetchone()[0]
+    covered = conn.execute(
+        "SELECT COUNT(DISTINCT school_id) FROM kaoyan_notices WHERE school_id IS NOT NULL"
+    ).fetchone()[0]
+    return {
+        "total": int(total),
+        "unread": int(unread),
+        "starred": int(starred),
+        "schools_covered": int(covered),
+        "by_type": [
+            {"type": r[0], "total": int(r[1]), "unread": int(r[2] or 0)}
+            for r in rows
+        ],
+    }
 
 
 # ---- T6：跨校公告聚合（首页「院校公告」栏数据源） ----
@@ -1332,7 +1517,7 @@ def list_all_notices(
 
     # 补齐 is_read/is_starred 列，使首页公告栏也能渲染未读状态
     ensure_notice_read_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
 
     # ---- 组装过滤条件（全部参数化，杜绝注入）----
     where: List[str] = []
@@ -1400,6 +1585,10 @@ def list_all_notices(
 
     return {
         "items": items,
+        # 翻页壳约定：给了 items 就必须同级给 total。这里 total 早就算好（在
+        # stats 里），提到顶层只是让所有列表端点共用同一个读取路径，前端不必
+        # 为该端点单独写 stats.total 分支。
+        "total": total,
         "stats": {
             "total": total,
             "school_count": school_count,
@@ -1417,22 +1606,30 @@ def notice_updates(
     """最近 N 天内有哪些院校更新了公告（首页「今日更新」概览）。
 
     返回：``{days, total_schools, total_notices, schools:[{school_id, school_name, count, latest_date}]}``
-    以 ``COALESCE(publish_date, fetched_at)`` 的日期部分作为「更新日期」口径：
-    公告可能没有发布日（列表页解析不到），此时退化为采集日，如实标注而非过滤掉。
+    「更新日期」口径：``publish_date`` 的日期优先；公告没有发布日（列表页解析不到）
+    时退化为采集日，并按**北京自然日**归日（采集时间存的是 naive UTC，UTC 16:00
+    之后属于北京的次日）。退化而来而非过滤掉，如实标注。
     """
     from services.kaoyan.spider_notices import ensure_notices_schema
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     ensure_notices_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
 
-    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    cutoff = (local_today() - timedelta(days=days)).isoformat()
+    # 「更新日期」= publish_date（纯日期）优先，缺失时退化为采集日。fetched_at 存的是
+    # naive UTC 串，必须按北京自然日归日，否则北京 00:00~08:00 采集的公告会记到前一天
+    # （与 cutoff 这个北京日直接比字符串会整点错 8 小时）。
+    day_expr = (
+        "CASE WHEN COALESCE(publish_date, '') <> '' THEN substr(publish_date, 1, 10)"
+        f" ELSE {day_bucket_text_expr('fetched_at')} END"
+    )
     rows = conn.execute(
         "SELECT school_id, school_name,"
         " COUNT(*) AS cnt,"
-        " MAX(COALESCE(NULLIF(publish_date, ''), fetched_at)) AS latest_date"
+        f" MAX({day_expr}) AS latest_date"
         " FROM kaoyan_notices"
-        " WHERE COALESCE(NULLIF(publish_date, ''), fetched_at) >= ?"
+        f" WHERE {day_expr} >= ?"
         " GROUP BY COALESCE(CAST(school_id AS TEXT), 'n:' || school_name), school_id, school_name"
         " ORDER BY latest_date DESC, cnt DESC",
         [cutoff],
@@ -1612,6 +1809,6 @@ def analysis_dashboard(db: Session = Depends(get_db)):
         "major_score_dist": major_score_dist,
         "total_score_dist": total_score_dist,
         "math_score_dist": math_score_dist,
-        "generated_at": datetime.datetime.now().isoformat(),
+        "generated_at": iso_utc_z(utcnow()),
     }
 
