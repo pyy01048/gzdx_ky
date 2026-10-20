@@ -5,17 +5,21 @@
    写操作的后端同步已内联在 useStore.js 各 action 中（fire-and-forget）。
    ============================================================ */
 
-import { tasksApi, errorsApi, flashcardsApi, netdiskApi, goalsApi, aiApi, dashboardApi } from './client'
+import { tasksApi, errorsApi, flashcardsApi, netdiskApi, goalsApi, aiApi, dashboardApi, wordsApi, fetchAllPages } from './client'
 import useStore from '../store/useStore'
 import { todayStr } from '../utils/date'
+
+/* 分类为空就留空：补成「专业课」等于凭空造了一个分类，筛选里会多出一个假桶。 */
+const PAN_TYPE_LABEL = { pdf: 'PDF', video: '视频', doc: '文档', zip: '压缩包' }
 
 /* 后端字段 → 前端 store 字段映射 */
 function toTask(t) {
   return {
     id: String(t.id),
     title: t.title,
-    subject: t.subject || 'major',
-    due: (t.due_date || todayStr()).slice(0, 10),
+    // 科目为空就留空：补成 'major' 会让页面显示「专业课」，等于凭空给用户加了一个科目。
+    subject: t.subject || '',
+    due: (t.due_date || t.due || todayStr()).slice(0, 10),
     done: t.status === 'done' || t.status === 'completed',
     ai: !!t.is_ai,
     reviewCount: t.review_count || 0
@@ -64,9 +68,11 @@ function toPan(f) {
     name: f.file_name,
     type: typeMap[f.file_type] || 'other',
     size: f.size || 0,
-    cat: f.category || '专业课',
+    cat: f.category || PAN_TYPE_LABEL[f.file_type] || '未分类',
     desc: f.path || '',
-    url: f.download_link || '',
+    // 后端不再下发百度 dlink（带签名的临时直连地址）。取流统一走后端代理，
+    // 由它补百度强制的 User-Agent，也顺带让 access_token 留在服务端。
+    url: f.id ? netdiskApi.contentUrl(f.id) : '',
     synced: true,
     // 没有 created_at 就留空：写成今天会让「最近同步」把无日期项顶到第一位，
     // 排序依据就成了编的。页面用 fmtDateCN 兜底显示「日期未知」。
@@ -94,27 +100,31 @@ function toProvider(p) {
 
 /* 各数据域拉取与回填。
    后端成功响应即为准：空数组也要覆盖本地，否则"删光了"会被显示成"还没同步"。
-   请求抛错时该域不动（离线时保留本地已有内容）。 */
+   请求抛错时该域不动（离线时保留本地已有内容）。
+   取全量一律走 fetchAllPages —— 后端 page_size 上限 200，写 500 是 422 而不是截断，
+   以前三个域都因此从未真正回填过。 */
 const LOADERS = {
   tasks: async () => {
-    const d = await tasksApi.list({ page: 1, page_size: 500 })
-    const list = d.items || d.tasks || (Array.isArray(d) ? d : [])
-    if (Array.isArray(list)) useStore.setState({ tasks: list.map(toTask) })
+    const list = await fetchAllPages((p) => tasksApi.list(p), { keys: ['tasks'] })
+    useStore.setState({ tasks: list.map(toTask) })
   },
   notebook: async () => {
-    const d = await errorsApi.list({ page: 1, page_size: 500 })
-    const list = d.errors || d.items || (Array.isArray(d) ? d : [])
-    if (Array.isArray(list)) useStore.setState({ notebook: list.map(toNote) })
+    const list = await fetchAllPages((p) => errorsApi.list(p), { keys: ['errors'] })
+    useStore.setState({ notebook: list.map(toNote) })
   },
   cards: async () => {
-    const d = await flashcardsApi.list({ page: 1, page_size: 500 })
-    const list = d.cards || d.items || (Array.isArray(d) ? d : [])
-    if (Array.isArray(list)) useStore.setState({ cards: list.map(toCard) })
+    const list = await fetchAllPages((p) => flashcardsApi.list(p), { keys: ['cards'] })
+    useStore.setState({ cards: list.map(toCard) })
+  },
+  /* 单词域：Settings 的「学习数据一览」读 store.words，但这里从来没有加载器，
+     导致后端 /api/words 明明有数据、页面永远显示 0。补上（响应是统一分页壳 items）。 */
+  words: async () => {
+    const list = await fetchAllPages((p) => wordsApi.list(p), { keys: ['items', 'words'] })
+    useStore.setState({ words: list })
   },
   pan: async () => {
-    const d = await netdiskApi.files({ page: 1, page_size: 200 })
-    const list = d.local_files || d.items || (Array.isArray(d) ? d : [])
-    if (Array.isArray(list)) useStore.setState({ pan: list.map(toPan) })
+    const list = await fetchAllPages((p) => netdiskApi.files(p), { keys: ['local_files'] })
+    useStore.setState({ pan: list.map(toPan) })
   },
   countdown: async () => {
     const d = await dashboardApi.countdown()
@@ -139,6 +149,18 @@ const LOADERS = {
       useStore.setState((s) => ({ settings: { ...s.settings, aiProviders: list.map(toProvider) } }))
     }
   }
+}
+
+/**
+ * 单域回填：给页面级「刷新」按钮用。
+ * 与 hydrate 走的是同一个 loader，所以两处的口径（全量分页、空结果也覆盖本地）
+ * 天然一致——以前 Tasks.jsx 自己写了一遍拉取逻辑，结果页面和同步层对同一份数据
+ * 有两种解释（比如 subject 为空时被补成「专业课」）。
+ */
+export function loadDomain(key) {
+  const fn = LOADERS[key]
+  if (!fn) return Promise.reject(new Error(`未知数据域：${key}`))
+  return fn()
 }
 
 /**
