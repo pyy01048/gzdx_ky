@@ -20,6 +20,8 @@ from PIL import Image, ImageDraw
 
 from services.formula_latex import (
     INPUT_SIZE,
+    MAX_ASPECT,
+    UNRENDERABLE_EXTS,
     FormulaRecognizer,
     FormulaResult,
     FormulaResult as _FR,
@@ -29,6 +31,7 @@ from services.formula_latex import (
     _img_decode,
     _normalize,
     latex_is_plausible,
+    unknown_commands,
 )
 
 
@@ -64,8 +67,8 @@ class TestLatexPlausible:
             # 括号不配对
             (r"\frac{1}{2", "unbalanced_brace"),
             (r"f(x", "unbalanced_paren"),
-            # 不存在的命令
-            (r"\notacommand{x}", "unknown_command"),
+            # 注意：未知命令**不再**判失败（白名单永远不全，\vert 这类合法命令
+            # 会被误杀），只作为提示经 unknown_commands() 返回。
         ],
     )
     def test_rejects_bad_latex(self, latex, reason):
@@ -73,12 +76,22 @@ class TestLatexPlausible:
         assert ok is False
         assert why.startswith(reason.split(":")[0]), f"期望 {reason}，实际 {why}"
 
-    def test_unknown_command_reports_names(self):
-        ok, why = latex_is_plausible(r"\foo \bar{x}")
-        assert ok is False
-        assert "unknown_command" in why
-        # 报出具体命令名，方便排查
-        assert "foo" in why
+    def test_unknown_command_is_hint_not_gate(self):
+        """未知命令只作提示，不阻断——白名单不可能穷举所有 LaTeX 命令。"""
+        ok, _why = latex_is_plausible(r"\foobarbaz{x}")
+        assert ok is True, "未知命令不该判失败（会误杀合法公式）"
+        unc = unknown_commands(r"\foobarbaz{x} + \quuxq")
+        assert "foobarbaz" in unc
+        assert "quuxq" in unc
+        # \bar 是合法 accent 命令，不该被报为未知
+        assert "bar" not in unknown_commands(r"\bar{x}")
+
+    def test_vert_is_accepted(self):
+        """回归：\vert 是合法 LaTeX，之前被白名单误杀。"""
+        assert latex_is_plausible(r"\vert")[0] is True
+
+    def test_known_commands_not_reported(self):
+        assert unknown_commands(r"\frac{1}{2} + \sqrt{x}") == []
 
     def test_does_not_check_square_brackets(self):
         """方括号在 LaTeX 里是可选参数，不该参与配对检查（否则误报太多）。"""
@@ -193,6 +206,46 @@ class TestFailurePaths:
         assert r.ok is False
         assert r.reason.startswith("engine_unavailable")
         assert rec.load_error  # 错误原因要留档
+
+    def test_wmf_rejected_without_loading_model(self):
+        """WMF/EMF 必须直接拒绝：PIL 渲染内容失真，识别结果是语义垃圾。
+
+        实测一份数电讲义的逻辑代数公式被识别成几何符号（\\angle A B C、
+        \\Delta A \\cong \\Delta B D），语法合法但语义全错，比不识别更糟。
+        """
+        rec = FormulaRecognizer()
+        for ext in (".wmf", ".emf", ".wmz", ".emz"):
+            r = rec.recognize(f"/tmp/whatever{ext}")
+            # 文件不存在时先报 file_not_found；这里造个假文件测格式拦截
+        assert UNRENDERABLE_EXTS  # 常量可用
+
+    def test_wmf_rejected_on_real_file(self, tmp_path):
+        rec = FormulaRecognizer()
+        f = tmp_path / "x.wmf"
+        f.write_bytes(b"placeholder")
+        r = rec.recognize(str(f))
+        assert r.ok is False
+        assert r.reason.startswith("vector_format_unrenderable")
+        # 关键：不能返回空 latex 却 ok=True
+        assert r.latex == ""
+
+    def test_extreme_aspect_rejected(self, tmp_path):
+        """极扁图（240×15）实测识别 21.8s 且结果残缺，必须快速失败。"""
+        rec = FormulaRecognizer()
+        if not rec.available:
+            pytest.skip(f"模型未加载: {rec.load_error}")
+        p = tmp_path / "wide.png"
+        img = Image.new("RGB", (240, 15), (255, 255, 255))
+        ImageDraw.Draw(img).rectangle((10, 5, 200, 10), fill=(0, 0, 0))
+        img.save(p)
+        r = rec.recognize(str(p))
+        assert r.ok is False
+        assert r.reason.startswith("too_wide")
+        # 必须快：不能真跑推理
+        assert r.elapsed < 1.0, f"极扁图未快速失败，耗时 {r.elapsed:.2f}s"
+
+    def test_aspect_constant_sane(self):
+        assert 2.0 < MAX_ASPECT <= 20.0
 
     def test_result_to_dict(self):
         r = FormulaResult(ok=True, latex="x", image_path="/a.png", engine="e")

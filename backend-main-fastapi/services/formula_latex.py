@@ -81,6 +81,13 @@ MEAN = 0.7931
 STD = 0.1738
 # crop_margin 的二值化阈值：低于此灰度算「墨迹」
 INK_THRESHOLD = 200
+# 宽高比上限：超过（如 240×15 的单行下标）实测要 21.8s 且识别不准，快速失败
+MAX_ASPECT = 12.0
+# 无法可靠栅格化的矢量格式。PIL 的 WmfImagePlugin 只能读尺寸和部分记录，
+# 渲染出来的位图**内容失真**：实测一份数电讲义的逻辑代数公式
+# （0·1=0、A·A=A）被识别成几何符号 \angle A B C、\Delta A \cong \Delta B D。
+# 语法合法但语义全错，比不识别更糟——必须拦掉，让它走图片兜底。
+UNRENDERABLE_EXTS = frozenset({'.wmf', '.emf', '.wmz', '.emz'})
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3000-\u303f\uff01-\uff60]")
 _CMD_RE = re.compile(r"\\([a-zA-Z]+)")
@@ -147,7 +154,19 @@ class FormulaResult:
 
 # ---- LaTeX 可信度校验 ---------------------------------------------------- #
 def latex_is_plausible(latex: str) -> Tuple[bool, str]:
-    """校验识别出的 LaTeX 是否可信，返回 ``(是否可信, 原因)``。"""
+    """校验识别出的 LaTeX 是否可信，返回 ``(是否可信, 原因)``。
+
+    只拦**强信号**的坏输出：
+
+    * 空/过短 —— 模型什么都没吐出来；
+    * 残留 CJK —— 模型把汉字当数学符号了（典型是整块的中文选项图）；
+    * 圆括号/花括号不配对 —— 结构已坏。
+
+    **不把「未知命令」当失败**：LaTeX 有几千个命令，白名单永远不全，实测
+    ``\\vert`` 这类完全合法的命令会被误杀。未知命令只作为提示返回给调用方
+    记录，不阻断入库——宁可放行一个带少见命令的正确公式，
+    也不要因为白名单不全而把好公式判死。
+    """
     s = (latex or "").strip()
     if len(s) < MIN_LATEX_LEN:
         return False, "too_short"
@@ -158,10 +177,12 @@ def latex_is_plausible(latex: str) -> Tuple[bool, str]:
         return False, "unbalanced_paren"
     if s.count("{") != s.count("}"):
         return False, "unbalanced_brace"
-    unknown = [c for c in _CMD_RE.findall(s) if c not in _KNOWN_CMDS]
-    if unknown:
-        return False, "unknown_command:" + ",".join(sorted(set(unknown))[:3])
     return True, "ok"
+
+
+def unknown_commands(latex: str) -> List[str]:
+    """列出不在常见命令表里的反斜杠命令（**仅作提示，不参与门禁**）。"""
+    return sorted({c for c in _CMD_RE.findall(latex or "") if c not in _KNOWN_CMDS})
 
 
 # ---- 图像预处理（对齐 MinerU processors.py） ----------------------------- #
@@ -218,17 +239,19 @@ def _img_decode(img: Image.Image) -> Optional[np.ndarray]:
     if img.height == 0 or img.width == 0:
         return None
 
-    # 短边缩到 INPUT_SIZE（保持比例）
+    # 目标尺寸**一步算出来**，不要「先放大短边到 384、再 thumbnail 缩长边」。
+    # 后者对极扁的公式图（实测 259×15，即 $x_{n+1}$ 这种单行下标）会先生成
+    # 6630×384 的巨大中间图，内存暴涨且慢——一批这样的图能把进程卡死数分钟。
     w, h = img.size
-    short = min(w, h)
-    long_side = max(w, h)
-    scale = INPUT_SIZE / float(max(1, short))
-    new_short = INPUT_SIZE
-    new_long = max(1, int(round(long_side * scale)))
-    new_w, new_h = (new_short, new_long) if w <= h else (new_long, new_short)
+    scale = INPUT_SIZE / float(max(1, min(w, h)))
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
+    longest = max(new_w, new_h)
+    if longest > INPUT_SIZE:
+        shrink = INPUT_SIZE / float(longest)
+        new_w = max(1, int(round(new_w * shrink)))
+        new_h = max(1, int(round(new_h * shrink)))
     img = img.resize((new_w, new_h), Image.BICUBIC)
-    # 长边不超 INPUT_SIZE
-    img.thumbnail((INPUT_SIZE, INPUT_SIZE), Image.BICUBIC)
 
     delta_w = INPUT_SIZE - img.width
     delta_h = INPUT_SIZE - img.height
@@ -355,6 +378,14 @@ class FormulaRecognizer:
         t0 = time.time()
         if not path or not os.path.exists(path):
             return FormulaResult(ok=False, image_path=path or "", reason="file_not_found")
+        ext = os.path.splitext(path)[1].lower()
+        if ext in UNRENDERABLE_EXTS:
+            return FormulaResult(
+                ok=False,
+                image_path=path,
+                engine=self.engine_name,
+                reason=f"vector_format_unrenderable: {ext}",
+            )
         if not self._ensure_loaded():
             return FormulaResult(
                 ok=False,
@@ -364,6 +395,15 @@ class FormulaRecognizer:
             )
         try:
             with Image.open(path) as im:
+                w, h = im.size
+                # 极端宽高比快速失败：实测 240×15 这类图要 21.8s（正常 0.3s），
+                # 且模型对极扁输入会吐残缺序列。别让它拖死整批回填。
+                if h > 0 and (w / float(h)) > MAX_ASPECT:
+                    return FormulaResult(
+                        ok=False, image_path=path, engine=self.engine_name,
+                        reason=f"too_wide: {w}x{h} aspect={w / float(h):.1f}",
+                        elapsed=time.time() - t0,
+                    )
                 arr = _img_decode(im.copy())
         except Exception as exc:  # noqa: BLE001
             return FormulaResult(
@@ -398,13 +438,130 @@ class FormulaRecognizer:
                     ok=False, latex=latex, image_path=path, engine=self.engine_name,
                     reason=why, elapsed=time.time() - t0,
                 )
+        extra: Dict[str, Any] = {}
+        unc = unknown_commands(latex)
+        if unc:
+            extra["unknown_commands"] = unc
         return FormulaResult(
             ok=True, latex=latex, image_path=path, engine=self.engine_name,
-            elapsed=time.time() - t0,
+            elapsed=time.time() - t0, extra=extra,
         )
 
     def recognize_many(self, paths: Sequence[str], *, validate: bool = True) -> List[FormulaResult]:
+        """批量识别（逐张，保留每张的失败原因）。
+
+        需要吞吐时用 ``recognize_batch``——那个走一次多 batch 推理。
+        """
         return [self.recognize(p, validate=validate) for p in paths]
+
+    def recognize_batch(
+        self,
+        paths: Sequence[str],
+        *,
+        batch_size: int = 8,
+        validate: bool = True,
+        on_progress=None,
+    ) -> List[FormulaResult]:
+        """批量识别，一次推理多张图。
+
+        为什么需要：单张 384×384 推理在 CPU 上约 1.5s，其中固定开销（ONNX
+        kernel 调度、内存拷贝）占大头；凑成 batch 后均摊，实测吞吐提升 3–4 倍。
+        全量回填有几万张图，这个优化不是锦上添花而是必要条件。
+
+        返回顺序与 ``paths`` 严格对应；单张失败只影响自己，不牵连整批。
+        """
+        results: List[Optional[FormulaResult]] = [None] * len(paths)
+        # 预解码：解码失败的直接定案，不进 batch
+        decoded: List[Tuple[int, np.ndarray]] = []
+        for i, p in enumerate(paths):
+            t0 = time.time()
+            if not p or not os.path.exists(p):
+                results[i] = FormulaResult(ok=False, image_path=p or "", reason="file_not_found")
+                continue
+            try:
+                with Image.open(p) as im:
+                    arr = _img_decode(im.copy())
+            except Exception as exc:  # noqa: BLE001
+                results[i] = FormulaResult(
+                    ok=False, image_path=p, engine=self.engine_name,
+                    reason=f"image_decode_failed: {type(exc).__name__}: {exc}",
+                    elapsed=time.time() - t0,
+                )
+                continue
+            if arr is None:
+                results[i] = FormulaResult(
+                    ok=False, image_path=p, engine=self.engine_name,
+                    reason="image_decode_failed: empty", elapsed=time.time() - t0,
+                )
+                continue
+            decoded.append((i, _normalize(arr)))
+
+        if not decoded:
+            return [r for r in results if r is not None]
+
+        if not self._ensure_loaded():
+            for i, _ in decoded:
+                results[i] = FormulaResult(
+                    ok=False, image_path=paths[i], engine=self.engine_name,
+                    reason=f"engine_unavailable: {self._load_error}",
+                )
+            return [r for r in results if r is not None]
+
+        done = 0
+        for start in range(0, len(decoded), batch_size):
+            chunk = decoded[start: start + batch_size]
+            t0 = time.time()
+            batch = np.concatenate([a for _, a in chunk], axis=0)
+            try:
+                out = self._session.run(None, {"encoder/image": batch})
+                token_ids = np.asarray(out[0])
+                if token_ids.ndim == 1:
+                    token_ids = token_ids[None, :]
+            except Exception as exc:  # noqa: BLE001
+                for i, _ in chunk:
+                    results[i] = FormulaResult(
+                        ok=False, image_path=paths[i], engine=self.engine_name,
+                        reason=f"inference_failed: {type(exc).__name__}: {exc}",
+                    )
+                continue
+            elapsed_each = (time.time() - t0) / max(1, len(chunk))
+            for row, (i, _) in enumerate(chunk):
+                if row >= token_ids.shape[0]:
+                    results[i] = FormulaResult(
+                        ok=False, image_path=paths[i], engine=self.engine_name,
+                        reason="inference_failed: output_row_missing",
+                    )
+                    continue
+                try:
+                    ids = [int(x) for x in token_ids[row].tolist()]
+                    latex = self._tokenizer.decode(ids, skip_special_tokens=True).strip()
+                except Exception as exc:  # noqa: BLE001
+                    results[i] = FormulaResult(
+                        ok=False, image_path=paths[i], engine=self.engine_name,
+                        reason=f"decode_failed: {type(exc).__name__}: {exc}",
+                    )
+                    continue
+                if validate:
+                    good, why = latex_is_plausible(latex)
+                    if not good:
+                        results[i] = FormulaResult(
+                            ok=False, latex=latex, image_path=paths[i],
+                            engine=self.engine_name, reason=why, elapsed=elapsed_each,
+                        )
+                        continue
+                extra: Dict[str, Any] = {}
+                unc = unknown_commands(latex)
+                if unc:
+                    extra["unknown_commands"] = unc
+                results[i] = FormulaResult(
+                    ok=True, latex=latex, image_path=paths[i],
+                    engine=self.engine_name, elapsed=elapsed_each, extra=extra,
+                )
+            done += len(chunk)
+            if on_progress:
+                on_progress(done, len(decoded))
+
+        return [r for r in results if r is not None]
 
 
 # 进程级单例
