@@ -109,6 +109,108 @@ const NO_REFRESH_PREFIXES = ['/netdisk/']
 const isNoRefreshPath = (p) =>
   NO_REFRESH_PATHS.includes(p) || NO_REFRESH_PREFIXES.some((pre) => p.startsWith(pre))
 
+/* ------------------------------------------------------------------
+ * 后端三态判定（P2-2）
+ *
+ * 旧口径只有「离线 / 在线」两态，且由 hydrate 的「任意一个数据域成功」推导，
+ * 于是一个 500 接口就能把整站说成「离线：数据来自本地缓存」，与 /api/health
+ * 正常的事实矛盾。现在拆成三态：
+ *   online   —— health 可达 且 最近窗口内没有失败接口
+ *   degraded —— health 可达，但最近窗口内有 5xx / 网络 / 超时（部分服务异常）
+ *   offline  —— health 本身不可达（才说「数据来自本地缓存」）
+ *
+ * 失败集合按「接口路径」去重：同一接口连续失败只算 1 项，页面据此给出
+ * 「N 项接口异常」而不是按请求次数刷屏；该路径再次成功即从集合里移除。
+ * ------------------------------------------------------------------ */
+export const FAILURE_WINDOW_MS = 5 * 60 * 1000
+const HEALTH_PATH = '/health'
+const recentFailures = new Map() // path -> { path, status, at }
+const backendStatusListeners = new Set()
+let backendState = { state: 'unknown', failures: [], checkedAt: 0 }
+let probeTimer = null
+
+/** 最近窗口内的失败接口（按时间倒序，已按路径去重）。 */
+export function getRecentFailures() {
+  const cutoff = Date.now() - FAILURE_WINDOW_MS
+  for (const [key, item] of recentFailures) {
+    if (item.at < cutoff) recentFailures.delete(key)
+  }
+  return Array.from(recentFailures.values()).sort((a, b) => b.at - a.at)
+}
+
+/** 当前三态快照。 */
+export function getBackendState() {
+  return backendState
+}
+
+/** 订阅三态变化，返回取消订阅函数（立即回放一次当前快照）。 */
+export function subscribeBackendState(fn) {
+  if (typeof fn !== 'function') return () => {}
+  backendStatusListeners.add(fn)
+  fn(backendState)
+  return () => { backendStatusListeners.delete(fn) }
+}
+
+function emitBackendState() {
+  for (const fn of backendStatusListeners) {
+    try { fn(backendState) } catch { /* 订阅方异常不影响其它订阅 */ }
+  }
+}
+
+/* 失败登记后延迟重判：一次页面加载会并发多个请求，合并成一次 health 探测 */
+function scheduleProbe() {
+  if (!backendStatusListeners.size) return
+  clearTimeout(probeTimer)
+  probeTimer = setTimeout(() => { probeBackend().catch(() => {}) }, 400)
+}
+
+function noteFailure(path, status) {
+  if (path === HEALTH_PATH) return
+  recentFailures.set(path, { path, status, at: Date.now() })
+  scheduleProbe()
+}
+
+function noteSuccess(path) {
+  if (path === HEALTH_PATH) return
+  if (recentFailures.delete(path)) scheduleProbe()
+}
+
+/**
+ * 探测后端三态：只有 health 不可达才算 offline。
+ * 刻意用裸 fetch 而不是 request()：health 不应该参与失败登记，也不该触发
+ * 401 的全局会话修复（否则探测本身会把用户踢下线）。
+ */
+export async function probeBackend() {
+  let reachable = true
+  try {
+    if (typeof fetch !== 'function') {
+      reachable = false
+    } else {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+      const timer = controller ? setTimeout(() => controller.abort(), 8000) : null
+      try {
+        const resp = await fetch(`${BASE}${HEALTH_PATH}`, {
+          credentials: 'same-origin',
+          ...(controller ? { signal: controller.signal } : {}),
+        })
+        reachable = !!resp && resp.ok
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    }
+  } catch {
+    reachable = false
+  }
+  const failures = getRecentFailures()
+  backendState = {
+    state: !reachable ? 'offline' : (failures.length ? 'degraded' : 'online'),
+    failures,
+    checkedAt: Date.now(),
+  }
+  emitBackendState()
+  return backendState
+}
+
 /**
  * 统一请求封装。
  *
@@ -171,6 +273,7 @@ async function request(path, options = {}) {
     resp = await fetch(url, opts)
   } catch (e) {
     if (timedOut) {
+      noteFailure(path, 0)
       throw new ApiError(`请求超时（${Math.round(Number(timeout) / 1000)}s）：${method} ${path}`, {
         code: 'timeout',
       })
@@ -179,6 +282,7 @@ async function request(path, options = {}) {
     if (e && (e.name === 'AbortError' || externalSignal?.aborted)) {
       throw new ApiError(`请求已取消：${method} ${path}`, { code: 'aborted' })
     }
+    noteFailure(path, 0)
     throw new ApiError(`网络异常，无法连接后端服务：${method} ${path}（${e?.message || e}）`, {
       code: 'network',
     })
@@ -213,6 +317,9 @@ async function request(path, options = {}) {
     } else if (resp.status === 403 && data?.code === 'PASSWORD_CHANGE_REQUIRED') {
       window.dispatchEvent(new CustomEvent('auth:password-change', { detail: data }))
     }
+    // 只有 5xx 才是「服务异常」；4xx 是请求本身的问题（参数/权限/不存在），
+    // 记进来会把用户输错一次搜索词也算成「部分服务异常」。
+    if (resp.status >= 500) noteFailure(path, resp.status)
     throw new ApiError(extractDetail(data, `HTTP ${resp.status}`), {
       // 后端错误壳里的 code（RESOURCE_NOT_FOUND / DATA_CONFLICT…）透传给调用方分支；
       // 缺失时仍回退 'http_error'，让既有 `e.code === 'timeout'` 之类判断语义不变。
@@ -221,6 +328,7 @@ async function request(path, options = {}) {
       data,
     })
   }
+  noteSuccess(path)
   return data
 }
 

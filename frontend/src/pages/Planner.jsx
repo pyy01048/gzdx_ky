@@ -30,6 +30,36 @@ const TABS = [
 /* 每科 4 条任务格 */
 const TASK_SLOTS = 4
 
+/* 加载失败提示条（P2-7）：原先只有一条 2.2s 的 toast，页面照常渲染编辑区，
+   用户滚动/切 tab 后就再也看不到「数据没加载成功」。改为常驻提示 + 重试，
+   颜色全部走 tokens.css 的 danger 语义，不引入新配色。 */
+const LOAD_ERR_STYLE = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 'var(--space-3)',
+  padding: '10px 14px',
+  marginBottom: 'var(--space-4)',
+  background: 'var(--danger-soft)',
+  border: '1px solid var(--danger)',
+  borderRadius: 'var(--radius-md)',
+  color: 'var(--danger-ink)',
+  fontSize: 'var(--text-sm)',
+  lineHeight: 1.6,
+}
+
+function LoadErrorBar({ title, detail, onRetry }) {
+  return (
+    <div style={LOAD_ERR_STYLE} role="alert">
+      <div style={{ minWidth: 0 }}>
+        <b>{title}</b>
+        <div style={{ marginTop: 2, color: 'var(--fg-2)', fontSize: 'var(--text-xs)' }}>{detail}</div>
+      </div>
+      <button className="btn ghost sm" onClick={onRetry}>重试</button>
+    </div>
+  )
+}
+
 /**
  * 把某科目的任务值规整为定长数组。
  * 后端 planner 的 tasks 是自由 JSON：存量数据既有 ["a","b"] 也有 "教材精读 + 课后题" 这种整串。
@@ -406,12 +436,14 @@ function DailyPlanTab() {
   const [score, setScore] = useState(0)
   const [summary, setSummary] = useState('')
   const [saving, setSaving] = useState(false)
+  const [loadErr, setLoadErr] = useState('')
 
   useEffect(() => {
     loadPlan()
   }, [date])
 
   const loadPlan = async () => {
+    setLoadErr('')
     try {
       const data = await plannerApi.getDaily(date)
       setPlan(data)
@@ -444,7 +476,8 @@ function DailyPlanTab() {
       setScore(data.score || 0)
       setSummary(data.summary || '')
     } catch (e) {
-      toast('加载日计划失败')
+      setLoadErr(e?.message || '后端未响应')
+      toastErr('加载日计划失败')
     }
   }
 
@@ -505,8 +538,28 @@ function DailyPlanTab() {
     ? plan.days_to_exam
     : examDaysLeft(resolveExamDate(settingsExamDate || (countdown && countdown.exam_date), null))
 
+  /* 首屏失败（没有任何旧数据）时只渲染错误态：把空编辑区留在页面上，用户
+     很可能在空任务表里编辑再保存，反而覆盖后端已有计划。 */
+  if (loadErr && !plan) {
+    return (
+      <LoadErrorBar
+        title="加载日计划失败"
+        detail={`${loadErr}。未加载到任何数据，暂不显示编辑区；请检查后端后重试。`}
+        onRetry={loadPlan}
+      />
+    )
+  }
+
   return (
     <>
+      {/* 常驻在 tab 内容顶部：切日期 / 切 tab 回来仍在，不会像 toast 一样消失 */}
+      {loadErr && (
+        <LoadErrorBar
+          title="加载日计划失败"
+          detail={`${loadErr}。下方是上一次成功加载的内容，可能不是最新。`}
+          onRetry={loadPlan}
+        />
+      )}
       <div className="card">
         <div className="toolbar">
           <div className="left">
@@ -652,12 +705,14 @@ function WeekMonthPlanTab() {
   const [tasks, setTasks] = useState({})
   const [completion, setCompletion] = useState('')
   const [saving, setSaving] = useState(false)
+  const [loadErr, setLoadErr] = useState('')
 
   useEffect(() => {
     loadPlan()
   }, [year, month, mode, weekStart])
 
   const loadPlan = async () => {
+    setLoadErr('')
     try {
       if (mode === 'month') {
         const data = await plannerApi.getMonth(year, month)
@@ -671,7 +726,8 @@ function WeekMonthPlanTab() {
         setCompletion(data.completion || '')
       }
     } catch (e) {
-      toast('加载计划失败')
+      setLoadErr(e?.message || '后端未响应')
+      toastErr('加载计划失败')
     }
   }
 
@@ -708,8 +764,26 @@ function WeekMonthPlanTab() {
   const title = mode === 'month' ? `${year}年${month}月学习目标` : `${weekStart} ~ ${weekEnd} 本周目标`
   const subjects = useMemo(() => planSubjects(exam, tasks), [exam, tasks])
 
+  /* 与日计划同口径：失败提示常驻在 tab 顶部；没有旧数据时只显示错误态 */
+  if (loadErr && !plan) {
+    return (
+      <LoadErrorBar
+        title="加载周/月计划失败"
+        detail={`${loadErr}。未加载到任何数据，暂不显示编辑区；请检查后端后重试。`}
+        onRetry={loadPlan}
+      />
+    )
+  }
+
   return (
     <>
+      {loadErr && (
+        <LoadErrorBar
+          title="加载周/月计划失败"
+          detail={`${loadErr}。下方是上一次成功加载的内容，可能不是最新。`}
+          onRetry={loadPlan}
+        />
+      )}
       <div className="card">
         <div className="toolbar">
           <div className="left">
