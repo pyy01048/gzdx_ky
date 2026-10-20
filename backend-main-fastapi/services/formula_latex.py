@@ -374,6 +374,74 @@ class FormulaRecognizer:
         return info
 
     # -- 推理 ------------------------------------------------------------
+    def _infer(self, arr: np.ndarray, *, image_path: str, t0: float, validate: bool) -> FormulaResult:
+        """对已预处理好的 (384,384,3) uint8 数组跑一次推理。"""
+        try:
+            inp = _normalize(arr)
+            out = self._session.run(None, {"encoder/image": inp})
+            token_ids = np.asarray(out[0])
+            ids = token_ids[0].tolist() if token_ids.ndim > 1 else token_ids.tolist()
+            latex = self._tokenizer.decode([int(i) for i in ids], skip_special_tokens=True).strip()
+        except Exception as exc:  # noqa: BLE001
+            return FormulaResult(
+                ok=False, image_path=image_path, engine=self.engine_name,
+                reason=f"inference_failed: {type(exc).__name__}: {exc}",
+                elapsed=time.time() - t0,
+            )
+
+        if validate:
+            good, why = latex_is_plausible(latex)
+            if not good:
+                return FormulaResult(
+                    ok=False, latex=latex, image_path=image_path, engine=self.engine_name,
+                    reason=why, elapsed=time.time() - t0,
+                )
+        extra: Dict[str, Any] = {}
+        unc = unknown_commands(latex)
+        if unc:
+            extra["unknown_commands"] = unc
+        return FormulaResult(
+            ok=True, latex=latex, image_path=image_path, engine=self.engine_name,
+            elapsed=time.time() - t0, extra=extra,
+        )
+
+    def recognize_image(self, img: Image.Image, *, image_path: str = "", validate: bool = True) -> FormulaResult:
+        """直接识别一张内存里的 PIL 图像（不落盘）。
+
+        给「PDF 版面裁切 → 识别」这种流式场景用：一页可能裁出上百个公式框，
+        每个都写一次临时文件既慢又难清理。裁切结果本身就在内存里，直接喂。
+        """
+        t0 = time.time()
+        if img is None:
+            return FormulaResult(ok=False, image_path=image_path, reason="empty_image")
+        try:
+            w, h = img.size
+            if h > 0 and (w / float(h)) > MAX_ASPECT:
+                return FormulaResult(
+                    ok=False, image_path=image_path, engine=self.engine_name,
+                    reason=f"too_wide: {w}x{h} aspect={w / float(h):.1f}",
+                    elapsed=time.time() - t0,
+                )
+            arr = _img_decode(img)
+        except Exception as exc:  # noqa: BLE001
+            return FormulaResult(
+                ok=False, image_path=image_path, engine=self.engine_name,
+                reason=f"image_decode_failed: {type(exc).__name__}: {exc}",
+                elapsed=time.time() - t0,
+            )
+        if arr is None:
+            return FormulaResult(
+                ok=False, image_path=image_path, engine=self.engine_name,
+                reason="image_decode_failed: empty", elapsed=time.time() - t0,
+            )
+        if not self._ensure_loaded():
+            return FormulaResult(
+                ok=False, image_path=image_path, engine=self.engine_name,
+                reason=f"engine_unavailable: {self._load_error}",
+                elapsed=time.time() - t0,
+            )
+        return self._infer(arr, image_path=image_path, t0=t0, validate=validate)
+
     def recognize(self, path: str, *, validate: bool = True) -> FormulaResult:
         t0 = time.time()
         if not path or not os.path.exists(path):
@@ -418,34 +486,7 @@ class FormulaRecognizer:
                 ok=False, image_path=path, engine=self.engine_name,
                 reason="image_decode_failed: empty", elapsed=time.time() - t0,
             )
-        try:
-            inp = _normalize(arr)
-            out = self._session.run(None, {"encoder/image": inp})
-            token_ids = np.asarray(out[0])
-            ids = token_ids[0].tolist() if token_ids.ndim > 1 else token_ids.tolist()
-            latex = self._tokenizer.decode([int(i) for i in ids], skip_special_tokens=True).strip()
-        except Exception as exc:  # noqa: BLE001
-            return FormulaResult(
-                ok=False, image_path=path, engine=self.engine_name,
-                reason=f"inference_failed: {type(exc).__name__}: {exc}",
-                elapsed=time.time() - t0,
-            )
-
-        if validate:
-            good, why = latex_is_plausible(latex)
-            if not good:
-                return FormulaResult(
-                    ok=False, latex=latex, image_path=path, engine=self.engine_name,
-                    reason=why, elapsed=time.time() - t0,
-                )
-        extra: Dict[str, Any] = {}
-        unc = unknown_commands(latex)
-        if unc:
-            extra["unknown_commands"] = unc
-        return FormulaResult(
-            ok=True, latex=latex, image_path=path, engine=self.engine_name,
-            elapsed=time.time() - t0, extra=extra,
-        )
+        return self._infer(arr, image_path=path, t0=t0, validate=validate)
 
     def recognize_many(self, paths: Sequence[str], *, validate: bool = True) -> List[FormulaResult]:
         """批量识别（逐张，保留每张的失败原因）。
