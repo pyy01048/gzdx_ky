@@ -11,8 +11,15 @@
   （fastembed + ``data/embedding_models`` 里已缓存的 BAAI/bge-small-zh-v1.5，512 维），
   不下载、不新装模型。向量与 ``chunk_vectors`` 同一空间。
 - 只在**同科目**知识点内比较，避免跨科误配；同科目无候选则记「待人工」。
+  同科目知识点数 < ``--min-pool``（默认 30）时整科跳过——候选太少时 top1 必然
+  被少数几个宽泛知识点吸走（模拟电子技术只有 14 条知识点 / 95 道题）。
+- 知识点文本只用 ``name + description[:150]``：拼 chapter 会让「线性代数」「第一章」
+  变成通用锚点，实测把同科目所有题都往同一批宽泛知识点上带。
+- 排序分 = 0.85*余弦 + 0.15*「知识点名在题干/选项里原样出现」加成；**阈值只卡余弦**，
+  这样 weight 列存的是真实语义相似度。实测该加成为 74 道已有标签题带来
+  ~58% → ~78% 的 top1 一致率。
 - 只算题干 + 选项，**不用答案/解析**（答案列不参与 embedding，避免泄题式匹配）。
-- 相似度 < 阈值不写库，只记「待人工」，宁缺勿错。
+- 余弦 < 阈值不写库，只记「待人工」，宁缺勿错。
 
 ### 写库行为（幂等）
 - ``quiz_questions.knowledge_point``：仅在该列**原本为空**时写入 top1 名称，不覆盖已有值。
@@ -23,7 +30,7 @@
 
 用法：
     python scripts/backfill_quiz_kp_semantic.py --dry-run
-    python scripts/backfill_quiz_kp_semantic.py --dry-run --threshold 0.58
+    python scripts/backfill_quiz_kp_semantic.py --dry-run --threshold 0.62
     python scripts/backfill_quiz_kp_semantic.py --apply
 """
 from __future__ import annotations
