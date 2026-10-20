@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { plannerApi } from '../api/client'
-import { toast } from '../components/UI'
+import { toast, toastOk, toastErr, Empty } from '../components/UI'
+import { Card } from '../components/Card'
 import useStore from '../store/useStore'
 import { todayStr, daysBetween } from '../utils/date'
 import { examDaysLeft, resolveExamDate } from '../utils/exam'
 import { useSubjectConfig, subjectLabel } from '../hooks/useSubjectConfig'
+import QuickAddTask from '../components/QuickAddTask'
+import TaskItem from '../components/TaskItem'
+import { Target, Calendar, Timer, Brain, Sun, Layers } from '../components/Icon'
+import '../components/TaskList.css'
 
 /* ============================================================
    学习计划表（V2 冷蓝设计系统）
@@ -12,12 +17,14 @@ import { useSubjectConfig, subjectLabel } from '../hooks/useSubjectConfig'
    新增：① .ics 日历导出   ② 连续早起 streak 统计
    ============================================================ */
 
+/* 标签页图标：真 SVG（对齐 Cards/UI 的约定，废除「文字模拟图标」），
+   渲染时 aria-hidden，避免读屏把图标名与标签拼读（dogfood ISSUE-011）。 */
 const TABS = [
-  { key: 'daily', label: '日计划', icon: '📅' },
-  { key: 'weekmonth', label: '周月计划', icon: '📆' },
-  { key: 'ebbinghaus', label: '艾宾浩斯', icon: '🧠' },
-  { key: 'earlybird', label: '早起打卡', icon: '🌅' },
-  { key: 'phase', label: '阶段复习', icon: '📚' },
+  { key: 'daily', label: '日计划', icon: <Calendar size={14} /> },
+  { key: 'weekmonth', label: '周月计划', icon: <Timer size={14} /> },
+  { key: 'ebbinghaus', label: '艾宾浩斯', icon: <Brain size={14} /> },
+  { key: 'earlybird', label: '早起打卡', icon: <Sun size={14} /> },
+  { key: 'phase', label: '阶段复习', icon: <Layers size={14} /> },
 ]
 
 /* 每科 4 条任务格 */
@@ -55,6 +62,22 @@ function textOf(value) {
  */
 function planSubjects(examList, tasks) {
   return Array.from(new Set([...(examList || []), ...Object.keys(tasks || {})]))
+}
+
+/**
+ * 科目为空时的空态。
+ * 此前 useSubjectConfig 在没配置/后端不可达时兜一套内置科目，计划表于是固定长出
+ * 6 行"你的科目"——那是某个人的专业方向，不是这位用户的。空表要如实是空表。
+ */
+function NoSubjects({ ready }) {
+  return (
+    <Empty
+      title={ready ? '还没有备考科目' : '正在读取科目配置'}
+      desc={ready
+        ? '计划表按你配置的科目逐科铺开。到「设置 → 备考科目」添加后，这里立刻跟着变。'
+        : '后端可达后自动带出你在设置里配置的科目；读取期间这里保持为空，不替你假设专业方向。'}
+    />
+  )
 }
 
 /* 艾宾浩斯 9 个复习周期（偏移量用于 .ics 复习点推算） */
@@ -211,18 +234,27 @@ export default function Planner() {
   const [exporting, setExporting] = useState(false)
 
   const loadOverview = async () => {
+    let ok = true
     try {
       const eb = await plannerApi.listEarlyBird()
       const recs = pickList(eb, 'records')
       setStreak(eb && eb.current_streak != null ? eb.current_streak : computeStreak(recs))
-    } catch (e) { /* 后端不可用时静默 */ }
+    } catch (e) { ok = false }
     try {
       const ebb = await plannerApi.listEbbinghaus()
       setEbbCount(pickList(ebb, 'items').length)
-    } catch (e) { /* 忽略 */ }
+    } catch (e) { ok = false }
+    return ok
   }
 
   useEffect(() => { loadOverview() }, [])
+
+  /* 手动刷新概览：静默失败会让用户以为按钮坏了，这里明确给成败提示 */
+  const refreshOverview = async () => {
+    const ok = await loadOverview()
+    if (ok) toastOk('计划概览已刷新')
+    else toastErr('刷新失败，请稍后重试')
+  }
 
   /* ---------- 新增功能①：导出 .ics 日历 ---------- */
   const exportIcs = async () => {
@@ -243,7 +275,7 @@ export default function Planner() {
           if (start.getTime() < nowMs) return
           events.push({
             uid: `ebb-${item.id}-${c.key}@kaoyan.local`,
-            summary: `🧠 复习(${c.label})：${item.content || ''}`,
+            summary: `记忆 复习(${c.label})：${item.content || ''}`,
             description: `艾宾浩斯记忆曲线复习点\n学科：${item.subject || '未分类'}\n首次学习：${String(item.learn_date || '').slice(0, 16).replace('T', ' ')}`,
             start,
             end: new Date(start.getTime() + 15 * 60000),
@@ -267,7 +299,7 @@ export default function Planner() {
         if (d.getTime() < nowMs) continue
         events.push({
           uid: `earlybird-${icsDay(d.toISOString())}-${i}@kaoyan.local`,
-          summary: `🌅 早起打卡（${lastWake}）`,
+          summary: `早起 早起打卡（${lastWake}）`,
           description: `目标起床时间 ${lastWake}，起床后到平台「早起打卡」记录一笔，保持连续天数。`,
           start: d,
           end: new Date(d.getTime() + 20 * 60000),
@@ -289,7 +321,7 @@ export default function Planner() {
           const ee = (r.evening_reviews || []).join('、')
           events.push({
             uid: `phase-${p.id}-${r.day_num || day}@kaoyan.local`,
-            summary: `📚 ${p.name} 第${r.day_num || '?'}天复习`,
+            summary: `资料 ${p.name} 第${r.day_num || '?'}天复习`,
             description: [
               mm ? '早间复习任务：' + mm : '',
               ee ? '晚间复习任务：' + ee : '',
@@ -324,17 +356,17 @@ export default function Planner() {
           <p className="page-sub">科学规划，高效备考 · 日/周/月计划 · 艾宾浩斯 · 早起 · 阶段复习</p>
         </div>
         <div className="page-actions">
-          <span className="badge warning" title="连续早起天数">🔥 {streak} 天</span>
-          {ebbCount > 0 && <span className="badge info">🧠 {ebbCount} 条记忆</span>}
-          <button className="btn ghost" onClick={loadOverview}>刷新</button>
+          <span className="badge warning" title="连续早起天数">高频 {streak} 天</span>
+          {ebbCount > 0 && <span className="badge info">记忆 {ebbCount} 条记忆</span>}
+          <button className="btn ghost" onClick={refreshOverview}>刷新</button>
           <button className="btn primary" onClick={exportIcs} disabled={exporting}>
-            {exporting ? '生成中…' : '📆 导出日历 (.ics)'}
+            {exporting ? '生成中…' : '日期 导出日历 (.ics)'}
           </button>
         </div>
       </div>
 
       {/* 标签页导航 */}
-      <div className="tabs" role="tablist" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+      <div className="tabs" role="tablist" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -342,7 +374,7 @@ export default function Planner() {
             className={`tab ${tab === t.key ? 'active' : ''}`}
             onClick={() => setTab(t.key)}
           >
-            <span style={{ marginRight: 6 }}>{t.icon}</span>
+            <span aria-hidden="true" style={{ marginRight: 'var(--space-2)', display: 'inline-flex', alignItems: 'center' }}>{t.icon}</span>
             {t.label}
           </button>
         ))}
@@ -360,15 +392,16 @@ export default function Planner() {
 }
 
 /* ============================================================
-   日计划表
+   日计划表 V2 - 滴答清单/Todoist 风格
    ============================================================ */
 function DailyPlanTab() {
   const countdown = useStore((s) => s.countdown)
   const settingsExamDate = useStore((s) => s.settings.examDate)
-  const { exam } = useSubjectConfig()
+  const { exam, ready: subjectsReady } = useSubjectConfig()
   const [date, setDate] = useState(todayStr())
   const [plan, setPlan] = useState(null)
-  const [tasks, setTasks] = useState({})
+  // 新数据结构：tasks 现在是数组 [{id, title, subject, duration, completed, subtasks}]
+  const [taskList, setTaskList] = useState([])
   const [timeline, setTimeline] = useState([])
   const [score, setScore] = useState(0)
   const [summary, setSummary] = useState('')
@@ -382,7 +415,31 @@ function DailyPlanTab() {
     try {
       const data = await plannerApi.getDaily(date)
       setPlan(data)
-      setTasks(data.tasks || {})
+      // 兼容旧数据格式：如果是对象则转换，如果是数组则直接使用
+      const rawTasks = data.tasks || {}
+      if (Array.isArray(rawTasks)) {
+        setTaskList(rawTasks)
+      } else {
+        // 从旧的 {subject: [str,str,str,str]} 格式迁移
+        const migrated = []
+        Object.entries(rawTasks).forEach(([subject, items]) => {
+          const list = Array.isArray(items) ? items : [items]
+          list.forEach((item, idx) => {
+            if (typeof item === 'string' && item.trim()) {
+              migrated.push({
+                id: `${subject}-${idx}-${Date.now()}`,
+                title: item,
+                subject,
+                duration: 25,
+                completed: false,
+                subtasks: [],
+                order: idx,
+              })
+            }
+          })
+        })
+        setTaskList(migrated)
+      }
       setTimeline(data.timeline || [])
       setScore(data.score || 0)
       setSummary(data.summary || '')
@@ -396,7 +453,7 @@ function DailyPlanTab() {
     try {
       await plannerApi.saveDaily({
         date,
-        tasks,
+        tasks: taskList, // 直接保存数组
         timeline,
         score,
         summary,
@@ -410,29 +467,43 @@ function DailyPlanTab() {
     }
   }
 
-  const updateTask = (subject, idx, value) => {
-    setTasks((prev) => {
-      const subjTasks = slotsOf(prev[subject])
-      subjTasks[idx] = value
-      return { ...prev, [subject]: subjTasks }
-    })
+  const addTask = (newTask) => {
+    const task = {
+      ...newTask,
+      id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      order: taskList.length,
+    }
+    setTaskList((prev) => [...prev, task])
   }
 
-  /* 填写完成度：分母随科目数变化（科目来自配置，不再是固定 4 科 × 4 条） */
-  const subjects = useMemo(() => planSubjects(exam, tasks), [exam, tasks])
-  const filled = useMemo(() => {
-    let n = 0
-    subjects.forEach((s) => {
-      slotsOf(tasks[s]).forEach((t) => { if (t.trim()) n++ })
-    })
-    return n
-  }, [subjects, tasks])
-  const totalSlots = subjects.length * TASK_SLOTS
-  const pct = totalSlots ? Math.round((filled / totalSlots) * 100) : 0
+  const toggleTask = (taskId) => {
+    setTaskList((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, completed: !t.completed } : t))
+    )
+  }
+
+  const deleteTask = (taskId) => {
+    setTaskList((prev) => prev.filter((t) => t.id !== taskId))
+  }
+
+  const updateTask = (updatedTask) => {
+    setTaskList((prev) =>
+      prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+    )
+  }
+
+  const handleDragStart = (index) => {
+    // 简单的拖拽占位，后续可实现完整 DnD
+  }
+
+  // 统计
+  const totalTasks = taskList.length
+  const completedTasks = taskList.filter((t) => t.completed).length
+  const pct = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0
 
   const remain = plan && plan.days_to_exam != null
     ? plan.days_to_exam
-    : examDaysLeft(resolveExamDate(countdown && countdown.exam_date, settingsExamDate))
+    : examDaysLeft(resolveExamDate(settingsExamDate || (countdown && countdown.exam_date), null))
 
   return (
     <>
@@ -441,74 +512,89 @@ function DailyPlanTab() {
           <div className="left">
             <div className="field" style={{ minWidth: 170 }}>
               <label>计划日期</label>
-              <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="计划日期" />
             </div>
-            <div className="row" style={{ paddingTop: 18 }}>
+            <div className="row" style={{ paddingTop: 'var(--space-5)' }}>
               {remain != null && <span className="badge accent">距考研 {remain} 天</span>}
               {remain == null && <span className="badge neutral">未设置初试日期</span>}
               {plan && plan.exists
                 ? <span className="badge success">已有记录</span>
                 : <span className="badge neutral">未填写</span>}
-              <span className="badge info">任务 {filled}/{totalSlots}</span>
+              <span className="badge info">任务 {completedTasks}/{totalTasks}</span>
             </div>
           </div>
-          <div className="right" style={{ paddingTop: 18 }}>
+          <div className="right" style={{ paddingTop: 'var(--space-5)' }}>
             <button className="btn ghost" onClick={loadPlan}>重新载入</button>
             <button className="btn primary" onClick={savePlan} disabled={saving}>
               {saving ? '保存中…' : '保存计划'}
             </button>
           </div>
         </div>
-        <div className="progress" style={{ marginTop: 14 }}>
+        <div className="progress" style={{ marginTop: 'var(--space-4)' }}>
           <i style={{ width: pct + '%' }} />
         </div>
       </div>
 
-      <div className="grid-2">
-        {/* 左：各科目任务 */}
+      {/* 未配置备考科目：不凭空生成科目行，给出配置入口（F1-05 / F3-01） */}
+      {subjectsReady && (!exam || exam.length === 0) && (
         <div className="card">
-          <div className="card-head">
-            <div className="card-title">今日学习任务</div>
-            <span className="card-sub">{subjects.length} 科各 {TASK_SLOTS} 条，回车即写入</span>
-          </div>
-          <div className="card-body">
-            {subjects.map((subj, i) => (
-              <div key={subj} className="list-row" style={{ alignItems: 'flex-start' }}>
-                <div className={`ico sm ${SUBJECT_ICO[i % SUBJECT_ICO.length]}`}>{subjectLabel(subj).slice(0, 1)}</div>
-                <div className="lr-main">
-                  <div className="lr-title" style={{ marginBottom: 8 }}>{subjectLabel(subj)}</div>
-                  <div className="grid-2" style={{ gap: 8 }}>
-                    {Array.from({ length: TASK_SLOTS }, (_, idx) => (
-                      <input
-                        key={idx}
-                        className="input"
-                        type="text"
-                        placeholder={`任务 ${idx + 1}`}
-                        value={slotsOf(tasks[subj])[idx]}
-                        onChange={(e) => updateTask(subj, idx, e.target.value)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <Empty
+            icon={<Target size={36} />}
+            title="还没有备考科目"
+            desc="日计划的任务需要先有科目。先到「设置 → 目标与概览 → 备考科目」勾选你要考的科目，再回来安排每天的任务。"
+            action={<a className="btn primary" href="#/settings">配置备考科目</a>}
+          />
         </div>
+      )}
+
+      {/* 快速添加区域 */}
+      {subjectsReady && exam && exam.length > 0 && (
+        <QuickAddTask onAdd={addTask} subjects={exam} />
+      )}
+
+      <div className="grid-2">
+        {/* 左：任务列表 */}
+        <Card
+          title="今日学习任务"
+          sub={taskList.length ? `${totalTasks} 个任务，${completedTasks} 个已完成` : '使用上方快速添加框创建任务'}
+        >
+          {taskList.length === 0 ? (
+            <Empty
+              title="还没有任务"
+              desc="在上方输入任务标题，选择科目和时长，快速添加到今日计划"
+            />
+          ) : (
+            <div className="task-list">
+              {taskList.map((task, index) => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  index={index}
+                  onToggle={toggleTask}
+                  onDelete={deleteTask}
+                  onUpdate={updateTask}
+                  onReorder={handleDragStart}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
 
         {/* 右：评分与总结 */}
-        <div className="card">
-          <div className="card-head">
-            <div className="card-title">今日评价</div>
+        <Card
+          title="今日评价"
+          extra={
             <span className={`badge ${score >= 8 ? 'success' : score >= 5 ? 'warning' : 'neutral'}`}>
               评分 {score}/10
             </span>
-          </div>
-          <div className="card-body">
+          }
+        >
             <div className="field">
               <label>今日评分（1-10）</label>
               <input
                 className="input"
                 type="number"
+                aria-label="今日评分（1-10）"
                 min="1"
                 max="10"
                 value={score}
@@ -523,6 +609,7 @@ function DailyPlanTab() {
               <textarea
                 className="textarea"
                 rows="8"
+                aria-label="今日总结"
                 placeholder="记录今天的学习收获、遇到的问题、明天的计划..."
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
@@ -541,8 +628,7 @@ function DailyPlanTab() {
                 ))}
               </div>
             )}
-          </div>
-        </div>
+        </Card>
       </div>
     </>
   )
@@ -552,7 +638,7 @@ function DailyPlanTab() {
    周月计划表
    ============================================================ */
 function WeekMonthPlanTab() {
-  const { exam } = useSubjectConfig()
+  const { exam, ready: subjectsReady } = useSubjectConfig()
   const [mode, setMode] = useState('month')
   const [year, setYear] = useState(new Date().getFullYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
@@ -633,17 +719,23 @@ function WeekMonthPlanTab() {
             </div>
             {mode === 'month' ? (
               <>
-                <select className="select" style={{ width: 110 }} value={year} onChange={(e) => setYear(Number(e.target.value))}>
-                  {[2025, 2026, 2027, 2028].map((y) => <option key={y} value={y}>{y}年</option>)}
+                <select className="select" style={{ width: 110 }} value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="选择年份">
+                  {/* 候选随「今年」滑动，而不是写死 [2025..2028]：
+                      写死的话到了 2029 年这个下拉里就没有 2029 了。 */}
+                  {Array.from({ length: 4 }, (_, i) => new Date().getFullYear() - 1 + i)
+                    .concat(year)
+                    .filter((y, i, arr) => arr.indexOf(y) === i)
+                    .sort((a, b) => a - b)
+                    .map((y) => <option key={y} value={y}>{y}年</option>)}
                 </select>
-                <select className="select" style={{ width: 100 }} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+                <select className="select" style={{ width: 100 }} value={month} onChange={(e) => setMonth(Number(e.target.value))} aria-label="选择月份">
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m}月</option>)}
                 </select>
               </>
             ) : (
               <>
                 <button className="btn ghost sm" onClick={() => shiftWeek(-1)}>← 上一周</button>
-                <input className="input" style={{ width: 160 }} type="date" value={weekStart} onChange={(e) => setWeekStart(e.target.value)} />
+                <input className="input" style={{ width: 160 }} type="date" value={weekStart} onChange={(e) => setWeekStart(e.target.value)} aria-label="选择周起始日期" />
                 <button className="btn ghost sm" onClick={() => shiftWeek(1)}>下一周 →</button>
               </>
             )}
@@ -657,12 +749,11 @@ function WeekMonthPlanTab() {
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <div className="card-title">{title}</div>
-          <div className="card-sub">{mode === 'month' ? '按月拆解各科任务量' : '周计划以周一为起点'}</div>
-        </div>
-        <div className="card-body">
+      <Card
+        title={title}
+        sub={mode === 'month' ? '按月拆解各科任务量' : '周计划以周一为起点'}
+      >
+          {!subjects.length && <NoSubjects ready={subjectsReady} />}
           {subjects.map((subj, i) => (
             <div key={subj} className="field">
               <label>
@@ -672,6 +763,7 @@ function WeekMonthPlanTab() {
                 className="textarea"
                 rows="2"
                 style={{ minHeight: 62 }}
+                aria-label={`${subjectLabel(subj)}${mode === 'month' ? '本月' : '本周'}目标`}
                 placeholder={`${subjectLabel(subj)}${mode === 'month' ? '本月' : '本周'}目标...`}
                 value={textOf(tasks[subj])}
                 onChange={(e) => setTasks((prev) => ({ ...prev, [subj]: e.target.value }))}
@@ -684,13 +776,13 @@ function WeekMonthPlanTab() {
             <textarea
               className="textarea"
               rows="3"
+              aria-label="完成情况"
               placeholder={`${mode === 'month' ? '本月' : '本周'}任务完成情况总结...`}
               value={completion}
               onChange={(e) => setCompletion(e.target.value)}
             />
           </div>
-        </div>
-      </div>
+      </Card>
     </>
   )
 }
@@ -787,19 +879,16 @@ function EbbinghausTab() {
 
   return (
     <>
-      <div className="card">
-        <div className="card-head">
-          <div className="card-title">新增记忆条目</div>
-          <span className="card-sub">添加后自动生成 9 个复习时间点</span>
-        </div>
+      <Card title="新增记忆条目" sub="添加后自动生成 9 个复习时间点">
         <div className="row wrap">
-          <select className="select" style={{ width: 120 }} value={newSubject} onChange={(e) => setNewSubject(e.target.value)}>
+          <select className="select" style={{ width: 120 }} value={newSubject} onChange={(e) => setNewSubject(e.target.value)} aria-label="选择科目">
             {memorySubjects.map((s) => <option key={s}>{s}</option>)}
           </select>
           <input
             className="input"
             style={{ flex: 1, minWidth: 220 }}
             type="text"
+            aria-label="学习内容"
             placeholder="输入学习内容（如：abandon 放弃）"
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
@@ -807,24 +896,33 @@ function EbbinghausTab() {
           />
           <button className="btn primary" onClick={addItem}>添加</button>
         </div>
-        <p className="card-sub" style={{ marginTop: 10 }}>
+        <p className="card-sub" style={{ marginTop: 'var(--space-3)' }}>
           复习节奏：5分钟 / 30分钟 / 12小时 / 1天 / 2天 / 4天 / 7天 / 15天 / 1个月 —— 完成「1个月」后自动标记为已掌握。
         </p>
-      </div>
+      </Card>
 
-      <div className="card flush">
-        <div className="card-head" style={{ padding: '16px 18px 0', marginBottom: 12 }}>
-          <div className="card-title">
+      <Card
+        flush
+        headStyle={{ padding: 'var(--space-4) var(--space-5) 0', marginBottom: 'var(--space-3)' }}
+        title={
+          <>
             记忆列表 <span className="badge neutral">{shown.length} 条</span>
-            {masteredCount > 0 && <span className="badge success" style={{ marginLeft: 6 }}>已掌握 {masteredCount}</span>}
-          </div>
+            {masteredCount > 0 && <span className="badge success" style={{ marginLeft: 'var(--space-2)' }}>已掌握 {masteredCount}</span>}
+          </>
+        }
+        extra={
           <div className="row wrap">
-            <span className={`chip ${filterSubject === '' ? 'active' : ''}`} onClick={() => setFilterSubject('')}>全部</span>
+            <span className={`chip ${filterSubject === '' ? 'active' : ''}`} onClick={() => setFilterSubject('')}
+              role="button" tabIndex={0} aria-pressed={filterSubject === ''}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilterSubject('') } }}>全部</span>
             {subjects.map((s) => (
-              <span key={s} className={`chip ${filterSubject === s ? 'active' : ''}`} onClick={() => setFilterSubject(s)}>{s}</span>
+              <span key={s} className={`chip ${filterSubject === s ? 'active' : ''}`} onClick={() => setFilterSubject(s)}
+                role="button" tabIndex={0} aria-pressed={filterSubject === s}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilterSubject(s) } }}>{s}</span>
             ))}
           </div>
-        </div>
+        }
+      >
 
         {loading ? (
           <div className="loading-inline">正在加载记忆条目…</div>
@@ -838,12 +936,12 @@ function EbbinghausTab() {
           </div>
         ) : shown.length === 0 ? (
           <div className="empty">
-            <div className="e-ico">🧠</div>
+            <div className="e-ico">记忆</div>
             <div className="e-title">暂无记忆条目</div>
             <div className="e-text">添加第一条内容，系统会按艾宾浩斯遗忘曲线自动排布 9 次复习。</div>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-container">
             <table className="table">
               <thead>
                 <tr>
@@ -863,16 +961,16 @@ function EbbinghausTab() {
                       <td>{item.seq || idx + 1}</td>
                       <td><span className="badge neutral">{item.subject || '其他'}</span></td>
                       <td>
-                        <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{item.content}</div>
+                        <div style={{ fontWeight: 600, color: 'var(--fg)' }}>{item.content}</div>
                         {item.mastered
-                          ? <span className="badge success" style={{ marginTop: 4 }}>已掌握 ✓</span>
+                          ? <span className="badge success" style={{ marginTop: 'var(--space-1)' }}>已掌握 已完成</span>
                           : due
-                            ? <span className="badge warning" style={{ marginTop: 4 }}>待复习：{due.label}</span>
-                            : <span className="badge info" style={{ marginTop: 4 }}>记忆中</span>}
+                            ? <span className="badge warning" style={{ marginTop: 'var(--space-1)' }}>待复习：{due.label}</span>
+                            : <span className="badge info" style={{ marginTop: 'var(--space-1)' }}>记忆中</span>}
                       </td>
                       <td>{String(item.learn_date || '').slice(0, 10)}</td>
                       <td>
-                        <div className="row wrap" style={{ gap: 6 }}>
+                        <div className="row wrap" style={{ gap: 'var(--space-2)' }}>
                           {CYCLES.map((c) => (
                             <span
                               key={c.key}
@@ -895,7 +993,7 @@ function EbbinghausTab() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </>
   )
 }
@@ -924,12 +1022,19 @@ function EarlyBirdTab({ onSync }) {
       const recs = pickList(data, 'records')
       setRecords(recs)
       setStreak(data && data.current_streak != null ? data.current_streak : computeStreak(recs))
+      return true
     } catch (e) {
       setError(e.message || '加载失败')
-      toast('加载打卡记录失败')
+      return false
     } finally {
       setLoading(false)
     }
+  }
+
+  const refreshRecords = async () => {
+    const ok = await loadRecords()
+    if (ok) toastOk('打卡记录已刷新')
+    else toastErr('打卡记录刷新失败')
   }
 
   const checkIn = async () => {
@@ -978,59 +1083,61 @@ function EarlyBirdTab({ onSync }) {
       {/* 新增功能②：连续打卡 streak */}
       <div className="grid-4">
         <div className="stat-tile">
-          <div className="st-ico" style={{ background: 'var(--gold-soft)', color: 'var(--gold)' }}>🔥</div>
+          <div className="st-ico" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>高频</div>
           <div className="st-val">{streak}</div>
           <div className="st-label">当前连续早起（天）</div>
           <div className={`st-delta ${checkedToday ? 'up' : ''}`}>
-            {checkedToday ? '今日已打卡 ✓' : '今日待打卡'}
+            {checkedToday ? '今日已打卡 已完成' : '今日待打卡'}
           </div>
         </div>
         <div className="stat-tile">
-          <div className="st-ico ico green" style={{ width: 38, height: 38 }}>📈</div>
+          <div className="st-ico ico green" style={{ width: 38, height: 38 }}>趋势</div>
           <div className="st-val">{stats.last7}</div>
           <div className="st-label">最近 7 天打卡次数</div>
           <div className="st-delta">{stats.last7 >= 6 ? '保持得很好' : '再接再厉'}</div>
         </div>
         <div className="stat-tile">
           <div className="st-ico ico blue" style={{ width: 38, height: 38 }}>⏰</div>
-          <div className="st-val" style={{ fontSize: 22 }}>{stats.avgWake}</div>
+          <div className="st-val" style={{ fontSize: 'var(--text-xl)' }}>{stats.avgWake}</div>
           <div className="st-label">平均起床时间</div>
         </div>
         <div className="stat-tile">
-          <div className="st-ico ico violet" style={{ width: 38, height: 38 }}>🗓</div>
+          <div className="st-ico ico violet" style={{ width: 38, height: 38 }}>日程</div>
           <div className="st-val">{stats.total}</div>
           <div className="st-label">累计打卡天数</div>
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <div className="card-title">今日打卡</div>
-          {checkedToday
+      <Card
+        title="今日打卡"
+        extra={
+          checkedToday
             ? <span className="badge success">今天已记录</span>
-            : <span className="badge warning">尚未打卡</span>}
-        </div>
+            : <span className="badge warning">尚未打卡</span>
+        }
+      >
         <div className="row wrap">
           <div className="field" style={{ width: 160 }}>
             <label>今日起床</label>
-            <input className="input" type="time" value={wakeTime} onChange={(e) => setWakeTime(e.target.value)} />
+            <input className="input" type="time" value={wakeTime} onChange={(e) => setWakeTime(e.target.value)} aria-label="今日起床时间" />
           </div>
           <div className="field" style={{ width: 160 }}>
             <label>昨晚就寝</label>
-            <input className="input" type="time" value={sleepTime} onChange={(e) => setSleepTime(e.target.value)} />
+            <input className="input" type="time" value={sleepTime} onChange={(e) => setSleepTime(e.target.value)} aria-label="昨晚就寝时间" />
           </div>
           <div className="spacer" />
-          <button className="btn primary" style={{ marginTop: 18 }} onClick={checkIn} disabled={busy}>
+          <button className="btn primary" style={{ marginTop: 'var(--space-5)' }} onClick={checkIn} disabled={busy}>
             {busy ? '打卡中…' : checkedToday ? '更新今日记录' : '立即打卡'}
           </button>
         </div>
-      </div>
+      </Card>
 
-      <div className="card flush">
-        <div className="card-head" style={{ padding: '16px 18px 0', marginBottom: 12 }}>
-          <div className="card-title">打卡记录 <span className="badge neutral">最近 {records.length} 天</span></div>
-          <button className="btn ghost sm" onClick={loadRecords}>刷新</button>
-        </div>
+      <Card
+        flush
+        headStyle={{ padding: 'var(--space-4) var(--space-5) 0', marginBottom: 'var(--space-3)' }}
+        title={<>打卡记录 <span className="badge neutral">最近 {records.length} 天</span></>}
+        extra={<button className="btn ghost sm" onClick={refreshRecords}>刷新</button>}
+      >
         {loading ? (
           <div className="loading-inline">正在加载打卡记录…</div>
         ) : error ? (
@@ -1043,12 +1150,12 @@ function EarlyBirdTab({ onSync }) {
           </div>
         ) : records.length === 0 ? (
           <div className="empty">
-            <div className="e-ico">🌅</div>
+            <div className="e-ico">早起</div>
             <div className="e-title">还没有打卡记录</div>
             <div className="e-text">今天开始吧，连续天数会自动累计，也可一并导出为日历提醒。</div>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-container">
             <table className="table">
               <thead>
                 <tr>
@@ -1081,7 +1188,7 @@ function EarlyBirdTab({ onSync }) {
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </>
   )
 }
@@ -1191,28 +1298,32 @@ function PhaseTab() {
       </div>
 
       {showCreate && (
-        <div className="card">
-          <div className="card-head">
-            <div className="card-title">新建阶段复习计划</div>
-            <span className="card-sub">按艾宾浩斯曲线自动排布每日早/晚复习任务</span>
-          </div>
-          <div className="card-body">
+        <Card
+          title="新建阶段复习计划"
+          sub="按艾宾浩斯曲线自动排布每日早/晚复习任务"
+          foot={
+            <>
+              <button className="btn ghost" onClick={() => setShowCreate(false)}>取消</button>
+              <button className="btn primary" onClick={createPlan}>创建阶段计划</button>
+            </>
+          }
+        >
             <div className="grid-2">
               <div className="field">
                 <label>阶段名称</label>
-                <input className="input" type="text" value={newPlan.name} onChange={(e) => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="如：专业课一轮复习" />
+                <input className="input" type="text" value={newPlan.name} onChange={(e) => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="如：专业课一轮复习" aria-label="阶段名称" />
               </div>
               <div className="field">
                 <label>周期天数</label>
-                <input className="input" type="number" value={newPlan.cycle_days} onChange={(e) => setNewPlan({ ...newPlan, cycle_days: Number(e.target.value) })} />
+                <input className="input" type="number" aria-label="周期天数" value={newPlan.cycle_days} onChange={(e) => setNewPlan({ ...newPlan, cycle_days: Number(e.target.value) })} />
               </div>
               <div className="field">
                 <label>开始日期</label>
-                <input className="input" type="date" value={newPlan.start_date} onChange={(e) => setNewPlan({ ...newPlan, start_date: e.target.value })} />
+                <input className="input" type="date" aria-label="开始日期" value={newPlan.start_date} onChange={(e) => setNewPlan({ ...newPlan, start_date: e.target.value })} />
               </div>
               <div className="field">
                 <label>结束日期</label>
-                <input className="input" type="date" value={newPlan.end_date} onChange={(e) => setNewPlan({ ...newPlan, end_date: e.target.value })} />
+                <input className="input" type="date" aria-label="结束日期" value={newPlan.end_date} onChange={(e) => setNewPlan({ ...newPlan, end_date: e.target.value })} />
               </div>
             </div>
             <hr className="hr" />
@@ -1227,24 +1338,15 @@ function PhaseTab() {
                 <div key={idx} className="list-row">
                   <div className="lr-ico">{idx + 1}</div>
                   <div className="lr-main">
-                    <input className="input" type="text" value={t.content} onChange={(e) => updateTask(idx, e.target.value)} placeholder={`任务 ${idx + 1} 内容，如：第一章 信号与系统`} />
+                    <input className="input" type="text" value={t.content} onChange={(e) => updateTask(idx, e.target.value)} placeholder={`任务 ${idx + 1} 内容，如：第一章 信号与系统`} aria-label={`任务 ${idx + 1} 内容`} />
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-          <div className="card-foot">
-            <button className="btn ghost" onClick={() => setShowCreate(false)}>取消</button>
-            <button className="btn primary" onClick={createPlan}>创建阶段计划</button>
-          </div>
-        </div>
+        </Card>
       )}
 
-      <div className="card">
-        <div className="card-head">
-          <div className="card-title">已有阶段</div>
-          <span className="card-sub">点击卡片查看每日复习安排</span>
-        </div>
+      <Card title="已有阶段" sub="点击卡片查看每日复习安排">
         {loading ? (
           <div className="loading-inline">正在加载阶段计划…</div>
         ) : error ? (
@@ -1257,7 +1359,7 @@ function PhaseTab() {
           </div>
         ) : plans.length === 0 ? (
           <div className="empty">
-            <div className="e-ico">📚</div>
+            <div className="e-ico">资料</div>
             <div className="e-title">还没有阶段计划</div>
             <div className="e-text">新建一个阶段（如「专业课一轮」），系统会按周期自动生成每日复习安排。</div>
           </div>
@@ -1270,7 +1372,7 @@ function PhaseTab() {
                 <div
                   key={p.id}
                   className={`list-row ${active ? 'active' : ''}`}
-                  style={{ flexDirection: 'column', alignItems: 'stretch', cursor: 'pointer', gap: 8 }}
+                  style={{ flexDirection: 'column', alignItems: 'stretch', cursor: 'pointer', gap: 'var(--space-2)' }}
                   onClick={() => selectPlan(p)}
                 >
                   <div className="spread">
@@ -1289,41 +1391,42 @@ function PhaseTab() {
             })}
           </div>
         )}
-      </div>
+      </Card>
 
       {selectedPlan && (
-        <div className="card">
-          <div className="card-head">
-            <div className="card-title">{selectedPlan.name} · 每日复习安排</div>
+        <Card
+          title={`${selectedPlan.name} · 每日复习安排`}
+          extra={
             <div className="row">
               <span className="badge success">已完成 {doneCount}</span>
               <span className="badge neutral">共 {reviews.length} 天</span>
             </div>
-          </div>
+          }
+        >
           {reviews.length === 0 ? (
             <div className="empty">
-              <div className="e-ico">🗓</div>
+              <div className="e-ico">日程</div>
               <div className="e-title">暂无每日安排</div>
               <div className="e-text">该阶段还没有生成复习明细，可在创建时填写任务划分后重新生成。</div>
             </div>
           ) : (
-            <div className="grid-4" style={{ gap: 10 }}>
+            <div className="grid-4" style={{ gap: 'var(--space-3)' }}>
               {reviews.map((r) => (
                 <div
                   key={r.id || r.day_num}
                   className={`list-row ${r.completed ? 'active' : ''}`}
-                  style={{ flexDirection: 'column', alignItems: 'stretch', cursor: 'pointer', gap: 6 }}
+                  style={{ flexDirection: 'column', alignItems: 'stretch', cursor: 'pointer', gap: 'var(--space-2)' }}
                   onClick={() => toggleDay(r.day_num)}
                   title="点击切换完成状态"
                 >
                   <div className="spread">
-                    <div className="lr-title" style={{ fontSize: 13 }}>第 {r.day_num} 天</div>
+                    <div className="lr-title" style={{ fontSize: 'var(--text-sm)' }}>第 {r.day_num} 天</div>
                     {r.completed
-                      ? <span className="badge success">✓</span>
+                      ? <span className="badge success">已完成</span>
                       : <span className="badge neutral">待办</span>}
                   </div>
                   <div className="lr-meta">{String(r.date || '').slice(5, 10)}</div>
-                  <div className="row wrap" style={{ gap: 4 }}>
+                  <div className="row wrap" style={{ gap: 'var(--space-1)' }}>
                     {r.morning_reviews && r.morning_reviews.length > 0 && (
                       <span className="badge info">早 {r.morning_reviews.join(',')}</span>
                     )}
@@ -1335,7 +1438,7 @@ function PhaseTab() {
               ))}
             </div>
           )}
-        </div>
+        </Card>
       )}
     </>
   )

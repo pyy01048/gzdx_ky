@@ -1,0 +1,26 @@
+/* Toast 语义色（成功 / 失败）
+ * 只补充颜色与图标，布局沿用 global.css 的 .toast 基线；
+ * 色值全部取 tokens.css，不新增品牌色。
+ * 选择器用 .toast.toast-x 提高特异性，避免与 global.css 的加载顺序耦合。
+ */
+.toast.toast-success {
+  border-left-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success-ink);
+}
+
+.toast.toast-error {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.toast.toast-success::before {
+  content: '✓';
+  font-weight: 700;
+}
+
+.toast.toast-error::before {
+  content: '!';
+  font-weight: 700;
+}

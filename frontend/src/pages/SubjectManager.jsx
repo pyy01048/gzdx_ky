@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useConfirm } from '../components/UI'
 import { taxonomyApi } from '../api/client'
-import { Empty, Modal, toast } from '../components/UI'
-import { Plus, RefreshCw, Edit, Trash, Book } from '../components/Icon'
+import { Empty, Modal, toast, toastOk, toastErr, focusAndScroll } from '../components/UI'
+import { LoadingState, ErrorState } from '../components/States'
+import { Plus, RefreshCw, Edit, Trash, Book, Search } from '../components/Icon'
 
 /* 题型枚举（与后端 question_type 对齐），中文标签 */
 const QUESTION_TYPE_OPTIONS = [
@@ -23,28 +25,53 @@ function normalizeSubjects(d) {
 }
 
 export default function SubjectManager() {
+  const [confirm, confirmDialog] = useConfirm()
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [q, setQ] = useState('')
   const [editor, setEditor] = useState({ open: false, mode: 'create', original: '', form: EMPTY_FORM })
+  const subjectNameRef = useRef(null)
 
-  /* 拉取科目列表（三态：加载中 / 空态 / 失败 toast + 就地提示） */
+  /* 拉取科目列表（三态：加载中 / 空态 / 失败就地提示 + toast） */
   const load = useCallback(async () => {
     setLoading(true)
     setLoadError('')
     try {
       const d = await taxonomyApi.subjects()
       setList(normalizeSubjects(d))
+      return true
     } catch (e) {
       setLoadError(e.message || '加载科目失败')
-      toast('加载科目失败：' + (e.message || ''))
+      return false
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  /* 手动刷新：成功绿色 / 失败红色提示（失败原因同时留在页面 ErrorState 里） */
+  const refresh = async () => {
+    const ok = await load()
+    if (ok) toastOk('科目列表已刷新')
+    else toastErr('刷新失败，请检查后端服务后重试')
+  }
+
+  const stats = useMemo(() => ({
+    subjects: list.length,
+    chapters: list.reduce((n, s) => n + (s.chapters || []).length, 0),
+    questions: list.reduce((n, s) => n + (Number(s.question_count) || 0), 0),
+    custom: list.filter((s) => s.is_custom).length,
+  }), [list])
+
+  const filtered = useMemo(() => {
+    const kw = q.trim().toLowerCase()
+    if (!kw) return list
+    return list.filter((s) => String(s.subject || '').toLowerCase().includes(kw)
+      || (s.chapters || []).some((c) => String(c).toLowerCase().includes(kw)))
+  }, [list, q])
 
   const openCreate = () =>
     setEditor({ open: true, mode: 'create', original: '', form: { ...EMPTY_FORM, types: [] } })
@@ -77,7 +104,11 @@ export default function SubjectManager() {
   /* 添加 / 编辑提交：章节多行文本按行转数组 */
   const handleSubmit = async () => {
     const f = editor.form
-    if (!f.subject.trim()) { toast('请填写科目名称'); return }
+    if (!f.subject.trim()) {
+      toastErr('请填写科目名称')
+      focusAndScroll(subjectNameRef.current)
+      return
+    }
     const body = {
       subject: f.subject.trim(),
       chapters: f.chaptersText.split('\n').map((s) => s.trim()).filter(Boolean),
@@ -87,16 +118,16 @@ export default function SubjectManager() {
     try {
       if (editor.mode === 'create') {
         await taxonomyApi.createSubject(body)
-        toast('科目已添加')
+        toastOk('科目已添加')
       } else {
         // 编辑时 body.subject 即（可能改名后的）新名，路径参数用原名 original
         await taxonomyApi.updateSubject(editor.original, body)
-        toast('科目已更新')
+        toastOk('科目已更新')
       }
       closeEditor()
       load()
     } catch (e) {
-      toast('保存失败：' + (e.message || ''))
+      toastErr('保存失败：' + (e.message || ''))
     } finally {
       setSaving(false)
     }
@@ -108,13 +139,13 @@ export default function SubjectManager() {
     const tip = hasQuestions
       ? `科目「${item.subject}」下已有 ${item.question_count} 道题目，删除后这些题目将失去科目归属，确定删除吗？`
       : `确定删除科目「${item.subject}」吗？`
-    if (!window.confirm(tip)) return
+    if (!(await confirm({ title: '删除科目', message: tip, danger: true }))) return
     try {
       await taxonomyApi.removeSubject(item.subject)
-      toast('科目已删除')
+      toastOk('科目已删除')
       load()
     } catch (e) {
-      toast('删除失败：' + (e.message || ''))
+      toastErr('删除失败：' + (e.message || ''))
     }
   }
 
@@ -126,7 +157,7 @@ export default function SubjectManager() {
           <p className="page-sub">维护科目、章节与题型；刷题 / 题库 / 错题本的科目列表由此动态加载</p>
         </div>
         <div className="page-actions row">
-          <button className="btn ghost" onClick={load} disabled={loading}>
+          <button className="btn ghost" onClick={refresh} disabled={loading}>
             <RefreshCw size={14} /> 刷新
           </button>
           <button className="btn primary" onClick={openCreate}>
@@ -135,22 +166,39 @@ export default function SubjectManager() {
         </div>
       </div>
 
+      <div className="subject-mgr-summary">
+        <div className="sm-cell"><b>{stats.subjects}</b><span>科目</span></div>
+        <div className="sm-cell"><b>{stats.chapters}</b><span>章节</span></div>
+        <div className="sm-cell"><b>{stats.questions}</b><span>题目</span></div>
+        <div className="sm-cell"><b>{stats.custom}</b><span>自定义</span></div>
+        <div className="sm-note">科目是刷题 / 题库 / 错题本 / 学习进度的唯一口径，改这里全站生效。</div>
+      </div>
+
+      <div className="subject-mgr-toolbar">
+        <label className="sm-search">
+          <Search size={15} />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜索科目或章节"
+            aria-label="搜索科目或章节"
+          />
+        </label>
+        {q && (
+          <button className="btn sm ghost" onClick={() => setQ('')}>清空搜索</button>
+        )}
+      </div>
+
       <div className="card">
         <div className="card-head">
           <div className="card-title">全部科目</div>
-          <div className="card-sub">共 {list.length} 个</div>
+          <div className="card-sub">共 {list.length} 个{q ? ` · 匹配 ${filtered.length} 个` : ''}</div>
         </div>
 
         {loading ? (
-          <div className="table-loading"><span className="table-spinner" />正在加载科目…</div>
+          <LoadingState text="正在加载科目…" rows={0} />
         ) : loadError ? (
-          <div className="empty-state">
-            <div className="empty-state-title">加载失败</div>
-            <div className="empty-state-desc">{loadError}</div>
-            <div className="empty-state-action">
-              <button className="btn ghost" onClick={load}>重试</button>
-            </div>
-          </div>
+          <ErrorState title="加载失败" message={loadError} onRetry={load} />
         ) : list.length === 0 ? (
           <Empty
             icon={<Book size={32} />}
@@ -158,9 +206,16 @@ export default function SubjectManager() {
             desc="点击右上角「添加科目」创建第一个科目"
             action={<button className="btn primary" onClick={openCreate}>添加科目</button>}
           />
+        ) : filtered.length === 0 ? (
+          <Empty
+            icon={<Search size={32} />}
+            title="没有匹配的科目"
+            desc={`没有找到包含「${q}」的科目或章节。`}
+            action={<button className="btn ghost" onClick={() => setQ('')}>清空搜索</button>}
+          />
         ) : (
           <div className="table-container">
-            <table className="table table-striped">
+            <table className="table table-striped subject-table">
               <thead>
                 <tr>
                   <th>科目</th>
@@ -171,7 +226,7 @@ export default function SubjectManager() {
                 </tr>
               </thead>
               <tbody>
-                {list.map((item) => (
+                {filtered.map((item) => (
                   <tr key={item.subject}>
                     <td>
                       <div className="row">
@@ -227,6 +282,8 @@ export default function SubjectManager() {
             <label className="form-label">科目名称 <span className="form-required">*</span></label>
             <input
               className="form-input"
+              aria-label="科目名称"
+              ref={subjectNameRef}
               value={editor.form.subject}
               onChange={(e) => setEditor((ed) => ({ ...ed, form: { ...ed.form, subject: e.target.value } }))}
               placeholder="如：数字电子技术"
@@ -237,6 +294,7 @@ export default function SubjectManager() {
             <textarea
               className="form-input"
               rows={5}
+              aria-label="章节（每行一个）"
               value={editor.form.chaptersText}
               onChange={(e) => setEditor((ed) => ({ ...ed, form: { ...ed.form, chaptersText: e.target.value } }))}
               placeholder={'第一章 数制与编码\n第二章 逻辑门\n第三章 组合逻辑'}
@@ -260,6 +318,7 @@ export default function SubjectManager() {
           </div>
         </div>
       </Modal>
+      {confirmDialog}
     </div>
   )
 }

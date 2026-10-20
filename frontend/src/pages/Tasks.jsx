@@ -1,29 +1,17 @@
-﻿import React, { useMemo, useState, useCallback, useEffect } from 'react'
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import useStore from '../store/useStore'
 import { todayStr, addDays, monthMatrix, weekdayIdx, fmtDateCN, parseDate } from '../utils/date'
-import { SubTag, Modal, Segmented, Empty, toast } from '../components/UI'
-import { Target, Brain } from '../components/Icon'
+import { SubTag, Modal, Segmented, Empty, toast, toastOk, toastErr, focusAndScroll, useConfirm } from '../components/UI'
+import { Target, Brain, AlertCircle, Plus, ChevronLeft, ChevronRight } from '../components/Icon'
 import { tasksApi } from '../api/client'
+import { friendlyAiError } from '../utils/aiError'
+import { loadDomain } from '../api/sync'
+import { useSubjectConfig } from '../hooks/useSubjectConfig'
 
-const SUBJECTS = [
-  { value: 'math', name: '数学' },
-  { value: 'english', name: '英语' },
-  { value: 'politics', name: '政治' },
-  { value: 'major', name: '专业课' },
-]
-const subjectName = (v) => (SUBJECTS.find((s) => s.value === v) || { name: v || '其他' }).name
-
-/* ---------- 本地启发式 AI 规划（后端 ai-generate 不可用时兜底） ---------- */
-function aiPlan(title) {
-  const base = [
-    { title: '数学：真题演练 + 错题回顾', subject: 'math' },
-    { title: '英语：真题精读 2 篇', subject: 'english' },
-    { title: '政治：背诵 + 选择题 30 题', subject: 'politics' },
-    { title: '834 专业课：章节梳理 + 题库', subject: 'major' }
-  ]
-  if (title) base.unshift({ title, subject: 'major' })
-  return base
-}
+/* 科目一律来自后端科目配置（hooks/useSubjectConfig），这里只保留**旧英文码 → 中文**
+   的显示映射：历史数据存的是 math/english/…，新数据直接存后端配置里的真实科目名。 */
+const LEGACY_SUBJECT_CODES = { math: '数学', english: '英语', politics: '政治', major: '专业课', other: '其他' }
+const subjectName = (v) => LEGACY_SUBJECT_CODES[v] || v || '未分类'
 
 const csvCell = (v) => {
   const s = String(v ?? '')
@@ -31,22 +19,59 @@ const csvCell = (v) => {
 }
 
 export default function Tasks() {
-  const { tasks, addTask, toggleTask, removeTask, importTasks, updateTask } = useStore()
+  /* 字段级选择器：store 其他字段变化不再触发本页重渲染（actions 引用稳定，不会引发额外渲染） */
+  const tasks = useStore((s) => s.tasks)
+  const addTask = useStore((s) => s.addTask)
+  const toggleTask = useStore((s) => s.toggleTask)
+  const removeTask = useStore((s) => s.removeTask)
+  const importTasks = useStore((s) => s.importTasks)
+  const updateTask = useStore((s) => s.updateTask)
   const settings = useStore((s) => s.settings)
   const [view, setView] = useState('day')
   const [date, setDate] = useState(todayStr())
   const [showAdd, setShowAdd] = useState(false)
-  const [showInlineAdd, setShowInlineAdd] = useState(false)
-  const [inlineTitle, setInlineTitle] = useState('')
-  const [inlineSubject, setInlineSubject] = useState('major')
+  /* E2E2-001 修复（2026-10-18）：原「新建任务」按钮绑定的是 showInlineAdd（内联快加表单），
+     而该表单只在「当天已有任务」的列表分支里渲染——空日期点击必然无响应（dogfood ISSUE-001
+     与 E2E2-001 的真凶）。现改开全字段弹窗 showAdd，任何视图/空态都可用；不可达的内联表单已移除。 */
   const [showAi, setShowAi] = useState(false)
+  /* 删除任务二次确认（e2e3 回归建议）：误触即丢数据，用全站统一的 Promise 确认框 */
+  const [confirm, dialog] = useConfirm()
   const [title, setTitle] = useState('')
-  const [subject, setSubject] = useState('major')
+  const [subject, setSubject] = useState('')
+  const addTitleRef = useRef(null)
   const [aiTitle, setAiTitle] = useState('')
   const [genTasks, setGenTasks] = useState(null)
   const [aiPlanText, setAiPlanText] = useState(null)
+  const [aiErr, setAiErr] = useState('')
   const [calShift, setCalShift] = useState(0)
   const [sortAsc, setSortAsc] = useState(false)
+
+  /* 科目下拉的唯一来源：后端科目配置（/api/goals/subjects）。
+     配置还没到位时宁可只给「未分类」，也不再写死数学/英语/政治/专业课四个科目——
+     用户换科目方向后这四条就成了假选项。 */
+  const { active: configuredSubjects, ready: subjectsReady } = useSubjectConfig()
+  const subjectChoices = useMemo(() => {
+    const out = []
+    const push = (v) => {
+      const raw = String(v || '').trim()
+      if (raw && !out.some((o) => subjectName(o) === subjectName(raw))) out.push(raw)
+    }
+    if (subjectsReady) for (const s of configuredSubjects) push(s)
+    for (const t of tasks || []) push(t.subject)
+    return out
+  }, [configuredSubjects, subjectsReady, tasks])
+
+  /* 旧数据里存的是 math/major 这类英文码，配置就绪后把选中值迁到真实科目 */
+  useEffect(() => {
+    if (!subjectChoices.length) return
+    const migrate = (v) => {
+      if (subjectChoices.includes(v)) return v
+      // 空值或旧英文码 → 用配置里的第一个真实科目；已经是真实科目名 → 原样保留
+      return (!v || LEGACY_SUBJECT_CODES[v]) ? subjectChoices[0] : v
+    }
+    setSubject(migrate)
+    setInlineSubject(migrate)
+  }, [subjectChoices])
 
   /* 键盘快捷键：左右箭头切换日期（日视图） */
   useEffect(() => {
@@ -65,17 +90,7 @@ export default function Tasks() {
     return () => window.removeEventListener('keydown', handler)
   }, [view])
 
-  /* 内联添加任务 */
-  const handleInlineAdd = () => {
-    if (!inlineTitle.trim()) return
-    const newTask = { title: inlineTitle.trim(), subject: inlineSubject, due: date }
-    withBackend(
-      () => tasksApi.create(newTask),
-      () => { addTask(newTask); toast('任务已添加') }
-    )
-    setInlineTitle('')
-    setShowInlineAdd(false)
-  }
+  /* 内联快加表单已随 E2E2-001 修复移除（原实现不可达），新建任务统一走 showAdd 弹窗 */
 
   /* ---- 后端在线状态与数据同步 ---- */
   const [backendOk, setBackendOk] = useState(false)
@@ -84,20 +99,10 @@ export default function Tasks() {
   const refresh = useCallback(async () => {
     setSyncing(true)   /* 批次2-2：首屏拉取后端任务时显示「同步中…」 */
     try {
-      const data = await tasksApi.list({ page: 1, page_size: 200 })
-      const list = data.items || data.tasks || data || []
-      if (Array.isArray(list) && list.length !== undefined) {
-        const mapped = list.map((t) => ({
-          id: String(t.id),
-          title: t.title,
-          subject: t.subject || 'major',
-          due: (t.due_date || t.due || todayStr()).slice(0, 10),
-          done: t.status === 'done' || !!t.completed,
-          ai: !!t.is_ai
-        }))
-        useStore.setState({ tasks: mapped })
-        setBackendOk(true)
-      }
+      /* 与启动时回填走同一个 loader：逐页取全量（后端 page_size 上限 200，写更大会
+         422 而不是截断），HTTP 成功即算后端可用，空结果照空结果写，只有抛错才降级。 */
+      await loadDomain('tasks')
+      setBackendOk(true)
     } catch {
       setBackendOk(false)
     } finally {
@@ -206,38 +211,49 @@ export default function Tasks() {
   }
 
   const submitAdd = () => {
-    if (!title.trim()) return toast('请填写任务名称')
-    const payload = { title: title.trim(), subject, due_date: date }
+    if (!title.trim()) {
+      toastErr('请填写任务名称')
+      focusAndScroll(addTitleRef.current)
+      return
+    }
+    const payload = { title: title.trim(), subject: subject || null, due_date: date }
     withBackend(
       () => tasksApi.create(payload),
-      () => { addTask({ title: title.trim(), subject, due: date }); toast('任务已添加') }
+      () => { addTask({ title: title.trim(), subject: subject || null, due: date }); toastOk('任务已添加') }
     )
     setTitle('')
     setShowAdd(false)
   }
 
   const submitAi = async () => {
-    if (backendOk) {
-      try {
-        const r = await tasksApi.aiGenerate({ topic: aiTitle.trim(), count: 4 })
-        const list = r.tasks || r.items || []
-        if (Array.isArray(list) && list.length) {
-          setGenTasks(list.map((t) => ({ title: t.title, subject: t.subject || 'major' })))
-          setAiPlanText(null)
-          return
-        }
-        if (r.plan && typeof r.plan === 'string') {
-          setAiPlanText(r.plan)
-          setGenTasks(null)
-          toast('AI 计划已生成，请查看下方预览')
-          return
-        }
-      } catch (e) {
-        console.warn('AI生成失败，使用本地启发式:', e.message)
-      }
+    setAiErr('')
+    if (!backendOk) {
+      /* 曾经这里会本地"生成"一套 数学/英语/政治/834专业课 的假任务并当成 AI 结果，
+         假任务一旦被导入就成了学习记录。后端不可用就如实说，不编。 */
+      setAiErr('AI 规划需要后端在线（当前后端不可用）。可在「设置 → AI 服务」检查配置后重试。')
+      setGenTasks(null); setAiPlanText(null)
+      return
     }
-    setGenTasks(aiPlan(aiTitle.trim()))
-    setAiPlanText(null)
+    try {
+      const r = await tasksApi.aiGenerate({ topic: aiTitle.trim() })
+      const list = Array.isArray(r?.tasks) ? r.tasks : (Array.isArray(r?.items) ? r.items : [])
+      if (list.length) {
+        // 后端下发结构化任务才走「一键导入」；科目原样透传，不再补成「专业课」。
+        setGenTasks(list.map((t) => ({ title: t.title, subject: t.subject || '' })))
+        setAiPlanText(null)
+        return
+      }
+      if (r?.plan && typeof r.plan === 'string') {
+        setAiPlanText(r.plan)
+        setGenTasks(null)
+        toast('AI 计划已生成，请查看下方预览')
+        return
+      }
+      setAiErr('后端没有返回可用的计划内容。')
+    } catch (e) {
+      /* dogfood ISSUE-002：不再把 401/服务商地址等原始异常亮给用户 */
+      setAiErr(friendlyAiError(e))
+    }
   }
 
   const confirmImport = () => {
@@ -266,7 +282,9 @@ export default function Tasks() {
     )
   }
 
-  const onRemove = (id) => {
+  const onRemove = async (id) => {
+    // e2e3 回归建议：删除此前无二次确认，误触即丢（2026-10-19 补）
+    if (!(await confirm({ title: '删除任务', message: '删除后不可恢复，确定删除该任务吗？', danger: true }))) return
     withBackend(
       () => tasksApi.remove(Number(id)),
       () => { removeTask(id); toast('已删除') }
@@ -292,14 +310,15 @@ export default function Tasks() {
           </p>
         </div>
         <div className="page-actions">
-          <button className="btn ghost" onClick={() => setShowAi(true)}>AI 生成</button>
-          <button className="btn primary" onClick={() => setShowInlineAdd(true)}>+ 新建任务</button>
+          <button className="btn ghost" onClick={() => setShowAi(true)}><Brain size={15} /> AI 生成</button>
+          <button className="btn primary" onClick={() => setShowAdd(true)}><Plus size={15} /> 新建任务</button>
         </div>
       </div>
 
       {!backendOk && (
-        <div className="banner" style={{ background: '#fff8e1', border: '1px solid var(--gold, #f0b429)', color: '#7a5b00', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 12 }}>
-          ⚠️ <strong>本地模式：数据未同步</strong>。当前任务仅保存在本机浏览器（localStorage），尚未同步到服务器；后端恢复连接后请重新刷新以拉取服务器数据。
+        <div className="banner">
+          <strong>本地模式：数据未同步。</strong>
+          当前任务仅保存在本机浏览器（localStorage），尚未同步到服务器；后端恢复连接后请刷新以拉取服务器数据。
         </div>
       )}
 
@@ -308,33 +327,46 @@ export default function Tasks() {
           <Segmented options={[{ label: '日视图', value: 'day' }, { label: '周视图', value: 'week' }, { label: '月视图', value: 'month' }]} value={view} onChange={setView} />
         </div>
         <div className="right">
-          <button className={`btn ghost sm ${sortAsc ? 'active' : ''}`} onClick={() => setSortAsc((v) => !v)}>
-            {sortAsc ? '✓ 按截止日' : '按截止日排序'}
+          <button className={`btn sm ${sortAsc ? 'active' : 'ghost'}`} onClick={() => setSortAsc((v) => !v)}
+            title="按截止日升序排列">
+            截止日{sortAsc ? ' ↑' : ''}
           </button>
           <button className="btn outline sm" onClick={exportCsv}>导出</button>
         </div>
       </div>
 
       {view === 'day' && (
-        <div className="row wrap" style={{ gap: 8 }}>
-          <button className="btn ghost sm" onClick={() => navDate(-1)}>‹ 前一天</button>
-          <button className="btn ghost sm" onClick={() => setDate(today)}>今天</button>
-          <button className="btn ghost sm" onClick={() => navDate(1)}>后一天 ›</button>
-          <span className="badge neutral">{fmtDateCN(date)} {date === today && '· 今日'}</span>
+        <div className="date-nav">
+          <button className="btn sm ghost date-nav-arrow" onClick={() => navDate(-1)} aria-label="前一天">
+            <ChevronLeft size={16} />
+          </button>
+          <button className="btn sm ghost" onClick={() => setDate(today)}>今天</button>
+          <button className="btn sm ghost date-nav-arrow" onClick={() => navDate(1)} aria-label="后一天">
+            <ChevronRight size={16} />
+          </button>
+          <span className="date-nav-label">
+            {fmtDateCN(date)} {date === today && <em>今日</em>}
+          </span>
         </div>
       )}
       {view === 'month' && (
-        <div className="row wrap" style={{ gap: 8 }}>
-          <button className="btn ghost sm" onClick={() => setCalShift((v) => v - 1)}>‹ 上月</button>
-          <span className="badge neutral">{month.year} 年 {month.month} 月</span>
-          <button className="btn ghost sm" onClick={() => setCalShift((v) => v + 1)}>下月 ›</button>
-          <button className="btn ghost sm" onClick={() => { setCalShift(0); setDate(today) }}>本月</button>
+        <div className="date-nav">
+          <button className="btn sm ghost date-nav-arrow" onClick={() => setCalShift((v) => v - 1)} aria-label="上月">
+            <ChevronLeft size={16} />
+          </button>
+          <span className="date-nav-label">{month.year} 年 {month.month} 月</span>
+          <button className="btn sm ghost date-nav-arrow" onClick={() => setCalShift((v) => v + 1)} aria-label="下月">
+            <ChevronRight size={16} />
+          </button>
+          <button className="btn sm ghost" onClick={() => { setCalShift(0); setDate(today) }}>本月</button>
         </div>
       )}
 
       {view === 'day' && (
         groups && Object.keys(groups).length === 0 ? (
-          <Empty icon={<Target size={36} />} title="这一天没有任务" desc="点击右上角「新建任务」或「AI 生成」安排复习" />
+          <div className="card">
+            <Empty icon={<Target size={22} />} title="这一天没有任务" desc="点击右上角「新建任务」或「AI 生成」安排复习" />
+          </div>
         ) : (
           <div className="stack">
             {groups && Object.keys(groups).map((k) => {
@@ -343,7 +375,7 @@ export default function Tasks() {
               return (
                 <div key={k} className="card">
                   <div className="card-head">
-                    <div className="row" style={{ gap: 10 }}>
+                    <div className="row" style={{ gap: 'var(--space-3)' }}>
                       <SubTag subject={k} />
                       <span className="card-sub">{g.done}/{g.tasks.length} 完成</span>
                     </div>
@@ -355,18 +387,18 @@ export default function Tasks() {
                     {g.tasks.map((t) => (
                       <div key={t.id} className="list-row">
                         <span className="lr-ico" style={{ background: 'transparent' }}>
-                          <i style={{ width: 12, height: 12, borderRadius: '50%', display: 'block', background: t.done ? 'var(--green)' : 'var(--accent)' }} />
+                          <i style={{ width: 12, height: 12, borderRadius: '50%', display: 'block', background: t.done ? 'var(--success)' : 'var(--accent)' }} />
                         </span>
                         <div className="lr-main">
-                          <div className="lr-title" style={t.done ? { textDecoration: 'line-through', color: 'var(--ink-3)' } : undefined}>{t.title}</div>
+                          <div className="lr-title" style={t.done ? { textDecoration: 'line-through', color: 'var(--muted)' } : undefined}>{t.title}</div>
                           <div className="lr-meta">
                             {fmtDateCN(t.due)}
-                            {t.ai && <span className="badge accent" style={{ marginLeft: 8 }}><Brain size={12} /> AI 规划</span>}
+                            {t.ai && <span className="badge accent" style={{ marginLeft: 'var(--space-2)' }}><Brain size={12} /> AI 规划</span>}
                             {statusBadge(t)}
                           </div>
                         </div>
                         <div className="lr-actions">
-                          <button className="btn sm primary" onClick={() => onToggle(t.id)}>{t.done ? '撤销' : '完成'}</button>
+                          <button className={`btn sm ${t.done ? 'ghost' : 'tint'}`} onClick={() => onToggle(t.id)}>{t.done ? '撤销' : '完成'}</button>
                           <button className="btn sm ghost" onClick={() => onRemove(t.id)}>删除</button>
                         </div>
                       </div>
@@ -375,65 +407,32 @@ export default function Tasks() {
                 </div>
               )
             })}
-            {showInlineAdd && (
-              <div className="card">
-                <div className="card-body row wrap">
-                  <input
-                    type="text"
-                    className="input"
-                    style={{ flex: 1, minWidth: 220 }}
-                    placeholder="输入任务名称，回车添加..."
-                    value={inlineTitle}
-                    onChange={(e) => setInlineTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleInlineAdd()
-                      if (e.key === 'Escape') { setShowInlineAdd(false); setInlineTitle('') }
-                    }}
-                    autoFocus
-                  />
-                  <select className="select" style={{ width: 130 }} value={inlineSubject} onChange={(e) => setInlineSubject(e.target.value)}>
-                    <option value="major">专业课</option>
-                    <option value="english">英语</option>
-                    <option value="politics">政治</option>
-                    <option value="math">数学</option>
-                    <option value="other">其他</option>
-                  </select>
-                  <button className="btn primary" onClick={handleInlineAdd}>✓ 添加</button>
-                  <button className="btn ghost" onClick={() => { setShowInlineAdd(false); setInlineTitle('') }}>✕</button>
-                </div>
-              </div>
-            )}
           </div>
         )
       )}
 
       {view === 'week' && visibleTasks && (
-        <div className="grid-4">
+        <div className="week-agenda">
           {visibleTasks.days.map((d, i) => (
-            <div key={d.date} className="card">
-              <div className="card-head">
-                <div className="row" style={{ gap: 8 }}>
-                  <span className="ico sm blue">周{['一二三四五六日'][i]}</span>
-                  <span className="card-title">{parseDate(d.date).getDate()}</span>
-                </div>
-                {d.date === today && <span className="badge accent">今日</span>}
+            <div key={d.date} className={`week-day-row ${d.date === today ? 'is-today' : ''}`}>
+              <div className="week-day-label">
+                <span className="wd-name">周{'一二三四五六日'[i]}</span>
+                <span className="wd-date">{parseDate(d.date).getDate()}</span>
+                {d.date === today && <span className="wd-today">今天</span>}
               </div>
-              <div className="list">
-                {d.tasks.length === 0 && <div className="lr-meta" style={{ padding: '4px 2px' }}>无任务</div>}
-                {d.tasks.map((t) => (
-                  <div key={t.id} className="list-row">
-                    <span className="lr-ico" style={{ background: 'transparent' }}>
-                      <i style={{ width: 10, height: 10, borderRadius: '50%', display: 'block', background: t.done ? 'var(--green)' : 'var(--accent)' }} />
-                    </span>
-                    <div className="lr-main">
-                      <div className="lr-title" style={t.done ? { textDecoration: 'line-through', color: 'var(--ink-3)' } : undefined}>{t.title}</div>
-                      <div className="lr-meta">{subjectName(t.subject)}</div>
-                    </div>
-                    <div className="lr-actions">
-                      <button className="btn sm ghost" onClick={() => { setView('day'); setDate(d.date) }}>查看</button>
-                    </div>
-                  </div>
-                ))}
+              <div className="week-day-body">
+                {d.tasks.length === 0 ? (
+                  <span className="week-day-empty">无任务</span>
+                ) : (
+                  d.tasks.map((t) => (
+                    <button key={t.id} type="button" className="week-task"
+                      onClick={() => { setView('day'); setDate(d.date) }}>
+                      <i className={`wt-dot ${t.done ? 'done' : ''}`} />
+                      <span className={`wt-title ${t.done ? 'done' : ''}`}>{t.title}</span>
+                      <span className="wt-subject">{subjectName(t.subject)}</span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           ))}
@@ -452,7 +451,7 @@ export default function Tasks() {
                 <div key={d} className={`cal-cell ${d === today ? 'today' : ''} ${other ? 'other' : ''}`} onClick={() => { setView('day'); setDate(d) }}>
                   <div className="d">{parseDate(d).getDate()}</div>
                   <div className="cbar">
-                    {dayTasks.slice(0, 3).map((t) => <i key={t.id} style={{ background: t.done ? 'var(--green)' : 'var(--accent)', opacity: 0.8 }} />)}
+                    {dayTasks.slice(0, 3).map((t) => <i key={t.id} style={{ background: t.done ? 'var(--success)' : 'var(--accent)', opacity: 0.8 }} />)}
                   </div>
                   {dayTasks.length > 0 && <span className="cpct">{done}/{dayTasks.length}</span>}
                 </div>
@@ -465,53 +464,65 @@ export default function Tasks() {
       <Modal open={showAdd} title="新建任务" onClose={() => setShowAdd(false)}
         footer={<React.Fragment><button className="btn ghost" onClick={() => setShowAdd(false)}>取消</button><button className="btn primary" onClick={submitAdd}>保存</button></React.Fragment>}>
         <label>任务名称
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：英语真题 2018 Text4 精读" autoFocus />
+          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：英语真题 2018 Text4 精读" autoFocus ref={addTitleRef} />
         </label>
         <label>科目
-          <select className="input" value={subject} onChange={(e) => setSubject(e.target.value)}>
-            {SUBJECTS.map((s) => <option key={s.value} value={s.value}>{s.name}</option>)}
+          <select className="input" aria-label="新建任务科目" value={subject} onChange={(e) => setSubject(e.target.value)}>
+            <option value="">未分类</option>
+            {subjectChoices.map((s) => <option key={s} value={s}>{subjectName(s)}</option>)}
           </select>
+          {!subjectsReady && (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
+              科目配置未加载（后端不可用），可先留「未分类」，稍后在任务里补科目。
+            </div>
+          )}
         </label>
         <label>日期
           <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
       </Modal>
 
-      <Modal open={showAi} title="AI 生成任务" onClose={() => { setShowAi(false); setAiPlanText(null); }}
-        footer={(genTasks || aiPlanText) ? <React.Fragment><button className="btn ghost" onClick={() => { setGenTasks(null); setAiPlanText(null); }}>重新生成</button>{genTasks && <button className="btn primary" onClick={confirmImport}>确认导入</button>}</React.Fragment> : null}>
+      <Modal open={showAi} title="AI 生成任务" onClose={() => { setShowAi(false); setAiPlanText(null); setAiErr(''); }}
+        footer={(genTasks || aiPlanText) ? <React.Fragment><button className="btn ghost" onClick={() => { setGenTasks(null); setAiPlanText(null); setAiErr(''); }}>重新生成</button>{genTasks && <button className="btn primary" onClick={confirmImport}>确认导入</button>}</React.Fragment> : null}>
         {!genTasks && !aiPlanText && (
           <React.Fragment>
-            <label>主题（可选，留空则生成今日复习套餐）
+            <label>主题（可选，留空则按目标院校与待办数生成全科复习计划）
               <input className="input" value={aiTitle} onChange={(e) => setAiTitle(e.target.value)} placeholder="如：线性代数特征值强化" />
             </label>
             <button className="btn primary" onClick={submitAi}>生成复习计划</button>
+            {aiErr && (
+              <div className="inline-error" role="alert">
+                <AlertCircle size={14} /><span>{aiErr}</span>
+              </div>
+            )}
           </React.Fragment>
         )}
         {aiPlanText && (
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--ink-2)' }}>AI 生成的学习计划（文本）</div>
-            <pre style={{ background: 'var(--surface-2)', padding: 12, borderRadius: 8, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 300, overflowY: 'auto' }}>{aiPlanText}</pre>
-            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)', color: 'var(--fg-2)' }}>AI 生成的学习计划（文本）</div>
+            <pre style={{ background: 'var(--surface-2)', padding: 'var(--space-3)', borderRadius: 8, fontSize: 'var(--text-sm)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 300, overflowY: 'auto' }}>{aiPlanText}</pre>
+            <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}>
               <button className="btn ghost" onClick={() => navigator.clipboard.writeText(aiPlanText).then(() => toast('已复制到剪贴板'))}>复制全文</button>
               <button className="btn ghost" onClick={() => { setAiPlanText(null); }}>重新生成</button>
             </div>
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ink-3)' }}>提示：你可以复制计划内容，手动添加到任务列表中。后续版本将支持自动解析文本为任务。</div>
+            <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>提示：你可以复制计划内容，手动添加到任务列表中。后续版本将支持自动解析文本为任务。</div>
           </div>
         )}
         {genTasks && (
           <div className="list">
             {genTasks.map((g, i) => (
               <div key={i} className="list-row">
-                <span className="lr-ico" style={{ background: 'var(--violet-soft)', color: 'var(--violet)' }}><Brain size={16} /></span>
+                <span className="lr-ico" style={{ background: 'var(--info-soft)', color: 'var(--chart-5)' }}><Brain size={16} /></span>
                 <div className="lr-main">
                   <div className="lr-title">{g.title}</div>
-                  <div className="lr-meta"><SubTag subject={g.subject} /><span>AI 依据学科薄弱点规划</span></div>
+                  <div className="lr-meta"><SubTag subject={g.subject} /><span>后端 AI 生成，导入前请核对科目与题量</span></div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </Modal>
+      {dialog}
     </div>
   )
 }

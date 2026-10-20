@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { fmtBytes } from '../utils/format'
 import { documentsApi } from '../api/client'
-import { toast, Empty, Segmented } from '../components/UI'
+import { toast, toastOk, toastErr, Empty, Segmented } from '../components/UI'
+import { LoadingState } from '../components/States'
 import {
   RefreshCw, Folder, FileText, AlertCircle, ChevronDown, ChevronRight,
 } from '../components/Icon'
@@ -34,7 +36,7 @@ const STAGE_OPTIONS = [
 
 /* 内容性质（与后端 Document.content_type 取值一致；这是内容枚举，非科目数组） */
 const CONTENT_TYPE_OPTIONS = [
-  { value: '', label: '全部' },
+  { value: '', label: '全部性质' },
   { value: '知识', label: '知识' },
   { value: '试题', label: '试题' },
   { value: '单词', label: '单词' },
@@ -120,6 +122,17 @@ export default function Library() {
   const [preview, setPreview] = useState({ id: null, state: 'idle', text: '', note: '' })
   // openId 的镜像 ref：异步回调里读 state 会拿到渲染时的旧值，这里用 ref 取当前值
   const openIdRef = useRef(null)
+  // 正文预览容器：展开后若不在视口内，滚到可见位置，避免用户以为「点了没反应」
+  const previewBoxRef = useRef(null)
+
+  const scrollPreviewIntoView = () => {
+    requestAnimationFrame(() => {
+      const el = previewBoxRef.current
+      if (el) {
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) } catch (e) { /* ignore */ }
+      }
+    })
+  }
 
   /* 请求序号：快速连点筛选时丢弃过期响应，避免旧结果覆盖新结果 */
   const listSeq = useRef(0)
@@ -130,21 +143,30 @@ export default function Library() {
     setLoading(true)
     try {
       const data = await documentsApi.list(buildParams(stage, subject, contentType))
-      if (seq !== listSeq.current) return // 已过期，丢弃
+      if (seq !== listSeq.current) return false // 已过期，丢弃
       setItems(normalizeList(data))
       setStatus('ok')
       setErrMsg('')
+      return true
     } catch (e) {
-      if (seq !== listSeq.current) return
+      if (seq !== listSeq.current) return false
       setItems([])
       setErrMsg(e?.message || '未知错误')
       setStatus('error')
+      return false
     } finally {
       if (seq === listSeq.current) setLoading(false)
     }
   }, [stage, subject, contentType])
 
   useEffect(() => { loadList() }, [loadList])
+
+  /* 手动刷新：与筛选触发的自动加载区分开，只有用户点按钮才弹成败提示 */
+  const refreshList = async () => {
+    const ok = await loadList()
+    if (ok) toastOk('资料列表已刷新')
+    else toastErr('刷新失败，请检查后端服务后重试')
+  }
 
   /* ---------------- 计数请求（facet）（只在阶段变化时重拉，用于 chip 计数） ---------------- */
   useEffect(() => {
@@ -221,10 +243,12 @@ export default function Library() {
           ? `已解析 ${Number(r?.content_length) || text.length} 字${r?.truncated ? '（预览已截断）' : ''}`
           : (r?.message || '该资料尚未解析正文'),
       })
+      scrollPreviewIntoView()
     } catch (e) {
       if (openIdRef.current !== id) return
       setPreview({ id, state: 'error', text: '', note: e?.message || '正文加载失败' })
-      toast('正文加载失败：' + (e?.message || ''))
+      toastErr('正文加载失败：' + (e?.message || ''))
+      scrollPreviewIntoView()
     }
   }
 
@@ -286,8 +310,8 @@ export default function Library() {
     )
   }
 
-  const subjectLabel = subject || '全部'
-  const ctLabel = contentType || '全部'
+  const subjectLabel = subject || '全部科目'
+  const ctLabel = contentType || '全部性质'
 
   return (
     <div className="page">
@@ -298,7 +322,7 @@ export default function Library() {
           <div className="page-sub">初试 / 复试 · 科目 · 知识 / 试题 / 单词 三维检索 IMA 资料</div>
         </div>
         <div className="page-actions">
-          <button className="btn ghost" onClick={loadList} disabled={loading}>
+          <button className="btn ghost" onClick={refreshList} disabled={loading}>
             <RefreshCw size={15} /> 刷新
           </button>
         </div>
@@ -322,7 +346,7 @@ export default function Library() {
             className={`kb-chip ${subject === '' ? 'active' : ''}`}
             onClick={() => pickSubject('')}
           >
-            全部
+            全部科目
             {(facet.length > 0) && <small>{facet.length}</small>}
           </button>
           {subjectChips.map((name) => {
@@ -384,9 +408,10 @@ export default function Library() {
               title={`「${stage} · ${subjectLabel} · ${ctLabel}」下暂无资料`}
               desc={
                 facet.length === 0
-                  ? '当前阶段还没有 IMA 导入记录，可先在「网盘联动 / 文档知识库」导入资料。'
+                  ? '当前阶段还没有 IMA 导入记录，可先在「文档知识库」导入资料。'
                   : '数据里确实没有符合该组合的资料——换个科目或内容性质看看（例如「单词」目前仅有少量资料）。'
               }
+              action={<Link className="btn primary" to="/documents">去导入资料</Link>}
             />
           ) : (
             <div className="lb-list">
@@ -424,14 +449,14 @@ export default function Library() {
                     </div>
 
                     {open && (
-                      <div className="lb-preview">
+                      <div className="lb-preview" ref={previewBoxRef}>
                         <div className="lb-preview-head">
                           <span>正文预览</span>
                           <span>{d.file_type || ''}</span>
                           {d.summary ? <span>· {d.summary.slice(0, 60)}</span> : null}
                         </div>
                         {preview.id === d.id && preview.state === 'loading' && (
-                          <div className="loading-inline">正文加载中…</div>
+                          <LoadingState text="正文加载中…" rows={0} />
                         )}
                         {preview.id === d.id && preview.state !== 'loading' && (
                           <>
@@ -439,7 +464,7 @@ export default function Library() {
                               ? <div className="lb-preview-body">{preview.text}</div>
                               : <div className="lb-preview-empty">{preview.note || '暂无正文'}</div>}
                             {preview.text && preview.note && (
-                              <div className="lb-preview-head" style={{ marginTop: 8, marginBottom: 0 }}>
+                              <div className="lb-preview-head" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
                                 <span>{preview.note}</span>
                               </div>
                             )}
