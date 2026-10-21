@@ -65,6 +65,14 @@ from services.docx_formula import (  # noqa: E402
 )
 
 # 题干残缺的强特征（来自实测的 31 道题）
+# 解析里的公式缺口特征：「逗号 + 连词」说明中间丢了公式
+#     由知在x＝0处可导 / 即 又，故 / f（x）的在上单调上升
+ANALYSIS_GAP_PATTERN = re.compile(
+    r"[，,]\s*(又|则|故|即|得|知|有|且|因而|因此|所以|由|据)|"
+    r"[的了]\s*[，,．.]|"
+    r"[，,]\s*[，,]"
+)
+
 SUSPECT_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"设\s*则"), "设则"),
     (re.compile(r"则\s*在\s*[（(]"), "则在("),
@@ -121,6 +129,11 @@ def is_suspect(content: str) -> Optional[str]:
         if pat.search(c):
             return name
     return None
+
+
+def analysis_gaps(analysis: str) -> int:
+    """数一下解析里「像丢了公式」的地方有多少处。"""
+    return len(ANALYSIS_GAP_PATTERN.findall(analysis or ""))
 
 
 def _media_root() -> str:
@@ -212,24 +225,43 @@ def markers_in_range(marked: str, m_start: int, m_end: int) -> List[int]:
     return [int(m.group(1)) for m in MARKER_RE.finditer(marked, m_start, m_end)]
 
 
-def collect_targets(db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0) -> List[dict]:
+def collect_targets(
+    db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0, field: str = "both"
+) -> List[dict]:
+    """收集待修复的题。field: content=题干 / analysis=解析 / both。
+
+    **解析比题干更严重**：实测题干残缺 31 道（8%），而解析里有公式缺口的
+    有 215 道（56%）——解析读不通，题就白做了。
+    """
     from sqlalchemy import text as sqltext
 
     rows = db.execute(sqltext("""
-        select id, coalesce(subject,''), coalesce(content,''), coalesce(source_label,'')
+        select id, coalesce(subject,''), coalesce(content,''),
+               coalesce(analysis,''), coalesce(source_label,'')
         from quiz_questions
         where coalesce(source_label,'') <> ''
         order by source_label, id
     """)).fetchall()
     out: List[dict] = []
-    for qid, subj, content, label in rows:
+    for qid, subj, content, analysis, label in rows:
         if quiz_ids and qid not in quiz_ids:
             continue
-        feat = is_suspect(content)
+        feat = None
+        target_field = None
+        target_text = ""
+        if field in ("content", "both"):
+            feat = is_suspect(content)
+            if feat:
+                target_field, target_text = "content", content
+        if not feat and field in ("analysis", "both"):
+            n = analysis_gaps(analysis)
+            if n >= 1:
+                feat = f"解析缺口{n}"
+                target_field, target_text = "analysis", analysis
         if not feat:
             continue
-        out.append({"id": qid, "subject": subj, "content": content,
-                    "label": label, "feature": feat})
+        out.append({"id": qid, "subject": subj, "field": target_field,
+                    "text": target_text, "label": label, "feature": feat})
     if limit:
         out = out[:limit]
     return out
@@ -255,6 +287,11 @@ def main() -> int:
     ap.add_argument("--quiz-id", type=int, action="append", default=[])
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--apply", action="store_true", help="真写库（默认干跑）")
+    ap.add_argument(
+        "--field", choices=["content", "analysis", "both"], default="both",
+        help="修哪个字段：content=题干 / analysis=解析 / both（默认）。"
+             "解析里公式缺口实测有 215 道，比题干严重得多",
+    )
     ap.add_argument("--report", help="导出 JSON 报告")
     ap.add_argument("--show", type=int, default=15, help="最多打印多少条对比")
     args = ap.parse_args()
@@ -263,7 +300,7 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        targets = collect_targets(db, quiz_ids=args.quiz_id or None, limit=args.limit)
+        targets = collect_targets(db, quiz_ids=args.quiz_id or None, limit=args.limit, field=args.field)
         print(f"[修复] 疑似残缺题 {len(targets)} 道")
         if not targets:
             return 0
@@ -313,16 +350,16 @@ def main() -> int:
             wanted: set = set()
             cursor = 0
             for it in sorted(items, key=lambda x: x["id"]):
-                span = locate(al.plain, it["content"], norm_plain, norm_idx, expected_pos=cursor)
+                raw = it.get("text") or ""
+                span = locate(al.plain, raw, norm_plain, norm_idx, expected_pos=cursor)
                 if not span:
-                    sp = strip_rendered(it["content"])
-                    if sp and sp != it["content"]:
+                    sp = strip_rendered(raw)
+                    if sp and sp != raw:
                         span = locate(al.plain, sp, norm_plain, norm_idx, expected_pos=cursor)
                 if not span:
-                    sp = strip_rendered(it["content"])
+                    sp = strip_rendered(raw)
                     span = locate_by_prefix(
-                        al.plain, sp or it["content"], norm_plain, norm_idx,
-                        expected_pos=cursor,
+                        al.plain, sp or raw, norm_plain, norm_idx, expected_pos=cursor,
                     )
                 if not span:
                     it["status"] = "locate_failed"
@@ -365,8 +402,9 @@ def main() -> int:
                 it["markers"] = len(mids)
                 it["latex_ok"] = sum(1 for i in mids if i in latex_map)
                 it["status"] = "ok"
+                # 高置信度：补进了 LaTeX + 新文本比旧的长（说明公式真的填了）
                 it["high_confidence"] = (
-                    len(new_text) > len(it["content"]) and it["latex_ok"] > 0
+                    len(new_text) > len(it.get("text") or "") and it["latex_ok"] > 0
                 )
                 results.append(it)
 
@@ -376,10 +414,10 @@ def main() -> int:
 
         for r in high[: args.show]:
             print(
-                f"\n--- quiz {r['id']} [{r['subject']}] {r['feature']} "
+                f"\n--- quiz {r['id']} [{r['subject']}] {r['field']} {r['feature']} "
                 f"公式{r['latex_ok']}/{r['markers']} ---"
             )
-            print(f"  BEFORE: {r['content'][:110]!r}")
+            print(f"  BEFORE: {(r.get('text') or '')[:110]!r}")
             print(f"  AFTER : {r['candidate'][:170]!r}")
 
         if args.report:
@@ -393,15 +431,19 @@ def main() -> int:
 
             backup = create_backup()
             print(f"[修复] 已备份: {backup}")
-            n = 0
+            n_c = n_a = 0
             for r in high:
                 q = db.get(QuizQuestion, r["id"])
                 if not q:
                     continue
-                q.content = r["candidate"]
-                n += 1
+                if r["field"] == "analysis":
+                    q.analysis = r["candidate"]
+                    n_a += 1
+                else:
+                    q.content = r["candidate"]
+                    n_c += 1
             db.commit()
-            print(f"[修复] 已写库 {n} 道")
+            print(f"[修复] 已写库 题干 {n_c} 道 / 解析 {n_a} 道")
         elif high:
             print("[修复] 干跑结束，加 --apply 才会写库")
         return 0
