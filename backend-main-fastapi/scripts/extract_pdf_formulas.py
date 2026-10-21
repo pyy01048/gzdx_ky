@@ -99,6 +99,11 @@ def main() -> int:
     ap.add_argument("--crops", help="裁图输出目录")
     ap.add_argument("--report", help="JSON 报告输出路径")
     ap.add_argument("--quiet", action="store_true", help="只输出汇总")
+    ap.add_argument(
+        "--compose", action="store_true",
+        help="混排模式：把 LaTeX 插回正文正确位置（OCR 行骨架），而不是只出公式清单",
+    )
+    ap.add_argument("--save-text", help="把混排文本按页写成 .md 到该目录")
     args = ap.parse_args()
 
     from services.parsers.pdf_formula_extract import (
@@ -135,6 +140,52 @@ def main() -> int:
             continue
         out_dir = os.path.join(args.crops, str(t.get("doc_id") or "misc")) if args.crops else None
         t0 = time.time()
+
+        if args.compose:
+            from services.parsers.pdf_page_compose import compose_page_text
+
+            # 混排模式：逐页还原「文字 + LaTeX」，语序正确才谈得上回写正文
+            target_pages = pages if pages is not None else list(
+                range(args.max_pages if args.max_pages > 0 else 3)
+            )
+            composed = []
+            print(f"\n=== [混排] {t['name'][:60]} ===")
+            for pno in target_pages:
+                cr = compose_page_text(p, pno, dpi=args.dpi, min_score=args.min_score)
+                if cr.error:
+                    print(f"  第{pno + 1}页 失败: {cr.error}")
+                    continue
+                composed.append(cr)
+                print(
+                    f"  第{cr.page_no}页 元素{len(cr.elements)} "
+                    f"公式{cr.formula_count}/成功{cr.formula_ok} "
+                    f"骨架={cr.meta.get('compose_skeleton')} {cr.elapsed:.0f}s"
+                )
+                if not args.quiet:
+                    for line in cr.text.splitlines()[:10]:
+                        print("   ", line[:110])
+                if args.save_text:
+                    os.makedirs(args.save_text, exist_ok=True)
+                    fp = os.path.join(
+                        args.save_text,
+                        f"doc{t.get('doc_id') or 'misc'}_p{cr.page_no:04d}.md",
+                    )
+                    with open(fp, "w", encoding="utf-8") as fh:
+                        fh.write(cr.text)
+            tot_f = sum(c.formula_count for c in composed)
+            tot_ok = sum(c.formula_ok for c in composed)
+            print(
+                f"  [混排汇总] {len(composed)} 页 | 公式 {tot_f} 成功 {tot_ok} | "
+                f"{time.time() - t0:.0f}s"
+            )
+            reports.append({
+                "target": t,
+                "mode": "compose",
+                "seconds": round(time.time() - t0, 1),
+                "pages": [c.to_dict() for c in composed],
+            })
+            continue
+
         res = extract_pdf_formulas(
             p,
             pages=pages,
