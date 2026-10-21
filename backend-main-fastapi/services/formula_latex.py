@@ -185,6 +185,50 @@ def unknown_commands(latex: str) -> List[str]:
     return sorted({c for c in _CMD_RE.findall(latex or "") if c not in _KNOWN_CMDS})
 
 
+# ---- 语义级误识别 -------------------------------------------------------- #
+# 上面 latex_is_plausible 只管**结构**（空/CJK/括号）。这里管**语义**：
+# 结构完全合法、但数学意思已经错了的输出。这类比识别失败危险得多——
+# 识别失败会保留占位符（人能看到「这里缺东西」），而错误 LaTeX 会渲染成
+# 一个看起来正常的公式，读者不会怀疑它。
+#
+# 每一条都来自实测：
+#
+# 1) ``\prod`` + 微分元 —— 实测 quiz 352 的四个曲面积分：
+#        \prod _ { S } x ^ { 2 } d S ^ { 2 }        （真值 \iint_S x^2 dS）
+#        \prod \limits _ { \bar { S } } x ^ { 2 } d y d z ^ { 2 }
+#    多重积分号 ∬/∭ 竖排得很像 ∏。而连乘里**不会**出现 dx/dy/dz/dS，
+#    所以两者同时出现基本可以断定是误认。
+#
+# 2) 微分元带数字上标 ``dS^2`` / ``dz^2`` —— 考研题里不存在这种写法，
+#    是 ∬ 的两个圈被读成了上标。
+#
+# 3) 空的 ``\bar{}`` —— 典型的崩坏输出（``\prod_{\bar{s}}^{\bar{}} y dz dx^{\bar{}}``）。
+_SUSPECT_TEX: List[Tuple[re.Pattern, str]] = [
+    (re.compile(r"d\s*[xyzS]\s*\^\s*\{?\s*\d"), "微分元被多加上标"),
+    (re.compile(r"\\bar\s*\{\s*\}"), r"空 \bar{}"),
+]
+# 「\prod + 微分元」不能写成一条 `\prod[^\\]{0,60}?dx`：`\prod \limits _ { S } x d S`
+# 中间隔着 `\limits`，一遇反斜杠就断，实测漏判了 quiz 352 的 B/C/D 三个选项。
+# 公式本身很短，同时出现就足够判定，不必限制距离。
+_PROD_RE = re.compile(r"\\prod\b")
+_DIFF_RE = re.compile(r"(?<![A-Za-z\\])d\s*[xyzS]\b")
+
+
+def latex_suspect(latex: str) -> str:
+    """识别结果是否可判定**语义**不可信；可信返回空串。
+
+    与 :func:`latex_is_plausible` 互补：那个管结构，这个管意思。
+    返回非空时调用方应当**放弃这条 LaTeX**，改出原始公式图片或保留占位符。
+    """
+    t = latex or ""
+    if _PROD_RE.search(t) and _DIFF_RE.search(t):
+        return r"\prod 误认（应为多重积分）"
+    for pat, why in _SUSPECT_TEX:
+        if pat.search(t):
+            return why
+    return ""
+
+
 # ---- 图像预处理（对齐 MinerU processors.py） ----------------------------- #
 def _crop_margin(img: Image.Image) -> Image.Image:
     """裁掉公式图四周白边。

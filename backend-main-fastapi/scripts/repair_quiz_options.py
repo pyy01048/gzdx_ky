@@ -72,7 +72,12 @@ from services.docx_formula import (  # noqa: E402
     parse_docx_with_images,
     strip_markers,
 )
+# 语义级误识别门（\prod 误认多重积分、微分元被多加上标、空 \bar{}）
+# 放在 services 层是因为题干/解析那条链路也要用同一套判据——
+# 之前只有本脚本做这道检查，等于一半的公式没有语义校验。
+from services.formula_latex import latex_suspect  # noqa: E402
 from repair_quiz_stems import (  # noqa: E402
+    _ensure_web_png,
     _media_root,
     build_norm_index,
     locate,
@@ -94,40 +99,6 @@ SCAN_WINDOW = 18
 # 选项片段长度上限，超了说明片段跨到了别的内容
 MAX_OPTION_PLAIN = 200
 
-# 「识别结果不可信」的强特征。
-# 选项短、多数是纯公式，一次误认识别就把整题变成错误答案，所以这里比题干那条链
-# （latex_is_plausible 只拦空/残 CJK/括号不配对）严得多。
-#
-# 第一条来自实测 quiz 352：源题是 ∬ 的四个曲面积分，全部被识别成 \prod：
-#     \prod _ { S } x ^ { 2 } d S ^ { 2 }      ← 真值 \iint_S x^2 dS
-#     \prod \limits _ { \bar { S } } x ^ { 2 } d y d z ^ { 2 }
-# ∏ 是真符号（连乘），但**连乘里不会出现 dx/dy/dz/dS 这种微分元**；
-# 反过来多重积分号 ∬/∭ 竖排得很像 ∏。所以「\prod + 微分元」基本可以断定是误认。
-# 第二条：dS^2 / dz^2 这种「微分元带数字上标」在任何考研题里都不成立，
-# 是 ∬ 的两个圈被读成了上标。
-# 三条命中任何一条，这个公式就不出 LaTeX，改出图片——错的 LaTeX 比图片有害。
-_SUSPECT_TEX: List[Tuple[re.Pattern, str]] = [
-    (re.compile(r"d\s*[xyzS]\s*\^\s*\{?\s*\d"), "微分元被多加上标"),
-    (re.compile(r"\\bar\s*\{\s*\}"), r"空 \bar{}"),
-]
-
-# 「\prod + 微分元」的判定单独写：不能用一条 `\prod[^\\]{0,60}?dx` 的正则，
-# 因为 `\prod \limits _ { S } x d S` 中间隔着 `\limits`，一遇到反斜杠就断掉了，
-# 实测漏判了 quiz 352 的 B/C/D 三个选项（\prod \limits_{S} x dS^{\prime}）。
-# 公式本身很短，只要同时出现 \prod 和微分元就足够判定，不必限制距离。
-_PROD_RE = re.compile(r"\\prod\b")
-_DIFF_RE = re.compile(r"(?<![A-Za-z\\])d\s*[xyzS]\b")
-
-
-def latex_suspect(tex: str) -> str:
-    """识别结果是否可判定不可信；可信返回空串。"""
-    t = tex or ""
-    if _PROD_RE.search(t) and _DIFF_RE.search(t):
-        return r"\prod 误认（应为多重积分）"
-    for pat, why in _SUSPECT_TEX:
-        if pat.search(t):
-            return why
-    return ""
 
 
 def _line_starts(text: str) -> List[int]:
@@ -150,7 +121,8 @@ def _line_span(starts: List[int], text: str, i: int) -> Tuple[int, int]:
 
 
 def find_option_block(
-    text: str, starts: List[int], from_pos: int, *, window: int = SCAN_WINDOW
+    text: str, starts: List[int], from_pos: int, *, window: int = SCAN_WINDOW,
+    max_run_index: Optional[int] = None,
 ) -> Optional[List[Dict]]:
     """在 ``from_pos`` 之后找连续的 A/B/C/D 选项段。
 
@@ -158,13 +130,12 @@ def find_option_block(
     公式是图片，去掉占位符之后选项只剩标点，**没有**任何东西可以用来判断
     「这一段到哪儿为止」，只有在带占位符的文本上切才能拿到完整的公式序列。
 
-    返回 ``[{"key","start","end","text"}, ...]``，找不到返回 ``None``。
+    ``max_run_index``：只接受「A~D 这一串在命中序列里的起始下标不超过此值」的段。
+    默认 ``None``（不限制）。补全缺失选项时必须传 ``1`` 这类收紧值——
+    一道库里只有 A、B 两项的题，紧跟其后的**下一题**选项会产生
+    ``[A,B, A,B,C,D]`` 的命中序列，不收紧就会把下一题的选项当成自己的。
 
-    两种排版都要吃下：
-    * 四个选项各占一行（题库 docx 的主流写法）；
-    * 一行里并排 ``A．…  B．…  C．…  D．…``（部分真题排版）。
-    两者的区别只在「片段到哪儿为止」：同一行就切到下一个字母，
-    跨行就切到本行行尾——不然会把后面的「【答案】」也算进 D 选项。
+    返回 ``[{"key","start","end","text"}, ...]``，找不到返回 ``None``。
     """
     i0 = _line_of(starts, from_pos)
     hits: List[Tuple[str, int, int, int]] = []  # (key, 字母位置, 片段起点, 行号)
@@ -184,6 +155,8 @@ def find_option_block(
                 break
 
     for k in range(len(hits) - 3):
+        if max_run_index is not None and k > max_run_index:
+            continue
         if [hits[k + t][0] for t in range(4)] != ["A", "B", "C", "D"]:
             continue
         block: List[Dict] = []
@@ -202,6 +175,7 @@ def find_option_block(
                 "text": text[seg_start:seg_end],
             })
         if len(block) == 4:
+            block[0]["run_index"] = k
             return block
     return None
 
@@ -389,9 +363,13 @@ def main() -> int:
                         continue
                     # 图片 URL 对**每个**导出成功的公式都建：质量门判定识别不可信时
                     # 要能整题退图片，不能等到那时才发现没 URL
+                    # 白底 PNG：docx 里的公式图大量是透明底 .gif，直接当 <img>
+                    # 用在深色背景上会变成「黑底黑字」，而且 Windows 下 .gif 的
+                    # MIME 映射来自注册表，不一定可靠。统一转格式后再写 URL。
+                    usable = _ensure_web_png(img.out_path)
                     url = (
                         f"/media/images/quiz_option/{d.id}/"
-                        f"{os.path.basename(img.out_path)}"
+                        f"{os.path.basename(usable)}"
                     )
                     if args.no_image_fallback:
                         url = ""

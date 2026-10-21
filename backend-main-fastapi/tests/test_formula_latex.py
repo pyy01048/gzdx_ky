@@ -31,6 +31,7 @@ from services.formula_latex import (
     _img_decode,
     _normalize,
     latex_is_plausible,
+    latex_suspect,
     unknown_commands,
 )
 
@@ -331,3 +332,63 @@ def test_formula_result_defaults():
     assert r.confidence is None
     assert r.extra == {}
     assert r.to_dict()["elapsed"] == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# 1b. 语义级误识别校验（latex_suspect）
+#
+# 与 latex_is_plausible 互补：那个管**结构**（空/CJK/括号不配对），这个管**意思**。
+# 结构合法但意思错了最危险——它会渲染成一个看起来正常的公式，
+# 读者不会怀疑；而识别失败留下的占位符至少人一眼看得出「这里缺东西」。
+# --------------------------------------------------------------------------- #
+class TestLatexSuspect:
+    @pytest.mark.parametrize(
+        "tex,why_part",
+        [
+            # 实测 quiz 352：源题是 ∬ 的四个曲面积分，全被识别成 \prod
+            (r"\prod _ { S } x ^ { 2 } d S ^ { 2 }", "prod"),
+            (r"\prod \limits _ { S } x d S ^ { \prime }", "prod"),
+            (r"\prod \limits _ { \bar { S } } x ^ { 2 } d y d z ^ { 2 }", "prod"),
+            (r"\prod _ { \bar { s } } ^ { \bar { } } y d z d x ^ { \bar { } }", "prod"),
+            # 微分元带数字上标：∬ 的两个圈被读成了上标
+            (r"x ^ { 2 } d z ^ { 2 }", "上标"),
+            (r"\int f d x ^ { 2 }", "上标"),
+            # 空的 \bar{}
+            (r"y \bar { } + z", "bar"),
+        ],
+    )
+    def test_flags_semantically_wrong(self, tex, why_part):
+        why = latex_suspect(tex)
+        assert why, f"应判为不可信: {tex}"
+        assert why_part in why
+
+    @pytest.mark.parametrize(
+        "tex",
+        [
+            # 真正的多重积分：不能被误杀
+            r"\iint \limits _ { S } x d y d z",
+            r"\iiint \limits _ { \Omega } f d V",
+            r"\oint _ { L } P d x + Q d y",
+            # 真正的连乘：没有微分元，不能被误杀
+            r"\prod _ { k = 1 } ^ { n } a _ { k }",
+            r"\prod \limits _ { i = 1 } ^ { m } ( 1 + x _ { i } )",
+            # 常见正确输出
+            r"\dot { U } = 2 2 0 \angle 0 ^ { \circ } V",
+            r"\lim _ { x \to 1 } \frac { x ^ { 2 } + x } { x ^ { 2 } - 1 } = \infty",
+            r"F ^ { \prime } ( x ) = f ( x )",
+            # d 前面是反斜杠（\dot / \delta）时不算微分元
+            r"\dot { x } + \delta y",
+            "",
+        ],
+    )
+    def test_accepts_correct(self, tex):
+        assert latex_suspect(tex) == "", f"不应判为不可信: {tex}"
+
+    def test_prod_without_differential_is_fine(self):
+        r"""回归：``\prod`` 单靠一个反斜杠后的 ``\limits`` 就漏判过。
+
+        最初写成一条 ``\prod[^\\]{0,60}?d\s*[xyzS]\b``，遇到
+        ``\prod \limits _ { S } x d S`` 时一撞上 ``\limits`` 就断掉，
+        实测 quiz 352 的 B/C/D 三个选项全部漏判。
+        """
+        assert latex_suspect(r"\prod \limits _ { S } x d S ^ { \prime }") != ""

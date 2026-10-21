@@ -89,6 +89,10 @@ _FW_SPACE = "　"
 # 已渲染过的标记（重复修复时用）
 _RENDERED_IMG_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _RENDERED_TEX_RE = re.compile(r"\${1,2}[^$]*\${1,2}")
+# 旧管线留下的公式占位符。**必须一起剥掉**：解析里有 32 道题就是带着
+# `[[F:5230]]` 这种原始占位符入库的，拿它原文去 docx 里找当然找不到，
+# 结果是「定位成功 218 / 写库 154」里被漏掉的那批。
+_MARKER_ONLY_RE = re.compile(r"\[\[F:\d+\]\]")
 
 
 def norm(text: str) -> str:
@@ -96,9 +100,10 @@ def norm(text: str) -> str:
 
 
 def strip_rendered(text: str) -> str:
-    """剥掉已写入的 LaTeX/图片标记，还原成原文形态（支持重复修复）。"""
+    """剥掉已写入的 LaTeX/图片标记/旧占位符，还原成原文形态（支持重复修复）。"""
     t = _RENDERED_IMG_RE.sub("", text or "")
     t = _RENDERED_TEX_RE.sub("", t)
+    t = _MARKER_ONLY_RE.sub("", t)
     return t
 
 
@@ -139,6 +144,70 @@ def analysis_gaps(analysis: str) -> int:
 def _media_root() -> str:
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, "data", "storage", "images")
+
+
+# 能直接给浏览器用的位图格式。docx 里的公式图大量是 `.gif`（透明底），
+# 甚至偶尔是 `.wmf`——直接把这些文件名写进 `![](...)` 有两个坑：
+#   1. 透明底在深色背景上会变成「黑底黑字」，看不见；
+#   2. Windows 下 `.gif` 的 MIME 映射来自注册表，不一定可靠，
+#      实测 `.js` 就曾被返回成 text/plain（见 main.py 里那段 MIME 补钉）。
+# 所以退图片之前统一转成**白底 PNG**，格式与 MIME 都确定。
+#
+# 注意 `.png` **不能**直接放行：Word 里另存出来的公式图很多就是 PNG，
+# 但带 alpha 通道、底色全透明（实测 quiz_option/37 下 6 张、
+# quiz_stem/88 下 3 张 alpha 最小值为 0）。这种图在浅色页面看着正常，
+# 一旦用户开深色模式就是「黑底黑字」——和 GIF 是同一个坑。
+_OPAQUE_EXTS = frozenset({".jpg", ".jpeg"})
+# 透明底压平后的文件名后缀。加后缀而不是原地覆盖，
+# 是为了保留原始字节以便回溯（原始图可能是唯一的证据）。
+_FLAT_SUFFIX = "_w"
+
+
+def _needs_flatten(path: str) -> bool:
+    """图片是否带透明区域（存在 alpha 通道且最小 alpha < 250）。"""
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            if im.mode not in ("RGBA", "LA", "PA") and "transparency" not in im.info:
+                return False
+            alpha = im.convert("RGBA").split()[-1]
+            return alpha.getextrema()[0] < 250
+    except Exception:  # noqa: BLE001 - 判断不了就当作不需要处理
+        return False
+
+
+def _ensure_web_png(path: str) -> str:
+    """把公式图换成「浏览器一定能正确显示」的格式，返回可用的路径。
+
+    * ``.jpg/.jpeg``：不透明，原样返回；
+    * ``.png`` 且不透明：原样返回；
+    * ``.png`` 带透明、``.gif``、其它（含 ``.wmf`` 之外的少见位图）：
+      压平到白底后另存为 ``<stem>_w.png`` 并返回该路径。
+
+    失败一律原样返回——**宁可显示一张可能有透明问题的图，也不能因为转格式
+    把公式弄丢**（占位符已经是最后一道兜底，不该被格式问题提前触发）。
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext in _OPAQUE_EXTS:
+        return path
+    if ext == ".png" and not _needs_flatten(path):
+        return path
+    try:
+        from PIL import Image
+
+        stem, _ = os.path.splitext(path)
+        out = stem + _FLAT_SUFFIX + ".png"
+        if os.path.exists(out):
+            return out
+        with Image.open(path) as im:
+            rgba = im.convert("RGBA")
+            bg = Image.new("RGB", rgba.size, (255, 255, 255))
+            bg.paste(rgba, mask=rgba.split()[-1])
+            bg.save(out, "PNG")
+        return out
+    except Exception:  # noqa: BLE001 - 转不了就退回原图，不能因此丢公式
+        return path
 
 
 def build_norm_index(plain: str) -> Tuple[str, List[int]]:
@@ -226,12 +295,18 @@ def markers_in_range(marked: str, m_start: int, m_end: int) -> List[int]:
 
 
 def collect_targets(
-    db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0, field: str = "both"
+    db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0,
+    field: str = "both", only_marker: bool = False,
 ) -> List[dict]:
     """收集待修复的题。field: content=题干 / analysis=解析 / both。
 
-    **解析比题干更严重**：实测题干残缺 31 道（8%），而解析里有公式缺口的
-    有 215 道（56%）——解析读不通，题就白做了。
+    **解析比题干更严重**：实测题干残缺 31 道（8%），而解析里有公式缺口
+    的有 215 道（56%）——解析读不通，题就白做了。
+
+    ``only_marker=True`` 只收「文本里还留着 ``[[F:n]]`` 原始占位符」的题。
+    这类题的公式是旧管线**原样留下**的（前端显示成醒目小标记），混在
+    ``analysis_gaps`` 那上百道泛泛的「逗号+连词」里根本筛不出来，
+    单独一个开关才能一次清干净。
     """
     from sqlalchemy import text as sqltext
 
@@ -250,14 +325,28 @@ def collect_targets(
         target_field = None
         target_text = ""
         if field in ("content", "both"):
-            feat = is_suspect(content)
-            if feat:
-                target_field, target_text = "content", content
+            marker_hit = bool(_MARKER_ONLY_RE.search(content))
+            if only_marker:
+                if marker_hit:
+                    feat = "题干含占位符"
+                    target_field, target_text = "content", content
+            else:
+                feat = is_suspect(content)
+                if not feat and marker_hit:
+                    # 旧管线把占位符原样留在了题干里，前端会显示成醒目小标记
+                    feat = "题干含占位符"
+                if feat:
+                    target_field, target_text = "content", content
         if not feat and field in ("analysis", "both"):
-            n = analysis_gaps(analysis)
-            if n >= 1:
-                feat = f"解析缺口{n}"
+            marker_hit = bool(_MARKER_ONLY_RE.search(analysis))
+            if marker_hit:
+                feat = "解析含占位符"
                 target_field, target_text = "analysis", analysis
+            elif not only_marker:
+                n = analysis_gaps(analysis)
+                if n >= 1:
+                    feat = f"解析缺口{n}"
+                    target_field, target_text = "analysis", analysis
         if not feat:
             continue
         out.append({"id": qid, "subject": subj, "field": target_field,
@@ -292,6 +381,14 @@ def main() -> int:
         help="修哪个字段：content=题干 / analysis=解析 / both（默认）。"
              "解析里公式缺口实测有 215 道，比题干严重得多",
     )
+    ap.add_argument(
+        "--only-marker", action="store_true",
+        help="只处理文本里还留着 [[F:n]] 原始占位符的题（旧管线漏渲染的那批）",
+    )
+    ap.add_argument(
+        "--no-image-fallback", action="store_true",
+        help="识别失败时不要退回公式图片，只保留 [[F:n]] 占位符",
+    )
     ap.add_argument("--report", help="导出 JSON 报告")
     ap.add_argument("--show", type=int, default=15, help="最多打印多少条对比")
     args = ap.parse_args()
@@ -300,12 +397,15 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        targets = collect_targets(db, quiz_ids=args.quiz_id or None, limit=args.limit, field=args.field)
+        targets = collect_targets(
+            db, quiz_ids=args.quiz_id or None, limit=args.limit,
+            field=args.field, only_marker=args.only_marker,
+        )
         print(f"[修复] 疑似残缺题 {len(targets)} 道")
         if not targets:
             return 0
 
-        from services.formula_latex import get_recognizer
+        from services.formula_latex import get_recognizer, latex_suspect
 
         rec = get_recognizer()
         if not rec.available:
@@ -379,32 +479,75 @@ def main() -> int:
             res2 = parse_docx_with_images(d.file_path, out_dir=out_dir, only_indices=wanted)
             images = {i.index: i for i in res2.images}
             latex_map: Dict[int, str] = {}
+            img_url: Dict[int, str] = {}
             for idx in sorted(wanted):
                 img = images.get(idx)
                 if not img or not img.out_path:
                     continue
+                # 图片 URL 对**每个**导出成功的公式都建：识别不出来时要能退回图片，
+                # 不能等到那时才发现没 URL
+                if not args.no_image_fallback:
+                    usable = _ensure_web_png(img.out_path)
+                    img_url[idx] = (
+                        f"/media/images/quiz_stem/{d.id}/"
+                        f"{os.path.basename(usable)}"
+                    )
                 r = rec.recognize(img.out_path)
                 if r.ok and r.latex:
-                    latex_map[idx] = sanitize_latex(r.latex)
+                    tex = sanitize_latex(r.latex)
+                    # 语义级门：结构合法但意思已经错了（实测 ∬ 被认成 \prod、
+                    # 微分元被多加上标）。这类**不能**写进库——识别失败会留下
+                    # [[F:n]] 占位符，人一眼看得出「这里缺东西」；错误 LaTeX
+                    # 却渲染成一个看起来正常的公式，读者不会怀疑。
+                    if latex_suspect(tex):
+                        continue
+                    latex_map[idx] = tex
 
             for it, m_start, m_end, mids in plans:
                 part = al.marked[m_start:m_end]
 
-                def _repl(m, _latex=latex_map):
+                def _repl(m, _latex=latex_map, _img=img_url):
                     idx = int(m.group(1))
                     tex = (_latex.get(idx) or "").strip()
                     if tex:
                         return f"${tex}$"
-                    return m.group(0)  # 识别失败保留占位符，前端显示为 ƒ
+                    url = _img.get(idx)
+                    if url:
+                        # 识别不出来但图在：退回**图片**。前端 MathText 支持
+                        # `![alt](url)`，公式照样看得见，而且一定与原题一致。
+                        # 比留一个 `[[F:n]]` 标记（前端渲染成 ƒ）好得多。
+                        return f"![公式]({url})"
+                    return m.group(0)  # 连图都没有：保留占位符，不静默丢掉
 
                 new_text = MARKER_RE.sub(_repl, part).strip()
                 it["candidate"] = new_text
                 it["markers"] = len(mids)
                 it["latex_ok"] = sum(1 for i in mids if i in latex_map)
+                it["img_ok"] = sum(1 for i in mids if i in img_url and i not in latex_map)
                 it["status"] = "ok"
-                # 高置信度：补进了 LaTeX + 新文本比旧的长（说明公式真的填了）
+                # 高置信度：**定位到的公式基本都识别出来了**。
+                #
+                # 原来这里写的是「新文本比旧的长」，那是给「题干/解析里公式整块缺失」
+                # 那条路用的（加进去的 LaTeX 必然更长）。修占位符时这条判据是错的：
+                # 旧文本里的 `[[F:5216]]` 有 10 个字符，识别成功会变成 `$x$` 只有 3 个
+                # 字符，**修得越准反而越短**，于是 33 道里 30 道被误杀。
+                #
+                # 改按「解决率」判：剩下没识别出来的保留 `[[F:n]]` 原样
+                # （前端渲染成醒目小标记，对人可见），不假装修好，也不整篇丢弃。
+                #
+                # 修占位符时门槛可以低到 0.5：旧文本本来就是一堆占位符，
+                # 修掉一半、留一半，对读者也是**严格变好**——没有任何损失可能。
+                # 修「公式整块缺失」的题干/解析则必须 0.9，因为那种文本原本
+                # 是通顺的散文，塞错东西会把句子搞坏。
+                #
+                # 退图片也算「解决」：图片一定与原题一致，只是不可检索。
+                min_rate = 0.5 if args.only_marker else 0.9
+                solved = it["latex_ok"] + it["img_ok"]
+                rate = (solved / it["markers"]) if it["markers"] else 0.0
                 it["high_confidence"] = (
-                    len(new_text) > len(it.get("text") or "") and it["latex_ok"] > 0
+                    it["markers"] > 0
+                    and rate >= min_rate
+                    and norm(new_text) != norm(it.get("text") or "")
                 )
                 results.append(it)
 
