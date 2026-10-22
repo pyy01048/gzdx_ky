@@ -236,6 +236,58 @@ class TestKnowledgeLinksAreReal:
         assert kp_extra.id in by_id
         assert by_id[kp_extra.id]["source"] == "keyword_match"
 
+    def test_auto_link_negative_chunk_id_sanitized(self, db):
+        """P0 回归：hybrid_search 对 knowledge_point 返回负编码 chunk_id
+        （-100000 - point_id）、document_id 为 0 占位时，落库
+        error_knowledge_links 不得违反外键约束 —— chunk_id/document_id
+        必须被置空，submit_answer 不再 500。
+        """
+        from unittest.mock import patch
+
+        err = ErrorRecord(
+            content="测试-孤立考点XYZ", subject=SUBJECT,
+            error_reason="答题错误", user_id=0, status="active",
+        )
+        db.add(err)
+        db.commit()
+        db.refresh(err)
+
+        # 知识点名与错题正文不同子串，避免被 _named_hits 提前截胡，
+        # 从而走到 hybrid_search 分支复现负 chunk_id 路径。
+        kp = KnowledgePoint(name="测试-考点XYZ", subject=SUBJECT, mastery=0)
+        db.add(kp)
+        db.commit()
+        db.refresh(kp)
+
+        fake_results = [{
+            "chunk_id": -100000 - kp.id,
+            "document_id": 0,
+            "subject": SUBJECT,
+            "content": f"【知识点】{kp.name}",
+            "document_title": "",
+            "doc_name": "",
+            "score": 0.5,
+            "source_type": "knowledge_point",
+            "point_name": kp.name,
+        }]
+
+        with patch(
+            "services.search_service.hybrid_search",
+            return_value=fake_results,
+        ):
+            created = error_linker.auto_link_error(db, err, top_k=3, commit=True)
+
+        # 关联应建立（负 chunk_id 不阻断挂知识点）
+        assert created, "auto_link_error 应建立至少一条知识点关联"
+        link = db.query(ErrorKnowledgeLink).filter(
+            ErrorKnowledgeLink.error_id == err.id
+        ).first()
+        assert link is not None
+        assert link.knowledge_point_id == kp.id
+        # 外键列必须被置空：负编码/0 占位直接落库会违反 FK 约束
+        assert link.chunk_id is None
+        assert link.document_id is None
+
     def test_items_carry_three_state_label(self, client, db):
         # mastery 是派生列（触发器无条件覆盖手写值）—— 直接写 80 无效，
         # 必须用真实学习记录（review_records）+ touch 让视图算出掌握度。

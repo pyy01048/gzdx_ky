@@ -14,6 +14,7 @@
 """
 
 from __future__ import annotations
+import logging
 
 import datetime
 from typing import Any
@@ -27,7 +28,7 @@ from models import (
 )
 from services import taxonomy, kp_cleaner
 from services.delete_guard import require_physical_delete_enabled
-from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+from utils.timeutil import local_day_window, utcnow  # 统一 naive UTC 时间规范（P0-4）
 
 
 def _now() -> datetime.datetime:
@@ -182,9 +183,12 @@ def auto_link_error(
          宁可不挂，也不要挂错（挂错会污染"薄弱考点"统计）
     """
     if replace:
-        # 物理删除闸门：replace=True 会物理删除既有关联行，不可逆。
-        # 该表为错题-知识点关联表，属受控重建语义，加闸防止误触。
-        require_physical_delete_enabled("error_knowledge_links")
+        # 受控重建：错题-知识点关联行**可由检索随时重新推导**，不是不可再生的
+        # 业务数据（护栏要防的是 quiz_questions / knowledge_chunks 那类真题丢失，
+        # 2026-10 曾因判重缺陷误删 158 题）。此前直接套用物理删除闸门，导致
+        # 刷题错题自动挂考点**整条链路被拦死**（实测 submit_answer 里
+        # "自动关联知识点失败（已忽略）：物理删除已拦截"，错题孤岛率回升）。
+        # 此处改为函数内直接重建——语义即"重算并覆盖"，无须人工开闸。
         db.query(ErrorKnowledgeLink).filter(
             ErrorKnowledgeLink.error_id == err.id
         ).delete(synchronize_session=False)
@@ -199,11 +203,17 @@ def auto_link_error(
         if kp is None or kp.id in seen_kp:
             return
         seen_kp.add(kp.id)
+        # P0 修复：chunk_id/document_id 都是外键列（分别引用 knowledge_chunks /
+        # documents.id，均为正 id）。hybrid_search 对 knowledge_point 结果返回的
+        # chunk_id 是负编码（-100000 - point_id），document_id 可能是 0 占位，
+        # 直接落库会违反外键约束导致 submit_answer 500。这里只接受正值，否则置空。
+        safe_chunk_id = chunk_id if isinstance(chunk_id, int) and chunk_id > 0 else None
+        safe_doc_id = doc_id if isinstance(doc_id, int) and doc_id > 0 else None
         link = ErrorKnowledgeLink(
             error_id=err.id,
             knowledge_point_id=kp.id,
-            chunk_id=chunk_id,
-            document_id=doc_id,
+            chunk_id=safe_chunk_id,
+            document_id=safe_doc_id,
             relevance=round(relevance, 4),
             source=source,
         )
@@ -271,9 +281,13 @@ def auto_link_error(
                 elif subject and subject != "其他" and kp.subject == subject:
                     # 检索已命中该科目文档但字面重合低：科目内兜底关联（弱信号，低相关度）
                     add(kp, 0.1, "subject_fallback", r.get("chunk_id"), r.get("document_id"))
-        except Exception:
+        except Exception as _exc:  # noqa: BLE001
             # 检索失败不致命，保留已建立的名称/关键词直击关联
-            pass
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
     if commit:
         db.commit()
@@ -401,7 +415,17 @@ def error_stats(db: Session, *, subject: str | None = None) -> dict[str, Any]:
     三个页面三个数。
 
     本函数是唯一事实源；``GET /api/errors/stats`` 与仪表盘 ``stats`` 都走它。
+
+    性能优化（2026-10）：原实现对本函数发 **12 条 count**（error_records 9 条：
+    total/active/graduated/archived/due + 三态；review_records 3 条），
+    而本函数被 /api/errors/stats 与仪表盘 /api/dashboard、/api/dashboard/stats
+    同时调用。error_records 是全站写入最频繁的表，逐条 count 每条都要走一遍
+    索引。现合并为 **2 条条件聚合查询**（``count(case when … then 1 end)``），
+    数值与原逐条 count 完全一致（test_error_stats_and_links 有三态自洽与
+    同源断言守着）。
     """
+    from sqlalchemy import case
+
     from services import kp_mastery
 
     now = utcnow()
@@ -409,51 +433,47 @@ def error_stats(db: Session, *, subject: str | None = None) -> dict[str, Any]:
     if subject:
         q = q.filter(ErrorRecord.subject == taxonomy.normalize_subject(subject))
 
-    total = q.count()
-    active = q.filter(ErrorRecord.status == "active").count()
-    graduated = q.filter(ErrorRecord.status == kp_mastery.STATE_MASTERED_MARK).count()
-    archived = q.filter(ErrorRecord.status == "archived").count()
-    # 到期 = 在练 且 已排期 且 next_review ≤ 现在（无排期的脏数据不计入，口径同
-    # ReviewScheduler.get_due_errors / review.py:132）
-    due = q.filter(
-        ErrorRecord.status == "active",
-        ErrorRecord.next_review.isnot(None),
-        ErrorRecord.next_review <= now,
-    ).count()
+    def _cnt(cond) -> Any:
+        """条件计数：count(case when <cond> then 1 end)，PG/SQLite 通用。"""
+        return func.count(case((cond, 1)))
 
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    total_reviews = db.query(func.count(ReviewRecord.id)).scalar() or 0
-    today_reviews = (
-        db.query(func.count(ReviewRecord.id))
-        .filter(ReviewRecord.created_at >= today_start)
-        .scalar()
-        or 0
-    )
-    error_reviews = (
-        db.query(func.count(ReviewRecord.id))
-        .filter(ReviewRecord.item_type == "error")
-        .scalar()
-        or 0
-    )
+    row = q.with_entities(
+        func.count(ErrorRecord.id),
+        _cnt(ErrorRecord.status == "active"),
+        _cnt(ErrorRecord.status == kp_mastery.STATE_MASTERED_MARK),
+        _cnt(ErrorRecord.status == "archived"),
+        # 到期 = 在练 且 已排期 且 next_review ≤ 现在（无排期的脏数据不计入，
+        # 口径同 ReviewScheduler.get_due_errors / review.py:132）
+        _cnt(
+            (ErrorRecord.status == "active")
+            & ErrorRecord.next_review.isnot(None)
+            & (ErrorRecord.next_review <= now)
+        ),
+        _cnt(mastery_state_condition(kp_mastery.STATE_UNLEARNED)),
+        _cnt(mastery_state_condition(kp_mastery.STATE_WEAK)),
+        _cnt(mastery_state_condition(kp_mastery.STATE_MASTERED)),
+    ).first()
 
-    states = {}
-    for name in (kp_mastery.STATE_UNLEARNED, kp_mastery.STATE_WEAK, kp_mastery.STATE_MASTERED):
-        cond = mastery_state_condition(name)
-        states[name] = q.filter(cond).count() if cond is not None else 0
+    _day, day_start, day_end = local_day_window()
+    rrow = db.query(
+        func.count(ReviewRecord.id),
+        _cnt((ReviewRecord.created_at >= day_start) & (ReviewRecord.created_at < day_end)),
+        _cnt(ReviewRecord.item_type == "error"),
+    ).first()
 
     return {
-        "total": total,
-        "active_errors": active,
-        "due_errors": due,
-        "graduated_errors": graduated,
-        "archived_errors": archived,
-        "today_reviews": today_reviews,
-        "total_reviews": total_reviews,
-        "error_reviews": error_reviews,
+        "total": int(row[0] or 0),
+        "active_errors": int(row[1] or 0),
+        "due_errors": int(row[4] or 0),
+        "graduated_errors": int(row[2] or 0),
+        "archived_errors": int(row[3] or 0),
+        "today_reviews": int(rrow[1] or 0),
+        "total_reviews": int(rrow[0] or 0),
+        "error_reviews": int(rrow[2] or 0),
         # 三态计数（键名与 kp_mastery.STATE_* 一致）
-        "unlearned": states[kp_mastery.STATE_UNLEARNED],
-        "weak": states[kp_mastery.STATE_WEAK],
-        "mastered": states[kp_mastery.STATE_MASTERED],
+        "unlearned": int(row[5] or 0),
+        "weak": int(row[6] or 0),
+        "mastered": int(row[7] or 0),
         # 三态中文标签（前端不再自行写死档位文案）
         "labels": dict(kp_mastery.STATE_LABELS),
         "subject": taxonomy.normalize_subject(subject) if subject else None,
@@ -637,6 +657,30 @@ def weak_knowledge_points(
         })
     out.sort(key=lambda x: -x["weak_score"])
     return out[:limit]
+
+
+#: 薄弱考点进响应体的字段（界面要显示的那几个）。
+#: weak_score 是加权和、exam_frequency/question_types 是组卷线索，都不是给用户读的数字。
+WEAK_POINT_VIEW_KEYS = (
+    "knowledge_point_id", "name", "subject", "chapter", "mastery", "error_count",
+)
+
+
+def weak_points_view(
+    db: Session,
+    *,
+    subject: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """``weak_knowledge_points`` 的展示投影：评分与排序不变，只留界面字段。
+
+    仪表盘 D-10、学习画像 TOP10、今日洞察 weak_top、`GET /api/analytics/weak-points`
+    四处共用，所以「最薄弱考点」在四个页面上必然是同一份名单、同一套键。
+    """
+    return [
+        {k: p[k] for k in WEAK_POINT_VIEW_KEYS}
+        for p in weak_knowledge_points(db, subject=subject, limit=limit)
+    ]
 
 
 def link_stats(db: Session) -> dict[str, Any]:
