@@ -1,4 +1,4 @@
-﻿"""网盘路由。"""
+"""网盘路由。"""
 
 import datetime
 from typing import Optional
@@ -9,7 +9,7 @@ import httpx
 import mimetypes
 from urllib.parse import unquote, quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,10 @@ from models import NetdiskFile, PlatformConfig, Document
 from services.doc_naming import apply_display_name
 from services.smart_ingest import gate_for_write
 from services.netdisk_service import NetdiskService, NetdiskError, NetdiskAuthError
+from utils.secret_codec import scrub_extra, seal_extra, unseal_extra
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/netdisk", tags=["netdisk"])
 
@@ -45,21 +48,32 @@ def _netdisk_http_error(e: Exception) -> HTTPException:
     """把网盘异常翻译成带人话提示的 HTTP 错误。
 
     映射原则：**按"调用方该做什么"定状态码**，而不是按"上游返回了什么"。
-      * 授权失效 → 401 + action=reauthorize（前端跳授权页）
+      * 授权失效 → 409 + action=reauthorize（前端跳授权页）
       * 资源不存在 → 404（前端显示"文件不存在"）
       * 其余上游错误 → 502（确实是网关式失败）
+
+    2026-10-18 修正：授权失效从 401 改为 **409**。
+    401 是 HTTP 认证状态码，前端 request 层对它执行"刷新 token 后重试"
+    的全局 session 修复逻辑（client.js）。而网盘授权失效与用户 session
+    无关——首屏 hydrate 会顺带拉 /netdisk/files，未绑网盘时 401 会被
+    误判为登录过期：refresh 成功→重试→再 401→auth:required 事件→
+    整个应用被踢回登录页（症状：密码正确也"进不了主页"）。
+    授权失效本质是"第三方资源状态冲突"，用 409 表达，前端按
+    detail.action === 'reauthorize' 引导重新授权。
     """
     if isinstance(e, NetdiskAuthError):
         return HTTPException(
-            status_code=401,
-            detail={"message": e.errmsg, "errno": e.errno, "action": "reauthorize"},
+            status_code=409,
+            detail={"message": e.errmsg, "errno": e.errno,
+                    "code": "NETDISK_AUTH_EXPIRED", "action": "reauthorize"},
         )
     if isinstance(e, NetdiskError):
         errno = getattr(e, "errno", None)
         if errno in _AUTH_ERRNOS:
             return HTTPException(
-                status_code=401,
-                detail={"message": e.errmsg, "errno": errno, "action": "reauthorize"},
+                status_code=409,
+                detail={"message": e.errmsg, "errno": errno,
+                        "code": "NETDISK_AUTH_EXPIRED", "action": "reauthorize"},
             )
         if errno in _NOT_FOUND_ERRNOS:
             return HTTPException(
@@ -214,15 +228,20 @@ def _decorate_netdisk_item(item: dict, service: NetdiskService) -> dict:
 async def list_files(
     path: str = "/",
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     """网盘文件列表。
 
     local_files 是本地同步缓存（/netdisk/sync 写入的 netdisk_files 行），
-    api_files 是百度网盘实时列表。**授权失效时本接口返回 401 而不是
-    静默返回本地缓存** —— 以前 `except Exception: pass` 会让页面拿着
-    缓存照样渲染"目录"，用户以为网盘还连着（#netdisk-refactor 修的漏洞）。
+    api_files 是百度网盘实时列表。三种状态分开表达：
+
+    * **从未授权** → 200 + ``api_files=[]`` + ``netdisk_authorized=false``。
+      首屏 hydrate 会拉本接口，绑都没绑过时抛 409 只是给控制台制造噪音（P2-1）。
+    * **曾授权、token 失效** → 409 + ``action=reauthorize``，前端据此要求重新 OAuth。
+      （历史：先是静默返回缓存让用户误以为还连着，后改成 401，又因为 401 会触发
+      前端全局 session 刷新、把人踢回登录页，2026-10-18 才定为 409。）
+    * **授权正常但上游失败** → 200 + ``api_error`` 说明原因，本地缓存照常返回。
     """
     # 先从本地数据库查
     local_files = (
@@ -239,9 +258,17 @@ async def list_files(
     service = NetdiskService(db)
     api_files = []
     api_error = None
+    # P2-1（2026-10-21）：**从未授权**与**授权失效**要分开。
+    # 未绑定网盘时本就没有实时列表可拿，返回 200 + 空 api_files ——
+    # 否则首屏 hydrate 每次都替用户吃一个 409（控制台噪音，5 个路由都报）。
+    # 409 只保留给「曾经授权、token 已失效」，那才是需要 reauthorize 的真信号。
+    authorized = bool(service.token_status().get("authorized"))
     try:
-        api_result = await service.get_file_list(path, page, page_size)
-        api_files = api_result.get("list", [])
+        if authorized:
+            api_result = await service.get_file_list(path, page, page_size)
+            api_files = [
+                _strip_remote_secrets(it) for it in api_result.get("list", [])
+            ]
     except NetdiskAuthError as e:
         # 授权失效必须显式 401：前端据此回到平台选择页要求重新授权，
         # 而不是显示一份来路不明的本地缓存目录。
@@ -264,7 +291,9 @@ async def list_files(
                 "category": f.category,
                 "play_progress": f.play_progress,
                 "fs_id": f.fs_id,
-                "download_link": f.download_link,
+                # download_link（百度 dlink）不再下发：它是带签名的临时直连地址，
+                # 且百度强制 UA，浏览器拿到也只会 403。取流统一走后端代理
+                # /api/netdisk/files/{id}/content，前端用 netdiskApi.contentUrl(id) 拼。
                 # toPan 需要真实上传时间；缺字段时前端会退回 localStorage 的旧值，
                 # 但绝不能由后端补一个"今天"，那等于伪造同步日期。
                 "created_at": f.created_at,
@@ -272,6 +301,8 @@ async def list_files(
             for f in local_files
         ],
         "api_files": api_files,
+        # 供前端判断"要不要继续拉实时列表"：False = 从未授权（不是故障）
+        "netdisk_authorized": authorized,
     }
     if api_error:
         resp["api_error"] = api_error
@@ -291,7 +322,7 @@ async def get_file_detail(file_id: int, db: Session = Depends(get_db)):
         "file_type": file.file_type,
         "size": file.size,
         "category": file.category,
-        "download_link": file.download_link,
+        # 同 list_files：dlink 不下发，取流走 /api/netdisk/files/{id}/content
         "play_progress": file.play_progress,
         "fs_id": file.fs_id,
     }
@@ -355,24 +386,29 @@ async def sync_files(
         db.commit()
         return {"synced": synced, "message": f"同步完成，共 {synced} 个文件"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"同步失败：{str(e)}")
+        # 授权失效 → 409 + action=reauthorize；资源不存在 → 404；其余上游错误 → 502。
+        # 不再笼统 500：未授权时前端需要拿到可识别的 reauthorize 信号。
+        raise _netdisk_http_error(e)
 
 
 @router.get("/preview/{file_id}")
 async def get_preview(file_id: int, db: Session = Depends(get_db)):
-    """文件预览链接。"""
+    """文件预览地址：一律回后端代理路径。
+
+    以前这里回的是百度 ``method=streaming`` 的 M3U8 地址，而那个 URL 把
+    ``access_token`` 明文挂在 query 上 —— 前端一旦渲染它，token 就进了浏览器
+    历史、referer 头和任何一层的访问日志。现在预览取流统一走
+    ``/api/netdisk/files/{id}/content``：UA 要求由后端满足，token 永不出门。
+    """
     file = db.query(NetdiskFile).filter(NetdiskFile.id == file_id).first()
     if not file:
         raise HTTPException(status_code=404, detail="文件不存在")
-
-    service = NetdiskService(db)
-    if file.fs_id:
-        try:
-            result = await service.get_preview_link(file.fs_id)
-            return result
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"获取预览链接失败：{str(e)}")
-    raise HTTPException(status_code=400, detail="文件缺少网盘 ID")
+    if not file.fs_id:
+        raise HTTPException(status_code=400, detail="文件缺少网盘 ID")
+    return {
+        "preview_url": f"/api/netdisk/files/{file_id}/content?disposition=inline",
+        "mode": "backend_proxy",
+    }
 
 
 async def _proxy_stream(file: NetdiskFile, disposition: str, db: Session, request: Request = None):
@@ -779,19 +815,44 @@ _PLATFORM_MAP = {
 QUARK_DEFAULT_WEB_VIEW = "https://pan.quark.cn/"
 
 
+#: 顶层只以 ``has_*`` 形式出现的凭据列（值永不出接口）。
+_SECRET_COLUMNS = ("token", "app_key", "secret_key")
+
+#: 百度原始条目里不能透传给浏览器的字段：dlink 是带签名的临时下载地址，
+#: 拿到就能在有效期内直连下载，而取流本就走后端代理（``/files/{id}/content``，
+#: 百度强制 ``User-Agent: pan.baidu.com``，浏览器直连必 403，给了也没用）。
+_REMOTE_DENY_KEYS = ("dlink", "thumb_dlink", "thumbs", "share_link", "brief")
+
+
+def _strip_remote_secrets(item: dict) -> dict:
+    """剔除百度条目里的临时下载地址，其余字段原样保留（前端按原始键名解析）。"""
+    return {k: v for k, v in item.items() if k not in _REMOTE_DENY_KEYS}
+
+
 def _serialize_config(cfg: PlatformConfig) -> dict:
-    """将 PlatformConfig 行序列化为前端可用的扁平字典。"""
-    extra = cfg.extra or {}
+    """把 PlatformConfig 行序列化成**可以下发**的扁平字典。
+
+    凭据一律只回 ``has_*``：这个接口的消费者是浏览器，而
+    access_token 拿到就能列全量文件、下载课件，refresh_token 拿到能在
+    十年内免密续期，secret_key 拿到就是应用身份本身。改造前 ``**extra``
+    会把 extra 里的 refresh_token / 圣才密码 / B站 SESSDATA 一并提升到
+    顶层返回，等于把凭据写进每一次 GET 响应（和它的前端缓存）。
+
+    副作用：前端无法再回填密钥输入框，设置页语义改为「留空 = 不修改」，
+    见 PUT /platform-config/{platform}。
+    """
+    extra = scrub_extra(cfg.extra)
     return {
         "platform": cfg.platform_name,
-        "token": cfg.token or "",
-        "app_key": cfg.app_key or "",
-        "secret_key": cfg.secret_key or "",
+        "has_token": bool(cfg.token),
+        "has_app_key": bool(cfg.app_key),
+        "has_secret_key": bool(cfg.secret_key),
+        "has_refresh_token": bool((cfg.extra or {}).get("refresh_token")),
         "sync_enabled": cfg.sync_enabled,
         "sync_frequency": cfg.sync_frequency or "daily",
         "last_sync": cfg.last_sync.isoformat() if cfg.last_sync else None,
         "extra": extra,
-        # 同时把 extra 的键提升到顶层，方便前端直接 v-model
+        # 同时把 extra 的非敏感键提升到顶层，方便前端直接 v-model
         **extra,
     }
 
@@ -832,6 +893,10 @@ async def update_platform_config(platform: str, body: dict, db: Session = Depend
 
     请求体可包含标准字段（token/app_key/secret_key/sync_enabled/sync_frequency）
     以及平台专属字段（存入 extra JSON）。
+
+    凭据字段是**只写**的：GET 不再回原值，所以「字段没出现 / 值为空」一律
+    解释成「保持原值不变」，而不是「清空」—— 否则设置页每次保存都会把用户
+    没碰过的 secret_key 抹掉。真要撤销凭据请用退出授权接口。
     """
     if platform not in {"baidu", "quark"}:
         raise HTTPException(status_code=404, detail="仅支持百度网盘和夸克网盘")
@@ -846,28 +911,30 @@ async def update_platform_config(platform: str, body: dict, db: Session = Depend
         cfg = PlatformConfig(platform_name=name)
         db.add(cfg)
 
-    # 标准字段白名单
-    standard_fields = {
-        "token": str,
-        "app_key": str,
-        "secret_key": str,
-        "sync_frequency": str,
-    }
-    extra = dict(cfg.extra or {})
+    # 只读 / 由后端推导的键，客户端提交一律忽略（has_* 是 GET 出来的状态位，
+    # 前端表单回填时很容易原样 POST 回来）
+    readonly_fields = {"platform", "last_sync", "extra", "authorized", "configured"}
+    readonly_fields.update(f"has_{col}" for col in _SECRET_COLUMNS)
+    readonly_fields.add("has_refresh_token")
+
+    plain_fields = {"sync_frequency"}
+    extra = unseal_extra(cfg.extra)
 
     for key, value in body.items():
-        if key in standard_fields:
-            setattr(cfg, key, standard_fields[key](value) if value is not None else None)
+        if key in _SECRET_COLUMNS:
+            if value:
+                setattr(cfg, key, str(value))
         elif key == "sync_enabled":
             cfg.sync_enabled = bool(value)
-        elif key in ("platform", "last_sync", "extra"):
-            # 跳过只读 / 嵌套字段
+        elif key in plain_fields:
+            setattr(cfg, key, str(value) if value is not None else None)
+        elif key in readonly_fields:
             continue
         else:
             # 其余字段写入 extra
             extra[key] = value
 
-    cfg.extra = extra
+    cfg.extra = seal_extra(extra)
     db.commit()
     db.refresh(cfg)
     return _serialize_config(cfg)

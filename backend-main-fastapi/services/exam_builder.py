@@ -17,18 +17,21 @@ A5 组卷-模考引擎（services/exam_builder.py）
 错题回流：交卷后错误题写入 error_records（去重），并联动 A4 盲区池记录弱知识点。
 """
 from __future__ import annotations
+import logging
 
 import json
 import random
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Any, Dict, List, Optional
 
 from services.db_retry import exec_retry
+from services.dbapi_compat import wrap_conn  # noqa: E402  PG/SQLite 双底座连接适配
 
 
 def _now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
 # --------------------------------------------------------------------------- #
@@ -39,11 +42,16 @@ def load_blueprints(db, subject: str, paper: str, year: Optional[int] = None) ->
 
     ensure_module_a_schema(db)
     ensure_blueprints(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
+    # 题型列名内省（PG 正典=blueprint_question_type；SQLite 兼容=question_type），
+    # 统一 AS question_type 交给上层，列名差异不再外溢。
+    from services.module_a_schema import blueprint_question_type_col
+
+    _qt = blueprint_question_type_col(conn)
     rows = conn.execute(
-        "SELECT id, subject, paper, year, section, question_type, count, score_per_question,"
-        " time_limit_minutes, sort_order, kp_filters FROM exam_blueprints"
-        " WHERE subject = ? AND paper = ? AND is_active = 1 ORDER BY sort_order",
+        f"SELECT id, subject, paper, year, section, {_qt} AS question_type, count,"
+        " score_per_question, time_limit_minutes, sort_order, kp_filters FROM exam_blueprints"
+        " WHERE subject = ? AND paper = ? AND is_active = TRUE ORDER BY sort_order",
         (subject, paper),
     ).fetchall()
     cols = ["id", "subject", "paper", "year", "section", "question_type", "count",
@@ -84,8 +92,8 @@ def _query_candidates(
     subject: str,
     paper: str,
 ) -> List[Dict[str, Any]]:
-    conn = db.connection().connection
-    where = " AND is_available = 1"
+    conn = wrap_conn(db.connection().connection)
+    where = " AND is_available = TRUE"
     params: List[Any] = []
 
     # 题型映射
@@ -122,7 +130,7 @@ def _query_candidates(
     if question_source == "error":
         where += " AND id IN (SELECT DISTINCT question_id FROM error_records WHERE question_id IS NOT NULL)"
     elif question_source == "ai_generated":
-        where += " AND ai_generated = 1"
+        where += " AND ai_generated = TRUE"
 
     # 排除近期考过题
     if exclude_question_ids:
@@ -140,8 +148,8 @@ def _query_candidates(
 
 def recent_question_ids(db, exclude_recent_days: int = 14) -> List[int]:
     """近 N 天考过的题（来自 exam_answers）。"""
-    conn = db.connection().connection
-    cutoff = (datetime.now() - timedelta(days=exclude_recent_days)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = wrap_conn(db.connection().connection)
+    cutoff = (utcnow() - timedelta(days=exclude_recent_days)).strftime("%Y-%m-%d %H:%M:%S")
     rows = conn.execute(
         "SELECT DISTINCT question_id FROM exam_answers ea"
         " JOIN exam_sessions es ON es.id = ea.session_id"
@@ -180,7 +188,7 @@ def mastery_score(q: Dict[str, Any], conn) -> float:
     score = 50.0
     err = conn.execute(
         "SELECT mastery_level, repetitions, lapses FROM error_records"
-        " WHERE question_id = ? AND status IN ('active','submitted') ORDER BY id DESC LIMIT 1",
+        " WHERE question_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
         (q["id"],),
     ).fetchone()
     if err:
@@ -235,7 +243,7 @@ def build_paper(
     if not blueprints:
         return {"error": f"no blueprint for {subject}/{paper}"}
     # load_blueprints 内部会 commit（ensure schema/blueprints），须在其后获取底层连接
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
 
     exclude_ids = recent_question_ids(db, exclude_recent_days)
     sections: List[Dict[str, Any]] = []
@@ -301,10 +309,15 @@ def build_paper(
     }
     blueprint_key = f"{paper}:{year or 'general'}"
     time_limit = blueprints[0].get("time_limit_minutes") or 180
-    expires_at = (datetime.now() + timedelta(minutes=time_limit)).strftime("%Y-%m-%d %H:%M:%S")
+    expires_at = (utcnow() + timedelta(minutes=time_limit)).strftime("%Y-%m-%d %H:%M:%S")
 
-    cur = conn.execute(
-        """
+    # PostgreSQL 迁移修正（2026-10-14）：
+    #   1. `?` 占位符在 psycopg 下非法（只认 %s）——经 adapt_sql 转换；
+    #   2. `cur.lastrowid` 在 psycopg 下不存在（实测返回 None → int(None) 崩溃），
+    #      改为 SQLite 走 lastrowid、PG 走 RETURNING id。
+    from services.dbapi_compat import insert_returning_id
+
+    session_id = insert_returning_id(conn, """
         INSERT INTO exam_sessions
         (blueprint_key, subject, paper, mode, question_source, config, total_count,
          total_score, time_limit_minutes, expires_at, status)
@@ -313,7 +326,8 @@ def build_paper(
         (blueprint_key, subject, paper, mode, question_source, json.dumps(config, ensure_ascii=False),
          total_count, total_score, time_limit, expires_at),
     )
-    session_id = int(cur.lastrowid)
+    if session_id is None:
+        raise RuntimeError("创建模考场次失败：未取到 session_id")
 
     # 试卷冻结：题目快照写 exam_answers（ongoing，无作答）
     order_no = 0
@@ -364,7 +378,7 @@ def _trusted_answer(conn, question_id: int, snap_answer: str) -> tuple:
 
     返回 (判分用答案, 可信度标签)：
     - ai_generated 且未 verified 的题库答案 → 优先取 answer_candidates 里
-      used_for_grading=1 的高置信候选（A6 交叉校验过的）；无候选则判分
+      used_for_grading = TRUE 的高置信候选（A6 交叉校验过的）；无候选则判分
       照用快照答案但标 ai_unverified——结果里透传，前端可提示"答案为 AI 生成"。
     - 普通答案（人工/原卷）→ trusted。
     """
@@ -377,7 +391,7 @@ def _trusted_answer(conn, question_id: int, snap_answer: str) -> tuple:
         # AI 生成未核验：找交叉校验高置信候选
         cand = conn.execute(
             "SELECT answer FROM answer_candidates"
-            " WHERE question_id = ? AND used_for_grading = 1 AND confidence >= 0.7"
+            " WHERE question_id = ? AND used_for_grading = TRUE AND confidence >= 0.7"
             " ORDER BY confidence DESC LIMIT 1",
             (question_id,),
         ).fetchone()
@@ -438,7 +452,7 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
 
     # 归一化为 dict 索引（str/int 双 key 都放，查询处已兼容）
     if isinstance(answers, list):
@@ -538,7 +552,7 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
         qid = wq["question_id"]
         snap = wq["snapshot"]
         exists = conn.execute(
-            "SELECT id FROM error_records WHERE question_id = ? AND status IN ('active','submitted')"
+            "SELECT id FROM error_records WHERE question_id = ? AND status = 'active'"
             " ORDER BY id DESC LIMIT 1",
             (qid,),
         ).fetchone()
@@ -574,8 +588,12 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
                     "suggestion": f"强化练习知识点：{kp_name}",
                     "suggested_action": "add_kp",
                 })
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
     submitted_at = _now_str()
     exec_retry(
@@ -594,8 +612,12 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
             from services.blind_spot_pool import record_abstain
 
             record_abstain(db, **call)
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
     # —— 错题 ↔ 知识点联动（2026-10）—— #
     # 模考回流此前只插 error_records、不挂知识点，导致模考错题在复盘页成「孤岛」
@@ -617,10 +639,18 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
             for e in refluxed:
                 try:
                     error_linker.auto_link_error(db, e, top_k=3)
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                except Exception as _exc:  # noqa: BLE001
+                    # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+                    # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+                    logging.getLogger(__name__).warning(
+                        '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+                    )
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
 
     # —— 学习行为埋点（2026-10）—— #
     # 模考交卷此前完全不产事件，导致学习科学/成长体系拿不到模考维度数据。
@@ -639,8 +669,12 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
                 "score": round(score_sum, 2),
             },
         )
-    except Exception:
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
 
     return {
         "session_id": session_id,
@@ -661,7 +695,7 @@ def list_sessions(db, subject: Optional[str] = None, status: Optional[str] = Non
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     sql = "SELECT id, blueprint_key, subject, paper, mode, total_count, total_score, correct_count, score, status, started_at, submitted_at, expires_at FROM exam_sessions WHERE 1=1"
     params: List[Any] = []
     if subject:
@@ -682,7 +716,7 @@ def session_detail(db, session_id: int) -> Dict[str, Any]:
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     sess = conn.execute(
         "SELECT id, blueprint_key, subject, paper, mode, config, total_count, total_score,"
         " correct_count, score, time_limit_minutes, status, started_at, submitted_at, expires_at"
@@ -690,7 +724,7 @@ def session_detail(db, session_id: int) -> Dict[str, Any]:
         (session_id,),
     ).fetchone()
     if not sess:
-        return {"error": "session not found"}
+        return None
     cols = ["id", "blueprint_key", "subject", "paper", "mode", "config", "total_count",
             "total_score", "correct_count", "score", "time_limit_minutes", "status",
             "started_at", "submitted_at", "expires_at"]

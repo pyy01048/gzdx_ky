@@ -3,7 +3,7 @@
 import datetime
 from typing import Any, Optional, List, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # =========================================================================== #
@@ -19,6 +19,12 @@ class GoalBase(BaseModel):
     university: Optional[str] = None
     major: Optional[str] = None
     remark: Optional[str] = None
+    # 每日学习目标：仪表盘进度环的分母。None = 未设目标（进度环显示"未设目标"），
+    # 不给默认值 —— 空库时前端不该看到凭空出现的数字。
+    daily_focus_minutes: Optional[int] = Field(None, ge=1, le=1440)
+    daily_new_words: Optional[int] = Field(None, ge=1, le=2000)
+    daily_review_words: Optional[int] = Field(None, ge=1, le=5000)
+    daily_questions: Optional[int] = Field(None, ge=1, le=2000)
 
 
 class GoalCreate(GoalBase):
@@ -34,10 +40,7 @@ class GoalResponse(GoalBase):
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # University
 # =========================================================================== #
@@ -64,10 +67,7 @@ class UniversityResponse(UniversityBase):
     id: int
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # Task
 # =========================================================================== #
@@ -105,16 +105,14 @@ class TaskResponse(TaskBase):
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # QuizQuestion
 # =========================================================================== #
 class QuizQuestionBase(BaseModel):
-    content: str
+    content: str = Field(..., min_length=1)
     options: Optional[List[str]] = None
+    images: Optional[List[Any]] = None
     answer: Optional[str] = None
     analysis: Optional[str] = None
     subject: Optional[str] = None
@@ -123,6 +121,10 @@ class QuizQuestionBase(BaseModel):
     difficulty: Optional[int] = 3
     source: Optional[str] = None
     question_type: Optional[str] = "single"
+    # —— 导入自动分类可信闸门（2026-10-14）——
+    classify_confidence: Optional[float] = None
+    classify_source: Optional[str] = None
+    needs_review: Optional[bool] = None
 
 
 class QuizQuestionCreate(QuizQuestionBase):
@@ -132,6 +134,7 @@ class QuizQuestionCreate(QuizQuestionBase):
 class QuizQuestionUpdate(BaseModel):
     content: Optional[str] = None
     options: Optional[List[str]] = None
+    images: Optional[List[Any]] = None
     answer: Optional[str] = None
     analysis: Optional[str] = None
     subject: Optional[str] = None
@@ -146,10 +149,7 @@ class QuizQuestionResponse(QuizQuestionBase):
     id: int
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 class QuizSubmit(BaseModel):
     question_id: int
     my_answer: str
@@ -184,7 +184,9 @@ class ErrorRecordBase(BaseModel):
 
 
 class ErrorRecordCreate(ErrorRecordBase):
-    pass
+    # 空值校验（P0）：content/subject 为必填，空串直接 422，避免空错题落库。
+    content: str = Field(..., min_length=1)
+    subject: str = Field(..., min_length=1)
 
 
 class ErrorRecordUpdate(BaseModel):
@@ -208,10 +210,7 @@ class ErrorRecordResponse(ErrorRecordBase):
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # StudySession
 # =========================================================================== #
@@ -231,10 +230,7 @@ class StudySessionResponse(StudySessionBase):
     id: int
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # AIProvider
 # =========================================================================== #
@@ -271,10 +267,7 @@ class AIProviderResponse(AIProviderBase):
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # PlatformConfig
 # =========================================================================== #
@@ -309,10 +302,7 @@ class PlatformConfigResponse(PlatformConfigBase):
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # NetdiskFile
 # =========================================================================== #
@@ -336,10 +326,7 @@ class NetdiskFileResponse(NetdiskFileBase):
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # KnowledgePoint
 # =========================================================================== #
@@ -361,10 +348,7 @@ class KnowledgePointResponse(KnowledgePointBase):
     id: int
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # Flashcard
 # =========================================================================== #
@@ -396,10 +380,7 @@ class FlashcardResponse(FlashcardBase):
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # Document
 # =========================================================================== #
@@ -420,10 +401,7 @@ class DocumentResponse(DocumentBase):
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # CustomLink
 # =========================================================================== #
@@ -451,10 +429,7 @@ class CustomLinkResponse(CustomLinkBase):
     id: int
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # StudyStats
 # =========================================================================== #
@@ -471,10 +446,7 @@ class StudyStatsResponse(StudyStatsBase):
     id: int
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 # =========================================================================== #
 # 通用响应
 # =========================================================================== #

@@ -3,11 +3,17 @@
 import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Word, WordDeck
+from models import Word, WordDeck, User
+from sqlalchemy import or_
+from utils.scope import owner_id, scoped  # B4 行级隔离：词库公共读，单词严格本人
+from utils.security import current_user
+from utils.timeutil import local_today
+
+from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/words", tags=["单词词库"])
 
@@ -31,16 +37,13 @@ class WordDeckOut(BaseModel):
     color: Optional[str] = None
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
-
+    model_config = ConfigDict(from_attributes=True)
 class WordCreate(BaseModel):
     deck_id: Optional[int] = None
-    word: str
+    word: str = Field(..., min_length=1)
     phonetic: Optional[str] = None
     pos: Optional[str] = None
-    meaning: str
+    meaning: str = Field(..., min_length=1)
     root: Optional[str] = None
     example: Optional[str] = None
     example_cn: Optional[str] = None
@@ -80,8 +83,32 @@ class WordOut(BaseModel):
     review_history: Optional[list] = None
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+    from pydantic import field_validator
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _map_db_status(cls, v):
+        # DB 枚举 not_mastered -> API 契约 new（见 _api_status）
+        return _api_status(v) if isinstance(v, str) else v
+
+    @field_validator("review_history", mode="before")
+    @classmethod
+    def _normalize_review_history(cls, v):
+        # 数据事故防线：历史导入曾把 JSONB 写成 {}（对象），API 契约是数组。
+        # 序列化层直接归一，避免一行脏数据打挂整个 GET /api/words（实测 5492 行）。
+        if v is None or isinstance(v, list):
+            return v
+        if isinstance(v, dict):
+            return list(v.values())
+        if isinstance(v, str):
+            import json as _json
+            try:
+                parsed = _json.loads(v)
+                return parsed if isinstance(parsed, list) else []
+            except Exception:
+                return []
+        return []
 
 
 class WordReview(BaseModel):
@@ -93,23 +120,48 @@ class WordBatchImport(BaseModel):
     words: List[WordCreate]
 
 
+#: DB 权威枚举 mastery_level = not_mastered/learning/reviewing/mastered，
+#: 而 API/前端契约用 new/learning/reviewing/mastered（'new' 不是合法枚举值，
+#: 直接落库会报 invalid input value for enum，实测）。路由边界统一映射。
+_DB_TO_API_STATUS = {
+    "not_mastered": "new",
+    "learning": "learning",
+    "reviewing": "reviewing",
+    "mastered": "mastered",
+}
+_API_TO_DB_STATUS = {v: k for k, v in _DB_TO_API_STATUS.items()}
+
+
+def _db_status(api_status: str) -> str:
+    """API 状态词 -> DB 枚举值；未知值退 not_mastered（未学）。"""
+    return _API_TO_DB_STATUS.get((api_status or "").strip().lower(), "not_mastered")
+
+
+def _api_status(db_status: str) -> str:
+    """DB 枚举值 -> API 状态词；未知值退 new。"""
+    return _DB_TO_API_STATUS.get((db_status or "").strip().lower(), "new")
+
+
 # --------------------------------------------------------------------------- #
 # 词库管理
 # --------------------------------------------------------------------------- #
 @router.get("/decks", response_model=List[WordDeckOut])
-def list_decks(db: Session = Depends(get_db)):
-    """获取所有词库分类。"""
-    decks = db.query(WordDeck).order_by(WordDeck.id).all()
-    # 实时统计每个词库的单词数
+def list_decks(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """获取词库分类（B4：本人词库 + 内置公共词书 user_id NULL）。"""
+    decks = db.query(WordDeck).filter(
+        or_(scoped(WordDeck, user), WordDeck.user_id.is_(None))
+    ).order_by(WordDeck.id).all()
+    # 实时统计每个词库的单词数（B4：只统计本人单词）
     for d in decks:
-        d.word_count = db.query(Word).filter(Word.deck_id == d.id).count()
+        d.word_count = db.query(Word).filter(Word.deck_id == d.id, scoped(Word, user)).count()
     return decks
 
 
 @router.post("/decks", response_model=WordDeckOut)
-def create_deck(data: WordDeckCreate, db: Session = Depends(get_db)):
+def create_deck(data: WordDeckCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """创建新词库。"""
     deck = WordDeck(**data.model_dump())
+    deck.user_id = owner_id(user)  # B4：归属当前用户
     db.add(deck)
     db.commit()
     db.refresh(deck)
@@ -117,13 +169,13 @@ def create_deck(data: WordDeckCreate, db: Session = Depends(get_db)):
 
 
 @router.delete("/decks/{deck_id}")
-def delete_deck(deck_id: int, db: Session = Depends(get_db)):
-    """删除词库（单词保留，deck_id置空）。"""
-    deck = db.query(WordDeck).filter(WordDeck.id == deck_id).first()
+def delete_deck(deck_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """删除词库（单词保留，deck_id置空；B4：仅本人词库，内置公共词书不可删）。"""
+    deck = db.query(WordDeck).filter(WordDeck.id == deck_id, scoped(WordDeck, user)).first()
     if not deck:
         raise HTTPException(404, "词库不存在")
-    # 将该词库下的单词deck_id置空
-    db.query(Word).filter(Word.deck_id == deck_id).update({Word.deck_id: None})
+    # 将该词库下本人单词的deck_id置空
+    db.query(Word).filter(Word.deck_id == deck_id, scoped(Word, user)).update({Word.deck_id: None})
     db.delete(deck)
     db.commit()
     return {"ok": True, "message": "词库已删除"}
@@ -139,11 +191,12 @@ def list_words(
     tag: Optional[str] = None,
     search: Optional[str] = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=500),
+    page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    """获取单词列表，支持按词库/状态/标签/关键词筛选和分页。"""
-    q = db.query(Word)
+    """获取单词列表，支持按词库/状态/标签/关键词筛选和分页（B4：只看本人单词）。"""
+    q = db.query(Word).filter(scoped(Word, user))
     if deck_id is not None:
         q = q.filter(Word.deck_id == deck_id)
     if status:
@@ -154,10 +207,16 @@ def list_words(
         q = q.filter(Word.word.like(f"%{search}%"))
     q = q.order_by(Word.id)
 
-    # 统一分页响应
+    # 统一分页响应。items 必须走 WordOut 序列化：直接塞 ORM 行会绕过
+    # WordOut.status 的 field_validator（not_mastered → new），DB 枚举原值漏到前端。
+    # dogfood ISSUE-004 的真凶：前端复习队列只认 new / learning+reviewing 两个桶，
+    # not_mastered 两边都接不住 → 导入后队列恒空，页面却显示「已全部复习完成」。
     total = q.count()
     offset = (page - 1) * page_size
-    items = q.offset(offset).limit(page_size).all()
+    items = [
+        WordOut.model_validate(w).model_dump(mode="json")
+        for w in q.offset(offset).limit(page_size).all()
+    ]
     return {
         "items": items,
         "total": total,
@@ -168,18 +227,21 @@ def list_words(
 
 
 @router.get("/stats")
-def word_stats(db: Session = Depends(get_db)):
-    """单词统计：总数、各状态数量、今日待复习。"""
-    total = db.query(Word).count()
-    new_count = db.query(Word).filter(Word.status == "new").count()
-    learning_count = db.query(Word).filter(Word.status == "learning").count()
-    reviewing_count = db.query(Word).filter(Word.status == "reviewing").count()
-    mastered_count = db.query(Word).filter(Word.status == "mastered").count()
-    today = datetime.date.today()
+def word_stats(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """单词统计：总数、各状态数量、今日待复习（B4：只统计本人单词）。"""
+    _scope = scoped(Word, user)  # B4：以下 6 处 count 全部按本人过滤
+    total = db.query(Word).filter(_scope).count()
+    # DB 权威枚举里没有 'new'，未学状态是 not_mastered
+    new_count = db.query(Word).filter(_scope, Word.status == "not_mastered").count()
+    learning_count = db.query(Word).filter(_scope, Word.status == "learning").count()
+    reviewing_count = db.query(Word).filter(_scope, Word.status == "reviewing").count()
+    mastered_count = db.query(Word).filter(_scope, Word.status == "mastered").count()
+    today = local_today()
     # V12 修复：新词（status='new'，从未学习）不计入"今日待复习"。
     # 旧逻辑把 due_date IS NULL 的新词也算作今日到期 → 全站复习调度显示
     # "4568/4569 今日待复习"，学习数据失真。复习队列只包含已学过的词。
     due_today = db.query(Word).filter(
+        _scope,
         Word.due_date <= today
     ).filter(Word.status.in_(["learning", "reviewing"])).count()
     return {
@@ -194,32 +256,97 @@ def word_stats(db: Session = Depends(get_db)):
 
 @router.get("/due", response_model=List[WordOut])
 def due_words(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    """获取今日待复习单词（含新词）。"""
-    today = datetime.date.today()
+    """获取今日待复习单词（含新词；B4：只看本人）。"""
+    today = local_today()
     # V12 修复：due 队列排除新词（new）——新词走"学习"流程而非"复习"队列
     words = db.query(Word).filter(
+        scoped(Word, user),
         Word.due_date <= today
     ).filter(Word.status.in_(["learning", "reviewing"])).order_by(Word.status, Word.id).limit(limit).all()
     return words
 
 
+@router.get("/export-pdf")
+def export_words_pdf(
+    deck_id: Optional[int] = None,
+    status: Optional[str] = None,
+    tag: Optional[str] = None,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """单词本 PDF 导出（对标「不背单词」纸质导出；B4：仅导出本人单词）。
+
+    支持与列表页一致的筛选参数（deck_id / status / tag / search），
+    导出结果为中文 PDF，前端直接以 blob 下载。
+    """
+    from fastapi.responses import Response
+    from services import pdf_export
+
+    q = db.query(Word).filter(scoped(Word, user))
+    if deck_id is not None:
+        q = q.filter(Word.deck_id == deck_id)
+    if status:
+        q = q.filter(Word.status == _db_status(status))
+    if tag:
+        q = q.filter(Word.tag == tag)
+    if search:
+        q = q.filter(Word.word.like(f"%{search}%"))
+    rows = q.order_by(Word.id).limit(1000).all()
+
+    words = []
+    for w in rows:
+        words.append({
+            "word": w.word,
+            "phonetic": w.phonetic,
+            "pos": w.pos,
+            "meaning": w.meaning,
+            "root": w.root,
+            "example": w.example,
+            "example_cn": w.example_cn,
+            "tag": w.tag,
+            "status": _api_status(w.status),
+            "reps": w.reps,
+        })
+
+    pdf_bytes = pdf_export.build_words_pdf(
+        words,
+        title="考研核心词汇",
+        subtitle="FSRS 间隔重复 · 真题例句 · 导出自考研备考平台",
+    )
+    from urllib.parse import quote
+    filename = f"单词本_{datetime.date.today().isoformat()}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        },
+    )
+
+
 @router.get("/{word_id}", response_model=WordOut)
-def get_word(word_id: int, db: Session = Depends(get_db)):
+def get_word(word_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """获取单个单词详情。"""
-    w = db.query(Word).filter(Word.id == word_id).first()
+    w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
     if not w:
         raise HTTPException(404, "单词不存在")
     return w
 
 
 @router.post("", response_model=WordOut)
-def create_word(data: WordCreate, db: Session = Depends(get_db)):
+def create_word(data: WordCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """添加单个单词。"""
-    w = Word(**data.model_dump())
-    w.due_date = datetime.date.today()
+    data_dict = data.model_dump()
+    if data_dict.get("status"):
+        data_dict["status"] = _db_status(data_dict["status"])
+    w = Word(**data_dict)
+    w.user_id = owner_id(user)  # B4：归属当前用户
+    w.due_date = local_today()
     db.add(w)
     db.commit()
     db.refresh(w)
@@ -227,9 +354,9 @@ def create_word(data: WordCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{word_id}", response_model=WordOut)
-def update_word(word_id: int, data: WordUpdate, db: Session = Depends(get_db)):
+def update_word(word_id: int, data: WordUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """更新单词信息。"""
-    w = db.query(Word).filter(Word.id == word_id).first()
+    w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
     if not w:
         raise HTTPException(404, "单词不存在")
     for k, v in data.model_dump(exclude_unset=True).items():
@@ -240,9 +367,9 @@ def update_word(word_id: int, data: WordUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{word_id}")
-def delete_word(word_id: int, db: Session = Depends(get_db)):
+def delete_word(word_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """删除单词。"""
-    w = db.query(Word).filter(Word.id == word_id).first()
+    w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
     if not w:
         raise HTTPException(404, "单词不存在")
     db.delete(w)
@@ -254,16 +381,17 @@ def delete_word(word_id: int, db: Session = Depends(get_db)):
 # SM-2 复习调度
 # --------------------------------------------------------------------------- #
 @router.post("/{word_id}/review", response_model=WordOut)
-def review_word(word_id: int, data: WordReview, db: Session = Depends(get_db)):
+def review_word(word_id: int, data: WordReview, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """SM-2 复习评分，更新调度状态（使用统一的 ReviewScheduler 算法）。"""
     from services.review_scheduler import ReviewScheduler
+    from services.srs import fsrs
 
-    w = db.query(Word).filter(Word.id == word_id).first()
+    w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
     if not w:
         raise HTTPException(404, "单词不存在")
 
     grade = data.grade
-    today = datetime.date.today()
+    today = local_today()
 
     # 使用统一的 SM-2 算法
     _, new_reps, new_interval, new_ef, new_status = ReviewScheduler.calculate_next_review(
@@ -276,10 +404,20 @@ def review_word(word_id: int, data: WordReview, db: Session = Depends(get_db)):
     w.reps = new_reps
     w.interval = new_interval
     w.ease_factor = new_ef
-    w.status = new_status if new_status != "review" else "reviewing"
+    # 调度器返回的 'new'（从未掌握）在 DB 枚举里不存在；复习过至少算 learning
+    w.status = _db_status(new_status) if new_status not in ("review", "new") else "learning"
     w.lapses = w.lapses + (1 if grade < 3 else 0)
 
-    w.due_date = today + datetime.timedelta(days=new_interval)
+    # FSRS：统一调度表为准；SM-2 字段保留为兼容快照
+    sched = fsrs.schedule(
+        db,
+        item_type="word",
+        item_id=int(w.id),
+        rating=fsrs.rating_from_grade(grade),
+        user_id=owner_id(user),  # B4：复习排程跟随操作者
+    )
+    w.due_date = today + datetime.timedelta(days=int(sched["interval_days"]))
+    w.interval = int(sched["interval_days"])
     w.last_review = today
 
     # 记录复习历史
@@ -298,12 +436,13 @@ def review_word(word_id: int, data: WordReview, db: Session = Depends(get_db)):
 # 批量导入
 # --------------------------------------------------------------------------- #
 @router.post("/batch-import")
-def batch_import_words(data: WordBatchImport, db: Session = Depends(get_db)):
+def batch_import_words(data: WordBatchImport, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """批量导入单词。"""
     count = 0
-    today = datetime.date.today()
+    today = local_today()
     for w_data in data.words:
         w = Word(**w_data.model_dump())
+        w.user_id = owner_id(user)  # B4：归属当前用户
         if data.deck_id is not None:
             w.deck_id = data.deck_id
         w.due_date = today
@@ -323,7 +462,7 @@ class TextImportRequest(BaseModel):
 
 
 @router.post("/import-text")
-def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db)):
+def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """从文本批量导入单词，支持多种格式：
     - "apple 苹果"
     - "apple n. 苹果"
@@ -335,10 +474,12 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
     imported = 0
     skipped = 0
     errors = []
-    today = datetime.date.today()
+    today = local_today()
 
-    # 已存在的单词集合（去重）
-    existing_words = {w.word for w in db.query(Word.word).all()}
+    # 已存在的单词集合（去重，B4：只查本人单词）
+    existing_words = {
+        w.word for w in db.query(Word.word).filter(scoped(Word, user)).all()
+    }
 
     for idx, line in enumerate(lines, 1):
         line = line.strip()
@@ -388,12 +529,13 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
 
             # 创建单词
             w = Word(
+                user_id=owner_id(user),  # B4：归属当前用户
                 deck_id=data.deck_id,
                 word=word[:100],
                 phonetic=phonetic[:100] if phonetic else None,
                 pos=pos[:50] if pos else None,
                 meaning=meaning[:2000],
-                status="new",
+                status="not_mastered",  # DB 枚举无 'new'，未学即 not_mastered
                 due_date=today,
             )
             db.add(w)
@@ -406,11 +548,11 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
 
     db.commit()
 
-    # 更新词库数量
+    # 更新词库数量（B4：校验本人词库，只统计本人单词）
     if data.deck_id:
-        deck = db.query(WordDeck).filter(WordDeck.id == data.deck_id).first()
+        deck = db.query(WordDeck).filter(WordDeck.id == data.deck_id, scoped(WordDeck, user)).first()
         if deck:
-            deck.word_count = db.query(Word).filter(Word.deck_id == data.deck_id).count()
+            deck.word_count = db.query(Word).filter(Word.deck_id == data.deck_id, scoped(Word, user)).count()
             db.commit()
 
     return {
@@ -430,6 +572,7 @@ async def import_words_from_excel(
     file: bytes = File(...),
     deck_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """从Excel批量导入单词。
     支持列：单词、音标、词性、释义、词根、例句、例句翻译、标签
@@ -476,8 +619,10 @@ async def import_words_from_excel(
     imported = 0
     skipped = 0
     errors = []
-    today = datetime.date.today()
-    existing_words = {w.word for w in db.query(Word.word).all()}
+    today = local_today()
+    existing_words = {
+        w.word for w in db.query(Word.word).filter(scoped(Word, user)).all()
+    }
 
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
         try:
@@ -493,6 +638,7 @@ async def import_words_from_excel(
                 continue
 
             w = Word(
+                user_id=owner_id(user),  # B4：归属当前用户
                 deck_id=deck_id,
                 word=word[:100],
                 phonetic=str(row[col_map["phonetic"]]).strip()[:100] if "phonetic" in col_map and row[col_map["phonetic"]] else None,
@@ -502,7 +648,7 @@ async def import_words_from_excel(
                 example=str(row[col_map["example"]]).strip() if "example" in col_map and row[col_map["example"]] else None,
                 example_cn=str(row[col_map["example_cn"]]).strip() if "example_cn" in col_map and row[col_map["example_cn"]] else None,
                 tag=str(row[col_map["tag"]]).strip()[:50] if "tag" in col_map and row[col_map["tag"]] else None,
-                status="new",
+                status="not_mastered",  # DB 枚举无 'new'，未学即 not_mastered
                 due_date=today,
             )
             db.add(w)
@@ -516,11 +662,11 @@ async def import_words_from_excel(
     db.commit()
     wb.close()
 
-    # 更新词库数量
+    # 更新词库数量（B4：校验本人词库，只统计本人单词）
     if deck_id:
-        deck = db.query(WordDeck).filter(WordDeck.id == deck_id).first()
+        deck = db.query(WordDeck).filter(WordDeck.id == deck_id, scoped(WordDeck, user)).first()
         if deck:
-            deck.word_count = db.query(Word).filter(Word.deck_id == deck_id).count()
+            deck.word_count = db.query(Word).filter(Word.deck_id == deck_id, scoped(Word, user)).count()
             db.commit()
 
     return {
