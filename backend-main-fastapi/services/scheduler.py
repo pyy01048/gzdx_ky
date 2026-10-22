@@ -35,6 +35,35 @@ except Exception:  # noqa: BLE001  —— 缺 tzdata 时退回固定偏移
 
 scheduler = BackgroundScheduler(timezone=_SHANGHAI_TZ)
 
+# uvicorn --workers N 时每个 worker 都会跑 startup：只有拿到 PG 会话级咨询锁的那个
+# worker 跑定时任务，否则提醒/采集/备份会重复 N 次。锁随持有连接存活，进程退出即释放。
+_SINGLETON_LOCK_KEY = 0x6B79_5343  # "kySC"
+_singleton_conn = None
+
+
+def acquire_singleton_lock() -> bool:
+    """本进程是否为定时任务的唯一执行者（幂等；非 PG 后端视为单进程直接返回 True）。"""
+    global _singleton_conn
+    if _singleton_conn is not None:
+        return True
+    from sqlalchemy import text
+    from core.db_session import engine
+
+    if engine.dialect.name != "postgresql":
+        return True
+    conn = engine.connect()
+    try:
+        got = bool(conn.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": _SINGLETON_LOCK_KEY}).scalar())
+        conn.commit()  # 会话级锁不随事务结束释放；提交避免 idle-in-transaction 超时杀连接
+    except Exception:
+        conn.close()
+        raise
+    if not got:
+        conn.close()
+        return False
+    _singleton_conn = conn
+    return True
+
 
 # --------------------------------------------------------------------------- #
 # 定时任务 1：复习提醒（每日统计到期卡片/错题/任务）
@@ -149,19 +178,33 @@ def _completion_selfcheck_job() -> None:
             else doc_total
         )
 
-        # 2. 向量覆盖率（knowledge_chunks_vec 行数 / knowledge_chunks 行数）
+        # 2. 向量覆盖率（chunk_vectors / knowledge_chunks_vec 行数 ÷ knowledge_chunks）
+        #    PG 迁移后权威向量表是 chunk_vectors；SQLite 时代是 knowledge_chunks_vec。
+        #    这里先探测真实表名，避免在 PG 上执行 SQLite 方言导致事务 aborted。
         from sqlalchemy import text
 
         chunk_total = db.query(KnowledgeChunk).count()
         vec_total = 0
         try:
+            vec_table = db.execute(
+                text(
+                    "SELECT tablename FROM pg_tables "
+                    "WHERE schemaname = 'public' AND tablename IN "
+                    "('chunk_vectors','knowledge_chunks_vec') "
+                    "ORDER BY (tablename = 'chunk_vectors') DESC, tablename LIMIT 1"
+                )
+            ).scalar()
+            if vec_table is None:
+                # 非 PG 环境（SQLite）：直接尝试旧表名
+                vec_table = "knowledge_chunks_vec"
             vec_total = (
                 db.execute(
-                    text("SELECT COUNT(*) FROM knowledge_chunks_vec")
+                    text(f'SELECT COUNT(*) FROM "{vec_table}"')
                 ).scalar()
                 or 0
             )
         except Exception:
+            db.rollback()  # 事务可能已 aborted，先恢复再继续
             vec_total = 0
 
         # 3. 错题关联率（error_records 中被 error_knowledge_links 关联的去重数量）
@@ -179,6 +222,7 @@ def _completion_selfcheck_job() -> None:
                 or 0
             )
         except Exception:
+            db.rollback()  # 事务可能已 aborted，先恢复再继续
             linked_total = 0
 
         # 4. 题库解析率（quiz_questions.analysis 非空）
@@ -255,6 +299,25 @@ def _kaoyan_collect_job():
         logger.error("[择校采集] 公告采集失败: %s", e)
 
 
+def _kaoyan_daily_autofill_job():
+    """院校数据每日增量自动入库（各校公示次晨 6:30 后进库）。
+
+    调 pipeline/notice_data_autofill.main：A 公告增量爬取 + B 名单提取 + C 入库。
+    受 KAOYAN_AUTO_COLLECT 开关保护（默认 0 关闭；置 1 开启并承担合规责任，
+    与原 _kaoyan_collect_job 同一决策口径）。
+    """
+    if os.environ.get("KAOYAN_AUTO_COLLECT", "0") != "1":
+        logger.info("[每日采集] KAOYAN_AUTO_COLLECT=0，跳过自动入库（手动: python pipeline/notice_data_autofill.py）")
+        return
+    from pipeline.notice_data_autofill import main as autofill_main
+
+    try:
+        autofill_main()
+        logger.info("[每日采集] 自动入库完成")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[每日采集] 自动入库失败: %s", e)
+
+
 def _notice_alert_job() -> None:
     """通知提醒扫描（每日 07:40）。
 
@@ -284,9 +347,15 @@ def _notice_alert_job() -> None:
 
 
 def start_scheduler():
-    """启动后台调度器（幂等）。"""
+    """启动后台调度器（幂等）。多 worker 下只有持锁进程真正启动，其余返回 None。"""
     if scheduler.running:
         return scheduler
+    if os.getenv("SCHEDULER_ENABLED", "1").strip().lower() in ("0", "false", "no", "off"):
+        logger.info("SCHEDULER_ENABLED=0，跳过定时任务")
+        return None
+    if not acquire_singleton_lock():
+        logger.info("定时任务已由其他 worker 持有，本进程不启动调度器")
+        return None
     # 复习提醒：每天 08:30
     scheduler.add_job(
         _review_reminder_job,
@@ -311,11 +380,19 @@ def start_scheduler():
         replace_existing=True,
         misfire_grace_time=3600,
     )
-    # T5 择校数据采集：每周一 06:00（轻量增量：国家线+公告）
+# T5 择校数据采集：每周一 06:00（轻量增量：国家线+公告）
     scheduler.add_job(
         _kaoyan_collect_job,
         CronTrigger(day_of_week="mon", hour=6, minute=0, timezone=_SHANGHAI_TZ),
         id="kaoyan_collect",
+        replace_existing=True,
+        misfire_grace_time=86400,
+    )
+    # 院校数据每日增量：各校公示次晨 6:30 后自动入库（KAOYAN_AUTO_COLLECT=1 时生效）
+    scheduler.add_job(
+        _kaoyan_daily_autofill_job,
+        CronTrigger(hour=6, minute=30, timezone=_SHANGHAI_TZ),
+        id="kaoyan_daily_autofill",
         replace_existing=True,
         misfire_grace_time=86400,
     )
