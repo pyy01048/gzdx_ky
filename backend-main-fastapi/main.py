@@ -3,6 +3,7 @@
 import os
 import datetime
 import time
+import logging
 
 from dotenv import load_dotenv
 
@@ -13,11 +14,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from utils.response import UtcZJSONResponse
+
 from database import engine, Base, SessionLocal
 from models import (
     AIProvider, CustomLink, PlatformConfig,
 )
 from routers import (
+    auth as auth_routes,
+    stats_export,
     kaoyan,
     kaoyan_ext,
     insight,
@@ -35,6 +40,7 @@ from routers import (
     documents,
     flashcards,
     customization,
+    watermark_admin,
     imports,
     analytics,
     planner,
@@ -55,9 +61,40 @@ from routers import (
     plan,
     growth,
     kb_import,
+    model_training,
     notices,
     notice_alert,
+    textbooks,
+    favorites,
+    admin_schools,
+    admin_netdisk,
+    admin_system,
+    admin_schools_crawler,
+    memory,
+    recommend,
+    tutor_orchestrator,
 )
+
+# --------------------------------------------------------------------------- #
+# ORM 旧属性名兼容别名
+#
+# 必须在 `from models import ...` 之后安装：ADR-002/003 的 canonical schema 改了
+# 若干列名（source→source_label / file_type→source_format / interval→interval_days
+# 等），业务路由仍按旧属性名读写，此处补 synonym 别名，零改业务代码。
+# 放在此处而非 database.py，是为避免与 models.py 形成循环导入。
+# --------------------------------------------------------------------------- #
+try:
+    import orm_aliases
+    # 注意：此处位于 `from routers import (...)` **之后**，此时全部 ORM 映射类
+    # 已通过各 router 的 import 注册完毕，枚举类型适配才能覆盖全表。
+    # （database.get_db() 里另有一次懒初始化兜住非 FastAPI 场景。）
+    _alias_done = orm_aliases.install()
+    logging.getLogger(__name__).info(
+        "ORM 兼容适配：%d 个模型，%d 处变更",
+        len(_alias_done), sum(len(v) for v in _alias_done.values()),
+    )
+except Exception as _exc:  # noqa: BLE001
+    logging.getLogger(__name__).warning("ORM 兼容适配安装失败：%s", _exc)
 
 # --------------------------------------------------------------------------- #
 # 定时任务
@@ -67,10 +104,24 @@ from services.scheduler import start_scheduler
 # --------------------------------------------------------------------------- #
 # 应用实例
 # --------------------------------------------------------------------------- #
+from fastapi import Depends as _Depends
+from utils.access_policy import enforce_access, is_production
+
+_PROD = is_production()
+
 app = FastAPI(
     title="考研备考平台 API",
     description="一站式考研备考管理后端服务",
     version="3.0.0",
+    # 时间格式的唯一闸门：库里是 naive UTC，默认编码出的 "…T16:00:00" 没有偏移，
+    # 前端 new Date() 会当本地时间解析 → 北京用户看什么都早 8 小时。
+    # 见 utils/response.py:UtcZJSONResponse。
+    default_response_class=UtcZJSONResponse,
+    # 必须在构造时给：include_router 会在挂载那一刻合并 app 级依赖，事后再加不生效
+    dependencies=[_Depends(enforce_access)],
+    docs_url=None if _PROD else "/docs",
+    redoc_url=None if _PROD else "/redoc",
+    openapi_url=None if _PROD else "/openapi.json",
 )
 
 # --------------------------------------------------------------------------- #
@@ -89,33 +140,6 @@ log_info("=" * 60)
 # --------------------------------------------------------------------------- #
 from utils.exceptions import register_exception_handlers
 register_exception_handlers(app)
-
-# --------------------------------------------------------------------------- #
-# 字段命名自动转换中间件（请求头 X-Response-Camel-Case: true 时启用）
-# --------------------------------------------------------------------------- #
-from utils.middleware import CamelCaseResponseMiddleware
-app.add_middleware(CamelCaseResponseMiddleware)
-
-# --------------------------------------------------------------------------- #
-# 简单认证中间件（可选启用，.env 配置 APP_PASSWORD 后生效）
-# --------------------------------------------------------------------------- #
-from utils.auth import SimpleAuthMiddleware, get_auth_status, AUTH_ENABLED
-app.add_middleware(SimpleAuthMiddleware)
-
-# 认证状态查询接口
-@app.get("/api/auth/status")
-async def auth_status():
-    return get_auth_status()
-
-# 登录接口（验证密码）
-@app.post("/api/auth/login")
-async def auth_login(request: dict):
-    from utils.auth import verify_password
-    password = request.get("password", "")
-    if verify_password(password):
-        return {"success": True, "message": "登录成功"}
-    from fastapi import HTTPException
-    raise HTTPException(status_code=401, detail="密码错误")
 
 # V3.0 性能优化中间件
 from services.server_optimizer import request_timer, get_task_queue, perf_monitor
@@ -155,22 +179,21 @@ _cors_origins = [
 ]
 # 局域网来源自动放行：手机通过 http://192.168.x.x:8000 访问时，
 # Origin 会是那个 IP，写死白名单会导致跨域被拦。
-_cors_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or (
+_cors_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or (None if _PROD else (
     r"^http://("
     r"localhost|127\.0\.0\.1|"
     r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
     r"192\.168\.\d{1,3}\.\d{1,3}|"
     r"172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
     r")(:\d+)?$"
-)
+))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_origin_regex=_cors_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-API-Token", "X-Requested-With",
-                   "X-App-Password"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Token", "X-Requested-With"],
     max_age=3600,
 )
 
@@ -191,7 +214,7 @@ async def api_token_auth(request, call_next):
     if not _APP_API_TOKEN:
         return await call_next(request)
 
-    from fastapi.responses import JSONResponse
+    from utils.exceptions import http_error_response
 
     # 放行 CORS 预检请求
     if request.method == "OPTIONS":
@@ -199,43 +222,67 @@ async def api_token_auth(request, call_next):
 
     token = request.headers.get("X-API-Token") or request.query_params.get("token")
     if token != _APP_API_TOKEN:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "未授权：缺少或错误的 API Token"},
-        )
+        # 中间件里 raise HTTPException 不会被异常处理器接住（它在路由外层），
+        # 所以直接返回错误壳对象，别自己拼 {"detail": ...}。
+        return http_error_response(401, "未授权：缺少或错误的 API Token")
     return await call_next(request)
+
+# --------------------------------------------------------------------------- #
+# 传输层优化中间件（V3.0 性能优化）
+#
+# 顺序说明：Starlette 的 add_middleware 是「后添加者在外层」。这两个放在全部
+# 现有中间件之后，即位于整个中间件链最外层：
+#   GZip（最外）→ StaticCache → api_token_auth → CORS → performance →
+#   TimeoutGuard → CamelCase → 路由
+# GZip 因此压缩的是「最终响应体」（含静态资源）；StaticCache 在压缩之前改写
+# 缓存头，两者互不干扰。GZip 为选择性压缩：SSE / 206 分段 / 二进制流透传
+# （见 utils/middleware.py 的实测说明），不会破坏 AI 流式对话与视频 seek。
+# --------------------------------------------------------------------------- #
+from utils.middleware import GZipApiMiddleware, StaticCacheControlMiddleware
+app.add_middleware(StaticCacheControlMiddleware)
+app.add_middleware(GZipApiMiddleware, minimum_size=1000, compresslevel=6)
 
 # --------------------------------------------------------------------------- #
 # 挂载路由
 # --------------------------------------------------------------------------- #
+app.include_router(auth_routes.router)
+app.include_router(auth_routes.admin_router)
 app.include_router(kaoyan.router)
 app.include_router(kaoyan_ext.router)
 app.include_router(insight.router)
 app.include_router(qa_tools.router)
 app.include_router(conflicts.router)
 app.include_router(ai_tutoring.router)
+app.include_router(tutor_orchestrator.router)  # P1-E 多Agent答疑编排（retrieve→solve→verify→remedy）
 app.include_router(codebank.router)
 app.include_router(dashboard.router)
 app.include_router(tasks.router)
 app.include_router(quiz.router)
 app.include_router(errors.router)
+app.include_router(stats_export.router)
+app.include_router(stats_export.errors_router)  # 错题 CSV 导出 + 批量删除（挂同前缀 /api/errors）
+app.include_router(stats_export.quiz_export_router)  # 题库 CSV 导出 + 批量删除（挂同前缀 /api/quiz）
 app.include_router(ai.router)
 app.include_router(netdisk.router)
 app.include_router(goals.router)
 app.include_router(documents.router)
 app.include_router(flashcards.router)
 app.include_router(customization.router)
+app.include_router(watermark_admin.router)  # 水印词库自学习管理（智能识别入口）
 app.include_router(imports.router)
 app.include_router(analytics.router)
 app.include_router(planner.router)
 app.include_router(words.router)
 app.include_router(taxonomy.router)
+app.include_router(textbooks.router)
 app.include_router(review.router)
 app.include_router(kb.router)
 app.include_router(backup.router)
 app.include_router(storage.router)
 app.include_router(analysis.router)
 app.include_router(papers.router)
+# 代码上机 OJ 暂不挂载：判题要起子进程跑用户代码，2C2G 节点扛不住。
+# 模型/服务/097 表都保留，恢复时加回 import 与本行即可。
 app.include_router(formula.router)
 app.include_router(exam.router)
 app.include_router(answers.router)
@@ -243,12 +290,23 @@ app.include_router(gate.router)
 app.include_router(blind_spot.router)
 app.include_router(plan.router)
 app.include_router(growth.router)
+app.include_router(favorites.router)  # S7 全站收藏
 app.include_router(kb_import.router)
+app.include_router(model_training.router)
 app.include_router(notice_alert.router)
 # 通知已读标记（/api/notices/*）：单用户设计，状态落在 kaoyan_notices 列上
 app.include_router(notices.router)
 # 评测与数据质量只读接口（/api/quality/*）：eval_runs 趋势 + 语料体检口径
 app.include_router(quality.router)
+# 院校后台管理（/api/admin/schools/*）：CRUD + 软删除 + 审计日志
+app.include_router(admin_schools.router)
+# 网盘四表管理（/api/admin/netdisk/*）：凭据/缓存/会话/日志
+app.include_router(admin_netdisk.router)
+app.include_router(admin_system.router)  # 外部算力节点（OCR/重排/Ollama）在线灯
+# 院校数据自动采集（/api/admin/schools/crawler/*）：爬虫触发/调度/覆盖率
+app.include_router(admin_schools_crawler.router)
+app.include_router(memory.router)  # 三层可审计记忆（55 号方案 P0-1）
+app.include_router(recommend.router)  # 闭环个性化推题（55 号方案 P0-C）
 
 
 # --------------------------------------------------------------------------- #
@@ -280,9 +338,8 @@ async def access_info():
     手机扫码即用。这个接口让前端也能直接展示"怎么用手机打开"。
     """
     from utils.network import get_access_info
-    from utils.auth import AUTH_ENABLED
 
-    return get_access_info(auth_enabled=bool(AUTH_ENABLED))
+    return get_access_info(auth_enabled=True)
 
 
 # V3.0 性能监控端点
@@ -344,17 +401,20 @@ async def spa_fallback_handler(request: FastAPIRequest, exc):
     path = request.url.path
     # API 路径、静态资源路径、文档路径不做 fallback
     if path.startswith("/api") or path.startswith("/docs") or path.startswith("/redoc") or path.startswith("/openapi") or "." in path.split("/")[-1]:
-        from fastapi.responses import JSONResponse
+        from utils.exceptions import http_error_response
         # 路由给的 detail 是人话（如 "文档不存在: [99999999]"），此前被一律压成
         # "Not Found"：前端分不清"这条记录不存在"和"接口没注册"，用户只能看到 404。
-        return JSONResponse(status_code=404,
-                            content={"detail": getattr(exc, "detail", None) or "Not Found",
-                                     "path": path})
+        # 本函数原先自己拼 {"detail":..., "path":...}，导致 404 是全站唯一不合
+        # 错误壳的状态码；现在把文案和 path 一起交给归一函数，path 留在 detail 里。
+        detail = getattr(exc, "detail", None)
+        extra = dict(detail) if isinstance(detail, dict) else {"message": detail or "Not Found"}
+        extra["path"] = path
+        return http_error_response(404, extra)
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=404, content={"detail": "index.html not found"})
+    from utils.exceptions import http_error_response
+    return http_error_response(404, {"message": "index.html not found", "path": path})
 
 
 # --------------------------------------------------------------------------- #
@@ -363,8 +423,27 @@ async def spa_fallback_handler(request: FastAPIRequest, exc):
 @app.on_event("startup")
 def on_startup():
     """创建数据库表并写入默认配置（不写任何学习内容，见 docx/16 §1.5-G）。"""
+    # P0-2：OCR 可用性预热提前到启动期。RapidOCR 的 ONNX 引擎冷初始化 ~6.6s，
+    # 若等第一个请求才触发，那次请求（乃至事件循环）要白吃 6.6s。
+    # start_warmup 是 fire-and-forget 守护线程，不阻塞启动。
+    try:
+        from services.ocr_router import get_ocr_router
+
+        get_ocr_router()
+        print("[启动] OCR 可用性预热已发起（后台线程）")
+    except Exception as e:  # noqa: BLE001
+        print(f"[启动] OCR 预热发起失败（不影响主服务）: {e}")
     Base.metadata.create_all(bind=engine)
     _init_default_config()
+    try:
+        from utils.security import ensure_bootstrap_admin
+        db = SessionLocal()
+        try:
+            ensure_bootstrap_admin(db)
+        finally:
+            db.close()
+    except Exception as e:  # noqa: BLE001
+        print(f"[启动] 内置管理员初始化失败: {e}")
     # 幂等补建非ORM 映射的原生表（如 phase_daily_reviews）。
     # create_all 只能建 Base.metadata 里声明过的表，而 planner.py 的阶段
     # 复习接口直接用 text() 读写 phase_daily_reviews，该表无 ORM 模型，
@@ -412,10 +491,11 @@ def on_startup():
         start_scheduler()
     except Exception as e:  # noqa: BLE001
         print(f"[启动] 定时任务启动失败（不影响主服务）: {e}")
-    # V3.0 数据库自动备份（每天一次）
+    # V3.0 数据库自动备份（每天一次；多 worker 时只由持调度锁的进程执行）
     try:
         from services.backup_service import daily_backup_if_needed
-        backup_path = daily_backup_if_needed()
+        from services.scheduler import acquire_singleton_lock
+        backup_path = daily_backup_if_needed() if acquire_singleton_lock() else None
         if backup_path:
             print(f"[启动] 数据库自动备份完成: {backup_path}")
     except Exception as e:
@@ -645,8 +725,6 @@ def _init_default_config():
 # 入口
 # --------------------------------------------------------------------------- #
 if __name__ == "__main__":
-    import uvicorn
-
     # 监听地址从 .env 读取。默认 127.0.0.1（仅本机）；
     # 要让手机/其他设备访问，把 .env 的 HOST 改为 0.0.0.0。
     _host = os.getenv("HOST", "127.0.0.1")
@@ -671,4 +749,8 @@ if __name__ == "__main__":
     except Exception as _e:
         print(f"[warn] 无法生成访问信息: {_e}")
 
-    uvicorn.run("main:app", host=_host, port=_port, reload=False)
+    # P0-3：统一走看门狗 —— 进程半死（accept 循环挂掉但进程还在，
+    # 实测 WinError 64 那次）时会干净退出并给出非零码，而不是挂着假装正常。
+    from utils.server_watchdog import run_with_watchdog
+
+    raise SystemExit(run_with_watchdog(_host, _port))
