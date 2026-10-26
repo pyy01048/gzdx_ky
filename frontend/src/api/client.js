@@ -4,6 +4,8 @@
    全部对齐 backend-main-fastapi/routers/* 契约
    ============================================================ */
 
+import { MUTATION_EVENT } from './mutationEvent'
+
 const BASE = '/api'
 
 /* ------------------------------------------------------------------
@@ -329,6 +331,11 @@ async function request(path, options = {}) {
     })
   }
   noteSuccess(path)
+  /* 写操作成功 → 广播「数据已变更」，聚合中枢等订阅方据此失效缓存。
+     只在 2xx 成功时发；GET / 失败请求不改变数据，不污染订阅方。 */
+  if (method !== 'GET' && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(MUTATION_EVENT, { detail: { method, path } }))
+  }
   return data
 }
 
@@ -561,9 +568,9 @@ export const goalsApi = {
   examCalendar: () => request('/goals/exam-calendar'),
   updateExamCalendar: (body) => request('/goals/exam-calendar', { method: 'PUT', body }),
   university: () => request('/goals/university'),
-  universitySearch: (params) => request('/goals/university/search', { params }),
+  universitySearch: (params) => request('/goals/university/search', { method: 'POST', params }),
   // AI 生成备考策略：后端同步阻塞真实 AI 调用，实测 19.9s~29.4s，需放宽超时
-  strategy: (body) => request('/goals/strategy', { method: 'POST', body, timeout: AI_TIMEOUT })
+  strategy: () => request('/goals/strategy', { timeout: AI_TIMEOUT })
 }
 
 /* ---------------- Quiz 刷题中心 ---------------- */
@@ -602,7 +609,45 @@ export const quizApi = {
     URL.revokeObjectURL(a.href)
   },
   // 题库批量删除（硬删除，上限 500）
-  batchDelete: (ids) => request('/quiz/batch-delete', { method: 'POST', body: ids })
+  batchDelete: (ids) => request('/quiz/batch-delete', { method: 'POST', body: ids }),
+  // P0-1 刷题生词提取：POST /api/quiz/{question_id}/extract-words
+  // 响应 {question_id, words: [{word, exists, source}]}，exists=true 表示已在当前用户词库
+  extractWords: (questionId) => request(`/quiz/${questionId}/extract-words`, { method: 'POST' }),
+  // P0-2 主观题 AI 批改：POST /api/quiz/grade-subjective
+  // 请求 {question_id, my_answer, max_score}；响应 {score, max_score, evaluation, reference_answer}
+  gradeSubjective: (body) => request('/quiz/grade-subjective', { method: 'POST', body }),
+}
+
+/* 从 Content-Disposition 解析 RFC 5987 文件名，失败时用 fallback */
+function parseContentDispositionFilename(header, fallback) {
+  if (header) {
+    const m = header.match(/filename\*=UTF-8''([^;]+)/i) || header.match(/filename="?([^";]+)"?/i)
+    if (m && m[1]) {
+      try { return decodeURIComponent(m[1]) } catch { return m[1] }
+    }
+  }
+  return fallback
+}
+
+/** 通用二进制下载：GET 接口返回 blob，按响应头文件名保存。 */
+async function downloadBlob(path, params = {}, fallbackName = 'download') {
+  const qs = new URLSearchParams()
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, v)
+  }
+  const s2 = qs.toString()
+  const resp = await fetch(`${BASE}${path}${s2 ? '?' + s2 : ''}`, { credentials: 'same-origin' })
+  if (!resp.ok) throw new Error(`导出失败（HTTP ${resp.status}）`)
+  const blob = await resp.blob()
+  const filename = parseContentDispositionFilename(
+    resp.headers.get('Content-Disposition'),
+    fallbackName,
+  )
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(a.href)
 }
 
 /* ---------------- Errors 错题本 ---------------- */
@@ -622,6 +667,8 @@ export const errorsApi = {
     a.click()
     URL.revokeObjectURL(a.href)
   },
+  // PDF 导出（对标「不背单词」纸质导出）：支持与列表一致的筛选参数
+  exportPdf: (params) => downloadBlob('/errors/export-pdf', params, `错题本_${new Date().toISOString().slice(0, 10)}.pdf`),
   batchDelete: (ids) => request('/errors/batch-delete', { method: 'POST', body: ids }),
 
   list: (params) => request('/errors', { params }),
@@ -796,6 +843,8 @@ export const plannerApi = {
   listEbbinghaus: (subject) => request('/planner/ebbinghaus', { params: { subject } }),
   createEbbinghaus: (body) => request('/planner/ebbinghaus', { method: 'POST', body }),
   markEbbinghausReview: (id, cycle) => request(`/planner/ebbinghaus/${id}/review/${cycle}`, { method: 'POST' }),
+  updateEbbinghausReviewTime: (id, body) => request(`/planner/ebbinghaus/${id}/review-time`, { method: 'PUT', body }),
+  updateEbbinghausCycles: (id, body) => request(`/planner/ebbinghaus/${id}/cycles`, { method: 'PUT', body }),
   deleteEbbinghaus: (id) => request(`/planner/ebbinghaus/${id}`, { method: 'DELETE' }),
   // 早起打卡
   listEarlyBird: () => request('/planner/earlybird'),
@@ -823,10 +872,16 @@ export const wordsApi = {
   stats: () => request('/words/stats'),
   due: (limit) => request('/words/due', { params: { limit } }),
   review: (id, grade) => request(`/words/${id}/review`, { method: 'POST', body: { grade } }),
+  // 拼写练习（对标「不背单词」拼写模式）：正确=grade5，错误=grade1，自动记入 SM-2/FSRS
+  spellCheck: (wordId, answer, recordReview = true) => request('/words/spell-check', {
+    method: 'POST', body: { word_id: wordId, answer, record_review: recordReview },
+  }),
   batchImport: (body) => request('/words/batch-import', { method: 'POST', body }),
   // V3.0 批量导入
   importText: (body) => request('/words/import-text', { method: 'POST', body }),
   importExcel: (formData) => request('/words/import-excel', { method: 'POST', formData }),
+  // PDF 导出（对标「不背单词」纸质导出）：支持与列表一致的筛选参数
+  exportPdf: (params) => downloadBlob('/words/export-pdf', params, `单词本_${new Date().toISOString().slice(0, 10)}.pdf`),
 }
 
 /* ---------------- 学习时长记录 ---------------- */
@@ -1016,10 +1071,29 @@ export const growthApi = {
   timeline: (days = 30) => request('/growth/timeline', { params: { days } }),
 }
 
+/* ---------------- 模考中心（P0-3：/api/exam） ----------------
+ * 蓝图 → 组卷 → 答题 → 交卷 → 报告 全链路。
+ * 响应契约：
+ *   GET /exam/blueprints            → [{id, subject, paper, year, section, question_type, count, score_per_question, sort_order, is_active}]
+ *   POST /exam/build                 → {session_id, blueprint_key, subject, paper, mode, total_count, total_score, sections:[{title, questions:[...]}], status, expires_at, time_limit_minutes}
+ *   GET /exam/sessions?subject=&status= → [{id, blueprint_key, subject, paper, mode, total_count, total_score, correct_count, score, status, started_at, submitted_at, expires_at, report_available, max_score, earned_score}]
+ *   GET /exam/sessions/{id}           → 会话详情（含 answers）
+ *   GET /exam/sessions/{id}/report     → {overview, section_scores, knowledge_weakness, time_analysis, wrong_questions}
+ *   POST /exam/{id}/submit            → {session_id, status, correct_count, score, stats_count, total_count, wrong_count, ai_unverified_count, scored_at}
+ */
+export const examApi = {
+  blueprints: () => request('/exam/blueprints'),
+  build: (body) => request('/exam/build', { method: 'POST', body }),
+  sessions: (params) => request('/exam/sessions', { params }),
+  session: (id) => request(`/exam/sessions/${id}`),
+  report: (id) => request(`/exam/sessions/${id}/report`),
+  submit: (id, body) => request(`/exam/${id}/submit`, { method: 'POST', body }),
+}
+
 /* ---------------- 聚合导出 ---------------- */
 export default {
   dashboardApi, tasksApi, goalsApi, quizApi, errorsApi, flashcardsApi,
   documentsApi, netdiskApi, importsApi, aiApi, customizationApi, plannerApi, wordsApi,
   studyApi, taxonomyApi, reviewApi, systemApi, kbApi, analysisApi, quizSectionApi, paperApi, planningApi,
-  kbImportApi, qualityApi, favoritesApi, growthApi
+  kbImportApi, qualityApi, favoritesApi, growthApi, examApi
 }
