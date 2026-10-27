@@ -61,7 +61,10 @@ def test_put_updates_only_sent_fields(client, fresh_single_question):
     assert body["answer"] == "B"
     assert body["subject"] == "QA-PUT数学"
     assert body["question_type"] == "single"
-    assert body["options"] == ["3", "4", "5", "6"]
+    # 选项正典格式为 [{key,text}]（DB 约束 is_canonical_options 与前端一致）；
+    # 入口统一经 services.content_sanitizer 规整，字符串数组会被转成该格式。
+    assert [o["text"] for o in body["options"]] == ["3", "4", "5", "6"]
+    assert [o["key"] for o in body["options"]] == ["A", "B", "C", "D"]
 
     # GET 列表里也能读到新值
     r2 = client.get("/api/quiz/questions", params={"subject": "QA-PUT数学"})
@@ -79,13 +82,15 @@ def test_put_404_for_missing_question(client):
     历史上 main.py 的全局 404 处理器（SPA fallback）会把 /api 路径下所有
     HTTPException(404) 的 detail 统一压成 {"detail": "Not Found"}，前端只能看到
     "404"三个字、分不清"记录不存在"和"接口没注册"。#26 修掉了这个改写：
-    现在保留路由原 detail，DELETE /questions/{id} 行为一致。
+    现在保留路由原文案。#19 又把 404 也并进统一错误壳，人话原因搬到 ``message``，
+    ``path`` 收进 ``detail`` 里。
     """
     r = client.put("/api/quiz/questions/999999", json={"analysis": "x"})
     assert r.status_code == 404
     body = r.json()
-    assert body["detail"] == "题目 999999 不存在"
-    assert body["path"] == "/api/quiz/questions/999999"
+    assert body["code"] == "RESOURCE_NOT_FOUND"
+    assert body["message"] == "题目 999999 不存在"
+    assert body["detail"]["path"] == "/api/quiz/questions/999999"
 
 
 def test_get_filter_by_question_type(client):

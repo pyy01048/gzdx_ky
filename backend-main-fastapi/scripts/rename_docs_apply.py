@@ -20,6 +20,10 @@
 逻辑拆成 `load_plan / stage_plan / write_rollback / apply_plan` 四个纯函数，
 便于 `tests/test_doc_rename_write_through.py` 用临时库驱动（红线：测试绝不碰生产库）。
 
+跨方言（2026-10-15）：连接经 `services.dbapi_compat.wrap_conn` 适配，
+SQLite 直通、PG 改写 ? → %s；行访问统一用**下标**而非列名
+（psycopg 行不支持 dict 式键访问，除非显式 dict_row）。
+
 用法：
     python scripts/rename_docs_apply.py                      # 看计划
     python scripts/rename_docs_apply.py --apply              # 人批后才执行
@@ -30,7 +34,6 @@ import argparse
 import csv
 import io
 import os
-import sqlite3
 import sys
 from datetime import datetime
 from typing import List, Tuple
@@ -51,10 +54,17 @@ def load_plan(path: str) -> List[dict]:
                 if (r.get("proposed") or "").strip() and not (r.get("reason") or "").strip()]
 
 
-def stage_plan(con: sqlite3.Connection, plan: List[dict]) -> Tuple[List[dict], List[Tuple[str, str]]]:
-    """逐条核对库的当前状态，返回 (可执行清单, 跳过原因)。"""
-    chunk_cnt = {r["document_id"]: r["n"] for r in con.execute(
-        "SELECT document_id, COUNT(*) n FROM knowledge_chunks GROUP BY document_id")}
+def _wrap(con):
+    """跨方言包装：SQLite 直通，PG 适配占位符。"""
+    from services.dbapi_compat import wrap_conn
+    return wrap_conn(con)
+
+
+def stage_plan(con, plan: List[dict]) -> Tuple[List[dict], List[Tuple[str, str]]]:
+    """逐条核对库的当前状态，返回 (可执行清单, 跳过原因)。行访问用下标（跨方言）。"""
+    con = _wrap(con)
+    chunk_cnt = {r[0]: r[1] for r in con.execute(
+        "SELECT document_id, COUNT(*) FROM knowledge_chunks GROUP BY document_id").fetchall()}
     staged, stale = [], []
     for r in plan:
         doc = con.execute("SELECT id, file_name FROM documents WHERE id=?",
@@ -62,16 +72,16 @@ def stage_plan(con: sqlite3.Connection, plan: List[dict]) -> Tuple[List[dict], L
         if doc is None:
             stale.append((r["id"], "文档已不存在"))
             continue
-        if doc["file_name"] == r["proposed"]:
+        if doc[1] == r["proposed"]:
             # 必须排在「现名已变」前面：同一份 CSV 重复跑 --apply 是幂等的，
             # 若先比 current 会把已成功回写报成库漂移，看着像出错。
             stale.append((r["id"], "已是目标名，无需写"))
             continue
-        if doc["file_name"] != r["current"]:
-            stale.append((r["id"], f"现名已变：{doc['file_name']}"))
+        if doc[1] != r["current"]:
+            stale.append((r["id"], f"现名已变：{doc[1]}"))
             continue
-        staged.append({"id": doc["id"], "old": doc["file_name"], "new": r["proposed"],
-                       "chunks": chunk_cnt.get(doc["id"], 0)})
+        staged.append({"id": doc[0], "old": doc[1], "new": r["proposed"],
+                       "chunks": chunk_cnt.get(doc[0], 0)})
     return staged, stale
 
 
@@ -85,21 +95,41 @@ def write_rollback(path: str, staged: List[dict]) -> None:
         w.writerows(staged)
 
 
-def apply_plan(con: sqlite3.Connection, staged: List[dict]) -> Tuple[int, int]:
-    """单事务回写：documents.file_name + knowledge_chunks.doc_name 一起改。"""
+def apply_plan(con, staged: List[dict]) -> Tuple[int, int]:
+    """单事务回写：documents.file_name + knowledge_chunks.doc_name 一起改。
+
+    事务语义跨方言：SQLite 用 with con（上下文管理即事务），
+    PG/psycopg 直接 commit / rollback（apply_plan 自管事务边界）。
+    """
+    con = _wrap(con)
     applied = rows = 0
     try:
-        with con:
-            for s in staged:
-                con.execute("UPDATE documents SET file_name=? WHERE id=?", (s["new"], s["id"]))
-                rows += con.execute(
-                    "UPDATE knowledge_chunks SET doc_name=? WHERE document_id=?",
-                    (s["new"], s["id"])).rowcount
-                applied += 1
-    except sqlite3.Error as e:
+        for s in staged:
+            con.execute("UPDATE documents SET file_name=? WHERE id=?", (s["new"], s["id"]))
+            rows += con.execute(
+                "UPDATE knowledge_chunks SET doc_name=? WHERE document_id=?",
+                (s["new"], s["id"])).rowcount
+            applied += 1
+        con.commit()
+    except Exception as e:  # noqa: BLE001
+        con.rollback()
         print(f"\n✗ 回写失败，事务已回滚：{e}")
         raise
     return applied, rows
+
+
+def _connect(apply_mode: bool):
+    """连接生产库（跨方言：按项目 DATABASE_BACKEND 选择驱动）。"""
+    import database as _db
+    if getattr(_db, "IS_POSTGRES", False):
+        raw = _db.engine.raw_connection()
+    else:
+        import sqlite3
+        mode = "rw" if apply_mode else "ro"
+        raw = sqlite3.connect(f"file:{LIVE_DB}?mode={mode}", uri=True, timeout=10)
+        if apply_mode:
+            raw.execute("PRAGMA busy_timeout=10000")
+    return raw
 
 
 def main() -> int:
@@ -116,13 +146,7 @@ def main() -> int:
         print("没有可回写的条目。")
         return 0
 
-    mode = "rw" if args.apply else "ro"
-    con = sqlite3.connect(f"file:{LIVE_DB}?mode={mode}", uri=True, timeout=10)
-    con.row_factory = sqlite3.Row
-    if args.apply:
-        # :8000 的 uvicorn 常连着同一个库，拿不到写锁时等 10 秒而不是立刻报错
-        con.execute("PRAGMA busy_timeout=10000")
-
+    con = _connect(args.apply)
     staged, stale = stage_plan(con, plan)
     drift = sum(s["chunks"] for s in staged)
     print(f"可执行 {len(staged)} 篇，涉及 knowledge_chunks 写穿 {drift} 行；跳过 {len(stale)} 篇")

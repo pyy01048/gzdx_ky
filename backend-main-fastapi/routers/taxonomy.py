@@ -5,6 +5,7 @@
 """
 
 from __future__ import annotations
+from utils.security import require_admin
 
 from typing import Optional
 
@@ -16,6 +17,8 @@ from database import get_db
 from models import KnowledgePoint, Document, KnowledgeChunk, SubjectConfig
 from services import kp_mastery, taxonomy
 
+from utils.response import MAX_PAGE_SIZE
+
 router = APIRouter(prefix="/api/taxonomy", tags=["知识结构"])
 
 
@@ -25,7 +28,8 @@ async def list_subjects(db: Session = Depends(get_db)):
 
     返回**向后兼容**的超集：
     - 新字段 ``subjects``：合并内置默认 + 用户自定义后的完整科目字典，每项含
-      ``subject / chapters / question_types / is_custom / question_count / error_count``；
+      ``subject / chapters / question_types / is_custom / knowledge_point_count /
+      question_count / error_count``；
     - 旧字段 ``core / extension / question_type_pool / doc_types`` 保持不变
       （前端「知识地图」页仍在消费，不在本任务改动范围内）。
 
@@ -43,6 +47,25 @@ async def list_subjects(db: Session = Depends(get_db)):
     # 脏科目以 is_custom=False + unregistered=True 带出（刻意不漏数据）。前端科目页
     # 靠这个标志区分"内置种子"与"未登记"，聚合器一旦补字段这里就要同步透传，
     # 否则两者在响应里完全无法分辨。
+    registry_subjects = subject_registry.list_subjects(db)["subjects"]
+
+    # 知识地图必须展示知识点数，不能复用题库的 question_count。保留 question_count
+    # 兼容既有调用方，同时新增 knowledge_point_count；注册科目聚合其历史别名，
+    # 未登记科目则只统计原始标签，避免多个未知标签都归到「其他」后重复计数。
+    raw_kp_counts = {
+        name: int(cnt or 0)
+        for name, cnt in (
+            db.query(KnowledgePoint.subject, func.count(KnowledgePoint.id))
+            .filter(KnowledgePoint.subject.isnot(None))
+            .group_by(KnowledgePoint.subject)
+            .all()
+        )
+    }
+    normalized_kp_counts: dict[str, int] = {}
+    for name, cnt in raw_kp_counts.items():
+        std = taxonomy.normalize_subject(name)
+        normalized_kp_counts[std] = normalized_kp_counts.get(std, 0) + cnt
+
     subjects = [
         {
             "subject": s["subject"],
@@ -50,10 +73,15 @@ async def list_subjects(db: Session = Depends(get_db)):
             "question_types": s["question_types"],
             "is_custom": s["is_custom"],
             "unregistered": s["unregistered"],
+            "knowledge_point_count": (
+                raw_kp_counts.get(s["subject"], 0)
+                if s["unregistered"]
+                else normalized_kp_counts.get(s["subject"], 0)
+            ),
             "question_count": s["question_count"],
             "error_count": s["error_count"],
         }
-        for s in subject_registry.list_subjects(db)["subjects"]
+        for s in registry_subjects
     ]
 
     return {
@@ -101,7 +129,7 @@ def _validate_question_types(types) -> list[str]:
     return list(types)
 
 
-@router.post("/subjects")
+@router.post("/subjects", dependencies=[Depends(require_admin)])
 async def create_subject(payload: dict, db: Session = Depends(get_db)):
     """新增自定义科目（is_custom=True）。
 
@@ -125,6 +153,8 @@ async def create_subject(payload: dict, db: Session = Depends(get_db)):
         question_types=qtypes,
         is_custom=True,
     )
+    # 显式重建：清掉可能存在的删除墓碑（墓碑只挡自动补齐，不挡用户加回）
+    taxonomy.unmark_subject_removed(db, name)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -138,7 +168,7 @@ async def create_subject(payload: dict, db: Session = Depends(get_db)):
     }
 
 
-@router.put("/subjects/{subject}")
+@router.put("/subjects/{subject}", dependencies=[Depends(require_admin)])
 async def update_subject(subject: str, payload: dict, db: Session = Depends(get_db)):
     """更新科目配置：重命名 / 改章节 / 改题型。
 
@@ -172,6 +202,10 @@ async def update_subject(subject: str, payload: dict, db: Session = Depends(get_
         # 改名同样要把 goals 两层里的旧名换成新名，否则设置页改名后
         # 其他页面仍读到旧名死引用（与删除路径同一闭环）。
         _sync_goal_subject_refs(db, renamed_from=subject, renamed_to=row.subject)
+        # 旧名若在内置池，会被 ensure_subject_config_seeds「按缺失补齐」复活，
+        # 登记墓碑阻止；新名清墓碑（可能曾被删过）。
+        taxonomy.mark_subject_removed(db, subject)
+        taxonomy.unmark_subject_removed(db, row.subject)
 
     db.commit()
     db.refresh(row)
@@ -209,7 +243,7 @@ def _sync_goal_subject_refs(db: Session, *, removed: str = None, renamed_from: s
     """
     from models import Goal
 
-    goal = db.query(Goal).first()
+    goal = db.query(Goal).order_by(Goal.id.asc()).first()
     if not goal:
         return
 
@@ -234,7 +268,7 @@ def _sync_goal_subject_refs(db: Session, *, removed: str = None, renamed_from: s
         goal.support_subjects = _clean(goal.support_subjects)
 
 
-@router.delete("/subjects/{subject}")
+@router.delete("/subjects/{subject}", dependencies=[Depends(require_admin)])
 async def delete_subject(subject: str, db: Session = Depends(get_db)):
     """删除科目配置行（内置默认也可删）。
 
@@ -243,11 +277,16 @@ async def delete_subject(subject: str, db: Session = Depends(get_db)):
 
     同时把 ``goals`` 两层（考试科目 / 支撑科目）里对该科目的引用一并移除 ——
     否则设置页删了科目，其他页面仍会从 goals 读到死引用，表现为"删了不同步"。
+
+    复活防护（2026-10-19）：删除成功后登记 ``subject_removals`` 墓碑，
+    使 ensure_subject_config_seeds 的「按缺失补齐」不再把内置科目复活
+    （线上实测：DELETE 200 后下一次 GET 列表科目又回来）。
     """
     row = db.query(SubjectConfig).filter(SubjectConfig.subject == subject).first()
     if not row:
         raise HTTPException(status_code=404, detail=f"科目不存在：{subject}")
     db.delete(row)
+    taxonomy.mark_subject_removed(db, subject)
     _sync_goal_subject_refs(db, removed=subject)
     db.commit()
     taxonomy.load_configured_subjects(db)
@@ -272,19 +311,36 @@ async def structure_tree(
     掌握度三态（未学/薄弱/已掌握）口径见 ``services/kp_mastery.py``：
     未学知识点不计入薄弱统计。
     """
-    subjects = list(taxonomy.CORE_SUBJECTS)
+    # 已配置科目（subject_config）要先装载进内存缓存，否则「电磁场与电磁波」等
+    # 已登记科目会被 normalize_subject 模糊归一进「其他」，导致树里找不到独立节点。
+    taxonomy.load_configured_subjects(db)
+
+    # 目标科目集合 = 主线（CORE）+ 专业课支撑（MAJOR）+ 拓展（EXT）。
+    # 历史只遍历 CORE+EXT，导致 电路/信号与系统/通信原理/普通物理/408 等
+    # MAJOR 科目的知识点（共 571 个）在「全部」树中完全不可达 —— 本次修复补上。
+    subjects = list(taxonomy.CORE_SUBJECTS) + list(taxonomy.MAJOR_SUBJECTS)
     if include_extension:
         subjects += list(taxonomy.EXT_SUBJECTS)
-    if subject:
-        std = taxonomy.normalize_subject(subject)
-        subjects = [s for s in subjects if s == std] or [std]
 
     # 一次性取全部知识点，按科目分组
-    rows = db.query(KnowledgePoint).all()
+    rows_query = db.query(KnowledgePoint)
+    if subject:
+        std = taxonomy.normalize_subject(subject)
+        # 指定科目时只查该科，避免「点科目 chip」仍全表扫描
+        rows_query = rows_query.filter(KnowledgePoint.subject == std)
+        subjects = [s for s in subjects if s == std] or [std]
+    rows = rows_query.all()
     learned = kp_mastery.learned_kp_ids(db)
     by_subject: dict[str, list[KnowledgePoint]] = {}
     for kp in rows:
         by_subject.setdefault(taxonomy.normalize_subject(kp.subject), []).append(kp)
+
+    # 兜底：凡是在 knowledge_points 里实际出现过的科目（含自定义科目、以及
+    # 电磁场与电磁波/数字信号处理这类已登记但不在内置池的科目），
+    # 一律追加为树的顶层节点，保证「全部」视图下每个知识点都可达。
+    for s in by_subject:
+        if s not in subjects:
+            subjects.append(s)
 
     tree = []
     for s in subjects:
@@ -379,7 +435,7 @@ async def list_knowledge_points(
     keyword: Optional[str] = None,
     low_mastery: bool = False,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     """知识点列表（支持 科目 / 章节 / 题型 / 关键词 / 薄弱 筛选）。
@@ -400,7 +456,7 @@ async def list_knowledge_points(
     if low_mastery:
         rows = [
             r for r in rows
-            if kp_mastery.classify_state(r.mastery, r.id in learned) == kp_mastery.STATE_WEAK
+            if kp_mastery.classify_state(r.mastery, r.id in learned) in (kp_mastery.STATE_LEARNING, kp_mastery.STATE_WEAK)
         ]
 
     if question_type:
@@ -470,10 +526,29 @@ async def structure_coverage(db: Session = Depends(get_db)):
         std = taxonomy.normalize_subject(subject)
         chapter_counts[std] = chapter_counts.get(std, 0) + (cnt or 0)
 
+    # 科目集合与 /tree 保持一致：主线 + 专业课支撑 + 拓展，
+    # 再补上业务表实际出现过（有知识点/文档/分块）但不在内置池的科目，
+    # 避免覆盖体检表漏掉 信号与系统/408/电磁场与电磁波 等真实科目。
+    taxonomy.load_configured_subjects(db)
+    subject_names = list(taxonomy.CORE_SUBJECTS) + list(taxonomy.MAJOR_SUBJECTS) + list(taxonomy.EXT_SUBJECTS)
+    for s in list(kp_counts) + list(doc_rows) + list(chunk_rows):
+        if s not in subject_names:
+            subject_names.append(s)
+
     ocr_docs = db.query(func.count(Document.id)).filter(Document.ocr_used == True).scalar() or 0  # noqa: E712
 
+    # 预取「科目 → 实际出现的章名集合」，避免 _covered_chapters 每科一次查询（N+1）
+    chapter_set_rows = (
+        db.query(KnowledgePoint.subject, KnowledgePoint.chapter)
+        .filter(KnowledgePoint.chapter.isnot(None), KnowledgePoint.chapter != "")
+        .all()
+    )
+    subject_chapter_sets: dict[str, set[str]] = {}
+    for subj, ch in chapter_set_rows:
+        subject_chapter_sets.setdefault(taxonomy.normalize_subject(subj), set()).add(ch)
+
     subjects = []
-    for s in taxonomy.CORE_SUBJECTS + taxonomy.EXT_SUBJECTS:
+    for s in subject_names:
         kpc = kp_counts.get(s, 0)
         chc = chapter_counts.get(s, 0)
         outline = taxonomy.chapters_of(s)
@@ -486,7 +561,7 @@ async def structure_coverage(db: Session = Depends(get_db)):
             "structured_knowledge_points": chc,
             "structure_rate": round(chc / kpc * 100, 1) if kpc else 0.0,
             "outline_chapters": len(outline),
-            "covered_chapters": _covered_chapters(db, s, outline),
+            "covered_chapters": _covered_chapters(outline, subject_chapter_sets.get(s, set())),
         })
 
     return {
@@ -500,17 +575,15 @@ async def structure_coverage(db: Session = Depends(get_db)):
     }
 
 
-def _covered_chapters(db: Session, subject: str, outline: list[str]) -> int:
-    """大纲章中已有知识点的数量。"""
+def _covered_chapters(outline: list[str], have: set) -> int:
+    """大纲章中已有知识点的数量。
+
+    Args:
+        outline: 大纲章名列表。
+        have: 该科目实际出现过的章名集合（已归一化）。
+    """
     if not outline:
         return 0
-    rows = (
-        db.query(KnowledgePoint.chapter, func.count(KnowledgePoint.id))
-        .filter(KnowledgePoint.subject == subject, KnowledgePoint.chapter.isnot(None))
-        .group_by(KnowledgePoint.chapter)
-        .all()
-    )
-    have = {ch for ch, cnt in rows if ch and cnt}
     return sum(1 for o in outline if o in have)
 
 
@@ -593,7 +666,7 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/knowledge-points")
+@router.post("/knowledge-points", dependencies=[Depends(require_admin)])
 async def create_knowledge_point(payload: dict, db: Session = Depends(get_db)):
     """手动新增知识点（补录大纲里缺失的考点）。"""
     name = (payload.get("name") or "").strip()
@@ -617,7 +690,7 @@ async def create_knowledge_point(payload: dict, db: Session = Depends(get_db)):
     return {"id": kp.id, "message": "知识点已创建"}
 
 
-@router.put("/knowledge-points/{kp_id}")
+@router.put("/knowledge-points/{kp_id}", dependencies=[Depends(require_admin)])
 async def update_knowledge_point(kp_id: int, payload: dict, db: Session = Depends(get_db)):
     """更新知识点（章节归属、题型、考频、掌握度）。"""
     kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == kp_id).first()
@@ -639,7 +712,7 @@ async def update_knowledge_point(kp_id: int, payload: dict, db: Session = Depend
     return {"id": kp.id, "message": "知识点已更新"}
 
 
-@router.delete("/knowledge-points/{kp_id}")
+@router.delete("/knowledge-points/{kp_id}", dependencies=[Depends(require_admin)])
 async def delete_knowledge_point(kp_id: int, db: Session = Depends(get_db)):
     kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == kp_id).first()
     if not kp:

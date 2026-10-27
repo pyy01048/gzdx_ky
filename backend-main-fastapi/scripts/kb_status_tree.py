@@ -16,12 +16,15 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import argparse
 import json
 import os
 import sys
 
-DEFAULT_KB_ROOT = r"D:\平台\knowledge_base"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DEFAULT_KB_ROOT = str(_REPO / "knowledge_base")
 
 
 def load_jsonl_lines(path: str) -> list[dict]:

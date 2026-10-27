@@ -1,0 +1,508 @@
+/* ==========================================================================
+   硕途 · 设计令牌（Design Tokens）v2.0.0 · Google Material 3 Expressive × Gemini
+   --------------------------------------------------------------------------
+   单一事实来源：src/design/design-tokens.json
+   派生文件 1/3：本文件（CSS 自定义属性 · 运行时唯一来源）
+   派生文件 2/3：src/styles/tokens.js（供 ECharts / 内联样式消费）
+   派生文件 3/3：本文件末尾 chart 变量（由 tokens.js / ECharts 消费）
+
+   设计取向（Material 3 Expressive + Gemini 视觉语言）
+     - 寄存器：Product（工具型）——设计服务于每天高强度使用数小时的学习动作
+     - 三轴刻度：DESIGN_VARIANCE 5 / MOTION_INTENSITY 3 / VISUAL_DENSITY 5
+       · 方差 5：M3 Expressive 允许更饱满的形状与能量渐变，但版式仍可预测
+       · 动效 3：功能性动效为主，Expressive 时刻（页面入场 / FAB / 主 CTA）加能量感
+       · 密度 5：M3 舒展正文（16/24），触控目标 ≥48dp（App 就绪）
+     - 色彩：Google 系统色——浅色 primary #1A73E8、暗色 #8AB4F8；
+       语义色 success #1E8E3E / warn #B06000 / danger #C5221F（暗色用亮变体）
+     - 表面：M3 tonal 中性面（冷蓝调）——浅色 bg #F8FAFD、白卡片；暗色 #1B1D21 分层
+     - 形状：M3 shape scale（12/16/20/28/full），Expressive 圆润、可形变
+     - 动效：M3 缓动 standard=cubic-bezier(.2,0,0,1)、emphasized 同族
+     - 品牌能量：Gemini 渐变 --grad-gemini（蓝→紫→品红，极度克制）
+     - 毛玻璃：--blur-glass / --surface-glass 供顶栏 / 面板 / 浮层消费（M3 含义模糊）
+
+   四层架构
+     A1-identity   品牌核心，不可省略      --bg / --fg / --accent / --font-sans / 字号与间距阶梯
+     A1-structure  版式骨架                --container-max / --nav-h / --section-gap
+     A2            有默认值，可被品牌覆盖   --success / --warn / --danger / 动效时长 / --font-mono
+     B-slot        指向 A1 的别名           --surface-2 / --fg-2 / --muted / --border-soft / --accent-on
+     C-extension   本项目专属扩展            --mastered-* / --shaky-* / --unknown-* / --gemini-*
+     M3-role       M3 角色别名（App 平移用） --primary / --on-primary / --surface-container / --outline …
+
+   使用铁律
+     - 业务 CSS / 内联 style 禁止出现裸 hex，一律 var(--token)。唯一例外 #fff / #000
+     - 每屏 --accent / --primary 可见使用 ≤ 2 处（主 CTA + 当前选中态）
+     - Gemini 渐变（--grad-gemini / --grad-gemini-text）仅限品牌时刻：
+       顶栏 logo、页面 hero 标题、主 CTA、AI 悬浮球、能量进度条。禁止铺满普通卡片
+     - 禁止弹跳缓动 cubic-bezier(0.68,-0.55,0.265,1.55)
+     - 毛玻璃只用于「浮在内容之上」的层（顶栏 / 下拉面板 / 模态）；不用于普通卡片
+     - 触控目标 ≥48px（--touch-min），不依赖 hover 承载信息（App 移植约束）
+
+   接入顺序（重要）
+     main.jsx 中本文件在所有 css 之后导入。
+     本文件是全站唯一令牌来源；改令牌请改 src/design/design-tokens.json 后同步本文件与 tokens.js。
+   ==========================================================================
+
+   /* ==========================================================================
+   1. A1-identity + A1-structure（浅色 = 默认 · Google M3 Expressive）
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  /* ---- 表面层 Surface（M3 tonal 中性面：冷蓝调灰底 + 纯白卡片） ---------- */
+  --bg:        #F8FAFD;  /* 页面底色：M3 surface 冷蓝灰，长时间阅读低噪 */
+  --surface:   #FFFFFF;  /* 卡片 / 面板 / 顶栏背景（一级表面，纯白） */
+  --surface-2: #F0F4FB;  /* 二级表面：表头、hover 行、嵌套容器（surface-container-low） */
+  --surface-3: #E4EAF4;  /* 三级表面：进度槽底、禁用块、骨架屏（surface-container） */
+
+  /* ---- 前景层 Foreground（M3 on-surface 层级） -------------------------- */
+  --fg:     #1B1D22;  /* 主文本：正文与标题（on-surface，对比度 ~15:1） */
+  --fg-2:   #44474A;  /* 次级文本：表格内容、卡片描述（on-surface-variant） */
+  --muted:  #5F6368;  /* 弱化文本：辅助说明、时间戳（Google grey-700，~4.9:1） */
+  --meta:   #80868B;  /* 三级元信息（Google grey-600，~3.2:1）——仅限 ≥24px 字号或图标/分隔线，禁止承载正文 */
+
+  /* ---- 描边层 Border（M3 outline） --------------------------------------- */
+  --border:        #DADCE0;  /* 默认描边：卡片、输入框、表格线（outline） */
+  --border-strong: #C4C7C8;  /* 强调描边：hover 边框、选中框（outline-variant） */
+  --border-soft:   #E8EAED;  /* 内部行分隔符，比默认描边更弱 */
+
+  /* ---- 强调色 Primary（Google Blue / #1A73E8；每屏可见 ≤ 2 处） ---------- */
+  --accent:        #1A73E8;  /* Google 蓝：主 CTA、当前选中、关键链接（~4.6:1） */
+  --accent-hover:  #185ABC;  /* hover 压暗（Google blue-800） */
+  --accent-active: #174EA6;  /* active 按下（Google blue-900） */
+  --accent-solid:  #1A73E8;  /* 实心按钮填充 */
+  --accent-on:     #FFFFFF;  /* 实心按钮上的前景色 */
+  --accent-soft:   #E8F0FE;  /* 淡底：选中 chip、提示条（primary-container 浅） */
+  --accent-border: #AECBFA;  /* 描边型强调：次要按钮边框、焦点环外圈 */
+
+  /* ---- 语义色 Semantic（Google 系统色） ---------------------------------- */
+  --success:      #1E8E3E;  /* 成功 / 做对：实心块、图表（green-800） */
+  --success-ink:  #1E8E3E;  /* 成功色文字版（达标对比度） */
+  --success-soft: #E6F4EA;  /* 成功色淡底（green-50） */
+  --success-border: #A8DAB5;
+  --warn:         #E37400;  /* 警告 / 半会（amber，文字级用深变体） */
+  --warn-ink:     #B06000;
+  --warn-soft:    #FEF7E0;  /* warning 淡底（yellow-50） */
+  --warn-border:  #FDE293;
+  --danger:       #D93025;  /* 错误 / 做错 / 危险操作（red-700） */
+  --danger-ink:   #C5221F;
+  --danger-soft:  #FCE8E6;  /* danger 淡底（red-50） */
+  --danger-border:#F5B8B4;
+  --info:         #1A73E8;  /* 信息提示（同 accent，Google 蓝） */
+  --info-ink:     #174EA6;
+  --info-soft:    #E8F0FE;
+
+  /* ---- 代码块（复试代码题库用）------------------------------------------ */
+  --code-bg:      #1E2022;  /* 代码块底色：Google dark surface */
+  --code-fg:      #E8EAED;  /* 代码正文 */
+  --code-bg-out:  #17181A;  /* 运行输出块底色，比代码块更深 */
+  --code-fg-out:  #81C995;  /* 运行输出文字：Google green（暗），区分于源码 */
+
+  /* ---- 效果色 Effect ----------------------------------------------------- */
+  --focus-ring: rgba(26, 115, 232, 0.45);  /* 键盘焦点环（Google 蓝） */
+  --overlay:    rgba(248, 250, 253, 0.92); /* 模态遮罩 */
+  --mask:       rgba(32, 33, 36, 0.50);    /* 图片 / 抽屉遮罩（M3 scrim） */
+  --skeleton:   #E4EAF4;                   /* 骨架屏底色 */
+
+  /* ---- 毛玻璃 Glass（M3 含义模糊 + Gemini 通透）-------------------------- */
+  --blur-glass:    saturate(180%) blur(24px);
+  --surface-glass: rgba(255, 255, 255, 0.72);  /* 浅色毛玻璃底 */
+
+  /* ---- M3 角色别名（App 平移 / 新组件消费；与上面同值）------------------- */
+  --primary:              #1A73E8;
+  --on-primary:           #FFFFFF;
+  --primary-container:    #D3E3FD;
+  --on-primary-container: #041E49;
+  --surface-container:        #E4EAF4;
+  --surface-container-high:   #DDE4F0;
+  --surface-container-highest:#D4DCEC;
+  --on-surface:           #1B1D22;
+  --on-surface-variant:   #44474A;
+  --outline:              #DADCE0;
+  --outline-variant:      #C4C7C8;
+
+  /* ---- Gemini 品牌能量（C-extension · 极度克制）------------------------- */
+  --gemini-from: #4285F4;   /* 蓝 */
+  --gemini-mid:  #8B5CF6;   /* 紫 */
+  --gemini-to:   #E86FC0;   /* 品红（仅渐变末端，不单独使用） */
+  --grad-gemini:      linear-gradient(115deg, var(--gemini-from) 0%, var(--gemini-mid) 52%, var(--gemini-to) 100%);
+  --grad-gemini-text: linear-gradient(100deg, #2E7CF6 0%, #7C4DE0 48%, #C055B4 100%);
+  --grad-gemini-soft: linear-gradient(115deg, rgba(66,133,244,.14) 0%, rgba(139,92,246,.12) 52%, rgba(232,111,192,.10) 100%);
+  --gemini-glow:      0 6px 22px rgba(124, 77, 224, 0.28);
+
+  /* ---- 知识点掌握度 C-extension（知识图谱 / 错题 / 刷题统计共用）-------- */
+  --mastered-bg:   #E6F4EA;  --mastered-ink:   #1E8E3E;  /* 已掌握 */
+  --shaky-bg:      #FEF7E0;  --shaky-ink:      #B06000;  /* 模糊 / 半会 */
+  --unknown-bg:    #FCE8E6;  --unknown-ink:    #C5221F;  /* 不会 / 做错 */
+  --untouched-bg:  #F0F4FB;  --untouched-ink:  #5F6368;  /* 未学 */
+
+  /* ---- 图表色板 C-extension（Material 色板，Google 语义序）--------------- */
+  --chart-1: #1A73E8;  /* Google 蓝 */
+  --chart-2: #1E8E3E;  /* 绿 */
+  --chart-3: #E37400;  /* 橙 */
+  --chart-4: #D93025;  /* 红 */
+  --chart-5: #00897B;  /* 青 */
+  --chart-6: #9334E6;  /* 紫 */
+  --chart-7: #E8710A;  /* 琥珀 */
+  --chart-8: #80868B;  /* 灰 */
+  --chart-axis:        #5F6368;  /* 坐标轴 / 刻度 */
+  --chart-split-line:  #E8EAED;  /* 网格分割线 */
+  --chart-tooltip-bg:  #FFFFFF;
+  --chart-tooltip-border: #DADCE0;
+
+  /* ---- 字体 Typography：Roboto/Google 优先，零网络字体依赖 -------------- */
+  --font-sans: "Roboto", "Google Sans", "Product Sans", -apple-system, "Segoe UI",
+               "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+               "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-serif: "Google Serif", "Noto Serif SC", Georgia,
+                "Songti SC", "SimSun", serif;  /* 仅讲义 / 文档长文 */
+  --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+               Consolas, "Liberation Mono", monospace;   /* 代码题 / 题号 / 数字 */
+
+  /* 字号阶梯（8 级）—— M3 body-large 基准 16/24，Expressive 头部更饱满 */
+  --text-xs:   12px;  --lh-xs:   16px;  /* M3 label-medium：标签、角标、脚注 */
+  --text-sm:   13px;  --lh-sm:   18px;  /* M3 body-small 上沿：表格内容、次级说明 */
+  --text-base: 15px;  --lh-base: 22px;  /* 正文（CJK 舒展节奏） */
+  --text-md:   16px;  --lh-md:   24px;  /* M3 body-large：卡片标题、表单输入 */
+  --text-lg:   18px;  --lh-lg:   26px;  /* M3 title-medium 上：区块小标题 */
+  --text-xl:   20px;  --lh-xl:   28px;  /* M3 title-large：模块标题 */
+  --text-2xl:  24px;  --lh-2xl:  32px;  /* M3 headline-small：页面主标题 */
+  --text-3xl:  30px;  --lh-3xl:  38px;  /* M3 headline-medium：首页关键数字 / 倒计时 */
+
+  /* 字重四档（M3：regular 400 / medium 500 / semibold 600 / bold 700）------ */
+  --fw-regular:  400;
+  --fw-medium:   500;  /* 按钮文字、表头、小标题 */
+  --fw-semibold: 600;  /* 页面标题、强调数字 */
+  --fw-bold:     700;  /* 页面主标题 */
+
+  /* 字距（M3：默认 0，标题略收，小字放开）--------------------------------- */
+  --tracking-tight:  -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide:   0.02em;
+  --tracking-caps:   0.08em;
+
+  /* ---- 间距 Spacing（4px 网格） ----------------------------------------- */
+  --space-0:  0px;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ---- 圆角 Radius（M3 shape scale：12/16/20/28/full，Expressive 圆润）--- */
+  --radius-none: 0px;      /* 通栏区、表格外框 */
+  --radius-sm:   12px;     /* 标签、徽章、chip（M3 medium） */
+  --radius-md:   16px;     /* 按钮、输入框、下拉行（M3 large） */
+  --radius-lg:   20px;     /* 卡片标准圆角（M3 extra-large，Expressive） */
+  --radius-xl:   28px;     /* 模态框、抽屉（M3 extra-large 上限） */
+  --radius-full: 9999px;   /* 药丸按钮、头像、FAB */
+
+  /* ---- 阴影 Elevation（M3 tonal + 低扩散柔和阴影；暗色改用表面分层）------ */
+  --shadow-flat: none;
+  --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.10), 0 1px 3px 1px rgba(60, 64, 67, 0.06);
+  --shadow-md: 0 1px 2px rgba(60, 64, 67, 0.10), 0 2px 6px 2px rgba(60, 64, 67, 0.08);
+  --shadow-lg: 0 4px 8px 3px rgba(60, 64, 67, 0.10), 0 1px 3px rgba(60, 64, 67, 0.12);
+  --shadow-overlay: 0 8px 12px 6px rgba(60, 64, 67, 0.12), 0 4px 4px rgba(60, 64, 67, 0.14);
+  /* 焦点环：2px 实环 + 半透明外扩，深浅背景皆可见 */
+  --focus-ring-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--focus-ring);
+
+  /* ---- 动效 Motion（M3 duration 阶梯 + M3 缓动）------------------------- */
+  --motion-instant: 100ms;  /* M3 short1：按钮按下、开关切换 */
+  --motion-fast:    200ms;  /* M3 medium2：hover、下拉显隐、选中态（全站统一） */
+  --motion-base:    250ms;  /* 内容进入：Toast、面板展开 */
+  --motion-slow:    350ms;  /* M3 long：跨屏过渡：模态、抽屉 */
+  --motion-page:    400ms;  /* 路由切换入场（Expressive） */
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);      /* M3 standard */
+  --ease-out:      cubic-bezier(0, 0, 0, 1);        /* M3 decelerate：元素进入 */
+  --ease-in-out:   cubic-bezier(0.2, 0, 0, 1);      /* M3 emphasized：跨屏过渡 */
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);    /* M3 emphasized */
+  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);    /* M3 accelerate：元素退出 */
+  --ease-linear:   linear;                          /* 进度条、骨架微光、加载转圈 */
+
+  /* ---- 层级 z-index ------------------------------------------------------ */
+  --z-base:     0;
+  --z-raised:   10;
+  --z-sticky:   100;
+  --z-navbar:   1000;
+  --z-dropdown: 1010;
+  --z-modal:    1020;
+  --z-popover:  1030;
+  --z-toast:    1040;
+  --z-max:      9999;
+
+  /* ---- 版式 Layout（M3 自适应容器：底栏 / 轨 / 侧栏，App 就绪）---------- */
+  --nav-h:            64px;   /* 桌面顶栏高度 */
+  --nav-h-mobile:     56px;   /* 移动端顶部 / 底部导航高度 */
+  --nav-h-scroll:     56px;
+  --container-max:    1440px;
+  --container-wide:   1600px;
+  --container-prose:  760px;
+  --container-gutter: 24px;
+  --page-top:         20px;
+  --section-gap:      24px;
+  --page-bottom:      48px;
+  --grid-gap:         16px;
+  --touch-min:        48px;   /* 最小可点击区域（M3 / App：≥48dp） */
+
+  /* ---- 组件尺寸 Component（供组件实现直接引用）-------------------------- */
+  --nav-item-h:      40px;
+  --nav-item-pad-x:  12px;
+  --nav-item-gap:    4px;
+  --nav-dd-w:        240px;
+  --nav-dd-pad:      8px;
+  --nav-row-h:       44px;
+  --nav-row-pad-x:   12px;
+  --nav-row-gap:     12px;
+
+  --btn-h-sm: 32px;  --btn-pad-x-sm: 12px;
+  --btn-h-md: 40px;  --btn-pad-x-md: 16px;
+  --btn-h-lg: 48px;  --btn-pad-x-lg: 22px;
+  --btn-icon: 18px;
+
+  --input-h:    40px;
+  --input-h-sm: 36px;
+
+  --card-pad:    16px;
+  --card-pad-lg: 20px;
+  --card-radius: 20px;  /* 卡片圆角（= radius.lg，M3 Expressive） */
+
+  --table-head-h:       44px;
+  --table-row-h:        48px;
+  --table-row-h-dense:  40px;
+  --table-cell-pad-x:   12px;
+
+  --tag-h:     24px;
+  --tag-pad-x: 10px;
+
+  --modal-radius: 28px;  /* 模态框圆角（= radius.xl，M3） */
+  --modal-pad:    24px;
+  --modal-w-sm:   400px;
+  --modal-w-md:   640px;
+  --modal-w-lg:   880px;
+
+  --subject-pill-h:    36px;
+  --subject-pill-maxw: 180px;
+  --subject-panel-w:   260px;
+}
+
+/* ==========================================================================
+   2. 深色主题（[data-theme='dark'] —— 与 UI.jsx 的 useTheme 写入保持一致）
+      M3 dark：靠 tonal surface 亮度递进表达层级，阴影近不可见
+      背景 #1B1D21 -> #23252A -> #2B2E34 -> #35383F
+      文本 #E8EAED -> #BDC1C6 -> #9AA0A6 -> #80868B
+   ========================================================================== */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg:        #1B1D21;
+  --surface:   #23252A;
+  --surface-2: #2B2E34;
+  --surface-3: #35383F;
+
+  --fg:     #E8EAED;
+  --fg-2:   #BDC1C6;
+  --muted:  #9AA0A6;
+  --meta:   #80868B;
+
+  --border:        #3C4043;
+  --border-strong: #444746;
+  --border-soft:   #2B2E34;
+
+  --accent:        #8AB4F8;  /* Google 暗色 primary（亮蓝） */
+  --accent-hover:  #AECBFA;
+  --accent-active: #D2E3FC;
+  --accent-solid:  #8AB4F8;
+  --accent-on:     #062E6F;  /* 深蓝字压亮蓝（M3 on-primary，对比达标） */
+  --accent-soft:   #1B3A5C;  /* primary-container 暗 */
+  --accent-border: #345B8C;
+
+  --success:      #81C995;  --success-ink: #81C995;  --success-soft: #17331C;
+  --success-border: #2C4F35;
+  --warn:         #FDD663;  --warn-ink:    #FDD663;  --warn-soft:    #3A2E10;
+  --warn-border:  #5C4A1E;
+  --danger:       #F28B82;  --danger-ink:  #F28B82;  --danger-soft:  #3A1C19;
+  --danger-border:#5C2F2A;
+  --info:         #8AB4F8;  --info-ink:    #8AB4F8;  --info-soft:    #1B3A5C;
+
+  --focus-ring: rgba(138, 180, 248, 0.50);
+  --overlay:    rgba(0, 0, 0, 0.58);
+  --mask:       rgba(0, 0, 0, 0.60);
+  --skeleton:   #2B2E34;
+
+  --blur-glass:    saturate(180%) blur(24px);
+  --surface-glass: rgba(35, 38, 43, 0.72);
+
+  /* M3 角色别名（暗） */
+  --primary:              #8AB4F8;
+  --on-primary:           #062E6F;
+  --primary-container:    #2B4A73;
+  --on-primary-container:#D3E3FD;
+  --surface-container:        #2B2E34;
+  --surface-container-high:   #35383F;
+  --surface-container-highest:#3F434A;
+  --on-surface:           #E8EAED;
+  --on-surface-variant:   #BDC1C6;
+  --outline:              #3C4043;
+  --outline-variant:      #444746;
+
+  /* Gemini 品牌能量（暗：更亮） */
+  --gemini-from: #8AB4F8;
+  --gemini-mid:  #B69BF8;
+  --gemini-to:   #F19AD4;
+  --grad-gemini:      linear-gradient(115deg, var(--gemini-from) 0%, var(--gemini-mid) 52%, var(--gemini-to) 100%);
+  --grad-gemini-text: linear-gradient(100deg, #A8C7FA 0%, #C9A9FF 48%, #F3A9D6 100%);
+  --grad-gemini-soft: linear-gradient(115deg, rgba(138,180,248,.16) 0%, rgba(182,155,248,.14) 52%, rgba(241,154,212,.12) 100%);
+  --gemini-glow:      0 6px 24px rgba(139, 92, 246, 0.36);
+
+  --mastered-bg:   #17331C;  --mastered-ink:   #81C995;
+  --shaky-bg:      #3A2E10;  --shaky-ink:      #FDD663;
+  --unknown-bg:    #3A1C19;  --unknown-ink:    #F28B82;
+  --untouched-bg:  #2B2E34;  --untouched-ink:  #9AA0A6;
+
+  --chart-1: #8AB4F8;
+  --chart-2: #81C995;
+  --chart-3: #FDD663;
+  --chart-4: #F28B82;
+  --chart-5: #78D9D0;
+  --chart-6: #C58AF9;
+  --chart-7: #F8A978;
+  --chart-8: #9AA0A6;
+  --chart-axis:        #9AA0A6;
+  --chart-split-line:  #3C4043;
+  --chart-tooltip-bg:  #2B2E34;
+  --chart-tooltip-border: #444746;
+
+  /* 暗色阴影降到近不可见，层级主要靠 surface 亮度差表达 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.30), 0 2px 6px 2px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.26), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --shadow-overlay: 0 8px 12px 6px rgba(0, 0, 0, 0.32), 0 4px 4px rgba(0, 0, 0, 0.34);
+}
+
+/* ==========================================================================
+   3. 响应式版式覆写（mobile-first：先小后大；触控目标全程 ≥48px）
+   ========================================================================== */
+
+/* <768px：手机 / 平板竖屏 */
+:root {
+  --container-gutter: 12px;
+  --nav-h: 56px;
+  --grid-gap: 12px;
+  --section-gap: 16px;
+  --page-bottom: 32px;
+  --nav-row-h: 48px;          /* 触屏下拉行 48px（M3 touch） */
+  --table-row-h: 48px;
+  --card-pad: 12px;
+  --btn-h-md: 48px;           /* 移动端按钮全部 ≥48 */
+  --input-h: 48px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --container-gutter: 16px;
+    --nav-h: 56px;
+    --grid-gap: 16px;
+    --section-gap: 20px;
+    --page-bottom: 40px;
+    --nav-row-h: 44px;
+    --table-row-h: 48px;
+    --card-pad: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --container-gutter: 24px;
+    --nav-h: 64px;
+    --grid-gap: 16px;
+    --section-gap: 24px;
+    --page-bottom: 48px;
+    --nav-row-h: 40px;
+    --table-row-h: 48px;
+    --card-pad: 16px;
+  }
+}
+
+/* ==========================================================================
+   4. 动效降级：尊重系统偏好 + 应用内开关（data-motion 由设置页写入）
+      —— 降级只降时长，不删除状态反馈（颜色/文案变化保留）
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-instant: 1ms;
+    --motion-fast: 1ms;
+    --motion-base: 1ms;
+    --motion-slow: 1ms;
+    --motion-page: 1ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-motion='reduce'] {
+  --motion-instant: 1ms;
+  --motion-fast: 1ms;
+  --motion-base: 1ms;
+  --motion-slow: 1ms;
+  --motion-page: 1ms;
+}
+
+/* ==========================================================================
+   5. 基础层（令牌消费的全局默认，不定义新颜色）
+   ========================================================================== */
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--tracking-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 键盘可见焦点：全局统一，禁止任何组件 remove outline */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-shadow);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+/* 滚动条跟随主题（仅 WebKit；Firefox 用 scrollbar-color） */
+:root { scrollbar-color: var(--border-strong) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid var(--bg);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* 数字等宽对齐：所有统计数字必加 .tabular，避免刷新时跳动 */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}

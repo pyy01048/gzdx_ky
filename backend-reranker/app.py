@@ -35,6 +35,20 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="bge-reranker-v2-m3", version="1.0.0")
 
+
+# 主后端经隧道调用：设了 COMPUTE_SERVICE_TOKEN 就要求 X-Service-Token 匹配（/health 留给探活）
+_SERVICE_TOKEN = os.getenv("COMPUTE_SERVICE_TOKEN", "").strip()
+
+
+@app.middleware("http")
+async def _require_service_token(request, call_next):
+    if _SERVICE_TOKEN and request.url.path != "/health":
+        import hmac
+        from fastapi.responses import JSONResponse
+        if not hmac.compare_digest(request.headers.get("x-service-token", ""), _SERVICE_TOKEN):
+            return JSONResponse({"detail": "invalid service token"}, status_code=401)
+    return await call_next(request)
+
 # 全局模型实例（懒加载）
 _reranker = None
 _model_load_error: Optional[str] = None
@@ -146,4 +160,9 @@ if __name__ == "__main__":
     import uvicorn
     # 启动时预热模型
     get_reranker()
-    uvicorn.run(app, host="127.0.0.1", port=8140, log_level="info")
+    uvicorn.run(
+        app,
+        host=os.getenv("SERVICE_HOST", "127.0.0.1"),  # 云端经 Tailscale 调用时设为本机 tailscale IP，勿用 0.0.0.0
+        port=int(os.getenv("SERVICE_PORT", "8140")),
+        log_level="info",
+    )

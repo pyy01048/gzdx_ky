@@ -1,5 +1,6 @@
 """自定义链接与系统设置路由。"""
 
+from utils.security import require_admin
 import json
 import os
 from typing import Any, Dict, Optional
@@ -39,7 +40,7 @@ async def list_links(category: Optional[str] = None, db: Session = Depends(get_d
     ]
 
 
-@router.post("/links")
+@router.post("/links", dependencies=[Depends(require_admin)])
 async def create_link(link: CustomLinkCreate, db: Session = Depends(get_db)):
     """添加链接。"""
     new_link = CustomLink(**link.model_dump())
@@ -49,7 +50,7 @@ async def create_link(link: CustomLinkCreate, db: Session = Depends(get_db)):
     return {"id": new_link.id, "message": "链接添加成功"}
 
 
-@router.put("/links/{link_id}")
+@router.put("/links/{link_id}", dependencies=[Depends(require_admin)])
 async def update_link(link_id: int, link: CustomLinkUpdate, db: Session = Depends(get_db)):
     """更新链接。"""
     db_link = db.query(CustomLink).filter(CustomLink.id == link_id).first()
@@ -64,7 +65,7 @@ async def update_link(link_id: int, link: CustomLinkUpdate, db: Session = Depend
     return {"id": db_link.id, "message": "链接更新成功"}
 
 
-@router.delete("/links/{link_id}")
+@router.delete("/links/{link_id}", dependencies=[Depends(require_admin)])
 async def delete_link(link_id: int, db: Session = Depends(get_db)):
     """删除链接。"""
     db_link = db.query(CustomLink).filter(CustomLink.id == link_id).first()
@@ -108,7 +109,7 @@ async def get_settings():
     return _load_settings()
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=[Depends(require_admin)])
 async def update_settings(settings: Dict[str, Any]):
     """更新系统参数。"""
     current = _load_settings()

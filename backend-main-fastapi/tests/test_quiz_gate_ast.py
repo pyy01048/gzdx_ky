@@ -74,7 +74,8 @@ def _iter_py():
     for d in ("routers", "services", "scripts"):
         base = os.path.join(BACKEND, d)
         for root, _dirs, files in os.walk(base):
-            if any(part in root for part in (os.sep + "tests", "__pycache__", "static")):
+            # data 下是数据集/第三方源码（如 ECDICT 的 Python 2 脚本），不是本项目的写入口
+            if any(part in root for part in (os.sep + "tests", "__pycache__", "static", os.sep + "data")):
                 continue
             for f in files:
                 if f.endswith(".py"):

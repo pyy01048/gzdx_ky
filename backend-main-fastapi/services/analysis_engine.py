@@ -10,14 +10,18 @@
 - model_gateway.ModelGateway  : 本地模型 + API 灵活路由
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
 import re
 import time
 import uuid
-from datetime import datetime
+from services.dbapi_compat import wrap_conn
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from utils.timeutil import iso_utc_z
 
 LECTURE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "lectures")
 
@@ -65,8 +69,12 @@ def _extract_json(text: str) -> Optional[Dict[str, Any]]:
     body = t[start:end + 1]
     try:
         return json.loads(body)
-    except Exception:
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
     # 尝试修复常见问题：尾逗号
     try:
         body_fixed = re.sub(r",\s*([}\]])", r"\1", body)
@@ -282,7 +290,7 @@ def list_lectures() -> List[Dict[str, Any]]:
                     "name": fn,
                     "path": fp,
                     "size": os.path.getsize(fp),
-                    "mtime": datetime.fromtimestamp(os.path.getmtime(fp)).strftime("%Y-%m-%d %H:%M:%S"),
+                    "mtime": iso_utc_z(datetime.fromtimestamp(os.path.getmtime(fp), timezone.utc)),
                 }
             )
     return out
@@ -346,7 +354,7 @@ def _map_knowledge_points(db, names: List[str]) -> List[Dict[str, Any]]:
         return [{"name": n, "id": None, "matched": False} for n in names]
     out = []
     try:
-        conn = db.connection().connection
+        conn = wrap_conn(db.connection().connection)
         for n in names:
             name = (n or "").strip()
             if not name:

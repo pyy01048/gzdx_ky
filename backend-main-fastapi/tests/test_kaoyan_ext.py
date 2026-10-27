@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from database import Base, SessionLocal, engine
-from models import KaoyanAdmission, KaoyanMajor, KaoyanSchool, KaoyanScoreLine
+from core.models import KaoyanAdmission, KaoyanMajor, KaoyanSchool, KaoyanScoreline
 from services.kaoyan import reform_detector
 from tests.asgi_client import ASGIClient
 from main import app
@@ -24,11 +24,26 @@ client = ASGIClient(app)
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _seed():
-    """建 ORM 表 + 种子数据（临时库，模块级一次）。"""
-    Base.metadata.create_all(bind=engine)
+def _seed(db_schema):
+    """种子数据（临时库，模块级一次）。
+
+    schema 由 conftest 的 ``db_schema``（session autouse）负责：
+    权威 SQL 链 + 增量分片（含 102_schools_admin_schema 的
+    deleted_at/audit_logs）+ ORM 兜底。**不要再在本文件里
+    ``create_all``** —— 双 Base 体系下那会按旧 ORM 口径建表，
+    core/models 查询直接 UndefinedColumn（2026-10-18 实测 15 例 ERROR）。
+    """
     db = SessionLocal()
     try:
+        # 幂等：测试库跨轮持久，固定 ID 的种子必须先清（含子表）再建，
+        # 否则第二轮直接 kaoyan_schools_pkey 冲突（实测 30 例 UniqueViolation）。
+        _SENTINEL_SCHOOLS = (9001, 9002)
+        db.query(KaoyanScoreline).filter(KaoyanScoreline.school_id.in_(_SENTINEL_SCHOOLS)).delete(synchronize_session=False)
+        db.query(KaoyanAdmission).filter(KaoyanAdmission.school_id.in_(_SENTINEL_SCHOOLS)).delete(synchronize_session=False)
+        db.query(KaoyanMajor).filter(KaoyanMajor.school_id.in_(_SENTINEL_SCHOOLS)).delete(synchronize_session=False)
+        db.query(KaoyanSchool).filter(KaoyanSchool.id.in_(_SENTINEL_SCHOOLS)).delete(synchronize_session=False)
+        db.commit()
+
         s1 = KaoyanSchool(id=9001, name="测试大学A", level="211", province="广东")
         s2 = KaoyanSchool(id=9002, name="测试大学B", level="双一流", province="湖北")
         db.add_all([s1, s2])
@@ -38,11 +53,11 @@ def _seed():
         db.flush()
         # 分数线：2024/2025 两年
         db.add_all([
-            KaoyanScoreLine(school_id=9001, major_id=9101, year=2024, total_line=330,
+            KaoyanScoreline(school_id=9001, major_id=9101, year=2024, total_line=330,
                             politics_line=55, english_line=55, math_line=80,
                             major_line=90, national_line=273, retest_line=335,
                             line_type="复试线"),
-            KaoyanScoreLine(school_id=9001, major_id=9101, year=2025, total_line=340,
+            KaoyanScoreline(school_id=9001, major_id=9101, year=2025, total_line=340,
                             politics_line=55, english_line=55, math_line=85,
                             major_line=90, national_line=275, retest_line=345,
                             line_type="复试线"),
@@ -65,10 +80,29 @@ def _seed():
 def _add_notices(rows):
     """直接往 kaoyan_notices 表插数据（原生 DDL 表）。"""
     from services.kaoyan.spider_notices import ensure_notices_schema
+    from services.kaoyan.reform_detector import ensure_reforms_schema
     db = SessionLocal()
     try:
         ensure_notices_schema(db)
-        conn = db.connection().connection
+        # reforms 是懒建表（SQLite 风格 DDL 经 ddl_compat 适配），
+        # 下面的前置清理先于 scan_notices_for_reforms 执行，
+        # 必须先 ensure，否则 DELETE 撞 relation does not exist。
+        ensure_reforms_schema(db)
+        # 前置清理：uq_notice(school_name,title,publish_date) 撞历史残留行
+        from sqlalchemy import text as _t
+
+        for title, school_id, school_name, ntype, date in rows:
+            db.execute(_t(
+                "DELETE FROM kaoyan_notices WHERE school_name=:s AND title=:t AND publish_date=:d"),
+                {"s": school_name, "t": title, "d": date})
+        # 派生表同步清理：reform 行按 detail_hash 去重，残留会让 inserted=0
+        db.execute(_t("DELETE FROM kaoyan_reforms WHERE school_name IN ('测试大学A','测试大学B')"))
+        db.commit()
+        # 用 wrap_conn 适配占位符：裸 psycopg 连接不认 '?'（只认 %s），
+        # 直接执行会 SyntaxError at or near ","（实测 19 例）。
+        from services.dbapi_compat import wrap_conn
+
+        conn = wrap_conn(db.connection().connection)
         for title, school_id, school_name, ntype, date in rows:
             conn.execute(
                 "INSERT INTO kaoyan_notices (school_id, school_name, title, "

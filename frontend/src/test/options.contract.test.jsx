@@ -2,7 +2,7 @@ import React from 'react'
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { optionText, normalizeOptions } from '../utils/optionText'
-import { stripOptLabel, isChoiceQ, isChoiceWithoutOptions, isChoiceLike } from '../pages/quizShared'
+import { stripOptLabel, isChoiceQ, isChoiceWithoutOptions, isChoiceLike } from '../v3/pages/quizShared'
 
 /* ------------------------------------------------------------------ *
  * P0-4 · 选项契约回归测试
@@ -140,7 +140,7 @@ describe('P0-4 端到端：渲染到 DOM 的文本不得是 [object Object]', ()
 describe('normQ —— 入库对象整体归一化后 options 恒为字符串数组', () => {
   it('对象数组与字符串数组都归一到字符串数组', async () => {
     // 动态 import：normQ 依赖 localStorage 工具，放在函数内取
-    const { normQ } = await import('../pages/quizShared')
+    const { normQ } = await import('../v3/pages/quizShared')
     const base = { id: 7, content: '题面', answer: 'A', question_type: 'single' }
     const a = normQ({ ...base, options: OBJ_OPTS })
     const b = normQ({ ...base, options: STR_OPTS })

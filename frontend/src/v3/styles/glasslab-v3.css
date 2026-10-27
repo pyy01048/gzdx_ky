@@ -1,0 +1,569 @@
+/* ==========================================================================
+   Glass Lab · 毛玻璃交互式页面（/glass）
+   全部样式走 Aurora v3 令牌（--v3-*），明暗主题自适应；
+   本页自持调参变量 --gl-*（毛玻璃浓度/模糊/饱和度），由页面交互实时写入。
+   ========================================================================== */
+
+.glab {
+  /* — 可调参数（页面 Controls 实时更新） — */
+  --gl-blur: 16px;          /* 背景模糊半径 */
+  --gl-alpha: 0.55;         /* 玻璃不透明度 */
+  --gl-sat: 1.25;           /* 饱和度 */
+  --gl-radius: 24px;        /* 玻璃圆角 */
+  --gl-border: 1;           /* 0/1 高光描边开关 */
+  --gl-noise: 0.35;         /* 噪点纹理强度 */
+
+  /* 明暗各自的玻璃底色（rgb 三元组，供 rgba(var(--gl-tint), α) 使用） */
+  --gl-tint: 255, 255, 255;
+  --gl-tint-line: 255, 255, 255;
+}
+[data-theme='dark'] .glab {
+  --gl-tint: 22, 26, 35;
+  --gl-tint-line: 255, 255, 255;
+}
+
+/* ---------- 页面骨架 ---------- */
+.glab {
+  position: relative;
+  min-height: calc(100vh - var(--v3-topbar-h, 64px) - 48px);
+  padding: 4px 0 32px;
+  overflow: hidden;
+}
+
+/* ---------- 极光底：多层弥散光斑，玻璃的「可模糊之物」 ---------- */
+.glab__aurora {
+  position: absolute;
+  inset: -80px;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(0.5px);
+}
+.glab__blob {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform, opacity;
+  transform: translate3d(calc(var(--px, 0) * var(--gx, 0)), calc(var(--px, 0) * var(--gy, 0)), 0)
+    scale(var(--s, 1));
+  transition: transform 1.2s var(--v3-ease-standard), opacity var(--v3-dur-4) var(--v3-ease-standard);
+}
+.glab__blob--1 { width: 46vw; height: 46vw; min-width: 420px; min-height: 420px; top: -8%; left: 4%;  --gx: 0.6; --gy: 0.5;  --s: 1;    background: radial-gradient(circle at 32% 32%, rgba(66, 133, 244, 0.55), transparent 66%); animation: glab-drift-1 26s ease-in-out infinite alternate; }
+.glab__blob--2 { width: 40vw; height: 40vw; min-width: 360px; min-height: 360px; top: 26%; left: 42%; --gx: -0.55; --gy: 0.4; --s: 0.92; background: radial-gradient(circle at 60% 40%, rgba(155, 114, 203, 0.5), transparent 66%); animation: glab-drift-2 32s ease-in-out infinite alternate; }
+.glab__blob--3 { width: 34vw; height: 34vw; min-width: 320px; min-height: 320px; top: 52%; left: 8%;  --gx: 0.4; --gy: -0.6; --s: 0.85; background: radial-gradient(circle at 40% 60%, rgba(217, 101, 112, 0.44), transparent 66%); animation: glab-drift-3 29s ease-in-out infinite alternate; }
+.glab__blob--4 { width: 28vw; height: 28vw; min-width: 260px; min-height: 260px; top: 8%;  right: 2%; --gx: -0.45; --gy: 0.55;--s: 0.9;  background: radial-gradient(circle at 50% 50%, rgba(242, 160, 61, 0.42), transparent 66%); animation: glab-drift-2 24s ease-in-out infinite alternate-reverse; }
+
+@keyframes glab-drift-1 { from { translate: 0 0; } to { translate: 8vw 5vh; } }
+@keyframes glab-drift-2 { from { translate: 0 0; } to { translate: -6vw 7vh; } }
+@keyframes glab-drift-3 { from { translate: 0 0; } to { translate: 5vw -6vh; } }
+
+/* 网格底衬（浅描边不可模糊斑驳），供光斑之外的层次 */
+.glab__grid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(rgba(94, 108, 132, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 108, 132, 0.07) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, #000 30%, transparent 78%);
+}
+
+/* ---------- 通用玻璃面 ---------- */
+.glab-glass {
+  position: relative;
+  border-radius: var(--gl-radius);
+  background: rgba(var(--gl-tint), var(--gl-alpha));
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  box-shadow: var(--v3-shadow-3), inset 0 0 0 1px rgba(var(--gl-tint-line), calc(0.16 * var(--gl-border)));
+}
+/* 顶部高光描边（经典 liquid-glass 细节） */
+.glab-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(160deg, rgba(var(--gl-tint-line), 0.55) 0%, rgba(var(--gl-tint-line), 0.06) 30%, transparent 60%, rgba(var(--gl-tint-line), 0.22) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  pointer-events: none;
+}
+/* 噪点纹理（SVG feTurbulence 内联数据，去「塑料感」） */
+.glab-glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--gl-noise);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  background-size: 140px 140px;
+}
+
+/* ---------- 头部 ---------- */
+.glab-hero {
+  position: relative;
+  z-index: 1;
+  padding: 28px 28px 22px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 22px;
+}
+.glab-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--v3-fs-12);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--v3-primary);
+  margin-bottom: 8px;
+}
+.glab-hero__title {
+  font-size: var(--v3-fs-40);
+  line-height: 1.12;
+  font-weight: 800;
+  color: var(--v3-text);
+  letter-spacing: -0.02em;
+  margin: 0;
+  background: linear-gradient(104deg, var(--v3-text) 30%, var(--v3-gemini-2) 78%, var(--v3-gemini-3) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.glab-hero__sub {
+  margin: 10px 0 0;
+  max-width: 620px;
+  font-size: var(--v3-fs-15, 15px);
+  color: var(--v3-text-2);
+  line-height: 1.7;
+}
+.glab-hero__badge-row {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 玻璃态徽标块 */
+.glab-chipstat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  min-width: 116px;
+}
+.glab-chipstat__label {
+  font-size: var(--v3-fs-11);
+  color: var(--v3-text-3);
+  letter-spacing: 0.06em;
+}
+.glab-chipstat__value {
+  font-size: var(--v3-fs-24);
+  font-weight: 800;
+  color: var(--v3-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.glab-body {
+  position: relative;
+  z-index: 1;
+  padding: 0 28px;
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1080px) {
+  .glab-body { grid-template-columns: 1fr; }
+}
+
+/* ---------- 控制台（可拖拽玻璃窗） ---------- */
+.glab-panel {
+  position: sticky;
+  top: calc(var(--v3-topbar-h, 64px) + 16px);
+  padding: 18px 18px 14px;
+  user-select: none;
+}
+.glab-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: grab;
+  margin-bottom: 14px;
+  touch-action: none; /* 触屏上按住头部拖拽不会被滚动打断；滑杆区域不受影响 */
+}
+.glab-panel.is-dragging .glab-panel__head { cursor: grabbing; }
+.glab-panel__title {
+  font-size: var(--v3-fs-14);
+  font-weight: 700;
+  color: var(--v3-text);
+  flex: 1;
+}
+/* 抓手小点 */
+.glab-panel__grip {
+  display: inline-flex;
+  gap: 3px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(var(--gl-tint-line), 0.08);
+  color: var(--v3-text-3);
+}
+
+.glab-ctrl { padding: 10px 2px 12px; }
+.glab-ctrl + .glab-ctrl { border-top: 1px dashed rgba(var(--gl-tint-line), 0.18); }
+.glab-ctrl__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+.glab-ctrl__label {
+  font-size: var(--v3-fs-13);
+  font-weight: 600;
+  color: var(--v3-text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.glab-ctrl__value {
+  font-size: var(--v3-fs-13);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--v3-primary);
+  padding: 2px 9px;
+  border-radius: var(--v3-r-full);
+  background: rgba(var(--gl-tint-line), 0.1);
+}
+
+/* 滑杆（webkit + moz 双引擎） */
+.glab-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 26px;
+  background: transparent;
+  cursor: pointer;
+}
+.glab-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--v3-r-full);
+  background: linear-gradient(90deg, var(--v3-primary) var(--fill, 50%), rgba(var(--gl-tint-line), 0.16) var(--fill, 50%));
+}
+.glab-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--v3-surface);
+  border: 2px solid var(--v3-primary);
+  box-shadow: var(--v3-shadow-2);
+  transition: transform var(--v3-dur-1) var(--v3-ease-standard), box-shadow var(--v3-dur-1);
+}
+.glab-slider:hover::-webkit-slider-thumb { transform: scale(1.12); }
+.glab-slider:active::-webkit-slider-thumb { transform: scale(1.2); box-shadow: var(--v3-shadow-glow); }
+.glab-slider::-moz-range-track {
+  height: 6px;
+  border-radius: var(--v3-r-full);
+  background: rgba(var(--gl-tint-line), 0.16);
+}
+.glab-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: var(--v3-r-full);
+  background: var(--v3-primary);
+}
+.glab-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--v3-surface);
+  border: 2px solid var(--v3-primary);
+  box-shadow: var(--v3-shadow-2);
+}
+.glab-slider:focus-visible {
+  outline: 2px solid var(--v3-outline-focus);
+  outline-offset: 4px;
+  border-radius: var(--v3-r-full);
+}
+
+/* 预设 chips */
+.glab-presets { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; }
+.glab-preset {
+  border: 1px solid rgba(var(--gl-tint-line), 0.28);
+  background: rgba(var(--gl-tint-line), 0.08);
+  color: var(--v3-text-2);
+  font-size: var(--v3-fs-13);
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: var(--v3-r-full);
+  cursor: pointer;
+  transition: all var(--v3-dur-2) var(--v3-ease-standard);
+}
+.glab-preset:hover { background: rgba(var(--gl-tint-line), 0.16); color: var(--v3-text); transform: translateY(-1px); }
+.glab-preset.is-active {
+  background: var(--v3-primary);
+  border-color: var(--v3-primary);
+  color: var(--v3-on-primary);
+  box-shadow: var(--v3-shadow-glow);
+}
+
+.glab-toggles { display: flex; gap: 8px; padding-top: 12px; }
+
+/* ---------- 展示卡网格 ---------- */
+.glab-stage { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
+
+/* 3D 追光卡（指针跟随倾斜 + 高光点） */
+.glab-tilt {
+  grid-column: span 4;
+  padding: 20px;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transform-style: preserve-3d;
+  transform: perspective(720px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.18s var(--v3-ease-decelerate), box-shadow var(--v3-dur-3) var(--v3-ease-standard);
+  will-change: transform;
+}
+.glab-tilt:hover { box-shadow: var(--v3-shadow-4), inset 0 0 0 1px rgba(var(--gl-tint-line), 0.2); }
+.glab-tilt__spot {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(180px circle at var(--mx, 50%) var(--my, 50%), rgba(var(--gl-tint-line), 0.28), transparent 70%);
+  opacity: 0;
+  transition: opacity var(--v3-dur-2) var(--v3-ease-standard);
+}
+.glab-tilt:hover .glab-tilt__spot { opacity: 1; }
+.glab-tilt__icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--v3-r-md);
+  background: linear-gradient(135deg, var(--v3-primary), var(--v3-gemini-2));
+  color: #fff;
+  box-shadow: var(--v3-shadow-glow);
+}
+
+/* 对客色块二进制：每张卡的强调色 */
+.glab-tilt--green  { --accent: var(--v3-success); }
+.glab-tilt--purple { --accent: var(--v3-gemini-2); }
+.glab-tilt--coral  { --accent: var(--v3-gemini-3); }
+.glab-tilt--amber  { --accent: var(--v3-gemini-4); }
+
+.glab-tilt__label { font-size: var(--v3-fs-13); color: var(--v3-text-2); font-weight: 600; }
+.glab-tilt__value {
+  font-size: var(--v3-fs-32);
+  font-weight: 800;
+  color: var(--v3-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.glab-tilt__foot { margin-top: auto; font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+
+/* 迷你柱状趋势（填满与右侧大看板同行时的剩余高度） */
+.glab-weekbars {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+  height: 96px;
+  margin-top: 6px;
+  flex: 1;
+  min-height: 72px;
+}
+.glab-weekbars__col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.glab-weekbars__track {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+}
+.glab-weekbars__bar {
+  width: 100%;
+  border-radius: 6px 6px 3px 3px;
+  background: linear-gradient(180deg, var(--accent, var(--v3-primary)), rgba(66, 133, 244, 0.25));
+  align-self: flex-end;
+  transition: height var(--v3-dur-4) var(--v3-ease-emphasized);
+}
+.glab-weekbars__col:hover .glab-weekbars__bar {
+  filter: brightness(1.15);
+  box-shadow: var(--v3-shadow-glow);
+}
+.glab-weekbars__lab { font-size: var(--v3-fs-11); color: var(--v3-text-3); }
+
+@media (max-width: 1080px) {
+  .glab-tilt { grid-column: span 6; }
+}
+@media (max-width: 640px) {
+  .glab-tilt { grid-column: span 12; }
+  .glab-body { padding: 0 16px; }
+  .glab-hero { padding: 20px 16px 16px; }
+}
+
+/* 大玻璃看板（Right showcase） */
+.glab-showcase {
+  grid-column: span 8;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.glab-showcase__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.glab-showcase__title { font-size: var(--v3-fs-18); font-weight: 800; color: var(--v3-text); }
+
+/* —— 磁吸按钮行 —— */
+.glab-magnet-row { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* —— 玻璃进度环 / 双环 —— */
+.glab-rings { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.glab-rings__item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.glab-rings__item .v3-ring__center {
+  font-size: var(--v3-fs-14);
+  font-weight: 800;
+  color: var(--v3-text);
+  font-variant-numeric: tabular-nums;
+}
+.glab-rings__label { font-size: var(--v3-fs-12); color: var(--v3-text-3); font-weight: 600; }
+
+/* —— 堆叠玻璃条（毛玻璃分层演示：同一卡内三块不同 α） —— */
+.glab-layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.glab-layer {
+  border-radius: var(--v3-r-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  box-shadow: inset 0 0 0 1px rgba(var(--gl-tint-line), calc(0.2 * var(--gl-border)));
+}
+.glab-layer--a { background: rgba(var(--gl-tint), calc(var(--gl-alpha) * 0.55)); }
+.glab-layer--b { background: rgba(var(--gl-tint), calc(var(--gl-alpha) * 0.8)); }
+.glab-layer--c { background: rgba(var(--gl-tint), var(--gl-alpha)); }
+.glab-layer__name { font-size: var(--v3-fs-12); font-weight: 700; color: var(--v3-text-2); }
+.glab-layer__hint { font-size: var(--v3-fs-11); color: var(--v3-text-3); line-height: 1.5; }
+
+/* —— 翻转卡（点击看玻璃背面） ——
+   容器本身不带玻璃面（避免与正反面双层 backdrop 叠加），玻璃质感由两个 face 承担 */
+.glab-flip {
+  grid-column: span 4;
+  position: relative;
+  min-height: 150px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  padding: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.6s var(--v3-ease-spring);
+}
+.glab-flip::before,
+.glab-flip::after { content: none; }
+.glab-flip.is-flipped { transform: rotateY(180deg); }
+.glab-flip__face {
+  position: absolute;
+  inset: 0;
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: var(--gl-radius);
+  background: rgba(var(--gl-tint), var(--gl-alpha));
+  box-shadow: inset 0 0 0 1px rgba(var(--gl-tint-line), calc(0.18 * var(--gl-border)));
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.glab-flip__face--back { transform: rotateY(180deg); }
+.glab-flip__hint { margin-top: auto; font-size: var(--v3-fs-12); color: var(--v3-text-3); display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 1080px) {
+  .glab-flip { grid-column: span 6; }
+  .glab-showcase { grid-column: span 12; }
+  .glab-pad { display: none; }
+}
+@media (max-width: 640px) {
+  .glab-flip { grid-column: span 12; }
+  .glab-layers { grid-template-columns: 1fr; }
+}
+
+/* —— 课程玻璃胶囊（毛玻璃按钮 + focus ring） —— */
+.glab-pills { display: flex; flex-wrap: wrap; gap: 10px; }
+.glab-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--v3-r-full);
+  padding: 9px 16px;
+  font-size: var(--v3-fs-13);
+  font-weight: 600;
+  color: var(--v3-text);
+  cursor: pointer;
+  background: rgba(var(--gl-tint), calc(var(--gl-alpha) * 0.9));
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  box-shadow: inset 0 0 0 1px rgba(var(--gl-tint-line), calc(0.22 * var(--gl-border))), var(--v3-shadow-1);
+  transition: transform var(--v3-dur-2) var(--v3-ease-bounce), box-shadow var(--v3-dur-2);
+}
+.glab-pill:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px rgba(var(--gl-tint-line), 0.32), var(--v3-shadow-3); }
+.glab-pill:active { transform: translateY(0) scale(0.97); }
+.glab-pill.is-active {
+  color: var(--v3-on-primary);
+  background: linear-gradient(135deg, var(--v3-primary), var(--v3-gemini-2));
+  box-shadow: var(--v3-shadow-glow);
+}
+.glab-pill:focus-visible { outline: 2px solid var(--v3-outline-focus); outline-offset: 3px; }
+
+/* —— 拖拽提示 —— */
+.glab-dragtip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-3);
+  padding: 6px 12px;
+  border-radius: var(--v3-r-full);
+  background: rgba(var(--gl-tint-line), 0.08);
+}
+
+/* ---------- 动画降级 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .glab__blob { animation: none; }
+  .glab-tilt { transition: none; transform: none; }
+  .glab-flip { transition-duration: 0.001s; }
+  .glab-slider::-webkit-slider-thumb,
+  .glab-preset,
+  .glab-pill { transition: none; }
+}
+
+/* Firefox 下 backdrop-filter 支持良好，Safari 走 -webkit；无支持的浏览器（老 Mozzilla/旧 Edge）自动退化为纯色半透明，无需 hacks。 */

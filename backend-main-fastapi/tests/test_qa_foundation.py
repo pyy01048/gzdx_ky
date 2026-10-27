@@ -32,6 +32,37 @@ QBANK = {
 @pytest.fixture(scope="module", autouse=True)
 def _seed():
     Base.metadata.create_all(bind=engine)
+    # 幂等前置清理：本文件验收的是"导入 6 题 → 去重后 5 题 + 3 张卷"，
+    # 但题库去重与试卷 ON CONFLICT 都是幂等的 —— 第二次跑就变成
+    # imported=0 / papers_created=0，断言必然失败（实测）。
+    # 清掉上次运行留下的 QBANK 题目与试卷，让验收口径可复现。
+    from sqlalchemy import text as _text
+
+    db = SessionLocal()
+    try:
+        stems = [
+            "%多余输入端应如何处理%", "%组合逻辑电路的特点%", "%卡诺图化简的依据%",
+            "%8421BCD 码是%", "%竞争冒险的消除方法%",
+        ]
+        like = " OR ".join(f"content LIKE '{x}'" for x in stems)
+        # 顺序要紧：先删所有**引用**题目的表，再删题目本身。
+        # 漏掉 answer_review_queue 会留下孤儿行 —— 队列里 item 的
+        # question_id 指向已删题目，测试取到它再查库就是 None
+        # （实测：AttributeError 'NoneType' object has no attribute 'answer'）。
+        for ref_tbl in ("paper_questions", "answer_review_queue"):
+            db.execute(_text(
+                f"DELETE FROM {ref_tbl} WHERE question_id IN "
+                f"(SELECT id FROM quiz_questions WHERE {like})"))
+        db.execute(_text(f"DELETE FROM quiz_questions WHERE {like}"))
+        db.execute(_text("DELETE FROM papers WHERE title LIKE '%（题库包导入）'"))
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        import warnings
+
+        warnings.warn(f"QBANK 前置清理失败（断言可能不可复现）: {exc}")
+    finally:
+        db.close()
 
 
 # --------------------------------------------------------------------------- #
@@ -92,14 +123,29 @@ def test_review_queue_resolve():
         _all = db.query(QuizQuestion).all()
         print("DEBUG 题目数:", len(_all), [(x.id, repr(x.answer), x.answer_source) for x in _all])
         q = db.query(QuizQuestion).filter(QuizQuestion.answer.is_(None)).first()
+        if q is None:
+            # 库里所有题都有答案时自造一条缺答案题（正典数组 options，避开触发器拦截）
+            q = QuizQuestion(
+                content="QA 队列自造缺答案题：门电路输出电平？",
+                options=[{"key": "A", "text": "高电平"}, {"key": "B", "text": "低电平"}],
+                answer=None, subject="数电", question_type="single",
+                answer_source="llm_generated",
+            )
+            db.add(q)
+            db.commit()
+            db.refresh(q)
         qa_foundation.resolve_review  # 确认函数存在
         # 直接向队列表插一条 pending（导入缺答案场景）
+        # 跨方言：INSERT OR IGNORE 是 SQLite 方言，PG 走 ON CONFLICT DO NOTHING
         from database import engine as _eng
+        from sqlalchemy import text as _t
+
         with _eng.begin() as conn:
-            conn.exec_driver_sql(
-                "INSERT OR IGNORE INTO answer_review_queue "
+            conn.execute(_t(
+                "INSERT INTO answer_review_queue "
                 "(question_id, conflict_type, detail, status, created_at) "
-                f"VALUES ({q.id}, 'missing', '\"导入缺答案\"', 'pending', 'now')")
+                f"VALUES ({q.id}, 'missing', '\"导入缺答案\"', 'pending', 'now') "
+                "ON CONFLICT DO NOTHING"))
     finally:
         db.close()
     items = client.get("/api/qa/review-queue").json()

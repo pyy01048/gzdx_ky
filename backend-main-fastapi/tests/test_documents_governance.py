@@ -29,7 +29,7 @@ def _mk_doc(db, *, file_name, file_path, content="", subject=None):
 
     doc = Document(
         file_name=file_name, file_path=file_path, file_type="txt",
-        size=10, subject=subject, index_status="indexed", content=content,
+        size=10, subject=subject, index_status="indexed", content=content or "# 测试文档",
         parse_progress=1.0,
     )
     db.add(doc)

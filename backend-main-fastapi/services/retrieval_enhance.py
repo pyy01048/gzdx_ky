@@ -45,19 +45,22 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
+from utils.compute_nodes import reranker_url, service_headers
 from utils.http_client import get_async_client
 
 logger = logging.getLogger(__name__)
 
-#: Ollama 地址（只认本机，杜绝出网）
-_OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+#: Ollama 地址（只认本机，杜绝出网）—— 必须归一化（缺 scheme / 0.0.0.0 监听地址两种坑）
+from utils.ollama_host import resolve_ollama_host as _resolve_ollama_host
+
+_OLLAMA_HOST = _resolve_ollama_host()
 #: 单次对话超时：qwen3 系是思考模型，实测单问 60-320s，必须给够
 _CHAT_TIMEOUT = 360.0
 #: 探测已装模型清单的超时（短超时，失败不影响主流程）
 _TAGS_TIMEOUT = 5.0
 #: 并行单元部署的 bge-reranker 微服务地址（8140）。可用则用它重排（CPU 约 1.3s/6条），
 #: 不可用才回退本地 LLM 逐条打分（慢，是 60s 504 主因之一）。
-_BGE_RERANK_URL = os.getenv("BGE_RERANKER_URL", "http://127.0.0.1:8140").rstrip("/")
+_BGE_RERANK_URL = reranker_url()
 _BGE_PROBE = {"ok": None, "at": 0.0}
 
 #: 检索增强固定偏好顺序（短文本结构化任务：改写/假设答案/打分）。
@@ -375,7 +378,7 @@ async def _bge_rerank_scores(
         now = time.time()
         if _BGE_PROBE["ok"] is None or (now - _BGE_PROBE["at"]) > 300:
             try:
-                r = await client.get(f"{_BGE_RERANK_URL}/health", timeout=2.0)
+                r = await client.get(f"{_BGE_RERANK_URL}/health", headers=service_headers(), timeout=2.0)
                 _BGE_PROBE["ok"] = (r.status_code == 200)
             except Exception:
                 _BGE_PROBE["ok"] = False
@@ -390,6 +393,7 @@ async def _bge_rerank_scores(
         r = await client.post(
             f"{_BGE_RERANK_URL}/rerank",
             json={"query": str(query), "documents": docs},
+            headers=service_headers(),
             timeout=8.0,
         )
         if r.status_code != 200:

@@ -31,6 +31,7 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import argparse
 import os
 import sqlite3
@@ -42,7 +43,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-DB = r"D:\平台\database\kaoyan.db"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
 
 #: 预期清理目标。实测确认只有这 2 行；若实际命中集合与此不符，脚本中止。
 EXPECTED_IDS = {419, 945}

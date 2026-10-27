@@ -494,7 +494,14 @@ class MonthPlan(Base):
 
 
 class EbbinghausItem(Base):
-    """艾宾浩斯记忆表：9个复习周期节点。"""
+    """艾宾浩斯记忆表：默认 9 个复习周期节点，支持自定义周期（cycle_config + review_times JSONB）。
+
+    兼容设计（2026-10-23）：
+    - 默认周期仍写入 review_5min/30min/.../1m 九列（旧逻辑 get_due 依赖它们）。
+    - 自定义周期（custom_cycles）时，cycle_config 保存周期定义数组，
+      review_times 保存实际复习时间点数组；同时尽量回填九列（前 N 个点按列名映射，
+      不足 9 个的列置 NULL），保证旧代码不崩。
+    """
     __tablename__ = "ebbinghaus_items"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -513,6 +520,8 @@ class EbbinghausItem(Base):
     review_7d = Column(DateTime, nullable=True)
     review_15d = Column(DateTime, nullable=True)
     review_1m = Column(DateTime, nullable=True)
+    cycle_config = Column(NullSafeJSON, nullable=True, comment="自定义周期定义 [{\"key\":\"1d\",\"label\":\"1天\",\"offset_days\":1}]")
+    review_times = Column(NullSafeJSON, nullable=True, comment="实际复习时间点 [{\"key\":\"1d\",\"label\":\"1天\",\"time\":\"iso\",\"done\":false}]")
     mastered = Column(Boolean, default=False, comment="是否已掌握")
     created_at = Column(DateTime, default=_utcnow)
 
@@ -795,7 +804,10 @@ class Document(Base):
                            default="other", server_default="other", comment="类型：pdf/docx/txt")
     size = Column(Integer, nullable=True, comment="大小（字节）")
     index_status = Column(PgEnumAware("index_status", 50), default="pending", comment="索引状态：pending/indexing/indexed/failed")
-    knowledge_point_count = Column(Integer, default=0, comment="提取知识点数量")
+    knowledge_point_count = Column(Integer, default=0, server_default="0", comment="提取知识点数量")
+    # 此前只有 core.models.documents.Document 映射了 chunk_count，业务实际用的是本类，
+    # 于是 smart_ingest 的赋值落在 Python 属性上、从未落库（705/705 恒为 0）。
+    chunk_count = Column(Integer, default=0, server_default="0", comment="已产生的分块数")
     parse_progress = Column(Float, default=0, comment="解析进度 0-1")
     content = Column(Text, nullable=True, comment="解析后文本内容")
     subject = Column(String(50), nullable=True, index=True, comment="学科分类")
@@ -1020,6 +1032,7 @@ class Word(Base):
     due_date = Column(Date, nullable=True, comment="下次复习日期")
     last_review = Column(Date, nullable=True, comment="上次复习日期")
     review_history = Column(JSON, nullable=True, comment="复习历史 JSON")
+    extra = Column(JSON, nullable=True, comment="扩展数据 JSON：同近义/短语/同根（KyleBing 等结构化词源）")
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -1155,6 +1168,7 @@ class KaoyanAdmission(Base):
     major_avg_score = Column(Float, nullable=True, comment="专业课均分")
     retest_ratio = Column(Float, nullable=True, comment="复录比")
     data_source = Column(String(50), nullable=True, comment="数据来源")
+    extra = Column(JSON, nullable=True, comment="扩展数据 JSON：最高/最低/中位分、专业课分布等")
     created_at = Column(DateTime, default=_utcnow)
     __table_args__ = (
         Index("ix_kaoyan_adm_school_year", "school_id", "year"),
@@ -1204,6 +1218,14 @@ class KaoyanScoreLine(Base):
     retest_line = Column(Integer, nullable=True, comment="校复试线")
     line_type = Column(String(20), nullable=True, comment="类型")
     source = Column(String(50), nullable=True, index=True, comment="来源标记：yz.chsi.com.cn / school_official / csv_sample / txkyer.cn / unverified")
+    major_code = Column(String(20), nullable=True, comment="专业代码（kaoyan.cn 逐专业分数线口径）")
+    major_name = Column(String(120), nullable=True)
+    depart_name = Column(String(120), nullable=True, comment="招生院系")
+    degree_type = Column(String(20), nullable=True, comment="专业型/学术型")
+    note = Column(Text, nullable=True, comment="接口备注（如 EMBA 特殊线）")
+    special_remark = Column(Text, nullable=True)
+    diff_total = Column(Integer, nullable=True, comment="院线总分 - 国家线（掌上考研口径）")
+    source_id = Column(String(64), nullable=True, index=True, comment="数据源行 id，跨年唯一")
     created_at = Column(DateTime, default=_utcnow)
     __table_args__ = (
         Index("ix_kaoyan_sl_school_year", "school_id", "year"),
@@ -1250,6 +1272,94 @@ class StudyEvent(Base):
     __table_args__ = (
         Index("ix_study_events_type_time", "event_type", "occurred_at"),
         Index("ix_study_events_question", "question_id"),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# 三层可审计记忆（55 号方案 P0-1，DeepTutor DPM/Trace Forest 借鉴）
+# --------------------------------------------------------------------------- #
+class MemoryTrace(Base):
+    """L1 原始轨迹：AI 交互/学习行为的证据快照（append-only）。"""
+
+    __tablename__ = "memory_traces"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True,
+                     comment="归属用户 ID")
+    trace_type = Column(PgEnumAware("memory_trace_type", 20), nullable=False, default="qa",
+                        comment="qa/tutoring/grading/study/document/feedback")
+    subject = Column(String(50), nullable=True, comment="科目")
+    question_id = Column(BigInteger, ForeignKey("quiz_questions.id", ondelete="SET NULL"), nullable=True,
+                         comment="题目 ID")
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True,
+                         comment="文档 ID")
+    session_id = Column(BigInteger, nullable=True, comment="AI 对话/模考会话 ID（逻辑关联）")
+    title = Column(String(200), nullable=False, comment="人类可读摘要")
+    payload = Column(RawJSON, nullable=False, default=dict, comment="原始上下文快照 JSON")
+    occurred_at = Column(DateTime, nullable=False, index=True, comment="事件发生时间")
+    created_at = Column(DateTime, default=_utcnow)
+    __table_args__ = (
+        Index("ix_memory_traces_user_time", "user_id", "occurred_at"),
+        Index("ix_memory_traces_user_type", "user_id", "trace_type", "occurred_at"),
+        Index("ix_memory_traces_question", "question_id"),
+        Index("ix_memory_traces_document", "document_id"),
+    )
+
+
+class MemoryFact(Base):
+    """L2 摘要事实：LLM 从 L1 轨迹蒸馏出的可溯源结论，可用户纠错。"""
+
+    __tablename__ = "memory_facts"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True,
+                     comment="归属用户 ID")
+    fact_type = Column(String(50), nullable=False, default="weakness",
+                       comment="weakness/strength/preference/progress")
+    subject = Column(String(50), nullable=True, comment="科目")
+    knowledge_point_id = Column(BigInteger, ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+                              nullable=True, comment="知识点 ID")
+    kp_name = Column(String(100), nullable=True, comment="知识点名称快照")
+    claim = Column(Text, nullable=False, comment="事实陈述")
+    confidence = Column(Float, default=0.5, comment="0~1 置信度")
+    evidence = Column(RawJSON, nullable=False, default=list, comment="[{trace_id, kind, snippet}]")
+    source_layer = Column(PgEnumAware("memory_source_layer", 20), nullable=False, default="l2_fact")
+    user_corrected = Column(Boolean, nullable=False, default=False, comment="用户是否已纠正")
+    corrected_claim = Column(Text, nullable=True, comment="用户纠正后的事实陈述")
+    corrected_at = Column(DateTime, nullable=True, comment="纠正时间")
+    original_claim = Column(Text, nullable=True, comment="原始 claim 快照")
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    __table_args__ = (
+        Index("ix_memory_facts_user_type", "user_id", "fact_type", "updated_at"),
+        Index("ix_memory_facts_user_kp", "user_id", "knowledge_point_id"),
+        Index("ix_memory_facts_user_corrected", "user_id", "user_corrected"),
+    )
+
+
+class MemorySynthesis(Base):
+    """L3 综合画像：跨场景聚合的学习结论，可用户纠错。"""
+
+    __tablename__ = "memory_synthesis"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True,
+                     comment="归属用户 ID")
+    synth_type = Column(String(50), nullable=False, default="profile",
+                        comment="profile/weakness_map/study_plan")
+    title = Column(String(200), nullable=False, comment="综合结论标题")
+    summary = Column(Text, nullable=False, comment="综合结论")
+    detail = Column(RawJSON, nullable=False, default=dict, comment="结构化明细")
+    fact_ids = Column(RawJSON, nullable=False, default=list, comment="引用的 L2 fact id 数组")
+    source_layer = Column(PgEnumAware("memory_source_layer", 20), nullable=False, default="l3_synthesis")
+    user_corrected = Column(Boolean, nullable=False, default=False, comment="用户是否已纠正")
+    corrected_summary = Column(Text, nullable=True, comment="用户纠正后的结论文本")
+    corrected_at = Column(DateTime, nullable=True, comment="纠正时间")
+    original_summary = Column(Text, nullable=True, comment="原始结论快照")
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    __table_args__ = (
+        Index("ix_memory_synthesis_user", "user_id", "updated_at"),
     )
 
 
@@ -1395,7 +1505,7 @@ class DocumentPage(Base):
     image_path = Column(String(1000), nullable=True, comment="整页图相对路径")
     ocr_engine = Column(String(50), nullable=True, comment="解析引擎：mineru/paddle/rapidocr/digital")
     ocr_confidence = Column(Float, nullable=True, comment="页级置信度 0-1")
-    created_at = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         UniqueConstraint("document_id", "page_no", name="uq_document_pages_doc_page"),
@@ -1425,7 +1535,7 @@ class DocumentBlock(Base):
     # ocr_confidence_missing（后端没给置信度）等标记。用于把坏块挑出来重解析：
     #   SELECT * FROM document_blocks WHERE extra->>'math_corrupted' = 'true'
     extra = Column(RawJSON, nullable=True, comment="块级附加信息 JSON（质检标记等）")
-    created_at = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("ix_document_blocks_doc_page", "document_id", "page_no"),
@@ -1458,7 +1568,7 @@ class QuestionImage(Base):
     height = Column(Integer, nullable=True, comment="图高（像素）")
     is_primary = Column(Boolean, nullable=False, default=False, server_default="false",
                         comment="是否主图（同一题中面积最大者）")
-    created_at = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class CrawlJob(Base):
@@ -1475,10 +1585,10 @@ class CrawlJob(Base):
     status = Column(String(16), nullable=False, default="pending", index=True,
                     comment="状态：pending/running/done/failed")
     attempts = Column(Integer, nullable=False, default=0, server_default="0", comment="已尝试次数")
-    next_run_at = Column(DateTime, nullable=True, index=True, comment="下次执行时间")
+    next_run_at = Column(DateTime(timezone=True), nullable=True, index=True, comment="下次执行时间")
     last_error = Column(Text, nullable=True, comment="最近一次错误")
-    created_at = Column(DateTime, default=_utcnow)
-    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class CrawlPage(Base):
@@ -1497,7 +1607,7 @@ class CrawlPage(Base):
     text = Column(Text, nullable=True, comment="抽取正文")
     content_hash = Column(String(64), nullable=True, index=True, comment="正文 sha256（增量去重用）")
     simhash = Column(String(32), nullable=True, index=True, comment="正文 simhash（近似去重用）")
-    fetched_at = Column(DateTime, nullable=True, comment="抓取时间")
+    fetched_at = Column(DateTime(timezone=True), nullable=True, comment="抓取时间")
 
 
 class CrawlDeadLetter(Base):
@@ -1513,4 +1623,4 @@ class CrawlDeadLetter(Base):
     error = Column(Text, nullable=True, comment="错误详情")
     attempts = Column(Integer, nullable=False, default=0, server_default="0", comment="已尝试次数")
     payload = Column(RawJSON, nullable=True, comment="失败时的任务负载 JSON")
-    created_at = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)

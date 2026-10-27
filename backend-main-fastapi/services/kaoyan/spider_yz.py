@@ -14,12 +14,24 @@
     # 全量
     python -c "from services.kaoyan.spider_yz import crawl; crawl(all_provinces=True)"
 """
+import logging
 import re, time, random, json, ssl, urllib.request, urllib.parse
 from pathlib import Path
 
 YZ_BASE = "https://yz.chsi.com.cn"
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
-CHECKPOINT_FILE = Path(__file__).parent / "checkpoint.json"
+
+# 断点续爬状态落在 data/ 运行时目录，**不放在包目录**。
+# 历史故障（2026-10-18）：部署包夹带一份全量 completed 的 checkpoint.json，
+# 全新库 0 所院校，爬虫却把 31 省 × 13 门类全部当"跳过已完成"，
+# 采集永远返回 0 行、毫无报错。运行时状态必须与代码分离，
+# 部署只更新代码，不覆盖状态。
+SPIDER_STATE_DIR = Path(__file__).resolve().parents[2] / "data" / "spider_state"
+
+
+def _checkpoint_path() -> Path:
+    SPIDER_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    return SPIDER_STATE_DIR / "yz_checkpoint.json"
 
 SSL_CTX = ssl.create_default_context()
 SSL_CTX.check_hostname = False
@@ -105,19 +117,50 @@ def check_robots(force=False):
     return allowed
 
 
-def load_checkpoint():
-    """C2: 加载断点续爬记录。"""
-    if CHECKPOINT_FILE.exists():
+def load_checkpoint(db_session=None):
+    """C2: 加载断点续爬记录。
+
+    Args:
+        db_session: 可选 SQLAlchemy 会话。传入时启用自愈校验。
+
+    自愈（2026-10-18 生产故障复盘）：checkpoint 是运行时状态，可能因
+    部署包夹带而"声称已完成"但库里其实一所院校都没有——症状是采集
+    永远 0 行且不报错。此时以库为准：院校表为空即重置 checkpoint，
+    保证"库空即可重爬"，不依赖人工去删文件。
+    """
+    path = _checkpoint_path()
+    cp = {"completed": []}
+    if path.exists():
         try:
-            return json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {"completed": []}
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("completed"), list):
+                cp = data
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：保留「不阻塞主流程」语义，仅补留痕
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
+    if cp.get("completed") and db_session is not None:
+        try:
+            from models import KaoyanSchool
+            if db_session.query(KaoyanSchool).count() == 0:
+                logging.getLogger(__name__).warning(
+                    "checkpoint 声称已完成 %d 项但院校库为空，判定过期并重置（以库为准）",
+                    len(cp["completed"]),
+                )
+                cp = {"completed": []}
+                save_checkpoint(cp)
+        except Exception as _exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning(
+                "checkpoint 自愈检查失败（不阻塞主流程）: %s", str(_exc)[:200]
+            )
+    return cp
 
 
 def save_checkpoint(cp):
     """C2: 保存断点续爬记录。"""
-    CHECKPOINT_FILE.write_text(json.dumps(cp, ensure_ascii=False, indent=2), encoding="utf-8")
+    path = _checkpoint_path()
+    path.write_text(json.dumps(cp, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # 关键词穷举池（规避"每页10条且匿名翻页失效"）。
@@ -214,24 +257,24 @@ def crawl(province_codes=None, subject_codes=None, all_provinces=False, reset_ch
     from database import SessionLocal
     from models import KaoyanSchool
 
-    # C2: 断点续爬
-    cp = {"completed": []} if reset_checkpoint else load_checkpoint()
-
-    # C2: robots.txt 合规检查
-    if not check_robots():
-        print("[C2] robots.txt 禁止采集，放弃本次爬取")
-        return {"success": False, "reason": "robots.txt 禁止采集"}
-
-    if all_provinces:
-        province_codes = list(PROVINCES.keys())
-    elif not province_codes:
-        province_codes = list(PROVINCES.keys())[:3]  # 默认3省
-
-    if not subject_codes:
-        subject_codes = ["08"]  # 工学
-
     db = SessionLocal()
     try:
+        # C2: 断点续爬（带 db 以启用"库空即重置"自愈）
+        cp = {"completed": []} if reset_checkpoint else load_checkpoint(db)
+
+        # C2: robots.txt 合规检查
+        if not check_robots():
+            print("[C2] robots.txt 禁止采集，放弃本次爬取")
+            return {"success": False, "reason": "robots.txt 禁止采集"}
+
+        if all_provinces:
+            province_codes = list(PROVINCES.keys())
+        elif not province_codes:
+            province_codes = list(PROVINCES.keys())[:3]  # 默认3省
+
+        if not subject_codes:
+            subject_codes = ["08"]  # 工学
+
         total_before = db.query(KaoyanSchool).count()
         print(f"开始爬取：{len(province_codes)} 省 × {len(subject_codes)} 学科")
         print(f"当前已有 {total_before} 所院校")

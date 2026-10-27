@@ -9,9 +9,11 @@ answer_candidates 四态来源：bank | extracted | llm | user_confirmed
 confidence 0.0~1.0；used_for_grading 仅高置信度参与自动判分与正确率统计。
 """
 from __future__ import annotations
+import logging
 
 import re
-from datetime import datetime
+from services.dbapi_compat import wrap_conn
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Any, Dict, List, Optional
 
 from services.answer_rules import ANSWER_RULES  # E4 答题规则注入
@@ -22,14 +24,23 @@ except Exception:  # pragma: no cover
     def looks_like_chain_of_thought(_t):  # type: ignore
         return False
 
+# 答案来源取值：**必须与 DB 的 answer_source 枚举严格一致**。
+# 权威定义见 core/pg_types.py 的 ENUM_CATALOG["answer_source"] 与
+# core/sql/000_extensions_and_enums.sql。
+#
+# 实测踩坑（2026-10）：原值为 "extracted" / "llm"，而 DB 枚举实际是
+# "source_extract" / "llm_generated"。在 SQLite 下无类型约束所以没暴露；
+# 切到 PostgreSQL 后写入直接报
+#   invalid input value for enum answer_source: "extracted"
+# 即 4 个取值里错 2 个，写入路径全断。
 SOURCE_BANK = "bank"
-SOURCE_EXTRACTED = "extracted"
-SOURCE_LLM = "llm"
+SOURCE_EXTRACTED = "source_extract"
+SOURCE_LLM = "llm_generated"
 SOURCE_USER = "user_confirmed"
 
 
 def _now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _norm_answer(s: Any) -> str:
@@ -102,7 +113,7 @@ def _consistency_score(a: str, b: str) -> float:
 # 候选来源收集
 # --------------------------------------------------------------------------- #
 def _source_from_bank(db, question_id: int) -> Optional[Dict[str, Any]]:
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     row = conn.execute(
         "SELECT id, answer, analysis FROM quiz_questions WHERE id = ?", (question_id,)
     ).fetchone()
@@ -125,7 +136,7 @@ def _source_from_exam_engine(db, question_id: int, query: str) -> Optional[Dict[
         from services.exam_engine import SUBJECT_ALIAS, get_exam_index
 
         idx = get_exam_index()
-        conn = db.connection().connection
+        conn = wrap_conn(db.connection().connection)
         row = conn.execute(
             "SELECT year, external_id, subject FROM quiz_questions WHERE id = ?", (question_id,)
         ).fetchone()
@@ -278,7 +289,7 @@ def cross_check_question(
 
     ensure_module_a_schema(db)
     from services.db_retry import exec_retry
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     row = conn.execute(
         "SELECT id, content, answer, answer_type, year, external_id FROM quiz_questions WHERE id = ?",
         (question_id,),
@@ -310,8 +321,12 @@ def cross_check_question(
             "SELECT ai_generated FROM quiz_questions WHERE id = ?", (question_id,)
         ).fetchone()
         bank_is_ai = bool(row_ai and row_ai[0])
-    except Exception:
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
     if use_llm and (len(sources) <= 1 or (bank_is_ai and len(sources) < 2)):
         llm_src = _source_from_llm(db, question_id, query or content, answer_type)
         if llm_src:
@@ -475,7 +490,7 @@ def check_batch(
         # 几百题全量 LLM 串行导致 504 —— 需要重跑时可显式传 question_ids。
         from services.module_a_schema import ensure_module_a_schema
         ensure_module_a_schema(db)
-        conn = db.connection().connection
+        conn = wrap_conn(db.connection().connection)
         rows = conn.execute(
             "SELECT id FROM quiz_questions "
             "WHERE confidence IS NULL OR confidence = 'verify' "
@@ -491,15 +506,19 @@ def check_batch(
         try:
             from services.module_a_schema import ensure_module_a_schema
             ensure_module_a_schema(db)
-            conn = db.connection().connection
+            conn = wrap_conn(db.connection().connection)
             row = conn.execute(
                 "SELECT confidence FROM quiz_questions WHERE id = ?", (qid,)
             ).fetchone()
             if row and row[0] in ("high", "verify", "medium"):
                 skipped += 1
                 continue
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
         out.append(cross_check_question(db, qid, use_llm=use_llm))
     checked = [x for x in out if x.get("checked")]
     return {
@@ -515,7 +534,7 @@ def stats(db) -> Dict[str, Any]:
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     total_candidates = conn.execute("SELECT COUNT(*) FROM answer_candidates").fetchone()[0]
     by_source = {}
     for src in (SOURCE_BANK, SOURCE_EXTRACTED, SOURCE_LLM, SOURCE_USER):
@@ -524,10 +543,14 @@ def stats(db) -> Dict[str, Any]:
         ).fetchone()[0]
         by_source[src] = n
     graded = conn.execute(
-        "SELECT COUNT(*) FROM answer_candidates WHERE used_for_grading = 1"
+        "SELECT COUNT(*) FROM answer_candidates WHERE used_for_grading = TRUE"
     ).fetchone()[0]
+    # 枚举口径：confidence 在 PG 是 ENUM('high','medium','low')（SQLite 时期是
+    # 任意 TEXT，历史代码写的 'verify' 在 PG 下直接
+    # ``invalid input value for enum confidence_level: "verify"``，整个
+    # /api/answers/stats 因此 500）。"待核验"对应低置信度 low。
     verify_cnt = conn.execute(
-        "SELECT COUNT(*) FROM quiz_questions WHERE confidence = 'verify'"
+        "SELECT COUNT(*) FROM quiz_questions WHERE confidence = 'low'"
     ).fetchone()[0]
     return {
         "total_candidates": total_candidates,

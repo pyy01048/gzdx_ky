@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import argparse
 import csv
 import os
@@ -30,7 +31,9 @@ from typing import Set
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-ROOT = r"D:\平台"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+ROOT = str(_REPO)
 BACKEND = os.path.join(ROOT, "backend-main-fastapi")
 LIVE_DB = os.path.join(ROOT, "database", "kaoyan.db")
 DEFAULT_OUT = os.path.join(ROOT, "docx", "_audit", "rename_dryrun_20261013.csv")

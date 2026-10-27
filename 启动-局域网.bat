@@ -1,31 +1,43 @@
 @echo off
-chcp 65001 >nul
-title 考研平台 · 局域网模式（手机可访问）
+REM ============================================================
+REM  Kaoyan Platform - Service Stopper (ASCII only)
+REM  See start.bat header for why this file must stay ASCII.
+REM
+REM  Note: the old version used !VAR! without enabling delayed
+REM  expansion, so it silently killed nothing. All logic now
+REM  lives in scripts\launcher.py which is testable.
+REM ============================================================
+setlocal EnableDelayedExpansion
+
 cd /d "%~dp0"
 set "BACKEND=%~dp0backend-main-fastapi"
-set "PORT=8000"
-for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /c:"PORT=" "%BACKEND%\.env" 2^>nul`) do set "PORT=%%b"
-set "PORT=%PORT: =%"
-if "%PORT%"=="" set "PORT=8000"
 
-echo ============================================================
-echo   局域网模式：同一 WiFi 下的手机 / 平板都能访问
-echo   建议在 .env 里设置 APP_PASSWORD 防止陌生人访问
-echo ============================================================
-echo.
-
-echo [1/2] 放行防火墙端口 %PORT%（需管理员权限，失败不阻塞）
-netsh advfirewall firewall show rule name="KaoyanPlatform" >nul 2>&1
-if %errorlevel% neq 0 (
-    netsh advfirewall firewall add rule name="KaoyanPlatform" dir=in action=allow protocol=TCP localport=%PORT% >nul 2>&1
-    if %errorlevel%==0 (echo       已添加防火墙规则) else (echo       [跳过] 需要管理员权限；手机打不开时请右键本文件以管理员身份运行)
-) else (
-    echo       防火墙规则已存在
+set "PYEXE="
+for %%P in (
+    "D:\Anaconda\python.exe"
+    "C:\Users\%USERNAME%\Anaconda3\python.exe"
+    "%USERPROFILE%\anaconda3\python.exe"
+    "C:\Users\%USERNAME%\miniconda3\python.exe"
+    "C:\ProgramData\Anaconda3\python.exe"
+) do (
+    if not defined PYEXE (
+        if exist "%%~P" set "PYEXE=%%~P"
+    )
 )
-echo.
+if not defined PYEXE (
+    where python >nul 2>&1
+    if !errorlevel!==0 set "PYEXE=python"
+)
 
-echo [2/2] 启动服务（下方会打印手机访问地址与二维码）
-cd /d "%BACKEND%"
-set "HOST=0.0.0.0"
-python show_access.py 2>nul
-python main.py
+if not defined PYEXE (
+    echo.
+    echo   [ERROR] Python not found - cannot stop the service.
+    echo.
+    pause
+    exit /b 1
+)
+
+title Kaoyan Platform - LAN
+"%PYEXE%" "%BACKEND%\scripts\launcher.py" lan
+echo.
+pause

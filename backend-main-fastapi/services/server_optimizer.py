@@ -1,10 +1,12 @@
 """
 V3.0 后端服务优化模块
-- 响应压缩
 - 后台任务队列
 - 异步处理优化
 - 限流
 - 性能监控
+
+说明：响应压缩由部署层的 nginx gzip 负责（gzip_types 含
+application/json 等），应用层不再做假压缩头。
 """
 import time
 import asyncio
@@ -37,22 +39,6 @@ def _load_slow_threshold_ms() -> int:
         )
         return DEFAULT_SLOW_REQUEST_THRESHOLD_MS
     return value if value > 0 else DEFAULT_SLOW_REQUEST_THRESHOLD_MS
-
-
-# ---------------------------------------------------------------------------
-# 响应压缩中间件
-# ---------------------------------------------------------------------------
-async def compression_middleware(request: Request, call_next):
-    """响应压缩中间件（Gzip）。"""
-    response = await call_next(request)
-
-    # 只压缩JSON响应且大于1KB
-    content_type = response.headers.get("content-type", "")
-    if "application/json" in content_type:
-        response.headers["Content-Encoding"] = "gzip"
-        response.headers["Vary"] = "Accept-Encoding"
-
-    return response
 
 
 # ---------------------------------------------------------------------------

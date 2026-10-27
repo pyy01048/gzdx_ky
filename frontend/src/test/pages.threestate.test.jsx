@@ -48,19 +48,31 @@ function group() {
   )
 }
 
-const CLIENT_EXPORTS = [
-  'request', 'ApiError', 'fileUrl',
-  'dashboardApi', 'insightApi', 'tasksApi', 'goalsApi', 'quizApi', 'errorsApi',
-  'flashcardsApi', 'documentsApi', 'kbImportApi', 'netdiskApi', 'importsApi',
-  'aiApi', 'customizationApi', 'plannerApi', 'wordsApi', 'studyApi',
-  'taxonomyApi', 'reviewApi', 'kbApi', 'systemApi', 'analysisApi',
-  'quizSectionApi', 'paperApi', 'planningApi', 'qualityApi',
-]
+/* 从真实模块的导出清单自动派生 stub：新增一个 client 导出就不必再同步枚举
+   （历史上正是漏掉 fetchAllPages，用例直接抛 "No export is defined on the mock"，
+   把「逐页取全量」这条故障路径整个测漏了）。 */
+const clientStub = {}
 
-const clientStub = { DEFAULT_TIMEOUT: 30000 }
-for (const name of CLIENT_EXPORTS) clientStub[name] = group()
+function mockFetchAllPages(fetchPage, opts = {}) {
+  // null 形态：真实实现拿不到 items，返回空数组（不是 null），页面走空态。
+  if (mode !== 'reject') return Promise.resolve([])
+  // reject 形态：透传第一页请求，让底下的 api.xxx 抛出测试故障。
+  return fetchPage({ page: 1, page_size: 200 }).then((r) => (r ? [r] : []))
+}
 
-vi.mock('../api/client', () => clientStub)
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal()
+  for (const name of Object.keys(actual)) {
+    if (name === 'DEFAULT_TIMEOUT' || name === 'MAX_PAGE_SIZE') {
+      clientStub[name] = actual[name] // 纯常量保留真值，分页循环才是真的在被测
+    } else if (name === 'fetchAllPages') {
+      clientStub[name] = mockFetchAllPages
+    } else {
+      clientStub[name] = group()
+    }
+  }
+  return clientStub
+})
 
 /* fire-and-forget 的 reject 不进入页面渲染路径，避免污染用例结果 */
 beforeEach(() => {
@@ -96,7 +108,7 @@ async function settle(ms = 300) {
  * ========================================================================= */
 describe('主要数据页：接口 500 时显示错误态而非白屏', () => {
   it('学习文库 Library：显示「资料加载失败」与重新加载按钮', async () => {
-    const Library = (await import('../pages/Library')).default
+    const Library = (await import('../v3/pages/Library')).default
     const { crashes, container } = renderPage(Library, '/library')
     await settle()
 
@@ -107,7 +119,7 @@ describe('主要数据页：接口 500 时显示错误态而非白屏', () => {
   })
 
   it('知识地图 KbMap：显示「知识地图加载失败」与重新加载按钮', async () => {
-    const KbMap = (await import('../pages/KbMap')).default
+    const KbMap = (await import('../v3/pages/KbMap')).default
     const { crashes, container } = renderPage(KbMap, '/kbmap')
     await settle()
 
@@ -118,7 +130,7 @@ describe('主要数据页：接口 500 时显示错误态而非白屏', () => {
   })
 
   it('题库 Quiz：显示「统计数据加载失败」与重试按钮', async () => {
-    const Quiz = (await import('../pages/Quiz')).default
+    const Quiz = (await import('../v3/pages/Quiz')).default
     const { crashes, container } = renderPage(Quiz, '/quiz')
     await settle()
 
@@ -130,7 +142,7 @@ describe('主要数据页：接口 500 时显示错误态而非白屏', () => {
   })
 
   it('题库管理 QuizBank：显示「题目列表加载失败」与重试按钮', async () => {
-    const QuizBank = (await import('../pages/QuizBank')).default
+    const QuizBank = (await import('../v3/pages/QuizBank')).default
     const { crashes, container } = renderPage(QuizBank, '/quiz-bank')
     await settle()
 
@@ -141,7 +153,7 @@ describe('主要数据页：接口 500 时显示错误态而非白屏', () => {
   })
 
   it('错题复盘 ErrorReview：显示「错题列表加载失败」与重新加载按钮', async () => {
-    const ErrorReview = (await import('../pages/ErrorReview')).default
+    const ErrorReview = (await import('../v3/pages/ErrorReview')).default
     const { crashes, container } = renderPage(ErrorReview, '/error-review')
     await settle()
 
@@ -162,11 +174,11 @@ describe('主要数据页：接口返回 null 时不崩不白屏', () => {
   })
 
   it.each([
-    ['学习文库', '../pages/Library', '/library'],
-    ['知识地图', '../pages/KbMap', '/kbmap'],
-    ['刷题中心', '../pages/Quiz', '/quiz'],
-    ['题库管理', '../pages/QuizBank', '/quiz-bank'],
-    ['错题复盘', '../pages/ErrorReview', '/error-review'],
+    ['学习文库', '../v3/pages/Library', '/library'],
+    ['知识地图', '../v3/pages/KbMap', '/kbmap'],
+    ['刷题中心', '../v3/pages/Quiz', '/quiz'],
+    ['题库管理', '../v3/pages/QuizBank', '/quiz-bank'],
+    ['错题复盘', '../v3/pages/ErrorReview', '/error-review'],
   ])('%s 收到 null 时仍渲染出页面', async (_name, modPath, route) => {
     const Comp = (await import(modPath)).default
     const { crashes, container } = renderPage(Comp, route)
@@ -179,31 +191,3 @@ describe('主要数据页：接口返回 null 时不崩不白屏', () => {
   })
 })
 
-/* ========================================================================= *
- * 三、KB 健康面板：体检成功但系统健康接口挂时不白屏（就地错误态 + 重试）
- * ========================================================================= */
-describe('KbHealthPanel：系统健康接口故障时降级', () => {
-  it('kb/health 正常 + /api/health 挂 → 系统健康区显示错误态与重试', async () => {
-    // 让体检接口返回一份最小合法报告，走到渲染系统健康区的分支
-    clientStub.kbApi.health = () => Promise.resolve({
-      healthy: true,
-      documents: { total: 10, by_status: { indexed: 10 }, empty_content: 0, ocr_used: 0, missing_structure_level: 0 },
-      chunks: { total: 100, with_embedding: 100, missing_embedding: 0 },
-      issues: [],
-    })
-    try {
-      const KbHealthPanel = (await import('../components/KbHealthPanel')).default
-      const { crashes, container } = renderPage(KbHealthPanel, '/documents')
-      await settle()
-
-      expect(await screen.findByText('未发现缺口，知识库健康')).toBeInTheDocument()
-      // 系统健康区（details 折叠但仍在 DOM 中）：统一错误态 + 重试按钮
-      expect(screen.getByText('系统健康检查失败')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument()
-      expect(container.firstChild, 'KbHealthPanel 在系统健康故障时 DOM 为空 = 白屏').toBeTruthy()
-      expect(crashes).toEqual([])
-    } finally {
-      delete clientStub.kbApi.health // 恢复全故障 mock，避免污染其他用例
-    }
-  })
-})

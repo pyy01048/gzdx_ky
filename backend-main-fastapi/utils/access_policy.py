@@ -34,15 +34,24 @@ GUEST_READ_PREFIXES: Tuple[str, ...] = (
     "/api/taxonomy",    # 科目与知识点树（知识图谱只读）
     "/api/textbooks",   # 教材目录
     "/api/papers",      # 真题卷索引（作答/保存仍需登录）
-    "/api/notices",     # 考研通知（共享数据；未读/星标等个人状态需登录才有意义）
-    "/api/quiz",        # 题库/真题元数据与题目只读（提交作答仍需登录）
 )
+# /api/quiz 与 /api/notices 已移出白名单（2026-10-21 体检）：这两组 GET 内部
+# 全部 Depends(current_user)（个人题目状态/未读星标），白名单只会制造
+# 「声明开放、实际 401」的死配置。访客可读的公共通知走 /api/kaoyan/notices。
+# 例外：真题索引页 /exam 的两个纯元数据端点不依赖 current_user、也不含个人
+# 状态，按精确路径放行；/api/quiz/subjects 带个人错题数，仍不给访客。
+GUEST_READ_ENDPOINTS = frozenset({
+    "/api/quiz/papers-index",
+    "/api/quiz/years",
+})
 
 # 访客白名单内的例外：管理工具性质的读取也不给访客
 GUEST_READ_DENY_PREFIXES: Tuple[str, ...] = (
     "/api/kaoyan/crawl-targets",
     "/api/kaoyan/collection",
     "/api/kaoyan/spider",
+    # 作答记录是个人数据；卷索引可公开，作答历史绝不可以
+    "/api/papers/attempts",
 )
 
 
@@ -50,6 +59,8 @@ def is_guest_readable(method: str, path: str) -> bool:
     """访客只读白名单：GET/HEAD 且命中共享数据前缀、不落在管理工具前缀内。"""
     if method.upper() not in ("GET", "HEAD"):
         return False
+    if path.rstrip("/") in GUEST_READ_ENDPOINTS:
+        return True
     if not any(path == p or path.startswith(p + "/") for p in GUEST_READ_PREFIXES):
         return False
     return not any(path.startswith(p) for p in GUEST_READ_DENY_PREFIXES)
@@ -100,7 +111,12 @@ ADMIN_ENDPOINTS: Tuple[Tuple[str, str], ...] = (
     # 端点内部已用 scoped(ErrorRecord, user) 限定"仅本人"，普通用户应当可用；
     # 把它收进管理员会直接废掉错题本的批量删除功能。
     ("POST", "/api/papers/save"),
+    # 组卷会新建共享 papers 记录（2026-10-21 体检：此前普通用户可调）
+    ("POST", "/api/papers/build"),
     ("DELETE", "/api/papers/{id}"),
+    # 答案交叉校验会写 answer_candidates 并改动题目置信度，属共享题库维护
+    ("POST", "/api/answers/check"),
+    ("POST", "/api/answers/check-batch"),
     ("POST", "/api/kaoyan/notices/crawl"),
     ("POST", "/api/kaoyan/spider/run"),
     ("POST", "/api/kaoyan/collection/runs"),

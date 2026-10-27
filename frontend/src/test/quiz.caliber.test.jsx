@@ -42,9 +42,19 @@ const quizSectionApiMock = {
   submitReview: vi.fn().mockResolvedValue({}),
 }
 
-vi.mock('../api/client', () => ({
+vi.mock('../api/client', async (importOriginal) => ({
+  // 派生真实模块的导出清单：client.js 新增导出（如 fetchAllPages）不必再回来补枚举，
+  // 否则页面一 import 就报 "No export is defined on the mock"。
+  ...(await importOriginal()),
   request: vi.fn().mockResolvedValue({}),
   DEFAULT_TIMEOUT: 30000,
+  favoritesApi: {
+    list: vi.fn().mockResolvedValue({ total: 0, items: [] }),
+    add: vi.fn().mockResolvedValue({ ok: true, id: 1 }),
+    check: vi.fn().mockResolvedValue({ favorited: false, id: null }),
+    toggle: vi.fn().mockResolvedValue({ favorited: false }),
+    remove: vi.fn().mockResolvedValue({ ok: true }),
+  },
   quizApi: quizApiMock, taxonomyApi: taxonomyApiMock, errorsApi: errorsApiMock,
   goalsApi: goalsApiMock, quizSectionApi: quizSectionApiMock,
 }))
@@ -76,11 +86,12 @@ async function renderPage(modPath, route) {
 
 describe('#103① 刷题中心首页统计口径明示', () => {
   it('分别显示「可见题」与「可作答」两个具名口径，且数字来自对应字段', async () => {
-    await renderPage('../pages/Quiz', '/quiz')
+    await renderPage('../v3/pages/Quiz', '/quiz')
     expect(await screen.findByText('可见题')).toBeInTheDocument()
     expect(screen.getByText('可作答')).toBeInTheDocument()
-    // 口径字样必须出现在界面上
-    expect(screen.getByText(/可见题 = 排除 OCR 碎片；可作答 = 有答案可判分/)).toBeInTheDocument()
+    // 口径字样必须出现在界面上（dogfood ISSUE-005：改为用户语言，不暴露接口路径与「具名字段」字样）
+    expect(screen.getByText(/可见题已排除 OCR 碎片题/)).toBeInTheDocument()
+    expect(screen.getByText(/「可作答」= 有答案、可自动判分/)).toBeInTheDocument()
     // CountUp 动画期间数字可能未落定，断言容器存在即可（值由 mock 驱动）
     expect(screen.getByText('可见题').closest('.qh-hstat')).toBeTruthy()
   })
@@ -88,7 +99,7 @@ describe('#103① 刷题中心首页统计口径明示', () => {
 
 describe('#103① 题库管理统计口径明示', () => {
   it('科目卡片与统计卡均标注「可作答 / 可见」口径', async () => {
-    const { container } = await renderPage('../pages/QuizBank', '/quiz-bank')
+    const { container } = await renderPage('../v3/pages/QuizBank', '/quiz-bank')
     // 科目下拉与统计卡标签
     expect(await screen.findByText('可作答题')).toBeInTheDocument()
     expect(screen.getByText('可见题')).toBeInTheDocument()

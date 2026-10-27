@@ -3,14 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f4f1e9" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%233A5A40'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='%23F4F1E9' font-family='Georgia'%3E研%3C/text%3E%3C/svg%3E" />
-    <meta name="description" content="考研档案 · 贵大 834 电子技术基础备考平台：知识地图（章节→知识点→题型）、扫描版真题 OCR 入库、错题本与知识库联动、复习进度追踪、AI 知识库问答，支持电脑/平板/手机三端" />
-    <title>考研档案 · 834 知识库与复习进度</title>
+    <meta name="theme-color" content="#F5F5F7" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230A84FF'/%3E%3Cstop offset='1' stop-color='%230062CC'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='15' fill='url(%23g)'/%3E%3Cpath d='M20 17.5h14.2c6.2 0 10.3 3.3 10.3 8.6 0 3.7-2.2 6.4-5.6 7.6v.2c3.9.7 6.8 3.6 7.3 8.2.6 5.2-2.4 9.4-9.8 9.4H20V17.5zm6.6 13.4h6.4c3 0 4.8-1.7 4.8-4.2 0-2.6-1.8-4.1-4.8-4.1h-6.4v8.3zm0 15.4h7c3.3 0 5.3-1.8 5.3-4.6 0-2.8-2-4.6-5.3-4.6h-7V46.3z' fill='%23FFFFFF'/%3E%3C/svg%3E" />
+    <meta name="description" content="硕途 · 考研学习平台：倒计时与每日计划、单词间隔重复、章节刷题与真题、错题艾宾浩斯复习、复试代码上机、院校库与网盘资料，知识地图串联全流程，支持电脑 / 平板 / 手机三端" />
+    <title>硕途 · 考研学习平台</title>
     <script>
-      // V7.0 P0-1 首帧防闪（FOUC）：在首屏渲染前把持久化的主题偏好写到 <html data-theme>。
+      // 首帧防闪（FOUC）：在首屏渲染前把持久化的主题偏好写到 <html data-theme>。
       // React 挂载后由 useResolvedTheme（components/UI.jsx）接管，此处只负责「渲染前」这一段。
-      // 存储 key 与 store/useStore.js 的 persist({ name: 'kaoyan-archive-v1' }) 保持一致。
       (function () {
         var STORE_KEY = 'kaoyan-archive-v1'
         var theme = 'light'
@@ -22,16 +21,14 @@
             if (stored === 'light' || stored === 'dark' || stored === 'system') theme = stored
           }
         } catch (e) {
-          // localStorage 不可用（隐私模式 / 配额禁用）或 JSON 损坏 → 兜底 light
           theme = 'light'
         }
         if (theme === 'system') {
           theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
         }
         document.documentElement.setAttribute('data-theme', theme)
-        // 同步浏览器 chrome 颜色，避免地址栏/状态栏与页面割裂
         var meta = document.querySelector('meta[name="theme-color"]')
-        if (meta) meta.setAttribute('content', theme === 'dark' ? '#1a1c22' : '#f4f1e9')
+        if (meta) meta.setAttribute('content', theme === 'dark' ? '#1C1C1E' : '#F5F5F7')
       })()
     </script>
   </head>

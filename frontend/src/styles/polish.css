@@ -1,98 +1,16 @@
 /* ============================================================
-   Frontend Polish · 前端品质升级（视觉精装修层）
-   叠加在 global.css 令牌体系 + v2-design.css 组件类之上，
-   由 main.jsx 最后引入，仅做视觉增强，不改功能逻辑 / 数据流。
+   全局滚动条样式（细滚动条 + hover 强调；兼容 Firefox）
    ============================================================ */
 
-/* ---------- 1. 页面路由过渡（仅主内容容器，不影响侧边栏） ---------- */
-.main-area {
-  animation: main-enter var(--dur-base) var(--ease-out);
-}
-@keyframes main-enter {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .main-area { animation: none; }
-}
-
-/* ---------- 2. 列表 / 条目 hover 层次（左侧 accent 条指示） ---------- */
-.task-item,
-.review-item {
-  transition:
-    background var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out),
-    box-shadow var(--dur-fast) var(--ease-out);
-}
-.task-item:hover {
-  background: var(--accent-soft);
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-.review-item:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-
-/* ---------- 3. 滚动条（webkit 细滚动条 + hover 强调；Firefox） ---------- */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
-  border-radius: 8px;
+  background: var(--border-strong);
+  border-radius: var(--radius-sm);
   border: 3px solid var(--bg);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 ::-webkit-scrollbar-track { background: transparent; }
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
-}
-
-/* ---------- 4. 统计卡图标 hover 微放大（点击跳转保持 .clickable） ---------- */
-.stat-ico { transition: transform var(--dur-fast) var(--ease-out); }
-.stat-card:hover .stat-ico { transform: scale(1.06); }
-
-/* ---------- 5. 标题节奏（不动字号体系，统一标题加粗权重） ---------- */
-.page-title { font-weight: 800; }
-
-/* ---------- 6. 导航栏考研初试倒计时（侧边栏，移动端隐藏） ---------- */
-.exam-cd {
-  margin: 12px 14px 6px;
-  padding: 12px 14px;
-  border-radius: var(--r-md);
-  background: var(--accent-grad);
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(43, 90, 158, 0.28);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ecd-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  opacity: 0.85;
-}
-.ecd-main {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-variant-numeric: tabular-nums;
-}
-.ecd-days {
-  font-size: 30px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.5px;
-}
-.ecd-unit { font-size: 12px; opacity: 0.85; }
-.ecd-hms {
-  font-size: 13px;
-  font-weight: 600;
-  opacity: 0.92;
-  margin-left: auto;
-  letter-spacing: 0.5px;
-}
-@media (max-width: 860px) {
-  .exam-cd { display: none; }
+  scrollbar-color: var(--border-strong) transparent;
 }

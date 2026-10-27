@@ -31,6 +31,7 @@ from services.crawl.queue import (
     _ModelsUnavailable,
     _utcnow,
 )
+from utils.timeutil import to_aware_utc, to_naive_utc
 
 __all__ = ["PgJobStore", "PgPageIndex", "PgPageWriter", "load_models"]
 
@@ -79,6 +80,8 @@ class PgJobStore(JobStore):
     # -- 内部工具 -------------------------------------------------------- #
     @staticmethod
     def _to_job(row) -> Job:
+        # crawl_* 已改为 timestamptz，psycopg 读回的是 aware；Job/内存 store
+        # 仍按 naive UTC 比较，边界处统一折算，避免 naive/aware TypeError。
         return Job(
             id=int(row.id),
             source_key=row.source_key,
@@ -87,10 +90,10 @@ class PgJobStore(JobStore):
             job_type=row.job_type or "notice",
             status=row.status,
             attempts=int(row.attempts or 0),
-            next_run_at=row.next_run_at,
+            next_run_at=to_naive_utc(row.next_run_at),
             last_error=row.last_error,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            created_at=to_naive_utc(row.created_at),
+            updated_at=to_naive_utc(row.updated_at),
         )
 
     def _commit(self) -> None:
@@ -109,9 +112,9 @@ class PgJobStore(JobStore):
             job_type=job_type,
             status=STATUS_PENDING,
             attempts=0,
-            next_run_at=now,
-            created_at=now,
-            updated_at=now,
+            next_run_at=to_aware_utc(now),
+            created_at=to_aware_utc(now),
+            updated_at=to_aware_utc(now),
         )
         self.db.add(row)
         self._commit()
@@ -136,7 +139,7 @@ class PgJobStore(JobStore):
             select(self.CrawlJob)
             .where(
                 self.CrawlJob.status.in_([STATUS_PENDING, STATUS_FAILED]),
-                self.CrawlJob.next_run_at <= now,
+                self.CrawlJob.next_run_at <= to_aware_utc(now),
             )
             .order_by(self.CrawlJob.next_run_at.asc(), self.CrawlJob.id.asc())
             .limit(max(0, int(limit)))
@@ -149,7 +152,7 @@ class PgJobStore(JobStore):
         for row in rows:
             row.status = STATUS_RUNNING
             row.attempts = int(row.attempts or 0) + 1
-            row.updated_at = now
+            row.updated_at = to_aware_utc(now)
             claimed.append(self._to_job(row))
         if claimed:
             self._commit()
@@ -166,7 +169,7 @@ class PgJobStore(JobStore):
         for key, value in fields.items():
             if hasattr(row, key):
                 setattr(row, key, value)
-        row.updated_at = _utcnow()
+        row.updated_at = to_aware_utc(_utcnow())
         self._commit()
         return self._to_job(row)
 
@@ -178,7 +181,7 @@ class PgJobStore(JobStore):
             error=error,
             attempts=int(job.attempts or 0),
             payload=payload or {},
-            created_at=_utcnow(),
+            created_at=to_aware_utc(_utcnow()),
         )
         self.db.add(row)
         self._commit()
@@ -279,7 +282,7 @@ class PgPageWriter:
             text=record.text,
             content_hash=record.content_hash,
             simhash=record.simhash,
-            fetched_at=record.fetched_at,
+            fetched_at=to_aware_utc(record.fetched_at),
         )
         self.db.add(row)
         try:

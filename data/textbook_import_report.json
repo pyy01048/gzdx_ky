@@ -1,0 +1,42 @@
+{
+  "books_inserted": 26,
+  "books_skipped": 0,
+  "links_inserted": 20,
+  "unmatched_schools": [
+    {
+      "school": "南通大学",
+      "textbook": "信号与线性系统分析"
+    },
+    {
+      "school": "南通大学",
+      "textbook": "数字系统原理与设计"
+    }
+  ],
+  "unmatched_subject_codes": [],
+  "by_category": {
+    "信号类": {
+      "books": 5,
+      "links": 6
+    },
+    "通信原理类": {
+      "books": 6,
+      "links": 5
+    },
+    "电路、模电、数电": {
+      "books": 7,
+      "links": 3
+    },
+    "数字信号处理 DSP（复试高频）": {
+      "books": 4,
+      "links": 4
+    },
+    "电磁场与电磁波（天线射频方向）": {
+      "books": 3,
+      "links": 2
+    },
+    "计算机网络（部分院校复试）": {
+      "books": 1,
+      "links": 0
+    }
+  }
+}

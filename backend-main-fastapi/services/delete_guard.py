@@ -24,6 +24,7 @@
    并强制加**1MB 体积下限校验**拦住空壳库。
 """
 
+import logging
 import os
 import re
 import sqlite3
@@ -317,8 +318,12 @@ def backup_before_delete(db_path: str) -> str:
             try:
                 if conn is not None:
                     conn.close()
-            except Exception:
-                pass
+            except Exception as _exc:  # noqa: BLE001
+                # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+                # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+                logging.getLogger(__name__).warning(
+                    '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+                )
         try:
             if os.path.exists(backup_path):
                 os.remove(backup_path)

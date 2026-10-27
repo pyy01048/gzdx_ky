@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 import unicodedata
@@ -180,7 +181,13 @@ def upsert_notice(
             (school_id, school_name, title, notice_type, publish_date, url, source, fetched_at),
         )
         return "inserted"
-    except sqlite3.Error:
+    except Exception as exc:  # noqa: BLE001
+        # 跨方言：原实现只捕 sqlite3.Error。PG 底层的 psycopg.Error 直接穿透，
+        # 一条冲突/约束异常会让整轮抓取中断。此处统一兜住并**留痕**
+        # （项目血泪教训 #1：静默吞异常是最贵的 bug）。
+        logging.getLogger(__name__).warning(
+            "upsert_notice 写入失败，跳过该条：%s", str(exc)[:200]
+        )
         return "skipped"
 
 

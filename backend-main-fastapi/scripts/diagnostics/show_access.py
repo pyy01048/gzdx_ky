@@ -11,11 +11,10 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from utils.network import get_access_info  # noqa: E402
-from utils.auth import AUTH_ENABLED  # noqa: E402
 
 
 def main() -> int:
-    info = get_access_info(auth_enabled=bool(AUTH_ENABLED))
+    info = get_access_info(auth_enabled=True)
 
     print("=" * 62)
     print("  手机 / 平板 访问入口")
@@ -26,7 +25,7 @@ def main() -> int:
     elif info["lan_ip"]:
         print(f"  局域网   : 未开放（HOST={info['host']}）")
         print(f"             把 .env 的 HOST 改成 0.0.0.0 即可，IP 为 {info['lan_ip']}")
-    print(f"  访问密码 : {'已开启' if info['auth_enabled'] else '未设置（建议设 APP_PASSWORD）'}")
+    print("  账号登录 : 已启用（首次启动的管理员密码见 .env 的 ADMIN_INITIAL_PASSWORD 或启动日志）")
 
     if len(info["all_ips"]) > 1:
         print("\n  检测到多个网卡，若上面的地址不通可试：")

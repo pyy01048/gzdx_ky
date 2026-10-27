@@ -23,34 +23,53 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from models import Base, QuizQuestion
+from models import QuizQuestion
 from services import quiz_query as qq
 
 
 @pytest.fixture()
-def db():
-    """内存 SQLite + 真实 ORM 模型（表名与真库一致，json_each 判据才能工作）。"""
-    eng = create_engine("sqlite://")
-    Base.metadata.create_all(eng, tables=[QuizQuestion.__table__])
-    session = sessionmaker(bind=eng)()
+def db(db_schema):  # noqa: ARG001 - 依赖 db_schema 完成建表与隔离断言
+    """**真 PG 测试库**会话（不用内存 SQLite）。
+
+    背景：``practiceable_expr()`` / ``answer_core_expr()`` 是 PG 专属 SQL
+    （``::`` 转型、regexp 等）。此前用 ``create_engine("sqlite://")`` 建内存库，
+    SQLite 直接报 ``unrecognized token: ":"``（实测 33 例失败）——假底座既测不到
+    真方言，也掩盖了规则在 PG 上的实际行为。项目铁律是"测试必须跑在真 PG 上"。
+    """
+    from database import SessionLocal
+
+    session = SessionLocal()
     try:
         yield session
     finally:
+        session.rollback()
         session.close()
 
 
+#: 哨兵行 ID：只操作这一行，绝不清空真表（否则会打乱同库其它用例的种子数据）
+_SENTINEL_ID = 990001
+
+
 def _judge(db, answer: str) -> bool:
-    """该答案在 practiceable 口径下是否可练习。"""
-    db.query(QuizQuestion).delete()
+    """该答案在 practiceable 口径下是否可练习。
+
+    非破坏性：只删/建哨兵行 ``_SENTINEL_ID``，不动其它数据。
+    """
+    db.query(QuizQuestion).filter(QuizQuestion.id == _SENTINEL_ID).delete()
     db.add(QuizQuestion(
-        id=1, content="题干", answer=answer, options=None,
+        id=_SENTINEL_ID, content="题干", answer=answer, options=None,
         is_available=True, figure_missing=0,
     ))
     db.commit()
-    return db.query(QuizQuestion).filter(qq.practiceable_expr()).first() is not None
+    try:
+        return db.query(QuizQuestion).filter(
+            QuizQuestion.id == _SENTINEL_ID,
+            qq.practiceable_expr(),
+        ).first() is not None
+    finally:
+        db.query(QuizQuestion).filter(QuizQuestion.id == _SENTINEL_ID).delete()
+        db.commit()
 
 
 # --------------------------------------------------------------------------- #

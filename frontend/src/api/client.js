@@ -616,6 +616,22 @@ export const quizApi = {
   // P0-2 主观题 AI 批改：POST /api/quiz/grade-subjective
   // 请求 {question_id, my_answer, max_score}；响应 {score, max_score, evaluation, reference_answer}
   gradeSubjective: (body) => request('/quiz/grade-subjective', { method: 'POST', body }),
+  // P1-E 多Agent编排答疑：POST /api/ai/tutoring/orchestrated
+  // 请求 {question_id, my_answer?, subject?}；响应 {answer, trace, confidence, degraded}
+  orchestratedTutoring: (body) => request('/ai/tutoring/orchestrated', { method: 'POST', body, timeout: AI_TIMEOUT }),
+}
+
+/* ---------------- 薄弱点闭环推荐（55号 DeepTutor 方案 P0-C） ----------------
+ * 三信号融合薄弱点 + 变式题生成入库 + 掌握门控。
+ * 依赖 quizApi 之上的 recommend 域，独立导出便于调用方按需引入。
+ */
+export const recommendApi = {
+  // GET /api/recommend/weak-points?subject=&limit= —— 三信号融合薄弱点
+  weakPoints: (params) => request('/recommend/weak-points', { params }),
+  // POST /api/recommend/variants  {kp_id, count} —— 生成变式题入库，返回 {created, kp_id, ...}
+  variants: (body) => request('/recommend/variants', { method: 'POST', body, timeout: AI_TIMEOUT }),
+  // POST /api/recommend/mastery-gate {kp_id, consecutive_required} —— 掌握门控判定
+  masteryGate: (body) => request('/recommend/mastery-gate', { method: 'POST', body }),
 }
 
 /* 从 Content-Disposition 解析 RFC 5987 文件名，失败时用 fallback */
@@ -1095,5 +1111,5 @@ export default {
   dashboardApi, tasksApi, goalsApi, quizApi, errorsApi, flashcardsApi,
   documentsApi, netdiskApi, importsApi, aiApi, customizationApi, plannerApi, wordsApi,
   studyApi, taxonomyApi, reviewApi, systemApi, kbApi, analysisApi, quizSectionApi, paperApi, planningApi,
-  kbImportApi, qualityApi, favoritesApi, growthApi, examApi
+  kbImportApi, qualityApi, favoritesApi, growthApi, examApi, recommendApi
 }

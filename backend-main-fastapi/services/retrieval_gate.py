@@ -28,9 +28,11 @@ A3 RAG 检索门控（services/retrieval_gate.py）
 每轮打点落库 retrieval_gate_logs。
 """
 from __future__ import annotations
+import logging
 
 import json
 import time
+from services.dbapi_compat import wrap_conn
 from typing import Any, Dict, List, Optional
 
 # --------------------------------------------------------------------------- #
@@ -227,7 +229,7 @@ def log_gate(
         from services.module_a_schema import ensure_module_a_schema
 
         ensure_module_a_schema(db)
-        conn = db.connection().connection
+        conn = wrap_conn(db.connection().connection)
         from services.db_retry import exec_retry
 
         exec_retry(
@@ -256,8 +258,12 @@ def log_gate(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
 
 # --------------------------------------------------------------------------- #

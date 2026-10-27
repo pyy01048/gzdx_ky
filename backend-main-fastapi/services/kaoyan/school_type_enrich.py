@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+from services.dbapi_compat import wrap_conn
 from typing import Dict, List
 
 from sqlalchemy.orm import Session
@@ -29,7 +30,7 @@ _DDLS = [
 
 def ensure_school_type_schema(db: Session) -> Dict:
     applied = []
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     for ddl in _DDLS:
         try:
             conn.execute(ddl)
@@ -52,7 +53,7 @@ def enrich_from_seed(db: Session) -> Dict:
     if not seed_path.exists():
         return {"matched": 0, "unmatched": [], "error": "seed 文件缺失"}
     seed = json.loads(seed_path.read_text(encoding="utf-8"))
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     matched, unmatched = 0, []
     for s in seed:
         row = conn.execute(
@@ -71,7 +72,7 @@ def enrich_from_seed(db: Session) -> Dict:
 def enrich_from_tags(db: Session, dry_run: bool = True) -> Dict:
     """从 tags JSON / intro 中提取院校类型（命中唯一类型才写，多个/零个留空）。"""
     ensure_school_type_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     rows = conn.execute(
         "SELECT id, name, tags, intro FROM kaoyan_schools WHERE school_type IS NULL"
     ).fetchall()

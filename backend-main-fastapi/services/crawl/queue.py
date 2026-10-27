@@ -41,6 +41,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Engine
 
+from utils.timeutil import utcnow
+
 __all__ = [
     "Job",
     "JobStore",
@@ -77,8 +79,8 @@ class _ModelsUnavailable(RuntimeError):
 
 
 def _utcnow() -> datetime:
-    """naive UTC now（与 ``models._utcnow`` 口径一致）。"""
-    return datetime.utcnow()
+    """naive UTC now（DB 时间列与内存 Job 比较统一走 timeutil 出口）。"""
+    return utcnow()
 
 
 @dataclass

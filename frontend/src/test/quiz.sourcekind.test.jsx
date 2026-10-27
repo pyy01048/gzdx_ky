@@ -44,9 +44,19 @@ const quizSectionApiMock = {
   submitReview: vi.fn().mockResolvedValue({}),
 }
 
-vi.mock('../api/client', () => ({
+vi.mock('../api/client', async (importOriginal) => ({
+  // 派生真实模块的导出清单：client.js 新增导出（如 fetchAllPages）不必再回来补枚举，
+  // 否则页面一 import 就报 "No export is defined on the mock"。
+  ...(await importOriginal()),
   request: vi.fn().mockResolvedValue({}),
   DEFAULT_TIMEOUT: 30000,
+  favoritesApi: {
+    list: vi.fn().mockResolvedValue({ total: 0, items: [] }),
+    add: vi.fn().mockResolvedValue({ ok: true, id: 1 }),
+    check: vi.fn().mockResolvedValue({ favorited: false, id: null }),
+    toggle: vi.fn().mockResolvedValue({ favorited: false }),
+    remove: vi.fn().mockResolvedValue({ ok: true }),
+  },
   quizApi: quizApiMock,
   taxonomyApi: taxonomyApiMock,
   errorsApi: errorsApiMock,
@@ -80,7 +90,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear() })
 
 async function renderQuiz(route = '/quiz') {
-  const Quiz = (await import('../pages/Quiz')).default
+  const Quiz = (await import('../v3/pages/Quiz')).default
   const utils = render(<MemoryRouter initialEntries={[route]}><Quiz /></MemoryRouter>)
   await act(async () => { await new Promise((r) => setTimeout(r, 60)) })
   return utils

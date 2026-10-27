@@ -1,7 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
 
 /* ------------------------------------------------------------------ *
  * S7 收藏链路测试
@@ -125,17 +124,8 @@ describe('useFavoriteProbe 批量探测', () => {
 })
 
 // ---------- 3. 乐观更新与失败回滚 ----------
-describe('FavoriteStar 乐观更新', () => {
+describe('useFavorite 乐观更新', () => {
   it('toggle 失败时本地态回滚', async () => {
-    let failNext = true
-    stubFetch(() => {
-      if (failNext) {
-        // 模拟后端 500：client.js 会 reject
-        return Promise.reject(new Error('boom'))
-      }
-      return { favorited: true }
-    })
-    // 让 fetch 直接 reject，client.js 转成 ApiError
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -146,24 +136,25 @@ describe('FavoriteStar 乐观更新', () => {
 
     const mod = await import('../hooks/useFavorites')
     mod.clearFavoriteCache()
-    const FavoriteStar = (await import('../components/FavoriteStar')).default
-    vi.doMock('../components/UI', () => ({
-      toast: vi.fn(),
-      Segmented: () => null,
-      Empty: () => null,
-    }))
 
-    render(
-      <MemoryRouter>
-        <FavoriteStar itemType="document" itemId={99} title="回滚测试" />
-      </MemoryRouter>
-    )
+    function Probe() {
+      const { favorited, toggle } = mod.useFavorite('document', 99)
+      return (
+        <button
+          data-testid="favorite-star"
+          aria-pressed={favorited}
+          onClick={() => { toggle({ title: '回滚测试' }).catch(() => {}) }}
+        />
+      )
+    }
 
+    render(<Probe />)
     const btn = screen.getByTestId('favorite-star')
     expect(btn.getAttribute('aria-pressed')).toBe('false')
 
     // 点击 → 乐观置为 true → 请求失败 → 回滚为 false
     fireEvent.click(btn)
+    await waitFor(() => expect(state.calls.length).toBe(1))
     await waitFor(() => expect(screen.getByTestId('favorite-star').getAttribute('aria-pressed')).toBe('false'))
   })
 
@@ -171,15 +162,20 @@ describe('FavoriteStar 乐观更新', () => {
     stubFetch(() => ({ favorited: true }))
     const mod = await import('../hooks/useFavorites')
     mod.clearFavoriteCache()
-    const FavoriteStar = (await import('../components/FavoriteStar')).default
 
-    render(
-      <MemoryRouter>
-        <FavoriteStar itemType="question" itemId={55} title="成功测试" />
-      </MemoryRouter>
-    )
-    const btn = screen.getByTestId('favorite-star')
-    fireEvent.click(btn)
+    function Probe() {
+      const { favorited, toggle } = mod.useFavorite('question', 55)
+      return (
+        <button
+          data-testid="favorite-star"
+          aria-pressed={favorited}
+          onClick={() => { toggle({ title: '成功测试' }) }}
+        />
+      )
+    }
+
+    render(<Probe />)
+    fireEvent.click(screen.getByTestId('favorite-star'))
     await waitFor(() => expect(screen.getByTestId('favorite-star').getAttribute('aria-pressed')).toBe('true'))
   })
 })

@@ -3,8 +3,10 @@
 支持：列出备份、创建备份、恢复备份、删除备份
 """
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from utils.security import require_admin
 
 from services.backup_service import (
     create_backup,
@@ -13,7 +15,7 @@ from services.backup_service import (
     BACKUP_DIR,
 )
 
-router = APIRouter(prefix="/api/backup", tags=["backup"])
+router = APIRouter(prefix="/api/backup", tags=["backup"], dependencies=[Depends(require_admin)])
 
 
 class RestoreRequest(BaseModel):
@@ -33,8 +35,14 @@ async def get_backups():
 
 @router.post("/create")
 async def create_new_backup():
-    """手动创建数据库备份"""
-    backup_path = create_backup()
+    """手动创建数据库备份
+
+    P0-2：``create_backup()`` 内部跑 ``pg_dump`` 子进程（306MB 库、秒级到
+    十秒级），async 端点直调会阻塞事件循环 → 挪线程池。
+    """
+    from starlette.concurrency import run_in_threadpool
+
+    backup_path = await run_in_threadpool(create_backup)
     if not backup_path:
         raise HTTPException(status_code=500, detail="备份创建失败")
     return {"success": True, "backup_path": backup_path, "message": "备份创建成功"}
@@ -42,10 +50,16 @@ async def create_new_backup():
 
 @router.post("/restore")
 async def restore_from_backup(req: RestoreRequest):
-    """从备份恢复数据库（需要重启服务后生效）"""
+    """从备份恢复数据库（需要重启服务后生效）
+
+    P0-2：``restore_backup()`` 是 pg_restore/psql 子进程 + 可能等待锁，
+    耗时可达数十秒，必须离开事件循环执行。
+    """
+    from starlette.concurrency import run_in_threadpool
+
     if not os.path.exists(req.backup_path):
         raise HTTPException(status_code=404, detail="备份文件不存在")
-    success = restore_backup(req.backup_path)
+    success = await run_in_threadpool(restore_backup, req.backup_path)
     if not success:
         raise HTTPException(status_code=500, detail="恢复失败")
     return {"success": True, "message": "数据库已恢复，请重启服务使变更生效"}

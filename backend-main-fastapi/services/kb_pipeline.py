@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """本地知识库健康体检与自愈。
 
 ### 为什么需要
@@ -24,14 +24,17 @@
 """
 
 from __future__ import annotations
+import logging
 
 import datetime
 import os
 from typing import Any, Callable, Optional
 
-from sqlalchemy import func
+from sqlalchemy import String, cast, func
 from sqlalchemy.orm import Session
 
+from core.db_session import IS_POSTGRES
+from services.dbapi_compat import wrap_conn
 from models import Document, KnowledgeChunk
 from services.doc_naming import apply_display_name
 from services.smart_ingest import gate_for_write
@@ -74,20 +77,41 @@ def health_report(db: Session) -> dict[str, Any]:
 
     # 未向量化的分块（用 NOT EXISTS 避免把整张向量表读进内存）
     try:
-        conn = db.connection().connection
-        have_vec = conn.execute(
-            "SELECT COUNT(*) FROM knowledge_chunks_vec"
-        ).fetchone()[0]
+        conn = wrap_conn(db.connection().connection)
+        from services.dbapi_compat import is_postgres
+
+        # 口径分流（极易搞错）：PG 的权威向量表是 `chunk_vectors`
+        # （pgvector，HNSW 建在 embedding_f32），`knowledge_chunks_vec`
+        # 是 SQLite 时代的 BLOB 镜像表、PG 侧**不存在**。
+        # 这里曾写死镜像表名 → 报 UndefinedTable → 被 except 吞成
+        # have_vec=None → 「未向量化分块」指标长期缺失且无人察觉。
+        if is_postgres(conn):
+            have_vec = conn.execute(
+                "SELECT COUNT(*) FROM chunk_vectors WHERE embedding_f32 IS NOT NULL"
+            ).fetchone()[0]
+        else:
+            have_vec = conn.execute(
+                "SELECT COUNT(*) FROM knowledge_chunks_vec"
+            ).fetchone()[0]
     except Exception:
+        # 关键：PG 里一条语句失败会把**整个事务**打成 aborted，此后任何查询
+        # 都报 InFailedSqlTransaction。光 except 不够 —— 事务已废，下面所有
+        # ORM 查询（missing_type / ocr_docs …）会连锁失败，症状漂移到
+        # "/api/kb/health 恒 500" 却查不到源头。必须显式 rollback 复位事务。
+        db.rollback()
         have_vec = None
     missing_embed = max(0, total_chunks - have_vec) if have_vec is not None else None
 
     # 元信息缺失
+    # 注意：doc_type 在 PG 是 ENUM('raw','note','index')，与空串 '' 比较会先把
+    # '' 隐式 cast 成枚举 → ``invalid input value for enum doc_type: ""``
+    # （DataError）。枚举列不存在空串形态，"缺失"只有 NULL 一种，故只判 NULL。
     missing_type = db.query(func.count(Document.id)).filter(
-        (Document.doc_type.is_(None)) | (Document.doc_type == "")
+        Document.doc_type.is_(None)
     ).scalar() or 0
+    # structure_level 同为 ENUM，理由同上，只判 NULL。
     missing_level = db.query(func.count(Document.id)).filter(
-        (Document.structure_level.is_(None)) | (Document.structure_level == "")
+        Document.structure_level.is_(None)
     ).scalar() or 0
 
     ocr_docs = db.query(func.count(Document.id)).filter(Document.ocr_used == True).scalar() or 0  # noqa: E712
@@ -172,7 +196,12 @@ def normalize_status(db: Session, *, commit: bool = True) -> int:
     """把历史状态别名统一成规范值（ready → indexed）。"""
     changed = 0
     for alias, canonical in STATUS_ALIAS.items():
-        rows = db.query(Document).filter(Document.index_status == alias).all()
+        # PG：index_status 是原生枚举，"ready/done/ok" 等历史别名不在枚举值里，
+        # 直接 == 比较会抛 InvalidTextRepresentation，把整个自愈链路炸掉
+        # （2026-10-19 实测：--heal 在 normalize_status 秒挂 rc=1）。
+        # cast 成 varchar 后比较：枚举里没有的别名自然匹配 0 行，SQLite 语义不变。
+        rows = db.query(Document).filter(
+            cast(Document.index_status, String) == alias).all()
         for d in rows:
             d.index_status = canonical
             changed += 1
@@ -186,8 +215,10 @@ def backfill_meta(db: Session, *, commit: bool = True, limit: Optional[int] = No
     from services.kb_service import detect_doc_meta
 
     q = db.query(Document).filter(
-        (Document.doc_type.is_(None)) | (Document.doc_type == "")
-        | (Document.structure_level.is_(None)) | (Document.structure_level == "")
+        (Document.doc_type.is_(None))
+        | (cast(Document.doc_type, String) == "")
+        | (Document.structure_level.is_(None))
+        | (cast(Document.structure_level, String) == "")
     )
     if limit:
         q = q.limit(limit)
@@ -406,8 +437,12 @@ def reparse_empty(
 
         try:
             detect_doc_meta(db, doc)
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
         doc.index_status = "indexed" if has_searchable_chunks(db, doc.id) else "failed"
         doc.parse_progress = 1.0
         db.commit()
@@ -417,7 +452,25 @@ def reparse_empty(
 
 
 def build_embeddings(force: bool = False) -> dict:
-    """为缺向量的分块补向量（委托给 embedding_service）。"""
+    """为缺向量的分块补向量。
+
+    PG（pgvector，权威表 chunk_vectors）：委托 pipeline.build_vectors.main() ——
+    与 CLI / API 同一条已验证路径（双列写入 + ArgMin 归一化 + HNSW 索引生效）。
+    旧 embedding_service.build_all_embeddings 写的是 SQLite 时代镜像表
+    knowledge_chunks_vec，该表在 PG 侧不存在（见 services/vector_builder.py
+    模块头说明），PG 下走它必定白跑，因此只在 SQLite 后端保留。
+    :param force: True 时全量重算（--rebuild）；默认只补缺。"""
+    if IS_POSTGRES:
+        from pipeline.build_vectors import main as _bv_main
+
+        try:
+            rc = _bv_main(["--rebuild"] if force else [])
+            return {"ok": rc == 0, "returncode": rc}
+        except SystemExit as e:  # noqa: B904
+            return {"ok": False, "message": f"build_vectors SystemExit: {e}"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "message": f"{type(e).__name__}: {e}"}
+
     from services import embedding_service
 
     fn = getattr(embedding_service, "build_all_embeddings", None)

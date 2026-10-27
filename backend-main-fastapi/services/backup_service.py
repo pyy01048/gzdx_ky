@@ -23,11 +23,12 @@ import os
 import shutil
 import sqlite3
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from core.db_session import BACKEND_DIR, DATA_DIR, IS_POSTGRES, SQLALCHEMY_DATABASE_URL
+from utils.timeutil import iso_utc_z
 
 logger = logging.getLogger(__name__)
 
@@ -409,7 +410,7 @@ def list_backups() -> list:
                 "size": stat.st_size,
                 "size_mb": round(stat.st_size / 1024 / 1024, 2),
                 "backend": "postgresql" if f.name.endswith(".dump") else "sqlite",
-                "created_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                "created_at": iso_utc_z(datetime.fromtimestamp(stat.st_mtime, timezone.utc)),
             })
     return sorted(backups, key=lambda b: b["created_at"], reverse=True)
 

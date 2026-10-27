@@ -27,6 +27,7 @@ ALTER 增强：
 from __future__ import annotations
 
 import logging
+from services.dbapi_compat import wrap_conn
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -180,9 +181,8 @@ NEW_TABLES_SQL: list[str] = [
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_mis_kp ON misconceptions(knowledge_point_id)
-    """,
+    # 说明：knowledge_point_id 的索引由既有 idx_misconceptions_kp 提供，
+    # 不再重复创建 idx_mis_kp（2026-10-24 优化：消除冗余索引/启动期竞态）。
     """
     CREATE INDEX IF NOT EXISTS idx_mis_cat ON misconceptions(category)
     """,
@@ -249,6 +249,8 @@ QUIZ_QUESTIONS_ADD_COLUMNS: list[tuple[str, str]] = [
     ("max_score", "REAL"),
     # M6-3：复试题标记。存量题默认 0（初试），不影响既有行为。
     ("is_retest", "INTEGER DEFAULT 0"),
+    # 题目配图：OCR/人工录入产出的图片引用（URL/相对路径/{url,page,bbox,kind}）。
+    ("images", "JSONB DEFAULT '[]'::jsonb"),
 ]
 
 # IMA 知识库导入：documents 表需要承载「初试/复试」阶段 + IMA 溯源信息。
@@ -285,17 +287,64 @@ ERROR_RECORDS_ADD_COLUMNS: list[tuple[str, str]] = [
 ]
 
 _EXTRA_INDEX_SQL: list[str] = [
-    # 真题定位：external_id 唯一索引（报告 7.1 ①）
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_q_external ON quiz_questions(external_id)",
-    # 错题错因聚合
-    "CREATE INDEX IF NOT EXISTS idx_err_kp ON error_records(knowledge_point_id)",
+    # 说明（2026-10-24 优化）：external_id 已有唯一约束 uq_quiz_questions_external，
+    # knowledge_point_id 已有 idx_error_kp 的同列索引 idx_error_kp（error_records 上
+    # 既有 idx_error_kp），此处不再重复创建，消除冗余索引与启动期竞态。
+    # 错题错因聚合（error_category 独立索引）
     "CREATE INDEX IF NOT EXISTS idx_err_cat ON error_records(error_category)",
 ]
 
 
+def _is_sqlite(conn) -> bool:
+    """连接是否为 SQLite（穿透 SQLAlchemy 连接池代理判断真实驱动）。"""
+    from services.ddl_compat import is_sqlite
+    return is_sqlite(conn)
+
+
+def _adapt(stmt: str, conn) -> str:
+    """把 SQLite 写法的 DDL 适配到当前连接方言（见 services.ddl_compat）。"""
+    from services.ddl_compat import adapt_ddl
+    return adapt_ddl(stmt, conn)
+
+
 def _existing_columns(conn, table: str) -> set[str]:
-    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    return {r[1] for r in rows}
+    """读表已有列。
+
+    方言差异：SQLite 用 `PRAGMA table_info`，PostgreSQL 必须查 information_schema
+    （PRAGMA 在 PG 上直接语法错误）。
+
+    注意：这里的 conn 是**底层 DBAPI 连接**（已穿透 SQLAlchemy 代理），
+    不能传 SQLAlchemy 的 `text()` 对象 —— psycopg 会报
+    `TypeError: object of type 'TextClause' has no len()`（实测踩坑）。
+    因此用原生 SQL 字符串 + DBAPI 参数占位符（%s 对 PG、? 对 SQLite）。
+    """
+    if _is_sqlite(conn):
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return {r[1] for r in rows}
+    rows = conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+        (table,),
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
+def blueprint_question_type_col(conn) -> str:
+    """返回 ``exam_blueprints`` 里**真实存在**的题型列名。
+
+    PG 正典 schema 用 ``blueprint_question_type``（见 core/sql 与 orm_aliases 的
+    兼容映射）；而本模块的 SQLite 兼容 DDL 用 ``question_type``。二者同名表但
+    列名不同，硬写任一个都会在另一侧炸（实测：PG 上
+    ``column "question_type" of relation "exam_blueprints" does not exist``）。
+
+    这里不猜方言，直接内省表结构选存在的那个——表结构变了两边都不用改代码。
+    """
+    cols = _existing_columns(conn, "exam_blueprints")
+    lower = {c.lower() for c in cols}
+    if "blueprint_question_type" in lower:
+        return "blueprint_question_type"
+    if "question_type" in lower:
+        return "question_type"
+    return "question_type"  # 表尚未建好时的安全默认（后续 DDL 会建 question_type）
 
 
 def _exec_with_retry(conn, stmt, retries: int = 6, wait: float = 2.0):
@@ -323,6 +372,9 @@ def _alter_add_columns(conn, table: str, columns: list[tuple[str, str]]) -> list
     for col, ddl in columns:
         if col in existing:
             continue
+        # SQLite 没有 JSONB：降级为 JSON 文本列，保证测试/单机模式也能建列。
+        if _is_sqlite(conn) and "JSONB" in ddl.upper():
+            ddl = ddl.replace("JSONB", "JSON").replace("::jsonb", "")
         _exec_with_retry(conn, f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
         added.append(col)
     return added
@@ -341,21 +393,26 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
     else:
         close = False
     try:
-        conn = db.connection().connection
-        try:
-            conn.execute("PRAGMA busy_timeout = 30000")
-        except Exception:
-            pass
+        conn = wrap_conn(db.connection().connection)
+        if _is_sqlite(conn):
+            try:
+                conn.execute("PRAGMA busy_timeout = 30000")
+            except Exception as _exc:  # noqa: BLE001
+                # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+                # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+                logging.getLogger(__name__).warning(
+                    '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+                )
         created: list[str] = []
         for stmt in NEW_TABLES_SQL:
-            _exec_with_retry(conn, stmt)
+            _exec_with_retry(conn, _adapt(stmt, conn))
         altered_q = _alter_add_columns(conn, "quiz_questions", QUIZ_QUESTIONS_ADD_COLUMNS)
         altered_e = _alter_add_columns(conn, "error_records", ERROR_RECORDS_ADD_COLUMNS)
         # IMA 导入所需：documents + stage/ima_media_id/folder_path（幂等，列存在则跳过）
         altered_d = _alter_add_columns(conn, "documents", DOCUMENTS_ADD_COLUMNS)
         for stmt in _EXTRA_INDEX_SQL:
             try:
-                _exec_with_retry(conn, stmt)
+                _exec_with_retry(conn, _adapt(stmt, conn))
             except Exception as e:  # 唯一索引可能因既有重复数据失败，记录但不中断
                 logger.warning("创建索引失败(可忽略): %s | %s", stmt[:60], e)
         db.commit()
@@ -376,6 +433,30 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
             db.close()
 
 
+#: 组卷蓝图的题型词 → question_type 枚举值。
+#: 预设沿用报告 7.2 的卷面术语（blank/solve/comprehensive/multi_choice），
+#: 但 DB 列是 ``question_type`` ENUM（single/multiple/judge/fill/calc/essay/draw/proof/other），
+#: 直接插会在 PG 报 invalid input value for enum（实测）。此处显式归一，
+#: 保留术语可追溯、入库值合法。
+_BLUEPRINT_QT_MAP: dict[str, str] = {
+    "single": "single",
+    "multi_choice": "multiple",   # 多项选择
+    "blank": "fill",              # 填空
+    "solve": "calc",              # 解答
+    "comprehensive": "calc",      # 综合应用
+    "judge": "judge",
+    "essay": "essay",
+    "calc": "calc",
+    "draw": "draw",
+    "proof": "proof",
+}
+
+
+def _normalize_blueprint_qt(qtype: str) -> str:
+    """把卷面题型词归一到 question_type 枚举值；未知值退 ``other``。"""
+    return _BLUEPRINT_QT_MAP.get((qtype or "").strip().lower(), "other")
+
+
 def ensure_blueprints(db: Optional[Session] = None) -> int:
     """写入 4 科预置蓝图（幂等：仅当科目+paper 无任何蓝图时插入）。
 
@@ -389,7 +470,7 @@ def ensure_blueprints(db: Optional[Session] = None) -> int:
     else:
         close = False
     try:
-        conn = db.connection().connection
+        conn = wrap_conn(db.connection().connection)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS exam_blueprints ("
             " id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -419,14 +500,19 @@ def ensure_blueprints(db: Optional[Session] = None) -> int:
             ("英语", "english2", "一、词汇与语法（四选一）", "single", 50, 2.0),
         ]
         added = 0
+        # 题型列名按表结构内省（PG=blueprint_question_type / SQLite=question_type）
+        qt_col = blueprint_question_type_col(conn)
         for subject, paper, section, qtype, count, score in presets:
             if (subject, paper) in have:
                 continue
+            # is_active 用绑定参数传 Python True：PG 列是 boolean、SQLite 是整数，
+            # 写字面量 1 会在 PG 报 DatatypeMismatch（实测），绑定 bool 两边都对。
             conn.execute(
-                "INSERT INTO exam_blueprints (subject, paper, section, question_type,"
+                f"INSERT INTO exam_blueprints (subject, paper, section, {qt_col},"
                 " count, score_per_question, time_limit_minutes, sort_order, is_active)"
-                " VALUES (?,?,?,?,?,?,?,?,1)",
-                (subject, paper, section, qtype, count, score, 180, added + 1),
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (subject, paper, section, _normalize_blueprint_qt(qtype),
+                 count, score, 180, added + 1, True),
             )
             added += 1
         db.commit()

@@ -8,7 +8,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, func, select
+from sqlalchemy import String, case, cast, func, select
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -76,7 +76,13 @@ def _subject_stats(db: Session) -> list:
             func.count(KnowledgeChunk.id),
             func.avg(KnowledgeChunk.classify_confidence),
             func.sum(case((KnowledgeChunk.classify_confidence < 0.40, 1), else_=0)),
-            func.sum(case((KnowledgeChunk.classify_source.like("junk:%"), 1), else_=0)),
+            # classify_source 在 PostgreSQL 是 ENUM 类型，`LIKE` 不能直接作用于枚举
+            # （实测：operator does not exist: classify_source ~~ character varying）。
+            # 先 CAST 成 text 再匹配。注意 PG 侧该枚举的合法值只有
+            # vector/keyword/fusion/llm/no_bge/fallback，不含 "junk:" 前缀，
+            # 故此计数在 PG 后端恒为 0 —— 垃圾块改由 knowledge_chunks.l3_content_type
+            # 与 quiz_content_gate 的口径判定，见 services/quiz_content_gate.py。
+            func.sum(case((cast(KnowledgeChunk.classify_source, String).like("junk:%"), 1), else_=0)),
         )
         .group_by(KnowledgeChunk.subject)
         .all()
@@ -157,7 +163,8 @@ async def tree_overlay(db: Session = Depends(get_db)):
             KnowledgeChunk.l2_chapter,
             func.count(KnowledgeChunk.id),
             func.avg(KnowledgeChunk.classify_confidence),
-            func.sum(case((KnowledgeChunk.classify_source.like("junk:%"), 1), else_=0)),
+            # 同 _subject_stats：classify_source 在 PG 是 ENUM，LIKE 前需 CAST 成 text
+            func.sum(case((cast(KnowledgeChunk.classify_source, String).like("junk:%"), 1), else_=0)),
         )
         .filter(KnowledgeChunk.l2_chapter.isnot(None))
         .filter(KnowledgeChunk.l2_chapter != "")

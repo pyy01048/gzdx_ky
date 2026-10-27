@@ -329,3 +329,40 @@ class TestAutoRefresh:
         with pytest.raises(NetdiskAuthError) as ei:
             asyncio.run(svc._ensure_token())
         assert "重新授权" in ei.value.errmsg
+
+
+# --------------------------------------------------------------------------- #
+# HTTP 状态码映射（2026-10-18 登录后卡死事故的回归）
+# --------------------------------------------------------------------------- #
+
+class TestHttpErrorMapping:
+    """授权失效必须映射为 409，绝不是 401。
+
+    401 是 HTTP 认证状态码，前端 request 层对 401 执行"刷新 token 后重试"
+    的全局 session 修复。首屏 hydrate 会顺带拉 /netdisk/files，未绑网盘时
+    401 被误判为登录过期 → refresh→重试→再 401 → auth:required 事件 →
+    整个应用被踢回登录页（症状：密码正确也进不了主页）。
+    """
+
+    def test_auth_error_maps_to_409_not_401(self):
+        from routers.netdisk import _netdisk_http_error
+        err = _netdisk_http_error(NetdiskAuthError(-6, "invalid access_token"))
+        assert err.status_code == 409
+        assert err.detail["action"] == "reauthorize"
+        assert err.detail["code"] == "NETDISK_AUTH_EXPIRED"
+
+    def test_auth_errno_maps_to_409_not_401(self):
+        from routers.netdisk import _netdisk_http_error
+        err = _netdisk_http_error(NetdiskError(-6, "no permission"))
+        assert err.status_code == 409
+        assert err.detail["action"] == "reauthorize"
+
+    def test_not_found_errno_still_404(self):
+        from routers.netdisk import _netdisk_http_error
+        err = _netdisk_http_error(NetdiskError(-9, "file not found"))
+        assert err.status_code == 404
+
+    def test_generic_errno_still_502(self):
+        from routers.netdisk import _netdisk_http_error
+        err = _netdisk_http_error(NetdiskError(31023, "upload failed"))
+        assert err.status_code == 502

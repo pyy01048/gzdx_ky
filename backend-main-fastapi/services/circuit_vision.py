@@ -40,16 +40,18 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from utils.compute_nodes import ocr_service_url, ollama_base, service_headers
+
 # ---------------------------------------------------------------------------
 # 默认配置（可用环境变量覆盖）
 # ---------------------------------------------------------------------------
-DEFAULT_OLLAMA_BASE = os.environ.get("OLLAMA_BASE", "http://127.0.0.1:11434")
+DEFAULT_OLLAMA_BASE = ollama_base()
 DEFAULT_VLM_MODEL = os.environ.get("CIRCUIT_VLM_MODEL", "qwen2.5vl:7b")
 # 备用视觉模型：主模型输出乱码/非 JSON 时自动切换重试（可空）
 DEFAULT_VLM_MODEL_FALLBACK = os.environ.get("CIRCUIT_VLM_MODEL_FALLBACK", "")
 # VLM 失败重试次数（每次换用下一个可用模型；0 表示不重试）
 DEFAULT_VLM_RETRIES = int(os.environ.get("CIRCUIT_VLM_RETRIES", "1"))
-DEFAULT_OCR_URL = os.environ.get("PADDLE_OCR_URL", "http://127.0.0.1:8888")
+DEFAULT_OCR_URL = ocr_service_url()
 DEFAULT_TIMEOUT = float(os.environ.get("CIRCUIT_VLM_TIMEOUT", "180"))
 DEFAULT_OCR_TIMEOUT = float(os.environ.get("CIRCUIT_OCR_TIMEOUT", "30"))
 
@@ -162,7 +164,7 @@ class CircuitVisionService:
         else:
             try:
                 httpx = self._http()
-                r = httpx.get(f"{self.ocr_url}/health", timeout=3.0)
+                r = httpx.get(f"{self.ocr_url}/health", headers=service_headers(), timeout=3.0)
                 r.raise_for_status()
                 result["ocr"] = {"ok": True, **r.json()}
             except Exception as e:
@@ -453,6 +455,7 @@ class CircuitVisionService:
             r = httpx.post(
                 f"{self.ocr_url}/ocr",
                 files={"file": (filename, image_bytes, "image/png")},
+                headers=service_headers(),
                 timeout=self.ocr_timeout,
             )
             r.raise_for_status()

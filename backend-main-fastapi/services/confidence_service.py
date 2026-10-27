@@ -13,7 +13,8 @@ reviewer_note、reviewed_at；幂等索引 UNIQUE(question_id) WHERE status='ope
 """
 from __future__ import annotations
 
-from datetime import datetime
+from services.dbapi_compat import wrap_conn
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -47,8 +48,9 @@ ON conflict_review_queue(status)
 
 
 def ensure_conflict_schema(db: Session) -> None:
-    conn = db.connection().connection
-    conn.execute(_CONFLICT_DDL)
+    conn = wrap_conn(db.connection().connection)
+    from services.ddl_compat import adapt_ddl
+    conn.execute(adapt_ddl(_CONFLICT_DDL, conn))
     conn.execute(_CONFLICT_OPEN_UQ)
     conn.execute(_IDX_CONFLICT_STATUS)
     # resolve/reject 要对候选降权，answer_candidates（module A 表）必须就位：
@@ -69,22 +71,41 @@ def ensure_conflict_schema(db: Session) -> None:
         "CREATE INDEX IF NOT EXISTS idx_ansc_qid ON answer_candidates(question_id)")
     # 老库兼容：module_a_schema 建的 answer_candidates 缺规格新增列与唯一索引，
     # 逐个 ALTER（列已存在时忽略错误），upsert 依赖 (question_id, source) 唯一索引。
+    # 逐条用 SAVEPOINT 隔离。
+    #
+    # 为什么必须这样：PG 里**一条语句失败会把整个事务打成 aborted**，此后
+    # 任何语句都报 InFailedSqlTransaction。原实现是裸 try/except 吞掉，
+    # 于是"第一条 ALTER 失败 → 后面三条全部失败 → 一个都不留痕"，
+    # 症状是 provenance / reviewed 列**永远建不出来**，直到
+    # /api/conflicts/*/resolve 报 column "provenance" does not exist 才被发现。
+    # （同一个坑在 services/qa_foundation.py 也踩过一次，那里也是用 SAVEPOINT 修的。）
+    import logging
+
+    _log = logging.getLogger(__name__)
     for _ddl in (
         "ALTER TABLE answer_candidates ADD COLUMN provenance TEXT",
-        "ALTER TABLE answer_candidates ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE answer_candidates ADD COLUMN reviewed BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE answer_candidates ADD COLUMN created_at TEXT",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_ansc_qid_src "
         "ON answer_candidates(question_id, source)",
     ):
         try:
+            conn.execute("SAVEPOINT ansc_ddl")
             conn.execute(_ddl)
-        except Exception:  # 列/索引已存在
-            pass
+            conn.execute("RELEASE SAVEPOINT ansc_ddl")
+        except Exception as exc:  # noqa: BLE001 - 列/索引已存在属正常
+            # 回滚到保存点，事务复位，后续 DDL 才有机会执行
+            try:
+                conn.execute("ROLLBACK TO SAVEPOINT ansc_ddl")
+            except Exception:  # noqa: BLE001
+                pass
+            _log.warning("answer_candidates 懒建 DDL 未生效（多半已存在）: %s",
+                         str(exc)[:160])
     conn.commit()
 
 
 def _now() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def register_conflict(db: Session, question_id: int, answer_a: str, answer_b: str,
@@ -93,7 +114,7 @@ def register_conflict(db: Session, question_id: int, answer_a: str, answer_b: st
                       suggested_winner: Optional[str] = None) -> bool:
     """冲突入队（幂等：该题已有 open 冲突时跳过，返回 False）。"""
     ensure_conflict_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     cur = conn.execute(
         "INSERT OR IGNORE INTO conflict_review_queue "
         "(question_id, answer_a, answer_b, source_a, source_b, confidence_a, "
@@ -112,7 +133,7 @@ def list_conflicts(db: Session, status: str = "open", limit: int = 20,
     if status not in ("open", "resolved", "rejected"):
         raise ValueError(f"status 非法: {status}")
     ensure_conflict_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     where, args = "status=?", [status]
     if question_id:
         where += " AND question_id=?"
@@ -134,7 +155,7 @@ def list_conflicts(db: Session, status: str = "open", limit: int = 20,
 def conflict_stats(db: Session) -> Dict:
     """看板：open/resolved/rejected 计数 + 按来源对分布。"""
     ensure_conflict_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     counts = {"open": 0, "resolved": 0, "rejected": 0}
     for st, n in conn.execute(
             "SELECT status, COUNT(*) FROM conflict_review_queue GROUP BY status"):
@@ -150,7 +171,7 @@ def conflict_stats(db: Session) -> Dict:
 def _downgrade(conn, question_id: int, keep_answer: Optional[str], factor: float) -> None:
     """同题其它候选降权（保持答案不变的候选也降，规格 §1.4 行为 3）。"""
     conn.execute(
-        "UPDATE answer_candidates SET confidence = MAX(0.1, confidence * ?) "
+        "UPDATE answer_candidates SET confidence = GREATEST(0.1, confidence * ?) "
         "WHERE question_id = ?", (factor, question_id))
 
 
@@ -159,7 +180,7 @@ def resolve_conflict(db: Session, queue_id: int, resolution: str,
     """结案-采纳：候选写入 user_confirmed(1.0, provenance=conflict:{id})，
     其它候选 ×0.8；open 幂等（非 open → ValueError → 路由 409）。"""
     ensure_conflict_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     row = conn.execute(
         "SELECT question_id, status FROM conflict_review_queue WHERE id=?",
         (queue_id,)).fetchone()
@@ -170,10 +191,10 @@ def resolve_conflict(db: Session, queue_id: int, resolution: str,
     qid = row[0]
     conn.execute(
         "INSERT INTO answer_candidates (question_id, answer, source, confidence, "
-        "provenance, reviewed, created_at) VALUES (?,?,?,?,?,1,?) "
+        "provenance, reviewed, created_at) VALUES (?,?,?,?,?,TRUE,?) "
         "ON CONFLICT(question_id, source) DO UPDATE SET answer=excluded.answer, "
         "confidence=excluded.confidence, provenance=excluded.provenance, "
-        "reviewed=1, created_at=excluded.created_at",
+        "reviewed=TRUE, created_at=excluded.created_at",
         (qid, resolution, "user_confirmed", 1.0, f"conflict:{queue_id}", _now()))
     _downgrade(conn, qid, resolution, 0.8)
     conn.execute(
@@ -192,7 +213,7 @@ def reject_conflict(db: Session, queue_id: int,
                     reviewer_note: Optional[str] = None) -> Dict:
     """结案-驳回：两侧候选 ×0.7（下限 0.1），status=rejected。"""
     ensure_conflict_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     row = conn.execute(
         "SELECT question_id, status FROM conflict_review_queue WHERE id=?",
         (queue_id,)).fetchone()
@@ -201,7 +222,7 @@ def reject_conflict(db: Session, queue_id: int,
     if row[1] != "open":
         raise ValueError(f"conflict 已结案（{row[1]}）")
     conn.execute(
-        "UPDATE answer_candidates SET confidence = MAX(0.1, confidence * 0.7) "
+        "UPDATE answer_candidates SET confidence = GREATEST(0.1, confidence * 0.7) "
         "WHERE question_id = ?", (row[0],))
     conn.execute(
         "UPDATE conflict_review_queue SET status='rejected', reviewer_note=?, "

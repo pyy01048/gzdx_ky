@@ -21,7 +21,7 @@ sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
 from database import SessionLocal
-from models import StudySession, StudyStats, Task, ErrorRecord, KnowledgePoint
+from core.models import StudySession, StudyStat, Task, ErrorRecord, KnowledgePoint
 from sqlalchemy import func
 
 
@@ -83,7 +83,7 @@ def sync(db) -> dict:
     kp_by_date = {r[0]: r[1] for r in kp_agg}
 
     # 4. upsert study_stats
-    stats_rows = {r.date: r for r in db.query(StudyStats).all()}
+    stats_rows = {r.date: r for r in db.query(StudyStat).all()}
     written, updated = 0, 0
     for d in sorted(all_dates):
         data = dict(
@@ -99,11 +99,11 @@ def sync(db) -> dict:
                 setattr(row, k, v)
             updated += 1
         else:
-            db.add(StudyStats(date=d, **data))
+            db.add(StudyStat(date=d, **data))
             written += 1
     db.commit()
 
-    total_rows = db.query(StudyStats).count()
+    total_rows = db.query(StudyStat).count()
     return {
         "written": written,
         "updated": updated,

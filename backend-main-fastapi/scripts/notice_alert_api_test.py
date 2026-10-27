@@ -40,9 +40,9 @@ with socket.socket() as _sk:
     PORT = _sk.getsockname()[1]
 BASE = f"http://127.0.0.1:{PORT}/api/notice-alert"
 
-# 项目可能启用了密码鉴权（.env 的 APP_PASSWORD），测试要带上认证头
-from utils.auth import APP_PASSWORD as _PW  # noqa: E402
-HDRS = {"X-App-Password": _PW} if _PW else {}
+# 接口需登录：KAOYAN_TOKEN 填 /api/auth/login 返回的 access_token
+_TOKEN = os.getenv("KAOYAN_TOKEN", "")
+HDRS = {"Authorization": f"Bearer {_TOKEN}"} if _TOKEN else {}
 # 再保险：session 级trust_env=False，双重绕过代理
 _SESS = requests.Session()
 _SESS.trust_env = False

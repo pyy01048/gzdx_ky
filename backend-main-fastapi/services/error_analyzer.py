@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from services.dbapi_compat import wrap_conn
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Any, Dict, List, Optional
 
 CATEGORIES = ("概念混淆", "审题失误", "计算错误", "记忆缺失", "方法没想到", "时间不足")
@@ -25,7 +26,7 @@ DEFAULT_CATEGORY = "概念混淆"
 
 
 def _now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _strip_think(text: str) -> str:
@@ -89,12 +90,62 @@ _FOUR_PART_PROMPT = """你是考研辅导老师。请对下面这道错题做四
 要求：考点定位必须引用真实 knowledge_points ID；干扰项解析必须逐个说明；思路拆解分步清晰。"""
 
 
+def infer_error_category(
+    *,
+    question_type: Optional[str] = None,
+    my_answer: Optional[str] = None,
+    correct_answer: Optional[str] = None,
+    cost_seconds: Optional[int] = None,
+    option_count: Optional[int] = None,
+    subject: Optional[str] = None,
+) -> str:
+    """**信号驱动**的错因自动判定（答题当下即可用，零 LLM、确定性、可覆盖）。
+
+    与 ``_guess_category`` 的区别：后者只能读"用户自己写的错因词"，刷题答错时
+    没有这类输入，永远落到默认值。本函数改用**可观测信号**推断：
+
+    | 信号 | 判定 |
+    |---|---|
+    | 未作答（空答案）+ 耗时极短 | 时间不足（跳过/来不及） |
+    | 未作答 + 耗时正常 | 方法没想到（不会，没下手） |
+    | calc/draw 类且已作答 | 计算错误（思路有、算错了） |
+    | essay/fill 类 | 记忆缺失（要点回忆不全） |
+    | 选择/判断类 + 秒选（<5s） | 审题失误（没看清就选） |
+    | 其余选择/判断类 | 概念混淆（最常见，最稳的默认） |
+
+    不是玄学分类，而是"最可能的错因先验"——用户可在错题本手动改写，
+    也可点"AI 归因"用 ``analyze_error`` 做四段式深度分析覆盖。
+    """
+    ans = (my_answer or "").strip()
+    qt = (question_type or "").strip().lower()
+    cost = cost_seconds if isinstance(cost_seconds, int) else None
+
+    # 1) 未作答：时间不足 vs 不会做
+    if not ans or ans in ("-", "—", "无", "不会"):
+        if cost is not None and cost <= 10:
+            return "时间不足"
+        return "方法没想到"
+
+    # 2) 计算/作图类：思路通常有了，错在过程
+    if qt in ("calc", "calculation", "draw"):
+        return "计算错误"
+
+    # 3) 简答/论述/填空：回忆不全、要点缺失
+    if qt in ("essay", "fill", "blank", "short_answer", "subjective"):
+        return "记忆缺失"
+
+    # 4) 选择/判断：秒选即错 → 审题失误；否则概念不清
+    if cost is not None and cost <= 5:
+        return "审题失误"
+    return DEFAULT_CATEGORY
+
+
 def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str, Any]:
     """四段式错因分析入口（供 routers/errors.py ai-analyze 增强调用）。"""
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
 
     row = conn.execute(
         "SELECT id, question_id, content, my_answer, correct_answer, error_reason, subject, "
@@ -295,7 +346,14 @@ def _practice_questions(db, conn, question_id, kp_id, subject, limit: int = 3) -
             }
             for r in rows
         ]
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # 不静默：复练题抽取失败会让讲题结果缺"相似题"块，用户看到的是
+        # 内容变少而非报错 —— 不留痕就永远查不到（项目血泪教训 #1）。
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "_practice_questions 抽取失败（讲题将缺相似题）: %s", str(exc)[:200]
+        )
         return []
 
 
@@ -304,7 +362,7 @@ def stats(db) -> Dict[str, Any]:
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     rows = conn.execute(
         "SELECT category, COUNT(*) AS n FROM misconceptions GROUP BY category ORDER BY n DESC"
     ).fetchall()

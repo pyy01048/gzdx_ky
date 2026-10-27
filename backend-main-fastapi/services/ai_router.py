@@ -136,9 +136,26 @@ class AIRouter:
         q = question.strip().lower()
 
         # 1. 敏感内容检测
+        #
+        # 修复（2026-10-14）：原规则含裸 `r'政治'`，而政治是本平台**主线考试科目**
+        # （CORE_SUBJECTS 成员，库内有 45 个政治知识点、若干政治真题）。
+        # 后果：所有政治学科答疑（如"马克思主义基本原理的核心观点"）都被判 sensitive
+        # → preferred_engine=api 且 need_rag=False → **政治答疑完全不走知识库**，
+        # 而这恰恰是最需要 RAG 的一科。
+        #
+        # 修法：敏感词只保留**真正的敏感语义**，与学科名彻底解耦。
+        # 判断原则：命中的是"政治性议题/违法内容"，而不是"政治这门课"。
         sensitive_patterns = [
-            r'政治', r'领导人', r'敏感', r'违法', r'犯罪',
-            r'色情', r'暴力', r'恐怖', r'毒品', r'武器',
+            # 政治性敏感议题（须带语境，不能只匹配学科名）
+            r'领导人.{0,6}(评价|看法|观点|怎么样)',
+            r'(国家|政府|党).{0,4}(腐败|专制|独裁)',
+            r'(反|推翻).{0,4}(政府|政权|体制)',
+            # 违法违规
+            r'违法', r'犯罪', r'贩毒', r'吸毒', r'枪支', r'炸弹', r'爆炸物',
+            # 色情暴力
+            r'色情', r'淫秽', r'暴力恐怖', r'恐怖袭击',
+            # 作弊与学术不端（考研场景高发，且确需拦截）
+            r'代考', r'替考', r'作弊器材', r'答案买卖', r'考前押题.{0,4}原题',
         ]
         for pattern in sensitive_patterns:
             if re.search(pattern, q):
@@ -148,7 +165,16 @@ class AIRouter:
                     "reason": "检测到敏感内容",
                     "need_rag": False,
                     "preferred_engine": "api",  # 敏感内容走API，由API安全策略处理
+                    "subject": None,            # 敏感内容不参与分科路由
                 }
+
+        # 1b. 学科识别（与敏感检测解耦：政治/历史等学科名必须能被正常识别）
+        #     识别出的科目会写入 route_result.subject，供分科选模型与 RAG 过滤使用。
+        _subject_hits: list[str] = []
+        for _subj, _hints in _SUBJECT_HINTS.items():
+            if any(h in q for h in _hints):
+                _subject_hits.append(_subj)
+        self._last_subject = _subject_hits[0] if _subject_hits else None
 
         # 2. 资料/知识库相关问题检测
         knowledge_keywords = [
@@ -175,6 +201,7 @@ class AIRouter:
                 "reason": f"检测到知识库相关问题（得分{knowledge_score}）",
                 "need_rag": True,
                 "preferred_engine": "rag",
+                "subject": getattr(self, "_last_subject", None),
             }
 
         # 3. 复杂问题检测（需要推理、计算、多步分析）
@@ -203,6 +230,7 @@ class AIRouter:
                 "reason": f"检测到复杂问题（得分{complex_score}）",
                 "need_rag": False,
                 "preferred_engine": "api",
+                "subject": getattr(self, "_last_subject", None),
             }
 
         # 4. 简单问题（定义、概念、简单问答）
@@ -212,6 +240,7 @@ class AIRouter:
             "reason": "简单问题，可由本地模型快速回答",
             "need_rag": False,
             "preferred_engine": "local",
+            "subject": getattr(self, "_last_subject", None),
         }
 
     async def check_local_available(self) -> bool:
@@ -423,13 +452,19 @@ class AIRouter:
             installed: set[str] = set()
             try:
                 client = get_async_client()
-                host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+                from utils.ollama_host import resolve_ollama_host
+
+                host = resolve_ollama_host()
                 resp = await client.get(f"{host}/api/tags", timeout=5.0)
                 if resp.status_code == 200:
                     installed = {m.get("name", "") for m in resp.json().get("models", [])}
                     installed |= {n.split(":")[0] for n in list(installed)}
-            except Exception:
-                pass
+            except Exception as _exc:  # noqa: BLE001
+                # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+                # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+                logging.getLogger(__name__).warning(
+                    '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+                )
 
             if not installed:
                 return default
@@ -469,7 +504,9 @@ class AIRouter:
         messages.append({"role": "user", "content": question})
 
         model = await self._pick_local_model(subject)
-        host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+        from utils.ollama_host import resolve_ollama_host
+
+        host = resolve_ollama_host()
         client = get_async_client()
         resp = await client.post(
             f"{host}/api/chat",

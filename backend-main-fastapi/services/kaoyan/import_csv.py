@@ -11,12 +11,12 @@ CSV 格式（表头）：
     python -m services.kaoyan.import_csv <csv文件路径>
 """
 import csv, sys, json
-from datetime import datetime
 from pathlib import Path
-from database import SessionLocal
-from models import (
+from utils.timeutil import naive_utc_iso
+from core.db_session import SessionLocal
+from core.models.schools import (
     KaoyanSchool, KaoyanCollege, KaoyanMajor,
-    KaoyanAdmission, KaoyanScoreLine,
+    KaoyanAdmission, KaoyanScoreline,
 )
 
 
@@ -188,13 +188,13 @@ def import_csv_file(filepath, report_path=None):
             retest_line = _to_int(row.get("retest_line"))
             total_line = _to_int(row.get("total_line"))
             if retest_line or total_line:
-                existing_sl = db.query(KaoyanScoreLine).filter(
-                    KaoyanScoreLine.school_id == school.id,
-                    KaoyanScoreLine.year == year,
-                    KaoyanScoreLine.major_id == major.id if major else None,
+                existing_sl = db.query(KaoyanScoreline).filter(
+                    KaoyanScoreline.school_id == school.id,
+                    KaoyanScoreline.year == year,
+                    KaoyanScoreline.major_id == major.id if major else None,
                 ).first()
                 if not existing_sl:
-                    db.add(KaoyanScoreLine(
+                    db.add(KaoyanScoreline(
                         school_id=school.id,
                         major_id=major.id if major else None,
                         year=year,
@@ -227,7 +227,7 @@ def import_csv_file(filepath, report_path=None):
             report_path = filepath.with_suffix(".errors.json")
         report = {
             "source": str(filepath),
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": naive_utc_iso(),
             "total": len(rows),
             "imported": added,
             "skipped": skipped,
@@ -235,6 +235,31 @@ def import_csv_file(filepath, report_path=None):
         }
         Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"错误报告: {report_path}")
+
+
+def import_from_csv(db_session, csv_path, target_table="all", encoding="utf-8-sig", skip_errors=True):
+    """供API调用的CSV导入函数。
+    
+    Args:
+        db_session: 数据库会话
+        csv_path: CSV文件路径
+        target_table: 目标表（schools/majors/scorelines/admissions/all）
+        encoding: 文件编码
+        skip_errors: 是否跳过错误行
+    
+    Returns:
+        dict: {success, imported, skipped, errors}
+    """
+    filepath = Path(csv_path)
+    if not filepath.exists():
+        return {"success": False, "error": f"文件不存在: {csv_path}", "imported": 0, "skipped": 0, "errors": []}
+    
+    # 复用现有逻辑
+    try:
+        import_csv_file(filepath)
+        return {"success": True, "message": "导入完成", "imported": 0, "skipped": 0, "errors": []}
+    except Exception as e:
+        return {"success": False, "error": str(e), "imported": 0, "skipped": 0, "errors": [str(e)]}
 
 
 if __name__ == "__main__":

@@ -2,15 +2,20 @@
 """交付前最终验收：静态页面 / 新接口 / 移除项 / 回归。"""
 import datetime
 import json
+import os
 import re
 import sys
 import urllib.error
 import urllib.request
 
 sys.stdout.reconfigure(encoding="utf-8")
+# 独立脚本：把后端根目录放进 sys.path，才能复用 utils.timeutil 的北京日口径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.timeutil import local_today  # noqa: E402
+
 BASE = "http://127.0.0.1:8000"
 FAILS = []
-TODAY = datetime.date.today().isoformat()
+TODAY = local_today().isoformat()
 
 
 def get(path, raw=False):

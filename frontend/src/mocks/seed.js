@@ -1,14 +1,15 @@
 /**
  * Store 初始值
  *
- * 这里只放「配置默认值」和「随应用分发的内置内容」（核心词表/词库骨架）。
- * 用户数据（任务、错题、网盘、卡片）一律从空开始，由 api/sync.js 从后端回填——
- * 曾经这里预置过 7 条假任务/6 条假错题/7 个假网盘文件，它们会伪装成真实学习记录
- * 进入仪表盘、统计和 AI 上下文，属于必须清除的假数据。
+ * 这里只放「配置默认值」，任何用户数据域一律从空开始。
+ * 曾经预置过三批假数据：7 条假任务 / 6 条假错题 / 7 个假网盘文件；
+ * 以及「随应用分发的内置内容」——CORE_WORDS 20 个英语词 + 2 个词库骨架。
+ * 后者同样必须清空：词表进 store 后，仪表盘「待复习单词」按 due 算出 20 条
+ * （Dashboard.jsx dueCards(words)），全新用户被提示去复习自己从未背过的词，
+ * 而 api/sync.js 没有 words 域，这份假数据不会被后端覆盖。
+ * 内置词表仍然随应用分发，但必须由用户在单词页显式「导入」才落库
+ * （走 wordsApi.importText 真实导入链路，会生成真实的创建时间与调度状态）。
  */
-import { today as spacedToday } from '../utils/spaced'
-import { CORE_WORDS, SEED_PACKS } from '../utils/words'
-
 export const SEED = {
   settings: {
     school: '',
@@ -30,22 +31,8 @@ export const SEED = {
     persona: '考研档案',
     messages: []
   },
-  words: CORE_WORDS.map((w, i) => ({
-    id: 'w' + (i + 1),
-    ...w,
-    deck: 'core',
-    status: 'new',
-    ef: 2.5,
-    interval: 0,
-    reps: 0,
-    lapses: 0,
-    due: spacedToday(),
-    lastReview: null,
-    history: []
-  })),
-  decks: [
-    { id: 'core', name: '考研核心词', count: CORE_WORDS.length, source: '内置' }
-  ],
+  words: [],
+  decks: [],
   cards: [],
-  packs: SEED_PACKS.map((p) => ({ ...p, count: 0 }))
+  packs: []
 }

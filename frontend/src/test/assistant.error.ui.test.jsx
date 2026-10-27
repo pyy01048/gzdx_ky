@@ -45,7 +45,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear() })
 
 async function askAnything() {
-  const Assistant = (await import('../pages/Assistant')).default
+  const Assistant = (await import('../v3/pages/Assistant')).default
   render(<Assistant />)
   const input = document.querySelector('textarea, input[type="text"], input')
   fireEvent.change(input, { target: { value: '怎么安排每天的复习？' } })
@@ -55,9 +55,9 @@ async function askAnything() {
 /** 取页面上「标红的错误气泡」——这就是 P0-5 要求必须出现的错误态。 */
 async function errorBubble() {
   await waitFor(() => {
-    expect(document.querySelector('.as-bubble.error')).toBeTruthy()
+    expect(document.querySelector('.v3-asst-bubble.is-error')).toBeTruthy()
   })
-  return document.querySelector('.as-bubble.error')
+  return document.querySelector('.v3-asst-bubble.is-error')
 }
 
 describe('AI 助手失败态必须可见（P0-5）', () => {

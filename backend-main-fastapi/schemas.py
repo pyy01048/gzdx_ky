@@ -155,6 +155,9 @@ class QuizSubmit(BaseModel):
     my_answer: str
     mode: Optional[str] = None
     cost_seconds: Optional[int] = 0
+    # P0-2：主观题自评（不传时行为完全不变）
+    self_score: Optional[float] = None
+    max_score: Optional[float] = None
 
 
 class QuizSubmitResult(BaseModel):

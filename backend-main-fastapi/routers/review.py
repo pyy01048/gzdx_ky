@@ -12,9 +12,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+import datetime
+
 from database import get_db
-from models import ErrorRecord, ReviewRecord
+from models import ErrorRecord, KnowledgePoint, ReviewRecord
 from services import review_service, error_linker, taxonomy
+from services.srs import fsrs
+
+from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/review", tags=["复习进度"])
 
@@ -68,7 +73,36 @@ async def submit_review(payload: dict, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return {"message": "复习已记录", **out}
+    # FSRS：把这次复习写进统一调度表（四档评分优先，缺省由旧三档映射）
+    rating = payload.get("rating")
+    try:
+        rating = int(rating) if rating is not None else fsrs.rating_from_result(result)
+    except (TypeError, ValueError):
+        rating = fsrs.rating_from_result(result)
+    # 统一调度表的类型口径（与 093 兼容列回填一致）：
+    #   knowledge → knowledge_point，error → error_record
+    fsrs_item_type = {"knowledge": "knowledge_point", "error": "error_record"}.get(
+        item_type, item_type
+    )
+    scheduled = fsrs.schedule(
+        db, item_type=fsrs_item_type, item_id=int(item_id), rating=rating, commit=False
+    )
+
+    # FSRS 是权威：业务表的 next_review / interval_days 只做兼容镜像，
+    # 否则两个调度器各写各的，前端看到的到期日会与实际排程打架。
+    if scheduled.get("due"):
+        due_dt = datetime.datetime.fromisoformat(scheduled["due"])
+        entity = (
+            db.query(KnowledgePoint).filter(KnowledgePoint.id == int(item_id)).first()
+            if item_type == "knowledge"
+            else db.query(ErrorRecord).filter(ErrorRecord.id == int(item_id)).first()
+        )
+        if entity is not None:
+            entity.next_review = due_dt
+            entity.interval_days = int(scheduled["interval_days"])
+    db.commit()
+
+    return {"message": "复习已记录", **out, "interval": scheduled["interval_days"], "fsrs": scheduled}
 
 
 @router.get("/progress")
@@ -82,7 +116,7 @@ async def history(
     item_type: Optional[str] = None,
     item_id: Optional[int] = None,
     days: int = Query(30, ge=1, le=365),
-    limit: int = Query(200, ge=1, le=1000),
+    limit: int = Query(200, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     """复习留痕时间线。"""
@@ -126,13 +160,15 @@ async def review_stats(db: Session = Depends(get_db)):
        故统一使用 utils.timeutil.utcnow()（naive UTC）。
     """
     from sqlalchemy import func  # noqa: F401  保持与既有导入一致
-    from utils.timeutil import utcnow
+    from utils.timeutil import local_day_window, utcnow
     now = utcnow()  # naive UTC，与 SQLite DateTime 列对齐
     active_errors = db.query(ErrorRecord).filter(ErrorRecord.status == "active").count()
     due_errors = db.query(ErrorRecord).filter(ErrorRecord.status == "active", ErrorRecord.next_review.isnot(None), ErrorRecord.next_review <= now).count()
     graduated = db.query(ErrorRecord).filter(ErrorRecord.status == "graduated").count()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_reviews = db.query(ReviewRecord).filter(ReviewRecord.created_at >= today_start).count()
+    _day, day_start, day_end = local_day_window()
+    today_reviews = db.query(ReviewRecord).filter(
+        ReviewRecord.created_at >= day_start, ReviewRecord.created_at < day_end
+    ).count()
     total_reviews = db.query(ReviewRecord).count()
     return {
         "active_errors": active_errors,

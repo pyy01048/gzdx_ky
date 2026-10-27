@@ -31,51 +31,77 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# 数据库路径配置化：优先使用 .env / 环境变量 DATABASE_PATH（第二轮升级：database 专门文件夹）
-_configured_db = os.environ.get("DATABASE_PATH", "").strip()
-if _configured_db:
-    SQLALCHEMY_DATABASE_URL = f"sqlite:///{_configured_db}"
-    _db_dir = os.path.dirname(_configured_db)
-    if _db_dir:
-        os.makedirs(_db_dir, exist_ok=True)
-else:
-    SQLALCHEMY_DATABASE_URL = f"sqlite:///{os.path.join(DATA_DIR, 'kaoyan.db')}"
+# 数据库路径配置化：后端类型与连接串统一由 core.db_session 决定。
+# 变更原因（2026-10-14）：本模块此前**只认 DATABASE_PATH、永远建 SQLite URL**，
+# 完全不读 DATABASE_BACKEND，导致"切到 PG"只改 .env 毫无效果（实测后端仍连 SQLite）。
+def _resolve_database_url() -> tuple[str, bool]:
+    """解析连接串与后端类型，与 core.db_session 保持单一来源。"""
+    try:
+        from core.db_session import build_database_url, IS_POSTGRES
+        return build_database_url(), IS_POSTGRES
+    except Exception as exc:  # pragma: no cover - core 不可用时退回 SQLite
+        logger.warning("core.db_session 不可用，退回 SQLite：%s", exc)
+        configured = os.environ.get("DATABASE_PATH", "").strip()
+        path = configured or os.path.join(DATA_DIR, "kaoyan.db")
+        db_dir = os.path.dirname(path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+        return f"sqlite:///{path}", False
+
+
+SQLALCHEMY_DATABASE_URL, IS_POSTGRES = _resolve_database_url()
 
 # --------------------------------------------------------------------------- #
 # 引擎与会话（V3.0 性能优化）
 # --------------------------------------------------------------------------- #
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={
-        "check_same_thread": False,
-        "timeout": 30,  # 连接超时30秒
-    },
-    echo=False,
-    # 连接池配置
-    poolclass=QueuePool,
-    pool_size=10,           # 连接池大小
-    max_overflow=20,         # 最大溢出连接数
-    pool_timeout=30,         # 获取连接超时
-    pool_recycle=3600,       # 连接回收时间（1小时）
-    pool_pre_ping=True,      # 连接前检查（避免断连）
-)
+if IS_POSTGRES:
+    # PG：不用 SQLite 的 connect_args；强制连接时区 UTC，与 TIMESTAMPTZ 语义一致
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        echo=False,
+        poolclass=QueuePool,
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=3600,
+        pool_pre_ping=True,
+        connect_args={"options": "-c timezone=UTC"},
+    )
+else:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 30,  # 连接超时30秒
+        },
+        echo=False,
+        # 连接池配置
+        poolclass=QueuePool,
+        pool_size=10,           # 连接池大小
+        max_overflow=20,         # 最大溢出连接数
+        pool_timeout=30,         # 获取连接超时
+        pool_recycle=3600,       # 连接回收时间（1小时）
+        pool_pre_ping=True,      # 连接前检查（避免断连）
+    )
 
-# SQLite 性能优化（连接创建时执行）
-@event.listens_for(engine, "connect")
-def _set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    try:
-        cursor.execute("PRAGMA journal_mode=WAL")        # WAL模式（并发读写）
-        cursor.execute("PRAGMA synchronous=NORMAL")       # 正常同步
-        cursor.execute("PRAGMA cache_size=-64000")        # 64MB缓存
-        cursor.execute("PRAGMA temp_store=MEMORY")         # 临时表存内存
-        cursor.execute("PRAGMA mmap_size=268435456")      # 256MB内存映射
-        cursor.execute("PRAGMA busy_timeout=5000")         # 忙等待5秒
-        cursor.execute("PRAGMA foreign_keys=ON")            # 启用外键
-    except Exception as e:
-        logger.debug(f"SQLite PRAGMA设置失败: {e}")
-    finally:
-        cursor.close()
+# SQLite 性能优化（连接创建时执行）—— 仅 SQLite 后端生效。
+# PG 连接上执行 PRAGMA 会直接报语法错误，故必须按后端分流注册。
+if not IS_POSTGRES:
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")        # WAL模式（并发读写）
+            cursor.execute("PRAGMA synchronous=NORMAL")       # 正常同步
+            cursor.execute("PRAGMA cache_size=-64000")        # 64MB缓存
+            cursor.execute("PRAGMA temp_store=MEMORY")         # 临时表存内存
+            cursor.execute("PRAGMA mmap_size=268435456")      # 256MB内存映射
+            cursor.execute("PRAGMA busy_timeout=5000")         # 忙等待5秒
+            cursor.execute("PRAGMA foreign_keys=ON")            # 启用外键
+        except Exception as e:
+            logger.debug(f"SQLite PRAGMA设置失败: {e}")
+        finally:
+            cursor.close()
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -88,10 +114,47 @@ Base = declarative_base()
 
 
 # --------------------------------------------------------------------------- #
+# ORM 旧属性名兼容别名
+#
+# 注意：**不能在此 import models** —— models.py 需要 `from database import Base`，
+# 在此处反向 import 会形成循环导入（实测报 module 'models' has no attribute
+# 'QuizQuestion'）。故别名安装由业务入口负责：main.py 在 import models 之后
+# 调用 orm_aliases.install()。
+# --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
 # 依赖注入
 # --------------------------------------------------------------------------- #
+_orm_compat_applied = False
+
+
+def _ensure_orm_compat() -> None:
+    """一次性安装 ORM 兼容别名与 PG 枚举类型适配（幂等）。
+
+    为什么放在 get_db() 里懒执行，而不是模块导入时：
+    `models.py` 的映射类由**各 router 在导入时**逐个注册（main.py 的
+    `from models import (...)` 只导入了一部分）。若在 database.py 模块级执行，
+    大量模型尚未注册，适配会漏。放在每个请求的会话创建前做一次，
+    此时全部模型必已注册完毕。
+
+    不做会怎样（实测）：PG 原生枚举不能与 varchar 直接比较，
+    `Task.status == "doing"` 抛 `operator does not exist: task_status = character varying`。
+    """
+    global _orm_compat_applied
+    if _orm_compat_applied:
+        return
+    try:
+        import orm_aliases
+        orm_aliases.install()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ORM 兼容适配安装失败：%s", exc)
+    _orm_compat_applied = True
+
+
 def get_db():
     """FastAPI 依赖注入：获取数据库会话，请求结束后自动关闭。"""
+    _ensure_orm_compat()
     db = SessionLocal()
     try:
         yield db

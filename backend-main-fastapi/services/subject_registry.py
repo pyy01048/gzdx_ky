@@ -67,7 +67,7 @@ def _count_by_subject(db: Session, column, exclude_junk: bool = True) -> dict[st
         db: SQLAlchemy 会话。
         column: 待分组的科目标签列（如 ``QuizQuestion.subject``）。
         exclude_junk: 当列为 ``QuizQuestion.subject`` 时，是否排除 OCR 碎片题
-            （``is_junk=1``）。默认 True——"各科目题数"与刷题列表口径一致。
+            （``is_junk = TRUE``）。默认 True——"各科目题数"与刷题列表口径一致。
             对非 QuizQuestion 列（Document/KnowledgeChunk）该参数无影响。
 
     Returns:
@@ -127,8 +127,9 @@ def ensure_subject_registry_seeds(db: Session) -> int:
 def _seed_missing_engineering_subjects(db: Session) -> int:
     """在表已非空时，补播种**缺失的 M0-4 新增工科科目**。
 
-    幂等且安全：只新增"字典里不存在"的工科科目名，已存在的（含用户手动
-    删除后本就不存在、非 M0-4 新增的其它内置科目）不覆盖、不复活。
+    幂等且安全：只新增"字典里不存在"的工科科目名；已存在的不覆盖。
+    复活防护由 subject_removals 墓碑表保证：用户删掉的工科科目记墓碑后，
+    本函数跳过，不再复活（显式重建时清墓碑）。
     仅用于把 0854 电子信息等新科目纳入存量库的可选池。
 
     Args:
@@ -138,9 +139,11 @@ def _seed_missing_engineering_subjects(db: Session) -> int:
         新增行数。
     """
     existing = {row[0] for row in db.query(SubjectConfig.subject).all() if row[0]}
+    # 删除墓碑：用户显式删掉的工科科目同样不复活（与 taxonomy 主播种同一口径）
+    removed = taxonomy.load_subject_removals(db)
     added = 0
     for name in ENGINEERING_SUBJECTS:
-        if name in existing:
+        if name in existing or name in removed:
             continue
         db.add(SubjectConfig(
             subject=name,

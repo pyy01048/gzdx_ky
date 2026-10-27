@@ -133,6 +133,8 @@ class FetchResult:
     content_type: str
     elapsed: float
     error: str = ""
+    #: 二进制模式（附件下载）下的原始字节；HTML 模式恒为空
+    content: bytes = b""
     #: 是否可重试（内部用）
     retryable: bool = field(default=False, repr=False, compare=False)
 
@@ -226,8 +228,11 @@ class PoliteFetcher:
         with _STATE_LOCK:
             _DOMAIN_LAST[domain] = time.time()
 
-    def _attempt(self, url: str) -> FetchResult:
-        """单次尝试（不做重试判断）。"""
+    def _attempt(self, url: str, binary: bool = False) -> FetchResult:
+        """单次尝试（不做重试判断）。
+
+        ``binary=True`` 时不解码，直接返回原始字节（附件下载用）。
+        """
         started = time.monotonic()
         parts = urlsplit(url)
         domain = parts.netloc
@@ -268,10 +273,16 @@ class PoliteFetcher:
                                    content_type=content_type, elapsed=elapsed,
                                    error=f"http_{status}", retryable=True)
             if status >= 200:
-                html = _decode(raw, content_type)
                 too_large = len(raw) > self.max_bytes
                 if too_large:
-                    html = _decode(raw[: self.max_bytes], content_type)
+                    raw = raw[: self.max_bytes]
+                if binary:
+                    return FetchResult(
+                        url=url, final_url=final_url, status=status, html="",
+                        content_type=content_type, elapsed=elapsed,
+                        content=raw, error="too_large" if too_large else "",
+                    )
+                html = _decode(raw, content_type)
                 return FetchResult(
                     url=url, final_url=final_url, status=status, html=html,
                     content_type=content_type, elapsed=elapsed,
@@ -303,11 +314,12 @@ class PoliteFetcher:
                            elapsed=time.monotonic() - started,
                            error=f"request_error: {name}: {msg}"[:200], retryable=True)
 
-    def fetch(self, url: str, *, respect_robots: bool = True) -> FetchResult:
+    def fetch(self, url: str, *, respect_robots: bool = True, binary: bool = False) -> FetchResult:
         """抓一个页面。
 
         :param url: 目标 URL
         :param respect_robots: 是否先查 robots.txt（默认查）
+        :param binary: True 时返回原始字节（附件下载），不解码
         """
         started = time.monotonic()
         if not url or not str(url).lower().startswith(("http://", "https://")):
@@ -323,7 +335,7 @@ class PoliteFetcher:
         attempts = self.max_retries + 1
         last: Optional[FetchResult] = None
         for attempt in range(attempts):
-            result = self._attempt(url)
+            result = self._attempt(url, binary=binary)
             last = result
             if not result.error or not result.retryable:
                 return result

@@ -743,6 +743,43 @@ def sample_data(db_schema):  # noqa: ARG001
 
 
 @pytest.fixture
+def fresh_earlybird(db_schema):  # noqa: ARG001
+    """按当前北京自然日重播「今天 + 昨天」两条早起记录。
+
+    sample_data 是 session 级、只在会话开头播一次。若会话跨过北京午夜，
+    其按 local_today() 写入的日期在用例执行时已经过期，streak 会归零；
+    用例若没显式依赖 sample_data，孤立运行时更是一条记录都没有。
+    这里在用例开始时重播，两个问题一并消掉。
+    """
+    import datetime as _dt
+
+    from database import SessionLocal
+    from models import EarlyBirdRecord
+    from utils.timeutil import local_today
+
+    db = SessionLocal()
+    try:
+        db.query(EarlyBirdRecord).delete(synchronize_session=False)
+        db.add_all([
+            EarlyBirdRecord(
+                user_id=TEST_USER_ID, day_num=1, date=local_today(),
+                wake_time=_dt.time(6, 30), sleep_time=_dt.time(23, 0),
+                note="QA today",
+            ),
+            EarlyBirdRecord(
+                user_id=TEST_USER_ID, day_num=2,
+                date=local_today() - _dt.timedelta(days=1),
+                wake_time=_dt.time(7, 0), sleep_time=_dt.time(23, 30),
+                note="QA yesterday",
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+    yield
+
+
+@pytest.fixture
 def chunk_fts_mirror(db_schema):  # noqa: ARG001
     """确保 ``knowledge_chunks_fts`` 检索镜像表存在（PG 兼容普通表）。
 

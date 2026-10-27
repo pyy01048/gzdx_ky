@@ -73,7 +73,18 @@ def test_seed_idempotent_and_builtins_present(client):
         s["subject"] for s in body["subjects"]
         if not s["is_custom"] and not s["unregistered"]
     }
-    assert builtin_names == set(taxonomy.ALL_SUBJECTS)
+    # 2026-10-14 修正：原先断言 ``builtin_names == set(ALL_SUBJECTS)``。
+    # 但core/sql/091_subjects_ece_seed.sql 已把「数字信号处理」「电磁场与电磁波」
+    # 等电子通信核心科目注册为内置科目，它们不在 taxonomy.ALL_SUBJECTS 里，
+    # 于是断言恒假 —— 科目体系扩展后测试没跟上。
+    # 改为「必须覆盖全部内置科目；允许存在额外的已注册科目」，
+    # 既守住回归（内置科目不能丢），又不阻塞后续科目扩展。
+    missing = set(taxonomy.ALL_SUBJECTS) - builtin_names
+    assert not missing, f"内置科目缺失: {sorted(missing)}"
+    extra = builtin_names - set(taxonomy.ALL_SUBJECTS)
+    assert not any(name.startswith("QA") for name in extra), (
+        f"疑似测试残留科目混入内置集合: {sorted(extra)}"
+    )
 
     # 再次调用播种函数应为 no-op（幂等）
     from database import SessionLocal
@@ -99,7 +110,16 @@ def test_post_custom_subject_and_409(client, cleanup_subjects):
     body = r.json()
     assert body["subject"] == name
     assert body["is_custom"] is True
-    assert body["chapters"] == ["第1章 QA", "第2章 QA"]
+    # 2026-10-14 修正：chapters 的契约已从「字符串数组」升级为
+    # 「对象数组[{code,title,...}]」—— 前端 KbMap.jsx 等页面已按
+    # x.title / x.code 消费（见 src/pages/KbMap.jsx:200/215/361），
+    # 只有这里的断言还停留在旧口径。
+    assert [c["title"] for c in body["chapters"]] == ["第1章 QA", "第2章 QA"], (
+        f"章节标题顺序不符: {body['chapters']}"
+    )
+    assert [c["code"] for c in body["chapters"]] == ["ch01", "ch02"], (
+        f"章节 code 顺序不符: {body['chapters']}"
+    )
     assert body["question_types"] == ["single", "calc"]
 
     # GET 列表里能查到，且 question_count/error_count 默认为 0
@@ -150,7 +170,12 @@ def test_put_rename_and_update(client, cleanup_subjects):
     assert body["renamed"] is True
     # 重命名不改业务表，给前端提示
     assert "question_tag_note" in body
-    assert body["chapters"] == ["新章1", "新章2"]
+    assert [c["title"] for c in body["chapters"]] == ["新章1", "新章2"], (
+        f"重命名后章节标题顺序不符: {body['chapters']}"
+    )
+    assert [c["code"] for c in body["chapters"]] == ["ch01", "ch02"], (
+        f"重命名后章节 code 顺序不符: {body['chapters']}"
+    )
     assert body["question_types"] == ["single", "draw"]
 
     # 旧名已不存在
@@ -166,14 +191,16 @@ def test_put_rename_and_update(client, cleanup_subjects):
     r2 = client.put(f"/api/taxonomy/subjects/{dst}", json={"chapters": ["仅改章节"]})
     assert r2.status_code == 200, r2.text
     assert r2.json()["renamed"] is False
-    assert r2.json()["chapters"] == ["仅改章节"]
+    assert [c["title"] for c in r2.json()["chapters"]] == ["仅改章节"], (
+        f"仅改章节场景 titles 不符: {r2.json()['chapters']}"
+    )
 
 
 def test_put_404_for_missing_subject(client):
-    """PUT 一个不存在的科目 → 404，detail 保留路由给的人话原因。"""
+    """PUT 一个不存在的科目 → 404，message 保留路由给的人话原因。"""
     r = client.put(f"/api/taxonomy/subjects/{PREFIX}不存在的科目XYZ", json={"chapters": ["x"]})
     assert r.status_code == 404
-    assert r.json()["detail"].startswith("科目不存在")
+    assert r.json()["message"].startswith("科目不存在")
 
 
 def test_delete_subject(client, cleanup_subjects):
@@ -187,7 +214,63 @@ def test_delete_subject(client, cleanup_subjects):
     # 再删 → 404，带原因
     r2 = client.delete(f"/api/taxonomy/subjects/{name}")
     assert r2.status_code == 404
-    assert r2.json()["detail"].startswith("科目不存在")
+    assert r2.json()["message"].startswith("科目不存在")
+
+
+def test_delete_builtin_not_resurrected(client):
+    """删除内置科目后不得被「按缺失补齐」复活（2026-10-19 线上回归）。
+
+    线上实测过的 bug：DELETE 返回 200、INSTEAD OF 触发器真删了 subjects 行，
+    但下一次 GET /api/taxonomy/subjects 时 ensure_subject_config_seeds
+    把该内置科目当「缺失」重新 INSERT，用户视角就是「删了又回来」。
+    修复：subject_removals 墓碑表 + 播种类函数跳过墓碑。
+    """
+    from database import SessionLocal
+
+    name = "中医综合"  # EXT_SUBJECTS 内置科目（ALL_SUBJECTS 成员）
+
+    # 前置：确保已播种
+    r = client.get("/api/taxonomy/subjects")
+    by_name = {s["subject"]: s for s in r.json()["subjects"]}
+    assert name in by_name, f"前置条件不成立：内置科目未播种: {name}"
+
+    # 删除 → 200
+    r = client.delete(f"/api/taxonomy/subjects/{name}")
+    assert r.status_code == 200, r.text
+
+    # 关键断言 1：再查列表（内部跑 ensure_subject_config_seeds）不得复活
+    r2 = client.get("/api/taxonomy/subjects")
+    names2 = {s["subject"] for s in r2.json()["subjects"]}
+    assert name not in names2, f"内置科目删除后被列表查询复活: {name}"
+
+    # 关键断言 2：显式调用播种函数也不补回
+    db = SessionLocal()
+    try:
+        assert taxonomy.ensure_subject_config_seeds(db) == 0
+        r3 = client.get("/api/taxonomy/subjects")
+        names3 = {s["subject"] for s in r3.json()["subjects"]}
+        assert name not in names3, f"显式播种仍复活: {name}"
+
+        # 显式重建成功（墓碑只挡自动补齐，不挡用户加回）
+        r4 = client.post("/api/taxonomy/subjects", json={"subject": name, "chapters": []})
+        assert r4.status_code == 200, r4.text
+        r5 = client.get("/api/taxonomy/subjects")
+        assert name in {s["subject"] for s in r5.json()["subjects"]}
+    finally:
+        # 复原到播种前状态：删掉重建行（会记墓碑）→ 清墓碑 → 重新播种为内置行，
+        # 避免影响其他用例（test_seed_idempotent_and_builtins_present 断言
+        # ALL_SUBJECTS 全覆盖，残留墓碑会让内置科目缺列）。
+        try:
+            client.delete(f"/api/taxonomy/subjects/{name}")
+        finally:
+            taxonomy.unmark_subject_removed(db, name)
+            taxonomy.ensure_subject_config_seeds(db)
+            db.close()
+
+    # 复原校验：内置行回来且是非自定义
+    r6 = client.get("/api/taxonomy/subjects")
+    restored = {s["subject"]: s for s in r6.json()["subjects"]}
+    assert name in restored and restored[name]["is_custom"] is False
 
 
 def test_normalize_preserves_custom_and_keeps_builtin_normalization(client, cleanup_subjects):
@@ -207,7 +290,6 @@ def test_normalize_preserves_custom_and_keeps_builtin_normalization(client, clea
     assert taxonomy.normalize_subject(None) == "其他"
 
 
-@pytest.mark.xfail(reason="跨文件数据污染：全量运行时共享临时库的'数学'条目受其他测试种子影响；单独跑本文件通过（V19 记档，待测试基建隔离）", strict=False)
 def test_question_count_aggregation(client, sample_data):
     """question_count / error_count 按 quiz_questions/error_records 原值聚合。"""
     r = client.get("/api/taxonomy/subjects")

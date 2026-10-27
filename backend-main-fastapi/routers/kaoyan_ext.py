@@ -9,15 +9,21 @@
 - 自动调整    POST /api/kaoyan/analysis/auto-adjust （冲稳保+理由）
 """
 from __future__ import annotations
+from utils.security import require_admin
 
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from services.dbapi_compat import wrap_conn
 from database import get_db
 from services.kaoyan import reform_detector, score_insight
+from models import KaoyanSchool, KaoyanCrawlTarget
+
+from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/kaoyan", tags=["考研择校扩展"])
 
@@ -45,7 +51,7 @@ def notices_feed(
     from services.kaoyan.spider_notices import ensure_notices_schema
 
     ensure_notices_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
 
     where = ["1=1"]
     args: list = []
@@ -88,7 +94,7 @@ def notices_recent(limit: int = Query(12, ge=1, le=50),
     from services.kaoyan.spider_notices import ensure_notices_schema
 
     ensure_notices_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     rows = conn.execute(
         "SELECT id, school_id, school_name, title, notice_type, publish_date, url "
         "FROM kaoyan_notices ORDER BY publish_date DESC, id DESC LIMIT ?",
@@ -109,7 +115,7 @@ def reforms_list(
     school_id: Optional[int] = Query(None),
     change_type: Optional[str] = Query(None, description="改考科目/停招/新增专业/…"),
     year: Optional[int] = Query(None),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     """改考事件列表（通知中心·改考雷达 / 院校详情改考提醒）。"""
@@ -124,7 +130,7 @@ def reforms_stats(db: Session = Depends(get_db)):
     return reform_detector.reform_stats(db)
 
 
-@router.post("/reforms/scan")
+@router.post("/reforms/scan", dependencies=[Depends(require_admin)])
 def reforms_scan(
     req: ReformScanReq,
     db: Session = Depends(get_db),
@@ -159,7 +165,7 @@ def score_detail(
 # --------------------------------------------------------------------------- #
 # 自动调整
 # --------------------------------------------------------------------------- #
-@router.post("/analysis/auto-adjust")
+@router.post("/analysis/auto-adjust", dependencies=[Depends(require_admin)])
 def auto_adjust(
     payload: dict,
     db: Session = Depends(get_db),
@@ -180,3 +186,165 @@ def auto_adjust(
         per_bucket=int(payload.get("per_bucket", 8)),
     )
     return result
+
+
+# --------------------------------------------------------------------------- #
+# 院校采集开关（/api/kaoyan/crawl-targets）
+#
+# 设计口径：表中只记录"被用户显式改过"的院校。
+#   · 没有记录  → 默认参与采集（enabled=True）
+#   · enabled=False → 用户明确排除，采集任务应跳过
+# 这样新导入的院校默认就会被采集，不会因为忘配置而漏数据。
+# --------------------------------------------------------------------------- #
+
+class CrawlTargetToggleReq(BaseModel):
+    school_id: int = Field(..., description="院校 ID")
+    enabled: bool = Field(True, description="是否参与采集")
+
+
+class CrawlTargetBulkReq(BaseModel):
+    school_ids: List[int] = Field(..., min_length=1, max_length=2000)
+    enabled: bool = Field(True)
+
+
+class CrawlTargetResetReq(BaseModel):
+    confirm: bool = Field(False, description="必须为 true 才会清空全部开关")
+
+
+def _upsert_target(db: Session, school_id: int, enabled: bool) -> KaoyanCrawlTarget:
+    row = db.query(KaoyanCrawlTarget).filter(KaoyanCrawlTarget.school_id == school_id).first()
+    if row:
+        row.enabled = enabled
+    else:
+        row = KaoyanCrawlTarget(school_id=school_id, enabled=enabled)
+        db.add(row)
+    return row
+
+
+@router.get("/crawl-targets")
+def list_crawl_targets(
+    q: Optional[str] = Query(None, max_length=100, description="院校名关键词"),
+    province: Optional[str] = Query(None, description="省份"),
+    level: Optional[str] = Query(None, description="985/211/双一流/双非"),
+    enabled: Optional[bool] = Query(None, description="仅看启用/停用"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(30, ge=1, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+):
+    """院校采集清单：分页 + 搜索 + 省份/层级/开关筛选。"""
+    query = db.query(KaoyanSchool)
+    if q:
+        query = query.filter(KaoyanSchool.name.like(f"%{q.strip()}%"))
+    if province:
+        query = query.filter(KaoyanSchool.province == province)
+    if level:
+        query = query.filter(KaoyanSchool.level == level)
+
+    total_schools = db.query(func.count(KaoyanSchool.id)).scalar() or 0
+    disabled_total = (
+        db.query(func.count(KaoyanCrawlTarget.id))
+        .filter(KaoyanCrawlTarget.enabled.is_(False))
+        .scalar() or 0
+    )
+
+    # enabled 过滤走反连接：没有开关记录的院校视为默认启用
+    if enabled is True:
+        excluded = db.query(KaoyanCrawlTarget.school_id).filter(KaoyanCrawlTarget.enabled.is_(False))
+        query = query.filter(~KaoyanSchool.id.in_(excluded))
+    elif enabled is False:
+        excluded = db.query(KaoyanCrawlTarget.school_id).filter(KaoyanCrawlTarget.enabled.is_(False))
+        query = query.filter(KaoyanSchool.id.in_(excluded))
+
+    total = query.count()
+    rows = (
+        query.order_by(KaoyanSchool.province.asc(), KaoyanSchool.name.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    ids = [s.id for s in rows]
+    targets = {}
+    if ids:
+        for t in db.query(KaoyanCrawlTarget).filter(KaoyanCrawlTarget.school_id.in_(ids)).all():
+            targets[t.school_id] = t
+
+    items = []
+    for s in rows:
+        t = targets.get(s.id)
+        items.append({
+            "id": s.id,
+            "name": s.name,
+            "province": s.province,
+            "city": s.city,
+            "level": s.level,
+            "data_source": s.data_source,
+            "official_url": s.official_url,
+            "enabled": True if t is None else bool(t.enabled),
+            "priority": t.priority if t else 0,
+            "note": t.note if t else None,
+            "last_crawled_at": t.last_crawled_at.isoformat() if t and t.last_crawled_at else None,
+        })
+
+    provinces = [
+        r[0] for r in db.query(KaoyanSchool.province).distinct().all() if r[0]
+    ]
+    levels = [
+        r[0] for r in db.query(KaoyanSchool.level).distinct().all() if r[0]
+    ]
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size,
+        "total_schools": total_schools,
+        "enabled_count": total_schools - disabled_total,
+        "disabled_count": disabled_total,
+        "provinces": sorted(provinces),
+        "levels": sorted(levels),
+        "items": items,
+    }
+
+
+@router.post("/crawl-targets/toggle", dependencies=[Depends(require_admin)])
+def toggle_crawl_target(req: CrawlTargetToggleReq, db: Session = Depends(get_db)):
+    """单校开关（幂等）。"""
+    school = db.query(KaoyanSchool).filter(KaoyanSchool.id == req.school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="院校不存在")
+    row = _upsert_target(db, req.school_id, req.enabled)
+    db.commit()
+    db.refresh(row)
+    return {
+        "success": True,
+        "school_id": row.school_id,
+        "school_name": school.name,
+        "enabled": bool(row.enabled),
+    }
+
+
+@router.post("/crawl-targets/bulk", dependencies=[Depends(require_admin)])
+def bulk_crawl_targets(req: CrawlTargetBulkReq, db: Session = Depends(get_db)):
+    """批量开关：页面上「全选当前页 / 排除当前页」用。"""
+    existing = {
+        row[0] for row in db.query(KaoyanSchool.id).filter(KaoyanSchool.id.in_(req.school_ids)).all()
+    }
+    changed = 0
+    for sid in req.school_ids:
+        if sid not in existing:
+            continue
+        _upsert_target(db, sid, req.enabled)
+        changed += 1
+    db.commit()
+    return {"success": True, "changed": changed, "enabled": req.enabled}
+
+
+@router.post("/crawl-targets/reset", dependencies=[Depends(require_admin)])
+def reset_crawl_targets(req: CrawlTargetResetReq, db: Session = Depends(get_db)):
+    """清空全部开关 → 回到「所有院校默认参与采集」。"""
+    if not req.confirm:
+        raise HTTPException(status_code=422, detail="需要 confirm=true 才能重置")
+    removed = db.query(KaoyanCrawlTarget).delete()
+    db.commit()
+    return {"success": True, "removed": removed}

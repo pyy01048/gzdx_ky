@@ -9,6 +9,7 @@ V3.0 检索算法优化模块
 import re
 import time
 import logging
+from services.dbapi_compat import wrap_conn
 from typing import Any, Dict, List, Optional, Tuple
 from collections import OrderedDict
 from functools import wraps
@@ -306,7 +307,7 @@ class IncrementalIndexUpdater:
         """增量更新FTS索引。"""
         try:
             from services.search_service import ensure_fts_table
-            conn = self.db.connection().connection
+            conn = wrap_conn(self.db.connection().connection)
             ensure_fts_table(conn)
 
             if chunk_ids:

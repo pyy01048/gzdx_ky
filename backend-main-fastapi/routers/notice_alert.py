@@ -36,6 +36,7 @@ from services.kaoyan.notice_alert import (
     notice_matches_subscription,
     parse_date_loose,
     raw_conn,
+    runs_trigger_column,
     scalar,
     table_columns,
     rules_path,
@@ -43,6 +44,9 @@ from services.kaoyan.notice_alert import (
 )
 
 logger = logging.getLogger(__name__)
+from utils.response import MAX_PAGE_SIZE
+from utils.timeutil import naive_utc_iso
+
 router = APIRouter(prefix="/api/notice-alert", tags=["通知提醒"])
 
 
@@ -205,7 +209,7 @@ def create_subscription(payload: SubscriptionCreate, db: Session = Depends(get_d
     ensure_alert_schema(db)
     _validate_sub(payload)
     conn = raw_conn(db)
-    now_iso = cn_now().strftime("%Y-%m-%d %H:%M:%S")
+    now_iso = naive_utc_iso()
     # 各维度统一用 '' 兜底（表上NOT NULL DEFAULT ''，UNIQUE 才会真正生效）
     sid = payload.school_id or 0
     sname = (payload.school_name or "").strip()
@@ -286,7 +290,7 @@ def toggle_subscription(
 def subscription_feed(
     days: int = Query(14, ge=1, le=180, description="回看天数"),
     min_level: str = Query("normal", description="最低等级：normal | important | urgent"),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     """我的关注最近有什么新通知。
@@ -304,7 +308,7 @@ def subscription_feed(
         r,
     )) for r in conn.execute(
         "SELECT id, scope, school_id, school_name, major_name, notice_type, keyword, level_min "
-        "FROM kaoyan_subscriptions WHERE enabled = 1"
+        "FROM kaoyan_subscriptions WHERE enabled = TRUE"
     ).fetchall()]
     if not subs:
         return {"total": 0, "days": days, "items": [],
@@ -352,7 +356,7 @@ def pending_alerts(
     include_acked: bool = Query(False, description="是否包含已确认过的提醒"),
     kind: Optional[str] = Query(None, description="提醒类型过滤：deadline_soon | new_urgent | subscribed_new | new_important"),
     days: int = Query(7, ge=0, le=90, description="只看最近 N 天生成的提醒，0=不限"),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     """待处理提醒（默认只返回未 ack 的），按紧急程度 + 截止天数排序。
@@ -364,7 +368,7 @@ def pending_alerts(
     where = ["1=1", "EXISTS (SELECT 1 FROM kaoyan_notices n WHERE n.id = kaoyan_alert_records.notice_id)"]
     args: List[Any] = []
     if not include_acked:
-        where.append("acked = 0")
+        where.append("acked = FALSE")
     if kind:
         where.append("alert_kind = ?")
         args.append(kind)
@@ -405,8 +409,8 @@ def ack_alert(alert_id: int, db: Session = Depends(get_db)):
     if row[0]:
         return {"id": alert_id, "acked": True, "message": "已是已确认状态"}
     conn.execute(
-        "UPDATE kaoyan_alert_records SET acked = 1, acked_at = ? WHERE id = ?",
-        (cn_now().strftime("%Y-%m-%d %H:%M:%S"), alert_id),
+        "UPDATE kaoyan_alert_records SET acked = TRUE, acked_at = ? WHERE id = ?",
+        (naive_utc_iso(), alert_id),
     )
     db.commit()
     return {"id": alert_id, "acked": True, "message": "已确认"}
@@ -418,8 +422,8 @@ def ack_all_alerts(db: Session = Depends(get_db)):
     ensure_alert_schema(db)
     conn = raw_conn(db)
     cur = conn.execute(
-        "UPDATE kaoyan_alert_records SET acked = 1, acked_at = ? WHERE acked = 0",
-        (cn_now().strftime("%Y-%m-%d %H:%M:%S"),),
+        "UPDATE kaoyan_alert_records SET acked = TRUE, acked_at = ? WHERE acked = FALSE",
+        (naive_utc_iso(),),
     )
     db.commit()
     return {"acked_count": cur.rowcount}
@@ -430,16 +434,17 @@ def alert_stats(db: Session = Depends(get_db)):
     """提醒概览：未确认数、临期数、各等级分布。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
-    unacked = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = 0")
-    soon = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = 0 "
+    unacked = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = FALSE")
+    soon = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = FALSE "
                         "AND alert_kind = 'deadline_soon'")
-    overdue = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = 0 "
+    overdue = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = FALSE "
                            "AND alert_kind = 'deadline_soon' AND IFNULL(days_left, 0) < 0")
     by_level = dict(conn.execute(
         "SELECT IFNULL(importance_level, 'normal'), COUNT(*) FROM kaoyan_alert_records "
-        "WHERE acked = 0 GROUP BY 1").fetchall())
+        "WHERE acked = FALSE GROUP BY 1").fetchall())
     last_run = conn.execute(
-        "SELECT ran_at, trigger, scanned, created_alerts, elapsed_ms FROM kaoyan_alert_runs "
+        f"SELECT ran_at, {runs_trigger_column(conn)}, scanned, created_alerts, "
+        "elapsed_ms FROM kaoyan_alert_runs "
         "ORDER BY id DESC LIMIT 1").fetchone()
     return {
         "unacked": unacked,
@@ -467,7 +472,8 @@ def list_runs(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db
     ensure_alert_schema(db)
     conn = raw_conn(db)
     rows = conn.execute(
-        "SELECT id, ran_at, trigger, scanned, created_alerts, skipped_dup, elapsed_ms, detail "
+        f"SELECT id, ran_at, {runs_trigger_column(conn)}, scanned, created_alerts, "
+        "skipped_dup, elapsed_ms, detail "
         f"FROM kaoyan_alert_runs ORDER BY id DESC LIMIT {int(limit)}"
     ).fetchall()
     return {"total": len(rows), "items": [
@@ -504,7 +510,7 @@ def import_notice(payload: ImportNotice, db: Session = Depends(get_db)):
     dates = extract_dates(f"{title}\n{payload.body or ''}", ref_date=pub)
     deadline = next((d["date"] for d in dates if d["is_deadline"]), None)
     level = payload.importance_level if payload.importance_level in LEVEL_ORDER else cls["level"]
-    now_iso = cn_now().strftime("%Y-%m-%d %H:%M:%S")
+    now_iso = naive_utc_iso()
 
     # content 列由 scripts/notice_content_migration.py 显式迁移引入。
     # 这里做列探测：迁移前不写该列（INSERT 显式列清单，形状恒定），
@@ -553,7 +559,7 @@ def import_notices_batch(
     """批量导入（CSV 解析结果 / 连续粘贴）。逐条独立处理，单条失败不影响其他。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
-    now_iso = cn_now().strftime("%Y-%m-%d %H:%M:%S")
+    now_iso = naive_utc_iso()
     # content 列探测（迁移前不写，迁移后写正文快照），见 import_notice 注释
     cols = table_columns(conn, "kaoyan_notices")
     has_content = "content" in cols

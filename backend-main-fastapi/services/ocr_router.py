@@ -20,6 +20,7 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
@@ -276,6 +277,15 @@ class ChineseOCRLiteBackend:
 #: 默认候选链（精度优先）。chineseocr-lite 仅当 OCR_LITE_CMD 可执行时插入链尾。
 DEFAULT_CHAIN = ["local-gpu", "paddleocr", "rapidocr"]
 
+#: 后端类名册：status() 读 label 用（类属性零构造，见 OCRRouter.status）。
+#: 与 ``_backend()`` 的 name→类映射保持一致；新增后端时两处都要加。
+_BACKEND_CLASSES = {
+    "local-gpu": LocalGPUOCRBackend,
+    "paddleocr": PaddleOCRBackend,
+    "rapidocr": RapidOCRBackend,
+    "chineseocr-lite": ChineseOCRLiteBackend,
+}
+
 
 class OCRRouter:
     """三层 OCR 路由：可用性探测 → 按候选链尝试 → 快速失败回退。"""
@@ -287,6 +297,18 @@ class OCRRouter:
         self._avail_cache: dict = {}
         self._avail_ts: dict = {}
         self._avail_ttl = 30.0
+        #: 按后端名加锁：预热线程与首个请求可能同时打到同一个未探测的后端，
+        #: 无锁时两边各初始化一轮 ONNX 引擎（实测 7s 变 9.7s，且内存翻倍）。
+        #: 有锁时后来者搭已在飞的那轮，只付一次成本。
+        self._probe_locks: dict = {}
+        #: ``status()`` 整体快照缓存（P0-2）：它连算 ``_ordered_candidates`` +
+        #: ``available_backends``，TTL 过期后的首个调用要同步吃掉 rapidocr 的
+        #: ONNX 冷初始化（实测 6.6s）。快照几乎不变，整份缓存 30s 与
+        #: ``_avail_ttl`` 对齐即可 —— 过期后读到的就是新一轮探测结果。
+        self._status_snapshot: Optional[dict] = None
+        self._status_ts: float = 0.0
+        self._status_ttl = 30.0
+        self._status_lock = threading.Lock()
 
     def _backend(self, name: str):
         if name not in self._backends:
@@ -300,19 +322,31 @@ class OCRRouter:
                 self._backends[name] = ChineseOCRLiteBackend()
         return self._backends.get(name)
 
+    def _probe_once(self, name: str) -> bool:
+        """真探测一次（无缓存）。调用方负责持锁。"""
+        backend = self._backend(name)
+        try:
+            return bool(backend.available()) if backend else False
+        except Exception:
+            return False
+
     def is_available(self, name: str) -> bool:
         """带 TTL 缓存的可用性探测（避免每张图都做 HTTP/CLI 探测）。"""
         now = time.time()
         if name in self._avail_ts and now - self._avail_ts[name] < self._avail_ttl:
             return self._avail_cache.get(name, False)
-        backend = self._backend(name)
-        try:
-            ok = bool(backend.available()) if backend else False
-        except Exception:
-            ok = False
-        self._avail_cache[name] = ok
-        self._avail_ts[name] = now
-        return ok
+        import threading
+
+        lock = self._probe_locks.setdefault(name, threading.Lock())
+        with lock:
+            # 双检：等锁期间可能已被预热线程/另一请求填好
+            now = time.time()
+            if name in self._avail_ts and now - self._avail_ts[name] < self._avail_ttl:
+                return self._avail_cache.get(name, False)
+            ok = self._probe_once(name)
+            self._avail_cache[name] = ok
+            self._avail_ts[name] = now
+            return ok
 
     def available_backends(self) -> List[str]:
         chain = self._chain[:]
@@ -375,18 +409,64 @@ class OCRRouter:
         return OCRResult(text="", engine="", backend="", error="字节识别：无可用后端")
 
     def status(self) -> dict:
-        """路由状态快照（供报告/调试）。"""
-        return {
-            "prefer": self.prefer,
-            "chain": self._ordered_candidates(),
-            "available": self.available_backends(),
-            "backends": {
-                "local-gpu": self._backend("local-gpu").label,
-                "paddleocr": self._backend("paddleocr").label,
-                "rapidocr": self._backend("rapidocr").label,
-                "chineseocr-lite": self._backend("chineseocr-lite").label,
-            },
-        }
+        """路由状态快照（供报告/调试）。
+
+        label 走**类属性**而非 ``self._backend(name).label``：后者会构造
+        PaddleOCRBackend/RapidOCRBackend 实例（各建一个 service 对象），
+        而 status 只是诊断快照，不该有构造副作用。类属性访问零成本。
+
+        **P0-2 缓存**：本方法连算 ``_ordered_candidates`` + ``available_backends``，
+        两者都会走 ``is_available`` 的 TTL 探测 —— TTL 过期后的第一个调用者要
+        同步吃掉 rapidocr 的 ONNX 冷初始化（实测 6.6s）。它在 async 端点里被
+        直接调用时会把整个事件循环按住 6.6s，全站接口跟着假死。
+        现在整份快照按 ``_status_ttl`` 缓存 + 双检加锁：并发请求只付一次探测
+        成本，其余全部命中快照；冷路径也只阻塞调用它的那一个请求。
+        """
+        now = time.time()
+        snap = self._status_snapshot
+        if snap is not None and now - self._status_ts < self._status_ttl:
+            return snap
+        with self._status_lock:
+            now = time.time()
+            if (
+                self._status_snapshot is not None
+                and now - self._status_ts < self._status_ttl
+            ):
+                return self._status_snapshot
+            snapshot = {
+                "prefer": self.prefer,
+                "chain": self._ordered_candidates(),
+                "available": self.available_backends(),
+                "backends": {name: cls.label for name, cls in _BACKEND_CLASSES.items()},
+            }
+            self._status_snapshot = snapshot
+            self._status_ts = time.time()
+            return snapshot
+
+    def start_warmup(self) -> None:
+        """后台预热可用性探测（一次性守护线程，fire-and-forget）。
+
+        rapidocr 的 ``available()`` 会**真的初始化 ONNX 引擎**：实测冷调用
+        ~7s（本机空载），全量测试满载下 17s+。管理端「导入状态」页与批量
+        入库首页都要读 available，把这 7s 压在第一个请求的头上不合理 ——
+        表现为页面白转 7 秒，契约测试 5s 预算必炸。
+
+        预热线程在 router 单例创建时即发起；请求进来时多半已命中
+        ``_avail_ttl`` 缓存。未命中就回退到同步探测，**语义不变**：
+        这里仍然做真探测（血泪教训：import 级假探测曾让缺失依赖的后端
+        报"可用"，路由每页白跑一次再回退），只是把时机从请求路径挪到
+        实例化时刻。引擎在进程内全局缓存，TTL 过期后的再探测是热路径。
+        """
+        import threading
+
+        def _warm() -> None:
+            try:
+                self.available_backends()
+                logger.info("OCR 可用性预热完成: %s", self._avail_cache)
+            except Exception as e:  # noqa: BLE001 —— 预热失败不该影响主流程
+                logger.warning("OCR 可用性预热失败: %s: %s", type(e).__name__, e)
+
+        threading.Thread(target=_warm, name="ocr-router-warmup", daemon=True).start()
 
 
 #: 全局路由实例（懒加载单例）
@@ -397,6 +477,7 @@ def get_ocr_router(prefer: str = "auto") -> OCRRouter:
     global _router
     if _router is None:
         _router = OCRRouter(prefer=prefer)
+        _router.start_warmup()
     return _router
 
 

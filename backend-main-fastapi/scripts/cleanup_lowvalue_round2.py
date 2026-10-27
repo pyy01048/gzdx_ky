@@ -14,6 +14,7 @@
 
 判据以**实际内容**为准，不看文件名。
 """
+from pathlib import Path
 import os
 import re
 import shutil
@@ -26,9 +27,11 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.delete_guard import require_physical_delete_enabled  # noqa: E402
 
-DB = r"D:\平台\database\kaoyan.db"
-BACKUP_DIR = r"D:\平台\data\backups"
-KB = r"D:\平台\knowledge_base"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
+BACKUP_DIR = str(_REPO / "data" / "backups")
+KB = str(_REPO / "knowledge_base")
 TRASH_ROOT = os.path.join(KB, "_trash")
 
 # 已逐条人工核验的残留文档 id

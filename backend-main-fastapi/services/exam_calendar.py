@@ -30,6 +30,8 @@ import calendar
 import datetime
 from typing import Optional, Tuple
 
+from utils.timeutil import local_today
+
 #: 已由教育部正式公布初试日期的届 -> 初试第一天（date 对象用 (年, 月, 日) 元组表达）
 OFFICIAL_EXAM_DATES: dict[int, Tuple[int, int, int]] = {
     2025: (2024, 12, 21),
@@ -97,21 +99,31 @@ def exam_year_of(exam_date: Optional[datetime.date]) -> Optional[int]:
 
 
 def default_exam_year(today: Optional[datetime.date] = None) -> int:
-    """推断"用户当前最可能考的届"。
+    """推断"用户当前最可能考的届"：**下一场还没举行的初试**。
 
-    规则：考研在 12 月举行。1~6 月，多半是考**今年 12 月**（即届数 = 今年 + 1）；
-    7~12 月，多半已经错过今年的报名窗口（10 月），默认按**明年 12 月**算（届数 = 今年 + 2）。
-    仅用于**未配置届数时的兜底**，且会被前端标为预估。
+    规则按**日期**判定，不按月份。旧写法是「7~12 月就默认报明年那一届」，
+    实测在 2026-10-17 会给出 2028 届（初试 2027-12-18，还有 427 天），
+    而教育部公告的 2027 届初试就是 **2026-12-19（还有 63 天，报名 10-15~10-24 正在进行）** ——
+    空库新用户一打开首页，倒计时数的是"根本没报名的那一届"，方向就错了。
+
+    现在：从「初试年 = 今年」这一届起逐届往后找，取**第一个初试日 >= 今天**的届。
+    - 2026-10-17 → 2027 届（2026-12-19，63 天）
+    - 2026-12-25 → 2028 届（初试已过，自动滚到下一届）
+    仅用于**未配置 Goal 时的兜底**，前端必须标成「预估」。
     """
-    t = today or datetime.date.today()
-    return t.year + 1 if t.month <= 6 else t.year + 2
+    t = today or local_today()
+    for year in (t.year, t.year + 1, t.year + 2):
+        exam_date, _official = resolve_exam_date(year)
+        if exam_date >= t:
+            return year
+    return t.year + 2
 
 
 def describe(exam_year: int) -> dict:
     """给前端用的完整描述（初试日 + 届 + 是否官方 + 关键时间节点）。"""
     y = validate_exam_year(exam_year)
     exam_date, official = resolve_exam_date(y)
-    today = datetime.date.today()
+    today = local_today()
     return {
         "exam_year": y,
         "exam_date": exam_date.isoformat(),
@@ -121,6 +133,23 @@ def describe(exam_year: int) -> dict:
         "signup_hint": f"{exam_date.year} 年 10 月中下旬（以研招网公告为准）",
         "source": "教育部已公布" if official else "按 12 月倒数第二个周六规律估算",
     }
+
+
+def phase_of(days_left: int) -> str:
+    """倒计时阶段（01-仪表盘 §2.3.1：最后 30 天警示、最后 7 天冲刺）。
+
+    阶段判定**只有这一处**：前端按返回的 phase 上颜色/文案，不再自己 `days <= 30`
+    分支，否则同一个数字会在两个页面给出两种语气。
+    """
+    if days_left < 0:
+        return "passed"        # 初试已过（等下一届或复试）
+    if days_left <= 7:
+        return "sprint"        # 冲刺：最后 7 天
+    if days_left <= 30:
+        return "warning"       # 警示：最后 30 天
+    if days_left <= 90:
+        return "intensify"     # 考前 90 天：强化期
+    return "base"
 
 
 def resolve_for_db(goal) -> dict:
@@ -137,7 +166,7 @@ def resolve_for_db(goal) -> dict:
     Returns:
         含 ``exam_year / exam_date / is_official / is_estimated / days_left`` 等字段的 dict。
     """
-    today = datetime.date.today()
+    today = local_today()
 
     if goal is not None and getattr(goal, "exam_date", None) is not None:
         stored = goal.exam_date

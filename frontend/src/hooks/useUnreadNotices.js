@@ -68,9 +68,10 @@ export async function refreshUnread() {
 
 /**
  * 订阅未读状态。
+ * @param {{ enabled?: boolean }} options enabled=false 时不发起请求（访客没有个人未读）
  * @returns 当前快照 + refresh（标记后调用以同步角标）
  */
-export function useUnreadNotices() {
+export function useUnreadNotices({ enabled = true } = {}) {
   // 用版本号做 state：快照是模块级同一引用，只有版本号变化才能触发重渲染
   const [tick, setTick] = useState(version)
 
@@ -84,8 +85,8 @@ export function useUnreadNotices() {
 
   // 首次订阅时拉取一次（若已有数据则复用，避免切页面重复请求）
   useEffect(() => {
-    if (version === 0) refreshUnread()
-  }, [])
+    if (enabled && version === 0) refreshUnread()
+  }, [enabled])
 
   const refresh = useCallback(async () => {
     await refreshUnread()

@@ -1,9 +1,10 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { todayStr, uid } from '../utils/date'
 import { sm2Schedule, today as spacedToday } from '../utils/spaced'
 import { tasksApi, errorsApi, flashcardsApi, studyApi } from '../api/client'
 import { SEED } from '../mocks/seed'
+import { ukey } from '../utils/userKeys'
 
 /* 后端 id（数字）判断：纯数字字符串才可同步，uid 仅为本地离线占位 */
 const isBackendId = (id) => /^\d+$/.test(String(id || ''))
@@ -116,6 +117,29 @@ function stripApiKeys(providers) {
   })
 }
 
+/* P3（用户数据隔离）：persist 落盘键按登录账号区分。
+ * 实际读写键为 `kaoyan-archive-v1:{uid}`（uid 来自 utils/userKeys 的全局状态）；
+ * uid 未设置（未登录）时「不读不写、空存储语义」—— getItem 返回 null（zustand
+ * 视为无持久化数据），setItem/removeItem 跳过，避免把种子态写到全局键上。
+ * 登录/恢复会话后由 AuthContext 调 useStore.persist.rehydrate() 读回该账号的落盘。 */
+const userArchiveStorage = {
+  getItem: (name) => {
+    const key = ukey(name)
+    if (key === name) return null // uid 未设置：不读
+    try { return localStorage.getItem(key) } catch { return null }
+  },
+  setItem: (name, value) => {
+    const key = ukey(name)
+    if (key === name) return     // uid 未设置：不写
+    try { localStorage.setItem(key, value) } catch { /* 隐私模式 / 配额满 */ }
+  },
+  removeItem: (name) => {
+    const key = ukey(name)
+    if (key === name) return
+    try { localStorage.removeItem(key) } catch { /* 同上 */ }
+  },
+}
+
 const useStore = create(
   persist(
     (set, get) => ({
@@ -129,13 +153,9 @@ const useStore = create(
       settings: SEED.settings,
       updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
 
-      /* ---------- 当前科目（全局口径） ----------
-         顶部「科目切换器」(components/SubjectSwitcher.jsx) 写入这里，
-         作为全站页面共享的当前科目；'' 表示「全部科目」。
-         科目清单本身由后端 /api/goals/subjects 提供（hooks/useSubjectConfig），
-         这里只存"选了哪一个"，不重复存清单，避免与设置页的双数据源打架。 */
-      currentSubject: '',
-      setCurrentSubject: (subject) => set({ currentSubject: subject || '' }),
+      /* ---------- 全局展示：当前学科（'' = 全部） ---------- */
+      globalSubject: '',
+      setGlobalSubject: (subject) => set({ globalSubject: subject || '' }),
 
       /* ---------- 任务 ---------- */
       tasks: SEED.tasks,
@@ -144,7 +164,8 @@ const useStore = create(
         set((s) => ({ tasks: [local, ...s.tasks] }))
         syncTask(() =>
           tasksApi.create({ title: local.title, subject: local.subject, due_date: local.due, priority: local.priority || 0 })
-            .then((r) => adoptId('tasks', local.id, r?.id))
+            .then((r) => adoptId('tasks', local.id, r?.id)),
+          '任务新增',
         )
       },
       updateTask: (id, patch) => {
@@ -154,28 +175,28 @@ const useStore = create(
         if (patch.due != null) body.due_date = patch.due
         if (!isBackendId(id)) {
           // V3.0 修复：uid状态下缓存操作，adoptId后执行
-          queuePendingOp(id, (backendId) => syncTask(() => tasksApi.update(backendId, body)))
+          queuePendingOp(id, (backendId) => syncTask(() => tasksApi.update(backendId, body), '任务更新'))
           return
         }
-        syncTask(() => tasksApi.update(id, body))
+        syncTask(() => tasksApi.update(id, body), '任务更新')
       },
       removeTask: (id) => {
         set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }))
         if (!isBackendId(id)) {
           // V3.0 修复：uid状态下缓存操作，adoptId后执行
-          queuePendingOp(id, (backendId) => syncTask(() => tasksApi.remove(backendId)))
+          queuePendingOp(id, (backendId) => syncTask(() => tasksApi.remove(backendId), '任务删除'))
           return
         }
-        syncTask(() => tasksApi.remove(id))
+        syncTask(() => tasksApi.remove(id), '任务删除')
       },
       toggleTask: (id) => {
         set((s) => {
           const done = !(s.tasks.find((t) => t.id === id)?.done)
           if (isBackendId(id)) {
-            syncTask(() => (done ? tasksApi.complete(id) : tasksApi.uncomplete(id)))
+            syncTask(() => (done ? tasksApi.complete(id) : tasksApi.uncomplete(id)), '任务打卡')
           } else {
             // V3.0 修复：uid状态下缓存操作，adoptId后执行
-            queuePendingOp(id, (backendId) => syncTask(() => (done ? tasksApi.complete(backendId) : tasksApi.uncomplete(backendId))))
+            queuePendingOp(id, (backendId) => syncTask(() => (done ? tasksApi.complete(backendId) : tasksApi.uncomplete(backendId)), '任务打卡'))
           }
           return { tasks: s.tasks.map((t) => (t.id === id ? { ...t, done } : t)) }
         })
@@ -414,7 +435,9 @@ const useStore = create(
     }),
     {
       name: 'kaoyan-archive-v1',
-      /* 批次2-6（P2-3）：persist 加固
+      /* P3：存储层换成按 uid 的自定义 storage（见上方 userArchiveStorage），
+         name 保留为基名，真实键由 userKeys.ukey() 追加 `:{uid}` 后缀。
+         批次2-6（P2-3）：persist 加固
          ① version + migrate：后续 store 结构变更时在此迁移老用户数据；当前为 v1，
             结构与无版本老数据一致，migrate 仅原样透传（保留迁移扩展点，不丢数据）。
          ② partialize：不再整体落盘，只挑选需要持久化的键——
@@ -423,11 +446,11 @@ const useStore = create(
               用户的 AI 会话不被丢弃。 */
       version: 1,
       migrate: (persistedState) => persistedState,
+      storage: createJSONStorage(() => userArchiveStorage),
       partialize: (state) => ({
         backendOnline: state.backendOnline,
         settings: { ...state.settings, aiProviders: stripApiKeys(state.settings.aiProviders) },
-        // 当前科目是用户显式选择，跨刷新保持（与导航展开/布局偏好同属"设备无关的显式选择"）
-        currentSubject: state.currentSubject,
+        globalSubject: state.globalSubject,
         tasks: state.tasks,
         notebook: state.notebook,
         pan: state.pan,

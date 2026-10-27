@@ -14,6 +14,7 @@
 """
 
 from __future__ import annotations
+import logging
 
 import datetime
 from typing import Any
@@ -23,7 +24,11 @@ from sqlalchemy.orm import Session
 
 from models import KnowledgePoint, ErrorRecord, ReviewRecord
 from services import kp_mastery, taxonomy
-from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+from utils.timeutil import (  # 统一 naive UTC 时间规范（P0-4）
+    local_today,
+    local_window_for_day,
+    utcnow,
+)
 
 
 # 复习结果 → 质量分（对应 SM-2 的 0-5）
@@ -38,6 +43,15 @@ MASTERY_DELTA = {
     "forgotten": -15,
     "fuzzy": 5,
     "mastered": 12,
+}
+
+# 三档结果 → PG review_result ENUM 标签
+# 历史坑：这里原来直接把 forgotten/fuzzy/mastered 写进 review_records.result，
+# 而库里的 ENUM 只有 again/hard/good/easy —— PG 上每次复习提交都 500。
+RESULT_ENUM = {
+    "forgotten": "again",
+    "fuzzy": "hard",
+    "mastered": "good",
 }
 
 # 掌握度衰减：距上次复习每超过 N 天，掌握度按比例衰减
@@ -182,7 +196,7 @@ def apply_review(
         item_id=item_id,
         subject=payload.get("subject"),
         chapter=payload.get("chapter"),
-        result=result,
+        result=RESULT_ENUM[result],
         grade=RESULT_GRADE[result],
         mastery_before=payload.get("mastery_before", 0),
         mastery_after=payload.get("mastery_after", 0),
@@ -215,8 +229,27 @@ def apply_review(
                 "mastery_after": payload.get("mastery_after", 0),
             },
         )
-    except Exception:
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
+
+    # 掌握度重算（2026-10-16 修复链路缺口）：
+    # mastery 是派生列，只在 knowledge_points 被 UPDATE 时才由触发器刷新。
+    # 只写 review_records 不会刷 —— 用户复习完看到掌握度不动就是这个原因。
+    # 注意 seq：必须在 commit 之后、且用 SQL 自赋值触发（ORM 赋同值不发 UPDATE）。
+    if item_type == "knowledge":
+        try:
+            kp_mastery.touch_mastery(db, [item_id])
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：刷新失败会让"掌握度不动"复现，且极难定位
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "复习后掌握度重算失败 kp=%s: %s", item_id, str(_exc)[:160]
+            )
 
     payload["review_id"] = rec.id
     payload["next_review"] = next_dt.isoformat()
@@ -297,6 +330,7 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
     total = len(rows)
     counts = kp_mastery.tally(rows, learned)
     unlearned = counts["unlearned"]
+    learning = counts.get("learning", 0)
     weak = counts["weak"]
     mastered = counts["mastered"]
     reviewed = sum(1 for k in rows if (k.review_count or 0) > 0)
@@ -318,7 +352,7 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
         s = taxonomy.normalize_subject(k.subject)
         d = by_subject.setdefault(s, {
             "subject": s, "total": 0, "mastery_sum": 0, "mastered": 0,
-            "weak": 0, "unlearned": 0, "learned_mastery_sum": 0,
+            "learning": 0, "weak": 0, "unlearned": 0, "learned_mastery_sum": 0,
         })
         mastery = int(k.mastery or 0)
         state = kp_mastery.classify_state(mastery, k.id in learned)
@@ -336,6 +370,7 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
                 d["learned_mastery_sum"] / (d["total"] - d["unlearned"]), 1
             ) if d["total"] - d["unlearned"] else 0.0,
             "mastered": d["mastered"],
+            "learning": d.get("learning", 0),
             "weak": d["weak"],
             "unlearned": d["unlearned"],
             "is_core": taxonomy.is_core(d["subject"]),
@@ -372,8 +407,9 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
         key=lambda k: (int(k.mastery or 0), -(k.exam_frequency or 0)),
     )[:10]
 
-    # 近 7 天复习量
-    week_ago = now - datetime.timedelta(days=7)
+    # 近 7 天复习量：按**北京自然日**切（含今天共 7 天），与 dashboard/growth 同源。
+    # 用 now-7*24h 的滚动窗会把「昨天北京 00:30」和「今天 00:30」算成不同天数。
+    week_ago = local_window_for_day(local_today() - datetime.timedelta(days=6))[0]
     recent_reviews = db.query(func.count(ReviewRecord.id)).filter(
         ReviewRecord.created_at >= week_ago
     ).scalar() or 0
@@ -384,6 +420,7 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
         "new_count": new_count,
         "due_count": due,
         "mastered_count": mastered,
+        "learning_count": learning,
         "weak_count": weak,
         "unlearned_count": unlearned,
         "avg_mastery": avg,

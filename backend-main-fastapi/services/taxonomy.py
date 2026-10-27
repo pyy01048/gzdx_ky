@@ -542,21 +542,92 @@ def is_configured_subject(db, subject: str | None) -> bool:
     return db.query(SubjectConfig).filter(SubjectConfig.subject == s).first() is not None
 
 
+def load_subject_removals(db) -> set[str]:
+    """读取科目删除墓碑集合（被用户显式删除/改名迁走的内置科目名）。
+
+    墓碑语义：命中集合的内置科目**不再被任何播种类函数自动补齐**。
+    显式重建（POST /api/taxonomy/subjects）会清除对应墓碑。
+    """
+    from sqlalchemy import text
+
+    try:
+        rows = db.execute(text("SELECT subject FROM subject_removals")).fetchall()
+    except Exception:  # noqa: BLE001
+        # 墓碑表尚未建（旧库未跑 apply_schema）时退化为空集，
+        # 保证升级窗口期内服务不因缺表 500；日志留痕。
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "subject_removals 表不可读（可能未执行 apply_schema），按无墓碑处理",
+            exc_info=True,
+        )
+        return set()
+    return {r[0] for r in rows if r[0]}
+
+
+def mark_subject_removed(db, subject: str) -> None:
+    """登记删除墓碑（幂等；调用方负责 commit）。"""
+    from sqlalchemy import text
+
+    name = (subject or "").strip()
+    if not name:
+        return
+    db.execute(
+        text(
+            "INSERT INTO subject_removals (subject) VALUES (:s) "
+            "ON CONFLICT (subject) DO NOTHING"
+        ),
+        {"s": name},
+    )
+
+
+def unmark_subject_removed(db, subject: str) -> None:
+    """清除删除墓碑（用户显式重建同名科目时；调用方负责 commit）。"""
+    from sqlalchemy import text
+
+    name = (subject or "").strip()
+    if not name:
+        return
+    db.execute(text("DELETE FROM subject_removals WHERE subject = :s"), {"s": name})
+
+
 def ensure_subject_config_seeds(db) -> int:
     """把内置默认科目（CORE+MAJOR+EXT 合并去重）播种为 subject_config 行。
 
-    幂等语义（重要）：**仅当表为空时整体播种一次**。
-    - 老库升级后首次调用自动补齐全部内置科目字典；
-    - 重复调用不产生重复行；
-    - 用户删掉某个内置科目行后，表已非空，后续调用**不会复活**该行
-      （删除即生效；"恢复内置默认"留待后续阶段的显式恢复接口）。
+    幂等语义（2026-10-14 修正）
+    --------------------------
+    原实现是「**仅当表为空时整体播种一次**」。这个前提在真实环境里不成立：
+
+    - ``core/sql/091_subjects_ece_seed.sql`` 等分片会**先**往 subject_config
+      写入若干行（通信原理/电路/DSP/电磁场/计网）；
+    - 于是本函数永远看到「表非空」而直接返回 0，
+      CORE_SUBJECTS 里的**数字电子技术、模拟电子技术、数学、英语、政治**
+      等基础科目永远播不下去；
+    - 空测试库尤其明显，直接表现为 test_taxonomy_subjects 的
+      「内置默认科目未播种: 数字电子技术」。
+    生产库之所以看不出问题，只是因为早年手工灌过全量数据。
+
+    改为**按缺失补齐**：逐个科目检查是否已存在，只补不存在的。
+    这样既保持幂等（重复调用不产生重复行），又不会因为
+    「别的分片先写过几行」而漏播基础科目。
+
+    复活防护（2026-10-19 修正）
+    --------------------------
+    「按缺失补齐」有一个致命副作用：用户删掉的内置科目会在下一次
+    GET /api/taxonomy/subjects 时被判「缺失」而**复活**
+    （线上实测：DELETE 中医综合 200 → 列表里仍在 → subjects 表新行）。
+    原 docstring 声称「不会复活用户删掉的行」——那句话在当时就是假的，
+    且无测试守护。现由 ``subject_removals`` 墓碑表强制保证：
+    删除/重命名迁走的内置科目登记墓碑，本函数跳过；显式重建清墓碑。
     """
     from models import SubjectConfig
 
-    if db.query(SubjectConfig).count() > 0:
-        return 0
+    existing = {row.subject for row in db.query(SubjectConfig.subject).all() if row.subject}
+    removed = load_subject_removals(db)
     inserted = 0
     for name in ALL_SUBJECTS:  # CORE + MAJOR + EXT 已合并去重
+        if name in existing or name in removed:
+            continue
         db.add(SubjectConfig(
             subject=name,
             chapters=CHAPTERS.get(name, []),
@@ -564,8 +635,9 @@ def ensure_subject_config_seeds(db) -> int:
             is_custom=False,
         ))
         inserted += 1
-    db.commit()
-    load_configured_subjects(db)
+    if inserted:
+        db.commit()
+        load_configured_subjects(db)
     return inserted
 
 

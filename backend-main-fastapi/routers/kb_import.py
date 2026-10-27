@@ -48,22 +48,29 @@ from services import qbank_builder as qb
 from services import taxonomy
 from services.quiz_content_gate import admit as gate_admit
 from services.quiz_content_gate import build_stem_answer_index, gate_log_summary
+from utils.security import require_admin
 
-router = APIRouter(prefix="/api/kb-import", tags=["kb-import"])
+router = APIRouter(prefix="/api/kb-import", tags=["kb-import"], dependencies=[Depends(require_admin)])
 
 #: 单篇文档返回的候选数上限（防超大响应）。超出后打 truncated=true。
 MAX_CANDIDATES_PER_DOC = 200
 #: 相似度去重阈值（与 qbank_builder.is_duplicate 一致）
 SIMILARITY_THRESHOLD = 0.86
+#: documents.source_format（PG 枚举 doc_format）的合法值；scan 按类型过滤时校验
+ALLOWED_FILE_TYPES = {
+    "pdf", "txt", "doc", "docx", "md", "image", "pptx", "ppt",
+    "xlsx", "html", "json", "jpg", "png", "other",
+}
 
 
 # --------------------------------------------------------------------------- #
 # 请求体模型
 # --------------------------------------------------------------------------- #
 class ScanRequest(BaseModel):
-    """POST /scan 入参。doc_ids 缺省=全部文档。"""
+    """POST /scan 入参。doc_ids 缺省=全部文档；file_type 缺省=不按格式过滤。"""
 
     doc_ids: Optional[list[int]] = None
+    file_type: Optional[str] = None
 
 
 class SelectedItem(BaseModel):
@@ -91,8 +98,12 @@ class ConfirmRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 # 内部工具
 # --------------------------------------------------------------------------- #
-def _load_docs(db: Session, doc_ids: Optional[list[int]]) -> list[Document]:
-    """按 doc_ids 取文档；缺省取全部。任一 doc_id 不存在 → 404。"""
+def _load_docs(
+    db: Session,
+    doc_ids: Optional[list[int]],
+    file_type: str = "",
+) -> list[Document]:
+    """按 doc_ids / file_type 取文档；两者都缺省取全部。任一 doc_id 不存在 → 404。"""
     q = db.query(Document)
     if doc_ids is not None:
         if not doc_ids:
@@ -106,7 +117,13 @@ def _load_docs(db: Session, doc_ids: Optional[list[int]]) -> list[Document]:
             raise HTTPException(status_code=404, detail=f"文档不存在: {missing}")
         # 保持入参顺序
         rows.sort(key=lambda d: doc_ids.index(d.id))
+        if file_type:
+            rows = [d for d in rows if str(d.source_format or "").lower() == file_type]
         return rows
+    if file_type:
+        # source_format 在 PG 是原生枚举：用规范化属性比较，由 ORM 负责 cast，
+        # 不能对枚举列套 lower()（SQL 侧无此函数，会直接报错）。
+        q = q.filter(Document.source_format == file_type)
     return q.order_by(Document.id.asc()).all()
 
 
@@ -241,9 +258,16 @@ def _list_doc_candidates(
 async def scan(payload: ScanRequest, db: Session = Depends(get_db)):
     """扫描知识库文档，识别候选题（**只读，绝不写库**）。
 
-    body: ``{"doc_ids": [int, ...]}``（缺省=全部文档，支持分批传 doc_ids）。
+    body: ``{"doc_ids": [int, ...], "file_type": "pdf"}``。
+    两者缺省=全部文档；同时传时取交集，支持按格式分批扫描。
     """
     t0 = time.perf_counter()
+    file_type = (payload.file_type or "").strip().lower()
+    if file_type and file_type not in ALLOWED_FILE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的文件类型：{payload.file_type}（可选：{', '.join(sorted(ALLOWED_FILE_TYPES))}）",
+        )
     # 确保科目字典缓存就绪（自定义科目归一）
     try:
         taxonomy.ensure_subject_config_seeds(db)
@@ -251,7 +275,7 @@ async def scan(payload: ScanRequest, db: Session = Depends(get_db)):
         pass
     taxonomy.load_configured_subjects(db)
 
-    docs = _load_docs(db, payload.doc_ids)
+    docs = _load_docs(db, payload.doc_ids, file_type)
     total_docs = db.query(Document).count()
 
     existing_hashes, existing_by_len, existing_lengths = _build_existing_index(db)
@@ -282,6 +306,7 @@ async def scan(payload: ScanRequest, db: Session = Depends(get_db)):
         "total_candidates": total_candidates,
         "dup_skipped": total_dup,
         "elapsed_seconds": elapsed,
+        "file_type": file_type or None,
         "max_candidates_per_doc": MAX_CANDIDATES_PER_DOC,
         "items": items,
     }

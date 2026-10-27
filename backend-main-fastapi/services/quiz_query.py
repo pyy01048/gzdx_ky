@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """题库查询口径统一（M1-1h，2026-10）。
 
-背景：M1-1f 把 OCR 碎片题标记 `quiz_questions.is_junk=1`。刷题列表端点
+背景：M1-1f 把 OCR 碎片题标记 `quiz_questions.is_junk = TRUE`。刷题列表端点
 `GET /api/quiz/questions` 已默认排除，但**其它统计端点**（考频/套卷索引/年份/
 章节/科目题数）若不排除，会出现"各科目题数 9171 但可刷 8852"的口径漂移。
 
@@ -9,16 +9,40 @@
 从根上避免口径再次漂移。
 
 口径约定：
-  * `is_junk = 1` 的题 = OCR 碎片/答案串，**默认不可见**；
+  * `is_junk = TRUE` 的题 = OCR 碎片/答案串，**默认不可见**；
   * `is_junk = NULL`（历史行、未标记）视为**非碎片**，可见（向后兼容）。
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from sqlalchemy import and_, func, not_, or_, text
 
 from models import QuizQuestion
+
+
+# --------------------------------------------------------------------------- #
+# 方言开关（PostgreSQL 迁移，2026-10-14）
+#
+# 本模块原先**硬编码 SQLite 专有 SQL**，实测在 PG 上三条过滤全部报错：
+#   * `GLOB`      → syntax error at or near "GLOB"
+#   * `json_each` / `json_valid` → function does not exist（PG 是 jsonb_* 系列）
+# 而这三条表达式是刷题列表与考频/套卷/年份统计的**默认过滤**，
+# 后果是 PG 下整个刷题口径失效（列表端点直接 500）。
+#
+# 修法：按当前后端生成对应方言的表达式。
+#   SQLite : GLOB / json_valid / json_each（原逻辑，一字不动）
+#   PG     : 正则 ~ / jsonb_typeof / jsonb_array_elements
+# 判据语义保持一致（两端均已用同批实测行数核对）。
+# --------------------------------------------------------------------------- #
+def _is_pg_backend() -> bool:
+    """当前是否 PG 后端。读 database.IS_POSTGRES（由 core.db_session 统一决定）。"""
+    try:
+        from database import IS_POSTGRES
+        return bool(IS_POSTGRES)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 # --------------------------------------------------------------------------- #
@@ -37,9 +61,30 @@ EXAM_PREFIX = "真题:%"
 TEXTBOOK_PREFIX = "知识库:%"
 
 
+#: 文件名中出现即判定为真题的关键词（优先级高于前缀）
+_EXAM_WORDS = re.compile(r"真题|试卷|入学考试|招生考试|考研试题|考题")
+#: 文件名中出现即判定为教材/章节习题的关键词
+_EXERCISE_WORDS = re.compile(r"章节题库|课后题|习题|练习|辅导")
+
+
 def source_kind_of(source: Optional[str]) -> str:
-    """按 `source` 前缀派生来源大类，返回 exam / textbook / custom（永不返回 None）。"""
+    """派生来源大类，返回 exam / textbook / custom（永不返回 None）。
+
+    修复 docx/25 §1.2「归类错乱」：历史数据只按前缀归类，导致
+    ``知识库:0-（无答案版）25管综真题.pdf`` 这类真题被误判为教材题（实测 1138 题）。
+
+    判定顺序（内容特征优先于前缀，因为前缀是导入工具写的、不可信）：
+      1. 文件名含「章节题库/课后题/习题/辅导」→ textbook
+         （先判习题：``真题:XX章节题库.pdf`` 这种前缀与内容矛盾的，以内容为准）
+      2. 文件名含「真题/试卷/入学考试」→ exam
+      3. 回退到前缀：「真题:」→ exam，「知识库:」→ textbook
+      4. 其余 → custom
+    """
     s = (source or "").strip()
+    if _EXERCISE_WORDS.search(s):
+        return "textbook"
+    if _EXAM_WORDS.search(s):
+        return "exam"
     if s.startswith("真题:"):
         return "exam"
     if s.startswith("知识库:"):
@@ -68,17 +113,44 @@ def source_kind_expr(source_kind: Optional[str], model: Any = QuizQuestion) -> A
         return None
     if kind not in SOURCE_KIND_CHOICES:
         raise ValueError(f"不支持的 source_kind：{source_kind}")
+
+    # 与 source_kind_of() 保持同一判定顺序（习题词优先于真题词），
+    # 否则 Python 侧分类与 SQL 侧过滤会给出不同结果（前端筛选与详情页自相矛盾）。
+    # 只使用 LIKE，不依赖 PG 的 ~ 正则 / SQLite 的 REGEXP：两后端语义完全一致，
+    # 也不需要在 SQLite 侧注册自定义函数。
+    exam_kw = ("真题", "试卷", "入学考试", "招生考试", "考研试题", "考题")
+    exercise_kw = ("章节题库", "课后题", "习题", "练习", "辅导")
+
+    def _hit_any(keywords: tuple[str, ...]):
+        col = model.source
+        return or_(*[and_(col.isnot(None), col.like(f"%{kw}%")) for kw in keywords])
+
+    def _hit_none(keywords: tuple[str, ...]):
+        col = model.source
+        return and_(*[or_(col.is_(None), not_(col.like(f"%{kw}%"))) for kw in keywords])
+
+    hit_exam, hit_exercise = _hit_any(exam_kw), _hit_any(exercise_kw)
+    no_exam, no_exercise = _hit_none(exam_kw), _hit_none(exercise_kw)
+
     if kind == "exam":
-        return model.source.like(EXAM_PREFIX)
+        # 真题 = 命中真题词且不含习题词；或前缀真题且不含习题词
+        return or_(
+            and_(hit_exam, no_exercise),
+            and_(model.source.like(EXAM_PREFIX), no_exercise),
+        )
     if kind == "textbook":
-        return model.source.like(TEXTBOOK_PREFIX)
-    # custom：既非真题也非教材（含 source 为 NULL 的历史行），不丢数据。
-    # 两个「非」之间必须是 AND——用 OR 会把 exam/textbook 行也放进来。
+        return or_(
+            hit_exercise,
+            and_(model.source.like(TEXTBOOK_PREFIX), no_exam),
+        )
+    # custom：三类特征都不命中（含 source 为 NULL 的历史行），不丢数据。
     return or_(
         model.source.is_(None),
         and_(
             not_(model.source.like(EXAM_PREFIX)),
             not_(model.source.like(TEXTBOOK_PREFIX)),
+            no_exam,
+            no_exercise,
         ),
     )
 
@@ -158,12 +230,19 @@ def has_real_answer_expr(model: Any = QuizQuestion) -> Any:
     bad_clauses += [core.like(f"{n}简%") for n in _CN_NUMERALS]
     bad_clauses += [core.like(f"{n}名%") for n in _CN_NUMERALS]
     bad_clauses += [core.like(f"{n}解%") for n in _CN_NUMERALS]
-    bad_clauses += [
-        # 小问标号：全角/半角括号 + 数字。**必须用 * 覆盖任意位数** ——
-        # 实测真库既有「（1）」30 行，也有「（25）」1 行，只匹配一位数会漏。
-        core.op("GLOB")("（[0-9]*）"),
-        core.op("GLOB")("([0-9]*)"),
-    ]
+    # 小问标号：全角/半角括号 + 数字。**必须覆盖任意位数** ——
+    # 实测真库既有「（1）」30 行，也有「（25）」1 行，只匹配一位数会漏。
+    # PG 无 GLOB，改用 POSIX 正则 `~`（锚定首尾，语义等价于"整串即括号包数字"）。
+    if _is_pg_backend():
+        bad_clauses += [
+            core.op("~")(r"^（[0-9]+）$"),
+            core.op("~")(r"^\([0-9]+\)$"),
+        ]
+    else:
+        bad_clauses += [
+            core.op("GLOB")("（[0-9]*）"),
+            core.op("GLOB")("([0-9]*)"),
+        ]
     # 「详见正文」类占位语：原文是「见解析」「请注意电路中IB和IC的数量级」这类
     # 提示/指引，不是可比对的答案。真库实测漏网 6 条（id=1497「略」、1707/248/566/568
     # 「见解析」、2640/2641/2643「请注意…」、7882「（10011)」畸形标号）。
@@ -172,10 +251,16 @@ def has_real_answer_expr(model: Any = QuizQuestion) -> Any:
     # 判据必须建在**剥离前**的原始 answer 上 —— answer_core_expr 会把全角括号当
     # 包装字符去掉，core 里只剩「10011」，而纯数字答案（填空题常见）不能一刀切。
     raw = func.trim(model.answer)
-    bad_clauses += [
-        raw.op("GLOB")("（[0-9]*[)]"),
-        raw.op("GLOB")("([0-9]*）"),
-    ]
+    if _is_pg_backend():
+        bad_clauses += [
+            raw.op("~")(r"^（[0-9]+\)$"),
+            raw.op("~")(r"^\([0-9]+）$"),
+        ]
+    else:
+        bad_clauses += [
+            raw.op("GLOB")("（[0-9]*[)]"),
+            raw.op("GLOB")("([0-9]*）"),
+        ]
     return and_(not_empty, not_(or_(*bad_clauses)))
 
 
@@ -189,6 +274,33 @@ def blank_options_expr(model: Any = QuizQuestion) -> Any:
     """
     tbl = model.__tablename__
     col = f"{tbl}.options"
+
+    if _is_pg_backend():
+        # PostgreSQL（2026-10-14 新增）：json_valid / json_each 在 PG 不存在，改用原生能力：
+        #   * 判"有没有非空元素" → jsonb_array_elements_text 展开后 trim 非空
+        # 语义与 SQLite 侧一致：NULL / 'null' / '[]' / 全空白数组都算空。
+        #
+        # 列类型：权威 DDL（core/sql/040_questions.sql）把 options 定为 **jsonb**，
+        # 生产库与按 DDL 自举的测试库实测均为 jsonb；只有被 ORM create_all 抢先建表的
+        # 旧库才是 json。原实现写死 json_typeof()，在 jsonb 列上直接
+        # "function json_typeof(jsonb) does not exist"。统一先 ``::jsonb``
+        # （jsonb→jsonb 为空操作，json→jsonb 为合法转换），两种列都能跑。
+        j = f"({col})::jsonb"
+        no_content = text(
+            f"NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text("
+            f"CASE WHEN jsonb_typeof({j}) = 'array' THEN {j} ELSE '[]'::jsonb END) AS e "
+            f"WHERE btrim(e) <> '')"
+        )
+        return or_(
+            model.options.is_(None),
+            # JSON null（区别于 SQL NULL）：jsonb_typeof 返回 'null'
+            text(f"jsonb_typeof({j}) = 'null'"),
+            # 空数组（含全空白元素）
+            and_(text(f"jsonb_typeof({j}) = 'array'"), no_content),
+            # 非数组对象：无内容
+            text(f"jsonb_typeof({j}) = 'object'"),
+        )
+
     # 直接写 EXISTS / NOT EXISTS 两条 text（TextClause 不能被 not_() 取反）
     has_content = text(
         f"EXISTS (SELECT 1 FROM json_each({col}) WHERE trim(json_each.value) <> '')"
@@ -227,7 +339,7 @@ def practiceable_expr(model: Any = QuizQuestion) -> Any:
 
 
 def visible_quiz_filter(query: Any, include_junk: bool = False) -> Any:
-    """给任意 QuizQuestion 查询套上"可见题目"过滤（默认排除 is_junk=1）。
+    """给任意 QuizQuestion 查询套上"可见题目"过滤（默认排除 is_junk = TRUE）。
 
     Args:
         query: 一个以 `QuizQuestion` 为主表的 SQLAlchemy Query。
@@ -242,7 +354,7 @@ def visible_quiz_filter(query: Any, include_junk: bool = False) -> Any:
     """
     if include_junk:
         return query
-    # NULL 视为未标记（非碎片）→ 保留；仅排除显式 is_junk=1
+    # NULL 视为未标记（非碎片）→ 保留；仅排除显式 is_junk = TRUE
     return query.filter(
         or_(QuizQuestion.is_junk.is_(False), QuizQuestion.is_junk.is_(None))
     )

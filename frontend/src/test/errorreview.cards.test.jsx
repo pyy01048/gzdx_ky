@@ -13,7 +13,11 @@ import { MemoryRouter } from 'react-router-dom'
  *  4. 记忆卡片能正确解析后端 {items:[...]}，科目下拉来自 API（无硬编码科目）。
  * ------------------------------------------------------------------ */
 
-vi.mock('../api/client', () => {
+vi.mock('../api/client', async (importOriginal) => {
+  // 只替换业务 API 对象：request / fetchAllPages / MAX_PAGE_SIZE 一律保留真实实现，
+  // 否则"逐页取全量"这条路径根本没被测到（历史 bug 恰恰在这层：page_size 写 500
+  // 被后端 422 掉，页面静默空）。
+  const actual = await importOriginal()
   const errorsApi = {
     list: vi.fn(() => Promise.resolve({
       total: 1,
@@ -79,7 +83,7 @@ vi.mock('../api/client', () => {
 
   const flashcardsApi = {
     list: vi.fn(() => Promise.resolve({
-      total: 2, page: 1, page_size: 500, total_pages: 1,
+      total: 2, page: 1, page_size: actual.MAX_PAGE_SIZE, total_pages: 1,
       items: [
         { id: 1, front: '正面A', back: '背面A', knowledge_point_id: 110, next_review: '2026-10-01T00:00:00', review_count: 2, interval: 3, ease_factor: 2.6, mastery: 'review' },
         { id: 2, front: '正面B', back: '背面B', knowledge_point_id: null, next_review: null, review_count: 0, interval: 1, ease_factor: 2.5, mastery: 'new' },
@@ -91,15 +95,18 @@ vi.mock('../api/client', () => {
   }
 
   return {
+    ...actual,
     request: vi.fn(() => Promise.resolve(null)),
     DEFAULT_TIMEOUT: 30000,
     ApiError: class ApiError extends Error {},
     fileUrl: (p) => p,
     errorsApi, taxonomyApi, quizApi, flashcardsApi,
+    favoritesApi: { list: vi.fn(), add: vi.fn(), check: vi.fn(), toggle: vi.fn(), remove: vi.fn() },
+    growthApi: { timeline: vi.fn() },
   }
 })
 
-import { errorsApi, taxonomyApi, flashcardsApi } from '../api/client'
+import { errorsApi, taxonomyApi, flashcardsApi, MAX_PAGE_SIZE } from '../api/client'
 import useStore from '../store/useStore'
 
 function Wrapper({ children, route = '/' }) {
@@ -121,7 +128,7 @@ afterEach(() => { cleanup(); localStorage.clear() })
 /* ============================ 错题复盘 ============================ */
 describe('ErrorReview：学科来自 API、掌握度三态、知识点按实际链路', () => {
   it('学科筛选只列有错题的科目（英语 error_count=0 不出现）', async () => {
-    const ErrorReview = (await import('../pages/ErrorReview')).default
+    const ErrorReview = (await import('../v3/pages/ErrorReview')).default
     render(<Wrapper route="/error-review"><ErrorReview /></Wrapper>)
     await settle()
 
@@ -134,7 +141,7 @@ describe('ErrorReview：学科来自 API、掌握度三态、知识点按实际�
   })
 
   it('掌握度是三态（未学/薄弱/已掌握），点击后按 mastery_state 请求后端', async () => {
-    const ErrorReview = (await import('../pages/ErrorReview')).default
+    const ErrorReview = (await import('../v3/pages/ErrorReview')).default
     render(<Wrapper route="/error-review"><ErrorReview /></Wrapper>)
     await settle()
 
@@ -152,7 +159,7 @@ describe('ErrorReview：学科来自 API、掌握度三态、知识点按实际�
   })
 
   it('知识点关联展示实际链路：题目关联优先且标"已校验"，启发式标"自动"', async () => {
-    const ErrorReview = (await import('../pages/ErrorReview')).default
+    const ErrorReview = (await import('../v3/pages/ErrorReview')).default
     render(<Wrapper route="/error-review"><ErrorReview /></Wrapper>)
     await settle()
 
@@ -166,12 +173,30 @@ describe('ErrorReview：学科来自 API、掌握度三态、知识点按实际�
     // question_link 没有 link_id → 不可解除，显示"题目侧"
     expect(screen.getByText('题目侧')).toBeInTheDocument()
   })
+
+  it('深链 ?kp_id= 按考点筛错题（D-10 联动错题本），清除后恢复全量', async () => {
+    const ErrorReview = (await import('../v3/pages/ErrorReview')).default
+    render(<Wrapper route="/error-review?kp_id=102&kp_name=%E4%B8%AD%E5%80%BC%E5%AE%9A%E7%90%86"><ErrorReview /></Wrapper>)
+    await settle()
+
+    // 第一次取列表就带上 knowledge_point_id（后端按 error_knowledge_links 过滤）
+    expect(errorsApi.list).toHaveBeenCalledWith(expect.objectContaining({ knowledge_point_id: '102' }))
+
+    // 界面上要说清楚"现在只看这个考点"，否则用户以为错题只剩一条
+    expect(screen.getByText('中值定理')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /只看这个考点/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /只看这个考点/ }))
+    await settle()
+    expect(errorsApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ knowledge_point_id: undefined }))
+    expect(screen.queryByText('中值定理')).toBeNull()
+  })
 })
 
 /* ============================ 记忆卡片 ============================ */
 describe('Cards：正确解析后端 {items}、科目下拉来自 API', () => {
   it('卡片总数 = 后端 items.length（不再把 {items} 当数组用）', async () => {
-    const Cards = (await import('../pages/Cards')).default
+    const Cards = (await import('../v3/pages/Cards')).default
     render(<Wrapper route="/cards"><Cards /></Wrapper>)
     await settle()
 
@@ -183,9 +208,9 @@ describe('Cards：正确解析后端 {items}、科目下拉来自 API', () => {
 
   /* 回归核心：此前这一路径是**白屏**——flashcardsApi.list 返回 {items:[...]}
      却被当裸数组用（cards.filter is not a function），且 setCards 在 store 里
-     根本不存在（调用即抛 TypeError 被 catch 吞掉）→ 后端 649 张卡永远加载不出来。 */
+     根本不存在（调用即抛 TypeError 被 catch 吞掉）→ 后端已有的卡片永远加载不出来。 */
   it('加载成功路径：{items} 写入 store 且卡片真的渲染出来（不再是白屏）', async () => {
-    const Cards = (await import('../pages/Cards')).default
+    const Cards = (await import('../v3/pages/Cards')).default
     render(<Wrapper route="/cards"><Cards /></Wrapper>)
     await settle()
 
@@ -198,14 +223,37 @@ describe('Cards：正确解析后端 {items}、科目下拉来自 API', () => {
     expect(stored[1].status).toBe('new')                // mastery 'new' → new
 
     // 2) 切到「列表」视图，正反面文本真的渲染（曾经整页白屏 / 只有空态）
-    fireEvent.click(screen.getByRole('button', { name: /列表/ }))
+    fireEvent.click(screen.getByRole('tab', { name: /列表/ }))
     await settle()
     expect(screen.getByText('正面A')).toBeInTheDocument()
     expect(screen.getByText('正面B')).toBeInTheDocument()
   })
 
+  /* 回归：分页取全量。历史 bug 是 page_size 写 500 → 后端 Query(le=200) 直接 422，
+     catch 成空数组，"后端有几百张卡、页面一张也不显示"。 */
+  it('卡片逐页取全量，且任何一次请求的 page_size 都不超过后端上限', async () => {
+    const mk = (from, n) => Array.from({ length: n }, (_, i) => ({
+      id: from + i, front: `正面${from + i}`, back: `背面${from + i}`,
+      knowledge_point_id: null, next_review: null,
+      review_count: 0, interval: 1, ease_factor: 2.5, mastery: 'new',
+    }))
+    flashcardsApi.list
+      .mockResolvedValueOnce({ total: 250, page: 1, page_size: MAX_PAGE_SIZE, total_pages: 2, items: mk(1, 200) })
+      .mockResolvedValueOnce({ total: 250, page: 2, page_size: MAX_PAGE_SIZE, total_pages: 2, items: mk(201, 50) })
+
+    const Cards = (await import('../v3/pages/Cards')).default
+    render(<Wrapper route="/cards"><Cards /></Wrapper>)
+    await settle()
+
+    expect(flashcardsApi.list).toHaveBeenCalledTimes(2)
+    for (const [params] of flashcardsApi.list.mock.calls) {
+      expect(params.page_size).toBeLessThanOrEqual(MAX_PAGE_SIZE)
+    }
+    expect(useStore.getState().cards).toHaveLength(250)
+  })
+
   it('新建卡包科目下拉来自科目 API，且不含硬编码的"专业课"', async () => {
-    const Cards = (await import('../pages/Cards')).default
+    const Cards = (await import('../v3/pages/Cards')).default
     render(<Wrapper route="/cards"><Cards /></Wrapper>)
     await settle()
 

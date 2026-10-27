@@ -73,7 +73,18 @@ const SUBJECT_ROWS = [
 ]
 const subjectsMock = vi.fn(async () => ({ subjects: SUBJECT_ROWS }))
 
-vi.mock('../api/client', () => ({
+vi.mock('../api/client', async (importOriginal) => ({
+  // 派生真实模块的导出清单：client.js 新增导出（如 fetchAllPages）不必再回来补枚举，
+  // 否则页面一 import 就报 "No export is defined on the mock"。
+  ...(await importOriginal()),
+  favoritesApi: {
+    list: vi.fn().mockResolvedValue({ total: 0, items: [] }),
+    add: vi.fn().mockResolvedValue({ ok: true, id: 1 }),
+    check: vi.fn().mockResolvedValue({ favorited: false, id: null }),
+    toggle: vi.fn().mockResolvedValue({ favorited: false }),
+    remove: vi.fn().mockResolvedValue({ ok: true }),
+  },
+  growthApi: { timeline: vi.fn().mockResolvedValue({ days: 30, streak_days: 0, active_days: 0, timeline: [], subject_breakdown: [] }) },
   documentsApi: {
     list: (...args) => listMock(...args),
     getContent: (...args) => getContentMock(...args),
@@ -96,7 +107,7 @@ afterEach(() => { cleanup() })
 
 /** 渲染页面并等待首屏数据落地 */
 async function renderLibrary() {
-  const Library = (await import('../pages/Library')).default
+  const Library = (await import('../v3/pages/Library')).default
   const utils = render(
     <MemoryRouter initialEntries={['/library']}>
       <Library />
@@ -107,9 +118,10 @@ async function renderLibrary() {
   return utils
 }
 
-/** 点击一个 chip（chip 的可访问名含条数角标，故用正则匹配） */
+/** 点击一个 chip（chip 的可访问名含条数角标，故用正则匹配；阶段切换是 tab） */
 async function clickChip(re) {
-  const btn = screen.getAllByRole('button').find((b) => re.test(b.textContent || ''))
+  const btns = [...screen.queryAllByRole('button'), ...screen.queryAllByRole('tab')]
+  const btn = btns.find((b) => re.test(b.textContent || ''))
   expect(btn, `未找到匹配 ${re} 的按钮`).toBeTruthy()
   await act(async () => { fireEvent.click(btn) })
   await act(async () => { await new Promise((r) => setTimeout(r, 30)) })
@@ -190,7 +202,7 @@ describe('学习文库 Library 页面', () => {
 
   it('后端返回 null（2xx 无响应体）时不白屏', async () => {
     listMock.mockImplementation(async () => null)
-    const Library = (await import('../pages/Library')).default
+    const Library = (await import('../v3/pages/Library')).default
     const { container } = render(
       <MemoryRouter initialEntries={['/library']}><Library /></MemoryRouter>
     )
@@ -200,7 +212,7 @@ describe('学习文库 Library 页面', () => {
 
   it('后端报错时显示错误态与重试入口，不崩溃', async () => {
     listMock.mockImplementation(async () => { throw new Error('backend offline') })
-    const Library = (await import('../pages/Library')).default
+    const Library = (await import('../v3/pages/Library')).default
     render(<MemoryRouter initialEntries={['/library']}><Library /></MemoryRouter>)
     await waitFor(() => expect(screen.getByText('资料加载失败')).toBeTruthy())
     expect(screen.getByText(/backend offline/)).toBeTruthy()

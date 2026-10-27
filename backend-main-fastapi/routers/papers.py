@@ -1,16 +1,20 @@
 """组题网路由：组卷 / 试卷管理 / 导出。"""
 from __future__ import annotations
+from utils.security import require_admin
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Paper, PaperQuestion, QuizQuestion
+from models import Paper, PaperQuestion, QuizQuestion, User
 from services import paper_builder
+
+from utils.response import MAX_PAGE_SIZE
+from utils.security import current_user
 
 router = APIRouter(prefix="/api/papers", tags=["组题网"])
 
@@ -56,7 +60,7 @@ async def paper_subjects(db: Session = Depends(get_db)):
     return {"items": items}
 
 
-@router.post("/build")
+@router.post("/build", dependencies=[Depends(require_admin)])
 async def build_paper(req: BuildRequest, db: Session = Depends(get_db)):
     """组卷：按知识点/难度/题型/配额自动组卷（可选 AI 辅助）。"""
     rules = paper_builder.build_rules(
@@ -76,7 +80,7 @@ async def build_paper(req: BuildRequest, db: Session = Depends(get_db)):
     return out
 
 
-@router.post("/save")
+@router.post("/save", dependencies=[Depends(require_admin)])
 async def save_paper(req: SaveRequest, db: Session = Depends(get_db)):
     """保存试卷（题目快照，独立于题库）。"""
     try:
@@ -92,7 +96,7 @@ async def save_paper(req: SaveRequest, db: Session = Depends(get_db)):
 @router.get("")
 async def list_papers(
     subject: Optional[str] = None,
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     q = db.query(Paper)
@@ -112,7 +116,9 @@ async def list_papers(
     }
 
 
-@router.get("/{paper_id}")
+# `:int` 路径转换器：只匹配纯数字段。否则本路由先于下方的 GET /indexed 注册，
+# 会把 /api/papers/indexed 吞掉并报 422「paper_id 不是整数」，P2-M4 新接口永远不可达。
+@router.get("/{paper_id:int}")
 async def paper_detail(paper_id: int, db: Session = Depends(get_db)):
     paper = db.query(Paper).filter(Paper.id == paper_id).first()
     if not paper:
@@ -158,7 +164,7 @@ async def export_paper(paper_id: int, db: Session = Depends(get_db)):
     return {"message": "已导出", "file_path": path}
 
 
-@router.delete("/{paper_id}")
+@router.delete("/{paper_id}", dependencies=[Depends(require_admin)])
 async def delete_paper(paper_id: int, db: Session = Depends(get_db)):
     paper = db.query(Paper).filter(Paper.id == paper_id).first()
     if not paper:
@@ -166,3 +172,119 @@ async def delete_paper(paper_id: int, db: Session = Depends(get_db)):
     db.delete(paper)
     db.commit()
     return {"message": "试卷已删除", "id": paper_id}
+
+
+# --------------------------------------------------------------------------- #
+# P2-M4 真题模块：年份/卷种轴 + 整卷模考
+# --------------------------------------------------------------------------- #
+
+from services import paper_exam_service
+
+
+@router.get("/filters/years")
+async def paper_years(
+    subject: str = Query(..., description="科目"),
+    db: Session = Depends(get_db),
+):
+    """获取某科目下所有可用的真题年份。"""
+    years = paper_exam_service.get_available_years(db, subject)
+    return {"years": years}
+
+
+@router.get("/filters/paper-types")
+async def paper_types(
+    subject: str = Query(..., description="科目"),
+    year: Optional[int] = Query(None, description="可选年份筛选"),
+    db: Session = Depends(get_db),
+):
+    """获取某科目(可选年份)下所有可用的卷种。"""
+    types = paper_exam_service.get_available_paper_types(db, subject, year)
+    return {"paper_types": types}
+
+
+@router.get("/indexed")
+async def list_papers_indexed(
+    subject: Optional[str] = Query(None, description="科目"),
+    year: Optional[int] = Query(None, description="年份"),
+    paper_type: Optional[str] = Query(None, description="卷种"),
+    is_mock: Optional[bool] = Query(None, description="是否模拟卷"),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+):
+    """按年份/卷种筛选试卷列表（P2-M4 新接口）。"""
+    items = paper_exam_service.list_papers_by_year_type(
+        db, subject=subject, year=year, paper_type=paper_type, is_mock=is_mock, limit=limit,
+    )
+    return {"total": len(items), "items": items}
+
+
+class StartAttemptRequest(BaseModel):
+    paper_id: int
+
+
+@router.post("/attempts/start")
+async def start_attempt(
+    req: StartAttemptRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """开始一份试卷的模考作答。"""
+    try:
+        result = paper_exam_service.start_paper_attempt(
+            db, req.paper_id, user_id=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
+class SubmitAttemptRequest(BaseModel):
+    attempt_id: int
+    answers: List[Dict[str, Any]]
+
+
+# Pydantic V2: rebuild to resolve forward references from __future__ annotations
+SubmitAttemptRequest.model_rebuild()
+
+
+@router.post("/attempts/submit")
+async def submit_attempt(
+    req: SubmitAttemptRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """提交试卷作答并生成报告。"""
+    try:
+        result = paper_exam_service.submit_paper_attempt(
+            db, req.attempt_id, req.answers, user_id=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
+@router.get("/attempts/{attempt_id}/report")
+async def attempt_report(
+    attempt_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """查看某次作答的报告（仅本人）。"""
+    try:
+        report = paper_exam_service.generate_paper_report(
+            db, attempt_id, user_id=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return report
+
+
+@router.get("/attempts/history")
+async def attempt_history(
+    paper_id: Optional[int] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """获取历史作答记录（仅本人）。"""
+    items = paper_exam_service.get_attempt_history(
+        db, paper_id=paper_id, limit=limit, user_id=user.id)
+    # 分页约定：items 必须与 total 成对（tests/test_api_conventions.py），与 /indexed 同口径
+    return {"total": len(items), "items": items}

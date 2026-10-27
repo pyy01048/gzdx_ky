@@ -1,16 +1,21 @@
-﻿"""任务路由。"""
+"""任务路由。"""
 
-import datetime
+import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Task, Goal
+from models import Task, Goal, User
 from schemas import TaskCreate, TaskUpdate, TaskResponse, GenericResponse
 from services.review_scheduler import ReviewScheduler
-from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+from utils.scope import owner_id, scoped  # B4 行级隔离
+from utils.security import current_user
+from utils.timeutil import local_today, utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -22,11 +27,12 @@ async def list_tasks(
     stage: Optional[str] = None,
     status: Optional[str] = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    """任务列表（支持筛选和分页）。"""
-    query = db.query(Task)
+    """任务列表（支持筛选和分页，B4：只看本人任务）。"""
+    query = db.query(Task).filter(scoped(Task, user))
     if subject:
         query = query.filter(Task.subject == subject)
     if task_type:
@@ -77,9 +83,14 @@ async def list_tasks(
 
 
 @router.post("")
-async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+async def create_task(
+    task: TaskCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """创建任务。"""
     new_task = Task(**task.model_dump())
+    new_task.user_id = owner_id(user)  # B4：写入归属当前用户
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
@@ -87,9 +98,14 @@ async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{task_id}")
-async def update_task(task_id: int, task: TaskUpdate, db: Session = Depends(get_db)):
+async def update_task(
+    task_id: int,
+    task: TaskUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """更新任务。"""
-    db_task = db.query(Task).filter(Task.id == task_id).first()
+    db_task = db.query(Task).filter(Task.id == task_id, scoped(Task, user)).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -103,9 +119,13 @@ async def update_task(task_id: int, task: TaskUpdate, db: Session = Depends(get_
 
 
 @router.delete("/{task_id}")
-async def delete_task(task_id: int, db: Session = Depends(get_db)):
+async def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """删除任务。"""
-    db_task = db.query(Task).filter(Task.id == task_id).first()
+    db_task = db.query(Task).filter(Task.id == task_id, scoped(Task, user)).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -115,9 +135,13 @@ async def delete_task(task_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{task_id}/complete")
-async def complete_task(task_id: int, db: Session = Depends(get_db)):
+async def complete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """打卡完成。"""
-    db_task = db.query(Task).filter(Task.id == task_id).first()
+    db_task = db.query(Task).filter(Task.id == task_id, scoped(Task, user)).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -138,9 +162,13 @@ async def complete_task(task_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{task_id}/uncomplete")
-async def uncomplete_task(task_id: int, db: Session = Depends(get_db)):
+async def uncomplete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """撤销打卡完成。"""
-    db_task = db.query(Task).filter(Task.id == task_id).first()
+    db_task = db.query(Task).filter(Task.id == task_id, scoped(Task, user)).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -156,9 +184,12 @@ async def uncomplete_task(task_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/review-schedule")
-async def review_schedule(db: Session = Depends(get_db)):
+async def review_schedule(
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """艾宾浩斯复习提醒。"""
-    due_tasks = ReviewScheduler.get_due_tasks(db)
+    due_tasks = ReviewScheduler.get_due_tasks(db, user_id=owner_id(user))
     return {
         "total": len(due_tasks),
         "tasks": [
@@ -174,18 +205,32 @@ async def review_schedule(db: Session = Depends(get_db)):
     }
 
 
+class AiPlanRequest(BaseModel):
+    """AI 规划入参。topic 必须真的进提示词：前端「主题」输入框此前被后端整个丢掉，
+    用户填了"线性代数特征值强化"仍拿到一份全科计划。"""
+
+    topic: Optional[str] = None
+
+
 @router.post("/ai-generate")
-async def ai_generate_tasks(db: Session = Depends(get_db)):
+async def ai_generate_tasks(
+    req: Optional[AiPlanRequest] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """AI 自动生成每日计划。"""
     from services.ai_service import AIService
 
-    goal = db.query(Goal).first()
+    goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     goal_text = ""
     if goal:
         goal_text = f"目标院校：{goal.university or ''}，专业：{goal.major or ''}"
+    topic = (req.topic or "").strip() if req else ""
+    if topic:
+        goal_text = f"{goal_text}；本次主题：{topic}" if goal_text else f"本次主题：{topic}"
 
-    pending_tasks = db.query(Task).filter(Task.status != "done").count()
-    today = datetime.date.today().strftime("%Y-%m-%d")
+    pending_tasks = db.query(Task).filter(Task.status != "done", scoped(Task, user)).count()
+    today = local_today().isoformat()
 
     ai = AIService(db)
     try:
@@ -195,4 +240,6 @@ async def ai_generate_tasks(db: Session = Depends(get_db)):
         )
         return {"plan": plan, "message": "AI 计划生成成功"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI 生成失败：{str(e)}")
+        # E2E2-002 补漏：ai-generate 的 detail 曾透传上游 401 与服务商地址；原文只进服务端日志
+        logging.getLogger(__name__).exception("任务 AI 生成失败")
+        raise HTTPException(status_code=502, detail="AI 服务暂时不可用：请到「设置 → AI 服务」检查 API Key 与网络后重试。")

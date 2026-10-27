@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,10 @@ from database import get_db
 from services import qa_foundation
 from services import agent_router as agent_router_svc
 
-router = APIRouter(prefix="/api/qa", tags=["数据地基"])
+from utils.response import MAX_PAGE_SIZE
+from utils.security import require_admin
+
+router = APIRouter(prefix="/api/qa", tags=["数据地基"], dependencies=[Depends(require_admin)])
 
 
 @router.post("/agent/route")
@@ -53,14 +56,14 @@ def refresh_weak(db: Session = Depends(get_db)):
 
 
 @router.get("/weak-knowledge")
-def weak_knowledge(subject: Optional[str] = None, limit: int = 50,
+def weak_knowledge(subject: Optional[str] = None, limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
                    db: Session = Depends(get_db)):
     """薄弱知识点列表（按掌握度升序 = 最薄弱在前）。"""
     return qa_foundation.list_weak_knowledge(db, subject=subject, limit=limit)
 
 
 @router.get("/review-queue")
-def review_queue(status: str = "pending", limit: int = 100,
+def review_queue(status: str = "pending", limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
                  db: Session = Depends(get_db)):
     """低置信答案人工确认队列（103 冲突根治：确认而非自动消解）。"""
     return qa_foundation.review_queue(db, status=status, limit=limit)

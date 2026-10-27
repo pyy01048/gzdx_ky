@@ -13,6 +13,8 @@ export const kaoyanApi = {
   schoolEnrollmentPlan: (id, params) => request('/kaoyan/schools/' + id + '/enrollment-plan', { params }),
   schoolScores: (id) => request('/kaoyan/schools/' + id + '/scores'),
   schoolAdmissions: (id) => request('/kaoyan/schools/' + id + '/admissions'),
+  // V14: 逐人录取分数明细（txkyer 择校宝 2026 拟录取分析 / 公告名单 OCR）
+  schoolAdmissionDetails: (id, params) => request('/kaoyan/schools/' + id + '/admissions/details', { params }),
   trend: (params) => request('/kaoyan/analysis/trend', { params }),
   compare: (schoolIds) => request('/kaoyan/analysis/compare', { params: { school_ids: schoolIds } }),
   // V10: 全局通知流（搜索/类型过滤/分页）
@@ -40,6 +42,8 @@ export const kaoyanApi = {
   heatmap: (params) => request('/kaoyan/analysis/heatmap', { params }),
   // D6: 招生散点图数据
   scatter: (params) => request('/kaoyan/analysis/scatter', { params }),
+  // 择校库里真实存在的年份（下拉候选唯一来源，不在前端写死）
+  dataYears: () => request('/kaoyan/analysis/years'),
   // V9 任务完善项: 择校数据分析聚合（业务课二TOP15/数英科目/专业对比/学院招生/专业课分数）
   dashboardAnalysis: () => request('/kaoyan/analysis/dashboard'),
   // F1: 考研 18 节点里程碑 + 阶段→月→周→日 三层规划
@@ -71,9 +75,67 @@ export const kaoyanApi = {
 
   // ---- 通知已读标记（/api/notices，单用户设计）----
   // 未读统计（全局角标数据源）：{ total, unread, read, starred, important_unread, by_type, by_school }
-  noticeUnreadStats: () => request('/notices/unread-stats'),
+  noticeUnreadStats: async () => {
+    try { return await request('/notices/unread-stats') } catch { /* 旧部署缺此路由时下面兜底 */ }
+    const d = await request('/kaoyan/notices', { params: { limit: 200 } })
+    const items = d.items || []
+    return {
+      total: d.total ?? items.length,
+      unread: items.filter((x) => !x.is_read).length,
+      read: items.filter((x) => x.is_read).length,
+      starred: items.filter((x) => x.is_starred).length,
+      important_unread: 0,
+      important_total: 0,
+      urgent_unread: 0,
+      by_type: d.stats?.by_type || {},
+    }
+  },
   // 通知列表：params { unread_only, starred_only, notice_type, school_id, keyword, page, page_size }
-  noticeList: (params) => request('/notices/list', { params }),
+  // guest=true 时直接走公共聚合接口，避免访客先打个人端点吃一次 401
+  noticeList: async (params = {}, { guest = false } = {}) => {
+    if (!guest) {
+      try { return await request('/notices/list', { params }) } catch { /* 旧部署缺 /notices/list 时走聚合通知接口 */ }
+    }
+    const page = Number(params.page) || 1
+    const size = Number(params.page_size) || 20
+    // 已读/加星是本地状态，只能拉取后过滤，无法服务端翻页；其余筛选都支持 offset
+    const hasLocalFilter = params.unread_only || params.starred_only
+    const d = await request('/kaoyan/notices', {
+      params: {
+        limit: hasLocalFilter ? 200 : size,
+        offset: hasLocalFilter ? 0 : (page - 1) * size,
+        notice_type: params.notice_type || undefined,
+        school_id: params.school_id || undefined,
+        keyword: params.keyword || undefined,
+      },
+    })
+    let items = d.items || []
+    if (params.unread_only) items = items.filter((x) => !x.is_read)
+    if (params.starred_only) items = items.filter((x) => x.is_starred)
+    return {
+      items: hasLocalFilter ? items.slice((page - 1) * size, page * size) : items,
+      // 服务端 total 才是筛选后的总数；仅本地已读/加星过滤时以过滤结果为准
+      total: hasLocalFilter ? items.length : (d.total ?? items.length),
+      by_type_total: d.stats?.by_type || {},
+      page,
+      page_size: size,
+    }
+  },
+  // 通知中心统计卡：总数/未读/星标/覆盖院校 + 四类分计数（2026-10-19）
+  noticeStats: async ({ guest = false } = {}) => {
+    if (guest) return request('/kaoyan/notices/stats')
+    try { return await request('/notices/stats') } catch { /* 旧部署缺此路由时下面兜底 */ }
+    const d = await request('/kaoyan/notices', { params: { limit: 200 } })
+    const items = d.items || []
+    const byType = d.stats?.by_type || {}
+    return {
+      total: d.total ?? items.length,
+      unread: items.filter((x) => !x.is_read).length,
+      starred: items.filter((x) => x.is_starred).length,
+      schools_covered: d.stats?.school_count || 0,
+      by_type: Object.entries(byType).map(([type, total]) => ({ type, total, unread: total })),
+    }
+  },
   // 单条标记已读 / 取消已读
   markNoticeRead: (id, isRead = true) =>
     request(`/notices/${id}/read`, { method: 'POST', body: { is_read: isRead } }),
@@ -91,4 +153,11 @@ export const kaoyanApi = {
     }),
   // C5: 采集历史
   collectionRuns: (params) => request('/kaoyan/collection/runs', { params }),
+  // D1: 数据源注册中心（研招网 / 省考试院 / 院校研究生院 / 聚合站）
+  dataSources: (params) => request('/kaoyan/datasources', { params }),
+  // 院校采集开关：哪些院校参与采集、哪些排除
+  crawlTargets: (params) => request('/kaoyan/crawl-targets', { params }),
+  toggleCrawlTarget: (payload) => request('/kaoyan/crawl-targets/toggle', { method: 'POST', body: payload }),
+  bulkCrawlTargets: (payload) => request('/kaoyan/crawl-targets/bulk', { method: 'POST', body: payload }),
+  resetCrawlTargets: () => request('/kaoyan/crawl-targets/reset', { method: 'POST', body: { confirm: true } }),
 }

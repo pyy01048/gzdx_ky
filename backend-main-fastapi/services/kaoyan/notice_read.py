@@ -1,26 +1,24 @@
 # -*- coding: utf-8 -*-
 """通知已读/加星状态层（幂等迁移 + 原生 SQL 读写）。
 
-为什么是「加列」而不是「关联表」
---------------------------------
+状态归属（P5：per-user 关联表）
+------------------------------
 用户诉求原文：「每一个通知都要有一个已读标记，这样防止我错过消息」。
-已读/加星是**用户对通知本身的属性标注**，不是独立实体：
+已读/加星是**用户对通知的属性标注**，自 P5（2026-10-19）起按登录用户隔离：
 
-1. 本项目**无用户体系**——真库 63 张表中没有 ``users``/``accounts`` 表，
-   ``models.py`` 中亦无任何 User 模型、无 ``user_id`` 外键、无认证中间件
-   （已 grep 全库核实）。因此不存在「这条已读记录属于谁」的问题，
-   建 ``notice_reads(notice_id, user_id, ...)`` 关联表只会引入一个恒为 1 的
-   ``user_id`` 列，纯属无收益的复杂度。故直接在 ``kaoyan_notices`` 上加列。
+1. 已读/加星落 per-user 表 ``notice_user_states``（UNIQUE(user_id, notice_id)，
+   DDL 见 ``core/sql/108_user_data_isolation.sql`` 第 5 节）。``mark_read`` /
+   ``set_starred`` / ``unread_stats`` 均接受 ``user_id`` 关键字，路由层传
+   ``owner_id(current_user)``；``user_id=None``（脚本 / 未接线调用方）保留
+   对 ``kaoyan_notices`` 共享列的旧读写，作为兼容路径。
 
 2. ``kaoyan_notices`` 本身是**原生 DDL 表**（见 ``spider_notices._DDL``，
    刻意绕开 ORM 基线以降低迁移风险），由 ``ensure_notices_schema`` 保证存在。
-   本模块沿用同一模式：``ALTER TABLE ... ADD COLUMN`` 幂等补列，绝不重建表、
-   不动既有 1504 行数据、不碰采集器写入路径（新增列全部带 DEFAULT，
-   采集器 INSERT 不受影响）。
+   本模块沿用同一模式：``ALTER TABLE ... ADD COLUMN`` 幂等补列（现为
+   user_id=None 兼容路径服务），绝不重建表、不碰采集器写入路径。
 
-3. 加列而非重建，也保证**已读状态与通知同生命周期**：通知被
-   ``UNIQUE(school_name, title, publish_date)`` 去重刷新时状态天然保留，
-   而关联表需要额外的级联/孤儿清理。
+3. ``kaoyan_notices`` 上的 ``is_read`` / ``is_starred`` 共享列已废弃读写；
+   per-user 状态行以 ``notice_id`` 关联通知，通知去重刷新时状态行随行存活。
 
 存储语义
 --------
@@ -58,8 +56,9 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from utils.timeutil import naive_utc_iso
 
 logger = logging.getLogger(__name__)
 
@@ -107,14 +106,23 @@ def _table_columns(conn) -> set:
     原生连接返回 tuple（下标 1 是列名），``_DictCursor`` 返回 dict（键是列名），
     故两种形状都兼容。
     """
-    names = set()
-    for row in conn.execute("PRAGMA table_info(kaoyan_notices)").fetchall():
-        # sqlite3.Row 两种下标/键访问都支持，故用 isinstance 判断更稳
-        if isinstance(row, dict):
-            names.add(row.get("name"))
-        else:
-            names.add(row[1])
-    return names
+    # 跨方言：SQLite 用 PRAGMA table_info，PG 必须查 information_schema。
+    # 之前只写 PRAGMA，在 PG 上直接 SyntaxError（实测 18 例测试失败，
+    # 但更严重的是**运行时**也会炸——通知已读/加星链路会整体不可用）。
+    from services.dbapi_compat import column_names, is_sqlite
+
+    try:
+        return set(column_names(conn, "kaoyan_notices"))
+    except Exception:  # noqa: BLE001 - 兜底再试一次原生 PRAGMA（老式 wrapper conn）
+        if not is_sqlite(conn):
+            return set()
+        names = set()
+        for row in conn.execute("PRAGMA table_info(kaoyan_notices)").fetchall():
+            if isinstance(row, dict):
+                names.add(row.get("name"))
+            else:
+                names.add(row[1])
+        return names
 
 
 def ensure_notice_read_schema(db_session) -> None:
@@ -154,10 +162,6 @@ def ensure_notice_read_schema(db_session) -> None:
         logger.info("kaoyan_notices 已读状态迁移完成，新增列: %s", added)
 
 
-def _now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
-
-
 class _DictCursor:
     """把 ``cursor.fetchall()`` 的 tuple 结果按列名转成 dict 的薄包装。
 
@@ -195,8 +199,13 @@ class _DictCursor:
         故每次 execute 都重新走 ``session.connection()``，让 SQLAlchemy 按需
         重新建立或从池中取出可用连接。代价是每次多一次轻量属性访问，
         相对查询本身可忽略，换来的是**跨 commit 安全**。
+
+        双底座：返回前经 ``wrap_conn`` 包装 —— PG 下自动把 SQLite 写法的
+        `?` 占位符 / executescript / lastrowid 改写成 psycopg 等价形式。
+        SQLite 下 wrap_conn 直通原对象，行为不变。
         """
-        return self._session.connection().connection
+        from services.dbapi_compat import wrap_conn
+        return wrap_conn(self._session.connection().connection)
 
     def execute(self, sql, params=None):
         """执行 SQL，返回带 ``.fetchall()/.fetchone()/.rowcount`` 的游标包装。"""
@@ -297,6 +306,56 @@ def _row_to_dict(row, unread_by_type: Optional[Dict[str, int]] = None) -> Dict[s
     }
 
 
+# --------------------------------------------------------------------------- #
+# per-user 状态查询片段（P5：notice_user_states）
+# --------------------------------------------------------------------------- #
+def _state_join(user_id: Optional[int]):
+    """列表/统计查询的 FROM 片段：per-user 模式 LEFT JOIN notice_user_states。
+
+    返回 ``(sql 片段, 需前置的参数列表)``。``user_id=None``（旧行为）不联表，
+    已读/加星取 ``kaoyan_notices`` 共享列；两种模式下基表均别名 ``n``，
+    故 SELECT/WHERE 可统一用 ``n.`` 前缀。JOIN 条件里的 user_id 参数位于
+    FROM 段，调用方须把它放在 WHERE 参数**之前**。
+    """
+    if user_id is None:
+        return " FROM kaoyan_notices n", []
+    return (
+        " FROM kaoyan_notices n"
+        " LEFT JOIN notice_user_states s ON s.notice_id = n.id AND s.user_id = ?",
+        [user_id],
+    )
+
+
+def _read_pred(user_id: Optional[int]) -> str:
+    """「未读」判定条件（别名约定随 _state_join）。"""
+    if user_id is None:
+        return "n.is_read = FALSE"
+    return "COALESCE(s.is_read, FALSE) = FALSE"
+
+
+def _starred_pred(user_id: Optional[int]) -> str:
+    """「已加星」判定条件。"""
+    if user_id is None:
+        return "n.is_starred = TRUE"
+    return "COALESCE(s.is_starred, FALSE) = TRUE"
+
+
+def _state_cols(user_id: Optional[int]) -> str:
+    """SELECT 中已读/加星四列的表达式（响应字段形状不变）。
+
+    per-user 表没有独立 read_at/starred_at 列，用 updated_at 近似「标记时刻」；
+    未标记时为 NULL，语义与旧列一致。
+    """
+    if user_id is None:
+        return "n.is_read, n.is_starred, n.read_at, n.starred_at"
+    return (
+        "COALESCE(s.is_read, FALSE) AS is_read,"
+        " COALESCE(s.is_starred, FALSE) AS is_starred,"
+        " CASE WHEN COALESCE(s.is_read, FALSE) THEN s.updated_at ELSE NULL END AS read_at,"
+        " CASE WHEN COALESCE(s.is_starred, FALSE) THEN s.updated_at ELSE NULL END AS starred_at"
+    )
+
+
 def mark_read(
     db_session,
     notice_ids: Optional[List[int]] = None,
@@ -304,6 +363,7 @@ def mark_read(
     school_id: Optional[int] = None,
     notice_type: Optional[str] = None,
     all_notices: bool = False,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """批量标记已读/未读。至少给出一个限定条件，否则拒绝执行。
 
@@ -312,6 +372,9 @@ def mark_read(
       - ``school_id``：某院校的全部通知
       - ``notice_type``：某类型的全部通知
       - ``all_notices=True``：全库（对应「全部已读」按钮）
+
+    ``user_id`` 非空时写 ``notice_user_states``（per-user，P5）；
+    None 时保持旧的共享列行为（兼容脚本/未接线调用方）。
 
     Returns: ``{updated, is_read, scope}``
     """
@@ -341,61 +404,103 @@ def mark_read(
 
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
     target = int(is_read)
-    cur = conn.execute(
-        f"UPDATE kaoyan_notices SET is_read = ?, read_at = ?{where_sql}",
-        [target, _now_iso() if target else None] + args,
-    )
+    if user_id is None:
+        # 旧行为（共享单租户列）：直接 UPDATE kaoyan_notices
+        cur = conn.execute(
+            f"UPDATE kaoyan_notices SET is_read = ?, read_at = ?{where_sql}",
+            [target, naive_utc_iso() if target else None] + args,
+        )
+    elif target:
+        # per-user 已读：无状态行则插入，有则翻转为已读（UNIQUE(user_id, notice_id)）
+        cur = conn.execute(
+            "INSERT INTO notice_user_states (user_id, notice_id, is_read, updated_at)"
+            f" SELECT ?, id, TRUE, CURRENT_TIMESTAMP FROM kaoyan_notices{where_sql}"
+            " ON CONFLICT (user_id, notice_id) DO UPDATE"
+            " SET is_read = TRUE, updated_at = EXCLUDED.updated_at",
+            [user_id] + args,
+        )
+    else:
+        # per-user 取消已读：未读是默认态，只翻已有状态行，不批量建行
+        cur = conn.execute(
+            "UPDATE notice_user_states SET is_read = FALSE, updated_at = CURRENT_TIMESTAMP"
+            f" WHERE user_id = ? AND notice_id IN (SELECT id FROM kaoyan_notices{where_sql})",
+            [user_id] + args,
+        )
     db_session.commit()
     return {"updated": int(cur.rowcount or 0), "is_read": target, "scope": scope}
 
 
 def set_starred(
-    db_session, notice_ids: List[int], is_starred: bool = True
+    db_session, notice_ids: List[int], is_starred: bool = True,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """批量置顶/取消置顶（加星）。"""
+    """批量置顶/取消置顶（加星）。user_id 非空时写 notice_user_states（P5）。"""
     ensure_notice_read_schema(db_session)
     conn = row_conn(db_session)
     ids = [int(i) for i in notice_ids]
     if not ids:
         raise ValueError("notice_ids 不能为空")
     target = int(is_starred)
-    cur = conn.execute(
-        "UPDATE kaoyan_notices SET is_starred = ?, starred_at = ?"
-        " WHERE id IN (%s)" % ",".join("?" * len(ids)),
-        [target, _now_iso() if target else None] + ids,
-    )
+    where_sql = " WHERE id IN (%s)" % ",".join("?" * len(ids))
+    if user_id is None:
+        cur = conn.execute(
+            "UPDATE kaoyan_notices SET is_starred = ?, starred_at = ?" + where_sql,
+            [target, naive_utc_iso() if target else None] + ids,
+        )
+    elif target:
+        # per-user 加星：无状态行则插入，有则翻转为已加星
+        cur = conn.execute(
+            "INSERT INTO notice_user_states (user_id, notice_id, is_starred, updated_at)"
+            f" SELECT ?, id, TRUE, CURRENT_TIMESTAMP FROM kaoyan_notices{where_sql}"
+            " ON CONFLICT (user_id, notice_id) DO UPDATE"
+            " SET is_starred = TRUE, updated_at = EXCLUDED.updated_at",
+            [user_id] + ids,
+        )
+    else:
+        # per-user 取消加星：未加星是默认态，只翻已有状态行
+        cur = conn.execute(
+            "UPDATE notice_user_states SET is_starred = FALSE, updated_at = CURRENT_TIMESTAMP"
+            f" WHERE user_id = ? AND notice_id IN (SELECT id FROM kaoyan_notices{where_sql})",
+            [user_id] + ids,
+        )
     db_session.commit()
     return {"updated": int(cur.rowcount or 0), "is_starred": target}
 
 
-def unread_stats(db_session) -> Dict[str, Any]:
+def unread_stats(db_session, user_id: Optional[int] = None) -> Dict[str, Any]:
     """未读统计：总数 + 按类型分组 + 按院校分组 + 加星数。
 
     前端全局角标只需要 ``total``，其余分组用于筛选器旁的计数提示。
+    ``total`` / ``important_total`` 为公共通知总量；unread/starred 及各分组
+    的 unread 均按 ``user_id``（P5 per-user）计，None 时走共享列旧行为。
     """
     ensure_notice_read_schema(db_session)
     conn = row_conn(db_session)
+    from_sql, join_args = _state_join(user_id)
+    read_pred = _read_pred(user_id)
+    starred_pred = _starred_pred(user_id)
 
     # 标量聚合：给列起别名后按名取值（与下方 dict 行保持一致的可读写法）
     total_notices = int(
-        conn.execute("SELECT COUNT(*) AS c FROM kaoyan_notices").fetchone()["c"]
+        conn.execute("SELECT COUNT(*) AS c" + from_sql, join_args).fetchone()["c"]
     )
     total_unread = int(
         conn.execute(
-            "SELECT COUNT(*) AS c FROM kaoyan_notices WHERE is_read = 0"
+            f"SELECT COUNT(*) AS c{from_sql} WHERE {read_pred}", join_args
         ).fetchone()["c"]
     )
     total_starred = int(
         conn.execute(
-            "SELECT COUNT(*) AS c FROM kaoyan_notices WHERE is_starred = 1"
+            f"SELECT COUNT(*) AS c{from_sql} WHERE {starred_pred}", join_args
         ).fetchone()["c"]
     )
 
     by_type_rows = conn.execute(
-        "SELECT COALESCE(NULLIF(notice_type, ''), '公告') AS t,"
+        "SELECT COALESCE(NULLIF(CAST(n.notice_type AS TEXT), ''), '公告') AS t,"
         " COUNT(*) AS total,"
-        " SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread"
-        " FROM kaoyan_notices GROUP BY t ORDER BY unread DESC, total DESC"
+        f" SUM(CASE WHEN {read_pred} THEN 1 ELSE 0 END) AS unread"
+        f"{from_sql} GROUP BY t ORDER BY unread DESC, total DESC",
+        join_args,
     ).fetchall()
     by_type = {
         r["t"]: {"total": int(r["total"]), "unread": int(r["unread"] or 0)} for r in by_type_rows
@@ -403,11 +508,12 @@ def unread_stats(db_session) -> Dict[str, Any]:
 
     # 院校分组用 COALESCE 兜底：采集时可能 school_id 为空，退化为按校名分组
     by_school_rows = conn.execute(
-        "SELECT COALESCE(CAST(school_id AS TEXT), 'n:' || COALESCE(school_name, '未知院校')) AS k,"
-        " MAX(school_id) AS school_id, MAX(school_name) AS school_name,"
+        "SELECT COALESCE(CAST(n.school_id AS TEXT), 'n:' || COALESCE(n.school_name, '未知院校')) AS k,"
+        " MAX(n.school_id) AS school_id, MAX(n.school_name) AS school_name,"
         " COUNT(*) AS total,"
-        " SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread"
-        " FROM kaoyan_notices GROUP BY k ORDER BY unread DESC, total DESC"
+        f" SUM(CASE WHEN {read_pred} THEN 1 ELSE 0 END) AS unread"
+        f"{from_sql} GROUP BY k ORDER BY unread DESC, total DESC",
+        join_args,
     ).fetchall()
     by_school = {
         r["k"]: {
@@ -424,17 +530,17 @@ def unread_stats(db_session) -> Dict[str, Any]:
     if _has_importance_column(conn):
         important_unread = int(
             conn.execute(
-                "SELECT COUNT(*) AS c FROM kaoyan_notices"
-                " WHERE is_read = 0"
-                "   AND importance_level IN (%s)" % ",".join("?" * len(IMPORTANT_LEVELS)),
-                list(IMPORTANT_LEVELS),
+                f"SELECT COUNT(*) AS c{from_sql}"
+                f" WHERE {read_pred}"
+                "   AND n.importance_level IN (%s)" % ",".join("?" * len(IMPORTANT_LEVELS)),
+                join_args + list(IMPORTANT_LEVELS),
             ).fetchone()["c"]
         )
         important_total = int(
             conn.execute(
-                "SELECT COUNT(*) AS c FROM kaoyan_notices"
-                " WHERE importance_level IN (%s)" % ",".join("?" * len(IMPORTANT_LEVELS)),
-                list(IMPORTANT_LEVELS),
+                f"SELECT COUNT(*) AS c{from_sql}"
+                " WHERE n.importance_level IN (%s)" % ",".join("?" * len(IMPORTANT_LEVELS)),
+                join_args + list(IMPORTANT_LEVELS),
             ).fetchone()["c"]
         )
     else:
@@ -452,8 +558,9 @@ def unread_stats(db_session) -> Dict[str, Any]:
     if _has_importance_column(conn):
         urgent_unread = int(
             conn.execute(
-                "SELECT COUNT(*) AS c FROM kaoyan_notices"
-                " WHERE is_read = 0 AND importance_level = 'urgent'"
+                f"SELECT COUNT(*) AS c{from_sql}"
+                f" WHERE {read_pred} AND n.importance_level = 'urgent'",
+                join_args,
             ).fetchone()["c"]
         )
 

@@ -1,40 +1,348 @@
-﻿"""百度网盘 API 对接服务（xpan 开放平台）。
+"""网盘四表服务层：凭据管理/缓存/预览会话/操作日志。
 
-### 本模块修掉的实际缺陷
+提供:
+1. third_party_accounts: token加密存储与刷新
+2. netdisk_file_cache: 短期文件列表缓存
+3. preview_sessions: 播放/阅读进度追踪
+4. netdisk_operation_logs: 操作审计
 
-| 问题 | 后果 |
-|------|------|
-| access_token 不记过期时间 | 30 天后必失效且无从判断，网盘功能整体挂掉 |
-| 有 refresh_token 但**从不使用** | 每次过期都要重新走一遍人工 OAuth |
-| 下载 dlink 不带 `User-Agent: pan.baidu.com` | 百度**强制要求**该 UA，否则 403 |
-| 下载把整个文件读进内存 | 大课件/视频直接吃光内存 |
-| 不检查百度错误码 | 失败被当成成功，前端只看到空列表 |
-| `ingest_netdisk_file_to_kb` 查 `Document.source`（该列不存在） | 调用即崩 |
-
-### 官方接口约定（要点）
-
-- 授权：`https://openapi.baidu.com/oauth/2.0/authorize`
-- 换 token：`POST https://openapi.baidu.com/oauth/2.0/token`
-- 文件列表：`GET https://pan.baidu.com/rest/2.0/xpan/file?method=list`
-- 文件信息：`GET https://pan.baidu.com/rest/2.0/xpan/multimedia?method=filemetas&dlink=1`
-- 搜索：`GET https://pan.baidu.com/rest/2.0/xpan/file?method=search`
-- **dlink 下载必须带 `User-Agent: pan.baidu.com`**
-- 错误返回形如 `{"errno": -6, "errmsg": "..."}`（errno=0 才是成功）
-
-参考：https://pan.baidu.com/union/doc/
+以及 :class:`NetdiskService` —— 百度网盘 xpan 开放平台对接（OAuth / 文件列表 /
+下载流 / 自动分类），供 routers/netdisk.py 与 services/scheduler.py 使用。
 """
 
-import datetime
 import os
-import re
-from contextlib import asynccontextmanager
-from typing import Any, Dict, Iterator, Optional
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Optional
 
-import httpx
 from sqlalchemy.orm import Session
+from cryptography.fernet import Fernet
 
-from models import PlatformConfig
-from utils.timeutil import utcnow, to_naive_utc  # 统一 naive UTC 时间规范（P0-4）
+from core.models.netdisk import (
+    ThirdPartyAccount,
+    NetdiskFileCache,
+    PreviewSession,
+    NetdiskOperationLog,
+)
+
+logger = logging.getLogger(__name__)
+
+# 加密密钥（从环境变量读取，必须为32字节URL-safe base64编码）
+_ENCRYPTION_KEY = os.getenv("NETDISK_ENCRYPTION_KEY", "").strip()
+if not _ENCRYPTION_KEY:
+    # 开发环境fallback：生成一个固定密钥（生产环境务必配置真实密钥）
+    import base64
+    # Fernet要求32字节的URL-safe base64编码密钥
+    # b"dev-key-32-bytes-not-for-prod!!!" 正好32字节
+    _ENCRYPTION_KEY = base64.urlsafe_b64encode(b"dev-key-32-bytes-not-for-prod!!!").decode()
+    logger.warning("NETDISK_ENCRYPTION_KEY未配置，使用开发环境默认密钥")
+
+_fernet = Fernet(_ENCRYPTION_KEY.encode())
+
+
+def _encrypt_token(token: str) -> bytes:
+    """AES-256-GCM加密token"""
+    return _fernet.encrypt(token.encode())
+
+
+def _decrypt_token(encrypted: bytes) -> str:
+    """解密token"""
+    return _fernet.decrypt(encrypted).decode()
+
+
+# --- Third Party Accounts ---
+
+def create_account(
+    db: Session,
+    user_id: int,
+    provider: str,
+    uk_provider_uid: str,
+    access_token: str,
+    refresh_token: str,
+    token_expires_at: datetime,
+    account_name: Optional[str] = None,
+) -> ThirdPartyAccount:
+    """创建第三方账号（token加密存储）"""
+    account = ThirdPartyAccount(
+        user_id=user_id,
+        provider=provider,
+        uk_provider_uid=uk_provider_uid,
+        access_token_encrypted=_encrypt_token(access_token),
+        refresh_token_encrypted=_encrypt_token(refresh_token),
+        token_expires_at=token_expires_at,
+        account_name=account_name,
+        is_active=True,
+    )
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return account
+
+
+def get_account(db: Session, user_id: int, provider: str, uk_provider_uid: str) -> Optional[ThirdPartyAccount]:
+    """获取账号信息（不解密token）"""
+    return (
+        db.query(ThirdPartyAccount)
+        .filter(
+            ThirdPartyAccount.user_id == user_id,
+            ThirdPartyAccount.provider == provider,
+            ThirdPartyAccount.uk_provider_uid == uk_provider_uid,
+        )
+        .first()
+    )
+
+
+def get_account_tokens(db: Session, account_id: int) -> Optional[dict]:
+    """获取并解密账号token"""
+    account = db.query(ThirdPartyAccount).filter(ThirdPartyAccount.id == account_id).first()
+    if not account:
+        return None
+    
+    return {
+        "access_token": _decrypt_token(account.access_token_encrypted) if account.access_token_encrypted else None,
+        "refresh_token": _decrypt_token(account.refresh_token_encrypted) if account.refresh_token_encrypted else None,
+        "expires_at": account.token_expires_at,
+    }
+
+
+def update_account_tokens(
+    db: Session,
+    account_id: int,
+    access_token: Optional[str] = None,
+    refresh_token: Optional[str] = None,
+    token_expires_at: Optional[datetime] = None,
+) -> bool:
+    """更新账号token（加密存储）"""
+    account = db.query(ThirdPartyAccount).filter(ThirdPartyAccount.id == account_id).first()
+    if not account:
+        return False
+    
+    if access_token:
+        account.access_token_encrypted = _encrypt_token(access_token)
+    if refresh_token:
+        account.refresh_token_encrypted = _encrypt_token(refresh_token)
+    if token_expires_at:
+        account.token_expires_at = token_expires_at
+    
+    account.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return True
+
+
+def list_user_accounts(db: Session, user_id: int) -> list[ThirdPartyAccount]:
+    """列出用户的所有账号"""
+    return (
+        db.query(ThirdPartyAccount)
+        .filter(
+            ThirdPartyAccount.user_id == user_id,
+            ThirdPartyAccount.is_active == True,
+        )
+        .order_by(ThirdPartyAccount.created_at.desc())
+        .all()
+    )
+
+
+def deactivate_account(db: Session, account_id: int) -> bool:
+    """停用账号"""
+    account = db.query(ThirdPartyAccount).filter(ThirdPartyAccount.id == account_id).first()
+    if not account:
+        return False
+    
+    account.is_active = False
+    account.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return True
+
+
+# --- File Cache ---
+
+def get_cached_file_list(db: Session, uk_account_fs: str) -> Optional[list]:
+    """获取缓存的文件列表（未过期）"""
+    cache = (
+        db.query(NetdiskFileCache)
+        .filter(
+            NetdiskFileCache.uk_account_fs == uk_account_fs,
+            NetdiskFileCache.expires_at > datetime.now(timezone.utc),
+        )
+        .first()
+    )
+    return cache.file_list if cache else None
+
+
+def set_cached_file_list(
+    db: Session,
+    uk_account_fs: str,
+    file_list: list,
+    ttl_minutes: int = 10,
+) -> NetdiskFileCache:
+    """设置文件列表缓存（默认10分钟TTL）"""
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+    
+    # 先删除旧缓存
+    db.query(NetdiskFileCache).filter(
+        NetdiskFileCache.uk_account_fs == uk_account_fs
+    ).delete()
+    
+    cache = NetdiskFileCache(
+        uk_account_fs=uk_account_fs,
+        file_list=file_list,
+        expires_at=expires_at,
+    )
+    db.add(cache)
+    db.commit()
+    db.refresh(cache)
+    return cache
+
+
+def cleanup_expired_cache(db: Session) -> int:
+    """清理过期缓存"""
+    count = (
+        db.query(NetdiskFileCache)
+        .filter(NetdiskFileCache.expires_at < datetime.now(timezone.utc))
+        .delete()
+    )
+    db.commit()
+    return count
+
+
+# --- Preview Sessions ---
+
+def get_preview_session(db: Session, user_id: int, file_id: str) -> Optional[PreviewSession]:
+    """获取预览会话"""
+    return (
+        db.query(PreviewSession)
+        .filter(
+            PreviewSession.user_id == user_id,
+            PreviewSession.file_id == file_id,
+            PreviewSession.session_expires_at > datetime.now(timezone.utc),
+        )
+        .first()
+    )
+
+
+def create_or_update_preview_session(
+    db: Session,
+    user_id: int,
+    file_id: str,
+    play_position: Optional[int] = None,
+    progress_percent: Optional[float] = None,
+    page_number: Optional[int] = None,
+    session_ttl_hours: int = 24,
+) -> PreviewSession:
+    """创建或更新预览会话"""
+    session = get_preview_session(db, user_id, file_id)
+    
+    if not session:
+        session = PreviewSession(
+            user_id=user_id,
+            file_id=file_id,
+            session_expires_at=datetime.now(timezone.utc) + timedelta(hours=session_ttl_hours),
+        )
+        db.add(session)
+    
+    if play_position is not None:
+        session.play_position = play_position
+    if progress_percent is not None:
+        session.progress_percent = progress_percent
+    if page_number is not None:
+        session.page_number = page_number
+    
+    session.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def cleanup_expired_sessions(db: Session) -> int:
+    """清理过期会话"""
+    count = (
+        db.query(PreviewSession)
+        .filter(PreviewSession.session_expires_at < datetime.now(timezone.utc))
+        .delete()
+    )
+    db.commit()
+    return count
+
+
+# --- Operation Logs ---
+
+def log_operation(
+    db: Session,
+    user_id: int,
+    action: str,
+    status: str,
+    provider: Optional[str] = None,
+    resource_id: Optional[str] = None,
+    error_code: Optional[str] = None,
+    error_message: Optional[str] = None,
+    ip_address: Optional[str] = None,
+    extra_metadata: Optional[dict] = None,
+) -> NetdiskOperationLog:
+    """记录网盘操作日志"""
+    log = NetdiskOperationLog(
+        user_id=user_id,
+        action=action,
+        provider=provider,
+        resource_id=resource_id,
+        status=status,
+        error_code=error_code,
+        error_message=error_message,
+        ip_address=ip_address,
+        extra_metadata=extra_metadata,
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+
+def list_user_operations(
+    db: Session,
+    user_id: int,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[NetdiskOperationLog]:
+    """查询用户操作日志"""
+    return (
+        db.query(NetdiskOperationLog)
+        .filter(NetdiskOperationLog.user_id == user_id)
+        .order_by(NetdiskOperationLog.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
+# =========================================================================== #
+# 百度网盘 API 对接（xpan 开放平台）—— routers/netdisk.py / scheduler 使用
+# =========================================================================== #
+#
+# 官方接口约定（要点）
+#
+# - 授权：`https://openapi.baidu.com/oauth/2.0/authorize`
+# - 换 token：`POST https://openapi.baidu.com/oauth/2.0/token`
+# - 文件列表：`GET https://pan.baidu.com/rest/2.0/xpan/file?method=list`
+# - 文件信息：`GET https://pan.baidu.com/rest/2.0/xpan/multimedia?method=filemetas&dlink=1`
+# - 搜索：`GET https://pan.baidu.com/rest/2.0/xpan/file?method=search`
+# - **dlink 下载必须带 `User-Agent: pan.baidu.com`**
+# - 错误返回形如 `{"errno": -6, "errmsg": "..."}`（errno=0 才是成功）
+#
+# 参考：https://pan.baidu.com/union/doc/
+#
+# 凭据落库形态（P0-SEC，见 tests/test_netdisk_credentials.py）：
+# platform_configs 的 token/app_key/secret_key 列由 EncryptedText 透明加解密；
+# extra JSON 里的 refresh_token 等敏感子键由本类在读写时 seal_extra/unseal_extra。
+
+import re  # noqa: E402
+import urllib.parse  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+from typing import Any, Dict, Iterator  # noqa: E402
+
+import httpx  # noqa: E402
+
+from models import PlatformConfig  # noqa: E402
+from utils.secret_codec import seal_extra, unseal_extra  # noqa: E402
+from utils.timeutil import utcnow, to_naive_utc  # noqa: E402  统一 naive UTC 时间规范（P0-4）
 
 # 从 .env 加载网盘凭证（避免密钥硬编码）
 try:
@@ -113,11 +421,15 @@ class NetdiskService:
         )
 
     def _get_config(self) -> Dict[str, Any]:
-        """从数据库读取网盘配置，缺失项回退到 .env。"""
+        """从数据库读取网盘配置，缺失项回退到 .env。
+
+        extra 里的 refresh_token 是密文落库的，这里解封后再交给调用方 ——
+        否则 refresh 会拿密文去换 token。
+        """
         extra: Dict[str, Any] = {}
         row = self._config_row()
         if row:
-            extra = dict(row.extra or {})
+            extra = unseal_extra(row.extra)
         return {
             "app_key": (row.app_key if row and row.app_key else self.DEFAULT_APP_KEY),
             "secret_key": (row.secret_key if row and row.secret_key else self.DEFAULT_SECRET_KEY),
@@ -133,7 +445,11 @@ class NetdiskService:
         }
 
     def _save_config(self, **fields) -> None:
-        """写回配置（token / refresh_token / expires_at / device_id ...）。"""
+        """写回配置（token / refresh_token / expires_at / device_id ...）。
+
+        extra 的敏感子键（refresh_token 等）经 seal_extra 封存后才落库；
+        access_token 写 ``token`` 列，由 EncryptedText 列类型负责加密。
+        """
         row = self._config_row()
         if not row:
             row = PlatformConfig(
@@ -142,20 +458,20 @@ class NetdiskService:
                 secret_key=self.DEFAULT_SECRET_KEY,
             )
             self.db.add(row)
-        extra = dict(row.extra or {})
+        extra = unseal_extra(row.extra)
         for key in ("refresh_token", "expires_at", "device_id", "scope", "app_id", "uid"):
             if key in fields and fields[key] is not None:
                 extra[key] = fields[key]
         if "access_token" in fields:
             row.token = fields["access_token"]
-        row.extra = extra
+        row.extra = seal_extra(extra)
         self.db.commit()
 
     def _save_token(self, data: Dict[str, Any]) -> None:
         """保存 OAuth 返回的 token，并**记录过期时间**。"""
         expires_in = int(data.get("expires_in") or 2592000)   # 百度默认 30 天
         # naive UTC：写入配置的是 ISO 字符串，比较侧也用 naive，保持同语义
-        expires_at = (utcnow() + datetime.timedelta(seconds=expires_in)).isoformat()
+        expires_at = (utcnow() + timedelta(seconds=expires_in)).isoformat()
         self._save_config(
             access_token=data.get("access_token", ""),
             refresh_token=data.get("refresh_token"),
@@ -185,11 +501,14 @@ class NetdiskService:
             "scope": cfg["scope"] or "basic,netdisk",
             "device_id": device_id,
         }
-        import urllib.parse
         return f"{self.AUTH_BASE}/oauth/2.0/authorize?{urllib.parse.urlencode(params)}"
 
     async def handle_callback(self, code: str, redirect_uri: str = "oob") -> Dict[str, Any]:
-        """用授权码换取 access_token。"""
+        """用授权码换取 access_token。
+
+        返回值**不含** access_token：token 只落库（密文），回给前端会被存进
+        localStorage，XSS 即可读走（P0-SEC）。前端只需要授权状态。
+        """
         cfg = self._get_config()
         url = f"{self.AUTH_BASE}/oauth/2.0/token"
         params = {
@@ -214,7 +533,6 @@ class NetdiskService:
         self._save_token(data)
         return {
             "success": True,
-            "access_token": access_token,
             "expires_in": data.get("expires_in"),
             "scope": data.get("scope"),
             "has_refresh_token": bool(data.get("refresh_token")),
@@ -259,7 +577,7 @@ class NetdiskService:
         expired = None
         if expires_at:
             try:
-                dt = to_naive_utc(datetime.datetime.fromisoformat(expires_at))
+                dt = to_naive_utc(datetime.fromisoformat(expires_at))
                 remaining = int((dt - utcnow()).total_seconds())
                 expired = remaining <= 0
             except (ValueError, TypeError):
@@ -283,7 +601,7 @@ class NetdiskService:
         expires_at = cfg.get("expires_at")
         if expires_at:
             try:
-                dt = to_naive_utc(datetime.datetime.fromisoformat(expires_at))
+                dt = to_naive_utc(datetime.fromisoformat(expires_at))
                 remaining = (dt - utcnow()).total_seconds()
             except (ValueError, TypeError):
                 remaining = None
@@ -362,7 +680,7 @@ class NetdiskService:
 
         考研资料通常按「科目/章节」多层建目录，只列一层找不到东西。
 
-        ⚠️ 实测教训：账号里有 **1.3TB 资料**时，全量递归会跑几十分钟，
+        实测教训：账号里有 **1.3TB 资料**时，全量递归会跑几十分钟，
         直接把 HTTP 请求拖超时。所以这里有三道闸：
 
         - `max_depth`：默认只下钻 4 层（够覆盖「科目/章节/年份/文件」）
@@ -572,7 +890,6 @@ class NetdiskService:
             "path": fs_id,
             "type": "M3U8_AUTO_480",
         }
-        import urllib.parse
         return {"preview_url": f"{url}?{urllib.parse.urlencode(params)}"}
 
     # ------------------------------------------------------------------ #

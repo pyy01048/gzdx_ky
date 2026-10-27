@@ -10,6 +10,7 @@ POST /api/codebank/subjects           添加科目（用户可随时扩展模块
 POST /api/codebank/import             批量灌题（dry_run 支持）
 """
 from __future__ import annotations
+from utils.security import require_admin
 
 from typing import List, Optional
 
@@ -64,7 +65,7 @@ class SubjectReq(BaseModel):
     direction: Optional[str] = None
 
 
-@router.post("/subjects")
+@router.post("/subjects", dependencies=[Depends(require_admin)])
 def add_subject(req: SubjectReq, db: Session = Depends(get_db)):
     return svc.add_subject(db, req.name, req.direction)
 
@@ -75,7 +76,7 @@ class ImportReq(BaseModel):
     dry_run: bool = False
 
 
-@router.post("/syllabus/crawl")
+@router.post("/syllabus/crawl", dependencies=[Depends(require_admin)])
 def syllabus_crawl(school_id: int = Query(...), dry_run: bool = Query(True),
                    db: Session = Depends(get_db)):
     """复试大纲爬取（工科/理科）：栏目发现→章节抽取→codebank 灌入。"""
@@ -83,21 +84,21 @@ def syllabus_crawl(school_id: int = Query(...), dry_run: bool = Query(True),
     return syllabus_spider.crawl_syllabus(db, school_id, dry_run=dry_run)
 
 
-@router.post("/school-type/import-seed")
+@router.post("/school-type/import-seed", dependencies=[Depends(require_admin)])
 def school_type_import_seed(db: Session = Depends(get_db)):
     """kaoyan.cn 实测类型映射灌库（精确名匹配，unmatched 留人工核对）。"""
     from services.kaoyan.school_type_enrich import enrich_from_seed
     return enrich_from_seed(db)
 
 
-@router.post("/school-type/enrich")
+@router.post("/school-type/enrich", dependencies=[Depends(require_admin)])
 def school_type_enrich(dry_run: bool = Query(True), db: Session = Depends(get_db)):
     """院校类型补全（kaoyan.cn 筛选第三维）：从 tags/intro 提取，留空不编造。"""
     from services.kaoyan.school_type_enrich import enrich_from_tags
     return enrich_from_tags(db, dry_run=dry_run)
 
 
-@router.post("/import")
+@router.post("/import", dependencies=[Depends(require_admin)])
 def import_questions(req: ImportReq, db: Session = Depends(get_db)):
     """批量灌题：dry_run 只统计不入库；seed_builtin 导入内置种子（幂等）。"""
     items = list(req.questions)

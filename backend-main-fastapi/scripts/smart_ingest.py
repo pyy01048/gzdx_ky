@@ -20,7 +20,13 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import time
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed,
+    TimeoutError as FuturesTimeoutError,
+)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
@@ -70,6 +76,10 @@ def main() -> int:
     ap.add_argument("--kp-workers", type=int, default=None,
                     help="单文档内知识点抽取的 chunk 级并发度（默认 3）")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--max-size-mb", type=float, default=None,
+                    help="只处理体积 ≤ 该值(MB) 的文件。大扫描件（最大 1.6GB）"
+                         "解析会把内存吃到 4GB+ 触发 swap，先跑小文件保证主体入库，"
+                         "大文件留到单独批次攻坚")
     ap.add_argument("--skip-ingested", action="store_true",
                     help="跳过库内已有同 stem 的文件（避免与既有导入重复）")
     ap.add_argument("--only-ocr", action="store_true",
@@ -79,6 +89,9 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=1,
                     help="并行 worker 数（OCR 是 CPU 密集，多进程/多线程可显著提速；"
                          "SQLite 写入会自动串行化，不会写坏库）")
+    ap.add_argument("--timeout", type=int, default=600,
+                    help="单文件处理超时（秒）。超时视为卡死并标记 error 跳过，"
+                         "避免个别坏文件（OCR/LLM 调用挂死）拖垮整批 3584 篇入库")
     ap.add_argument("--json", action="store_true", help="输出 JSON 结果")
     args = ap.parse_args()
 
@@ -89,23 +102,49 @@ def main() -> int:
     if args.kp_workers:
         os.environ["SMART_INGEST_KP_CONCURRENCY"] = str(args.kp_workers)
 
+    # ---- OCR 临时目录改到项目内，规避 %TEMP% 被 Defender/受控文件夹/权限策略拦截 ----
+    # 扫描版 PDF 渲染出的临时 PNG、rapidocr/paddleocr 的字节临时文件默认都落在
+    # C:\Users\...\AppData\Local\Temp。Windows 实时防护 / 受控文件夹访问常在此拦截
+    # 写操作 → "Permission denied: tmpXXXX.png"；源文件打开偶发 "File access error"。
+    # 统一改到项目内 .ocr_tmp，彻底绕开 %TEMP%（与 document_parser._ocr_pdf 的
+    # mkstemp+close 修复互补：一个消除独占锁，一个把路径移出被拦的 %TEMP%）。
+    _OCR_TMP = os.path.join(BASE_DIR, ".ocr_tmp")
+    try:
+        os.makedirs(_OCR_TMP, exist_ok=True)
+        tempfile.tempdir = _OCR_TMP
+        os.environ["TMPDIR"] = _OCR_TMP
+    except Exception as _e:  # noqa: BLE001
+        print("警告：无法设置项目内 OCR 临时目录，将沿用系统 %TEMP%:", _e)
+
     if not args.file and not args.scan_dir:
         ap.error("需要 --file 或 --scan-dir")
 
     targets = [args.file] if args.file else list(iter_files(args.scan_dir))
+    if args.max_size_mb:
+        _cap = args.max_size_mb * 1024 * 1024
+        _before = len(targets)
+        targets = [p for p in targets
+                   if os.path.isfile(p) and os.path.getsize(p) <= _cap]
+        print(f"体积过滤（≤{args.max_size_mb}MB）: {_before} → {len(targets)}")
     if args.skip_ingested:
-        import sqlite3
-
-        DB = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
+        # 2026-10-18 修正：项目已切 PostgreSQL，这里却还在读遗留的 sqlite
+        # database/kaoyan.db → "no such table: documents"，文件名去重彻底失效，
+        # 已入库的文档会被整篇重新解析（含 1.6GB 扫描件），是整批跑不动的主因之一。
         stems = set()
         try:
-            con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-            for (fn,) in con.execute(
-                    "SELECT file_name FROM documents WHERE file_name IS NOT NULL"):
-                s = os.path.splitext(fn.strip())[0]
-                if s:
-                    stems.add(s)
-            con.close()
+            from database import SessionLocal
+            from sqlalchemy import text as _sql_text
+
+            sdb = SessionLocal()
+            try:
+                for (fn,) in sdb.execute(
+                        _sql_text("SELECT file_name FROM documents "
+                                  "WHERE file_name IS NOT NULL")):
+                    s = os.path.splitext((fn or "").strip())[0]
+                    if s:
+                        stems.add(s)
+            finally:
+                sdb.close()
         except Exception as e:  # noqa: BLE001
             print("读取已入库文件名失败（跳过去重）:", e)
         before = len(targets)
@@ -146,6 +185,14 @@ def main() -> int:
     from database import SessionLocal
     from services.smart_ingest import smart_ingest_file
 
+    # PG 迁移后，models 的若干列改了名 / 改了原生枚举类型。orm_aliases.install()
+    # 补挂旧属性名别名（file_type→source_format、chunk_id→chunk_index 等）并对
+    # PG 原生枚举列做类型适配，否则脚本里 `doc.file_type` 等属性访问会 AttributeError、
+    # 枚举比较会报 `operator does not exist`，全量入库直接崩。main.py 入口已调用，
+    # 这里脚本侧也要调用一次（幂等）。
+    import orm_aliases
+    orm_aliases.install()
+
     def _kp_brief(r: dict) -> str:
         """把 knowledge_points 统计压成一行可观测摘要。"""
         kp = r.get("knowledge_points") or {}
@@ -158,8 +205,8 @@ def main() -> int:
                 f" 丢{kp.get('dropped', 0)} 败{kp.get('failed', 0)}"
                 f" {kp.get('seconds', 0)}s)")
 
-    def _one(p: str):
-        """每个 worker 独立 session（SQLAlchemy session 非线程安全）。"""
+    def _ingest_one(p: str):
+        """在独立线程里跑 smart_ingest_file（自带 DB session）。"""
         sdb = SessionLocal()
         try:
             return smart_ingest_file(
@@ -178,12 +225,34 @@ def main() -> int:
         finally:
             sdb.close()
 
+    def _one(p: str):
+        """每个文件独立 session（SQLAlchemy session 非线程安全）。
+
+        用单线程池 + 超时兜底：个别文件若因 OCR/LLM 调用挂死，超过
+        --timeout 即判为卡死并标记 error 跳过，绝不阻塞整批 3584 篇入库。
+        """
+        ex = ThreadPoolExecutor(max_workers=1)
+        try:
+            fut = ex.submit(_ingest_one, p)
+            return fut.result(timeout=args.timeout)
+        except FuturesTimeoutError:
+            return {"file": os.path.basename(p), "status": "error",
+                    "reasons": [f"单文件超时（{args.timeout}s）疑似卡死，已跳过"]}
+        finally:
+            # 不能用 with（等价 shutdown(wait=True)）：一旦某个坏文件的解析线程
+            # 死循环，主线程会在 __exit__ 里永久阻塞，fut.result(timeout=...)
+            # 的超时兜底彻底失效 —— 这正是整批 3584 篇卡死在第 5 篇的原因。
+            ex.shutdown(wait=False, cancel_futures=True)
+
     stats = {}
     results = []
     t0 = time.time()
 
     if args.workers > 1:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # 只补 as_completed：ThreadPoolExecutor 用顶部的 import，
+        # 若在此重复 import 会把它绑成本作用域局部变量，workers=1 分支里 _one() 报
+        # NameError: cannot access free variable 'ThreadPoolExecutor'。
+        from concurrent.futures import as_completed
 
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             futs = {pool.submit(_one, p): p for p in targets}

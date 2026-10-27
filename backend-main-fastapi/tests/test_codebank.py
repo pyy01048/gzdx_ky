@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import text
 from tests.asgi_client import ASGIClient
 from main import app
 
@@ -40,6 +41,15 @@ def test_panorama_and_strategy():
 
 
 def test_subjects_add_and_dup():
+    # 前置清理：历史运行残留的「微波技术」会让 added=False
+    from database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        db.execute(text("DELETE FROM code_subjects WHERE name='微波技术'"))
+        db.commit()
+    finally:
+        db.close()
     r = client.post("/api/codebank/subjects", json={"name": "微波技术", "direction": "复试·电子"})
     assert r.json()["added"] is True
     r = client.post("/api/codebank/subjects", json={"name": "微波技术"})

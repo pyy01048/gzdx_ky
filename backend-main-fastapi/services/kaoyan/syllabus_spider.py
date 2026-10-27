@@ -15,6 +15,7 @@ statement 前缀占位 + tags=[复试大纲]，供全景视图先挂出来）。
 from __future__ import annotations
 
 import re
+from services.dbapi_compat import wrap_conn
 from typing import Dict, List
 
 # 匹配含"复试"的栏目/大纲链接（a 标签文本+href）
@@ -58,7 +59,7 @@ def crawl_syllabus(db, school_id: int, dry_run: bool = True) -> Dict:
     云端/离线环境无网络时如实返回 skipped。
     """
     from services.kaoyan.spider_notices import _fetch, _robots_allows, _polite
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     row = conn.execute(
         "SELECT name, official_url FROM kaoyan_schools WHERE id=?", (school_id,)).fetchone()
     if not row:

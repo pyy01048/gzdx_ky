@@ -54,10 +54,11 @@ SLOW_ROUTE_BUDGETS = {
     "/api/ai/models/hardware": 15.0,     # CPU/GPU/内存探测
     "/api/ai/local/status": 20.0,        # 探测本地 Ollama（网络往返）
     "/api/ai/local/models": 20.0,        # 同上
-    "/api/kb/ingest/status": 15.0,       # 扫 inbox 目录
+    "/api/kb/ingest/status": 25.0,         # 扫 inbox 目录 + OCR 链真探测（rapidocr 冷初始化 ONNX 引擎实测 7s，满载 17s+；router 单例已起后台预热线程，稳态为热路径）
     "/api/kb/health": 15.0,              # 扫知识库目录 + 计数
     "/api/storage": 15.0,                # 目录体积统计
     "/api/access-info": 15.0,            # 探测局域网网卡
+    "/api/admin/system/compute-nodes": 15.0,  # 并行探测 3 个外部算力节点（OCR/reranker/Ollama，Tailscale 往返；满载机器上会超 5s 默认预算）
     "/api/goals/strategy": 90.0,         # 无考研目标时回落 AI 生成（网络往返，实测可达 70s+）
     "/api/backup": 15.0,
 }
@@ -76,6 +77,11 @@ SKIP_PATHS = {
 #: md/txt/pdf 字节，而不是 JSON，故在此显式登记并写明理由。
 NON_JSON_GET_PATHS = {
     "/api/documents/{doc_id}/export",  # 学习文库导出统一快照（md/txt/pdf 字节流）
+    "/api/errors/export",              # 错题 CSV 导出（带 BOM，Excel 直开）
+    "/api/errors/export-pdf",           # 错题本 PDF 导出（对标「不背单词」纸质导出）
+    "/api/words/export-pdf",             # 单词本 PDF 导出（对标「不背单词」纸质导出）
+    "/api/quiz/export",                # 题目 CSV 导出
+    "/api/stats/export",               # 学习统计 CSV 导出
 }
 
 #: 允许的 4xx 容差白名单：路径 -> (允许的状态码集合, 理由)
@@ -95,15 +101,19 @@ ALLOWED_4XX = {
     # ---- 400：业务前置条件未满足（正常业务分支）----
     "/api/ai/models/recommend": ({400}, "至少需提供 subject 或 task 之一"),
 
-    # ---- 401：外部服务未授权（测试环境无网盘 OAuth token）----
-    "/api/netdisk/recursive-files": ({401}, "百度网盘未授权（测试环境无 token）"),
-    "/api/netdisk/quota": ({401}, "百度网盘未授权（测试环境无 token）"),
-    # 网盘重构后 /files 授权失效时显式 401（带 action=reauthorize），
-    # 不再静默返回本地同步缓存冒充"目录"——这是修 bug 后的预期行为
-    "/api/netdisk/files": ({401}, "百度网盘未授权（测试环境无 token）：授权失效显式 401，前端据此回到平台选择页"),
+    # ---- 409：外部服务未授权（测试环境无网盘 OAuth token）----
+    # 注意：这里**故意用 409 而非 401**。若返回 401，全局鉴权拦截会把它当成
+    # "登录过期"触发 refresh→再 401→auth:required→把用户踢回登录页（症状：
+    # 密码正确也进不了主页）。授权失效本质是"第三方资源状态冲突"，用 409 表达，
+    # 前端按 detail.action === 'reauthorize'（Pan.jsx:228 同时认 401 与 action）
+    # 引导重新授权，不会误踢登录。契约测试必须登记 409，否则会被误"修"成 401
+    # 而复活上面的登录页 bug。
+    "/api/netdisk/recursive-files": ({409}, "百度网盘未授权（测试环境无 token）"),
+    "/api/netdisk/quota": ({409}, "百度网盘未授权（测试环境无 token）"),
+    "/api/netdisk/files": ({409}, "百度网盘未授权（测试环境无 token）：显式 409 + action=reauthorize，前端据此回到平台选择页"),
 
     # ---- 404：外部资源 id 在测试库中不存在（非源码缺陷）----
-    "/api/kaoyan/schools/{school_id}": ({404}, "���试库无院校数据"),
+    "/api/kaoyan/schools/{school_id}": ({404}, "测试库无院校数据"),
     "/api/kaoyan/schools/{school_id}/enrollment-plan": ({404}, "M3-4 新端点：院校不存在时 404（测试库无院校数据），与 /schools/{school_id} 行为一致"),
     "/api/notice-alert/notices/{notice_id}": ({404}, "M-notice-alert 新端点：公告不存在时 404（测试库无 kaoyan_notices 数据），资源型路由取不到 id 属预期，与 /kaoyan/schools/{school_id} 行为一致"),
     "/api/quiz/questions/{question_id}": ({404}, "M2-5 新端点：题目不存在时 404（测试库无题目数据），与同路径 PUT/DELETE 行为一致"),
@@ -117,7 +127,23 @@ ALLOWED_4XX = {
     "/api/documents/{doc_id}/download": ({404}, "#26 新增：同上，下载分支"),
     "/api/netdisk/platform-config/{platform}": ({404}, "测试库无该平台配置"),
     "/api/ai/build-embeddings/status/{task_id}": ({404}, "内存态任务表为空，任务不存在"),
+    "/api/textbooks/{textbook_id}": ({404}, "S1 教材目录：生产库 26 本参考数据，测试库该表为空 → 资源型路由取不到 id 属预期，与 /kaoyan/schools/{school_id} 行为一致"),
+    "/api/textbooks/school/{school_id}": ({404}, "S1：测试库无院校-教材关联数据，同 /textbooks/{textbook_id} 口径"),
+    "/api/favorites/check": ({422}, "S7 新端点：item_type / item_id 为必填查询参数，巡检不带参 → 422 属正常入参校验"),
     "/api/quality/eval-runs/{run_id}": ({404}, "评测任务不存在时 404：conftest 强制重定向到临时空库，eval_runs 无数据；已核实真库 eval_runs 有 id=1~5、路由定义于 routers/quality.py:47 且已在 main.py:240 注册，属测试库预期空态而非源码缺陷"),
+
+    # ---- 新路由（papers / code_oj / admin_schools / admin_netdisk）巡检登记 ----
+    # 422：必填查询参数，巡检不带参属正常入参校验
+    "/api/papers/filters/years": ({422}, "缺必填查询参数 subject（routers/papers.py 年份筛选按科目取）"),
+    "/api/papers/filters/paper-types": ({422}, "缺必填查询参数 subject（同 /papers/filters/years）"),
+    "/api/admin/netdisk/accounts": ({422}, "缺必填查询参数 user_id（routers/admin_netdisk.py 按用户列账号）"),
+    "/api/admin/netdisk/sessions": ({422}, "缺必填查询参数 user_id（同 /admin/netdisk/accounts）"),
+    "/api/admin/netdisk/logs": ({422}, "缺必填查询参数 user_id（同 /admin/netdisk/accounts）"),
+    # 404：资源型路由，测试库对应表为空（数据无关规则：不往库里种假数据）
+    "/api/papers/attempts/{attempt_id}/report": ({404}, "测试库无 paper_attempts 数据，作答记录不存在 → 404"),
+    "/api/admin/schools/{school_id}": ({404}, "测试库无院校数据，与 /kaoyan/schools/{school_id} 行为一致"),
+    "/api/exam/sessions/{session_id}": ({404}, "测试库无 exam_sessions 数据（模考会话由用户创建），会话不存在 → 404，与 /papers/attempts/{attempt_id}/report 同口径"),
+    "/api/exam/sessions/{session_id}/report": ({404}, "P0-3 考后报告：测试库无 exam_sessions 数据，会话不存在 → 404，与 /api/exam/sessions/{session_id} 同口径；空作答时返回 200 空报告结构由 exam_report 单测覆盖"),
 }
 
 #: 路径变量名 -> sample_data 里真实存在的 id 字段。
@@ -428,20 +454,35 @@ def test_get_routes_return_json(client, get_cases):  # noqa: ARG001
 # --------------------------------------------------------------------------- #
 
 def test_real_database_not_polluted(client, real_db_mtime_guard):  # noqa: ARG001
-    """确保整个测试会话没有写过一次真实库 D:\\平台\\database\\kaoyan.db。
+    """确保整个测试会话没有写过一次真实库。
 
-    这是 QA 的红线：283MB 的用户数据绝不能被测试碰。
-    注意 mtime 变化也可能来自运行中的业务服务，因此这里只在
-    "测试确实使用了临时库" 的前提下做断言（conftest 已强制 DATABASE_PATH 重定向）。
+    覆盖**两个后端**（2026-10-14 修复）：
+      - SQLite：引擎必须指向 conftest 在 mkdtemp 下建的临时库
+      - PostgreSQL：引擎必须指向专用测试库 ``kaoyan_test``，绝不能是生产库 ``kaoyan``
+
+    历史缺陷：旧版只断言 URL 含 ``kaoyan_qa_testdb_``，而 ``.env`` 里
+    ``DATABASE_BACKEND=postgresql`` 时 URL 是 PG 连接串，该断言恒假 ——
+    守卫不但没起到作用，反而自己长期红灯，把真问题淹没在噪声里。
     """
     import conftest as _c
     from database import SQLALCHEMY_DATABASE_URL
 
-    # 1) 引擎必须指向临时库
-    assert "kaoyan_qa_testdb_" in SQLALCHEMY_DATABASE_URL, (
-        f"测试引擎竟指向 {SQLALCHEMY_DATABASE_URL}，可能污染真实数据！"
-    )
-    # 2) 真实库 mtime 未变（若文件存在）
+    url = SQLALCHEMY_DATABASE_URL
+    # 1) 绝不指向生产 PG 库（最高优先级红线）
+    if url.startswith("postgresql"):
+        db_name = url.rsplit("/", 1)[-1].split("?")[0]
+        assert db_name != _c.PROD_PG_DB, (
+            f"测试引擎竟指向生产 PG 库 {db_name!r}（{url}），可能污染真实数据！"
+        )
+        assert db_name == _c.TEST_PG_DB, (
+            f"测试 PG 引擎指向 {db_name!r}，期望专用测试库 {_c.TEST_PG_DB!r}"
+        )
+    else:
+        # 2) SQLite 分支必须落在临时目录内
+        assert "kaoyan_qa_testdb_" in url, (
+            f"测试引擎竟指向 {url}，可能污染真实数据！"
+        )
+    # 3) 真实 SQLite 库 mtime 未变（若文件存在）
     if real_db_mtime_guard is not None and os.path.exists(_c.REAL_DB_PATH):
         now_mtime = os.stat(_c.REAL_DB_PATH).st_mtime_ns
         assert now_mtime == real_db_mtime_guard, (

@@ -340,6 +340,10 @@ def test_every_api_route_carries_the_access_gate(app_module):
     # 错题批量删除是**个人域**（端点内 scoped 限定本人），普通用户必须可用。
     ("POST", "/api/errors/batch-delete", False),
     ("DELETE", "/api/papers/7", True),
+    # 组卷写共享 papers；答案交叉校验写 answer_candidates 并改题目置信度
+    ("POST", "/api/papers/build", True),
+    ("POST", "/api/answers/check", True),
+    ("POST", "/api/answers/check-batch", True),
     ("POST", "/api/papers/attempts/start", False),
     ("POST", "/api/netdisk/files/9/ingest", True),
     # 同上：同步写共享网盘缓存，属管理操作（2026-10-18 §B3）。

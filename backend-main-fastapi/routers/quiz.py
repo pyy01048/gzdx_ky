@@ -1,10 +1,12 @@
 """刷题路由。"""
 
+from utils.security import require_admin
 import datetime
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Integer, func
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,7 @@ from models import (
     QuestionKnowledgeLink,
     KnowledgePoint,
     StudyEvent,
+    Word,
 )
 from schemas import QuizQuestionCreate, QuizQuestionUpdate, QuizSubmit, GenericResponse
 from services.quiz_content_gate import admit as gate_admit
@@ -670,7 +673,7 @@ async def years_index(
 
 
 
-@router.delete("/questions/{question_id}")
+@router.delete("/questions/{question_id}", dependencies=[Depends(require_admin)])
 async def delete_question(
     question_id: int,
     db: Session = Depends(get_db),
@@ -691,7 +694,7 @@ async def delete_question(
     return {"success": True, "message": f"题目 {question_id} 已删除", "id": question_id}
 
 
-@router.put("/questions/{question_id}")
+@router.put("/questions/{question_id}", dependencies=[Depends(require_admin)])
 async def update_question(
     question_id: int,
     payload: QuizQuestionUpdate,
@@ -762,7 +765,7 @@ def _sanitize_rows(rows: list[dict]) -> tuple[list[dict], dict[str, int]]:
     return out, stats
 
 
-@router.post("/questions")
+@router.post("/questions", dependencies=[Depends(require_admin)])
 async def add_question(
     question: QuizQuestionCreate,
     db: Session = Depends(get_db),
@@ -783,7 +786,7 @@ async def add_question(
     return {"id": new_q.id, "message": "题目添加成功"}
 
 
-@router.post("/import")
+@router.post("/import", dependencies=[Depends(require_admin)])
 async def import_questions(
     questions: list[QuizQuestionCreate],
     auto_classify: bool = Query(True, description="缺省字段自动识别分类（规则优先，LLM兜底）"),
@@ -923,7 +926,13 @@ async def submit_answer(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),  # B4 访客兜底
 ):
-    """提交答案（记录答题历史，答错自动入错题本）。"""
+    """提交答案（记录答题历史，答错自动入错题本）。
+
+    P0-2：主观题（answer_type='subjective' 或 question_type 为
+    essay/calc/fill）不再做字符串精确匹配判分：
+    - 若传入 self_score，则按及格线（默认 60% max_score）判定 correct；
+    - 未传 self_score 时 correct=None（不判对错），needs_review=True 交前端提示。
+    """
     question = db.query(QuizQuestion).filter(QuizQuestion.id == submission.question_id).first()
     if not question:
         raise HTTPException(status_code=404, detail="题目不存在")
@@ -933,8 +942,29 @@ async def submit_answer(
     low_confidence = getattr(question, "answer_confidence", 1.0) is not None and \
         getattr(question, "answer_confidence", 1.0) < 0.8
 
+    # —— P0-2：主观题判定 —— #
+    # 命中主观题时不做精确字符串匹配，避免 essay/calc/fill 几乎必然判错。
+    is_subjective = (
+        str(getattr(question, "answer_type", "") or "").lower() == "subjective"
+        or (question.question_type or "").lower() in ("essay", "calc", "fill")
+    )
+
     correct = False
-    if question.answer and not low_confidence:
+    self_score = None
+    max_score = None
+    if is_subjective:
+        # 主观题：有自评则按及格线判对错；无自评则不判对错（correct=None）
+        if submission.self_score is not None:
+            self_score = float(submission.self_score)
+            max_score = float(submission.max_score) if submission.max_score is not None else 10.0
+            if max_score <= 0:
+                max_score = 10.0
+            # 及格线默认 60% max_score
+            passing = 0.6 * max_score
+            correct = self_score >= passing
+        else:
+            correct = None  # 不判对错
+    elif question.answer and not low_confidence:
         correct = submission.my_answer.strip().upper() == question.answer.strip().upper()
 
     # 记录答题历史（用于真实正确率统计）
@@ -950,9 +980,10 @@ async def submit_answer(
     )
     db.add(record)
 
-    # 答错自动加入错题本（低置信题不判错——答案本身可能不可靠）
+    # 答错自动加入错题本（低置信题不判错——答案本身可能不可靠；
+    # P0-2：主观题未自评时 correct=None，也不入错题本）
     error = None
-    if not correct and not low_confidence:
+    if correct is not None and not correct and not low_confidence:
         # 错因自动判定（信号驱动，零 LLM）：答题当下即填 error_category，
         # 让错因分布/薄弱点分析当天就有数据；用户可手动改写、也可点 AI 归因覆盖。
         try:
@@ -985,6 +1016,22 @@ async def submit_answer(
         db.add(error)
 
     db.commit()
+
+    # —— P0-2：主观题自评分写入 answer_records（若表无 self_score 列则跳过）—— #
+    if is_subjective and submission.self_score is not None:
+        try:
+            from sqlalchemy import text as _score_text
+
+            db.execute(
+                _score_text(
+                    "UPDATE answer_records SET self_score = :sc "
+                    "WHERE id = :rid AND self_score IS NULL"
+                ),
+                {"sc": float(submission.self_score), "rid": record.id},
+            )
+            db.commit()
+        except Exception:  # noqa: BLE001 - 表无该列时静默跳过，不报错
+            db.rollback() if db.in_transaction() else None
 
     # —— 错题 ↔ 知识点联动（2026-10）—— #
     # 此前只有「手动收录错题」(POST /api/errors) 会挂知识点，导致刷题产生的错题
@@ -1070,10 +1117,233 @@ async def submit_answer(
     return {
         "question_id": question.id,
         "correct": correct,
-        "needs_review": low_confidence,
+        "needs_review": low_confidence or (is_subjective and submission.self_score is None),
         "correct_answer": question.answer,
         "analysis": question.analysis,
         "record_id": record.id,
+        # P0-2：主观题透传字段（前端据此展示自评/AI 批改入口）
+        "question_type": question.question_type,
+        "is_subjective": is_subjective,
+        "self_score": self_score,
+        "max_score": max_score,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# P0-1：刷题生词提取（一键进词库的后端准备）
+# --------------------------------------------------------------------------- #
+#: 提取英文单词时的常见停用词（含冠词/代词/介词/连词/助动词等虚词）。
+#: 正则已保证长度 ≥4，这里再过滤掉高频功能词，避免词库被噪音污染。
+_QUIZ_STOPWORDS = {
+    # —— 冠词 / 代词 / 指示词 ——
+    "the", "this", "that", "these", "those", "there", "their", "them", "they",
+    "your", "yours", "you", "yourself", "ours", "ourselves", "its", "itself",
+    "her", "hers", "him", "his", "my", "mine", "our", "us", "we",
+    "who", "whom", "whose", "which", "what", "when", "where", "why", "how",
+    # —— 介词 / 连词 ——
+    "with", "from", "have", "will", "were", "would", "could", "should",
+    "about", "being", "been", "into", "over", "under", "again", "further",
+    "once", "only", "than", "then", "very", "just", "also", "after",
+    "before", "between", "during", "through", "above", "below", "against",
+    "along", "among", "around", "because", "while", "though", "although",
+    "without", "within", "across", "behind", "beyond", "beside", "besides",
+    "except", "toward", "towards", "upon", "until", "unless", "since",
+    "still", "even", "ever", "never", "always", "often", "rather", "either",
+    "neither", "whether", "however", "therefore", "moreover", "furthermore",
+    "instead", "otherwise", "whatever", "whenever", "wherever", "whoever",
+    "some", "any", "all", "each", "every", "both", "few", "many", "much",
+    "most", "more", "less", "least", "other", "another", "such", "own",
+    "same", "different", "several", "certain",
+    # —— 助动词 / 情态动词 / be 动词 ——
+    "may", "might", "must", "shall", "can", "does", "did", "doing", "has",
+    "had", "having", "need", "used", "use", "using", "get", "got", "give",
+    "given", "take", "took", "taken", "come", "came", "become", "became",
+    "keep", "know", "known", "think", "thought", "want", "wanted", "look",
+    "looked", "like", "liked", "way", "ways", "thing", "things", "time",
+    "times", "year", "years", "day", "days", "new", "now", "two", "one",
+    "first", "second", "last", "next",
+}
+
+
+
+def _extract_english_words(text: Optional[str]) -> list:
+    """从文本中提取英文单词候选。
+
+    - 正则 ``[A-Za-z][A-Za-z-]{3,}``（≥4 字母，含连字符）
+    - 统一小写
+    - 过滤停用词
+    - 保持首次出现顺序去重
+    """
+    if not text:
+        return []
+    found = []
+    seen = set()
+    for m in re.finditer(r"[A-Za-z][A-Za-z-]{3,}", str(text)):
+        word = m.group(0).strip("-").lower()
+        # 连字符单词去掉首尾连字符后再判断
+        if len(word) < 4:
+            continue
+        if word in _QUIZ_STOPWORDS:
+            continue
+        if word not in seen:
+            seen.add(word)
+            found.append(word)
+    return found
+
+
+@router.post("/{question_id}/extract-words", dependencies=[Depends(require_admin)])
+def extract_words(
+    question_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),  # B4 访客兜底
+):
+    """从题目中提取英文生词候选，并标注是否已在当前用户词库。
+
+    - 提取来源：题干 content + options + analysis
+    - 返回 ``{question_id, words: [{word, exists, source}]}``，按首次出现顺序去重。
+    - ``exists=true`` 表示该词已在当前用户词库中（Word.word 精确匹配，按 user_id 过滤）。
+    """
+    question = db.query(QuizQuestion).filter(QuizQuestion.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="题目不存在")
+
+    # 收集文本来源
+    sources = []
+    if question.content:
+        sources.append(("题干", question.content))
+    if question.options:
+        for opt in question.options:
+            if opt:
+                sources.append(("选项", str(opt)))
+    if question.analysis:
+        sources.append(("解析", question.analysis))
+
+    # 提取候选词（保持首次出现顺序去重）
+    candidate_words = []
+    seen_words = set()
+    for source, text in sources:
+        for w in _extract_english_words(text):
+            if w not in seen_words:
+                seen_words.add(w)
+                candidate_words.append({"word": w, "source": source})
+
+    # 查询当前用户已有词（精确匹配，按 user_id 过滤）
+    existing = set()
+    if candidate_words:
+        word_list = [c["word"] for c in candidate_words]
+        rows = (
+            db.query(Word.word)
+            .filter(Word.word.in_(word_list), scoped(Word, user))
+            .all()
+        )
+        existing = {r[0] for r in rows}
+
+    words = [
+        {
+            "word": c["word"],
+            "exists": c["word"] in existing,
+            "source": c["source"],
+        }
+        for c in candidate_words
+    ]
+    return {"question_id": question.id, "words": words}
+
+
+# --------------------------------------------------------------------------- #
+# P0-2：主观题 AI 批改
+# --------------------------------------------------------------------------- #
+class GradeSubjectiveRequest(BaseModel):
+    question_id: int
+    my_answer: str = Field(..., min_length=1)
+    max_score: Optional[float] = None
+
+
+@router.post("/grade-subjective")
+def grade_subjective(
+    request: GradeSubjectiveRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),  # B4 访客兜底
+):
+    """主观题 AI 批改（绑定题目上下文）。
+
+    - 查询题目（含题干/标准答案/解析）
+    - 调用 ``services.subjective_grader.grade_subjective``（与模考引擎同款 prompt）
+    - 成功返回 ``{score, max_score, evaluation, reference_answer}``
+    - LLM 失败时返回 HTTP 200 + ``score=None`` 降级提示，不报错。
+    """
+    question = db.query(QuizQuestion).filter(QuizQuestion.id == request.question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="题目不存在")
+
+    max_score = request.max_score
+    # 若请求未传满分，尝试从题目/默认值取
+    effective_max = max_score if max_score is not None else 10.0
+
+    from services.subjective_grader import grade_subjective as _grade
+    from services.subjective_grader import sandbox_verify, verify_score
+
+    score, evaluation = _grade(
+        question=question,
+        my_answer=request.my_answer,
+        max_score=effective_max,
+        db=db,
+    )
+
+    # P0-2 结构分离验证器：沙箱验算 + 独立二次验证（评分卡）。
+    # 生成器与验证器使用不同 prompt 与独立模型调用；任何失败都降级返回，
+    # 不影响批改主流程。
+    try:
+        sbx = sandbox_verify(question=question, reference_answer=question.answer or "")
+        verification = verify_score(
+            question=question,
+            my_answer=request.my_answer,
+            score=score,
+            max_score=effective_max,
+            db=db,
+        )
+        verification["sandbox"] = sbx
+    except Exception:  # noqa: BLE001 - 验证器旁路，失败不阻塞批改
+        verification = {
+            "verified_score": score,
+            "dimensions": {},
+            "verdict": "degraded",
+            "comment": "验证器暂不可用",
+            "degraded": True,
+            "sandbox": {
+                "verified": False,
+                "expr": None,
+                "value": None,
+                "detail": "沙箱验算不可用",
+                "usable": False,
+            },
+        }
+
+    # 三层可审计记忆（55 号方案 P0-1）：旁路写入 L1 批改轨迹，供 L2 蒸馏。
+    # 任何失败都不影响批改主流程（memory_service 内部已 try/except）。
+    try:
+        from services import memory_service
+
+        memory_service.record_grading_trace(
+            user_id=user.id,
+            question_id=question.id,
+            subject=question.subject,
+            question_content=question.content,
+            my_answer=request.my_answer,
+            score=score,
+            max_score=effective_max,
+            evaluation=evaluation or "",
+            db=db,
+        )
+    except Exception:  # noqa: BLE001 - 埋点旁路
+        pass
+
+    return {
+        "question_id": question.id,
+        "score": score,
+        "max_score": effective_max,
+        "evaluation": evaluation,
+        "reference_answer": question.answer,
+        "verification": verification,
     }
 
 
@@ -1511,7 +1781,7 @@ def _build_paste_candidates(text: str, db: Session, is_retest: bool) -> tuple:
     return candidates, classify_stats
 
 
-@router.post("/import/markdown")
+@router.post("/import/markdown", dependencies=[Depends(require_admin)])
 async def import_markdown(
     payload: dict,
     db: Session = Depends(get_db),
@@ -1581,7 +1851,7 @@ async def import_markdown(
     }
 
 
-@router.post("/import/confirm")
+@router.post("/import/confirm", dependencies=[Depends(require_admin)])
 async def import_confirm(
     payload: dict,
     db: Session = Depends(get_db),
@@ -1773,7 +2043,7 @@ async def retest_stats(
     }
 
 
-@router.post("/extract-knowledge-points")
+@router.post("/extract-knowledge-points", dependencies=[Depends(require_admin)])
 async def extract_knowledge_from_text(
     payload: dict,
     db: Session = Depends(get_db),

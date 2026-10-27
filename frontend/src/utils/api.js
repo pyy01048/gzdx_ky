@@ -80,7 +80,8 @@ export async function chatCompletion(provider, messages, { temperature = 0.6, ma
     let detail = ''
     try {
       const j = await resp.json()
-      detail = j.detail || JSON.stringify(j)
+      // 后端错误壳是 {code, message, detail?}（utils/exceptions.py），message 才是给人看的那句
+      detail = j.message || j.detail || JSON.stringify(j)
     } catch { /* ignore */ }
     throw new Error(`AI 接口错误 ${resp.status}：${detail || resp.statusText}`)
   }
@@ -126,7 +127,7 @@ export async function chatStream(provider, messages, { temperature = 0.6, useRag
   })
   if (!resp.ok) {
     let detail = ''
-    try { const j = await resp.json(); detail = j.detail || '' } catch { /* ignore */ }
+    try { const j = await resp.json(); detail = j.message || j.detail || '' } catch { /* ignore */ }
     throw new Error(`AI 接口错误 ${resp.status}：${detail || resp.statusText}`)
   }
 

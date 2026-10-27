@@ -30,7 +30,9 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding="utf-8")
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+from utils.ollama_host import resolve_ollama_host as _resolve_ollama_host
+
+OLLAMA_HOST = _resolve_ollama_host()
 
 #: 本机推荐拉取的模型（按 model_registry 的适配判定得出）
 RECOMMENDED = [

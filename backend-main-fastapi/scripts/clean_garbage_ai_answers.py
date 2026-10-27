@@ -21,7 +21,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = Path(r"D:/平台/database/kaoyan.db")
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB_PATH = _REPO / "database" / "kaoyan.db"
 
 # 垃圾答案特征：OCR 页眉页脚/警告语/无意义超短串
 _GARBAGE_PATTERNS = [

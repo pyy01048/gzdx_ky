@@ -9,12 +9,15 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import json
 import sqlite3
 import sys
 from difflib import SequenceMatcher
 
-sys.path.insert(0, r"D:\平台\backend-main-fastapi")
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "backend-main-fastapi"))
 from services.quiz_content_gate import (  # noqa: E402
     MAX_INDEX_STEM_LEN,
     MIN_CONFLICT_STEM_LEN,
@@ -22,7 +25,7 @@ from services.quiz_content_gate import (  # noqa: E402
     stem_signature,
 )
 
-DB_PATH = r"D:\平台\database\kaoyan.db"
+DB_PATH = str(_REPO / "database" / "kaoyan.db")
 TH = 0.86
 
 
@@ -118,7 +121,7 @@ def main() -> int:
             "选项": items,
         })
 
-    path = r"D:\平台\backend-main-fastapi\data\diagnostics\l2_adjudicate.json"
+    path = str(_REPO / "backend-main-fastapi" / "data" / "diagnostics" / "l2_adjudicate.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
 

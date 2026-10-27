@@ -1,0 +1,398 @@
+/* ==========================================================================
+   顶部导航样式（NAV-SPEC §2.2 的可直接引用版本）
+   --------------------------------------------------------------------------
+   由新 Layout 局部引入：在 Layout.jsx 里 import '../styles/nav.css'
+   —— 不要先在 main.jsx 全局引入：本文件的 .main-area / .breadcrumb 会覆盖
+      global.css 的现有规则，而当前 Layout 仍是侧边栏版式，会立刻改变线上观感。
+
+   旧侧边栏（.sidebar / .side-nav / .nav-mod）在 Layout 改造完成后一并删除。
+
+   注意：本文件不定义颜色字面量，全部走 src/styles/tokens.css 的令牌。
+   ========================================================================== */
+
+/* ---------- 顶栏容器（Apple 毛玻璃浮层） ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-navbar);
+  height: var(--nav-h);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+  border-bottom: 1px solid var(--border-soft);
+  transition: height var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
+}
+.topbar.is-scrolled {
+  height: var(--nav-h-scroll);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 三区栅格：左右两列强制等宽 → 中间列几何居中。
+   不用 flex space-between：那样只有左右宽度相等时中间才居中，品牌与动作组宽度不等会偏。 */
+.topbar-inner {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-6);
+  max-width: var(--container-max);
+  height: 100%;
+  margin-inline: auto;
+  padding-inline: var(--container-gutter);
+}
+
+/* ---------- 左区：品牌 ---------- */
+.topbar-brand {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--fg);
+  text-decoration: none;
+}
+.topbar-brand .brand-mark {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--grad-gemini);   /* Gemini 品牌能量（品牌时刻·允许） */
+  color: #fff;
+  font-weight: var(--fw-semibold);
+  font-size: var(--text-md);
+  flex: none;
+  box-shadow: var(--gemini-glow);
+}
+.topbar-brand .brand-name {
+  font-size: var(--text-md);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+}
+.topbar-brand .brand-sub {
+  font-size: var(--text-xs);
+  color: var(--meta);
+  letter-spacing: var(--tracking-caps);
+  white-space: nowrap;
+}
+
+/* ---------- 中区：导航（几何居中） ---------- */
+.topbar-nav {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--nav-item-gap);
+  min-width: 0;
+}
+.nav-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--nav-item-h);
+  padding-inline: var(--nav-item-pad-x);
+  border: 0;
+  border-radius: var(--radius-full);   /* M3 药丸形导航项 */
+  background: transparent;
+  color: var(--fg-2);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
+}
+.nav-item:hover { background: var(--surface-2); color: var(--fg); }
+/* M3 激活态：药丸指示器（filled secondary-container），非下划线 */
+.nav-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+.nav-item .caret { transition: transform var(--motion-fast) var(--ease-out); }
+.nav-item[aria-expanded='true'] .caret { transform: rotate(180deg); }
+
+/* 未读角标（择校模块） */
+.nav-badge {
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- 右区：动作 ---------- */
+.topbar-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.topbar-icon-btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-full);   /* M3 圆形图标按钮 */
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
+}
+.topbar-icon-btn:hover { background: var(--surface-2); color: var(--fg); }
+
+/* 后端连接指示：仅离线时显示（连同文案，避免一个孤零零的绿点让人猜） */
+.topbar-status { display: inline-flex; align-items: center; gap: 5px; }
+.topbar-status .dot { width: 7px; height: 7px; border-radius: var(--radius-full); }
+.topbar-status .dot.online { background: var(--success); }
+.topbar-status .dot.offline { background: var(--warn); }
+.topbar-status.is-offline {
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+  font-size: var(--text-xs);
+  font-weight: var(--fw-medium);
+}
+
+/* ---------- 下拉面板 ---------- */
+.nav-dd { position: relative; display: inline-flex; }
+.nav-dd-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  /* 顶部 8px 透明桥：鼠标从按钮移到面板途中不丢 hover */
+  padding-top: 8px;
+  z-index: var(--z-dropdown);
+}
+.nav-dd-menu {
+  width: var(--nav-dd-w);
+  padding: var(--nav-dd-pad);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--border-soft);   /* M3 面板：阴影 + 极淡内描边 */
+}
+/* 面板宽时右对齐（科目切换器 / 更多菜单），避免溢出视口 */
+.nav-dd-panel.is-end { left: auto; right: 0; transform: none; }
+
+.nav-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;  /* 图标 | 文字 | 元信息 */
+  align-items: center;
+  gap: var(--nav-row-gap);
+  min-height: var(--nav-row-h);
+  padding-inline: var(--nav-row-pad-x);
+  border: 0;                       /* button 默认描边必须清掉，否则每行是一个灰框 */
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-row:hover { background: var(--surface-2); }
+/* M3 激活态：药丸填充 */
+.nav-row.is-active { background: var(--accent-soft); color: var(--accent); font-weight: var(--fw-semibold); }
+.nav-row.is-active .nav-row-icon { color: var(--accent); }
+.nav-row-icon { width: 20px; color: var(--fg-2); text-align: center; }
+.nav-row-meta {
+  justify-self: end;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.nav-dd-sep { height: 1px; margin: var(--space-1) 0; background: var(--border-soft); }
+
+/* ---------- 科目切换器（顶栏内药丸，收缩态垂直占用 0） ---------- */
+.subject-picker { position: relative; display: inline-flex; }
+.subject-panel { top: calc(100% + 8px); }
+.subject-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--subject-pill-h);
+  max-width: var(--subject-pill-maxw);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out);
+}
+.subject-pill:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.subject-pill .sp-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subject-pill .sp-caret { flex: none; transition: transform var(--motion-fast) var(--ease-out); }
+.subject-pill[aria-expanded='true'] .sp-caret { transform: rotate(180deg); }
+.subject-pill.is-empty { color: var(--muted); }
+
+.subject-menu { width: var(--subject-panel-w); }
+/* 科目较多时防止面板溢出视口（顶栏 56px + 8px 间距 + 触屏 48px 行高余量） */
+.subject-menu { max-height: calc(100vh - 96px); overflow-y: auto; overscroll-behavior: contain; }
+.subject-menu .nav-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-shadow);
+}
+.subject-menu-head {
+  padding: var(--space-1) var(--nav-row-pad-x) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* ---------- 主内容 ---------- */
+.app-shell { min-height: 100%; }
+.app-shell.is-topnav { display: block; min-height: 100vh; }
+.main-area {
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: var(--container-gutter);
+  padding-top: var(--page-top);
+  padding-bottom: var(--page-bottom);
+}
+.main-area.is-wide { max-width: var(--container-wide); }
+.main-area.is-prose { max-width: var(--container-prose); }
+
+/* ---------- 面包屑 ---------- */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.breadcrumb a { color: var(--muted); text-decoration: none; }
+.breadcrumb a:hover { color: var(--accent); }
+.breadcrumb .crumb-sep { color: var(--meta); }
+.breadcrumb .crumb-current { color: var(--fg); }
+
+/* ---------- 页面上下文行：左面包屑 / 右倒计时胶囊（单行，不额外占高） ---------- */
+.page-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 32px;
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.exam-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.exam-strip strong {
+  color: var(--fg);
+  font-weight: var(--fw-semibold);
+  font-size: var(--text-sm);
+  letter-spacing: -0.01em;
+}
+.exam-strip a { color: var(--accent); text-decoration: none; }
+
+/* ---------- 移动端「全部功能」底部抽屉 ---------- */
+.more-sheet-mask {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--mask);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-end;
+}
+.more-sheet {
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: var(--space-5) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
+  box-shadow: var(--shadow-overlay);
+  animation: sheet-up var(--motion-slow) var(--ease-standard);
+}
+@keyframes sheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.more-sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.more-sheet-head strong { font-size: var(--text-lg); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); }
+.more-sheet-group { margin-bottom: var(--space-4); }
+.more-sheet-label { font-size: var(--text-xs); color: var(--muted); margin-bottom: var(--space-2); }
+.more-sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--space-2); }
+.more-sheet-item {
+  display: block; text-align: center;
+  padding: 12px 8px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+.more-sheet-item:active { background: var(--surface-3); }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1199px) {
+  .topbar-nav { gap: 2px; }
+  .nav-item { padding-inline: 8px; font-size: var(--text-sm); }
+}
+
+/* <768px：隐藏中栏导航，改走底部 TabBar；顶栏保留品牌 + 右区 */
+@media (max-width: 767px) {
+  /* 内容底部让出 TabBar 高度，最后一段不被遮住 */
+  .app-shell.is-topnav .main-area { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .topbar-inner {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+  .topbar-nav { display: none; }
+  .topbar-brand .brand-sub { display: none; }
+  /* 手机上只保留最低限度的顶栏动作：科目 / 搜索 / 主题
+     （AI 有右下角悬浮入口，后端状态点在手机上意义不大） */
+  .topbar-status { display: none; }
+  .topbar-actions { gap: 2px; }
+  .topbar-actions .topbar-icon-btn:last-child { display: none; }
+  .topbar-actions .topbar-icon-btn { width: 34px; height: 34px; }
+  .subject-pill { max-width: 118px; }
+}
+@media (min-width: 768px) {
+  .bottom-nav { display: none; }
+}
+
+/* 触屏：下拉行高提到 48px（>44px 可点区） */
+@media (hover: none) and (pointer: coarse) {
+  .nav-row { min-height: 48px; }
+}

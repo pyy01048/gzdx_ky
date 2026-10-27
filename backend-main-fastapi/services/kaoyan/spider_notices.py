@@ -25,11 +25,12 @@ import re
 import sqlite3
 import time
 import urllib.request
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from services.kaoyan.notice_dedup import upsert_notice
+from services.dbapi_compat import wrap_conn
+from utils.timeutil import naive_utc_iso
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,24 @@ UA = {
     "Connection": "keep-alive",
 }
 _CHECKPOINT = Path(__file__).parent / "notices_checkpoint.json"
+
+# 2026-10-19 枚举缺口修复：notice_type 在 PG 是 ENUM（公告/简章/复试/调剂/录取），
+# 但 _TYPE_RULES 会产出「大纲/目录」→ invalid input value for enum → 事务毒化整批。
+# 同时用户要求的统计口径需要「初试/报名」两类。此处幂等补齐枚举值（PG16 允许事务内 ADD VALUE，
+# 新值在事务提交后生效；duplicate_object 时静默跳过）。
+#
+# 2026-10-21 P1-4 回滚调查：上面注释设想的「静默跳过」在 PG 里并不成立 ——
+# 一条 ALTER TYPE 报 duplicate_object 后，**整个事务已被毒化**，同批后续 3 条全部
+# 报 "current transaction is aborted"，最后的 commit 实际执行 ROLLBACK。
+# 本函数被 kaoyan / kaoyan_ext 的接口每次请求都调用，于是：库里 36% 的事务是回滚；
+# 调用方若在调用前有未提交写入，会被静默丢弃。
+# 改用 ``ADD VALUE IF NOT EXISTS``（PG ≥9.6）：已存在时根本不报错 → 事务不再被毒化。
+_ENUM_EXTEND_DDL = """
+ ALTER TYPE notice_type ADD VALUE IF NOT EXISTS '初试';
+ ALTER TYPE notice_type ADD VALUE IF NOT EXISTS '报名';
+ ALTER TYPE notice_type ADD VALUE IF NOT EXISTS '大纲';
+ ALTER TYPE notice_type ADD VALUE IF NOT EXISTS '目录';
+ """
 
 # --------------------------------------------------------------------------- #
 # 表结构（幂等）
@@ -71,8 +90,30 @@ CREATE INDEX IF NOT EXISTS idx_notices_school ON kaoyan_notices(school_id);
 
 def ensure_notices_schema(db_session) -> None:
     """幂等建表（原生 DDL，避开 ORM 基线迁移）。"""
-    conn = db_session.connection().connection
-    conn.executescript(_DDL)
+    conn = wrap_conn(db_session.connection().connection)
+    from services.ddl_compat import adapt_ddl
+    conn.executescript(adapt_ddl(_DDL, conn))
+    # 枚举扩展：仅 PG 有 ENUM；逐条执行，失败（如 SQLite 底座）静默跳过
+    from services.ddl_compat import is_postgres
+    if is_postgres(conn):
+        from sqlalchemy import text as _sql_text
+
+        # 2026-10-21：改用**独立连接**跑枚举扩展。原实现直接在调用方事务里执行，
+        # 一条失败就毒化整个事务 → 后续 ROLLBACK 把调用方未提交的写入一并丢掉，
+        # 且本函数被 kaoyan/kaoyan_ext 接口每次请求调用 → 全库 36% 事务是回滚。
+        ext = db_session.get_bind().connect()
+        try:
+            for stmt in [s.strip() for s in _ENUM_EXTEND_DDL.split(';') if 'ALTER TYPE' in s]:
+                try:
+                    ext.execute(_sql_text(stmt + ';'))
+                except Exception:  # noqa: BLE001 老 PG 不支持 IF NOT EXISTS → 忽略并清掉毒化
+                    ext.rollback()
+            ext.commit()
+        finally:
+            ext.close()
+        # ADD VALUE 必须提交后新值才对本会话可用；原 rollback 会把枚举扩展一并撤销，
+        # 导致后续「大纲/目录/初试/报名」类型写入仍被拒（2026-10-19 实测教训）。
+        db_session.commit()
     db_session.commit()
 
 
@@ -154,6 +195,7 @@ def _robots_allows(domain: str) -> bool:
 _TYPE_RULES = [
     ("简章", "简章"), ("招生简章", "简章"), ("复试", "复试"), ("调剂", "调剂"),
     ("录取", "录取"), ("公示", "录取"), ("大纲", "大纲"), ("目录", "目录"),
+    ("报名", "报名"), ("初试", "初试"),
 ]
 
 
@@ -623,7 +665,7 @@ def crawl_school_notices(
     school_names 指定时只采指定院校。robots 允许才采，2-5s 延迟。
     """
     from database import SessionLocal
-    from models import KaoyanSchool
+    from models import KaoyanSchool, KaoyanCrawlTarget
 
     close = False
     if db_session is None:
@@ -642,6 +684,18 @@ def crawl_school_notices(
         ).limit(max_schools).all():
             if s.name not in targets and s.official_url.startswith("http"):
                 targets[s.name] = s.official_url
+
+        # 「院校采集源」里被排除的院校：公告采集直接跳过。
+        # 口径与 /api/kaoyan/crawl-targets 一致（无记录 = 参与）。
+        excluded_names = {
+            row[0] for row in db_session.query(KaoyanSchool.name)
+            .join(KaoyanCrawlTarget, KaoyanCrawlTarget.school_id == KaoyanSchool.id)
+            .filter(KaoyanCrawlTarget.enabled.is_(False))
+            .all()
+        }
+        if excluded_names:
+            targets = {n: u for n, u in targets.items() if n not in excluded_names}
+
         items = list(targets.items())[:max_schools]
 
         # school_id 映射（可能未入库，公告仍存 school_name 供检索）
@@ -669,8 +723,11 @@ def crawl_school_notices(
             if name not in name_to_id:
                 stats["not_in_db"] += 1
             if not dry_run and links:
-                conn = db_session.connection().connection
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                conn = wrap_conn(db_session.connection().connection)
+                # naive UTC + ISO「T」分隔：原先是北京时间空格分隔的展示串，写进按
+                # UTC 口径的列会让 fetched_at 与所有 UTC 窗口差 8 小时，且空格格式
+                # 不匹配 utils/response.py 的补 Z 规则，出参后前端只能按本地时间猜。
+                now = naive_utc_iso()
                 for lk in links[:50]:  # 每校最多存 50 条
                     # 幂等写入：按 (school_id, 归一化URL) 判重，命中则 UPDATE 而非
                     # INSERT。原实现用裸 INSERT OR IGNORE，但表上的
@@ -693,7 +750,13 @@ def crawl_school_notices(
                             stats["notices"] += 1
                         elif action == "updated":
                             stats["notices_updated"] = stats.get("notices_updated", 0) + 1
-                    except sqlite3.Error:
+                    except Exception:  # noqa: BLE001 原只捕 sqlite3.Error；PG 毒化后整批全废。
+                        # 回滚丢弃当前未提交批次并重建连接，后续院校继续（宁丢一批不丢全局）。
+                        try:
+                            db_session.rollback()
+                            conn = wrap_conn(db_session.connection().connection)
+                        except Exception:  # noqa: BLE001
+                            pass
                         continue
                 db_session.commit()
             _polite()

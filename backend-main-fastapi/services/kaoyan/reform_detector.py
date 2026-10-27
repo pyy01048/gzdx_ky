@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime
+from utils.timeutil import naive_utc_iso
 from typing import Dict, List, Optional
+from services.dbapi_compat import wrap_conn
 
 # 规则优先级（同标题多命中时取信息量最大的类型）
 _REFORM_PRIORITY = ["改考科目", "停招", "恢复招生", "新增专业",
@@ -129,9 +130,10 @@ NOTICE_YEAR_RE = re.compile(r"(20[12]\d)")
 
 def ensure_reforms_schema(db_session) -> None:
     """幂等建表（与 notices 同套路，不动 ORM）。"""
-    conn = db_session.connection().connection
-    conn.executescript(_REFORM_TABLE_DDL)
-    conn.executescript(_REFORM_IDX_DDL)
+    conn = wrap_conn(db_session.connection().connection)
+    from services.ddl_compat import adapt_ddl
+    conn.executescript(adapt_ddl(_REFORM_TABLE_DDL, conn))
+    conn.executescript(adapt_ddl(_REFORM_IDX_DDL, conn))
     conn.commit()
 
 
@@ -180,7 +182,7 @@ def scan_notices_for_reforms(
     返回: {scanned, detected, inserted, by_type, sample}
     """
     ensure_reforms_schema(db_session)
-    conn = db_session.connection().connection
+    conn = wrap_conn(db_session.connection().connection)
 
     sql = ("SELECT id, school_id, school_name, title, notice_type, url, source "
            "FROM kaoyan_notices")
@@ -213,7 +215,7 @@ def scan_notices_for_reforms(
 
     inserted = 0
     if not dry_run:
-        now = datetime.utcnow().isoformat()
+        now = naive_utc_iso()
         for d in detected:
             cur = conn.execute(
                 "INSERT OR IGNORE INTO kaoyan_reforms (school_id, school_name, "
@@ -246,7 +248,7 @@ def list_reforms(db_session, school_id: Optional[int] = None,
                  limit: int = 100) -> List[Dict]:
     """改考事件查询（前端改考雷达 / 院校详情提醒）。"""
     ensure_reforms_schema(db_session)
-    conn = db_session.connection().connection
+    conn = wrap_conn(db_session.connection().connection)
     sql = ("SELECT id, school_id, school_name, notice_id, title, year, "
            "change_type, keywords, confidence, url, source, created_at "
            "FROM kaoyan_reforms WHERE 1=1")
@@ -276,7 +278,7 @@ def list_reforms(db_session, school_id: Optional[int] = None,
 def reform_stats(db_session) -> Dict:
     """改考事件统计（按类型 / 按院校 top10）。"""
     ensure_reforms_schema(db_session)
-    conn = db_session.connection().connection
+    conn = wrap_conn(db_session.connection().connection)
     by_type = dict(conn.execute(
         "SELECT change_type, COUNT(*) FROM kaoyan_reforms GROUP BY change_type"
     ).fetchall())

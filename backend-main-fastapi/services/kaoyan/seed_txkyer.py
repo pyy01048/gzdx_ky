@@ -6,7 +6,7 @@
 """
 import re, json, urllib.request, sys
 from database import SessionLocal
-from models import KaoyanSchool, KaoyanSubject
+from core.models import KaoyanSchool, KaoyanSubject
 
 BASE = "http://www.txkyer.cn/"
 

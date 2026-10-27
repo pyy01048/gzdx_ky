@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import argparse
 import json
 import os
@@ -31,8 +32,10 @@ from datetime import datetime
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-DB = r"D:\平台\database\kaoyan.db"
-BACKUP_DIR = r"D:\平台\data\backups"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
+BACKUP_DIR = str(_REPO / "data" / "backups")
 
 # 专业课别名表（L2 用）。本次只跑 L1，此表保留供后续人工审核后启用。
 SUBJECT_ALIAS: dict[str, list[str]] = {

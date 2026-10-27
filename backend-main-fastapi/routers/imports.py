@@ -27,8 +27,9 @@ from services.document_parser import DocumentParser
 from services.doc_naming import apply_display_name
 from services.kb_service import has_searchable_chunks, ingest_document, ingest_text
 from services.smart_ingest import gate_for_write, is_self_produced
+from utils.security import require_admin
 
-router = APIRouter(prefix="/api/imports", tags=["imports"])
+router = APIRouter(prefix="/api/imports", tags=["imports"], dependencies=[Depends(require_admin)])
 
 SUPPORTED_EXT = {".pdf", ".docx", ".doc", ".pptx", ".ppt", ".txt", ".md"}
 
@@ -206,7 +207,9 @@ def _scan_worker(
 
                     # 切分入库：写 knowledge_chunks + FTS5，RAG 可检索
                     chunk_count = ingest_document(db, doc, replace=True)
-                    doc.knowledge_point_count = chunk_count
+                    # 这两个计数语义不同：chunk_count 是分块数，knowledge_point_count
+                    # 是知识点数。此前把分块数写进了知识点列（D2），UI 长期显示假数。
+                    doc.chunk_count = chunk_count
                     doc.parse_progress = 0.8
 
                     # 本地模型提炼要点（"训练"：qwen3.5:4b 处理文档），追加为知识分块

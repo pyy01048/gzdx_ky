@@ -132,10 +132,18 @@ def test_describe_exposes_days_left():
     assert isinstance(d["days_left"], int)
 
 
-def test_default_exam_year_switches_in_july():
-    """7~12 月默认按明年 12 月算（今年报名窗口已过）。"""
+def test_default_exam_year_is_next_upcoming_exam():
+    """兜底届数 = **下一场还没考的届**，不是"按月份猜报名窗口过没过"。
+
+    旧口径（7~12 月一律跳明年）在 2026-10-17 会给出 2028 届（初试 2027-12-18，427 天），
+    而 2027 届初试 2026-12-19 只剩 63 天、报名正在进行 —— 空库新用户会数错一届。
+    """
     assert ec.default_exam_year(datetime.date(2026, 6, 30)) == 2027
-    assert ec.default_exam_year(datetime.date(2026, 7, 1)) == 2028
+    assert ec.default_exam_year(datetime.date(2026, 7, 1)) == 2027
+    # 初试当天仍算这一届（days_left=0，前端进"冲刺/已结束"文案）
+    assert ec.default_exam_year(datetime.date(2026, 12, 19)) == 2027
+    # 考完次日自动滚到下一届
+    assert ec.default_exam_year(datetime.date(2026, 12, 20)) == 2028
     assert ec.default_exam_year(datetime.date(2026, 12, 31)) == 2028
 
 

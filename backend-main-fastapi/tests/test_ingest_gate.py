@@ -31,7 +31,8 @@ def _py_files(*dirs):
     for d in dirs:
         base = os.path.join(BACKEND, d)
         for root, _dirs, files in os.walk(base):
-            if any(part in root for part in (os.sep + "tests", "__pycache__", "static")):
+            # data 下是数据集/第三方源码（如 ECDICT 的 Python 2 脚本），不是本项目的写入口
+            if any(part in root for part in (os.sep + "tests", "__pycache__", "static", os.sep + "data")):
                 continue
             for f in files:
                 if f.endswith(".py"):
@@ -86,6 +87,9 @@ CONTENT_WRITE_EXEMPT = {
     # 不是入库入口（正文是手写的 STEM 常量，本来就短，接闸只会被长度规则拦掉，
     # 反而测不到它要测的去重逻辑）。
     ('scripts/test_cross_source_dedupe.py', 'main'),
+    # AST 只认属性名 ``content``：这里写的是 QuizQuestion.content（题目题干），
+    # 不是 Document.content，属误伤。该脚本自带 --apply 与写前备份。
+    ('scripts/repair_quiz_stems.py', 'main'),
 }
 
 
@@ -303,7 +307,7 @@ def test_mojibake_rejected(db_schema):  # noqa: ARG001
 # --------------------------------------------------------------------------- #
 # 3. 块级谓词（B）
 # --------------------------------------------------------------------------- #
-def test_chunk_gate_filters_bad_chunks_and_keeps_mirror_in_sync(db_schema):  # noqa: ARG001
+def test_chunk_gate_filters_bad_chunks_and_keeps_mirror_in_sync(db_schema, chunk_fts_mirror):  # noqa: ARG001
     """短块/乱码块不写 knowledge_chunks；写了的块必须同时在 FTS 里。"""
     from sqlalchemy import text as sql_text
 

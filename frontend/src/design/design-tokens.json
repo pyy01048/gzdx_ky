@@ -1,0 +1,270 @@
+{
+  "$meta": {
+    "name": "硕途 · 设计令牌（Design Tokens）",
+    "version": "2.0.0",
+    "owner": "硕途设计系统",
+    "updated": "2026-10-21",
+    "register": "product",
+    "platform": "web + android-ready",
+    "reference": "Material 3 Expressive + Gemini 视觉语言：Google 系统色、M3 tonal 表面、M3 shape/motion、Gemini 能量渐变（克制）。M3 角色别名（--primary/--surface-container/--outline…）与 Compose 令牌 1:1 对应，便于平移到手机 App。",
+    "scales": {
+      "DESIGN_VARIANCE": 5,
+      "MOTION_INTENSITY": 3,
+      "VISUAL_DENSITY": 5
+    },
+    "ssot": true,
+    "note": "本文件是唯一事实来源。src/styles/tokens.css 与 src/styles/tokens.js 由本文件派生（当前为手工同步）。改令牌改这里，再同步两个派生文件。v2.0 已将取值从 Apple HIG 全量迁移到 Google M3 Expressive + Gemini。",
+    "rules": [
+      "禁止 emoji 作为功能图标，图标一律取自 src/components/Icon.jsx（16/20/24px）",
+      "Gemini 渐变（--grad-gemini / --grad-gemini-text）仅限品牌时刻：顶栏 logo、页面 hero 标题、主 CTA、AI 悬浮球、能量进度条；禁止铺满普通卡片",
+      "禁止弹跳缓动 cubic-bezier(0.68,-0.55,0.265,1.55)；动效用 M3 缓动 cubic-bezier(0.2,0,0,1)",
+      "业务代码禁止硬编码色值，一律 var(--token) 或 tokens.js 导出",
+      "触控目标 ≥48px（--touch-min），不依赖 hover 承载信息（App 移植约束）",
+      "毛玻璃只用于浮在内容之上的层（顶栏/下拉/模态），不用于普通卡片"
+    ]
+  },
+
+  "color": {
+    "bg":           { "type": "color", "light": "#F5F5F7", "dark": "#1C1C1E", "desc": "A1 页面底色。浅色 Apple 官网灰；深色 iOS 系统背景，靠表面亮度分层" },
+    "surface":      { "type": "color", "light": "#FFFFFF", "dark": "#2C2C2E", "desc": "A1 卡片/面板/顶栏背景（一级表面）。深色 iOS secondarySystemBackground" },
+    "surface-2":    { "type": "color", "light": "#F2F2F7", "dark": "#3A3A3C", "desc": "B-slot 二级表面：表头、hover 行、嵌套容器" },
+    "surface-3":    { "type": "color", "light": "#E5E5EA", "dark": "#48484A", "desc": "B-slot 三级表面：进度槽底、禁用块、骨架屏" },
+
+    "fg":           { "type": "color", "light": "#1D1D1F", "dark": "#F2F2F7", "desc": "A1 主文本。Apple Label，对比度 16.6:1（浅）" },
+    "fg-2":         { "type": "color", "light": "#3A3A3C", "dark": "#D1D1D6", "desc": "B-slot 次级文本：表格内容、卡片描述，对比度 11.2:1" },
+    "muted":        { "type": "color", "light": "#6E6E73", "dark": "#AEAEB2", "desc": "A1 弱化文本：辅助说明、时间戳，对比度 5.0:1（达标）" },
+    "meta":         { "type": "color", "light": "#8E8E93", "dark": "#8E8E93", "desc": "B-slot 三级元信息（iOS secondaryLabel）。浅色 3.1:1，仅允许用于 >=24px 大字号或图标/分隔；禁止承载正文语义" },
+
+    "border":       { "type": "color", "light": "#D2D2D7", "dark": "#3A3A3C", "desc": "A1 默认描边：卡片、输入框、表格线（systemGray4）" },
+    "border-strong":{ "type": "color", "light": "#C6C6C8", "dark": "#48484A", "desc": "A2 强调描边：hover 边框、选中框（systemGray3）" },
+    "border-soft":  { "type": "color", "light": "#E8E8ED", "dark": "#2C2C2E", "desc": "B-slot 内部行分隔符，比默认描边更弱，用于列表内部分隔" },
+
+    "accent":       { "type": "color", "light": "#007AFF", "dark": "#0A84FF", "desc": "A1 强调色·Apple 蓝（systemBlue）。每屏可见使用 <=2 处：主 CTA + 当前选中态" },
+    "accent-hover": { "type": "color", "light": "#0071E3", "dark": "#409CFF", "desc": "A2 强调色 hover（浅色压暗 / 深色提亮）" },
+    "accent-active":{ "type": "color", "light": "#0062CC", "dark": "#64B5FF", "desc": "A2 强调色 active 按下态" },
+    "accent-solid": { "type": "color", "light": "#007AFF", "dark": "#0A84FF", "desc": "B-slot 实心按钮填充色" },
+    "accent-on":    { "type": "color", "light": "#FFFFFF", "dark": "#FFFFFF", "desc": "B-slot 实心按钮上的前景色。白字压 Apple 蓝，4.6:1 达标" },
+    "accent-soft":  { "type": "color", "light": "#EAF3FF", "dark": "#10294B", "desc": "B-slot 强调色淡底：选中 chip、提示条背景" },
+    "accent-border":{ "type": "color", "light": "#99C9FF", "dark": "#1F5498", "desc": "C-extension 描边型强调（次要按钮边框、焦点环外圈）" },
+
+    "success":      { "type": "color", "light": "#34C759", "dark": "#30D158", "desc": "A2 成功/做对（systemGreen）。用于实心块、图表" },
+    "success-ink":  { "type": "color", "light": "#248A3D", "dark": "#7EE89A", "desc": "B-slot 成功色文字版，对比度达标，用于文本与图标" },
+    "success-soft": { "type": "color", "light": "#EBF9EE", "dark": "#12301C", "desc": "B-slot 成功色淡底" },
+    "success-border":{ "type": "color", "light": "#A8E6B8", "dark": "#1E4A2C", "desc": "B-slot 成功色描边（告示条/徽标边框）" },
+
+    "warning":      { "type": "color", "light": "#FF9F0A", "dark": "#FF9F0A", "desc": "A2 警告/半会（systemOrange）。用于实心块、图表" },
+    "warning-ink":  { "type": "color", "light": "#B25000", "dark": "#FFB340", "desc": "B-slot 警告色文字版" },
+    "warning-soft": { "type": "color", "light": "#FFF5E5", "dark": "#33260A", "desc": "B-slot 警告色淡底" },
+    "warning-border":{ "type": "color", "light": "#FFD79A", "dark": "#4D3A12", "desc": "B-slot 警告色描边" },
+
+    "danger":       { "type": "color", "light": "#FF3B30", "dark": "#FF453A", "desc": "A2 错误/做错/危险操作（systemRed）" },
+    "danger-ink":   { "type": "color", "light": "#D70015", "dark": "#FF8079", "desc": "B-slot 危险色文字版" },
+    "danger-soft":  { "type": "color", "light": "#FFEBEA", "dark": "#33160F", "desc": "B-slot 危险色淡底" },
+    "danger-border":{ "type": "color", "light": "#FFB8B3", "dark": "#4D211C", "desc": "B-slot 危险色描边" },
+
+    "info":         { "type": "color", "light": "#007AFF", "dark": "#0A84FF", "desc": "A2 信息/提示（同 accent，Apple 蓝）" },
+    "info-ink":     { "type": "color", "light": "#0062CC", "dark": "#64B5FF", "desc": "B-slot 信息色文字版" },
+    "info-soft":    { "type": "color", "light": "#EAF3FF", "dark": "#10294B", "desc": "B-slot 信息色淡底" },
+
+    "focus-ring":   { "type": "color", "light": "rgba(0,122,255,.40)", "dark": "rgba(10,132,255,.45)", "desc": "A2 键盘焦点环颜色，配合 2px 外描边使用（Apple 蓝）" },
+    "overlay":      { "type": "color", "light": "rgba(245,245,247,.95)", "dark": "rgba(0,0,0,.97)", "desc": "A2 模态遮罩层" },
+    "mask":         { "type": "color", "light": "rgba(0,0,0,.45)", "dark": "rgba(0,0,0,.70)", "desc": "A2 图片/抽屉遮罩" },
+    "skeleton":     { "type": "color", "light": "#E5E5EA", "dark": "#3A3A3C", "desc": "B-slot 骨架屏底色（同 surface-3，独立命名便于单独调整）" },
+
+    "blur-glass":   { "type": "string", "value": "saturate(180%) blur(20px)", "desc": "C-extension Apple 毛玻璃滤镜（vibrancy），用于顶栏/下拉/浮层" },
+    "surface-glass":{ "type": "color", "light": "rgba(255,255,255,.72)", "dark": "rgba(28,28,30,.72)", "desc": "C-extension 毛玻璃底。与 --blur-glass 搭配使用" },
+
+    "mastered-bg":  { "type": "color", "light": "#EBF9EE", "dark": "#12301C", "desc": "C-extension 知识点「已掌握」底" },
+    "mastered-ink": { "type": "color", "light": "#248A3D", "dark": "#7EE89A", "desc": "C-extension 知识点「已掌握」字色" },
+    "shaky-bg":     { "type": "color", "light": "#FFF5E5", "dark": "#33260A", "desc": "C-extension 知识点「模糊/半会」底" },
+    "shaky-ink":    { "type": "color", "light": "#B25000", "dark": "#FFB340", "desc": "C-extension 知识点「模糊/半会」字色" },
+    "unknown-bg":   { "type": "color", "light": "#FFEBEA", "dark": "#33160F", "desc": "C-extension 知识点「不会/做错」底" },
+    "unknown-ink":  { "type": "color", "light": "#D70015", "dark": "#FF8079", "desc": "C-extension 知识点「不会/做错」字色" },
+    "untouched-bg": { "type": "color", "light": "#F2F2F7", "dark": "#3A3A3C", "desc": "C-extension 知识点「未学」底" },
+    "untouched-ink":{ "type": "color", "light": "#6E6E73", "dark": "#AEAEB2", "desc": "C-extension 知识点「未学」字色" }
+  },
+
+  "chart": {
+    "palette": {
+      "type": "color[]",
+      "light": ["#007AFF", "#34C759", "#FF9F0A", "#FF3B30", "#5AC8FA", "#FF9500", "#AF52DE", "#8E8E93"],
+      "dark":  ["#0A84FF", "#30D158", "#FF9F0A", "#FF453A", "#64D2FF", "#FFB340", "#BF5AF2", "#8E8E93"],
+      "desc": "C-extension ECharts 分类色板。Apple 系统色序；深色模式整体提亮"
+    },
+    "axis":      { "type": "color", "light": "#8E8E93", "dark": "#8E8E93", "desc": "坐标轴/刻度线" },
+    "splitLine": { "type": "color", "light": "#E8E8ED", "dark": "#3A3A3C", "desc": "网格分割线" },
+    "tooltipBg": { "type": "color", "light": "#FFFFFF", "dark": "#2C2C2E", "desc": "tooltip 背景" },
+    "tooltipBorder": { "type": "color", "light": "#D2D2D7", "dark": "#48484A", "desc": "tooltip 描边" }
+  },
+
+  "font": {
+    "sans": {
+      "type": "fontFamily",
+      "value": "-apple-system, \"SF Pro Text\", \"SF Pro Display\", BlinkMacSystemFont, \"PingFang SC\", \"Hiragino Sans GB\", \"Segoe UI\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans SC\", system-ui, sans-serif",
+      "desc": "A1 正文字族。Apple 系统字体栈优先（SF Pro / PingFang），零网络字体依赖"
+    },
+    "serif": {
+      "type": "fontFamily",
+      "value": "\"Iowan Old Style\", \"Palatino Linotype\", Georgia, \"Songti SC\", \"SimSun\", serif",
+      "desc": "C-extension 长文阅读字族。仅用于讲义/文档正文/题干长段落，对标站同款"
+    },
+    "mono": {
+      "type": "fontFamily",
+      "value": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
+      "desc": "A2 等宽字族。代码题、题号、数据表格数字"
+    },
+    "size": {
+      "xs":   { "type": "dimension", "value": "12px", "lineHeight": "16px", "desc": "标签、角标、脚注" },
+      "sm":   { "type": "dimension", "value": "13px", "lineHeight": "18px", "desc": "表格内容、次级说明" },
+      "base": { "type": "dimension", "value": "15px", "lineHeight": "22px", "desc": "正文基准。Apple 正文更舒展：15/22" },
+      "md":   { "type": "dimension", "value": "16px", "lineHeight": "24px", "desc": "卡片标题、表单输入" },
+      "lg":   { "type": "dimension", "value": "18px", "lineHeight": "26px", "desc": "区块小标题" },
+      "xl":   { "type": "dimension", "value": "20px", "lineHeight": "28px", "desc": "模块标题" },
+      "2xl":  { "type": "dimension", "value": "24px", "lineHeight": "32px", "desc": "页面主标题（对标站 --page-title-size 24/32）" },
+      "3xl":  { "type": "dimension", "value": "30px", "lineHeight": "38px", "desc": "仅首页关键数字/倒计时，禁止营销式 Hero" }
+    },
+    "weight": {
+      "regular":  { "type": "fontWeight", "value": 400, "desc": "正文、描述" },
+      "medium":   { "type": "fontWeight", "value": 500, "desc": "按钮文字、表头、小标题。取 500 而非 510：CJK 系统字族仅提供 400/500/600，非整数档会回退产生跨端不一致" },
+      "semibold": { "type": "fontWeight", "value": 600, "desc": "页面标题、强调数字。同理取 600" }
+    },
+    "tracking": {
+      "tight":   { "type": "dimension", "value": "-0.01em", "desc": ">=24px 标题，负字距收紧" },
+      "normal":  { "type": "dimension", "value": "0", "desc": "正文默认" },
+      "wide":    { "type": "dimension", "value": "0.02em", "desc": "12-13px 小字，略放开提升可读性" },
+      "caps":    { "type": "dimension", "value": "0.08em", "desc": "全大写英文标签（如 KAOYAN ARCHIVE），必须 >=0.06em" }
+    }
+  },
+
+  "space": {
+    "0":  { "type": "dimension", "value": "0px",  "desc": "归零" },
+    "1":  { "type": "dimension", "value": "4px",  "desc": "图标与文字间隙" },
+    "2":  { "type": "dimension", "value": "8px",  "desc": "同组紧凑元素" },
+    "3":  { "type": "dimension", "value": "12px", "desc": "表单元素内部、按钮水平内边距" },
+    "4":  { "type": "dimension", "value": "16px", "desc": "卡片内边距基准" },
+    "5":  { "type": "dimension", "value": "20px", "desc": "卡片大内边距、区块间距" },
+    "6":  { "type": "dimension", "value": "24px", "desc": "区块间距、页面栅格沟槽" },
+    "8":  { "type": "dimension", "value": "32px", "desc": "大区块间距" },
+    "10": { "type": "dimension", "value": "40px", "desc": "页面级分组间距" },
+    "12": { "type": "dimension", "value": "48px", "desc": "页面级大分组间距" },
+    "16": { "type": "dimension", "value": "64px", "desc": "空态/登录居中区留白" },
+    "20": { "type": "dimension", "value": "80px", "desc": "仅空态整屏留白上限" }
+  },
+
+  "radius": {
+    "none": { "type": "dimension", "value": "0px",    "desc": "通栏区、表格外框" },
+    "sm":   { "type": "dimension", "value": "10px",   "desc": "标签、徽章、小 chip" },
+    "md":   { "type": "dimension", "value": "14px",   "desc": "按钮、输入框、下拉行" },
+    "lg":   { "type": "dimension", "value": "18px",   "desc": "卡片标准圆角（Apple 连续圆角观感）" },
+    "xl":   { "type": "dimension", "value": "22px",   "desc": "模态框、抽屉。卡片上限 22px，禁止 >=24px 的过度圆滑" },
+    "full": { "type": "dimension", "value": "9999px", "desc": "药丸按钮、头像、圆形图标按钮" }
+  },
+
+  "shadow": {
+    "flat":   { "type": "boxShadow", "value": "none", "desc": "平面：卡片默认状态，靠 1px 描边而非阴影分层" },
+    "sm":     { "type": "boxShadow", "light": "0 1px 2px rgba(0,0,0,.04)", "dark": "0 1px 2px rgba(0,0,0,.20)", "desc": "微抬升：下拉行 hover、小 chip（Apple 低扩散大模糊低透明）" },
+    "md":     { "type": "boxShadow", "light": "0 4px 14px rgba(0,0,0,.08)", "dark": "0 4px 14px rgba(0,0,0,.28)", "desc": "下拉面板、悬浮卡" },
+    "lg":     { "type": "boxShadow", "light": "0 10px 30px rgba(0,0,0,.10)", "dark": "0 10px 30px rgba(0,0,0,.36)", "desc": "模态框、命令面板" },
+    "overlay":{ "type": "boxShadow", "light": "0 16px 48px rgba(0,0,0,.14)", "dark": "0 16px 48px rgba(0,0,0,.48)", "desc": "全屏抽屉、Cmd+K 面板" }
+  },
+
+  "motion": {
+    "duration": {
+      "instant": { "type": "duration", "value": "80ms",  "desc": "按钮按下、开关切换等即时反馈" },
+      "fast":    { "type": "duration", "value": "150ms", "desc": "收敛基准值：hover 变色、下拉显隐、选中态" },
+      "base":    { "type": "duration", "value": "200ms", "desc": "内容进入：Toast 弹出、面板展开" },
+      "slow":    { "type": "duration", "value": "280ms", "desc": "跨屏过渡：模态框、抽屉" },
+      "page":    { "type": "duration", "value": "320ms", "desc": "路由切换入场，全站唯一" }
+    },
+    "easing": {
+      "standard": { "type": "cubicBezier", "value": "ease-out",                  "desc": "默认缓动（Apple 式进入，无回弹）" },
+      "out":      { "type": "cubicBezier", "value": "ease-out",                  "desc": "元素进入视口" },
+      "inOut":    { "type": "cubicBezier", "value": "cubic-bezier(.65,0,.35,1)", "desc": "跨屏过渡" },
+      "linear":   { "type": "cubicBezier", "value": "linear",                    "desc": "进度条、骨架微光、加载转圈" }
+    },
+    "reduced": {
+      "duration": { "type": "duration", "value": "1ms", "desc": "prefers-reduced-motion / data-motion=reduce 下所有过渡时长收敛值" }
+    }
+  },
+
+  "zIndex": {
+    "base":     { "type": "number", "value": 0,    "desc": "常规文档流" },
+    "raised":   { "type": "number", "value": 10,   "desc": "悬浮按钮、卡片 hover 抬升" },
+    "sticky":   { "type": "number", "value": 100,  "desc": "表头吸顶、页面内吸顶工具条" },
+    "navbar":   { "type": "number", "value": 1000, "desc": "顶部导航栏（对标站 --z-navbar）" },
+    "dropdown": { "type": "number", "value": 1010, "desc": "导航下拉面板" },
+    "modal":    { "type": "number", "value": 1020, "desc": "模态框" },
+    "popover":  { "type": "number", "value": 1030, "desc": "气泡卡片、tooltip（需在模态之上）" },
+    "toast":    { "type": "number", "value": 1040, "desc": "全局提示" },
+    "max":      { "type": "number", "value": 9999, "desc": "逃生舱，仅兜底使用" }
+  },
+
+  "layout": {
+    "navHeight":       { "type": "dimension", "value": "64px",  "desc": "桌面顶部导航高度（对标站 --navbar-height）" },
+    "navHeightMobile": { "type": "dimension", "value": "56px",  "desc": "移动端顶部导航高度" },
+    "navHeightScroll": { "type": "dimension", "value": "52px",  "desc": "页面下滚后顶栏收缩高度（视觉减负，非必选）" },
+    "containerMax":    { "type": "dimension", "value": "1440px","desc": "常规内容最大宽度" },
+    "containerWide":   { "type": "dimension", "value": "1600px","desc": "宽表/院校库等数据密集页最大宽度（对标站 --page-max-width）" },
+    "containerProse":  { "type": "dimension", "value": "760px", "desc": "长文阅读（讲义/文档）最大宽度，约 38 汉字/行" },
+    "gutter":          { "type": "dimension", "value": "24px",  "desc": "页面左右安全边距（桌面）" },
+    "gutterMobile":    { "type": "dimension", "value": "12px",  "desc": "页面左右安全边距（<768px）" },
+    "pageTop":         { "type": "dimension", "value": "20px",  "desc": "顶栏之下到页面标题的间距（对标站 --page-top）" },
+    "sectionGap":      { "type": "dimension", "value": "24px",  "desc": "页面内区块间距" },
+    "pageBottom":      { "type": "dimension", "value": "48px",  "desc": "页面底部留白" },
+    "gridGap":         { "type": "dimension", "value": "16px",  "desc": "栅格列间距；数据密集页可降到 12px" },
+    "touchMin":        { "type": "dimension", "value": "44px",  "desc": "最小可点击区域（WCAG 2.5.5）" }
+  },
+
+  "component": {
+    "navItemHeight":    { "type": "dimension", "value": "36px", "desc": "顶栏导航项高度（64px 栏内垂直居中）" },
+    "navItemPadX":      { "type": "dimension", "value": "12px", "desc": "顶栏导航项水平内边距" },
+    "navItemGap":       { "type": "dimension", "value": "4px",  "desc": "顶栏导航项之间间隙" },
+    "navDropdownWidth": { "type": "dimension", "value": "224px","desc": "导航下拉面板宽度" },
+    "navDropdownPad":   { "type": "dimension", "value": "6px",  "desc": "导航下拉面板内边距（对标站 .nav-dd-pop）" },
+    "navRowHeight":     { "type": "dimension", "value": "40px", "desc": "下拉行高；触屏断点提升到 48px" },
+    "navRowPadX":       { "type": "dimension", "value": "10px", "desc": "下拉行水平内边距" },
+    "navRowGap":        { "type": "dimension", "value": "10px", "desc": "下拉行内 图标-文字-元信息 间距" },
+
+    "btnHeightSm":  { "type": "dimension", "value": "28px", "desc": "小按钮（表格行内、chip 操作）" },
+    "btnHeightMd":  { "type": "dimension", "value": "36px", "desc": "默认按钮" },
+    "btnHeightLg":  { "type": "dimension", "value": "44px", "desc": "主 CTA、移动端全宽按钮（= touchMin）" },
+    "btnPadXSm":    { "type": "dimension", "value": "10px", "desc": "小按钮水平内边距" },
+    "btnPadXMd":    { "type": "dimension", "value": "14px", "desc": "默认按钮水平内边距" },
+    "btnPadXLg":    { "type": "dimension", "value": "20px", "desc": "大按钮水平内边距" },
+    "btnIconSize":  { "type": "dimension", "value": "16px", "desc": "按钮内图标尺寸（Icon.jsx size=16）" },
+
+    "inputHeight":    { "type": "dimension", "value": "36px", "desc": "输入框/选择器默认高度" },
+    "inputHeightSm":  { "type": "dimension", "value": "32px", "desc": "紧凑输入框（筛选区）" },
+
+    "cardPad":      { "type": "dimension", "value": "16px", "desc": "卡片标准内边距" },
+    "cardPadLg":    { "type": "dimension", "value": "20px", "desc": "卡片宽松内边距" },
+    "cardRadius":   { "type": "dimension", "value": "18px", "desc": "卡片圆角（引用 radius.lg，Apple 风）" },
+
+    "tableHeadHeight": { "type": "dimension", "value": "40px", "desc": "表头行高" },
+    "tableRowHeight":  { "type": "dimension", "value": "44px", "desc": "表格行高（= touchMin）" },
+    "tableRowHeightDense": { "type": "dimension", "value": "36px", "desc": "密集表格行高（院校库等 >50 行场景）" },
+    "tableCellPadX":   { "type": "dimension", "value": "12px", "desc": "单元格水平内边距" },
+
+    "tagHeight":  { "type": "dimension", "value": "20px", "desc": "标签高度" },
+    "tagPadX":    { "type": "dimension", "value": "8px",  "desc": "标签水平内边距" },
+
+    "modalRadius": { "type": "dimension", "value": "22px", "desc": "模态框圆角（引用 radius.xl，Apple 风）" },
+    "modalPad":    { "type": "dimension", "value": "20px", "desc": "模态框内边距" },
+    "modalWidthSm":{ "type": "dimension", "value": "400px","desc": "确认框宽度" },
+    "modalWidthMd":{ "type": "dimension", "value": "640px","desc": "表单弹窗宽度" },
+    "modalWidthLg":{ "type": "dimension", "value": "880px","desc": "内容弹窗宽度" },
+
+    "subjectPillHeight": { "type": "dimension", "value": "32px", "desc": "科目切换器收缩态（顶栏内药丸）高度" },
+    "subjectPillMaxW":   { "type": "dimension", "value": "176px","desc": "科目切换器收缩态最大宽度，超出省略号" },
+    "subjectPanelWidth": { "type": "dimension", "value": "240px","desc": "科目切换器展开态下拉面板宽度" }
+  },
+
+  "breakpoint": {
+    "xs":  { "type": "dimension", "value": "0px",    "desc": "手机竖屏（基准，mobile-first）" },
+    "sm":  { "type": "dimension", "value": "640px",  "desc": "手机横屏 / 小平板竖屏" },
+    "md":  { "type": "dimension", "value": "768px",  "desc": "平板竖屏。导航由底部 TabBar 切到顶部导航" },
+    "lg":  { "type": "dimension", "value": "1024px", "desc": "笔记本。完整顶部导航 + 居中排列" },
+    "xl":  { "type": "dimension", "value": "1280px", "desc": "桌面。宽表展开全部列" },
+    "2xl": { "type": "dimension", "value": "1536px", "desc": "大屏。容器宽度封顶于 containerWide" }
+  }
+}

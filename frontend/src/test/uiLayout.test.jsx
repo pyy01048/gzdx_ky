@@ -8,7 +8,18 @@ import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 
-vi.mock('../api/client', () => ({
+vi.mock('../api/client', async (importOriginal) => ({
+  // 派生真实模块的导出清单：client.js 新增导出（如 fetchAllPages）不必再回来补枚举，
+  // 否则页面一 import 就报 "No export is defined on the mock"。
+  ...(await importOriginal()),
+  favoritesApi: {
+    list: vi.fn().mockResolvedValue({ total: 0, items: [] }),
+    add: vi.fn().mockResolvedValue({ ok: true, id: 1 }),
+    check: vi.fn().mockResolvedValue({ favorited: false, id: null }),
+    toggle: vi.fn().mockResolvedValue({ favorited: false }),
+    remove: vi.fn().mockResolvedValue({ ok: true }),
+  },
+  growthApi: { timeline: vi.fn().mockResolvedValue({ days: 30, streak_days: 0, active_days: 0, timeline: [], subject_breakdown: [] }) },
   request: vi.fn().mockResolvedValue({}),
   DEFAULT_TIMEOUT: 30000,
   dashboardApi: { get: vi.fn(), stats: vi.fn(), weakness: vi.fn() },
@@ -25,13 +36,16 @@ import {
   applyOrder, getUiLayout, toggleHidden, moveInOrder, resetUiLayout,
   useUiLayout, UI_LAYOUT_KEY,
 } from '../hooks/useUiLayout'
-import UiCustomize from '../components/UiCustomize'
+import { UiCustomizeV3 } from '../v3/pages/Settings'
+import { ukey, setUser } from '../utils/userKeys'
 
+/* B4：布局键按 uid 隔离后，用例统一跑在 uid=1 命名空间里 */
 beforeEach(() => {
   localStorage.clear()
+  setUser(1)
   resetUiLayout()
 })
-afterEach(cleanup)
+afterEach(() => { cleanup(); setUser(null) })
 
 function Probe() {
   const layout = useUiLayout()
@@ -49,7 +63,7 @@ describe('useUiLayout 偏好读写', () => {
   it('隐藏/恢复走同一开关，并即时落盘', () => {
     toggleHidden('dashHidden', 'hero')
     expect(getUiLayout().dashHidden).toEqual(['hero'])
-    expect(JSON.parse(localStorage.getItem(UI_LAYOUT_KEY)).dashHidden).toEqual(['hero'])
+    expect(JSON.parse(localStorage.getItem(ukey(UI_LAYOUT_KEY))).dashHidden).toEqual(['hero'])
 
     toggleHidden('dashHidden', 'hero')
     expect(getUiLayout().dashHidden).toEqual([])
@@ -74,9 +88,13 @@ describe('useUiLayout 偏好读写', () => {
   })
 
   it('已有排序表时按表内位置交换', () => {
-    moveInOrder('statsOrder', 'streak', 'up', ['minutes', 'tasks', 'review', 'streak'])
-    moveInOrder('statsOrder', 'streak', 'up', ['minutes', 'tasks', 'review', 'streak'])
-    expect(getUiLayout().statsOrder).toEqual(['minutes', 'streak', 'tasks', 'review'])
+    const all = ['/tasks', '/quiz', '/kbmap']
+    // 空表先按完整清单补全：kbmap 从第 3 位挪到第 2 位
+    moveInOrder('modsOrder', '/kbmap', 'up', all)
+    expect(getUiLayout().modsOrder).toEqual(['/tasks', '/kbmap', '/quiz'])
+    // 第二条命令走「已有排序表」分支：kbmap 再上移一位到表头，其余相对顺序不变
+    moveInOrder('modsOrder', '/kbmap', 'up', all)
+    expect(getUiLayout().modsOrder).toEqual(['/kbmap', '/tasks', '/quiz'])
   })
 
   it('订阅者随偏好变化重渲染', () => {
@@ -90,28 +108,41 @@ describe('useUiLayout 偏好读写', () => {
     toggleHidden('navHidden', 'kaoyan')
     resetUiLayout()
     expect(getUiLayout().navHidden).toEqual([])
-    expect(getUiLayout().statsHidden).toEqual([])
+    expect(getUiLayout().dashHidden).toEqual([])
+  })
+
+  it('userkeys:uid-changed 触发内存 prefs 重建（切号不串布局）', () => {
+    toggleHidden('dashHidden', 'hero')
+    expect(getUiLayout().dashHidden).toEqual(['hero']) // uid=1 的布局
+    setUser(2) // 切账号：AuthContext.setUser 会广播该事件，这里直接模拟
+    expect(getUiLayout().dashHidden).toEqual([]) // 账号 2 没有自己的隐藏项，不能沿用账号 1 的快照
+    localStorage.setItem(ukey(UI_LAYOUT_KEY), JSON.stringify({ dashHidden: ['notice'] }))
+    setUser(2) // userKeys 约定：重设同一 uid 也会广播，用于模拟存储侧变化后的重读
+    expect(getUiLayout().dashHidden).toEqual(['notice'])
   })
 })
 
-describe('UiCustomize 设置页控件', () => {
-  it('渲染五类可配置列表的真实条目名', () => {
-    render(<UiCustomize />)
-    expect(screen.getByText('侧边导航分组')).toBeInTheDocument()
-    expect(screen.getByText('学习文库')).toBeInTheDocument()
+describe('UiCustomizeV3 设置页控件', () => {
+  it('渲染三类可配置列表的真实条目名', () => {
+    render(<UiCustomizeV3 />)
+    expect(screen.getByText('顶部导航分组')).toBeInTheDocument()
+    expect(screen.getByText('导航「其他」入口')).toBeInTheDocument()
+    expect(screen.getByText('仪表盘区块')).toBeInTheDocument()
+    expect(screen.getByText('今日')).toBeInTheDocument()
+    expect(screen.getByText('择校')).toBeInTheDocument()
     expect(screen.getByText('顶部倒计时横幅')).toBeInTheDocument()
-    expect(screen.getByText('院校数据中心')).toBeInTheDocument()
+    expect(screen.getByText('AI 助手')).toBeInTheDocument()
   })
 
-  it('取消勾选导航分组 → 写入 navHidden', () => {
-    render(<UiCustomize />)
-    fireEvent.click(screen.getByLabelText('院校数据中心 显示'))
-    expect(getUiLayout().navHidden).toEqual(['kaoyan'])
+  it('关闭导航分组开关 → 写入 navHidden', () => {
+    render(<UiCustomizeV3 />)
+    fireEvent.click(screen.getByLabelText('择校 显示'))
+    expect(getUiLayout().navHidden).toEqual(['school'])
   })
 
   it('恢复默认布局按钮清空隐藏项', () => {
     toggleHidden('dashHidden', 'notice')
-    render(<UiCustomize />)
+    render(<UiCustomizeV3 />)
     fireEvent.click(screen.getByText('恢复默认布局'))
     expect(getUiLayout().dashHidden).toEqual([])
   })

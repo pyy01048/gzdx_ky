@@ -25,6 +25,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 from sqlalchemy import text
 
+from utils.timeutil import local_now, local_today, naive_utc_iso
+
 logger = logging.getLogger(__name__)
 
 # 中国标准时间：固定偏移，避免 Windows 缺 tzdata 导致 zoneinfo 查找失败
@@ -44,13 +46,13 @@ LEVEL_LABEL_CN = {LEVEL_URGENT: "紧急", LEVEL_IMPORTANT: "重要", LEVEL_NORMA
 # 时间工具（时区安全）
 # --------------------------------------------------------------------------- #
 def cn_now() -> datetime:
-    """当前北京时间（aware, +08:00）。"""
-    return datetime.now(CN_TZ)
+    """当前北京时间（aware, +08:00）。口径出口是 ``timeutil.local_now``，此处只做别名。"""
+    return local_now()
 
 
 def cn_today() -> date:
-    """今天（北京时间口径的日期）。"""
-    return cn_now().date()
+    """今天（北京时间口径的日期）。口径出口是 ``timeutil.local_today``。"""
+    return local_today()
 
 
 def to_cn(aware_dt: datetime) -> datetime:
@@ -92,7 +94,7 @@ def parse_date_loose(value: Any) -> Optional[date]:
 
     m = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", s)
     if m:
-        year = datetime.now(CN_TZ).year
+        year = local_today().year
         try:
             return date(year, int(m.group(1)), int(m.group(2)))
         except ValueError:
@@ -589,7 +591,7 @@ CREATE INDEX IF NOT EXISTS idx_alert_acked ON kaoyan_alert_records(acked);
 CREATE TABLE IF NOT EXISTS kaoyan_alert_runs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     ran_at        TEXT NOT NULL,
-    trigger       TEXT,                      -- schedule | manual
+    trigger_source TEXT,                     -- schedule | manual
     scanned       INTEGER DEFAULT 0,
     created_alerts INTEGER DEFAULT 0,
     skipped_dup   INTEGER DEFAULT 0,
@@ -615,7 +617,13 @@ def raw_conn(db):
     """
     conn = db.connection()
     conn.execute(text("SELECT 1"))  # 强制建立底层连接
-    return conn.connection
+    # 跨方言：PG 侧返回跨方言代理。
+    # 历史 bug：这里直接返回裸 DBAPI 连接，调用方（routers/notice_alert.py 等）
+    # 带着 SQLite 方言 SQL 直连 psycopg —— `?` 占位符与 IFNULL() 在 PG 上都不是
+    # 合法写法，对应端点在 PG 底下一律 500。SQLite 侧 wrap_conn 原样返回，零影响。
+    from services.dbapi_compat import wrap_conn
+
+    return wrap_conn(conn.connection)
 
 
 def scalar(conn, sql: str, args: Tuple[Any, ...] = ()) -> Any:
@@ -636,7 +644,19 @@ def scalar(conn, sql: str, args: Tuple[Any, ...] = ()) -> Any:
 
 
 def table_columns(conn, table: str) -> Dict[str, Any]:
-    """取表结构（列名 -> PRAGMA 行），统一入口，禁止在 router 层裸迭代 ``PRAGMA``。"""
+    """取表结构（列名 -> 值），跨方言统一入口，禁止在 router 层裸迭代 ``PRAGMA``。
+
+    PG 不支持 PRAGMA table_info（会 SyntaxError），改走 information_schema；
+    返回 ``{列名: None}`` 的映射形状与原 PRAGMA 用途（判存在性）保持兼容。
+    """
+    from services.dbapi_compat import column_names, is_sqlite
+
+    if not is_sqlite(conn):
+        try:
+            return {name: None for name in column_names(conn, table)}
+        except Exception:  # noqa: BLE001
+            return {}
+
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
     cols: Dict[str, Any] = {}
     for r in rows:
@@ -661,9 +681,26 @@ def _migrate_subscriptions(conn) -> None:
     ``CREATE TABLE IF NOT EXISTS`` 不会改动已存在的表，所以这里显式检测旧结构并
     重建（数据量是用户级订阅，几十条量级，重建零成本）。
     """
-    row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='kaoyan_subscriptions'"
-    ).fetchone()
+    # 跨方言：``sqlite_master`` 是 SQLite 专有目录表，PG 下直接报
+    # ``relation "sqlite_master" does not exist``，并把事务打成 aborted
+    # —— 实测整个通知告警模块 8 个端点因此全部 500。
+    # 本函数的语义是"检测 SQLite 旧结构并重建"，读的是 sqlite 建表原文
+    # （含 UNIQUE(...) 字符串解析），本身就是 SQLite 专用逻辑。
+    # PG 侧的表由权威 DDL（_DDL，已是 v2 结构）创建，无需迁移，直接跳过。
+    try:
+        from services.dbapi_compat import is_sqlite
+    except Exception:  # noqa: BLE001
+        is_sqlite = None
+    inner = getattr(conn, "_conn", conn)
+    if is_sqlite is not None and not is_sqlite(inner):
+        return
+    try:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='kaoyan_subscriptions'"
+        ).fetchone()
+    except Exception:  # noqa: BLE001 - 目录表不存在即视为无需迁移
+        return
     if not row:
         return
     sql = row[0] or ""
@@ -690,7 +727,8 @@ def _migrate_subscriptions(conn) -> None:
         DROP TABLE kaoyan_subscriptions;
         """
     )
-    conn.executescript(_DDL)
+    from services.ddl_compat import adapt_ddl
+    conn.executescript(adapt_ddl(_DDL, conn))
     conn.execute(
         "INSERT OR IGNORE INTO kaoyan_subscriptions (id, scope, school_id, school_name, "
         "major_name, notice_type, keyword, level_min, enabled, remark, created_at) "
@@ -752,7 +790,7 @@ def classify_and_store(db, notice_id: int) -> Optional[Dict[str, Any]]:
     # 标题 + 正文双口径：正文里才有真实截止日（研招网报名窗口写在正文）
     dates = extract_dates(f"{title or ''}\n{body or ''}", ref_date=ref, rules=rules)
     deadline = pick_deadline(dates)
-    now_iso = cn_now().strftime("%Y-%m-%d %H:%M:%S")
+    now_iso = naive_utc_iso()
     conn.execute(
         "UPDATE kaoyan_notices SET importance_level=?, importance_score=?, "
         "importance_reason=?, deadline_date=?, events_json=?, classified_at=? WHERE id=?",
@@ -776,7 +814,7 @@ def backfill_all(db, limit: int = 0, log_every: int = 300) -> Dict[str, Any]:
     rules = load_rules()
     stats = {"total": len(rows), "urgent": 0, "important": 0, "normal": 0,
              "with_deadline": 0, "with_dates": 0}
-    now_iso = cn_now().strftime("%Y-%m-%d %H:%M:%S")
+    now_iso = naive_utc_iso()
     for i, (nid, title, ntype, pub) in enumerate(rows, 1):
         ref = parse_date_loose(pub)
         cls = classify_importance(title, ntype, rules=rules)
@@ -810,7 +848,7 @@ def _load_subscriptions(db) -> List[Dict[str, Any]]:
     conn = raw_conn(db)
     rows = conn.execute(
         "SELECT id, scope, school_id, school_name, major_name, notice_type, keyword, level_min "
-        "FROM kaoyan_subscriptions WHERE enabled = 1"
+        "FROM kaoyan_subscriptions WHERE enabled = TRUE"
     ).fetchall()
     return [
         {"id": r[0], "scope": r[1], "school_id": r[2], "school_name": r[3],
@@ -890,6 +928,26 @@ def purge_orphan_alerts(db) -> int:
     except Exception as exc:  # 清理是「锦上添花」，失败不应阻断扫描
         logger.warning("清理孤儿提醒失败: %s", exc)
         return 0
+
+
+def runs_trigger_column(conn) -> str:
+    """kaoyan_alert_runs 的"触发来源"列名（历史库 `trigger` / 权威 schema `trigger_source`）。
+
+    列漂移背景：该表先由 core/sql 分片建出，列名是 ``trigger_source``；而本模块
+    的懒建 _DDL 与查询一直写 ``trigger``。PG 下 ``CREATE TABLE IF NOT EXISTS``
+    不会改动已存在的表，于是查询报 ``column "trigger" does not exist``
+    —— /api/notice-alert/alerts/stats 因此 500。
+    这里做列内省，两边都能跑。
+    """
+    try:
+        cols = table_columns(conn, "kaoyan_alert_runs")
+    except Exception:  # noqa: BLE001 - 表不存在时退回权威列名
+        return "trigger_source"
+    if "trigger_source" in cols:
+        return "trigger_source"
+    if "trigger" in cols:
+        return "trigger"
+    return "trigger_source"
 
 
 def scan_alerts(db, trigger: str = "manual", now: Optional[datetime] = None) -> Dict[str, Any]:
@@ -975,7 +1033,9 @@ def scan_alerts(db, trigger: str = "manual", now: Optional[datetime] = None) -> 
                 ))
 
     # --- 去重落库 ---
-    now_iso = now.strftime("%Y-%m-%d %H:%M:%S")
+    # created_at / ran_at 是 UTC 时间戳列；「哪一天提醒的」另走 alert_date
+    # （北京自然日 today），两者口径不同源，不能拿本地墙钟填时间戳列。
+    now_iso = naive_utc_iso()
     created = 0
     dup = 0
     seen_in_batch: set = set()
@@ -1007,7 +1067,8 @@ def scan_alerts(db, trigger: str = "manual", now: Optional[datetime] = None) -> 
 
     elapsed = int((_t.time() - t0) * 1000)
     conn.execute(
-        "INSERT INTO kaoyan_alert_runs (ran_at, trigger, scanned, created_alerts, "
+        f"INSERT INTO kaoyan_alert_runs (ran_at, {runs_trigger_column(conn)}, "
+        "scanned, created_alerts, "
         "skipped_dup, elapsed_ms, detail) VALUES (?,?,?,?,?,?,?)",
         (now_iso, trigger, scanned, created, dup, elapsed,
          json.dumps({"today": today.isoformat(), "subs": len(subs),

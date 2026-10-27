@@ -44,14 +44,16 @@ export default function useApiData(fetcher, options = {}) {
     setError('')
     try {
       const d = await fetcherRef.current()
-      if (!aliveRef.current) return
+      if (!aliveRef.current) return false
       // undefined / null 归一为 null：client.js 对无 JSON 体的 2xx 返回 null，
       // 下游判空只须认 null 一种形态，不必同时防 undefined。
       setData(d === undefined ? null : d)
+      return true
     } catch (e) {
-      if (!aliveRef.current) return
+      if (!aliveRef.current) return false
       setError(e?.message || '加载失败，请稍后重试')
       onErrorRef.current?.(e)
+      return false
     } finally {
       if (aliveRef.current) setLoading(false)
     }

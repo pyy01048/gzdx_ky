@@ -124,7 +124,8 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
-    conn.executescript(_SCHEMA_SQL)
+    from services.ddl_compat import adapt_ddl
+    conn.executescript(adapt_ddl(_SCHEMA_SQL, conn))
 
 
 # --------------------------------------------------------------------------- #

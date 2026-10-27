@@ -31,10 +31,13 @@ from services.dbapi_compat import wrap_conn
 from database import get_db
 
 logger = logging.getLogger(__name__)
-from models import QuizQuestion
+from models import QuizQuestion, User
+from services import blind_spot_pool
 from services.ai_service import AIService
 from services.error_analyzer import _guess_category, _practice_questions
 from services.quiz_query import source_kind_of, normalize_source_kind
+from utils.scope import owner_id  # B4 行级隔离：写入归属
+from utils.security import current_user
 
 router = APIRouter(prefix="/api/ai/tutoring", tags=["AI 讲题"])
 
@@ -79,6 +82,12 @@ class FollowupReq(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     history: List[Dict[str, str]] = Field(default_factory=list, description="追问历史")
     source_kind: Optional[str] = Field(None, description="同 explain：不传则从题目自动派生")
+
+
+class StuckReq(BaseModel):
+    question_id: int
+    note: Optional[str] = Field(None, max_length=500, description="仍未理解的具体描述（可选）")
+    angle: Optional[str] = Field("solution", description="讲解视角（仅作记录）")
 
 
 def _load_question(db: Session, question_id: int) -> QuizQuestion:
@@ -280,3 +289,50 @@ async def followup(req: FollowupReq, db: Session = Depends(get_db)):
                             "· 建议：回到解析逐步对照自己的步骤。"),
                 "provider": "local-rules", "route": "local",
                 "mode": mode, "source_kind": sk}
+
+
+@router.post("/stuck")
+def mark_stuck(req: StuckReq, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """AI 讲题后仍未理解 → 沉淀到知识盲区池（A4）。
+
+    闭环价值：AI 解析不是一次性的消费——用户点「仍未理解」后，该题对应知识点
+    进入 pending_questions（gap_type=not_understood），按 B4 归属当前用户，
+    后续会出现在盲区看板、反哺组卷 weakest 模式，并可升级为周会议题。
+    """
+    q = _load_question(db, req.question_id)
+    base = (q.content or "").strip()[:500]
+    note = (req.note or "").strip()
+    question = f"【AI 讲题后仍未理解】{base}" + (f"（备注：{note}）" if note else "")
+    stuck_id = blind_spot_pool.record_abstain(
+        db,
+        question=question,
+        subject=(q.subject or "").strip() or "未分类",
+        gap_type="not_understood",
+        suggestion="加入周会讲解/复习队列，安排同类题巩固",
+        suggested_action="review",
+        user_id=owner_id(user),
+    )
+
+    # 三层可审计记忆（55 号方案 P0-1）：旁路记录「讲题后仍不理解」为 L1 轨迹。
+    try:
+        from services import memory_service
+
+        memory_service.record_trace(
+            user_id=owner_id(user),
+            trace_type="tutoring",
+            title=f"讲题后仍未理解：{(q.content or '').strip()[:60]}",
+            payload={
+                "kind": "stuck",
+                "question_id": q.id,
+                "question_content": (q.content or "")[:1500],
+                "note": note[:500],
+                "suggestion": "加入周会讲解/复习队列，安排同类题巩固",
+            },
+            subject=(q.subject or "").strip() or None,
+            question_id=q.id,
+            db=db,
+        )
+    except Exception:  # noqa: BLE001 - 埋点旁路
+        pass
+
+    return {"stuck_id": stuck_id, "status": "recorded", "message": "已加入盲点池，将进入复习/周会议题"}

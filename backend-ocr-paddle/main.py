@@ -6,6 +6,7 @@ PaddleOCR PP-OCRv5 独立微服务
 """
 
 import io
+import os
 import time
 import base64
 from typing import List, Optional
@@ -32,6 +33,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# 主后端经隧道调用：设了 COMPUTE_SERVICE_TOKEN 就要求 X-Service-Token 匹配（/health 留给探活）
+_SERVICE_TOKEN = os.getenv("COMPUTE_SERVICE_TOKEN", "").strip()
+
+
+@app.middleware("http")
+async def _require_service_token(request, call_next):
+    if _SERVICE_TOKEN and request.url.path != "/health":
+        import hmac
+        from fastapi.responses import JSONResponse
+        if not hmac.compare_digest(request.headers.get("x-service-token", ""), _SERVICE_TOKEN):
+            return JSONResponse({"detail": "invalid service token"}, status_code=401)
+    return await call_next(request)
 
 
 class OCRResult(BaseModel):
@@ -296,7 +311,9 @@ async def ocr_batch(files: List[UploadFile] = File(...)):
 if __name__ == "__main__":
     print("=" * 60)
     print("  PaddleOCR PP-OCRv5 文字识别服务")
-    print("  接口地址: http://127.0.0.1:8888")
-    print("  文档地址: http://127.0.0.1:8888/docs")
+    host = os.getenv("SERVICE_HOST", "127.0.0.1")  # 云端经 Tailscale 调用时设为本机 tailscale IP，勿用 0.0.0.0
+    port = int(os.getenv("SERVICE_PORT", "8888"))
+    print(f"  接口地址: http://{host}:{port}")
+    print(f"  文档地址: http://{host}:{port}/docs")
     print("=" * 60)
-    uvicorn.run(app, host="127.0.0.1", port=8888, reload=False)
+    uvicorn.run(app, host=host, port=port, reload=False)

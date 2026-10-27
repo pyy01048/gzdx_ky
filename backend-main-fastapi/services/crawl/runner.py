@@ -412,6 +412,8 @@ def run_once(
     page_index: Optional[PageIndex] = None,
     page_writer: Optional[PageWriter] = None,
     notice_writer: Optional[NoticeWriter] = None,
+    attachment_pipeline=None,
+    download_attachments: bool = True,
     fetcher: Optional[PoliteFetcher] = None,
     extract_fn: Callable[[str, str], Extracted] = extract,
     classify_fn: Callable[..., Any] = classify_notice,
@@ -422,12 +424,32 @@ def run_once(
     :param limit: 本批最多领取多少条
     :param respect_robots: 是否遵守 robots.txt
     :param write_pages: 是否写 ``crawl_pages``
+    :param attachment_pipeline: 附件下载/解析管线（见
+        :class:`services.crawl.attachments.AttachmentPipeline`）；为 ``None`` 且有库时
+        自动建一个（无库时不落盘）
+    :param download_attachments: 是否下载附件（默认开）
     """
     the_queue = queue if queue is not None else CrawlQueue(db)
     the_fetcher = fetcher if fetcher is not None else PoliteFetcher()
     the_index = page_index if page_index is not None else _default_page_index(db)
     the_page_writer = page_writer if page_writer is not None else _default_page_writer(db, write_pages)
     the_notice_writer = notice_writer
+    the_attachments = attachment_pipeline
+    if the_attachments is None and db is not None and write_pages and download_attachments:
+        from services.crawl.attachments import AttachmentPipeline
+
+        the_attachments = AttachmentPipeline(
+            db=db,
+            fetcher=the_fetcher,
+            respect_robots=respect_robots,
+        )
+
+    def _dead_letter(job, error: str, payload: Dict[str, Any]) -> None:
+        """附件级失败 → 写死信（不打断整批）。"""
+        try:
+            the_queue.store.add_dead_letter(job, error, payload)
+        except Exception as exc:  # pragma: no cover
+            stats["errors"].append(f"dead_letter_error: {exc}")
 
     stats: Dict[str, Any] = {
         "claimed": 0,
@@ -437,6 +459,8 @@ def run_once(
         "pages_written": 0,
         "notices_written": 0,
         "notices_skipped": 0,
+        "attachments_downloaded": 0,
+        "attachments_parsed": 0,
         "errors": [],
     }
 
@@ -490,6 +514,28 @@ def run_once(
             notice_type=notice_type,
             confidence=float(confidence or 0.0),
         )
+
+        # 附件：落盘 + （PDF）解析入库；附件级失败写死信，不打断整批
+        if the_attachments is not None and extracted.attachments:
+            try:
+                artifacts = the_attachments.process(
+                    html=result.html or "",
+                    url=final_url,
+                    attachments=extracted.attachments,
+                    job=job,
+                    on_error=_dead_letter,
+                )
+            except Exception as exc:
+                artifacts = None
+                stats["errors"].append(f"{final_url}: attachment_error: {exc}")
+            if artifacts is not None:
+                if artifacts.html_rel_path:
+                    record.html_path = artifacts.html_rel_path
+                for att in artifacts.attachments:
+                    if att.status in ("stored", "parsed"):
+                        stats["attachments_downloaded"] += 1
+                    if att.status == "parsed":
+                        stats["attachments_parsed"] += 1
 
         if write_pages and the_page_writer is not None:
             try:

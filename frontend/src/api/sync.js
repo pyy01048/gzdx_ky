@@ -122,9 +122,22 @@ const LOADERS = {
     const list = await fetchAllPages((p) => wordsApi.list(p), { keys: ['items', 'words'] })
     useStore.setState({ words: list })
   },
+  /* 网盘域（P2-1）：
+     后端现在把三种状态分开 —— 从未授权返回 200 + netdisk_authorized=false，
+     曾授权但 token 失效才 409（action=reauthorize）。首屏 hydrate 会拉本域，
+     未绑网盘的机器以前每次都吃一个 409 噪音。
+     这里再兜一层：即使后端仍抛 409（token 途中过期），本域也静默降级 ——
+     store.pan 只喂给助手/设置页的本地文件视图，不该让整次 hydrate 记为失败。 */
   pan: async () => {
-    const list = await fetchAllPages((p) => netdiskApi.files(p), { keys: ['local_files'] })
-    useStore.setState({ pan: list.map(toPan) })
+    try {
+      const list = await fetchAllPages((p) => netdiskApi.files(p), { keys: ['local_files'] })
+      useStore.setState({ pan: list.map(toPan) })
+    } catch (e) {
+      // ApiError.status 是 HTTP 码；网盘授权类错误体里带 code=NETDISK_AUTH_*
+      const code = e?.data?.code || ''
+      if (e?.status === 409 || String(code).startsWith('NETDISK_AUTH')) return
+      throw e
+    }
   },
   countdown: async () => {
     const d = await dashboardApi.countdown()

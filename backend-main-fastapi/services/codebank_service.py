@@ -255,12 +255,25 @@ def exam_strategy(db: Session) -> Dict:
 
 
 def list_subjects(db: Session) -> List[Dict]:
+    """科目清单（含题目数）。
+
+    2026-10-23 修复：code_problems 的 subject 是 LeetCode 标签科目（如
+    “数据结构”“算法”），而 code_subjects 是内置复试科目（如“数据结构与算法”），
+    直接 LEFT JOIN c.subject=s.name 导致所有 question_count=0（前端“收录题目
+    0 道”）。这里把 code_problems 中实际出现的 subject 并入科目清单，使题数正确、
+    且前端点科目 chip 能过滤到真实题目。内置科目 id 保留原值，题目派生科目 id=0。
+    """
     ensure_schema(db)
     conn = wrap_conn(db.connection().connection)
     rows = conn.execute(
-        "SELECT s.id, s.name, s.direction, s.is_builtin, COUNT(c.id) FROM code_subjects s "
-        "LEFT JOIN code_problems c ON c.subject=s.name AND c.is_public = TRUE "
-        "GROUP BY s.id ORDER BY s.is_builtin DESC, s.id").fetchall()
+        "SELECT s.id, s.name, s.direction, s.is_builtin, COUNT(c.id) FROM ("
+        "  SELECT id, name, direction, is_builtin FROM code_subjects "
+        "  UNION "
+        "  SELECT 0 AS id, subject AS name, NULL AS direction, 0 AS is_builtin "
+        "    FROM code_problems WHERE subject IS NOT NULL AND TRIM(subject) <> ''"
+        ") s LEFT JOIN code_problems c ON c.subject = s.name AND c.is_public = TRUE "
+        "GROUP BY s.id, s.name, s.direction, s.is_builtin "
+        "ORDER BY s.is_builtin DESC, s.name").fetchall()
     return [{"id": r[0], "name": r[1], "direction": r[2], "is_builtin": bool(r[3]),
              "question_count": r[4]} for r in rows]
 

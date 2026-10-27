@@ -19,16 +19,19 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import datetime
 import os
 import sqlite3
 import sys
 
-sys.path.insert(0, r"D:\平台\backend-main-fastapi\scripts")
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "backend-main-fastapi" / "scripts"))
 from reconcile_47_groups import TABLE  # noqa: E402
 
-DB_PATH = r"D:\平台\database\kaoyan.db"
-BACKUP_DIR = r"D:\平台\database\_backup"
+DB_PATH = str(_REPO / "database" / "kaoyan.db")
+BACKUP_DIR = str(_REPO / "database" / "_backup")
 PREFIX = "kaoyan_pre_keepside_"
 
 #: team-lead 点名要逐条打出的 5 条（用户已可能刷到的错答案）

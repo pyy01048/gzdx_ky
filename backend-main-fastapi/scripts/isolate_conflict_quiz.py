@@ -17,13 +17,16 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import datetime
 import os
 import sqlite3
 import sys
 
-DB_PATH = r"D:\平台\database\kaoyan.db"
-BACKUP_DIR = r"D:\平台\database\_backup"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB_PATH = str(_REPO / "database" / "kaoyan.db")
+BACKUP_DIR = str(_REPO / "database" / "_backup")
 PREFIX = "kaoyan_pre_isolate_"
 
 # team-lead 裁决需隔离的 6 组冲突题，格式: (组号, (id1, id2))

@@ -1,0 +1,58 @@
+/* ==========================================================================
+   仪表盘（/）· 玻璃化增强层
+   与 /hub、/glass 共用一套视觉语言：
+   极光光斑（呼吸漂移，clip 在卡片内）+ 分模块色调（indigo/cyan/violet…）。
+   这里只做「增强」：不改 pages.css 的布局与结构，可整体回滚。
+   ========================================================================== */
+
+/* ── Hero：极光光斑 ------------------------------------------------------
+   .v3-tile 自带 overflow:hidden，光斑越界部分会被裁掉，
+   所以可以放心用负 inset 让渐变「涨」出卡片再滑回来。 */
+.v3-dash-hero::before {
+  content: '';
+  position: absolute;
+  inset: -28%;
+  background:
+    radial-gradient(300px 220px at 82% 12%, rgba(139, 92, 246, 0.5), transparent 66%),
+    radial-gradient(320px 250px at 8% 92%, rgba(26, 155, 184, 0.42), transparent 66%),
+    radial-gradient(240px 190px at 48% 115%, rgba(255, 255, 255, 0.22), transparent 72%);
+  background-size: 155% 155%;
+  background-position: 6% 38%;
+  pointer-events: none;
+  animation: v3-dash-aurora 16s ease-in-out infinite alternate;
+}
+
+@keyframes v3-dash-aurora {
+  from { background-position: 6% 38%; }
+  to { background-position: 94% 62%; }
+}
+
+[data-theme="dark"] .v3-dash-hero::before {
+  background:
+    radial-gradient(300px 220px at 82% 12%, rgba(183, 155, 255, 0.34), transparent 66%),
+    radial-gradient(320px 250px at 8% 92%, rgba(76, 201, 232, 0.3), transparent 66%),
+    radial-gradient(240px 190px at 48% 115%, rgba(255, 255, 255, 0.1), transparent 72%);
+}
+
+/* ── KPI 控制台：每个指标一个 --tone ------------------------------------- */
+.v3-dash-kpi__cell { --kpi-tone: var(--v3-primary); --kpi-soft: rgba(66, 133, 244, 0.12); }
+.v3-dash-kpi__cell:nth-child(1) { --kpi-tone: #4285f4; --kpi-soft: rgba(66, 133, 244, 0.12); }   /* 专注 · indigo */
+.v3-dash-kpi__cell:nth-child(2) { --kpi-tone: #1a9bb8; --kpi-soft: rgba(26, 155, 184, 0.12); }   /* 答题 · cyan */
+.v3-dash-kpi__cell:nth-child(3) { --kpi-tone: #8b5cf6; --kpi-soft: rgba(139, 92, 246, 0.13); }   /* 正确率 · violet */
+.v3-dash-kpi__cell:nth-child(4) { --kpi-tone: #1f9d55; --kpi-soft: rgba(31, 157, 85, 0.12); }    /* 完成任务 · green */
+.v3-dash-kpi__cell:nth-child(5) { --kpi-tone: #d96570; --kpi-soft: rgba(217, 101, 112, 0.12); }  /* 错题复习 · rose */
+.v3-dash-kpi__cell:nth-child(6) { --kpi-tone: #d98b1f; --kpi-soft: rgba(217, 139, 31, 0.13); }   /* 复习单词 · amber */
+
+[data-theme="dark"] .v3-dash-kpi__cell:nth-child(2) { --kpi-tone: #4cc9e8; --kpi-soft: rgba(76, 201, 232, 0.15); }
+[data-theme="dark"] .v3-dash-kpi__cell:nth-child(3) { --kpi-tone: #b79bff; --kpi-soft: rgba(183, 155, 255, 0.17); }
+[data-theme="dark"] .v3-dash-kpi__cell:nth-child(5) { --kpi-tone: #f28b95; --kpi-soft: rgba(242, 139, 149, 0.16); }
+[data-theme="dark"] .v3-dash-kpi__cell:nth-child(6) { --kpi-tone: #f5c04d; --kpi-soft: rgba(245, 192, 77, 0.17); }
+
+.v3-dash-kpi__cell .v3-dash-kpi__label svg { color: var(--kpi-tone); }
+.v3-dash-kpi__cell:hover { background: var(--kpi-soft); }
+.v3-dash-kpi__cell .v3-dash-kpi__delta.is-up { color: var(--v3-success, var(--kpi-tone)); }
+
+/* ── 无障碍：跟随系统的减少动效偏好 --------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .v3-dash-hero::before { animation: none; }
+}

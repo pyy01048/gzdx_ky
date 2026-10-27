@@ -1,0 +1,82 @@
+{
+  "sha": "ba7628fea355977b06c26f864ef6cf967ecfabca",
+  "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/trees/ba7628fea355977b06c26f864ef6cf967ecfabca",
+  "tree": [
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2f3c22a19fba387bee9504d49902811d37e49b09",
+      "size": 787,
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/blobs/2f3c22a19fba387bee9504d49902811d37e49b09"
+    },
+    {
+      "path": "solutions",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "ce98a176303fa2109dfd4301d3c06cdbea040122",
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/trees/ce98a176303fa2109dfd4301d3c06cdbea040122"
+    },
+    {
+      "path": "solutions/2021",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "18f1362187bc548b9f3b6a78735f1d8849b1ea6d",
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/trees/18f1362187bc548b9f3b6a78735f1d8849b1ea6d"
+    },
+    {
+      "path": "solutions/2021/politics_2021.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f40bf60eb3ec8a0d66a4b5e8efe909c04e5f4163",
+      "size": 35831,
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/blobs/f40bf60eb3ec8a0d66a4b5e8efe909c04e5f4163"
+    },
+    {
+      "path": "solutions/2022",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "094aff2ba0b56e18c5b9cff679419df5dadb4cc5",
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/trees/094aff2ba0b56e18c5b9cff679419df5dadb4cc5"
+    },
+    {
+      "path": "solutions/2022/politics_2022.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f9f8c040d7d8904d2ec68bbbb3d28df67881d354",
+      "size": 16340,
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/blobs/f9f8c040d7d8904d2ec68bbbb3d28df67881d354"
+    },
+    {
+      "path": "solutions/2023",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "f2d650e3e89f2ff049208b0aed5184bdb30859a8",
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/trees/f2d650e3e89f2ff049208b0aed5184bdb30859a8"
+    },
+    {
+      "path": "solutions/2023/politics_2023.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "283ce054fb46ec1e0a710128cd513a50e242701f",
+      "size": 39839,
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/blobs/283ce054fb46ec1e0a710128cd513a50e242701f"
+    },
+    {
+      "path": "solutions/2024",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "ac4747656e0c791006d58c7ff332d2c2e706a922",
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/trees/ac4747656e0c791006d58c7ff332d2c2e706a922"
+    },
+    {
+      "path": "solutions/2024/politics_2024.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d5e9a2e5d379d33474e9b58ba987392aedec8636",
+      "size": 52342,
+      "url": "https://api.github.com/repos/TsekaLuk/Kaoyan-Politics-Papers/git/blobs/d5e9a2e5d379d33474e9b58ba987392aedec8636"
+    }
+  ],
+  "truncated": false
+}

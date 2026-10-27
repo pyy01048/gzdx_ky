@@ -24,7 +24,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-DB = r"D:\平台\database\kaoyan.db"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
 
 # 额外白名单防御：即使 ≤4 字，若标题含年份（如「2027简章」）或高价值词，保留
 _KEEP_RE = __import__("re").compile(r"20\d{2}|章程|简章|大纲|目录")

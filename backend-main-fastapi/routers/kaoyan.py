@@ -7,9 +7,10 @@ D5: 区域择校地图热力图数据
 D6: 招生人数分布散点图数据
 C5: 数据版本管理（历史对比）
 """
+from utils.security import require_admin
 from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text, tuple_
 from typing import Optional, List
 import json
 import re
@@ -34,6 +35,31 @@ from services.kaoyan.school_alias import normalize_alias, match_aliases
 from services.kaoyan.data_years import available_years, resolve_year
 
 router = APIRouter(prefix="/api/kaoyan", tags=["考研择校"])
+
+# --------------------------------------------------------------------------- #
+# 2026-10-23 P0：院校列表/热度榜 TTL 缓存（60s）
+# 首屏慢主要是前端冷加载 + 服务器冷启动叠加；本缓存让重复访问与翻页在秒回。
+# 院校数据变更频率极低，60s TTL 足够；详情页（/schools/{id}）不缓存，编辑即时生效。
+# --------------------------------------------------------------------------- #
+_SCHOOLS_LIST_CACHE: dict = {}
+_SCHOOLS_CACHE_TTL = 60  # 秒
+
+
+def _schools_cache_get(key) -> Optional[dict]:
+    import time
+    hit = _SCHOOLS_LIST_CACHE.get(key)
+    if not hit:
+        return None
+    ts, payload = hit
+    if time.time() - ts > _SCHOOLS_CACHE_TTL:
+        _SCHOOLS_LIST_CACHE.pop(key, None)
+        return None
+    return payload
+
+
+def _schools_cache_set(key, payload) -> None:
+    import time
+    _SCHOOLS_LIST_CACHE[key] = (time.time(), payload)
 
 
 def get_db():
@@ -106,25 +132,30 @@ def _aggregate_schools(db: Session, school_ids: List[int]) -> dict:
         db.query(KaoyanAdmission.school_id, func.max(KaoyanAdmission.year))
         .filter(KaoyanAdmission.school_id.in_(ids)).group_by(KaoyanAdmission.school_id).all()
     )
-    # 招生指标：按 (school, 最近年份) 聚合各专业
-    adm_rows = (
-        db.query(
-            KaoyanAdmission.school_id,
-            func.sum(KaoyanAdmission.enroll_count),
-            func.sum(KaoyanAdmission.retest_count),
-            func.sum(KaoyanAdmission.admit_count),
-            func.avg(KaoyanAdmission.admit_avg_score),
-            func.avg(KaoyanAdmission.major_avg_score),
+    # 招生指标：只聚合每校最近年份，避免跨年求和（旧实现把 2023+2024+2025
+    # 的复试/录取人数叠加，天津曾出现 1439 复试试 / 2 录取 / 719.5 复录比）
+    adm_rows = []
+    pairs = [(sid, y) for sid, y in latest_year.items() if y is not None]
+    if pairs:
+        adm_rows = (
+            db.query(
+                KaoyanAdmission.school_id,
+                func.sum(KaoyanAdmission.enroll_count),
+                func.sum(KaoyanAdmission.retest_count),
+                func.sum(KaoyanAdmission.admit_count),
+                func.avg(KaoyanAdmission.admit_avg_score),
+                func.avg(KaoyanAdmission.major_avg_score),
+            )
+            .filter(tuple_(KaoyanAdmission.school_id, KaoyanAdmission.year).in_(pairs))
+            .group_by(KaoyanAdmission.school_id)
+            .all()
         )
-        .filter(KaoyanAdmission.school_id.in_(ids))
-        .group_by(KaoyanAdmission.school_id)
-        .all()
-    )
     adm = {}
     for sid, enroll, retest, admit, aavg, mavg in adm_rows:
         retest = int(retest or 0)
         admit = int(admit or 0)
-        ratio = round(retest / admit, 2) if admit else None
+        # 任一侧缺失时复录比不可计算，给 None 而不是 0.0（前端会当成真实值展示）
+        ratio = round(retest / admit, 2) if (retest and admit) else None
         adm[sid] = {
             "year": latest_year.get(sid),
             "enroll": int(enroll or 0) or None,
@@ -180,6 +211,15 @@ def list_schools(
     每行返回：层级/省份/学校/学院数/专业方向数/进复试/拟录取/复录比/录取均分/专业课均分/热度/星级。
     热度与星级为透明派生（无对应原始列，口径见 _aggregate_schools / _derive_star），非伪造数据。
     """
+    # 2026-10-23 P0：相同筛选参数 60s 内直接命中缓存，翻页/重复访问秒回
+    _cache_key = (
+        level, province, type, region, subject_code, keyword, year,
+        sort or "heat", int(page), int(page_size),
+    )
+    _cached = _schools_cache_get(_cache_key)
+    if _cached is not None:
+        return _cached
+
     # V16 A/B 区筛选：B 区十省固定映射（国家线分区口径），纯派生不动库
     _REGION_B = ("内蒙古", "广西", "海南", "贵州", "云南", "西藏", "甘肃", "青海", "宁夏", "新疆")
     q = db.query(KaoyanSchool)
@@ -261,13 +301,15 @@ def list_schools(
 
     start = (page - 1) * page_size
     page_rows = rows[start:start + page_size]
-    return {
+    result = {
         "total": total,
         "page": page,
         "page_size": page_size,
         "sort": sort,
         "items": page_rows,
     }
+    _schools_cache_set(_cache_key, result)  # 2026-10-23 P0：写入 60s TTL 缓存
+    return result
 
 
 # ---- 院校热度榜 TOP N（对标 txkyer 首页热度榜）----
@@ -277,6 +319,12 @@ def hot_schools(
     db: Session = Depends(get_db),
 ):
     """热度榜 TOP N。热度为派生代理指标（拟录取规模为主 + 拟招生规模为辅）。"""
+    # 2026-10-23 P0：热度榜 60s TTL 缓存
+    _cache_key = ("hot", int(limit))
+    _cached = _schools_cache_get(_cache_key)
+    if _cached is not None:
+        return _cached
+
     schools = db.query(KaoyanSchool).all()
     agg = _aggregate_schools(db, [s.id for s in schools])
     rows = []
@@ -291,7 +339,9 @@ def hot_schools(
     ranked = rows[:limit]
     for i, r in enumerate(ranked, 1):
         r["rank"] = i
-    return {"total": len(ranked), "items": ranked}
+    result = {"total": len(ranked), "items": ranked}
+    _schools_cache_set(_cache_key, result)
+    return result
 
 
 
@@ -395,18 +445,61 @@ def get_school_majors(school_id: int, db: Session = Depends(get_db)):
     } for m in majors]
 
 
+# ---- 国家线（A/B区，全学科门类）----
+@router.get("/national-lines")
+def get_national_lines(year: Optional[int] = None,
+                       discipline: Optional[str] = None,
+                       db: Session = Depends(get_db)):
+    """国家线（A/B 区，含政治/数学单科线）。
+
+    数据源：ai-for-unidata/national-lines.csv（2025/2026 全学科门类）。
+    对标「掌上考研」国家线模块：按年份+学科门类筛选。
+    """
+    sql = "SELECT * FROM kaoyan_national_lines"
+    conditions: list[str] = []
+    params: dict = {}
+    if year is not None:
+        conditions.append("year = :year")
+        params["year"] = year
+    if discipline:
+        conditions.append("discipline ILIKE :discipline")
+        params["discipline"] = f"%{discipline}%"
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
+    sql += " ORDER BY year DESC, discipline, subjects"
+    rows = db.execute(text(sql), params).mappings().all()
+    return [dict(r) for r in rows]
+
+
 # ---- 院校历年分数线 ----
 @router.get("/schools/{school_id}/scores")
-def get_school_scores(school_id: int, db: Session = Depends(get_db)):
-    lines = db.query(KaoyanScoreLine).filter(
-        KaoyanScoreLine.school_id == school_id
-    ).order_by(KaoyanScoreLine.year.desc()).all()
+def get_school_scores(school_id: int, year: Optional[int] = None,
+                      degree_type: Optional[str] = None,
+                      db: Session = Depends(get_db)):
+    """逐专业院线（掌上考研口径：总分 + 政治/外语/专业课一/专业课二）。
+
+    math_line/major_line 两列为历史列名，现分别承载专业课一/专业课二。
+    """
+    q = db.query(KaoyanScoreLine).filter(KaoyanScoreLine.school_id == school_id)
+    if year is not None:
+        q = q.filter(KaoyanScoreLine.year == year)
+    if degree_type:
+        q = q.filter(KaoyanScoreLine.degree_type == degree_type)
+    lines = q.order_by(
+        KaoyanScoreLine.year.desc(),
+        KaoyanScoreLine.depart_name,
+        KaoyanScoreLine.major_code,
+    ).all()
     return [{
         "year": l.year, "total_line": l.total_line,
         "politics_line": l.politics_line, "english_line": l.english_line,
         "math_line": l.math_line, "major_line": l.major_line,
         "national_line": l.national_line, "retest_line": l.retest_line,
         "line_type": l.line_type,
+        "major_id": l.major_id, "major_code": l.major_code, "major_name": l.major_name,
+        "depart_name": l.depart_name, "degree_type": l.degree_type,
+        "note": l.note, "special_remark": l.special_remark,
+        "diff_total": l.diff_total, "source_id": l.source_id,
         "source": l.source,
         "source_type": resolve_source_type(l.source),
     } for l in lines]
@@ -433,13 +526,15 @@ def get_school_admissions(school_id: int, db: Session = Depends(get_db)):
         "major_code": code,
         "major_name": name or "未标注专业",
         "data_source": a.data_source,
+        # txkyer/PDF 详情：进复试与录取的分数分布、专业课分布、数学均分
+        "extra": a.extra,
     } for a, code, name in items]
 
 
 @router.get("/schools/{school_id}/admissions/details")
 def get_school_admission_details(school_id: int, year: int | None = None,
                                  name: str | None = None,
-                                 limit: int = Query(200, ge=1, le=200),
+                                 limit: int = Query(200, ge=1, le=5000),
                                  db: Session = Depends(get_db)):
     """院校拟录取/复试名单逐人明细（DeepSeek-OCR 扫描件名单）。"""
     q = db.query(KaoyanAdmissionDetail).filter(KaoyanAdmissionDetail.school_id == school_id)
@@ -703,17 +798,50 @@ def analysis_compare(
         s = db.query(KaoyanSchool).filter(KaoyanSchool.id == sid).first()
         if not s:
             continue
-        scores = db.query(KaoyanScoreLine).filter(
-            KaoyanScoreLine.school_id == sid
-        ).order_by(KaoyanScoreLine.year.desc()).limit(3).all()
-        admits = db.query(KaoyanAdmission).filter(
+        # 按年聚合：同一年有几十条逐专业线，直接取最近 3 行会抽到某专业的
+        # MBA 线（如 146）当院校线；这里取该年全部专业线的最低值作「最低院线」。
+        # 管理类联考（1251/1252/1253/1256…，考 199 综合）总分只有 300，
+        # 线值天然低于 500 分制的普通专业，若不剔除会让所有院校都显示同一条
+        #  MBA 国家线（146/151/162），对比失去意义。
+        sl_rows = db.query(KaoyanScoreLine).filter(
+            KaoyanScoreLine.school_id == sid,
+            or_(KaoyanScoreLine.major_code.is_(None), ~KaoyanScoreLine.major_code.like("125%")),
+        ).order_by(KaoyanScoreLine.year.desc()).all()
+        by_year = {}
+        for l in sl_rows:
+            d = by_year.setdefault(l.year, {"year": l.year, "total_line": None, "retest_line": None})
+            if l.total_line is not None:
+                d["total_line"] = l.total_line if d["total_line"] is None else min(d["total_line"], l.total_line)
+            if l.retest_line is not None:
+                d["retest_line"] = l.retest_line if d["retest_line"] is None else min(d["retest_line"], l.retest_line)
+        recent_scores = [by_year[y] for y in sorted(by_year, reverse=True)[:3]]
+
+        ad_rows = db.query(KaoyanAdmission).filter(
             KaoyanAdmission.school_id == sid
-        ).order_by(KaoyanAdmission.year.desc()).limit(3).all()
+        ).order_by(KaoyanAdmission.year.desc()).all()
+        adm_by_year = {}
+        for a in ad_rows:
+            d = adm_by_year.setdefault(a.year, {
+                "year": a.year, "enroll_count": None, "admit_count": None, "_scores": [],
+            })
+            if a.enroll_count is not None:
+                d["enroll_count"] = (d["enroll_count"] or 0) + a.enroll_count
+            if a.admit_count is not None:
+                d["admit_count"] = (d["admit_count"] or 0) + a.admit_count
+            if a.admit_avg_score is not None:
+                d["_scores"].append(a.admit_avg_score)
+        recent_admissions = []
+        for y in sorted(adm_by_year, reverse=True)[:3]:
+            d = adm_by_year[y]
+            scores = d.pop("_scores")
+            d["admit_avg_score"] = round(sum(scores) / len(scores), 1) if scores else None
+            recent_admissions.append(d)
+
         result.append({
             "id": s.id, "name": s.name, "level": s.level,
             "province": s.province,
-            "recent_scores": [{"year": l.year, "total_line": l.total_line, "retest_line": l.retest_line} for l in scores],
-            "recent_admissions": [{"year": a.year, "enroll_count": a.enroll_count, "admit_count": a.admit_count, "admit_avg_score": a.admit_avg_score} for a in admits],
+            "recent_scores": recent_scores,
+            "recent_admissions": recent_admissions,
         })
     return {"items": result}
 
@@ -1031,7 +1159,9 @@ def analysis_heatmap(
     years = available_years(db)
     rows = db.query(
         KaoyanSchool.province,
-        func.count(KaoyanSchool.id).label("school_count"),
+        # 两路 outerjoin 会把院校行按分数线/招生记录放大，必须按院校去重计数；
+        # 否则「院校数量」变成分数线行数（实测天津 1368、辽宁 1924）。
+        func.count(func.distinct(KaoyanSchool.id)).label("school_count"),
         func.avg(KaoyanScoreLine.total_line).label("avg_line"),
         func.avg(KaoyanAdmission.retest_ratio).label("avg_ratio"),
     ).outerjoin(
@@ -1126,7 +1256,7 @@ def kaoyan_stats(db: Session = Depends(get_db)):
 
 
 # ---- C1+C2: 触发爬虫 ----
-@router.post("/notices/crawl")
+@router.post("/notices/crawl", dependencies=[Depends(require_admin)])
 def notices_crawl(
     school_id: int = Query(..., description="院校 ID，单校爬取公告"),
     dry_run: bool = Query(False),
@@ -1149,7 +1279,7 @@ def notices_crawl(
             "notices_total": after, "new": max(0, after - before)}
 
 
-@router.post("/spider/run")
+@router.post("/spider/run", dependencies=[Depends(require_admin)])
 def spider_run(
     provinces: Optional[str] = Query(None, description="省份代码逗号分隔，如 11,12,13"),
     all_provinces: bool = Query(False, description="是否爬全部省份"),
@@ -1187,7 +1317,7 @@ def spider_run(
 
 
 # ---- C5: 数据版本管理 ----
-@router.get("/collection/runs")
+@router.get("/collection/runs", dependencies=[Depends(require_admin)])
 def list_collection_runs(
     source: Optional[str] = Query(None, description="来源过滤"),
     limit: int = Query(50, ge=1, le=200),
@@ -1206,7 +1336,7 @@ def list_collection_runs(
     } for r in runs]
 
 
-@router.post("/collection/runs")
+@router.post("/collection/runs", dependencies=[Depends(require_admin)])
 def create_collection_run(
     source: str = Query(...),
     scope: Optional[str] = Query(None),
@@ -1255,7 +1385,7 @@ def list_kaoyan_datasources(
 
 
 # ---- 动态数据源：动态采集刷新 ----
-@router.post("/collection/refresh")
+@router.post("/collection/refresh", dependencies=[Depends(require_admin)])
 def collection_refresh(
     source: str = Query("yz", description="数据源：yz / school，或注册中心 key（逗号分隔多个）"),
     province: Optional[str] = Query(None, description="省份代码逗号分隔（yz 源），如 11,12,13"),
@@ -1496,6 +1626,7 @@ def notices_center_stats(db: Session = Depends(get_db)):
 @router.get("/notices")
 def list_all_notices(
     limit: int = Query(30, ge=1, le=200, description="返回条数上限"),
+    offset: int = Query(0, ge=0, description="跳过条数（与 limit 配合翻页）"),
     since: Optional[str] = Query(None, description="只返回该 ISO 日期(YYYY-MM-DD)当天及之后的公告"),
     notice_type: Optional[str] = Query(None, description="按类型过滤：简章/复试/调剂/录取/公告…"),
     keyword: Optional[str] = Query(None, description="标题关键词（模糊匹配）"),
@@ -1548,8 +1679,8 @@ def list_all_notices(
         " url, source, fetched_at, is_read, is_starred FROM kaoyan_notices"
         + where_sql
         + order_sql
-        + " LIMIT ?",
-        args + [limit],
+        + " LIMIT ? OFFSET ?",
+        args + [limit, offset],
     ).fetchall()
     items = [
         {

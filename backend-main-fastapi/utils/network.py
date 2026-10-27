@@ -130,8 +130,7 @@ def get_access_info(*, port: int | None = None, auth_enabled: bool = False) -> d
         )
     if exposed and not auth_enabled:
         tips.append(
-            "已开放局域网访问但**未设密码**：同一 WiFi 下任何设备都能打开。"
-            "建议在 .env 设置 APP_PASSWORD 加一道锁。"
+            "已开放局域网访问但**未启用登录**：同一 WiFi 下任何设备都能打开。"
         )
     if lan_ip and lan_ip.startswith("169.254."):
         tips.append("检测到链路本地地址，可能没连上 WiFi。")

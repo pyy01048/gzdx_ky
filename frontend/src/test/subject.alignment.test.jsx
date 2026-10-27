@@ -56,7 +56,19 @@ const subjectsPayload = {
   ],
 }
 
-vi.mock('../api/client', () => ({
+vi.mock('../api/client', async (importOriginal) => ({
+  // 派生真实模块的导出清单：client.js 新增导出（如 fetchAllPages）不必再回来补枚举，
+  // 否则页面一 import 就报 "No export is defined on the mock"。
+  ...(await importOriginal()),
+  favoritesApi: {
+    list: vi.fn().mockResolvedValue({ total: 0, items: [] }),
+    add: vi.fn().mockResolvedValue({ ok: true, id: 1 }),
+    check: vi.fn().mockResolvedValue({ favorited: false, id: null }),
+    checkMany: vi.fn().mockResolvedValue({ item_type: '', requested: 0, map: {}, favorited_ids: [] }),
+    toggle: vi.fn().mockResolvedValue({ favorited: false }),
+    remove: vi.fn().mockResolvedValue({ ok: true }),
+  },
+  growthApi: { timeline: vi.fn().mockResolvedValue({ days: 30, streak_days: 0, active_days: 0, timeline: [], subject_breakdown: [] }) },
   request: vi.fn().mockResolvedValue({}),
   documentsApi: {
     list: vi.fn().mockResolvedValue(docsPayload),
@@ -80,7 +92,6 @@ vi.mock('../api/client', () => ({
     evalRun: vi.fn(),
   },
 }))
-vi.mock('../components/KbHealthPanel', () => ({ default: () => null }))
 vi.mock('../store/useStore', () => ({ default: (sel) => sel({ addCard: vi.fn() }) }))
 
 const alignPayload = {
@@ -101,19 +112,18 @@ afterEach(() => { cleanup() })
 
 describe('资料页科目篇数', () => {
   it('用折叠后的 merged_document_count，而不是少报的 document_count', async () => {
-    const Documents = (await import('../pages/Documents')).default
+    const Documents = (await import('../v3/pages/Documents')).default
     const { container } = render(<MemoryRouter><Documents /></MemoryRouter>)
 
-    const labelOf = (name) => [...container.querySelectorAll('.stat-tile .st-label')]
-      .find((el) => el.textContent.startsWith(name))
+    /* v3 把科目磁贴换成了 Chip：名字是文本节点，篇数在 .dv3-chip-n */
+    const chipOf = (name) => [...container.querySelectorAll('.v3-chip')]
+      .find((el) => el.firstChild?.nodeType === Node.TEXT_NODE && el.firstChild.textContent.trim() === name)
     // 科目磁贴是异步拉的，先等它出现；选「数学」实际能拿到 2 篇
     // （1 篇规范名 + 1 篇「公共课-数学」），报 document_count=1 就是少报。
-    await waitFor(() => expect(labelOf('数学')).toBeTruthy())
-    const tile = labelOf('数学').closest('.stat-tile')
-    expect(tile.querySelector('.st-val').textContent.trim()).toBe('2')
-    expect(labelOf('数学').textContent).toContain('含 公共课-数学')
+    await waitFor(() => expect(chipOf('数学')).toBeTruthy())
+    expect(chipOf('数学').querySelector('.dv3-chip-n').textContent.trim()).toBe('2')
     // 别名那一行自己只有 1 篇，不能被母科目的数字带高
-    expect(labelOf('公共课-数学').closest('.stat-tile').querySelector('.st-val').textContent.trim()).toBe('1')
+    expect(chipOf('公共课-数学').querySelector('.dv3-chip-n').textContent.trim()).toBe('1')
   })
 })
 
@@ -121,7 +131,7 @@ describe('质量看板词表对齐表', () => {
   it('数字直接来自接口，并区分可折叠与需人批', async () => {
     const { qualityApi } = await import('../api/client')
     qualityApi.subjectAlignment.mockResolvedValueOnce(alignPayload)
-    const QualityDashboard = (await import('../pages/QualityDashboard')).default
+    const QualityDashboard = (await import('../v3/pages/QualityDashboard')).default
     render(<MemoryRouter><QualityDashboard /></MemoryRouter>)
 
     const row = await waitFor(() => screen.getByText('公共课-数学'))
@@ -130,15 +140,16 @@ describe('质量看板词表对齐表', () => {
     const other = screen.getByText('真题综合').closest('tr')
     expect(other.textContent).toContain('明确不归一')
     expect(other.textContent).toContain('综合卷本就跨多学科')
-    // 汇总口径点名两个数：可折叠 31 / 还没块 217
-    expect(document.body.textContent).toContain('可按口径折叠 31 篇')
-    expect(document.body.textContent).toContain('217 篇还没有可检索的分块')
+    // 汇总口径点名两个数：可折叠 31 / 还没块 217（v3 把数字与说明拆成两段）
+    const summary = document.querySelector('.v3-admin-q-align-summary')
+    expect(summary.textContent).toContain('31可按口径折叠')
+    expect(summary.textContent).toContain('217尚无分块')
   })
 
   it('接口失败时说明未加载，绝不退化成一张空表冒充「一切正常」', async () => {
     const { qualityApi } = await import('../api/client')
     qualityApi.subjectAlignment.mockRejectedValueOnce(new Error('后端未重启'))
-    const QualityDashboard = (await import('../pages/QualityDashboard')).default
+    const QualityDashboard = (await import('../v3/pages/QualityDashboard')).default
     render(<MemoryRouter><QualityDashboard /></MemoryRouter>)
 
     await waitFor(() => expect(screen.getByText('词表对齐数据未加载')).toBeInTheDocument())
@@ -148,7 +159,7 @@ describe('质量看板词表对齐表', () => {
   it('没有词表分裂时给明确的空状态', async () => {
     const { qualityApi } = await import('../api/client')
     qualityApi.subjectAlignment.mockResolvedValueOnce({ document_subjects: 18, unaligned_labels: 0, unaligned_documents: 0, foldable_documents: 0, not_indexed_documents: 0, note: '', rows: [] })
-    const QualityDashboard = (await import('../pages/QualityDashboard')).default
+    const QualityDashboard = (await import('../v3/pages/QualityDashboard')).default
     render(<MemoryRouter><QualityDashboard /></MemoryRouter>)
 
     await waitFor(() => expect(screen.getByText('没有词表分裂')).toBeInTheDocument())

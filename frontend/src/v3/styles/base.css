@@ -1,0 +1,393 @@
+/* ==========================================================================
+   Aurora v3 · Base
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--v3-font-sans);
+  font-size: var(--v3-fs-14);
+  line-height: var(--v3-lh-normal);
+  color: var(--v3-text);
+  background: var(--v3-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.v3-root {
+  min-height: 100%;
+  color: var(--v3-text);
+  background:
+    radial-gradient(1100px 620px at 12% -10%, var(--v3-glow-blue), transparent 62%),
+    radial-gradient(900px 560px at 96% -4%, var(--v3-glow-purple), transparent 60%),
+    radial-gradient(760px 520px at 60% 108%, var(--v3-glow-pink), transparent 62%),
+    var(--v3-bg);
+  background-attachment: fixed;
+}
+
+.v3-root *,
+.v3-portal * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--v3-outline-strong) transparent;
+}
+
+.v3-root *::-webkit-scrollbar,
+.v3-portal *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.v3-root *::-webkit-scrollbar-thumb,
+.v3-portal *::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--v3-r-full);
+  background: color-mix(in srgb, var(--v3-text-3) 34%, transparent);
+  background-clip: content-box;
+}
+
+.v3-root *::-webkit-scrollbar-thumb:hover,
+.v3-portal *::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--v3-text-3) 54%, transparent);
+  background-clip: content-box;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--v3-primary) 26%, transparent);
+}
+
+a {
+  color: var(--v3-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+img,
+svg {
+  display: block;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--v3-outline);
+  margin: var(--v3-s-6) 0;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--v3-outline-focus) 46%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--v3-r-xs);
+}
+
+.v3-root :focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ---------- Layout utilities ---------- */
+.v3-container {
+  width: 100%;
+  max-width: var(--v3-content-max);
+  margin: 0 auto;
+  padding: 0 var(--v3-gutter);
+}
+
+.v3-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v3-s-4);
+}
+
+.v3-row {
+  display: flex;
+  align-items: center;
+  gap: var(--v3-s-3);
+}
+
+.v3-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--v3-s-3);
+}
+
+.v3-grid {
+  display: grid;
+  gap: var(--v3-s-4);
+}
+
+.v3-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.v3-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.v3-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.v3-bento {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--v3-s-4);
+  grid-auto-flow: dense;
+}
+
+.v3-span-12 { grid-column: span 12; }
+.v3-span-11 { grid-column: span 11; }
+.v3-span-10 { grid-column: span 10; }
+.v3-span-9 { grid-column: span 9; }
+.v3-span-8 { grid-column: span 8; }
+.v3-span-7 { grid-column: span 7; }
+.v3-span-6 { grid-column: span 6; }
+.v3-span-5 { grid-column: span 5; }
+.v3-span-4 { grid-column: span 4; }
+.v3-span-3 { grid-column: span 3; }
+.v3-span-2 { grid-column: span 2; }
+.v3-span-1 { grid-column: span 1; }
+
+@media (max-width: 1180px) {
+  .v3-span-11,
+  .v3-span-10,
+  .v3-span-9,
+  .v3-span-8,
+  .v3-span-7,
+  .v3-span-6 { grid-column: span 12; }
+  .v3-span-5,
+  .v3-span-4 { grid-column: span 6; }
+  .v3-span-3 { grid-column: span 6; }
+  .v3-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .v3-container { padding: 0 16px; }
+  .v3-bento { gap: 12px; }
+  .v3-span-5,
+  .v3-span-4,
+  .v3-span-3,
+  .v3-span-2,
+  .v3-span-1 { grid-column: span 12; }
+  .v3-grid-2,
+  .v3-grid-3,
+  .v3-grid-4 { grid-template-columns: 1fr; }
+}
+
+/* ---------- Typography ---------- */
+.v3-display {
+  font-family: var(--v3-font-display);
+  font-size: clamp(32px, 4.2vw, var(--v3-fs-48));
+  line-height: var(--v3-lh-tight);
+  letter-spacing: var(--v3-tracking-tight);
+  font-weight: 700;
+}
+
+.v3-h1 {
+  font-family: var(--v3-font-display);
+  font-size: var(--v3-fs-32);
+  line-height: var(--v3-lh-tight);
+  letter-spacing: var(--v3-tracking-tight);
+  font-weight: 700;
+}
+
+.v3-h2 {
+  font-family: var(--v3-font-display);
+  font-size: var(--v3-fs-24);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+.v3-h3 {
+  font-family: var(--v3-font-display);
+  font-size: var(--v3-fs-18);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 650;
+}
+
+.v3-title {
+  font-size: var(--v3-fs-16);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.v3-body {
+  font-size: var(--v3-fs-14);
+  color: var(--v3-text-2);
+}
+
+.v3-caption {
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-3);
+  line-height: 1.45;
+}
+
+.v3-eyebrow {
+  font-size: var(--v3-fs-11);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--v3-text-3);
+}
+
+.v3-mono {
+  font-family: var(--v3-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.v3-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.v3-gradient-text {
+  background: var(--v3-gemini-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  background-size: 180% 100%;
+  animation: v3-gradient-pan 12s var(--v3-ease-standard) infinite;
+}
+
+.v3-muted { color: var(--v3-text-3); }
+.v3-dim { opacity: 0.6; }
+.v3-strong { font-weight: 650; color: var(--v3-text); }
+.v3-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v3-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.v3-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+.v3-divider {
+  height: 1px;
+  background: var(--v3-outline);
+  border: 0;
+  margin: var(--v3-s-2) 0;
+}
+
+.v3-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Scoped form resets ---------- */
+:where(.v3-root, .v3-portal) :where(input, textarea, select) {
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+
+/* ---------- Tables (plain semantic tables inside .v3-table) ---------- */
+.v3-table-wrap {
+  width: 100%;
+  overflow: auto;
+  border-radius: var(--v3-r-lg);
+  border: 1px solid var(--v3-outline);
+  background: var(--v3-surface);
+}
+
+.v3-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--v3-fs-13);
+}
+
+.v3-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px 16px;
+  text-align: left;
+  font-size: var(--v3-fs-12);
+  font-weight: 600;
+  color: var(--v3-text-3);
+  background: var(--v3-surface-1);
+  border-bottom: 1px solid var(--v3-outline);
+  white-space: nowrap;
+}
+
+.v3-table tbody td {
+  padding: 13px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--v3-outline) 70%, transparent);
+  color: var(--v3-text-2);
+  vertical-align: middle;
+}
+
+.v3-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.v3-table tbody tr {
+  transition: background var(--v3-dur-1) var(--v3-ease-standard);
+}
+
+.v3-table tbody tr:hover {
+  background: color-mix(in srgb, var(--v3-primary) 4%, transparent);
+}
+
+/* ---------- Scroll region ---------- */
+.v3-scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- KaTeX ---------- */
+.v3-root .katex {
+  font-size: 1.06em;
+}
+
+.v3-root .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}

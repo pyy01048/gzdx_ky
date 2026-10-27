@@ -11,14 +11,17 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import json
 import re
 import sys
 from collections import Counter
 
-sys.path.insert(0, r"D:\平台\backend-main-fastapi")
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "backend-main-fastapi"))
 
-JSON = r"D:\平台\backend-main-fastapi\data\diagnostics\l2_adjudicate.json"
+JSON = str(_REPO / "backend-main-fastapi" / "data" / "diagnostics" / "l2_adjudicate.json")
 
 # 组号 -> (判定, 正确侧id或None, 依据)
 VERDICT: dict[str, tuple[str, int | None, str]] = {
@@ -141,7 +144,7 @@ def main() -> int:
             "判定": kind, "正确侧": keep, "依据": why,
         })
 
-    op = r"D:\平台\backend-main-fastapi\data\diagnostics\l2_verdicts.json"
+    op = str(_REPO / "backend-main-fastapi" / "data" / "diagnostics" / "l2_verdicts.json")
     with open(op, "w", encoding="utf-8") as f:
         json.dump({"summary": {"分布": dict(buckets), "学科": dict(by_subj),
                                "根因_选项字母": opt_only, "根因_非答案": noise,

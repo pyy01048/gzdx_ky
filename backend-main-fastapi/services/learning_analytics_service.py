@@ -14,14 +14,15 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from models import ErrorRecord, AnswerRecord, Task, Document, KnowledgeChunk, KnowledgePoint
-from services import kp_mastery
+from models import ErrorRecord, AnswerRecord
+from services import error_linker, kp_mastery
 from services.ai_service import AIService
+from services.study_calendar import day_ledger, fill_series, streak_summary
+from utils.timeutil import iso_utc_z, local_today, utcnow
 
 
 class LearningAnalyticsService:
@@ -179,13 +180,18 @@ class LearningAnalyticsService:
     def diagnose_weak_points(self, subject: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
         """基于答题记录和错题记录，诊断薄弱考点。
 
+        考点名单**不在这里算**：唯一出口是
+        ``services/error_linker.weak_points_view``（仪表盘 D-10、学习画像 TOP10、
+        今日洞察 weak_top 取的是同一份）。本方法只把它投影成接口字段。
+
         Returns:
             {
                 "total_questions": int,
-                "correct_rate": float,
+                "correct_rate": float,            # 0-100
                 "weak_points": [
-                    {"knowledge_point": str, "error_count": int, "correct_count": int,
-                     "mastery": float, "level": "薄弱"/"已掌握", "suggestion": str}
+                    {"knowledge_point_id": int, "knowledge_point": str, "subject": str,
+                     "chapter": str, "error_count": int, "mastery": int,
+                     "level": "薄弱"/"已掌握", "suggestion": str}
                 ],
                 "error_categories": {"概念不清": int, "计算失误": int, ...},
                 "subject_distribution": {"数学": int, "英语": int, ...},
@@ -224,8 +230,8 @@ class LearningAnalyticsService:
             subj = e.subject or "未知"
             subject_dist[subj] = subject_dist.get(subj, 0) + 1
 
-        # 薄弱考点分析（基于错题题目中的关键词）
-        weak_points = self._extract_weak_points(errors, limit)
+        # 薄弱考点分析（唯一出口：error_knowledge_links × active 错题）
+        weak_points = self._weak_point_rows(subject, limit)
 
         return {
             "total_questions": total_answers,
@@ -235,132 +241,93 @@ class LearningAnalyticsService:
             "weak_points": weak_points,
             "error_categories": error_categories,
             "subject_distribution": subject_dist,
-            "diagnosis_time": datetime.now().isoformat(),
+            "diagnosis_time": iso_utc_z(utcnow()),
         }
 
-    def _extract_weak_points(self, errors: List[ErrorRecord], limit: int) -> List[Dict[str, Any]]:
-        """从错题中提取薄弱考点关键词。"""
-        # 简单的关键词提取（后续可升级为AI聚类）
-        keyword_count = {}
-        keyword_errors = {}
+    def _weak_point_rows(self, subject: Optional[str], limit: int) -> List[Dict[str, Any]]:
+        """把 ``error_linker.weak_points_view`` 投影成 /weak-points 的响应字段。
 
-        for e in errors:
-            text = (e.content or "") + " " + (e.analysis or "")
-            # 提取常见考点关键词
-            keywords = re.findall(r"[\u4e00-\u9fa5]{2,6}(?:定理|公式|法则|性质|概念|定理|函数|方程|积分|导数|矩阵|向量|概率|语法|词汇|阅读|写作|电路|信号|系统|逻辑|触发器|寄存器|计数器|放大|滤波|调制)", text)
-            for kw in keywords:
-                keyword_count[kw] = keyword_count.get(kw, 0) + 1
-                if kw not in keyword_errors:
-                    keyword_errors[kw] = []
-                keyword_errors[kw].append(e.id)
-
-        # 排序并生成结果
-        sorted_kw = sorted(keyword_count.items(), key=lambda x: x[1], reverse=True)[:limit]
-        result = []
-        for kw, count in sorted_kw:
-            # 估算掌握度（错误次数越多，掌握度越低）
-            # 分级口径与知识点三态对齐（services/kp_mastery）：这些关键词全部
-            # 来自错题记录，必然"有学习记录"，所以只有 薄弱/已掌握 两态。
-            mastery = max(10, 100 - count * 15)
-            if mastery >= kp_mastery.MASTERY_THRESHOLD:
-                level = "已掌握"
-                suggestion = f"「{kw}」掌握较好，可适当减少复习频率。"
-            else:
-                level = "薄弱"
-                suggestion = f"「{kw}」错误较多（{count} 次），建议重点复习相关概念和公式，多做练习巩固。"
-
-            result.append({
-                "knowledge_point": kw,
-                "error_count": count,
-                "error_ids": keyword_errors.get(kw, [])[:5],
-                "mastery": mastery,
-                "level": level,
-                "suggestion": suggestion,
+        ``knowledge_point`` 是 ``name`` 的旧键名，保留是为了不弄坏已有调用方；
+        新增的 ``knowledge_point_id`` 让前端能深链到错题本，
+        ``mastery`` 的三态判定走 kp_mastery 的阈值（这里没有第四套）。
+        一条错题都没挂上知识点 ⇒ 空列表，界面显示「还没归集」，
+        不再用正则从题干猜考点名（那会凭空造出「XX定理」这种库里不存在的标签）。
+        """
+        rows = []
+        for p in error_linker.weak_points_view(self.db, subject=subject, limit=limit):
+            # weak_points_view 的行必然来自 error_knowledge_links，即有学习记录。
+            state = kp_mastery.classify_state(p["mastery"], has_records=True)
+            name = p["name"]
+            rows.append({
+                "knowledge_point_id": p["knowledge_point_id"],
+                "knowledge_point": name,
+                "subject": p["subject"],
+                "chapter": p["chapter"],
+                "error_count": p["error_count"],
+                "mastery": p["mastery"],
+                "level": kp_mastery.STATE_LABELS[state],
+                "suggestion": (
+                    f"「{name}」掌握较好，可适当减少复习频率。"
+                    if state == kp_mastery.STATE_MASTERED
+                    else f"「{name}」还有 {p['error_count']} 道错题未毕业，建议优先复习这个考点。"
+                ),
             })
-
-        return result
+        return rows
 
     # ------------------------------------------------------------------
     # 学习轨迹
     # ------------------------------------------------------------------
     def get_learning_traces(self, days: int = 30) -> Dict[str, Any]:
-        """获取最近N天的学习轨迹数据。
+        """最近 N 天的学习轨迹：**全部派生自 ``services/study_calendar`` 日活台账**。
 
         Returns:
             {
                 "days": int,
                 "total_study_days": int,
+                "effective_study_days": int,
                 "current_streak": int,
                 "longest_streak": int,
+                "streak_rule": str,
                 "daily_data": [
                     {"date": "2026-08-01", "tasks_completed": int, "questions_done": int,
-                     "errors_added": int, "study_duration_minutes": int}
+                     "errors_added": int, "study_duration_minutes": int,
+                     "reviews_done": int, "correct_rate": float|None, "is_effective": bool}
                 ],
-                "weekly_summary": {...},
-                "subject_heatmap": {...},
+                "weekly_summary": [...],
             }
+
+        历史实现自带两套**私有口径**（2026-10-16 起废弃）：
+
+        1. 时长 = 已完成任务 ×30 分钟 + 答题 ×5 分钟 的**估算值**。估算数一旦进
+           指标卡就等于撒谎——用户从没开过专注计时，也会被记成"今天学了 150 分钟"；
+        2. streak 只看 tasks/questions 非空，和仪表盘的「有效学习日」判定对不上，
+           同一个用户两处能给出两个连续天数。
+
+        现在时长只认真实专注记录 ``focus_minutes``，连续天数走 ``streak_summary``；
+        任务完成认 ``Task.completed_at``（原实现按 ``updated_at``，今天改过一次状态
+        就会被算成"今天完成"）。
         """
-        end_date = datetime.now().date()
+        end_date = local_today()
         start_date = end_date - timedelta(days=days - 1)
 
-        daily_data = []
-        study_dates = set()
+        ledger = day_ledger(self.db, start_day=start_date, end_day=end_date)
+        series = fill_series(ledger, start_date, end_date)
+        streak = streak_summary(ledger, today=end_date)
 
-        for i in range(days):
-            date = start_date + timedelta(days=i)
-            date_str = date.isoformat()
-            next_date = date + timedelta(days=1)
-
-            # 统计当日完成的任务
-            tasks_completed = self.db.query(Task).filter(
-                Task.status == "done",
-                Task.updated_at >= date_str,
-                Task.updated_at < next_date.isoformat(),
-            ).count()
-
-            # 统计当日答题数
-            questions_done = self.db.query(AnswerRecord).filter(
-                AnswerRecord.created_at >= date_str,
-                AnswerRecord.created_at < next_date.isoformat(),
-            ).count()
-
-            # 统计当日新增错题
-            errors_added = self.db.query(ErrorRecord).filter(
-                ErrorRecord.created_at >= date_str,
-                ErrorRecord.created_at < next_date.isoformat(),
-            ).count()
-
-            # 估算学习时长（每个任务30分钟，每道题5分钟）
-            study_minutes = tasks_completed * 30 + questions_done * 5
-
-            if tasks_completed > 0 or questions_done > 0 or errors_added > 0:
-                study_dates.add(date_str)
-
-            daily_data.append({
-                "date": date_str,
-                "tasks_completed": tasks_completed,
-                "questions_done": questions_done,
-                "errors_added": errors_added,
-                "study_duration_minutes": study_minutes,
-            })
-
-        # 计算连续学习天数
-        current_streak = 0
-        for d in reversed(daily_data):
-            if d["tasks_completed"] > 0 or d["questions_done"] > 0:
-                current_streak += 1
-            else:
-                break
-
-        # 最长连续天数
-        longest_streak = 0
-        temp_streak = 0
-        for d in daily_data:
-            if d["tasks_completed"] > 0 or d["questions_done"] > 0:
-                temp_streak += 1
-                longest_streak = max(longest_streak, temp_streak)
-            else:
-                temp_streak = 0
+        daily_data = [
+            {
+                "date": a.date.isoformat(),
+                "tasks_completed": a.tasks_done,
+                "questions_done": a.questions_done,
+                "errors_added": a.errors_added,
+                # 真实专注分钟：没记录就是 0，不拿题数/任务数换算
+                "study_duration_minutes": a.focus_minutes,
+                "reviews_done": a.reviews_done,
+                "correct_rate": a.correct_rate,
+                "is_effective": a.is_effective,
+            }
+            for a in series
+        ]
 
         # 周汇总
         weekly_summary = self._calc_weekly_summary(daily_data)
@@ -368,12 +335,14 @@ class LearningAnalyticsService:
         return {
             "days": days,
             "date_range": {"start": start_date.isoformat(), "end": end_date.isoformat()},
-            "total_study_days": len(study_dates),
-            "current_streak": current_streak,
-            "longest_streak": longest_streak,
-            "total_tasks_completed": sum(d["tasks_completed"] for d in daily_data),
-            "total_questions_done": sum(d["questions_done"] for d in daily_data),
-            "total_study_minutes": sum(d["study_duration_minutes"] for d in daily_data),
+            "total_study_days": sum(1 for a in series if a.is_active),
+            "effective_study_days": streak["total_days"],
+            "current_streak": streak["current"],
+            "longest_streak": streak["longest"],
+            "streak_rule": streak["rule"],
+            "total_tasks_completed": sum(a.tasks_done for a in series),
+            "total_questions_done": sum(a.questions_done for a in series),
+            "total_study_minutes": sum(a.focus_minutes for a in series),
             "daily_data": daily_data,
             "weekly_summary": weekly_summary,
         }
@@ -423,7 +392,7 @@ class LearningAnalyticsService:
 连续学习：{traces['current_streak']}天
 完成任务：{traces['total_tasks_completed']}个
 刷题数量：{traces['total_questions_done']}道
-学习时长：约{traces['total_study_minutes']}分钟
+学习时长：{traces['total_study_minutes']}分钟
 正确率：{diagnosis['correct_rate']}%
 薄弱考点：{', '.join([p['knowledge_point'] for p in diagnosis['weak_points'][:5]])}
 
@@ -443,7 +412,7 @@ class LearningAnalyticsService:
         return {
             "report_type": report_type,
             "period_days": days,
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": iso_utc_z(utcnow()),
             "ai_summary": ai_summary,
             "learning_traces": traces,
             "weak_point_diagnosis": diagnosis,
@@ -537,7 +506,7 @@ class LearningAnalyticsService:
                 "total_score": total_score,
                 "max_score": 100,
                 "ai_evaluation": ai_content,
-                "graded_at": datetime.now().isoformat(),
+                "graded_at": iso_utc_z(utcnow()),
             }
         except Exception as e:
             return {
@@ -547,7 +516,7 @@ class LearningAnalyticsService:
                 "max_score": 100,
                 "ai_evaluation": "",
                 "error": str(e),
-                "graded_at": datetime.now().isoformat(),
+                "graded_at": iso_utc_z(utcnow()),
             }
 
     def _extract_score(self, content: str) -> int:

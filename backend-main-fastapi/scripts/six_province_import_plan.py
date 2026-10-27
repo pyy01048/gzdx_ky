@@ -50,7 +50,9 @@ from screen_electronic_schools_6provinces import (  # noqa: E402
     load,
 )
 
-DB = r"D:\平台\database\kaoyan.db"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
 
 #: notice_type 口径的招生核心类（与 detect_notice_noise.py 的 CORE 一致）。
 CORE_TYPES = ("简章", "目录", "大纲", "调剂", "录取", "复试")

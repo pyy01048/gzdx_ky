@@ -62,6 +62,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import sqlalchemy
 from sqlalchemy.orm import Session
+from services.dbapi_compat import wrap_conn  # noqa: E402  PG/SQLite 双底座连接适配
 
 logger = logging.getLogger("chunk_classifier")
 
@@ -95,7 +96,9 @@ CONF_THRESHOLD = _env_float("CHUNK_CONF_THRESHOLD", 0.40)
 LLM_MAX_PER_DOC = _env_int("CHUNK_LLM_MAX_PER_DOC", 10)
 
 LLM_MODEL = os.environ.get("CHUNK_CLASSIFY_MODEL", "kaoyan-assistant")
-_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+from utils.ollama_host import resolve_ollama_host as _resolve_ollama_host
+
+_OLLAMA_HOST = _resolve_ollama_host()
 _LLM_SEM = threading.BoundedSemaphore(_env_int("CHUNK_LLM_SLOTS", 2))
 
 #: 幂等补列（沿用 kp_extract.ensure_kp_trace_columns 的模式）
@@ -184,20 +187,48 @@ def is_junk_chunk(text: str) -> bool:
 
 
 def ensure_chunk_label_columns(db) -> List[str]:
-    """给 `knowledge_chunks` 补齐三层标签列，返回本次新增列名。幂等。"""
+    """给 `knowledge_chunks` 补齐三层标签列，返回本次新增列名。幂等。
+
+    PostgreSQL 迁移修正（2026-10-14，实测报错点）：
+    原实现有三个 PG 不兼容处，实际效果是**每次都报"加列失败"**：
+      1. `sqlalchemy.inspect(db).get_columns()` 在 PG 下有引擎级缓存，同进程内
+         二次调用仍认为"列不存在"，导致重复 ALTER；
+      2. 幂等判据写的是 `"duplicate column"`，但 PG 报的是
+         `column "xxx" of relation ... already exists`，匹配不上；
+      3. 任一条 ALTER 失败会把事务打成 aborted，后续所有语句连带失败。
+
+    改为：用 dbapi_compat 直接查 information_schema（无缓存）+ 按方言改写 DDL
+    + 单列 savepoint 隔离，三重修复。
+    """
+    from services.dbapi_compat import add_column_if_missing, is_postgres
+
     added: List[str] = []
+    #: PG 下 knowledge_chunks.classify_source 是 ENUM 类型，不能用 VARCHAR 重复定义；
+    #: 列已存在时直接跳过，不存在才按 TEXT 兜底（PG 端该列由 020 分片以枚举建好）。
+    #: l3_content_type 同理（PG 是 l3_content_type 枚举）。
+    pg_enum_columns = {"classify_source", "l3_content_type", "l2_chapter"}
+
     try:
-        existing = {c["name"] for c in sqlalchemy.inspect(db).get_columns("knowledge_chunks")}
-    except Exception:  # noqa: BLE001
-        existing = set()
+        raw = wrap_conn(db.connection().connection)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("取底层连接失败，跳过标签列补齐: %s", e)
+        return added
+
+    pg = is_postgres(raw)
     for col, ddl in CHUNK_LABEL_COLUMNS:
-        if col in existing:
-            continue
+        # 从 ddl 里剥出列类型（ALTER TABLE x ADD COLUMN y <TYPE>）
+        parts = ddl.split()
+        col_type = " ".join(parts[5:]) if len(parts) > 5 else "TEXT"
+        if pg and col in pg_enum_columns:
+            # PG 侧这些列由 core/sql/020 以枚举类型建好；若缺失，退回 VARCHAR 由 093 兜底
+            col_type = "VARCHAR(30)"
         try:
-            db.execute(sqlalchemy.text(ddl))
-            added.append(col)
+            with db.begin_nested():  # SAVEPOINT：单列失败不连带整批
+                if add_column_if_missing(raw, "knowledge_chunks", col, col_type):
+                    added.append(col)
         except Exception as e:  # noqa: BLE001
-            if "duplicate column" in str(e).lower():
+            msg = str(e).lower()
+            if "already exists" in msg or "duplicate column" in msg:
                 continue
             logger.warning("knowledge_chunks 加列 %s 失败: %s", col, e)
     if added:
@@ -254,15 +285,28 @@ def load_prototypes(db: Session) -> Dict[str, np.ndarray]:
     """读取 bge 质心（进程内缓存，按最新 built_at 失效重载）。
 
     只认 engine='bge'；缺失/维度不齐一律不加载（口径红线）。
+
+    PG 迁移修正（2026-10-17 实测报错点）：
+    历史 `models.SubjectPrototype` 的 ORM 把主键写成 `subject`（中文科目名），
+    但 `subject_prototypes` 真实表（010 分片）的主键是 `subject_id`（→subjects 外键），
+    `db.query(SubjectPrototype)` 会生成 `SELECT subject_prototypes.subject …`
+    直接 `UndefinedColumn`，把整篇打标事务打挂、后续 chunk UPDATE 连带
+    `InFailedSqlTransaction`。改为按 `subject_id` 关联 `subjects.name` 取出中文科目名，
+    protos 仍以科目名为键，下游 vector_scores / fuse 无需改动。
     """
     try:
-        from models import SubjectPrototype
+        from sqlalchemy import text
 
-        rows = (
-            db.query(SubjectPrototype)
-            .filter(SubjectPrototype.engine == "bge")
-            .all()
-        )
+        rows = db.execute(text(
+            "SELECT sp.subject_id          AS subject_id,"
+            "       s.name                 AS subject_name,"
+            "       sp.prototype           AS vector,"
+            "       sp.dim                 AS dim,"
+            "       sp.built_at            AS built_at "
+            "FROM subject_prototypes sp "
+            "JOIN subjects s ON s.id = sp.subject_id "
+            "WHERE sp.engine = :engine"
+        ), {"engine": "bge"}).fetchall()
     except Exception:  # noqa: BLE001
         return {}
     if not rows:
@@ -272,10 +316,13 @@ def load_prototypes(db: Session) -> Dict[str, np.ndarray]:
         return _PROTO_CACHE["protos"]  # type: ignore[return-value]
     protos: Dict[str, np.ndarray] = {}
     for r in rows:
+        name = (r.subject_name or "").strip()
+        if not name:
+            continue
         vec = np.frombuffer(r.vector, dtype=np.float32)
         if r.dim and vec.size != r.dim:
             continue
-        protos[r.subject] = vec
+        protos[name] = vec
     _PROTO_CACHE["key"] = key
     _PROTO_CACHE["protos"] = protos
     return protos
@@ -585,8 +632,24 @@ def sync_mirror_subjects(db: Session,
 
     必须在 `db.commit()` 之后调用：镜像表可能尚未创建（新库/未跑检索），
     失败时回滚的只是本次同步，已提交的 chunk 标签不受影响。
+
+    PostgreSQL 迁移修正（2026-10-17）：PG 生产库**默认没有** knowledge_chunks_fts /
+    knowledge_chunks_vec 镜像表——`knowledge_chunks.search_vector` 是生成列，
+    subject 改动随 chunk 表 UPDATE 自动反映进检索。原先无条件跑这两张表会每次都
+    UndefinedTable（被下方 except 兜住但刷屏告警）。
+
+    但**不能**在 PG 下无条件短路：镜像表一旦存在（兼容层 / 旧数据导入 / 测试夹具），
+    短路会让「标签已改、镜像照旧」的 #31 缺陷原样复活。因此 PG 下按表探测：
+    表不存在 → 返回 -1（与"同步失败、标签不受影响"同口径），只记 debug 不刷屏；
+    表存在 → 照常同步。
     """
     from sqlalchemy import bindparam, text
+
+    is_pg = False
+    try:
+        is_pg = db.get_bind().dialect.name == "postgresql"
+    except Exception:  # noqa: BLE001
+        pass
 
     out: Dict[str, int] = {}
     ids: Optional[List[int]] = None
@@ -596,6 +659,17 @@ def sync_mirror_subjects(db: Session,
             return {tbl: 0 for tbl, _ in MIRROR_TABLES}
 
     for tbl, key in MIRROR_TABLES:
+        if is_pg:
+            try:
+                exists = db.execute(text("SELECT to_regclass(:t) IS NOT NULL"),
+                                    {"t": tbl}).scalar()
+            except Exception:  # noqa: BLE001
+                db.rollback()
+                exists = False
+            if not exists:
+                logger.debug("检索镜像 %s 不存在（PG 走 search_vector 生成列），跳过同步", tbl)
+                out[tbl] = -1
+                continue
         # EXISTS 守卫：孤儿镜像行（chunk 已被删）不能被关联子查询刷成 NULL，
         # 否则体检脚本会把"孤儿行"误报成"学科漂移"。孤儿行由 --prune-orphans 显式处理。
         src = (f"SELECT kc.subject FROM knowledge_chunks kc "
@@ -654,7 +728,7 @@ def classify_document(db: Session, doc_id: int, *, use_llm: bool = True,
     q = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id)
     if only_unlabeled:
         q = q.filter(KnowledgeChunk.l3_content_type.is_(None))
-    chunks = q.order_by(KnowledgeChunk.chunk_id).all()
+    chunks = q.order_by(KnowledgeChunk.chunk_index).all()
     if not chunks:
         return {"ok": True, "chunks": 0, "stats": {}}
 
@@ -685,7 +759,11 @@ def classify_document(db: Session, doc_id: int, *, use_llm: bool = True,
             c.l2_chapter = None
             c.l3_content_type = "其他"
             c.classify_confidence = 0.0
-            c.classify_source = f"junk:{junk_ev[i]}"
+            # 注：classify_source 是 PG 原生枚举（vector/keyword/fusion/llm/
+            # no_bge/fallback/manual/document），不能写 "junk:<reason>" 这种
+            # 自由串（PG 会报 invalid input value for enum）。弃权块统一标
+            # "fallback"，具体弃权原因可由 junk_reason(text) 重新推导。
+            c.classify_source = "fallback"
             junk_done += 1
             continue
         lab = prelim[i]
@@ -694,7 +772,7 @@ def classify_document(db: Session, doc_id: int, *, use_llm: bool = True,
         # 上限按"发起次数"而非"成功次数"计：模型不可用时成功数恒为 0，
         # 按成功数封顶等于对每个低置信块无限重试。
         if use_llm and (llm_done + llm_failed) < LLM_MAX_PER_DOC and needs_llm(lab, kw_subj, vec_top):
-            out = llm_classify(doc.file_name, c.text or "", c.chunk_id or i)
+            out = llm_classify(doc.file_name, c.text or "", c.chunk_index or i)
             if out:
                 llm_done += 1
                 lab2 = ChunkLabel(l3_content_type=l3_rules(c.text or ""))

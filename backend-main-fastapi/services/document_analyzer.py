@@ -427,11 +427,12 @@ async def extract_questions(
                     )
                     continue
 
+                analysis = (q_data.get("analysis") or "")[:2000]
                 q = QuizQuestion(
                     content=content[:5000],
                     options=options,  # 使用清洗后的选项
                     answer=answer[:500],  # 使用校验后的答案
-                    analysis=(q_data.get("analysis") or "")[:2000],
+                    analysis=analysis,
                     subject=(document.subject or "其他")[:50],
                     chapter=(chunk.get("heading") or "")[:200],
                     knowledge_point="",

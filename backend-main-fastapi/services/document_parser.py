@@ -16,6 +16,24 @@ import tempfile
 from typing import Optional
 
 
+_MINERU_AVAILABLE = None
+
+
+def _mineru_enabled() -> bool:
+    """环境变量可关闭 MinerU；默认 auto（装了就用）。"""
+    global _MINERU_AVAILABLE
+    if os.environ.get("USE_MINERU", "auto").lower() in ("0", "false", "no", "off"):
+        return False
+    if _MINERU_AVAILABLE is None:
+        try:
+            from services.parsers.mineru_parser import is_available
+
+            _MINERU_AVAILABLE = bool(is_available())
+        except Exception:
+            _MINERU_AVAILABLE = False
+    return bool(_MINERU_AVAILABLE)
+
+
 class DocumentParser:
     """本地文档解析器，纯本地运行，数据不出本机。"""
 
@@ -54,6 +72,26 @@ class DocumentParser:
         ext = os.path.splitext(file_path)[1].lower()
         try:
             if ext == ".pdf":
+                if _mineru_enabled():
+                    try:
+                        from services.parsers.mineru_parser import parse_pdf
+
+                        max_pages = int(os.environ.get("MINERU_MAX_PAGES", "300"))
+                        result = parse_pdf(
+                            file_path,
+                            pages=f"1-{max_pages}" if max_pages > 0 else None,
+                        )
+                        if result.get("ok") and result.get("pages"):
+                            self.used_ocr = result.get("tier") == "basic"
+                            parts = []
+                            for page in result["pages"]:
+                                parts.append(f"--- 第{page['page_no']}页 ({result['tier']}) ---")
+                                parts.append(page.get("text") or "")
+                            return "\n".join(parts).strip()
+                    except Exception as exc:  # noqa: BLE001 - 失败必须回退
+                        logging.getLogger(__name__).warning(
+                            "MinerU 解析失败，回退旧 PDF 管线: %s", str(exc)[:200]
+                        )
                 return self._parse_pdf(file_path)
             if ext in (".docx",):
                 return self._parse_docx(file_path)

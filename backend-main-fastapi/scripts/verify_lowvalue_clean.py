@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """清理后完整性校验：确认没误伤真题/题库/词汇书，且核心数据仍在。"""
+from pathlib import Path
 import sqlite3, os, sys, re
 sys.stdout.reconfigure(encoding="utf-8")
 
-DB = r"D:\平台\database\kaoyan.db"
-KB = r"D:\平台\knowledge_base"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
+KB = str(_REPO / "knowledge_base")
 c = sqlite3.connect(DB).cursor()
 
 print("=== 核心规模（清理后）===")

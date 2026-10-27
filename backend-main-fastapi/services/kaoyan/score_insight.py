@@ -22,6 +22,9 @@ from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+# 必须用 models.py 的正典模型：core/models/schools.py 里映射同一张表的旧模型
+# 缺 major_code/diff_total/source_id 等 kaoyan.cn 字段，用它查分数全景会
+# AttributeError 500。
 from models import KaoyanAdmission, KaoyanMajor, KaoyanSchool, KaoyanScoreLine
 
 # 正态假设的σ经验值：考研录取分数分布相对集中，公开分析常取 15~22。
@@ -64,24 +67,34 @@ def school_score_detail(db: Session, school_id: int,
     scorelines = sl_q.order_by(KaoyanScoreLine.year.desc()).limit(200).all()
     admissions = ad_q.order_by(KaoyanAdmission.year.desc()).limit(200).all()
 
-    # 按年聚合分数线（同一年取 major_id 为空的全校线优先，否则取第一条）
-    by_year: Dict[int, Dict] = defaultdict(dict)
+    # 按年聚合分数线：逐专业院线取最低分为「校门最低院线」，并保留区间
+    by_year: Dict[int, list] = defaultdict(list)
     for s in scorelines:
-        y = s.year
-        if y not in by_year or s.major_id is None:
-            by_year[y].update({
-                "year": y,
-                "total_line": s.total_line,
-                "politics_line": s.politics_line,
-                "english_line": s.english_line,
-                "math_line": s.math_line,
-                "major_line": s.major_line,
-                "national_line": s.national_line,
-                "retest_line": s.retest_line,
-                "line_type": s.line_type,
-                "source": s.source,
-            })
-    years_detail = [by_year[y] for y in sorted(by_year, reverse=True)]
+        by_year[s.year].append(s)
+
+    years_detail = []
+    for y in sorted(by_year, reverse=True):
+        rows = [r for r in by_year[y] if r.total_line is not None]
+        if not rows:
+            continue
+        low = min(rows, key=lambda r: r.total_line)
+        totals = [r.total_line for r in rows]
+        years_detail.append({
+            "year": y,
+            "total_line": low.total_line,
+            "total_line_min": min(totals),
+            "total_line_max": max(totals),
+            "total_line_avg": round(sum(totals) / len(totals), 1),
+            "politics_line": low.politics_line,
+            "english_line": low.english_line,
+            "math_line": low.math_line,
+            "major_line": low.major_line,
+            "national_line": low.national_line,
+            "retest_line": low.retest_line,
+            "line_type": low.line_type,
+            "source": low.source,
+            "major_count": len({r.major_code for r in rows if r.major_code}) or len(rows),
+        })
 
     # 按年聚合录取数据（全校口径：所有 admission 记录求和/均值）
     adm_by_year: Dict[int, Dict] = {}

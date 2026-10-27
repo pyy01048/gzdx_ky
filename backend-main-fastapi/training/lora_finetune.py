@@ -51,9 +51,32 @@ BATCH_SIZE = 2
 GRADIENT_ACCUMULATION = 8
 LEARNING_RATE = float(os.environ.get('LORA_LR', '1e-4'))
 NUM_EPOCHS = int(os.environ.get('LORA_EPOCHS', '3'))
-LORA_R = 16
-LORA_ALPHA = 32
+LORA_R = int(os.environ.get("LORA_R", "16"))
+LORA_ALPHA = int(os.environ.get("LORA_ALPHA", "32"))
 LORA_DROPOUT = 0.05
+
+#: 与 API 共用的训练状态文件；命令行启动的训练也能被页面看到
+STATE_FILE = os.path.join(DATA_DIR, "training_state.json")
+
+
+def _update_state(**updates):
+    """原子更新训练状态文件（保留 API 写入的 log_path/config 等字段）。"""
+    current = {}
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            current = json.load(f)
+    except (OSError, ValueError):
+        pass
+    current.update(updates)
+    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    tmp = STATE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(current, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, STATE_FILE)
+
+
+def _now():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 #: Qwen2.5 的 ChatML 特殊标记，Modelfile 模板必须还原角色，否则指令模型认不出用户轮次
 #: 必须写成完整 token（含闭合 ">"）：裸前缀会让 Ollama 的 stop 串查表落空。
@@ -202,6 +225,25 @@ def train_lora(data_dir: str = None, output_dir: str = None,
         os.path.join(data_dir, "checkpoints") if data_dir != DATA_DIR else OUTPUT_DIR
     )
 
+    _update_state(
+        pid=os.getpid(),
+        status="training",
+        started_at=_now(),
+        finished_at=None,
+        data_dir=os.path.abspath(data_dir),
+        output_dir=os.path.abspath(out_dir),
+        log_path=os.environ.get("TRAIN_LOG_PATH") or os.path.join(data_dir, "train.log"),
+        base_model=MODEL_NAME,
+        message="训练中",
+        config={
+            "num_epochs": int(os.environ.get("TRAIN_EPOCHS", NUM_EPOCHS)),
+            "batch_size": int(os.environ.get("TRAIN_BATCH_SIZE", BATCH_SIZE)),
+            "learning_rate": LEARNING_RATE,
+            "lora_r": LORA_R,
+            "lora_alpha": LORA_ALPHA,
+        },
+    )
+
     try:
         import torch
         from transformers import (
@@ -217,6 +259,7 @@ def train_lora(data_dir: str = None, output_dir: str = None,
     except ImportError as e:
         print(f"✗ 缺少依赖库: {e}")
         print("请先安装：pip install torch transformers peft datasets accelerate trl bitsandbytes")
+        _update_state(status="error", finished_at=_now(), message=f"缺少依赖库: {e}")
         return
 
     # 检查 GPU
@@ -256,6 +299,7 @@ def train_lora(data_dir: str = None, output_dir: str = None,
             print("先运行 --stage prepare，或用 scripts/build_qa_dataset.py 生成干净数据集")
             prepare_data()
         else:
+            _update_state(status="error", finished_at=_now(), message=f"训练数据不存在: {train_path}")
             return
 
     dataset = load_dataset("json", data_files={
@@ -461,6 +505,7 @@ def train_lora(data_dir: str = None, output_dir: str = None,
 
     if max_steps > 0:
         print("[基准模式] 不保存权重", flush=True)
+        _update_state(status="completed", finished_at=_now(), message="基准模式完成（未保存权重）")
         return None
 
     # 保存模型
@@ -468,6 +513,7 @@ def train_lora(data_dir: str = None, output_dir: str = None,
     trainer.save_model(final_output)
     tokenizer.save_pretrained(final_output)
     print(f"\n✓ 训练完成！模型保存到: {final_output}")
+    _update_state(status="completed", finished_at=_now(), message="训练完成")
 
     return final_output
 
@@ -698,8 +744,13 @@ def main():
         prepare_data()
 
     if args.stage == "train" or args.stage == "all":
-        train_lora(data_dir=args.data_dir, output_dir=args.output_dir,
-                   resume_from=args.resume)
+        try:
+            train_lora(data_dir=args.data_dir, output_dir=args.output_dir,
+                       resume_from=args.resume)
+        except Exception as exc:  # noqa: BLE001 - 状态文件必须记录失败原因
+            _update_state(status="error", finished_at=_now(),
+                          message=f"{type(exc).__name__}: {exc}")
+            raise
 
     if args.stage == "merge" or args.stage == "all":
         merge_model(data_dir=args.data_dir, output_dir=args.output_dir)

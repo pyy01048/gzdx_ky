@@ -244,6 +244,7 @@ def upsert_knowledge_points(db, items: list[dict[str, Any]], *, commit: bool = T
             skipped += 0 if changed else 1
         else:
             import datetime
+            from utils.timeutil import utcnow
 
             db.add(KnowledgePoint(
                 name=name,
@@ -256,7 +257,7 @@ def upsert_knowledge_points(db, items: list[dict[str, Any]], *, commit: bool = T
                 exam_frequency=int(it.get("exam_frequency") or 0),
                 question_count=int(it.get("question_count") or 0),
                 mastery=0,
-                next_review=datetime.datetime.now() + datetime.timedelta(days=1),
+                next_review=utcnow() + datetime.timedelta(days=1),
             ))
             created += 1
 

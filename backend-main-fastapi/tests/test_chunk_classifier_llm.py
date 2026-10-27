@@ -99,7 +99,7 @@ def test_llm_cap_counts_attempts_not_success(db_schema, monkeypatch):  # noqa: A
     try:
         doc = Document(file_name="qa-l3-cap.pdf", file_path="qa-l3-cap.pdf",
                        file_type="pdf", size=1, subject="",
-                       index_status="indexed", parse_progress=100)
+                       index_status="indexed", parse_progress=1.0)
         db.add(doc)
         db.commit()
         for i in range(cc.LLM_MAX_PER_DOC + 15):

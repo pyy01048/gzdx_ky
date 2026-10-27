@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: 后端 pytest（真 PG 测试库）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-main-fastapi
+    services:
+      postgres:
+        # 项目铁律：测试必须跑在真 PG 上（SQLite 底座会掩盖方言缺陷）
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kaoyan
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # conftest 会把 PG_DATABASE 改写到 kaoyan_test 并自动建库
+      PGDATABASE_TEST_HINT: kaoyan_test
+      PG_HOST: 127.0.0.1
+      PG_PORT: "5432"
+      PG_USER: postgres
+      PG_PASSWORD: postgres
+      PG_DATABASE: kaoyan_test
+      DATABASE_BACKEND: postgresql
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend-main-fastapi/requirements*.txt
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt 2>/dev/null || true
+          pip install pytest pytest-timeout httpx
+      - name: 体检（project_healthcheck）
+        run: python scripts/project_healthcheck.py
+      - name: 单测（pytest）
+        # --continue-on-collection 不需要；失败即红。现有已知漂移用例修复后再收紧
+        run: python -m pytest tests -q --timeout=300
+
+  frontend:
+    name: 前端 vitest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装依赖
+        run: npm ci
+      - name: 设计门禁（design_guard）
+        run: python ../backend-main-fastapi/scripts/design_guard.py
+      - name: 单测（vitest）
+        run: npm test

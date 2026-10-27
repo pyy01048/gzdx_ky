@@ -31,7 +31,7 @@ import requests  # noqa: E402
 import uvicorn  # noqa: E402
 
 from main import app  # noqa: E402
-from utils.auth import APP_PASSWORD as _PW  # noqa: E402
+_TOKEN = os.getenv("KAOYAN_TOKEN", "")
 
 PREFIX = "【正文解析验证·勿删】"
 
@@ -137,7 +137,7 @@ def main() -> None:
 
     s = requests.Session()
     s.trust_env = False
-    hdrs = {"X-App-Password": _PW} if _PW else {}
+    hdrs = {"Authorization": f"Bearer {_TOKEN}"} if _TOKEN else {}
 
     results = []
     for i, smp in enumerate(SAMPLES, 1):

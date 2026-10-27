@@ -1,13 +1,21 @@
 """考研目标路由。"""
 
+import asyncio
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Goal, KaoyanSchool, KaoyanScoreLine
+from core.models import Goal, KaoyanSchool, KaoyanScoreline
+from models import User
 from schemas import GoalCreate, GoalUpdate, UniversityCreate, UniversitySearchRequest
+from utils.scope import owner_id, scoped  # B4 行级隔离
+from utils.security import current_user
+from utils.timeutil import local_today
+
+#: /strategy 等待 AI 的上限（秒）；须小于 utils/timeout_guard 对该路径的 90s 阈值。
+STRATEGY_AI_TIMEOUT = 80.0
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
 
@@ -15,9 +23,9 @@ router = APIRouter(prefix="/api/goals", tags=["goals"])
 def _school_dict(db: Session, s: KaoyanSchool) -> dict:
     """组装院校响应（保持旧 /university 接口结构，数据源迁移至 kaoyan_schools/kaoyan_scorelines）。"""
     lines = (
-        db.query(KaoyanScoreLine)
-        .filter(KaoyanScoreLine.school_id == s.id)
-        .order_by(KaoyanScoreLine.year.desc())
+        db.query(KaoyanScoreline)
+        .filter(KaoyanScoreline.school_id == s.id)
+        .order_by(KaoyanScoreline.year.desc())
         .all()
     )
     return {
@@ -33,24 +41,24 @@ def _school_dict(db: Session, s: KaoyanSchool) -> dict:
 
 
 @router.get("/subjects")
-async def get_subjects(db: Session = Depends(get_db)):
-    """读取备考科目配置（考试科目 + 专业课支撑科目）。
+async def get_subjects(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """读取备考科目配置（考试科目 + 专业课支撑科目，B4：读本人 Goal）。
 
     这是"方便我设置"的入口：改这里，进度统计口径、AI 分科路由、
     资料归类、出题范围会一起跟着变。
     """
     from services import subject_config
 
-    return subject_config.get_config(db)
+    return subject_config.get_config(db, user_id=owner_id(user))
 
 
 @router.put("/subjects")
-async def update_subjects(payload: dict, db: Session = Depends(get_db)):
+async def update_subjects(payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """设置备考科目。
 
     body: `{"exam_subjects": ["数字电子技术","模拟电子技术","数学","英语","政治"],
             "support_subjects": ["电路","信号与系统","计算机学科专业基础408"]}`
-    传空数组表示清空该层（回退默认）。
+    传空数组表示清空该层（清空后即为「尚未配置」，不会再回填内置默认科目）。
     """
     from services import subject_config
 
@@ -64,14 +72,14 @@ async def update_subjects(payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="support_subjects 必须是数组")
 
     return subject_config.set_config(
-        db, exam_subjects=exam, support_subjects=support
+        db, exam_subjects=exam, support_subjects=support, user_id=owner_id(user)
     )
 
 
 @router.get("")
-async def get_goal(db: Session = Depends(get_db)):
+async def get_goal(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """获取考研目标。"""
-    goal = db.query(Goal).first()
+    goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not goal:
         return {"message": "尚未设置目标"}
     return {
@@ -84,8 +92,14 @@ async def get_goal(db: Session = Depends(get_db)):
         "major_target": goal.major_target,
         "university": goal.university,
         "major": goal.major,
-        "subjects": goal.subjects,
-        "support_subjects": goal.support_subjects,
+        "subjects": goal.subject_codes,
+        "support_subjects": goal.support_subject_codes,
+        # 每日目标原样返回（None=未设）：仪表盘进度环与设置页共用同一份分母，
+        # 前端不再自带"今日 50 词"这类默认值。
+        "daily_focus_minutes": goal.daily_focus_minutes,
+        "daily_new_words": goal.daily_new_words,
+        "daily_review_words": goal.daily_review_words,
+        "daily_questions": goal.daily_questions,
         "remark": goal.remark,
     }
 
@@ -94,14 +108,14 @@ async def get_goal(db: Session = Depends(get_db)):
 # 届数 / 初试日期（用户要求「届可以随时调整」）
 # --------------------------------------------------------------------------- #
 @router.get("/exam-calendar")
-async def get_exam_calendar(db: Session = Depends(get_db)):
+async def get_exam_calendar(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """当前届数与初试日期（只读）。
 
     返回值由 ``services.exam_calendar`` 统一推导 —— 前端不要再自己算。
     """
     from services import exam_calendar
 
-    goal = db.query(Goal).first()
+    goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     info = exam_calendar.resolve_for_db(goal)
     info["configured"] = bool(goal and goal.exam_date)
     # 可选届范围：当前 ±6 年，方便前端渲染下拉而不用写死
@@ -111,7 +125,7 @@ async def get_exam_calendar(db: Session = Depends(get_db)):
 
 
 @router.put("/exam-calendar")
-async def update_exam_calendar(payload: dict, db: Session = Depends(get_db)):
+async def update_exam_calendar(payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """调整届数（或直接指定初试日期）。
 
     两种用法：
@@ -125,9 +139,9 @@ async def update_exam_calendar(payload: dict, db: Session = Depends(get_db)):
     """
     from services import exam_calendar
 
-    goal = db.query(Goal).first()
+    goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not goal:
-        goal = Goal()
+        goal = Goal(user_id=owner_id(user))  # B4：新建目标归属当前用户
         db.add(goal)
 
     exam_year = payload.get("exam_year")
@@ -178,11 +192,11 @@ async def update_exam_calendar(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.put("")
-async def update_goal(goal: GoalUpdate, db: Session = Depends(get_db)):
+async def update_goal(goal: GoalUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """更新目标。"""
-    db_goal = db.query(Goal).first()
+    db_goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not db_goal:
-        db_goal = Goal()
+        db_goal = Goal(user_id=owner_id(user))  # B4：新建目标归属当前用户
         db.add(db_goal)
 
     update_data = goal.model_dump(exclude_unset=True)
@@ -195,9 +209,9 @@ async def update_goal(goal: GoalUpdate, db: Session = Depends(get_db)):
 
 
 @router.get("/university")
-async def get_university(db: Session = Depends(get_db)):
+async def get_university(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """获取目标院校信息。"""
-    goal = db.query(Goal).first()
+    goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not goal or not goal.university:
         schools = db.query(KaoyanSchool).limit(10).all()
     else:
@@ -232,11 +246,11 @@ async def search_universities(
 
 
 @router.get("/strategy")
-async def get_strategy(db: Session = Depends(get_db)):
+async def get_strategy(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """AI 院校备考策略。"""
     from services.ai_service import AIService
 
-    goal = db.query(Goal).first()
+    goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not goal:
         raise HTTPException(status_code=400, detail="请先设置考研目标")
 
@@ -255,10 +269,12 @@ async def get_strategy(db: Session = Depends(get_db)):
     prompt_parts.append("请给出针对该院校该专业的备考策略，包括各科目标分数、复习重点和时间规划建议。")
 
     try:
-        result = await ai.chat([
+        # 给 AI 一个明确上限：超时即走下方模板降级。上限须小于 timeout_guard 对本路径的
+        # 90s 阈值，否则守卫先 504，降级永远轮不到。
+        result = await asyncio.wait_for(ai.chat([
             {"role": "system", "content": "你是一位考研规划专家，擅长制定院校备考策略。"},
             {"role": "user", "content": "\n".join(prompt_parts)},
-        ])
+        ]), timeout=STRATEGY_AI_TIMEOUT)
         return {"content": result["content"]}
     except Exception as e:
         # AI 不可用（未配置服务商 / 本地模型未启动 / 网络异常）时优雅降级，
@@ -268,12 +284,10 @@ async def get_strategy(db: Session = Depends(get_db)):
 
 def _fallback_strategy(goal, school, reason: str):
     """无 AI 时的规则模板备考策略（数据取自当前 Goal，不编造院校信息）。"""
-    from datetime import date
-
     days_left = ""
     if goal.exam_date:
         try:
-            n = (goal.exam_date - date.today()).days
+            n = (goal.exam_date - local_today()).days
             days_left = f"，距初试约 {n} 天" if n > 0 else ""
         except Exception:  # noqa: BLE001
             days_left = ""

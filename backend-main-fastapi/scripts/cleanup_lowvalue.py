@@ -16,6 +16,7 @@
   python scripts/cleanup_lowvalue.py --apply --only-db
   python scripts/cleanup_lowvalue.py --apply --only-fs
 """
+from pathlib import Path
 import argparse
 import json
 import os
@@ -29,9 +30,11 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.delete_guard import require_physical_delete_enabled  # noqa: E402
 
-DB = r"D:\平台\database\kaoyan.db"
-KB = r"D:\平台\knowledge_base"
-BACKUP_DIR = r"D:\平台\data\backups"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
+KB = str(_REPO / "knowledge_base")
+BACKUP_DIR = str(_REPO / "data" / "backups")
 TRASH_ROOT = os.path.join(KB, "_trash")
 
 # ---------------------------------------------------------------- 排除规则

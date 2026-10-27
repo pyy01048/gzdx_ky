@@ -1,0 +1,28 @@
+[Unit]
+Description=Shuotu Kaoyan FastAPI backend
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/kaoyan/backend-main-fastapi
+EnvironmentFile=/etc/kaoyan/backend.env
+ExecStart=/opt/kaoyan/backend-main-fastapi/.venv/bin/uvicorn main:app \
+  --host 127.0.0.1 --port 8000 --workers 2 \
+  --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=3
+# 2C2G 内存护栏：超过 High 会被 throttle，超过 Max 会被 OOM-kill 后重启
+MemoryHigh=850M
+MemoryMax=1150M
+# 安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/kaoyan/backend-main-fastapi
+
+[Install]
+WantedBy=multi-user.target

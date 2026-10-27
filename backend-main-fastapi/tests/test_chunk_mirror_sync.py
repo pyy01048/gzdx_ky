@@ -14,10 +14,23 @@ from sqlalchemy import text
 
 
 def _make_mirrors(db):
-    """按生产同款 DDL 建 fts / vec 镜像表。"""
-    from services import search_service as ss
+    """建 fts / vec 镜像表（PG 兼容普通表）。
 
-    ss.ensure_tables(db)
+    PG 生产路径走 knowledge_chunks.search_vector 原生列，服务侧刻意不建镜像表；
+    本组测试锁的是 sync_mirror_subjects 的镜像同步契约，故自建普通表承载契约。
+    """
+    from sqlalchemy import text as _text
+    db.execute(_text("""
+        CREATE TABLE IF NOT EXISTS knowledge_chunks_fts (
+            chunk_id INTEGER, document_id INTEGER,
+            subject VARCHAR, content TEXT
+        )"""))
+    db.execute(_text("""
+        CREATE TABLE IF NOT EXISTS knowledge_chunks_vec (
+            chunk_id INTEGER, document_id INTEGER,
+            subject VARCHAR, embedding BYTEA, dim INTEGER
+        )"""))
+    db.commit()
 
 
 def _drop_mirrors(db):
@@ -30,10 +43,12 @@ def _seed(db, subjects, stale):
     """建一篇文档 + N 个块，镜像 subject 故意写成旧值 stale。返回 chunk id 列表。"""
     from models import Document, KnowledgeChunk
 
-    doc = Document(file_name="mirror_sync_fixture.pdf", subject="数字电子技术")
+    doc = Document(file_name="mirror_sync_fixture.pdf", subject="数字电子技术",
+                   content="# 镜像同步夹具")
     db.add(doc)
     db.flush()
-    conn = db.connection().connection
+    from services.dbapi_compat import wrap_conn
+    conn = wrap_conn(db.connection().connection)
     ids = []
     for i, subj in enumerate(subjects):
         c = KnowledgeChunk(document_id=doc.id, doc_name=doc.file_name, chunk_id=i,
@@ -183,7 +198,8 @@ def test_full_table_sync_leaves_orphan_mirror_rows_alone(db_schema):  # noqa: AR
     try:
         _make_mirrors(db)
         doc_id, ids = _seed(db, ["数字电子技术"], "旧学科")
-        conn = db.connection().connection
+        from services.dbapi_compat import wrap_conn as _wc
+        conn = _wc(db.connection().connection)
         conn.execute("INSERT INTO knowledge_chunks_fts (chunk_id, document_id, subject, content)"
                      " VALUES (?,?,?,?)", (999991, 999990, "孤儿学科", "孤儿内容"))
         db.commit()
@@ -211,7 +227,7 @@ def test_manual_label_endpoint_writes_through_to_mirrors(db_schema, client):  # 
     db = SessionLocal()
     doc_id = None
     try:
-        ss.ensure_tables(db)
+        _make_mirrors(db)
         doc_id, ids = _seed(db, ["数字电子技术"], "旧学科")
         cid = ids[0]
         r = client.post(f"/api/documents/chunks/{cid}/label",
@@ -221,7 +237,8 @@ def test_manual_label_endpoint_writes_through_to_mirrors(db_schema, client):  # 
         assert body["subject"] == "模拟电子技术"
         assert body["mirror_synced"]["knowledge_chunks_fts"] == 1
 
-        conn = db.connection().connection
+        from services.dbapi_compat import wrap_conn as _wc
+        conn = _wc(db.connection().connection)
         for tbl in ("knowledge_chunks_fts", "knowledge_chunks_vec"):
             got = conn.execute(f"SELECT subject FROM {tbl} WHERE chunk_id=?",
                                (cid,)).fetchone()[0]
@@ -242,7 +259,7 @@ def test_classify_document_propagates_abstention_to_mirror(db_schema, monkeypatc
     try:
         _drop_mirrors(db)
         _make_mirrors(db)
-        doc = Document(file_name="abstain_fixture.pdf", subject="数学")
+        doc = Document(file_name="abstain_fixture.pdf", subject="数学", content="# 弃权夹具")
         db.add(doc)
         db.flush()
         good = KnowledgeChunk(document_id=doc.id, doc_name=doc.file_name, chunk_id=0,
@@ -252,7 +269,8 @@ def test_classify_document_propagates_abstention_to_mirror(db_schema, monkeypatc
         db.add_all([good, junky])
         db.commit()
         # commit 会释放底层连接，raw sqlite3 句柄必须重新取，不能提前缓存
-        db.connection().connection.executemany(
+        from services.dbapi_compat import wrap_conn as _wc
+        _wc(db.connection().connection).executemany(
             "INSERT INTO knowledge_chunks_fts (chunk_id, document_id, subject, content)"
             " VALUES (?,?,?,?)",
             [(c.id, doc.id, "光学", c.text) for c in (good, junky)])

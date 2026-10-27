@@ -5,7 +5,7 @@
 1. 根据院校名搜索研究生院官网
 2. 抓取复试线公告页面，提取PDF链接
 3. 下载PDF并解析分数线/录取数据
-4. 存入 KaoyanScoreLine / KaoyanAdmission
+4. 存入 KaoyanScoreline / KaoyanAdmission
 
 使用方式：
     cd backend-main-fastapi
@@ -182,7 +182,7 @@ def parse_scoreline_pdf(pdf_path):
 def crawl_school(school_name, year=2026):
     """C3: 爬取单所院校的复试线和拟录取数据。"""
     from database import SessionLocal
-    from models import KaoyanSchool, KaoyanScoreLine
+    from core.models import KaoyanSchool, KaoyanScoreline
 
     db = SessionLocal()
     try:
@@ -224,14 +224,14 @@ def crawl_school(school_name, year=2026):
                 scores = parse_scoreline_pdf(pdf_path)
                 print(f"  解析出 {len(scores)} 条分数线")
                 for s in scores:
-                    existing = db.query(KaoyanScoreLine).filter(
-                        KaoyanScoreLine.school_id == school.id,
-                        KaoyanScoreLine.year == year,
-                        KaoyanScoreLine.line_type == "校线",
-                        KaoyanScoreLine.total_line == s.get("score"),
+                    existing = db.query(KaoyanScoreline).filter(
+                        KaoyanScoreline.school_id == school.id,
+                        KaoyanScoreline.year == year,
+                        KaoyanScoreline.line_type == "校线",
+                        KaoyanScoreline.total_line == s.get("score"),
                     ).first()
                     if not existing:
-                        db.add(KaoyanScoreLine(
+                        db.add(KaoyanScoreline(
                             school_id=school.id,
                             year=year,
                             total_line=s.get("score"),

@@ -79,14 +79,14 @@ def kb_docs():
         a = Document(
             file_name=f"{PREFIX}-数电真题A.txt",
             file_path="qa-a.txt", file_type="txt", size=len(DOC_A_CONTENT),
-            subject="数字电子技术", index_status="completed",
+            subject="数字电子技术", index_status="indexed",
             knowledge_point_count=3, parse_progress=1.0,
             content=DOC_A_CONTENT, doc_type="raw",
         )
         b = Document(
             file_name=f"{PREFIX}-数电判断B.txt",
             file_path="qa-b.txt", file_type="txt", size=len(DOC_B_CONTENT),
-            subject="数字电子技术", index_status="completed",
+            subject="数字电子技术", index_status="indexed",
             knowledge_point_count=1, parse_progress=1.0,
             content=DOC_B_CONTENT, doc_type="raw",
         )
@@ -156,6 +156,40 @@ def test_scan_detects_candidates_and_is_readonly(client, kb_docs):
     assert after == before, "scan 接口绝不允许写库"
 
 
+def test_scan_filters_by_file_type(client, kb_docs):
+    """file_type 必须真正过滤文档，而不是被静默忽略后扫全库。"""
+    # 与 doc_ids 取交集：两篇 fixture 都是 txt，按 pdf 过滤应为 0
+    r = client.post(
+        "/api/kb-import/scan",
+        json={"doc_ids": kb_docs["ids"], "file_type": "pdf"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["scanned_docs"] == 0, body
+    assert body["items"] == []
+    assert body["file_type"] == "pdf"
+
+    # 仅按类型：返回的文档数应等于库内该类型文档数，且包含两篇 fixture
+    r2 = client.post("/api/kb-import/scan", json={"file_type": "txt"})
+    assert r2.status_code == 200, r2.text
+    body2 = r2.json()
+    assert body2["scanned_docs"] > 0
+    assert set(kb_docs["ids"]).issubset({it["doc_id"] for it in body2["items"]})
+    db = SessionLocal()
+    try:
+        expected = db.query(Document).filter(Document.source_format == "txt").count()
+    finally:
+        db.close()
+    assert body2["scanned_docs"] == expected
+
+
+def test_scan_rejects_unknown_file_type(client):
+    """拼错的类型应 400，而不是返回一个看似成功的空结果。"""
+    r = client.post("/api/kb-import/scan", json={"file_type": "exe"})
+    assert r.status_code == 400, r.text
+    assert "不支持的文件类型" in r.json()["message"]
+
+
 def test_confirm_inserts_and_is_idempotent(client, kb_docs):
     """confirm 插入被勾选题；重复 confirm 不重复插入。"""
     doc_a_id = kb_docs["ids"][0]
@@ -222,7 +256,7 @@ def test_scan_doc_not_found_404(client):
     """scan 传入不存在的 doc_id → 404，且 detail 是人话（不是被改写的 Not Found）。"""
     r = client.post("/api/kb-import/scan", json={"doc_ids": [99999999]})
     assert r.status_code == 404
-    assert "文档不存在" in r.json()["detail"]
+    assert "文档不存在" in r.json()["message"]
 
 
 def test_confirm_doc_not_found_404(client):
@@ -232,7 +266,7 @@ def test_confirm_doc_not_found_404(client):
         json={"selected": [{"doc_id": 99999999, "index": 0}]},
     )
     assert r.status_code == 404
-    assert "文档不存在" in r.json()["detail"]
+    assert "文档不存在" in r.json()["message"]
 
 
 def test_confirm_no_selection_400(client):

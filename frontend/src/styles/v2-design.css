@@ -126,7 +126,7 @@
 .dash-hero { order: -1; }
 .dash > section[aria-label='当日院校公告'] { order: 30; }
 
-/* Hero 倒计时：Apple 式浅色主卡（沿用类名，去掉实心蓝块） */
+/* Hero 倒计时：Gemini 能量签名卡（品牌时刻·克制） */
 .dash-hero {
   position: relative;
   overflow: hidden;
@@ -134,8 +134,8 @@
   padding: var(--space-8) var(--space-8);
   color: var(--fg);
   background:
-    radial-gradient(560px 260px at 92% -30%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%),
-    radial-gradient(420px 240px at 6% 130%, color-mix(in srgb, var(--chart-5) 10%, transparent), transparent 70%),
+    radial-gradient(560px 260px at 92% -30%, color-mix(in srgb, var(--gemini-mid) 14%, transparent), transparent 70%),
+    radial-gradient(420px 240px at 6% 130%, color-mix(in srgb, var(--gemini-from) 12%, transparent), transparent 70%),
     var(--surface);
   border: 1px solid var(--border-soft);
   box-shadow: var(--shadow-sm);

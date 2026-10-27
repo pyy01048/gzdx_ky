@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from services.storage_watcher import StorageWatcher
+from utils.security import require_admin
 
-router = APIRouter(prefix="/api/storage", tags=["storage"])
+router = APIRouter(prefix="/api/storage", tags=["storage"], dependencies=[Depends(require_admin)])
 
 
 class IngestRequest(BaseModel):

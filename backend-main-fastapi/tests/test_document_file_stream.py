@@ -150,7 +150,7 @@ def test_deleted_original_gives_explainable_404(client, local_root):
     try:
         r = client.get(f"/api/documents/{did}/raw")
         assert r.status_code == 404
-        assert "已不在磁盘" in r.json()["detail"]
+        assert "已不在磁盘" in r.json()["message"]
     finally:
         _cleanup(did)
 
@@ -162,7 +162,7 @@ def test_ima_media_id_is_not_mistaken_for_a_local_file(client, local_root):
     try:
         r = client.get(f"/api/documents/{did}/raw")
         assert r.status_code == 404
-        assert "媒体号" in r.json()["detail"]
+        assert "媒体号" in r.json()["message"]
     finally:
         _cleanup(did)
 
@@ -178,7 +178,7 @@ def test_path_outside_allowed_root_is_refused(client, local_root):
         try:
             r = client.get(f"/api/documents/{did}/raw")
             assert r.status_code == 404, r.text
-            assert "越出允许目录" in r.json()["detail"]
+            assert "越出允许目录" in r.json()["message"]
         finally:
             _cleanup(did)
     finally:
@@ -192,7 +192,7 @@ def test_dotdot_traversal_is_refused(client, local_root):
     try:
         r = client.get(f"/api/documents/{did}/raw")
         assert r.status_code == 404
-        assert "越出允许目录" in r.json()["detail"]
+        assert "越出允许目录" in r.json()["message"]
     finally:
         _cleanup(did)
 
@@ -355,7 +355,11 @@ def test_netdisk_content_error_mapping(client, fake_pan):
         assert client.get(f"/api/netdisk/files/{fid}/content").status_code == 400
         fake_pan["error"] = NetdiskAuthError(-6, "access_token 失效")
         r = client.get(f"/api/netdisk/files/{fid2}/content")
-        assert r.status_code == 401
+        # 注意：此处是 **409 而非 401**。返回 401 会被全局鉴权拦截误判为"登录过期"，
+        # 触发 refresh→再 401→auth:required→把用户踢回登录页（密码正确也进不了主页）。
+        # 授权失效本质是"第三方资源状态冲突"，用 409 表达，前端按
+        # detail.action === 'reauthorize' 引导重新授权（见 routers/netdisk.py 注释）。
+        assert r.status_code == 409
         assert r.json()["detail"]["action"] == "reauthorize"
         assert client.get("/api/netdisk/files/999999/content").status_code == 404
     finally:

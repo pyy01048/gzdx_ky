@@ -109,7 +109,10 @@ MISSING_INDEXES = [
     ("words", "ix_words_status_due", "status, due_date"),
 
     # quiz_questions表：刷题查询常用
-    ("quiz_questions", "ix_quiz_source", "source"),
+    # 2026-10-14 PG 迁移修正：`source` 列已按 ADR-003 更名为 `source_label`
+    # （来源正交双列 source_kind / source_label），索引定义同步改写，
+    # 否则 PG 上 CREATE INDEX 报 column "source" does not exist。
+    ("quiz_questions", "ix_quiz_source", "source_label"),
     ("quiz_questions", "ix_quiz_type", "question_type"),
     ("quiz_questions", "ix_quiz_difficulty", "difficulty"),
 
@@ -119,7 +122,8 @@ MISSING_INDEXES = [
 
     # documents表：文档查询常用
     ("documents", "ix_documents_created_at", "created_at"),
-    ("documents", "ix_documents_status", "index_status"),
+    # 说明（2026-10-24 优化）：index_status 已有既有索引 idx_documents_status 覆盖，
+    # 不再重复创建 ix_documents_status（消除冗余索引与启动期竞态）。
 
     # 课表/番茄钟索引已随功能移除（2026-09），pomodoro_sessions 表已删除，
     # 残留定义会在启动时产生告警，已从 MISSING_INDEXES 移除。
@@ -139,38 +143,74 @@ MISSING_INDEXES = [
 
 
 def create_missing_indexes(db: Session):
-    """创建缺失的索引（如果不存在）。"""
+    """创建缺失的索引（如果不存在）。
+
+    后端差异（2026-10-14 PG 迁移修正）：
+    原实现用 `SELECT ... FROM sqlite_master` 探测索引，切到 PostgreSQL 后直接抛
+    `relation "sqlite_master" does not exist`，并连带把事务打成 aborted，
+    使同批次后续索引全部失败。
+
+    修法：不再依赖任何一方的目录表 —— `CREATE INDEX IF NOT EXISTS` 在
+    SQLite 3.9+ 与 PostgreSQL 9.5+ 上语义一致且天然幂等，直接执行即可，
+    省掉"先查后建"的竞态。索引是否已存在的判断交给数据库自己。
+    """
     created_count = 0
     for table_name, index_name, columns in MISSING_INDEXES:
         try:
-            # 检查索引是否已存在
-            check_sql = text(f"""
-                SELECT name FROM sqlite_master
-                WHERE type='index' AND name=:index_name AND tbl_name=:table_name
-            """)
-            result = db.execute(check_sql, {"index_name": index_name, "table_name": table_name}).fetchone()
-            if result:
-                continue
-
-            # 创建索引
-            create_sql = text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns})")
-            db.execute(create_sql)
+            db.execute(text(
+                f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns})"
+            ))
             created_count += 1
-            logger.info(f"创建索引: {index_name} ON {table_name} ({columns})")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # 单条失败不应连带整批：回滚到 savepoint，继续处理后续索引
+            try:
+                db.rollback()
+            except Exception:  # pragma: no cover
+                pass
             logger.warning(f"创建索引失败 {index_name}: {e}")
 
     if created_count > 0:
-        db.commit()
-        logger.info(f"共创建 {created_count} 个缺失索引")
+        try:
+            db.commit()
+        except Exception:  # pragma: no cover
+            db.rollback()
+        logger.info(f"补齐索引 {created_count} 条（IF NOT EXISTS 幂等，已存在的不计失败）")
     return created_count
 
 
 # ---------------------------------------------------------------------------
-# SQLite 性能优化配置
+# 连接级性能参数（按数据库后端分流）
 # ---------------------------------------------------------------------------
 def optimize_sqlite_connection(db: Session):
-    """优化SQLite连接性能参数。"""
+    """优化连接性能参数。
+
+    后端差异（2026-10-14 PG 迁移修正）：
+    PRAGMA 是 SQLite 专有语法，在 PostgreSQL 上执行会报语法错误
+    （实测 `syntax error at or near "AUTOINCREMENT"` 即由此链式引发），
+    并把事务打成 aborted。故 PG 后端改为执行等价的会话级参数，
+    SQLite 后端保持原有 PRAGMA 不变。
+    """
+    from database import IS_POSTGRES
+
+    if IS_POSTGRES:
+        # PostgreSQL 会话级优化：对齐 core.db_session 的口径
+        pg_settings = [
+            ("SET statement_timeout = '30000ms'", "语句超时 30s，防慢查询拖垮连接池"),
+            ("SET lock_timeout = '10000ms'", "锁等待超时 10s，避免长时间阻塞"),
+            ("SET idle_in_transaction_session_timeout = '120000ms'",
+             "空闲事务超时 2min，防连接泄漏"),
+        ]
+        for sql, desc in pg_settings:
+            try:
+                db.execute(text(sql))
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"PG 会话参数设置失败 {desc}: {e}")
+        try:
+            db.commit()
+        except Exception:  # pragma: no cover
+            db.rollback()
+        return
+
     optimizations = [
         ("PRAGMA journal_mode=WAL", "WAL模式（并发读写）"),
         ("PRAGMA synchronous=NORMAL", "正常同步（平衡安全和性能）"),
@@ -219,10 +259,12 @@ def get_study_stats_cached(db: Session) -> Dict[str, Any]:
 def get_due_words_cached(db: Session, limit: int = 50) -> List[Any]:
     """缓存的到期单词查询（60秒缓存）。"""
     from models import Word
-    from datetime import date
-    today = date.today()
+    from utils.timeutil import local_today
+    today = local_today()
+    # 与 GET /api/words/due 口径一致：复习队列排除未学新词（not_mastered），
+    # 新词走"学习"流程；否则 4172 个新词全部涌入队列（实测失真）。
     return db.query(Word).filter(
-        Word.status != "mastered",
+        Word.status.in_(["learning", "reviewing"]),
         Word.due_date <= today,
     ).order_by(Word.due_date.asc()).limit(limit).all()
 

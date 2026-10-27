@@ -27,8 +27,11 @@ BODY = "第 1 章 逻辑代数基础\n" + "逻辑代数的基本运算与公式�
 
 
 @pytest.fixture(autouse=True)
-def _flag_off(monkeypatch):
-    """默认态：环境变量未设置 = 物理删除关闭（与生产 `.env` 一致）。"""
+def _flag_off(monkeypatch, chunk_fts_mirror):  # noqa: ARG001
+    """默认态：环境变量未设置 = 物理删除关闭（与生产 `.env` 一致）。
+
+    ``chunk_fts_mirror``：本文件断言 FTS 镜像与分块同事务，需要镜像表存在（见 conftest）。
+    """
     monkeypatch.delenv(ENV_FLAG, raising=False)
 
 

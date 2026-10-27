@@ -39,7 +39,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+from utils.ollama_host import resolve_ollama_host as _resolve_ollama_host
+
+OLLAMA_HOST = _resolve_ollama_host()
 OUT_JSON = os.path.join(os.environ.get("TEMP_DIR", os.path.join(BASE_DIR, "temp")),
                         "eval_qa_result.json")
 OUT_MD = os.path.join(BASE_DIR, "exports", "eval_qa_report.md")

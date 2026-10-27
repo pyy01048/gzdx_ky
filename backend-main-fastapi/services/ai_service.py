@@ -272,7 +272,9 @@ class AIService:
             ttl = _FORCE_RECENT_TTL if force_recent else _OLLAMA_TTL
             if now - cache["time"] < ttl:
                 return cache["value"]
-        host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+        from utils.ollama_host import resolve_ollama_host
+
+        host = resolve_ollama_host()
         try:
             client = get_async_client()
             resp = await client.get(f"{host}/api/tags", timeout=_OLLAMA_TIMEOUT)
@@ -352,7 +354,11 @@ class AIService:
         }
 
         client = get_async_client()
-        resp = await client.post(url, json=payload, timeout=120.0)
+        # 本地模型单次超时 25s：接口外层有 60s 守卫，若本地模型"活着但慢"
+        # （冷加载/被并发任务占满），120s 会让整条请求被守卫掐成 504。
+        # 25s 内没答完就抛异常，上层 chat() 会降级到在线 API / 离线知识库，
+        # 用户拿到的仍是可用答复，而不是干等一分钟的超时页。
+        resp = await client.post(url, json=payload, timeout=25.0)
         resp.raise_for_status()
         data = resp.json()
 
@@ -409,15 +415,27 @@ class AIService:
         }
 
     def _parse_response(self, provider: AIProvider, data: Dict[str, Any]) -> Tuple[str, Optional[Dict]]:
-        """解析响应。"""
+        """解析响应。
+
+        2026-10-23 P0 修复：云知声 u2-flash 等推理型模型在复杂问题上可能只返回
+        ``reasoning_content``（思维链）而 ``content`` 为 null（尤其被 max_tokens
+        截断时）。此时不能把 null 当答案返回，否则前端拿到 ``content: null``
+        表现为"AI 没有回答"。这里在 content 缺失时先用 reasoning_content 兜底，
+        保证接口永远返回可读文本。
+        """
         if provider.provider_type == "claude":
             content_parts = data.get("content", [])
             content = "".join(p.get("text", "") for p in content_parts)
             usage = data.get("usage", {})
         else:
             choices = data.get("choices", [])
-            content = choices[0]["message"]["content"] if choices else ""
+            msg = choices[0].get("message", {}) if choices else {}
+            content = msg.get("content")
             usage = data.get("usage", {})
+            if not content:
+                # 推理型模型只输出思维链时，退而求其次展示 reasoning_content，
+                # 避免 content=null 让前端误以为"没回答"。
+                content = msg.get("reasoning_content") or ""
         return content, usage
 
     # ------------------------------------------------------------------ #
@@ -714,7 +732,16 @@ class AIService:
             yield {"type": "done", "content": result["content"]}
             return
 
+        # 2026-10-23 P0：推理型模型（云知声 u2-flash）在输出正文前可能长时间
+        # 只做服务端思考（首 token 可达 30s+）。先发一个 status 事件，前端据此
+        # 展示「模型思考中…」，避免用户看到"生成中…"却长时间无任何进展。
+        yield {"type": "status", "status": "thinking"}
+
         full = []
+        reasoning = []  # 2026-10-23 P0：u2-flash 等推理型模型先吐 reasoning_content
+        reasoning_len = 0  # 已累积思维链字符数，避免每次 join 全量列表
+        reasoning_flushed = False  # 是否已把累积思维链作为 delta 主动输出
+        REASONING_FLUSH_THRESHOLD = 120  # 思维链累积超此阈值且无 content 时主动输出
         client = get_async_client()
         async with client.stream("POST", url, headers=headers, json=payload, timeout=120.0) as resp:
             resp.raise_for_status()
@@ -741,7 +768,35 @@ class AIService:
                     if text:
                         full.append(text)
                         yield {"type": "delta", "content": text}
-        yield {"type": "done", "content": "".join(full)}
+                    else:
+                        # 推理型模型：思维链内容默认不直接展示给用户（避免泄露内部推理），
+                        # 但收集起来，防止模型被 max_tokens 截断、最终 content 为空时
+                        # 整个流没有任何可读输出（前端一直"生成中…"）。
+                        rc = delta.get("reasoning_content")
+                        if rc:
+                            reasoning.append(rc)
+                            reasoning_len += len(rc)
+                            # 2026-10-23 P0 增强：u2-flash 在复杂问题上会长时间只吐
+                            # 思维链（甚至耗尽 max_tokens 仍无 content），流若不主动
+                            # 输出任何 delta，前端就会永远"生成中…"直至 ERR_ABORTED。
+                            # 当思维链累积超过阈值且从未输出过正式 content 时，
+                            # 主动把已收集的思维链作为 delta 输出，让用户看到进展。
+                            if (
+                                not reasoning_flushed
+                                and not full
+                                and reasoning_len >= REASONING_FLUSH_THRESHOLD
+                            ):
+                                reasoning_flushed = True
+                                yield {
+                                    "type": "delta",
+                                    "content": "".join(reasoning),
+                                }
+        content = "".join(full)
+        if not content and reasoning:
+            # 流结束仍无正式答案（模型思维链耗尽 max_tokens）：把思维链作为兜底输出，
+            # 至少让用户看到模型已给出的推理过程，而不是空流。
+            content = "".join(reasoning)
+        yield {"type": "done", "content": content}
 
     # ------------------------------------------------------------------ #
     # 知识库检索（RAG）
@@ -774,10 +829,21 @@ class AIService:
         if not query:
             return []
 
+        # 0) 知识图谱增强：沿 prerequisite/parallel 关系扩展查询词（55 号 P1-D）
+        #    旁路容错：kg_rag.expand_query_with_graph 内部 try/except，不抛异常。
+        try:
+            from services import kg_rag
+            _graph_exp = kg_rag.expand_query_with_graph(
+                self.db, query, subject=subject, max_expansions=3
+            )
+            _search_query = _graph_exp.get("expanded_query") or query
+        except Exception:  # noqa: BLE001 —— 图谱扩展不可用时退化为原查询
+            _search_query = query
+
         # 1) 知识分块：FTS5 BM25 检索（主数据源）
         try:
             chunk_hits = search_service.hybrid_search(
-                self.db, query, query_vec=None, limit=limit * 2, subject=subject
+                self.db, _search_query, query_vec=None, limit=limit * 2, subject=subject
             )
             chunk_results = [
                 {
@@ -913,10 +979,23 @@ class AIService:
         except Exception:
             query_vec = None  # 向量生成失败，回退到纯 FTS
 
+        # 0) 知识图谱增强：沿 prerequisite/parallel 关系扩展查询词（55 号 P1-D）
+        #    旁路容错：kg_rag.expand_query_with_graph 内部 try/except，不抛异常。
+        #    注意：向量生成仍基于原 query（下方 query_vec），这里只替换传给
+        #    hybrid_search 的文本参数 —— 混合后图谱词提升 FTS 召回，向量语义不变。
+        try:
+            from services import kg_rag
+            _graph_exp = kg_rag.expand_query_with_graph(
+                self.db, query, subject=subject, max_expansions=3
+            )
+            _search_query = _graph_exp.get("expanded_query") or query
+        except Exception:  # noqa: BLE001 —— 图谱扩展不可用时退化为原查询
+            _search_query = query
+
         # 混合检索
         try:
             hits = search_service.hybrid_search(
-                self.db, query, query_vec=query_vec, limit=limit * 2, subject=subject
+                self.db, _search_query, query_vec=query_vec, limit=limit * 2, subject=subject
             )
             return [
                 {

@@ -13,8 +13,9 @@ OCR 完还要清洗、分类、抽知识点、写 PostgreSQL。而 DSW 连不到
 
 1. **断点续跑**：已产出 JSON 的文件直接跳过。DSW 实例随时可能被回收，
    重跑只补没做完的，不从头再来。
-2. **页数封顶**（--max-pages，默认 300）：红宝书 1655MB、张宇高数 909MB 这类
-   全页 OCR 必然超时；教材前 300 页已覆盖主体考点，够训练用了。
+2. **正文页封顶 + 答案区例外**（--max-pages，默认 300）：主体最多处理指定页数；
+   同时探测后续页，一旦命中“参考答案/答案解析”等标题，从该页一直处理到文末，
+   避免把书末答案截掉。
 3. **时间预算**（--time-budget-min，默认 240）：到点就优雅收尾，
    下一轮续跑接着做，不追求单次跑完。
 
@@ -35,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import traceback
@@ -86,6 +88,14 @@ _ENGINE = None
 #: 某页文字层少于这么多字，就认为这页是扫描图，改走 OCR
 _TEXT_LAYER_MIN = 30
 
+#: 答案区标题信号。正文页仍受 --max-pages 限制，命中后的答案区一直处理到文末。
+_ANSWER_PAGE_RE = re.compile(
+    r"(?:参考答案|标准答案|习题答案|试题答案|答案(?:与|及)?解析|答案索引)"
+)
+
+#: OCR 页块坐标保留的小数位，避免 JSON 产生冗长浮点数。
+_BBOX_DIGITS = 2
+
 
 def _get_engine():
     """惰性初始化 RapidOCR。进程内只建一次（模型加载 ~2s，多建几次纯属浪费）。"""
@@ -96,115 +106,267 @@ def _get_engine():
     return _ENGINE
 
 
-def _ocr_image(img) -> str:
-    """单张图 OCR，返回文本。识别失败不抛异常——返回空串由上层判长度。"""
+def _box_to_bbox(points) -> list[float]:
+    """RapidOCR 四点框转为 ``[x0,y0,x1,y1]``。"""
+    xs = [float(p[0]) for p in points]
+    ys = [float(p[1]) for p in points]
+    return [
+        round(min(xs), _BBOX_DIGITS),
+        round(min(ys), _BBOX_DIGITS),
+        round(max(xs), _BBOX_DIGITS),
+        round(max(ys), _BBOX_DIGITS),
+    ]
+
+
+def _ocr_image_blocks(img) -> tuple[str, list[dict]]:
+    """单张图 OCR，返回全文和带 bbox 的行级文本块。"""
     import numpy as np
+
     engine = _get_engine()
-    result, _ = engine(img)
+    result, _ = engine(np.asarray(img))
     if not result:
-        return ""
-    parts = []
+        return "", []
+    parts: list[str] = []
+    blocks: list[dict] = []
     for line in result:
-        # result 每项是 [box, text, score]
-        if len(line) >= 2 and line[1]:
-            parts.append(str(line[1]))
-    return "\n".join(parts)
+        # RapidOCR 每项是 [box, text, score]
+        if len(line) < 2 or not line[1]:
+            continue
+        text = str(line[1]).strip()
+        if not text:
+            continue
+        parts.append(text)
+        bbox = _box_to_bbox(line[0]) if line[0] else [0.0, 0.0, 0.0, 0.0]
+        block = {"type": "text", "bbox": bbox, "text": text}
+        if len(line) >= 3 and line[2] is not None:
+            block["confidence"] = round(float(line[2]), 4)
+        blocks.append(block)
+    return "\n".join(parts), blocks
+
+
+def _ocr_image(img) -> str:
+    """兼容旧调用：只返回 OCR 文本。"""
+    return _ocr_image_blocks(img)[0]
+
+
+def _scale_blocks(blocks: list[dict], scale_x: float, scale_y: float) -> list[dict]:
+    """把渲染像素坐标换算成 PDF 页坐标。"""
+    out: list[dict] = []
+    for block in blocks:
+        x0, y0, x1, y1 = block["bbox"]
+        item = dict(block)
+        item["bbox"] = [
+            round(x0 * scale_x, _BBOX_DIGITS),
+            round(y0 * scale_y, _BBOX_DIGITS),
+            round(x1 * scale_x, _BBOX_DIGITS),
+            round(y1 * scale_y, _BBOX_DIGITS),
+        ]
+        out.append(item)
+    return out
+
+
+def _answer_page(text: str) -> bool:
+    return bool(_ANSWER_PAGE_RE.search(text or ""))
+
+
+def _extract_pdf_page(pdf, page_index: int, mode: str, render_scale: float = 2.0) -> dict:
+    """抽取一页，统一返回页尺寸、文本、OCR 标记与版面块。"""
+    page = pdf[page_index]
+    try:
+        width, height = (float(v) for v in page.get_size())
+        layer_text = ""
+        if mode in ("auto", "text"):
+            try:
+                tp = page.get_textpage()
+                try:
+                    layer_text = (tp.get_text_range() or "").strip()
+                finally:
+                    tp.close()
+            except Exception:
+                layer_text = ""
+
+        if len(layer_text) >= _TEXT_LAYER_MIN:
+            return {
+                "page_no": page_index + 1,
+                "width": round(width, _BBOX_DIGITS),
+                "height": round(height, _BBOX_DIGITS),
+                "blocks": [{
+                    "type": "text",
+                    "bbox": [0.0, 0.0, round(width, _BBOX_DIGITS), round(height, _BBOX_DIGITS)],
+                    "text": layer_text,
+                }],
+                "text": layer_text,
+                "ocr_used": False,
+                "has_page_image": False,
+            }
+
+        full_page_image = {
+            "type": "image",
+            "bbox": [0.0, 0.0, round(width, _BBOX_DIGITS), round(height, _BBOX_DIGITS)],
+            "text": "",
+        }
+        if mode == "text":
+            blocks = [full_page_image]
+            if layer_text:
+                blocks.append({
+                    "type": "text",
+                    "bbox": [0.0, 0.0, round(width, _BBOX_DIGITS), round(height, _BBOX_DIGITS)],
+                    "text": layer_text,
+                })
+            return {
+                "page_no": page_index + 1,
+                "width": round(width, _BBOX_DIGITS),
+                "height": round(height, _BBOX_DIGITS),
+                "blocks": blocks,
+                "text": layer_text,
+                "ocr_used": False,
+                "has_page_image": True,
+            }
+
+        bitmap = page.render(scale=render_scale)
+        try:
+            pil = bitmap.to_pil().convert("RGB")
+            text_value, pixel_blocks = _ocr_image_blocks(pil)
+            scale_x = width / max(1, pil.width)
+            scale_y = height / max(1, pil.height)
+        finally:
+            try:
+                bitmap.close()
+            except Exception:
+                pass
+        return {
+            "page_no": page_index + 1,
+            "width": round(width, _BBOX_DIGITS),
+            "height": round(height, _BBOX_DIGITS),
+            "blocks": [full_page_image, *_scale_blocks(pixel_blocks, scale_x, scale_y)],
+            "text": text_value,
+            "ocr_used": True,
+            "has_page_image": True,
+        }
+    finally:
+        try:
+            page.close()
+        except Exception:
+            pass
 
 
 def extract_one(path: Path, max_pages: int, min_chars: int, mode: str = "auto") -> dict:
-    """抽取单个文件。返回结果 dict，任何异常都收进 err 字段而不是抛出。
-
-    ### PDF 走"文字层优先 + OCR 兜底"的混合模式（关键性能设计）
-
-    知识库里 PDF 占绝大多数，来源只有两类：
-      - **数字版**（PPT 导出、讲义、题库 PDF、教材排版稿）——带文字层，
-        pypdfium2 直接 `get_text_range()` 取字，**毫秒级**，比逐页渲染 OCR 快两个量级；
-      - **扫描版**（拍照教材、影印真题）——没有文字层，只能渲染成图再 OCR。
-
-    若不分流一律 OCR，数字版那批会被白白拖慢几十倍。所以 `auto` 模式先试文字层：
-    整篇取字够长就判定为数字版直接收工；不够则逐页判断——某页文字层不足 30 字
-    才渲染该页做 OCR（混合型 PDF，实测最常见）。
-    """
+    """抽取单个文件；正文页封顶，但检测到的答案区始终处理到文末。"""
     t0 = time.time()
-    rec = {"src": str(path), "chars": 0, "pages": 0, "ocr_used": False,
-           "kind": "", "text": "", "pages_text": [], "err": ""}
+    rec = {
+        "src": str(path),
+        "chars": 0,
+        "pages": 0,
+        "total_pages": 0,
+        "ocr_used": False,
+        "kind": "",
+        "text": "",
+        "pages_text": [],
+        "answer_page_start": None,
+        "visual_only_pages": 0,
+        "warnings": [],
+        "err": "",
+    }
     try:
         suffix = path.suffix.lower()
-        page_texts: list[str] = []   # 逐页文本，下游题目抽取靠它把题目映射回原页图片
+        page_records: dict[int, dict] = {}
 
         if suffix in IMAGE_EXT:
             from PIL import Image
+
             with Image.open(path) as im:
                 im = im.convert("RGB")
-                page_texts.append(_ocr_image(im))
-            rec["pages"] = 1
-            rec["ocr_used"] = True
+                text_value, blocks = _ocr_image_blocks(im)
+                width, height = im.size
+            page_records[0] = {
+                "page_no": 1,
+                "width": width,
+                "height": height,
+                "blocks": [
+                    {"type": "image", "bbox": [0, 0, width, height], "text": ""},
+                    *blocks,
+                ],
+                "text": text_value,
+                "ocr_used": True,
+                "has_page_image": True,
+            }
+            rec["total_pages"] = 1
             rec["kind"] = "image"
 
         elif suffix in DOC_EXT:
             import pypdfium2 as pdfium
+
             pdf = pdfium.PdfDocument(str(path))
             try:
-                n = len(pdf)
-                rec["pages"] = min(n, max_pages)
-                scanned_pages = 0
+                total_pages = len(pdf)
+                rec["total_pages"] = total_pages
+                base_limit = total_pages if max_pages <= 0 else min(total_pages, max_pages)
+                answer_start: int | None = None
 
-                for i in range(rec["pages"]):
-                    page = pdf[i]
-                    try:
-                        layer_text = ""
-                        if mode in ("auto", "text"):
-                            try:
-                                tp = page.get_textpage()
-                                try:
-                                    layer_text = (tp.get_text_range() or "").strip()
-                                finally:
-                                    tp.close()
-                            except Exception:
-                                # 文字层解析失败的页，按无文字层处理
-                                layer_text = ""
+                # 主体区按上限处理，同时留意答案标题是否已在上限内出现。
+                for i in range(base_limit):
+                    page_rec = _extract_pdf_page(pdf, i, mode)
+                    page_records[i] = page_rec
+                    if answer_start is None and _answer_page(page_rec["text"]):
+                        answer_start = i
 
-                        if len(layer_text) >= _TEXT_LAYER_MIN:
-                            page_texts.append(layer_text)
-                            continue
+                # 若上限内还没见答案区，以低分辨率探测剩余页；一旦命中，
+                # 从答案标题页起恢复正常精度并一直处理到文末，避免丢书末答案。
+                if base_limit < total_pages and answer_start is None:
+                    for i in range(base_limit, total_pages):
+                        probe = _extract_pdf_page(pdf, i, mode, render_scale=1.0)
+                        if _answer_page(probe["text"]):
+                            answer_start = i
+                            break
 
-                        # 先占位，保持 pages_text 与页码严格一一对应
-                        page_texts.append("")
-                        if mode == "text":
-                            continue
-                        # 文字层不足 → 渲染该页 OCR（扫描版 / 混合版）
-                        scanned_pages += 1
-                        bitmap = page.render(scale=2.0)   # ~144dpi，兼顾精度与速度
-                        pil = bitmap.to_pil().convert("RGB")
-                        t = _ocr_image(pil)
-                        if t:
-                            page_texts[i] = t
-                    finally:
-                        # page 也要显式释放，否则大文件会耗尽内存
-                        try:
-                            page.close()
-                        except Exception:
-                            pass
+                if base_limit < total_pages and answer_start is not None:
+                    for i in range(max(base_limit, answer_start), total_pages):
+                        page_records[i] = _extract_pdf_page(pdf, i, mode)
 
-                rec["kind"] = ("scanned" if scanned_pages >= rec["pages"] * 0.8
-                               else "hybrid" if scanned_pages else "digital")
-                rec["ocr_used"] = scanned_pages > 0
+                rec["answer_page_start"] = answer_start + 1 if answer_start is not None else None
+                rec["truncated"] = len(page_records) < total_pages
+                scanned_pages = sum(1 for p in page_records.values() if p["ocr_used"])
+                rec["kind"] = (
+                    "scanned" if page_records and scanned_pages >= len(page_records) * 0.8
+                    else "hybrid" if scanned_pages else "digital"
+                )
                 rec["scanned_pages"] = scanned_pages
             finally:
-                # 必须显式 close：文档对象不关会一直持有文件句柄，
-                # 同一 worker 后面再开别的 PDF 会报 "PDFium: File access error"。
                 pdf.close()
 
-        # pages_text 与页码严格一一对应（含空串占位）：题目抽取要靠它把
-        # 第 N 页的题目映射回原 PDF 第 N 页，去渲染该页作为题目配图。
+        ordered_pages = [page_records[i] for i in sorted(page_records)]
+        rec["pages"] = len(ordered_pages)
+        rec["ocr_used"] = any(p["ocr_used"] for p in ordered_pages)
+        rec["visual_only_pages"] = sum(
+            1 for p in ordered_pages if p["has_page_image"] and not p["text"].strip()
+        )
+        visual_pages = sum(1 for p in ordered_pages if p["has_page_image"])
+
+        # 新契约：页尺寸 + 行级 OCR bbox；内部辅助字段不泄漏到 JSON。
+        rec["pages"] = [
+            {k: p[k] for k in ("page_no", "width", "height", "blocks")}
+            for p in ordered_pages
+        ]
+        rec["processed_pages"] = len(ordered_pages)
+
+        # 兼容旧下游：pages_text 下标仍等于原 PDF 页码 - 1；若书末答案越过
+        # max_pages，中间未处理页用空串占位，不能把第 500 页误当第 301 页。
+        last_page_no = ordered_pages[-1]["page_no"] if ordered_pages else 0
+        page_texts = [""] * last_page_no
+        for page_rec in ordered_pages:
+            page_texts[page_rec["page_no"] - 1] = page_rec["text"]
         rec["pages_text"] = page_texts
-        # text 供人看 / 供合成数据当种子，带页标记便于溯源
         rec["text"] = "\n\n".join(
-            f"【第{i + 1}页】{t}" for i, t in enumerate(page_texts) if t and t.strip()
+            f"【第{p['page_no']}页】{p['text']}" for p in ordered_pages if p["text"].strip()
         ).strip()
-        rec["chars"] = sum(len(t) for t in page_texts)
+        rec["chars"] = sum(len(p["text"]) for p in ordered_pages)
         if rec["chars"] < min_chars:
-            rec["err"] = f"too_few_chars({rec['chars']}<{min_chars})"
+            if visual_pages:
+                rec["warnings"].append(
+                    f"few_chars_but_visual({rec['chars']}<{min_chars},visual_pages={visual_pages})"
+                )
+            else:
+                rec["err"] = f"too_few_chars({rec['chars']}<{min_chars})"
     except Exception as e:  # noqa: BLE001
         rec["err"] = f"{type(e).__name__}: {e}"
         rec["trace"] = traceback.format_exc(limit=2)
@@ -240,12 +402,13 @@ def main() -> int:
                     help="产物目录：每文件一个 json")
     ap.add_argument("--workers", type=int, default=8,
                     help="并行进程数（OCR 是 CPU 密集，12-16 通常比 GPU 更划算）")
-    ap.add_argument("--max-pages", type=int, default=300, help="单文件页数封顶")
+    ap.add_argument("--max-pages", type=int, default=300,
+                    help="正文页数封顶；答案区命中后不封顶（0=全文）")
     ap.add_argument("--max-files", type=int, default=0, help="最多处理多少文件（0=不限）")
     ap.add_argument("--time-budget-min", type=int, default=240,
                     help="时间预算（分钟），到点优雅收尾，下轮续跑")
     ap.add_argument("--min-chars", type=int, default=200,
-                    help="低于此字数视为抽取失败（会写 err，便于人工排查）")
+                    help="纯文本产物低于此字数视为失败；含图页仅告警、不丢弃")
     ap.add_argument("--mode", choices=["auto", "text", "ocr"], default="auto",
                     help="auto=文字层优先、扫描页才 OCR（推荐，快两个量级）；"
                          "text=只取文字层（纯数字版 PDF，抽样对比用）；"
@@ -322,7 +485,7 @@ def main() -> int:
             if rec.get("kind"):
                 kinds[rec["kind"]] = kinds.get(rec["kind"], 0) + 1
             stats["chars"] += rec["chars"]
-            stats["pages"] += rec["pages"]
+            stats["pages"] += rec.get("processed_pages", len(rec.get("pages") or []))
 
             elapsed = time.time() - t_start
             if done % 20 == 0 or done == len(todo):

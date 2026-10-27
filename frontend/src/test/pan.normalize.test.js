@@ -11,7 +11,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  * ------------------------------------------------------------------ */
 
 const requestMock = vi.fn()
-vi.mock('../api/client', () => ({ request: (...a) => requestMock(...a) }))
+vi.mock('../api/client', async (importOriginal) => ({
+  // 派生真实模块的导出清单：client.js 新增导出（如 fetchAllPages）不必再回来补枚举，
+  // 否则页面一 import 就报 "No export is defined on the mock"。
+  ...(await importOriginal()),
+  request: (...a) => requestMock(...a),
+  favoritesApi: { list: vi.fn(), add: vi.fn(), check: vi.fn(), toggle: vi.fn(), remove: vi.fn() },
+  growthApi: { timeline: vi.fn() },
+}))
 
 beforeEach(() => requestMock.mockReset())
 

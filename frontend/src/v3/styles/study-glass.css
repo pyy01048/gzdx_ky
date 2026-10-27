@@ -1,0 +1,170 @@
+/* ==========================================================================
+   Tasks / Planner · 玻璃化增强层（P2）
+   与 /hub、/glass 同一视觉语言：极光纱幕 + 按操作语义着色（行动=靛蓝、
+   完成=绿、到期=琥珀）。只做「增强」，不改布局结构，可整体回滚本文件。
+   ========================================================================== */
+
+/* ── 共享：页面顶部极光纱幕 ---------------------------------------------- */
+.v3-glasspage {
+  position: relative;
+  isolation: isolate;
+}
+.v3-glasspage::before {
+  content: '';
+  position: absolute;
+  top: -140px;
+  left: 0;
+  right: 0;
+  height: 320px;
+  /* 不做左右负出血：布局零溢出，无需 overflow-x:clip（也不会误裁 tooltip） */
+  background:
+    radial-gradient(430px 190px at 20% 34%, rgba(66, 133, 244, 0.15), transparent 68%),
+    radial-gradient(400px 180px at 78% 22%, rgba(139, 92, 246, 0.13), transparent 68%),
+    radial-gradient(300px 140px at 52% 58%, rgba(26, 155, 184, 0.09), transparent 70%);
+  filter: blur(14px);
+  pointer-events: none;
+  z-index: -1;
+  animation: v3-study-glow 18s ease-in-out infinite alternate;
+}
+@keyframes v3-study-glow {
+  from { transform: translateY(-8px); opacity: 0.92; }
+  to { transform: translateY(6px); opacity: 1; }
+}
+[data-theme="dark"] .v3-glasspage::before {
+  background:
+    radial-gradient(430px 190px at 20% 34%, rgba(76, 140, 244, 0.2), transparent 68%),
+    radial-gradient(400px 180px at 78% 22%, rgba(165, 126, 250, 0.18), transparent 68%),
+    radial-gradient(300px 140px at 52% 58%, rgba(76, 201, 232, 0.12), transparent 70%);
+}
+
+/* ── Tags 页：打卡行 ------------------------------------------------------- */
+.v3-glasspage .v3-task-row {
+  transition: transform var(--v3-dur-2, 150ms) ease, box-shadow var(--v3-dur-2, 150ms) ease, background var(--v3-dur-2, 150ms) ease;
+}
+.v3-glasspage .v3-task-row:hover {
+  transform: translateX(2px);
+  box-shadow: 0 6px 18px -12px rgba(66, 133, 244, 0.45);
+}
+.v3-glasspage .v3-task-row__check {
+  transition: background var(--v3-dur-2, 150ms) ease, border-color var(--v3-dur-2, 150ms) ease, box-shadow var(--v3-dur-2, 150ms) ease;
+}
+.v3-glasspage .v3-task-row__check:hover {
+  border-color: #4285f4;
+  box-shadow: 0 0 0 4px rgba(66, 133, 244, 0.14);
+}
+.v3-glasspage .v3-task-row.is-done .v3-task-row__check {
+  background: linear-gradient(135deg, #1f9d55, #6ad48a);
+  border-color: transparent;
+  color: #fff;
+}
+[data-theme="dark"] .v3-glasspage .v3-task-row.is-done .v3-task-row__check {
+  background: linear-gradient(135deg, #2fae66, #7ee0a3);
+}
+
+/* 任务分组卡：顶部一根按科目色调的饰线，悬停轻浮起 */
+.v3-glasspage .v3-task-group {
+  overflow: hidden;
+  transition: box-shadow var(--v3-dur-3, 220ms) ease, border-color var(--v3-dur-3, 220ms) ease;
+}
+.v3-glasspage .v3-task-group:hover {
+  border-color: rgba(66, 133, 244, 0.28);
+  box-shadow: 0 14px 34px -24px rgba(66, 133, 244, 0.55);
+}
+
+/* 周视图 / 月历：今日格给一圈柔光，悬停轻抬 */
+.v3-glasspage .v3-week__col.is-today {
+  box-shadow:
+    0 0 0 1px rgba(66, 133, 244, 0.35),
+    0 10px 26px -16px rgba(66, 133, 244, 0.5);
+}
+.v3-glasspage .v3-cal__cell {
+  transition: transform var(--v3-dur-2, 150ms) ease, box-shadow var(--v3-dur-2, 150ms) ease, border-color var(--v3-dur-2, 150ms) ease;
+}
+.v3-glasspage .v3-cal__cell:hover {
+  transform: translateY(-2px);
+  border-color: rgba(66, 133, 244, 0.4);
+}
+.v3-glasspage .v3-cal__cell.is-today {
+  box-shadow: inset 0 0 0 1.5px rgba(66, 133, 244, 0.55);
+}
+
+/* ── Planner 页：日计划任务行 --------------------------------------------- */
+.v3-plan .v3-plan-task {
+  transition: transform var(--v3-dur-2, 150ms) ease, box-shadow var(--v3-dur-2, 150ms) ease, border-color var(--v3-dur-2, 150ms) ease;
+}
+.v3-plan .v3-plan-task:hover {
+  transform: translateY(-1px);
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 10px 26px -18px rgba(139, 92, 246, 0.55);
+}
+.v3-plan .v3-plan-task[draggable='true'] {
+  cursor: grab;
+}
+.v3-plan .v3-plan-task[draggable='true']:active {
+  cursor: grabbing;
+}
+.v3-plan .v3-plan-task.is-completed .v3-plan-task__title {
+  text-decoration: line-through;
+  opacity: 0.62;
+}
+.v3-plan .v3-plan-task__reorder {
+  display: inline-flex;
+  gap: 2px;
+  opacity: 0.72;
+  transition: opacity var(--v3-dur-2, 150ms) ease;
+}
+.v3-plan .v3-plan-task:hover .v3-plan-task__reorder,
+.v3-plan .v3-plan-task__reorder:focus-within {
+  opacity: 1;
+}
+/* 触屏 / 窄屏：重排按钮是唯一入口，保持醒目且易点 */
+@media (max-width: 768px) {
+  .v3-plan .v3-plan-task__reorder { opacity: 1; }
+  .v3-plan .v3-plan-task__reorder .v3-iconbtn { min-width: 30px; min-height: 30px; }
+}
+/* 勾选框：完成即绿，附加一圈成功色柔光 */
+.v3-plan .v3-plan-check:checked {
+  box-shadow: 0 0 0 4px rgba(31, 157, 85, 0.16);
+}
+
+/* 艾宾浩斯：到期徽章与当前周期 Chip 赋予琥珀辉光，点击目标更明确 */
+.v3-plan .v3-plan-cyclechips .v3-chip--active {
+  box-shadow: 0 0 0 3px rgba(217, 139, 31, 0.16);
+}
+
+/* ── Quiz 页：答题主线（靛蓝=选择动作，绿=判对，红=判错） ------------------ */
+.v3-glasspage .v3-quiz-opt {
+  transition: transform var(--v3-dur-2, 150ms) ease, box-shadow var(--v3-dur-2, 150ms) ease, border-color var(--v3-dur-2, 150ms) ease;
+}
+.v3-glasspage .v3-quiz-opt:hover:not(:disabled) {
+  transform: translateX(2px);
+  box-shadow: 0 8px 22px -14px rgba(66, 133, 244, 0.45);
+}
+.v3-glasspage .v3-quiz-opt.is-sel {
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.16);
+}
+.v3-glasspage .v3-quiz-subj {
+  transition: transform var(--v3-dur-2, 150ms) ease, box-shadow var(--v3-dur-2, 150ms) ease, border-color var(--v3-dur-2, 150ms) ease;
+}
+.v3-glasspage .v3-quiz-subj:hover {
+  transform: translateY(-2px);
+}
+.v3-glasspage .v3-quiz-subj.is-active {
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16), 0 12px 26px -18px rgba(139, 92, 246, 0.6);
+}
+
+/* 卡片类页面通用：非交互卡在 hover 时轻浮（交互卡有自己的 hover，不叠加） */
+.v3-glasspage .v3-card:not(.v3-card--interactive):hover {
+  border-color: rgba(66, 133, 244, 0.22);
+  box-shadow: 0 12px 30px -24px rgba(66, 133, 244, 0.45);
+}
+
+/* ── 无障碍：跟随系统的减少动效偏好 ----------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .v3-glasspage::before { animation: none; }
+  .v3-glasspage .v3-task-row:hover,
+  .v3-glasspage .v3-cal__cell:hover,
+  .v3-glasspage .v3-quiz-opt:hover:not(:disabled),
+  .v3-glasspage .v3-quiz-subj:hover,
+  .v3-plan .v3-plan-task:hover { transform: none; }
+}

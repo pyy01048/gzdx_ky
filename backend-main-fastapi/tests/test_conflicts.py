@@ -23,6 +23,14 @@ def _seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        # 幂等：测试库跨轮持久，固定 ID 种子必须先清（含冲突队列引用）再建，
+        # 否则第二轮直接 quiz_questions_pkey 冲突（实测 4 例 ERROR）。
+        _IDS = (7101, 7102)
+        from sqlalchemy import text as _text
+
+        db.execute(_text("DELETE FROM conflict_review_queue WHERE question_id = ANY(:i)"), {"i": list(_IDS)})
+        db.query(QuizQuestion).filter(QuizQuestion.id.in_(_IDS)).delete(synchronize_session=False)
+        db.commit()
         db.add_all([
             QuizQuestion(id=7101, content="冲突题A：与门输出？", answer="高电平",
                          answer_source="bank", answer_confidence=0.9, subject="数电"),

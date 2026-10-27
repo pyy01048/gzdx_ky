@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from services.dbapi_compat import wrap_conn
 from database import get_db
 from services import retrieval_gate, blind_spot_pool
 from services.module_a_schema import ensure_module_a_schema
@@ -61,13 +62,13 @@ def gate_search(req: GateSearchRequest, db: Session = Depends(get_db)):
 def gate_stats(db: Session = Depends(get_db)):
     """门控打点统计：决策分布 / would_abstain 率 / 平均延迟。"""
     ensure_module_a_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     rows = conn.execute(
         "SELECT decision, COUNT(*) AS n FROM retrieval_gate_logs GROUP BY decision"
     ).fetchall()
     total = conn.execute("SELECT COUNT(*) FROM retrieval_gate_logs").fetchone()[0]
     abstain_n = conn.execute(
-        "SELECT COUNT(*) FROM retrieval_gate_logs WHERE would_abstain = 1"
+        "SELECT COUNT(*) FROM retrieval_gate_logs WHERE would_abstain = TRUE"
     ).fetchone()[0]
     avg_ms = conn.execute("SELECT AVG(latency_ms) FROM retrieval_gate_logs").fetchone()[0]
     return {

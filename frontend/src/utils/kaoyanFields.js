@@ -27,6 +27,7 @@ const SOURCE_TYPE_MAP = {
   school_official: SOURCE_TYPES.OFFICIAL,
   yz_chsi: SOURCE_TYPES.OFFICIAL,
   exam_authority: SOURCE_TYPES.OFFICIAL,
+  'kaoyan.cn': SOURCE_TYPES.AGGREGATOR,
   'txkyer.cn': SOURCE_TYPES.AGGREGATOR,
   seed_txkyer: SOURCE_TYPES.AGGREGATOR,
   csv_sample: SOURCE_TYPES.AGGREGATOR,
@@ -50,11 +51,18 @@ export function resolveSourceType(source) {
 
 /**
  * 分数线表字段（KaoyanScoreLine）
- * `key` 为后端字段名，`label` 为审计确认的真实口径。
+ * `key` 为后端字段名，`label` 为真实口径。
+ *
+ * 2026-10 起分数线由掌上考研逐专业采集（院线：总分 + 政治/外语/
+ * 专业课一/专业课二），`math_line`/`major_line` 两列分别承载
+ * 专业课一/专业课二；旧种子数据的口径审计说明见文件头。
  */
 export const SCORE_FIELDS = [
-  { key: 'total_line', label: '进面最低分', kind: 'line' },
-  { key: 'major_line', label: '专业课均分', kind: 'line' },
+  { key: 'total_line', label: '总分', kind: 'line' },
+  { key: 'politics_line', label: '政治', kind: 'line' },
+  { key: 'english_line', label: '外语', kind: 'line' },
+  { key: 'math_line', label: '专业课一', kind: 'line' },
+  { key: 'major_line', label: '专业课二', kind: 'line' },
 ]
 
 /**
@@ -78,11 +86,7 @@ export const ADMISSION_FIELDS = [
  */
 export const UNTRUSTED_FIELDS = {
   retest_line: '与 total_line 同值（97.2% 命中），重复展示会误导为两所线',
-  national_line: '全库为空（0/811 有值）',
-  politics_line: '与政治真实分数线无匹配（0% 命中）',
-  english_line: '与英语真实分数线无匹配',
-  math_line: '仅 3.3% 命中，疑似专业课数据串列',
-  admit_count: '伪造列，仅 33.2% 命中（与 retest_count 大量冲突）',
+  admit_count: '历史导入列，仅 33.2% 命中（与 retest_count 大量冲突）',
 }
 
 /** 是否为需要标注「来源未核验」的字段类型 */

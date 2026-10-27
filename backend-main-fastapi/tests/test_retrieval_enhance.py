@@ -220,6 +220,13 @@ def _cands():
 
 class TestRerank:
 
+    @pytest.fixture(autouse=True)
+    def _no_bge_service(self, monkeypatch):
+        """隔离 8140 bge-reranker：单测只验证打分排序协议，不能依赖外部服务在不在。"""
+        async def unavailable(*_a, **_kw):
+            return None
+        monkeypatch.setattr(enh, "_bge_rerank_scores", unavailable)
+
     def test_sorts_by_score_and_truncates(self, monkeypatch):
         """成功路径：按 LLM 打分降序，取 top_k，并附带 rerank_score。"""
         async def fake_scores(*a, **kw):
@@ -232,6 +239,21 @@ class TestRerank:
         assert out[0]["text"].startswith("欧姆定律")
         # 返回的是拷贝，不能改到调用方原对象
         assert "rerank_score" not in _cands()[0]
+
+    def test_prefers_bge_scores_when_available(self, monkeypatch):
+        """8140 可用时优先用 bge 分数，且不再调用 LLM 打分。"""
+        async def fake_bge(*a, **kw):
+            return {0: 0.2, 1: 0.9, 2: 0.5, 3: 0.1}
+
+        async def fake_llm(*a, **kw):
+            raise AssertionError("bge 可用时不应回退 LLM 打分")
+
+        monkeypatch.setattr(enh, "_bge_rerank_scores", fake_bge)
+        monkeypatch.setattr(enh, "_llm_scores", fake_llm)
+
+        out = run(enh.rerank(_cands(), "q", top_k=2))
+        assert [c["id"] for c in out] == [1, 2], out
+        assert out[0]["rerank_score"] == 0.9
 
     def test_original_order_on_score_failure(self, monkeypatch):
         """打分失败（解析不出分数）→ 保持原序截断 top_k。"""

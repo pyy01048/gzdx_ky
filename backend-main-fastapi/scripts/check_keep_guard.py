@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """检查两个'打卡'命中的高价值文件是否已入库，决定是否从删除清单剔除。"""
+from pathlib import Path
 import sqlite3, sys, os
 sys.stdout.reconfigure(encoding="utf-8")
 
-DB = r"D:\平台\database\kaoyan.db"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
 TARGETS = ["红宝书", "艾宾浩斯", "词汇闪过", "六级高频词打卡海报"]
 
 c = sqlite3.connect(DB).cursor()

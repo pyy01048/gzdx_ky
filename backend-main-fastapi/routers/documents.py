@@ -1,5 +1,6 @@
 """文档路由。"""
 
+from utils.security import require_admin
 import logging
 import mimetypes
 import os
@@ -7,12 +8,13 @@ import re
 from urllib.parse import quote
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, File
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from database import get_db, BASE_DIR
 from models import Document, KnowledgePoint, KnowledgeChunk
+from utils.exceptions import http_error_response
 from services.doc_naming import apply_display_name
 from services.smart_ingest import gate_for_write
 from services.quiz_content_gate import admit as gate_admit
@@ -149,11 +151,11 @@ def _file_response(doc: Document, request: Request, disposition: str):
     if parsed is None:
         # 直接构造响应而不是 raise：全局异常处理器会丢掉 headers，
         # 而 416 必须带 Content-Range: bytes */size 才合 RFC 7233
-        return JSONResponse(status_code=416,
-                            content={"detail": f"Range 越界（文件共 {size} 字节）",
-                                     "path": request.url.path},
-                            headers={"Content-Range": f"bytes */{size}",
-                                     "Accept-Ranges": "bytes"})
+        return http_error_response(
+            416,
+            {"message": f"Range 越界（文件共 {size} 字节）", "path": request.url.path},
+            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+        )
     start, length = parsed
     if range_header and length != size:
         status_code = 206
@@ -357,10 +359,14 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     # 使用本地 DocumentParser 提取全文
+    # P0-2：parser.parse() 走 PDF 解析 / 扫描件 OCR，秒级到分钟级且完全同步，
+    # 在 async 端点里直调会按住事件循环 → 挪线程池（纯文件读，不涉及 db 会话）。
+    from starlette.concurrency import run_in_threadpool
+
     parser = DocumentParser()
     if doc.file_path and os.path.exists(doc.file_path):
         try:
-            content_text = parser.parse(doc.file_path)
+            content_text = await run_in_threadpool(parser.parse, doc.file_path)
         except Exception as e:
             doc.index_status = "failed"
             db.commit()
@@ -399,6 +405,7 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     chunk_count = 0
     try:
         chunk_count = ingest_document(db, doc, replace=True)
+        doc.chunk_count = chunk_count
         doc.parse_progress = 0.8
     except Exception as e:
         # 分块失败不影响文档内容，记录但不致命
@@ -673,7 +680,13 @@ async def delete_document(doc_id: int, db: Session = Depends(get_db)):
 # 文档内容预览
 # --------------------------------------------------------------------------- #
 @router.get("/{doc_id}/content")
-async def get_document_content(doc_id: int, limit: int = 5000, db: Session = Depends(get_db)):
+async def get_document_content(
+    doc_id: int,
+    # 这是**字符数**截断（content[:max_chars]），不是行分页：原先叫 limit，
+    # 于是接口规范巡检把它当成可拖穿 SQL LIMIT 的分页入参，白查一轮。改名自证语义。
+    max_chars: int = Query(5000, ge=1, le=200_000, description="正文最多返回多少字符"),
+    db: Session = Depends(get_db),
+):
     """获取文档解析后的文本内容（用于预览）。"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
@@ -685,8 +698,8 @@ async def get_document_content(doc_id: int, limit: int = 5000, db: Session = Dep
         "file_name": doc.file_name,
         "file_type": doc.file_type,
         "content_length": len(doc.content),
-        "content": doc.content[:limit],
-        "truncated": len(doc.content) > limit,
+        "content": doc.content[:max_chars],
+        "truncated": len(doc.content) > max_chars,
     }
 
 
@@ -730,7 +743,11 @@ async def ocr_image(file: UploadFile = File(...)):
 
     try:
         ocr = OCRService()
-        text = ocr.recognize(tmp.name)
+        # P0-2：recognize() 是同步 ONNX 推理（数秒级），在 async 端点里直调
+        # 会阻塞事件循环 → 挪线程池。
+        from starlette.concurrency import run_in_threadpool
+
+        text = await run_in_threadpool(ocr.recognize, tmp.name)
         return {
             "file_name": file_name,
             "text": text,
@@ -749,7 +766,7 @@ async def ocr_image(file: UploadFile = File(...)):
 # --------------------------------------------------------------------------- #
 # 批量解析所有未解析的文档
 # --------------------------------------------------------------------------- #
-@router.post("/parse-all")
+@router.post("/parse-all", dependencies=[Depends(require_admin)])
 async def parse_all_documents(db: Session = Depends(get_db)):
     """批量解析所有状态为 pending 的文档。"""
     pending_docs = db.query(Document).filter(Document.index_status == "pending").all()
@@ -769,9 +786,12 @@ async def parse_all_documents(db: Session = Depends(get_db)):
             doc.parse_progress = 0.1
             db.commit()
 
-            # 解析文本
+            # 解析文本（P0-2：PDF/OCR 同步解析挪线程池，避免按住事件循环；
+            # 该调用纯读文件，不涉及 db 会话）
             if doc.file_path and os.path.exists(doc.file_path):
-                content_text = parser.parse(doc.file_path)
+                from starlette.concurrency import run_in_threadpool
+
+                content_text = await run_in_threadpool(parser.parse, doc.file_path)
             else:
                 content_text = f"[文件缺失] 文件名：{doc.file_name}"
 
@@ -798,6 +818,7 @@ async def parse_all_documents(db: Session = Depends(get_db)):
             chunk_count = 0
             try:
                 chunk_count = ingest_document(db, doc, replace=True)
+                doc.chunk_count = chunk_count
             except Exception as e:
                 print(f"[kb] 文档 {doc.id} 分块失败: {e}")
 
@@ -923,7 +944,7 @@ async def extract_questions(doc_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/analyze-batch")
+@router.post("/analyze-batch", dependencies=[Depends(require_admin)])
 async def batch_analyze(payload: dict, db: Session = Depends(get_db)):
     """批量智能分析多个文档。
 
@@ -1398,7 +1419,7 @@ async def archive_document_file(doc_id: int, db: Session = Depends(get_db)):
             "message": f"未归档：{result['reason']}"}
 
 
-@router.post("/bulk")
+@router.post("/bulk", dependencies=[Depends(require_admin)])
 async def bulk_documents(payload: dict, db: Session = Depends(get_db)):
     """批量操作文档。
 
@@ -1497,7 +1518,7 @@ async def bulk_documents(payload: dict, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/scan-root")
+@router.post("/scan-root", dependencies=[Depends(require_admin)])
 async def scan_root(payload: dict | None = None, db: Session = Depends(get_db)):
     """扫描 knowledge_base 根目录 → 按科目归档 → 同步 DB file_path。
 
@@ -1576,7 +1597,13 @@ async def list_broken_links(db: Session = Depends(get_db)):
             continue
         broken_docs.append((d, reason or "原文不可读"))
 
-    idx = build_file_index() if broken_docs else {}
+    idx = {}
+    if broken_docs:
+        # P0-2：build_file_index() 是**全盘文件索引扫描**（实测 1.5–5.7s），
+        # async 端点里直调会按住事件循环 → 挪线程池。
+        from starlette.concurrency import run_in_threadpool
+
+        idx = await run_in_threadpool(build_file_index)
     items = []
     recoverable = 0
     by_reason: dict[str, int] = {}
@@ -1605,7 +1632,7 @@ async def list_broken_links(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/repair-file-paths")
+@router.post("/repair-file-paths", dependencies=[Depends(require_admin)])
 async def repair_document_file_paths(dry_run: bool = True, db: Session = Depends(get_db)):
     """把失效的 ``file_path`` 重新指回本地实际文件。
 

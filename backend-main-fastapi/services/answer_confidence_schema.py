@@ -107,9 +107,11 @@ def ensure_answer_confidence_schema(conn: sqlite3.Connection) -> dict:
     """
     created: List[str] = []
     try:
-        conn.execute("PRAGMA busy_timeout = 30000")
+        from services.ddl_compat import adapt_ddl, is_sqlite
+        if is_sqlite(conn):
+            conn.execute("PRAGMA busy_timeout = 30000")
         for stmt in SCHEMA_SQL:
-            conn.execute(stmt)
+            conn.execute(adapt_ddl(stmt, conn))
             if stmt.strip().upper().startswith("CREATE TABLE"):
                 # 幂等：无论是否已存在都无副作用，仅收集表名供报告
                 name = stmt.split("(", 1)[0].replace("CREATE TABLE IF NOT EXISTS", "").strip()

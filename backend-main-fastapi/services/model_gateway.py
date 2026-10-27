@@ -15,14 +15,21 @@
 
 from __future__ import annotations
 
+import copy
 import json
+import logging
 import os
 import re
 import sqlite3
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
 import httpx
+
+from utils.ollama_host import resolve_ollama_host
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # 配置
@@ -61,23 +68,27 @@ def get_routing_mode() -> str:
         return _routing_cache["mode"]
     mode = None
     try:
+        # 2026-10-14 修复：原实现用裸 `sqlite3.connect(f"file:{dbfile}?mode=ro")` 直连，
+        # 切到 PostgreSQL 后 `engine.url.database` 是库名 "kaoyan"，
+        # sqlite3 会去打开一个叫 kaoyan 的本地文件 → 必然失败 → 异常被吞 →
+        # **用户在设置页切换的路由模式永不生效**（永远回退到 env 默认值）。
+        # 改为走 SQLAlchemy 引擎（跨后端），并显式区分"没配置"与"读取失败"。
+        from sqlalchemy import text as _sql_text
+
         from database import engine
 
-        dbfile = engine.url.database
-        if dbfile:
-            con = sqlite3.connect(f"file:{dbfile}?mode=ro", uri=True, timeout=5)
-            try:
-                row = con.execute(
-                    "SELECT extra FROM platform_configs WHERE platform_name = 'ai_routing'"
-                ).fetchone()
-                if row and row[0]:
-                    extra = json.loads(row[0]) if isinstance(row[0], str) else (row[0] or {})
-                    m = (extra or {}).get("mode")
-                    if m in ROUTING_MODES:
-                        mode = m
-            finally:
-                con.close()
-    except Exception:
+        with engine.connect() as conn:
+            row = conn.execute(_sql_text(
+                "SELECT extra FROM platform_configs WHERE platform_name = 'ai_routing'"
+            )).fetchone()
+            if row and row[0]:
+                extra = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                m = (extra or {}).get("mode")
+                if m in ROUTING_MODES:
+                    mode = m
+    except Exception as exc:  # noqa: BLE001
+        # 不再静默：读取失败必须可见，否则"设置不生效"会再次变成无从排查的幽灵问题
+        logger.warning("读取 AI 路由模式失败，回退 env 默认值：%s", exc)
         mode = None
     if not mode:
         mode = STRATEGY if STRATEGY in ("auto", "local_first", "cloud_first") else "auto"
@@ -90,9 +101,17 @@ def reset_routing_cache() -> None:
     _routing_cache.update(ts=0.0, mode=None)
 LOCAL_TIMEOUT = float(os.environ.get("MODEL_GATEWAY_LOCAL_TIMEOUT", "360"))
 CLOUD_TIMEOUT = float(os.environ.get("MODEL_GATEWAY_CLOUD_TIMEOUT", "60"))
-OLLAMA_BASE = os.environ.get("OLLAMA_BASE", "http://127.0.0.1:11434")
+OLLAMA_BASE = resolve_ollama_host(os.environ.get("OLLAMA_BASE", ""))
 OLLAMA_V1 = f"{OLLAMA_BASE}/v1/chat/completions"
 OLLAMA_TAGS = f"{OLLAMA_BASE}/api/tags"
+
+# --------------------------------------------------------------------------- #
+# 状态快照缓存（P0-2）：status 冷路径跑 nvidia-smi + Ollama tags + 云厂商表，
+# 实测 1.4–2.8s，被 /api/kb/ingest/status 轮询吃满。TTL 与 OCR 侧对齐。
+# --------------------------------------------------------------------------- #
+_STATUS_TTL = 30.0
+_status_cache: Dict[str, tuple] = {}
+_status_lock = threading.Lock()
 
 #: 云端供应商类型（来自 AIProvider.provider_type）
 CLOUD_PROVIDER_TYPES = {"doubao", "deepseek", "qwen", "openai", "gpt", "kimi", "glm", "moonshot", "zhipu", "api"}
@@ -397,7 +416,30 @@ class ModelGateway:
                 db.close()
 
     def status(self, db=None) -> Dict[str, Any]:
-        """网关状态快照。"""
+        """网关状态快照（P0-2：带 TTL 缓存）。
+
+        冷路径要跑 nvidia-smi 子进程 + Ollama ``/api/tags`` HTTP（8s 超时）+
+        云厂商表查询，实测 **1.4–2.8s/次**；``/api/kb/ingest/status`` 每次轮询都吃它。
+        硬件画像与已装模型清单在秒级窗口内不会变，按 :data:`_STATUS_TTL` 缓存，
+        并发走双检加锁 —— 过期后的首个调用者付一次探测成本，其余命中快照。
+        返回 ``deepcopy``：调用方（含路由层 JSON 序列化）不该改到共享快照。
+        """
+        key = self.strategy or get_routing_mode()
+        now = time.time()
+        hit = _status_cache.get(key)
+        if hit is not None and now - hit[0] < _STATUS_TTL:
+            return copy.deepcopy(hit[1])
+
+        with _status_lock:
+            hit = _status_cache.get(key)
+            if hit is not None and time.time() - hit[0] < _STATUS_TTL:
+                return copy.deepcopy(hit[1])
+            payload = self._status_uncached(db)
+            _status_cache[key] = (time.time(), payload)
+            return copy.deepcopy(payload)
+
+    def _status_uncached(self, db=None) -> Dict[str, Any]:
+        """无缓存的真实探测（仅 :meth:`status` 的缓存未命中路径调用）。"""
         close_db = False
         if db is None:
             from database import SessionLocal

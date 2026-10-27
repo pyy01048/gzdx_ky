@@ -165,10 +165,26 @@ async def kb_ingest_inbox(payload: dict = None, db: Session = Depends(get_db)):
 
 @router.get("/ingest/status")
 async def kb_ingest_status(db: Session = Depends(get_db)):
-    """知识库快速入库能力状态：OCR 路由可用后端 + 模型网关配置 + knowledge_base 目录。"""
+    """知识库快速入库能力状态：OCR 路由可用后端 + 模型网关配置 + knowledge_base 目录。
+
+    **P0-2**：``ocr_router.status()`` 与 ``gateway.status()`` 都是同步阻塞调用
+    （前者冷路径吃 RapidOCR ONNX 初始化 ~6.6s，后者跑 nvidia-smi / Ollama tags /
+    DB 查询）。在 async 端点里直接调用会把**整个事件循环**按住 —— 实测一次
+    6.7s 的全局假死，全站接口跟着卡。这里用 ``run_in_threadpool`` 把两段快照
+    挪到工作线程：慢的只有本请求自己，事件循环照常服务其它连接。
+    """
+    from starlette.concurrency import run_in_threadpool
+
     from services.ocr_router import get_ocr_router
     from services.model_gateway import get_gateway
     from services import kb_ingest
+
+    def _snapshots() -> tuple:
+        # 同一快照线程内顺序执行：gateway.status 会用到 db 会话，
+        # 顺序执行避免会话跨线程并发（SQLAlchemy Session 非线程安全）。
+        return get_ocr_router().status(), get_gateway().status(db=db)
+
+    ocr_status, gateway_status = await run_in_threadpool(_snapshots)
 
     return {
         "knowledge_base": {
@@ -176,6 +192,6 @@ async def kb_ingest_status(db: Session = Depends(get_db)):
             "inbox": kb_ingest.INBOX_DIR,
             "exists": all(os.path.isdir(d) for d in (kb_ingest.INBOX_DIR, kb_ingest.DOCUMENTS_DIR, kb_ingest.META_DIR)),
         },
-        "ocr_router": get_ocr_router().status(),
-        "model_gateway": get_gateway().status(db=db),
+        "ocr_router": ocr_status,
+        "model_gateway": gateway_status,
     }

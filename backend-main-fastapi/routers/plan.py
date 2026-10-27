@@ -14,10 +14,14 @@ import math
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Goal, Milestone
+from models import Goal, Milestone, User
+from utils.scope import scoped
+from utils.security import current_user
+from utils.timeutil import local_today
 
 router = APIRouter(prefix="/api/plan", tags=["考研规划"])
 
@@ -121,12 +125,19 @@ def _seed_milestones(db: Session, year: int) -> List[Milestone]:
             )
             db.add(m)
         seeded.append(m)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # 前端并发打 roadmap+milestones，同一届种子被另一请求抢先写入；用胜者的行即可
+        db.rollback()
+        return db.query(Milestone).filter(Milestone.year == year).all()
     return seeded
 
 
-def _goal_context(db: Session) -> Dict[str, Any]:
-    goal = db.query(Goal).order_by(Goal.id.asc()).first()
+def _goal_context(db: Session, user) -> Dict[str, Any]:
+    # Goal 属个人域（108 迁移表清单），读写均按当前用户 scope；
+    # Milestone 是公共招生日历内容，不随用户隔离。
+    goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not goal:
         return {}
     ctx: Dict[str, Any] = {
@@ -142,7 +153,7 @@ def _goal_context(db: Session) -> Dict[str, Any]:
 def _build_roadmap(year: int, milestones: List[Milestone]) -> Dict[str, Any]:
     """阶段→月→周→日 三层规划。"""
     exam = _exam_date(year)
-    today = datetime.date.today()
+    today = local_today()
 
     # 阶段划分（按距初试天数）
     stages: List[Dict[str, Any]] = []
@@ -209,64 +220,103 @@ def _build_roadmap(year: int, milestones: List[Milestone]) -> Dict[str, Any]:
             "days_left": remain, "stage": stage,
         })
 
+    from services import exam_calendar as _cal
+
     return {
         "year": year,
         "exam_date": exam.isoformat(),
+        # 未公布的届是规则推导出来的，界面必须标「预估」，不能和教育部公布的日期混为一谈
+        "exam_date_is_official": _cal.resolve_exam_date(year)[1],
         "days_to_exam": (exam - today).days,
         "stages": stages,
         "milestones": node_list,
     }
 
 
-def _resolve_plan_year(db: Session, year: Optional[int] = None) -> int:
+def _resolve_plan_year(db: Session, year: Optional[int] = None, user=None) -> int:
     """确定计划要按哪一届生成。
 
-    优先级：显式传入 > Goal 里配置/反推出的届 > 按当前时间推断。
+    优先级：显式传入 > 当前用户 Goal 里配置/反推出的届 > 按当前时间推断。
     原先三个端点都写死 ``year: int = 2027``，用户改了届数复习计划还停在旧年份。
     """
     from services import exam_calendar
 
     if year is not None:
         return exam_calendar.validate_exam_year(year)
-    info = exam_calendar.resolve_for_db(db.query(Goal).order_by(Goal.id.asc()).first())
+    info = exam_calendar.resolve_for_db(
+        db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
+    )
     return exam_calendar.validate_exam_year(info["exam_year"])
 
 
+def _plan_years(db: Session, target: int) -> List[int]:
+    """规划页可选的届数：库里已经生成过节点的届 ∪ 当前目标届（倒序）。
+
+    刻意不返回 [2026, 2027, 2028] 这种写死的候选——那是一条会过期的断言，
+    到了下一年界面还在推销旧届。目标届永远包含在内（GET 会自动为其补种子）。
+    """
+    rows = db.query(Milestone.year).distinct().all()
+    years = {int(r[0]) for r in rows if r[0] is not None}
+    years.add(int(target))
+    return sorted(years, reverse=True)
+
+
 @router.get("/milestones")
-def list_milestones(year: Optional[int] = None, db: Session = Depends(get_db)):
-    """18 节点时间线（无种子时自动生成）。year 不传则跟随用户配置的届。"""
-    year = _resolve_plan_year(db, year)
+def list_milestones(
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """18 节点时间线（无种子时自动生成）。year 不传则跟随当前用户配置的届。"""
+    year = _resolve_plan_year(db, year, user)
     rows = db.query(Milestone).filter(Milestone.year == year).all()
     if not rows:
         _seed_milestones(db, year)
         rows = db.query(Milestone).filter(Milestone.year == year).all()
+    today = local_today()
+    exam = _exam_date(year)
     out = []
     for m in sorted(rows, key=lambda x: x.start_date or datetime.date.max):
+        # 与 /roadmap 内嵌节点同一算法；缺 start_date 的节点退回初试日，
+        # 否则前端读到 undefined 会渲染成「已过 NaN 天」（实测 18/18 命中）。
+        anchor = m.start_date or exam
         out.append({
             "id": m.id, "year": m.year, "name": m.name, "category": m.category,
             "start": (m.start_date or "").isoformat() if m.start_date else None,
             "end": (m.end_date or "").isoformat() if m.end_date else None,
             "importance": m.importance, "action": m.action, "pitfalls": m.pitfalls,
+            "days_left": (anchor - today).days,
             "is_active": m.is_active,
         })
-    return {"year": year, "total": len(out), "milestones": out, "exam_date": _exam_date(year).isoformat()}
+    return {"year": year, "total": len(out), "milestones": out,
+            "available_years": _plan_years(db, year),
+            "exam_date": _exam_date(year).isoformat()}
 
 
 @router.post("/generate")
-def generate_milestones(year: Optional[int] = None, db: Session = Depends(get_db)):
-    """显式生成/更新 18 节点种子（upsert）。year 不传则跟随用户配置的届。"""
-    year = _resolve_plan_year(db, year)
+def generate_milestones(
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """显式生成/更新 18 节点种子（upsert）。year 不传则跟随当前用户配置的届。"""
+    year = _resolve_plan_year(db, year, user)
     seeded = _seed_milestones(db, year)
     return {"year": year, "total": len(seeded), "detail": "18 节点已生成/更新"}
 
 
 @router.get("/roadmap")
-def get_roadmap(year: Optional[int] = None, db: Session = Depends(get_db)):
-    """阶段→月→周→日 三层规划（联动 goals 目标）。year 不传则跟随用户配置的届。"""
-    year = _resolve_plan_year(db, year)
+def get_roadmap(
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """阶段→月→周→日 三层规划（联动当前用户 goals 目标）。year 不传则跟随其配置的届。"""
+    year = _resolve_plan_year(db, year, user)
     rows = db.query(Milestone).filter(Milestone.year == year).all()
     if not rows:
         rows = _seed_milestones(db, year)
     roadmap = _build_roadmap(year, rows)
-    roadmap["goal"] = _goal_context(db)
+    roadmap["goal"] = _goal_context(db, user)
+    roadmap["available_years"] = _plan_years(db, year)
     return roadmap

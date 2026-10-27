@@ -50,8 +50,10 @@ python -m scripts.diagnostics.<脚本名>
 ## 未归档说明
 
 - `services/answer_cross_check.py`：**服务模块**，被 `routers/answers.py` 引用，非诊断脚本，保留原位。
-- `lora_finetune.py / resume_train.py / train_with_modelscope.py / merge_lora.py /
-  test_merged_model.py / setup_local_models.py / download_embedding_model.py`：训练/部署脚本，保留根目录。
+- `training/` 目录（lora_finetune.py / resume_train.py / train_with_modelscope.py / merge_lora.py /
+  test_merged_model.py / setup_local_models.py / download_embedding_model.py / convert_hf_to_gguf.py /
+  start_training.bat）：训练/部署脚本，2026-10-16 从后端根目录迁入 `backend-main-fastapi/training/`，
+  脚本内 sys.path 与数据目录已同步改为项目根相对路径。
 - 任务描述中的 `kaoyan_ai/pipeline/` 目录在本仓库不存在（已全量检索确认），
   实际诊断脚本即上述 12 个根目录一次性脚本。
 *（内容由AI生成，仅供参考）*

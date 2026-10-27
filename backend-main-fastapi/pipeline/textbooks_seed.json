@@ -1,0 +1,349 @@
+{
+  "_meta": {
+    "title": "电子通信考研核心专业课教材总目录",
+    "purpose": "结构化教材权威数据源：书名/作者/出版社/版次/适用阶段/适用院校/所属备考科目",
+    "version": "1.0.0",
+    "created": "2026-10-14",
+    "note": "阶段的判定依据是各校初试/复试科目设置：同一本教材在不同院校可能既用于初试也用于复试，故 stage 支持数组。院校字段仅收录用户明确点名的强校。",
+    "stage_values": ["初试", "复试", "初试+复试"],
+    "confidence": "教材书名/作者/出版社来自用户给定目录，经公开信息核对；适用院校为常见考情归纳，非官方唯一标准，页面需标注来源"
+  },
+  "categories": [
+    {
+      "key": "signals",
+      "name": "信号类",
+      "subject_code": "signals_systems",
+      "books": [
+        {
+          "title": "信号与系统",
+          "edition": "第3版",
+          "authors": ["郑君里"],
+          "publisher": "高等教育出版社",
+          "stage": "初试",
+          "scope": "绝大多数院校初试",
+          "schools": ["全国通用（最主流教材）"],
+          "isbn": "9787040315196",
+          "note": "国内信号与系统教材事实标准，覆盖傅里叶/拉普拉斯/z变换完整体系"
+        },
+        {
+          "title": "信号与线性系统分析",
+          "edition": "第5版",
+          "authors": ["吴大正"],
+          "publisher": "高等教育出版社",
+          "stage": "初试",
+          "scope": "西电、华科、南通大学等",
+          "schools": ["西安电子科技大学", "华中科技大学", "南通大学"],
+          "isbn": "9787040424164",
+          "note": "以\"线性系统分析\"为主线，连续与离散并重"
+        },
+        {
+          "title": "信号与线性系统",
+          "edition": "第6版",
+          "authors": ["管致中"],
+          "publisher": "高等教育出版社",
+          "stage": "初试",
+          "scope": "东南大学专用",
+          "schools": ["东南大学"],
+          "isbn": "9787040461367",
+          "note": "东南大学信号类指定教材"
+        },
+        {
+          "title": "信号与系统：理论、方法和应用",
+          "edition": "第2版",
+          "authors": ["徐守时"],
+          "publisher": "中国科学技术大学出版社",
+          "stage": "初试",
+          "scope": "中科大专用",
+          "schools": ["中国科学技术大学"],
+          "isbn": "9787312026478",
+          "note": "中科大自编，强调理论—方法—应用三线"
+        },
+        {
+          "title": "信号与系统",
+          "edition": "第2版",
+          "authors": ["奥本海姆", "(刘树棠 译)"],
+          "publisher": "电子工业出版社",
+          "stage": "初试",
+          "scope": "西交、华东师大",
+          "schools": ["西安交通大学", "华东师范大学"],
+          "isbn": "9787121205236",
+          "note": "国际经典教材中译本，概念严谨、习题量大"
+        }
+      ]
+    },
+    {
+      "key": "communication",
+      "name": "通信原理类",
+      "subject_code": "communication_principles",
+      "books": [
+        {
+          "title": "通信原理",
+          "edition": "第7版",
+          "authors": ["樊昌信", "曹丽娜"],
+          "publisher": "国防工业出版社",
+          "stage": "初试+复试",
+          "scope": "全国最主流",
+          "schools": ["全国通用（最主流教材）"],
+          "isbn": "9787118085724",
+          "note": "国内通信原理第一教材，13章体系被绝大多数院校考纲沿用"
+        },
+        {
+          "title": "现代通信原理与技术",
+          "edition": null,
+          "authors": ["张辉", "曹丽娜"],
+          "publisher": "西安电子科技大学出版社",
+          "stage": "初试",
+          "scope": "西电初试",
+          "schools": ["西安电子科技大学"],
+          "isbn": "9787560638570",
+          "note": "西电自编，与樊昌信体系互补，偏现代技术"
+        },
+        {
+          "title": "通信原理",
+          "edition": null,
+          "authors": ["宋铁成"],
+          "publisher": "人民邮电出版社",
+          "stage": "复试",
+          "scope": "东南大学复试",
+          "schools": ["东南大学"],
+          "isbn": "9787115395704",
+          "note": "东南大学复试指定"
+        },
+        {
+          "title": "通信原理",
+          "edition": null,
+          "authors": ["李晓峰"],
+          "publisher": "清华大学出版社",
+          "stage": "初试",
+          "scope": "电子科技大学",
+          "schools": ["电子科技大学"],
+          "isbn": "9787302315134",
+          "note": "成电自编，清华社出版"
+        },
+        {
+          "title": "通信原理教程",
+          "edition": "第3版",
+          "authors": ["樊昌信"],
+          "publisher": "电子工业出版社",
+          "stage": "初试",
+          "scope": "新疆大学",
+          "schools": ["新疆大学"],
+          "isbn": "9787121152436",
+          "note": "樊昌信精简版，篇幅更适合作复习教程"
+        },
+        {
+          "title": "通信原理",
+          "edition": null,
+          "authors": ["周炯槃"],
+          "publisher": "北京邮电大学出版社",
+          "stage": "初试",
+          "scope": "北京邮电大学",
+          "schools": ["北京邮电大学"],
+          "isbn": "9787563505674",
+          "note": "北邮自编，信息论与编码部分尤为扎实"
+        }
+      ]
+    },
+    {
+      "key": "circuits",
+      "name": "电路、模电、数电",
+      "subject_code": null,
+      "subject_codes": ["circuit", "analog_electronics", "digital_electronics"],
+      "books": [
+        {
+          "title": "电路",
+          "edition": "第6版",
+          "authors": ["邱关源", "罗先觉"],
+          "publisher": "高等教育出版社",
+          "stage": "初试",
+          "scope": "全国通用",
+          "schools": ["全国通用（最主流教材）"],
+          "isbn": "9787040565539",
+          "note": "国内电路教材第一选择，15章体系",
+          "subject_code": "circuit"
+        },
+        {
+          "title": "电路分析基础",
+          "edition": "第5版",
+          "authors": ["李瀚荪"],
+          "publisher": "高等教育出版社",
+          "stage": "初试",
+          "scope": "部分院校",
+          "schools": ["全国通用（次主流）"],
+          "isbn": "9787040452419",
+          "note": "与邱关源并行使用的另一主流教材",
+          "subject_code": "circuit"
+        },
+        {
+          "title": "模拟电子技术基础",
+          "edition": "第5/6版",
+          "authors": ["童诗白", "华成英"],
+          "publisher": "高等教育出版社",
+          "stage": "初试",
+          "scope": "全国通用",
+          "schools": ["全国通用（最主流教材）"],
+          "isbn": "9787040445893",
+          "note": "模电事实标准教材，10章体系",
+          "subject_code": "analog_electronics"
+        },
+        {
+          "title": "数字电子技术基础",
+          "edition": "第6版",
+          "authors": ["阎石"],
+          "publisher": "高等教育出版社",
+          "stage": "初试",
+          "scope": "全国通用",
+          "schools": ["全国通用（最主流教材）", "贵州大学"],
+          "isbn": "9787040444087",
+          "note": "数电事实标准教材，8章体系；贵大834核心教材",
+          "subject_code": "digital_electronics"
+        },
+        {
+          "title": "数字电路与系统",
+          "edition": "第2版",
+          "authors": ["李文渊"],
+          "publisher": "高等教育出版社",
+          "stage": "初试",
+          "scope": "东南大学",
+          "schools": ["东南大学"],
+          "isbn": "9787040553826",
+          "note": "东南大学数字电路指定教材",
+          "subject_code": "digital_electronics"
+        },
+        {
+          "title": "数字电路与逻辑设计",
+          "edition": "第2版",
+          "authors": ["刘培植"],
+          "publisher": "北京邮电大学出版社",
+          "stage": "复试",
+          "scope": "北邮复试",
+          "schools": ["北京邮电大学"],
+          "isbn": "9787563527157",
+          "note": "北邮复试指定",
+          "subject_code": "digital_electronics"
+        },
+        {
+          "title": "数字系统原理与设计",
+          "edition": null,
+          "authors": ["张振娟"],
+          "publisher": "清华大学出版社",
+          "stage": "初试",
+          "scope": "南通大学初试",
+          "schools": ["南通大学"],
+          "isbn": "9787302551112",
+          "note": "偏系统设计视角",
+          "subject_code": "digital_electronics"
+        }
+      ]
+    },
+    {
+      "key": "dsp",
+      "name": "数字信号处理 DSP（复试高频）",
+      "subject_code": "digital_signal_processing",
+      "books": [
+        {
+          "title": "数字信号处理",
+          "edition": "第4版",
+          "authors": ["高西全", "丁玉美"],
+          "publisher": "西安电子科技大学出版社",
+          "stage": "复试",
+          "scope": "使用最多",
+          "schools": ["全国通用（最主流教材）"],
+          "isbn": "9787560643987",
+          "note": "国内DSP第一教材，使用面最广"
+        },
+        {
+          "title": "数字信号处理教程",
+          "edition": "第4版",
+          "authors": ["程佩青"],
+          "publisher": "清华大学出版社",
+          "stage": "复试",
+          "scope": "大连理工、山东大学",
+          "schools": ["大连理工大学", "山东大学"],
+          "isbn": "9787302325393",
+          "note": "理论推导详尽，适合复试深挖"
+        },
+        {
+          "title": "数字信号处理",
+          "edition": null,
+          "authors": ["吴镇扬"],
+          "publisher": "高等教育出版社",
+          "stage": "复试",
+          "scope": "东南大学",
+          "schools": ["东南大学"],
+          "isbn": "9787040449426",
+          "note": "东南大学DSP指定教材"
+        },
+        {
+          "title": "数字信号处理",
+          "edition": null,
+          "authors": ["冀振元"],
+          "publisher": "哈尔滨工业大学出版社",
+          "stage": "复试",
+          "scope": "哈工大复试",
+          "schools": ["哈尔滨工业大学"],
+          "isbn": "9787560346758",
+          "note": "哈工大复试指定"
+        }
+      ]
+    },
+    {
+      "key": "em",
+      "name": "电磁场与电磁波（天线射频方向）",
+      "subject_code": "electromagnetic_field",
+      "books": [
+        {
+          "title": "电磁场与电磁波",
+          "edition": "第5版",
+          "authors": ["谢处方"],
+          "publisher": "高等教育出版社",
+          "stage": "初试+复试",
+          "scope": "全国通用",
+          "schools": ["全国通用（最主流教材）"],
+          "isbn": "9787040539790",
+          "note": "国内电磁场教材事实标准"
+        },
+        {
+          "title": "电磁场与电磁波理论基础",
+          "edition": "第2版",
+          "authors": ["孙国安"],
+          "publisher": "东南大学出版社",
+          "stage": "复试",
+          "scope": "东南大学",
+          "schools": ["东南大学"],
+          "isbn": "9787564117467",
+          "note": "东南大学电磁场指定"
+        },
+        {
+          "title": "电磁场与波",
+          "edition": null,
+          "authors": ["冯恩信"],
+          "publisher": "西安交通大学出版社",
+          "stage": "复试",
+          "scope": "西安交通大学",
+          "schools": ["西安交通大学"],
+          "isbn": "9787560532663",
+          "note": "西交自编"
+        }
+      ]
+    },
+    {
+      "key": "network",
+      "name": "计算机网络（部分院校复试）",
+      "subject_code": "computer_networks",
+      "books": [
+        {
+          "title": "计算机网络",
+          "edition": "第7/8版",
+          "authors": ["谢希仁"],
+          "publisher": "电子工业出版社",
+          "stage": "复试",
+          "scope": "部分院校复试",
+          "schools": ["全国通用（最主流教材）"],
+          "isbn": "9787121411743",
+          "note": "国内计算机网络第一教材"
+        }
+      ]
+    }
+  ]
+}

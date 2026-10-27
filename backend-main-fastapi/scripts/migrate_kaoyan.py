@@ -35,7 +35,7 @@ def main():
     # 导入种子学科
     from services.kaoyan.seed_txkyer import SEED_SUBJECTS
     from database import SessionLocal
-    from models import KaoyanSubject
+    from core.models import KaoyanSubject
     db = SessionLocal()
     try:
         existing_codes = {s.code for s in db.query(KaoyanSubject).all()}

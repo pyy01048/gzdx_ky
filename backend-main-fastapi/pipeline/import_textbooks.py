@@ -33,6 +33,14 @@ from pipeline.config import pg_database_url  # noqa: E402
 SEED = BASE_DIR / "pipeline" / "textbooks_seed.json"
 REPORT = BASE_DIR.parent / "data" / "textbook_import_report.json"
 
+#: seed 里沿用的旧学科 code；线上 subjects.code 是导入后生成的 custom_*，
+#: 因此除了 code，还要按中文名兜底解析，避免整本教材挂不上 subject_id。
+LEGACY_SUBJECT_CODES = {
+    "signals_systems": "信号与系统",
+    "analog_electronics": "模拟电子技术",
+    "digital_electronics": "数字电子技术",
+}
+
 #: 目录里出现的「非具体院校」写法，不参与院校关联
 NON_SCHOOL_TOKENS = ("全国通用", "部分院校", "次主流", "最主流")
 
@@ -54,7 +62,9 @@ def main(argv: list[str] | None = None) -> int:
         with pg.cursor() as cur:
             # 科目 code → id
             cur.execute("SELECT id, code, name FROM subjects")
-            subj = {code: (sid, name) for sid, code, name in cur.fetchall()}
+            subj_rows = cur.fetchall()
+            subj = {code: (sid, name) for sid, code, name in subj_rows}
+            subj_by_name = {name: (sid, name) for sid, _code, name in subj_rows}
             # 院校名 + 别名 → id
             cur.execute("SELECT id, name FROM kaoyan_schools")
             school = {name: sid for sid, name in cur.fetchall()}
@@ -72,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
                 if sc:
                     if sc in subj:
                         sid = subj[sc][0]
+                    elif LEGACY_SUBJECT_CODES.get(sc) in subj_by_name:
+                        sid = subj_by_name[LEGACY_SUBJECT_CODES[sc]][0]
                     else:
                         report["unmatched_subject_codes"].append({"code": sc, "title": b["title"]})
                 stages = [b["stage"]] if b["stage"] != "初试+复试" else ["初试", "复试"]

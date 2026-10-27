@@ -9,6 +9,7 @@
 
 使用：python services/kaoyan/supplement_answers.py [--limit N] [--resume]
 """
+import logging
 import argparse
 import json
 import re
@@ -22,7 +23,9 @@ from database import SessionLocal
 from models import QuizQuestion
 from services.model_gateway import ModelGateway
 
-STATE_FILE = Path(__file__).parent / "supplement_checkpoint.json"
+# 断点状态同样不放包目录：部署包夹带过期 checkpoint 会让任务"假装已完成"。
+# 与 spider_yz 保持同一约定：data/spider_state/ 运行时目录。
+STATE_FILE = Path(__file__).resolve().parents[2] / "data" / "spider_state" / "supplement_checkpoint.json"
 
 
 def clean_answer(text: str) -> str:
@@ -52,12 +55,17 @@ def load_state():
     if STATE_FILE.exists():
         try:
             return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
     return {"done_ids": []}
 
 
 def save_state(st):
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
 
 

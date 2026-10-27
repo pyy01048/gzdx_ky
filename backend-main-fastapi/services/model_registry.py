@@ -28,6 +28,7 @@
 """
 
 from __future__ import annotations
+import logging
 
 import os
 import subprocess
@@ -433,8 +434,12 @@ def detect_hardware() -> HardwareProfile:
                 nums = [int(s) for s in out.split() if s.isdigit()]
                 if nums:
                     hw.ram_gb = round(nums[0] / 1024 ** 3, 1)
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
     # GPU（nvidia-smi 优先）
     try:
@@ -451,8 +456,12 @@ def detect_hardware() -> HardwareProfile:
                 hw.cuda_available = True
                 hw.source = "nvidia-smi"
                 return hw
-    except Exception:
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
 
     # 退回 torch
     try:
@@ -463,8 +472,12 @@ def detect_hardware() -> HardwareProfile:
             hw.gpu_name = torch.cuda.get_device_name(0)
             hw.vram_gb = round(torch.cuda.get_device_properties(0).total_memory / 1024 ** 3, 1)
             hw.source = "torch"
-    except Exception:
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
 
     return hw
 

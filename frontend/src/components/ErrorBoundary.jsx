@@ -1,5 +1,5 @@
 /**
- * 全局错误边界组件 V3.1
+ * 全局错误边界组件 V3.2
  * 捕获子组件的渲染错误，显示友好的错误页面，防止整个应用白屏。
  *
  * V3.1 变更（白屏整改）：
@@ -9,12 +9,20 @@
  *      （若崩溃源就是 Router 自身，useNavigate 同样不可用，hash 永远跳得出去）；
  *   ③ 重试计数 >= 2 时提示转人工，避免用户在必然复现的崩溃上反复点击。
  *
+ * V3.2 变更（公网实测 P0-2：错误状态污染其它页面）：
+ *   React Router 的 HashRouter 用 hash 变化驱动路由；单页应用里某个路由崩溃后，
+ *   错误页会一直停留在边界状态，用户手动改 hash 或点「返回首页」时若不重置，
+ *   新路由会被错误页顶掉（表现为"首页/其它页也弹同样的错误框"）。
+ *   这里通过监听 hashchange 在路由切换时自动重置错误状态并重挂子树——
+ *   崩溃页只影响"当前那次导航"，切换路由后应用恢复。
+ *
  * 使用方式：
  * <ErrorBoundary>
  *   <App />
  * </ErrorBoundary>
  */
 import React from 'react'
+import { AlertCircle } from './Icon'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -36,6 +44,27 @@ class ErrorBoundary extends React.Component {
     this.setState({ errorInfo })
   }
 
+  componentDidMount() {
+    /* 路由切换（hash 变化）时重置错误状态，避免一个崩溃页污染其它路由 */
+    window.addEventListener('hashchange', this.handleRouteChange)
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('hashchange', this.handleRouteChange)
+  }
+
+  handleRouteChange = () => {
+    if (this.state.hasError) {
+      console.info('[ErrorBoundary] 检测到路由切换，重置错误状态')
+      this.setState((s) => ({
+        hasError: false,
+        error: null,
+        errorInfo: null,
+        retries: s.retries + 1,
+      }))
+    }
+  }
+
   /* 重试：重置边界状态 + 递增 retries。
      retries 同时作为子树的 remount key —— 崩溃时子组件的内部 state 可能已损坏，
      仅把 hasError 置 false 只会原样再崩一次；换 key 强制重挂才是有效重试。 */
@@ -48,9 +77,15 @@ class ErrorBoundary extends React.Component {
     }))
   }
 
-  /* 返回首页：直接写 hash。错误边界挂在 Router 内层，若崩溃源就是 Router 本身，
-     useNavigate 同样不可用；hash 写入不依赖任何 React 上下文，永远跳得出去。 */
+  /* 返回首页：先重置错误状态（若当前已在 #/ 则 hash 不变不会触发 hashchange），
+     再写 hash。hash 写入不依赖任何 React 上下文，永远跳得出去。 */
   handleHome = () => {
+    this.setState((s) => ({
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      retries: s.retries + 1,
+    }))
     window.location.hash = '#/'
   }
 
@@ -79,7 +114,7 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="error-boundary">
           <div className="error-boundary-content">
-            <div className="error-boundary-icon">⚠️</div>
+            <div className="error-boundary-icon"><AlertCircle size={30} /></div>
             <h2 className="error-boundary-title">页面出了点问题</h2>
             <p className="error-boundary-desc">
               很抱歉，页面在渲染时遇到了错误。您可以尝试重试或返回首页，也可以复制错误信息反馈给开发者。

@@ -709,7 +709,46 @@ def list_sessions(db, subject: Optional[str] = None, status: Optional[str] = Non
     rows = conn.execute(sql, params).fetchall()
     cols = ["id", "blueprint_key", "subject", "paper", "mode", "total_count", "total_score",
             "correct_count", "score", "status", "started_at", "submitted_at", "expires_at"]
-    return [dict(zip(cols, r)) for r in rows]
+    sessions = [dict(zip(cols, r)) for r in rows]
+
+    # 列表增强（P0-3）：从 exam_answers 现算每场的聚合成绩与可出报告标记。
+    # 一次性取出所有相关作答，Python 聚合，避免 N+1。
+    if sessions:
+        ids = [s["id"] for s in sessions]
+        placeholders = ",".join("?" * len(ids))
+        ans_rows = conn.execute(
+            "SELECT session_id, question_snapshot, user_answer, final_score"
+            f" FROM exam_answers WHERE session_id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        agg: Dict[int, Dict[str, Any]] = {}
+        for r in ans_rows:
+            sid = r[0]
+            a = agg.setdefault(sid, {"max_score": 0.0, "earned_score": 0.0, "submitted_count": 0})
+            try:
+                snap = json.loads(r[1] or "{}")
+                a["max_score"] += float(snap.get("max_score") or 0)
+            except (TypeError, ValueError):
+                pass
+            if r[3] is not None:
+                try:
+                    a["earned_score"] += float(r[3])
+                except (TypeError, ValueError):
+                    pass
+            if (r[2] or "").strip():
+                a["submitted_count"] += 1
+
+    for s in sessions:
+        a = agg.get(s["id"], {"max_score": 0.0, "earned_score": 0.0, "submitted_count": 0})
+        # report_available：已交卷且有实际作答（至少一条 user_answer 非空）
+        s["report_available"] = bool(
+            s.get("status") == "submitted" and a["submitted_count"] > 0
+        )
+        # 从 exam_answers 聚合的满分/得分（现有 total_score=试卷满分、score=会话得分保留）
+        s["max_score"] = round(a["max_score"], 2)
+        s["earned_score"] = round(a["earned_score"], 2)
+
+    return sessions
 
 
 def session_detail(db, session_id: int) -> Dict[str, Any]:

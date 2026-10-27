@@ -31,14 +31,17 @@ export function clearPan() {
   localStorage.removeItem('kaoyan_pan_token')
 }
 
-/* 网盘状态：从后端 platform-configs 判断百度网盘是否已授权 */
+/* 网盘状态：从后端 platform-configs 判断百度网盘是否已授权。
+   P0-SEC 之后后端不再下发任何凭据原值，只给 has_* 状态位 —— 所以这里
+   既不再返回 token，也不能把 token 当作「是否配置过」的判据。 */
 export async function getStatus() {
   const j = await request('/netdisk/platform-configs')
   const baidu = (j.configs && j.configs.baidu) || null
   return {
-    configured: !!(baidu && baidu.token),
+    configured: !!(baidu && baidu.has_token),
+    hasAppKey: !!(baidu && baidu.has_app_key && baidu.has_secret_key),
+    appId: (baidu && baidu.app_id) || '',
     platform: 'baidu_netdisk',
-    token: baidu ? baidu.token : '',
     last_sync: baidu ? baidu.last_sync : null,
     sync_enabled: baidu ? baidu.sync_enabled : false
   }
@@ -50,16 +53,16 @@ export async function getAuthUrl() {
   return j.auth_url || j.url || ''
 }
 
-/* 授权码换 token：POST /api/netdisk/callback?code=... */
+/* 授权码换 token：POST /api/netdisk/callback?code=...
+   后端只回状态（success / expires_in / scope / has_refresh_token），
+   access_token 留在服务端并加密落库 —— 本机 localStorage 里不再有凭据可读。 */
 export async function exchangeToken(code) {
   const j = await request('/netdisk/callback', {
     method: 'POST',
     params: { code, redirect_uri: 'oob' },
   })
-  // 后端返回的 token 结构可能为 { access_token, refresh_token, expires_in, ... }
-  const tok = j.access_token ? j : (j.token || j)
-  storePan(tok)
-  return tok
+  storePan(j)
+  return j
 }
 
 /* 刷新 token：走后端本地 OAuth，仅传 refresh_token */
@@ -79,7 +82,8 @@ export async function getTokenStatus() {
 /* 目录浏览：只取百度真实文件列表（api_files），
  * 不混本地同步缓存（local_files 是 /netdisk/sync 写的 DB 行，
  * 混进来会让"没连接也显示目录"的 bug 复活）。
- * 授权失效时后端明确 401（ApiError.status === 401），调用方据此要求重新授权。 */
+ * 授权失效时后端明确 409 + action=reauthorize（ApiError.data.action），
+ * 调用方据此要求重新授权；2026-10-18 前是 401，兼容判断见 Pan.jsx。 */
 export async function fetchRemoteFiles(dir = '/') {
   const j = await request('/netdisk/files', { params: { path: dir } })
   if (j && j.api_error) console.warn('[pan] 网盘列表部分失败：', j.api_error)

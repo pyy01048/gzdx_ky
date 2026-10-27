@@ -1,23 +1,29 @@
 # -*- coding: utf-8 -*-
 """成长体系（模块 F2）：等级 / 徽章 / 积分 / 成就。
 
-基于 study_events 事件流水聚合计算：
+积分与事件计数来自 study_events 事件流水；**活跃天数 / 连续打卡**一律取自
+``services/study_calendar`` 的日活台账，和仪表盘是同一个数字（口径不可分叉）。
   GET /api/growth/summary        总览（等级、积分、徽章/成就数量、下一等级进度）
   GET /api/growth/levels         等级定义
   GET /api/growth/badges         徽章列表（含解锁状态）
   GET /api/growth/achievements   成就列表（含解锁状态）
+  GET /api/growth/timeline       近 N 天学习轨迹（事件计数 + 同一口径的 streak）
 """
 from __future__ import annotations
+import logging
 
 import datetime
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends
+import sqlalchemy
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import StudyEvent
+from services.study_calendar import day_ledger, streak_summary
+from utils.timeutil import day_bucket_expr, local_range_utc, local_today
 
 router = APIRouter(prefix="/api/growth", tags=["成长体系"])
 
@@ -75,11 +81,13 @@ def _collect_stats(db: Session) -> Dict[str, int]:
         ).scalar() or 0
         s["study_seconds"] = int(dur or 0)
 
-        # 活跃天数
-        days = db.query(func.date(StudyEvent.occurred_at)).distinct().all()
-        day_set = {d[0] for d in days if d[0]}
-        s["active_days"] = len(day_set)
-        s["streak_days"] = _streak(day_set)
+        # 活跃天数 / 连续打卡：与仪表盘同源（services.study_calendar 日活台账）。
+        # 原先这里按 study_events 自行 distinct 本地日再回数连续段，是产品里的
+        # 第二个 streak 口径——同一用户在首页看到 5 天、成长页看到 7 天，
+        # 徽章「三日连击」的判定依据也就和打卡数字各说各话。
+        cal = _calendar_stats(db)
+        s["active_days"] = cal["active_days"]
+        s["streak_days"] = cal["streak_days"]
 
         # 快速答对（<=60s 且答对）
         fast = db.query(func.count(StudyEvent.id)).filter(
@@ -89,29 +97,30 @@ def _collect_stats(db: Session) -> Dict[str, int]:
             StudyEvent.duration_seconds <= 60,
         ).scalar() or 0
         s["fast_correct"] = fast
-    except Exception:
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+        logging.getLogger(__name__).warning(
+            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+        )
     return s
 
 
-def _streak(day_set: set) -> int:
-    if not day_set:
-        return 0
-    dset = set()
-    for d in day_set:
-        try:
-            dset.add(datetime.date.fromisoformat(d))
-        except (TypeError, ValueError):
-            continue
-    today = datetime.date.today()
-    cur = today
-    if cur not in dset:
-        cur = today - datetime.timedelta(days=1)
-    streak = 0
-    while cur in dset:
-        streak += 1
-        cur -= datetime.timedelta(days=1)
-    return streak
+def _calendar_stats(db: Session) -> Dict[str, int]:
+    """日活台账 → 活跃天数 / 当前连续打卡 / 有效打卡天数。
+
+    口径唯一来源是 ``services/study_calendar``：一次 ``day_ledger`` 构建，
+    streak 走 ``streak_summary``（今日未学不算断签）。这里不再自己 group by
+    日期，也不给跨零点宽限——一套产品里不能同时存在两个日界，否则「今日」
+    会随模块漂移（study_calendar 模块 docstring 有完整理由）。
+    """
+    ledger = day_ledger(db)
+    st = streak_summary(ledger)
+    return {
+        "active_days": sum(1 for a in ledger.values() if a.is_active),
+        "streak_days": st["current"],
+        "effective_days": st["total_days"],
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -220,3 +229,66 @@ def growth_achievements(db: Session = Depends(get_db)):
     stats = _collect_stats(db)
     return {"achievements": [{"code": a["code"], "name": a["name"], "desc": a["desc"],
                               "earned": a["check"](stats)} for a in ACHIEVEMENT_SPECS]}
+
+
+# --------------------------------------------------------------------------- #
+# 学习轨迹（S7）：按日聚合事件流水 + 连续学习天数
+# --------------------------------------------------------------------------- #
+@router.get("/timeline")
+def growth_timeline(days: int = 30, db: Session = Depends(get_db)):
+    """学习轨迹：最近 N 天按日聚合（事件数 / 答题正误 / 学习时长 / 科目分布）。
+
+    数据源：study_events 事件流水（答题、复习、学习等动作均会埋点）。
+    """
+    days = max(1, min(days, 365))
+    today = local_today()
+    start_day = today - datetime.timedelta(days=days - 1)
+    since, until = local_range_utc(start_day, today + datetime.timedelta(days=1))
+    day_col = day_bucket_expr(StudyEvent.occurred_at, db).label("day")
+
+    rows = db.query(
+        day_col,
+        func.count(StudyEvent.id).label("events"),
+        func.sum(func.cast(StudyEvent.is_correct, sqlalchemy.Integer)).label("correct"),
+        func.count(func.nullif(StudyEvent.is_correct, None)).label("graded"),
+        func.coalesce(func.sum(StudyEvent.duration_seconds), 0).label("seconds"),
+    ).filter(
+        StudyEvent.occurred_at >= since,
+        StudyEvent.occurred_at < until,
+    ).group_by(day_col).order_by(day_col).all()
+
+    # 科目分布（近 N 天）
+    subj_rows = db.query(
+        StudyEvent.subject, func.count(StudyEvent.id)
+    ).filter(
+        StudyEvent.occurred_at >= since,
+        StudyEvent.occurred_at < until,
+        StudyEvent.subject.isnot(None),
+    ).group_by(StudyEvent.subject).order_by(func.count(StudyEvent.id).desc()).all()
+
+    # 连续/活跃天数与打卡同源：日活台账（study_calendar），不再自数事件流水的日期
+    ledger = day_ledger(db, start_day=start_day, end_day=today)
+    streak = streak_summary(ledger, today=today)
+
+    timeline = [
+        {
+            "date": r[0].isoformat() if r[0] else None,
+            "events": r[1] or 0,
+            "graded": r[3] or 0,
+            "correct": int(r[2] or 0),
+            "accuracy": round(int(r[2] or 0) / r[3] * 100, 1) if r[3] else None,
+            "study_seconds": int(r[4] or 0),
+        }
+        for r in rows
+    ]
+    return {
+        "days": days,
+        "streak_days": streak["current"],
+        "effective_days": streak["total_days"],
+        "streak_rule": streak["rule"],
+        "active_days": sum(1 for a in ledger.values() if a.is_active),
+        "timeline": timeline,
+        "subject_breakdown": [
+            {"subject": s or "未分类", "events": n} for s, n in subj_rows
+        ],
+    }

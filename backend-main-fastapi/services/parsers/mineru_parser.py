@@ -4,19 +4,26 @@
 为什么不 import mineru 的 python 包：MinerU 装在独立 venv 里（重依赖 torch +
 模型权重），后端主环境装不上也不该装。这里一律**走命令行**。
 
-两种 CLI 形态都支持（自动探测，也可以用环境变量强制）：
+两种 CLI 形态都支持（**运行时探测**，也可以用环境变量强制）：
 
-- **2.x**（``docx/34-OCR与数据采集开源方案`` §4.2 描述的形态）::
+- **2.x**（本机 ``.venv-ocr`` 装的就是 2.7.6，``docx/34-OCR与数据采集开源方案``
+  §4.2 描述的形态）::
 
-      mineru -p <pdf> -o <out_dir> --task doc
+      mineru -p <pdf> -o <out_dir>
 
   产物里有 ``*_content_list.json`` / ``images/``，字段是页级版面块。
+  2.x 的具体 flag 以现场 ``mineru --help`` 为准（2.7.6 有 ``-p/-o/-m/-s/-e``，
+  **没有** ``--task``；``--task`` 只在更老的版本里有）。
 
-- **4.x**（本机 ``.venv-ocr`` 里装的就是这一代，CLI 变成子命令形态）::
+- **4.x**（CLI 变成子命令形态）::
 
       mineru parse <pdf> -o <out.md> --json --pages all
 
   产物是带结构标记的 Markdown（``<!-- page N of M -->``），没有 content_list。
+
+**flag 全部按现场 help 过滤**：命令是按「(flag, value)」对拼出来的，每个 flag
+都要在 ``mineru --help`` 原文里出现过才会带上 —— MinerU 升级改了 CLI 时不会
+静默跑错参数（``tests/test_mineru_cli_snapshot.py`` 还会把这条契约钉住）。
 
 两种形态都归一成同一套 ``ParsedBlock`` / ``ParsedPage``，下游不需要知道差别。
 
@@ -68,8 +75,12 @@ logger = logging.getLogger(__name__)
 #: MinerU 可执行文件的查找顺序：环境变量 → PATH。
 #: 绝对不许在代码里写死本机路径（``tests/test_path_binding_guard.py`` 会扫源码）。
 BIN_ENV_VARS = ("MINERU_BIN", "KAOYAN_OCR_BIN")
-#: CLI 形态：auto（先 2.x 再 4.x）/ 2x / 4x
+#: CLI 形态：auto（先探测再定）/ 2x / 4x
 FLAVOR_ENV = "KAOYAN_MINERU_FLAVOR"
+#: 强制解析方法（2.x 的 -m auto|txt|ocr）；留空则用 MinerU 自己的默认值
+METHOD_ENV = "KAOYAN_MINERU_METHOD"
+#: 追加到命令行末尾的自定义参数（空格分隔），用于本机特殊调参
+EXTRA_ARGS_ENV = "KAOYAN_MINERU_EXTRA_ARGS"
 #: 单文件超时（秒），可用环境变量覆盖
 TIMEOUT_ENV = "KAOYAN_MINERU_TIMEOUT"
 #: 4.x CLI 等待服务端解析的秒数
@@ -130,6 +141,40 @@ def _wait_seconds() -> int:
 def _flavor() -> str:
     value = (os.environ.get(FLAVOR_ENV) or "auto").strip().lower()
     return value if value in ("auto", "2x", "4x") else "auto"
+
+
+def _flag_supported(flag: str, help_text: str) -> bool:
+    """这个 flag 在现场 ``--help`` 里存在吗？
+
+    ``help_text`` 为空（探测不到）→ 一律认为支持（保持旧行为，别把命令拼残）。
+    """
+    if not help_text:
+        return True
+    if flag.startswith("--"):
+        return flag in help_text
+    # 短选项：help 里一般写成 "-p, --path PATH"
+    return re.search(rf"(^|[\s,]){re.escape(flag)}([\s,]|$)", help_text, re.M) is not None
+
+
+def _assemble(
+    binary: str, parts: Sequence[Tuple[Optional[str], Optional[str]]], help_text: str
+) -> List[str]:
+    """把 (flag, value) 对拼成命令行；现场 help 里没有的 flag 直接不拼。
+
+    这样 MinerU 升级导致 CLI 变形时，命令不会带着不存在的参数去撞
+    "no such option"，而是退回到该版本真正支持的参数集。
+    """
+    cmd = [binary]
+    for flag, value in parts:
+        if flag is None:
+            continue
+        if not _flag_supported(flag, help_text):
+            logger.debug("MinerU CLI 不支持 %s，跳过", flag)
+            continue
+        cmd.append(flag)
+        if value is not None:
+            cmd.append(value)
+    return cmd
 
 
 # --------------------------------------------------------------------------- #
@@ -394,6 +439,19 @@ def _pages_from_markdown(markdown: str) -> List[ParsedPage]:
 # --------------------------------------------------------------------------- #
 # 解析器
 # --------------------------------------------------------------------------- #
+def _flavor_from_help(help_text: str) -> str:
+    """按 ``--help`` 原文判定 CLI 形态：``2x`` / ``4x`` / ``unknown``。
+
+    独立成模块级函数是为了让契约快照测试能直接验证判定规则，
+    而不是把规则藏在 ``probe_cli`` 里、测试再抄一份。
+    """
+    if "--path" in help_text or "-p, --path" in help_text:
+        return "2x"
+    if re.search(r"^\s{2,}parse\b", help_text, re.M):
+        return "4x"
+    return "unknown"
+
+
 class MinerUParser:
     """MinerU CLI 适配器。"""
 
@@ -402,6 +460,7 @@ class MinerUParser:
     def __init__(self, bin_path: Optional[str] = None, timeout: Optional[float] = None):
         self._bin_path = bin_path
         self._timeout = timeout
+        self._probe_cache: Optional[Tuple[str, str]] = None
 
     # -- 可用性 ----------------------------------------------------------- #
     def resolve_bin(self) -> str:
@@ -419,25 +478,78 @@ class MinerUParser:
     def timeout(self) -> float:
         return float(self._timeout) if self._timeout else _timeout()
 
-    # -- 命令构造 --------------------------------------------------------- #
-    def _cmd_2x(self, binary: str, pdf: str, out_dir: str) -> List[str]:
-        return [binary, "-p", os.path.abspath(pdf), "-o", out_dir, "--task", "doc"]
+    # -- CLI 探测 --------------------------------------------------------- #
+    def probe_cli(self, binary: Optional[str] = None) -> Tuple[str, str]:
+        """探测 MinerU CLI 形态，返回 ``(flavor, help_text)``。
 
-    def _cmd_4x(self, binary: str, pdf: str, out_dir: str) -> List[str]:
+        ``flavor`` ∈ ``2x`` / ``4x`` / ``unknown``。
+        现场抓 ``--help`` 原文有两个用处：判形态，以及**按真实存在的 flag 拼命令**
+        （2.7.6 没有 ``--task``，硬传会直接 no such option）。
+        """
+        binary = binary or self.resolve_bin()
+        if not binary:
+            return "unknown", ""
+        if self._probe_cache is not None:
+            return self._probe_cache
+        try:
+            proc = subprocess.run(
+                [binary, "--help"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                encoding="utf-8",
+                errors="replace",
+            )
+            text = (proc.stdout or "") + (proc.stderr or "")
+        except Exception:  # noqa: BLE001 - 探测失败就按 unknown 处理
+            text = ""
+        flavor = _flavor_from_help(text)
+        self._probe_cache = (flavor, text)
+        return self._probe_cache
+
+    # -- 命令构造 --------------------------------------------------------- #
+    def _cmd_2x(
+        self,
+        binary: str,
+        pdf: str,
+        out_dir: str,
+        page_numbers: Optional[Sequence[int]] = None,
+        help_text: str = "",
+    ) -> List[str]:
+        parts: List[Tuple[Optional[str], Optional[str]]] = [
+            ("-p", os.path.abspath(pdf)),
+            ("-o", out_dir),
+        ]
+        if page_numbers:
+            pages = sorted({int(p) for p in page_numbers if int(p) >= 1})
+            if pages:
+                # 2.x 的 -s/-e 是 **0 基**（"beginning from 0"）
+                parts.append(("-s", str(pages[0] - 1)))
+                parts.append(("-e", str(pages[-1] - 1)))
+        # 老版本（2.1/2.5 早期）有 --task doc，新版本没有 → 由 help 过滤
+        parts.append(("--task", "doc"))
+        method = (os.environ.get(METHOD_ENV) or "").strip()
+        if method:
+            parts.append(("-m", method))
+        extra = (os.environ.get(EXTRA_ARGS_ENV) or "").strip()
+        if extra:
+            for token in extra.split():
+                parts.append((token, None))
+        return _assemble(binary, parts, help_text)
+
+    def _cmd_4x(
+        self, binary: str, pdf: str, out_dir: str, help_text: str = ""
+    ) -> List[str]:
         stem = os.path.splitext(os.path.basename(pdf))[0]
         out_md = os.path.join(out_dir, f"{stem}.md")
-        return [
-            binary,
-            "parse",
-            os.path.abspath(pdf),
-            "-o",
-            out_md,
-            "--json",
-            "--pages",
-            "all",
-            "--wait",
-            str(_wait_seconds()),
+        parts: List[Tuple[Optional[str], Optional[str]]] = [
+            ("parse", None),
+            ("-o", out_md),
+            ("--json", None),
+            ("--pages", "all"),
+            ("--wait", str(_wait_seconds())),
         ]
+        return _assemble(binary, parts, help_text)
 
     # -- 主流程 ----------------------------------------------------------- #
     def parse(
@@ -461,15 +573,21 @@ class MinerUParser:
         os.makedirs(real_out, exist_ok=True)
 
         flavor = _flavor()
-        order = ["2x", "4x"] if flavor == "auto" else [flavor]
+        probed, help_text = self.probe_cli(binary)
+        if flavor == "auto" and probed in ("2x", "4x"):
+            order = [probed]
+        elif flavor == "auto":
+            order = ["2x", "4x"]
+        else:
+            order = [flavor]
         succeeded = False
         used_flavor = order[0]
         last_error = ""
         for fl in order:
             cmd = (
-                self._cmd_2x(binary, pdf_path, real_out)
+                self._cmd_2x(binary, pdf_path, real_out, page_numbers, help_text)
                 if fl == "2x"
-                else self._cmd_4x(binary, pdf_path, real_out)
+                else self._cmd_4x(binary, pdf_path, real_out, help_text)
             )
             logger.info("MinerU 解析(%s): %s", fl, " ".join(cmd))
             try:

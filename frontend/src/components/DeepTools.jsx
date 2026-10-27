@@ -103,10 +103,11 @@ export default function DeepTools({ send, notebook, pan, words, cards, packs, ad
           <div>
             <textarea
               className="input" rows={6}
+              aria-label="英语作文内容"
               placeholder="粘贴你的英语作文，我会按考研阅卷标准批改、打分并给出替换表达…"
               value={essay} onChange={(e) => setEssay(e.target.value)}
             />
-            <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+            <div className="row" style={{ gap: 'var(--space-2)', marginTop: 'var(--space-2)', justifyContent: 'flex-end' }}>
               <button className="btn primary" onClick={submitEssay}>开始批改</button>
             </div>
             <p className="deep-hint">仿 DeepStudent：考研场景深度适配，输出评分档位、逐句问题与高级表达替换。</p>
@@ -115,17 +116,18 @@ export default function DeepTools({ send, notebook, pan, words, cards, packs, ad
 
         {tab === 'translate' && (
           <div>
-            <div className="seg" style={{ marginBottom: 8 }}>
+            <div className="seg" style={{ marginBottom: 'var(--space-2)' }}>
               {[['en2zh', '英译中'], ['zh2en', '中译英']].map(([k, l]) => (
                 <button key={k} className={`seg-btn ${translate.dir === k ? 'on' : ''}`} onClick={() => setTranslate({ ...translate, dir: k })}>{l}</button>
               ))}
             </div>
             <textarea
               className="input" rows={6}
+              aria-label={translate.dir === 'en2zh' ? '英文原文' : '中文原文'}
               placeholder={translate.dir === 'en2zh' ? '粘贴英文长难句 / 段落…' : '粘贴中文，翻译为英文…'}
               value={translate.text} onChange={(e) => setTranslate({ ...translate, text: e.target.value })}
             />
-            <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+            <div className="row" style={{ gap: 'var(--space-2)', marginTop: 'var(--space-2)', justifyContent: 'flex-end' }}>
               <button className="btn primary" onClick={submitTranslate}>翻译 + 拆解</button>
             </div>
             <p className="deep-hint">长难句自动拆主干、标从句，直译意译双版本。</p>
@@ -134,9 +136,9 @@ export default function DeepTools({ send, notebook, pan, words, cards, packs, ad
 
         {tab === 'explain' && (
           <div>
-            <p className="deep-hint" style={{ marginBottom: 6 }}>选择一条错题，AI 讲解知识点、解题思路、错因与变式题：</p>
+            <p className="deep-hint" style={{ marginBottom: 'var(--space-2)' }}>选择一条错题，AI 讲解知识点、解题思路、错因与变式题：</p>
             <div className="note-select-list" style={{ maxHeight: 220, overflowY: 'auto' }}>
-              {notebook.length === 0 && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>错题本为空，先去「错题本」收录错题吧。</p>}
+              {notebook.length === 0 && <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>错题本为空，先去「错题本」收录错题吧。</p>}
               {notebook.map((n) => (
                 <button key={n.id} className={`ns-item ${selectedNote?.id === n.id ? 'on' : ''}`} onClick={() => setSelectedNote(n)}>
                   <b>{n.question}</b>
@@ -145,7 +147,7 @@ export default function DeepTools({ send, notebook, pan, words, cards, packs, ad
               ))}
             </div>
             {selectedNote && (
-              <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+              <div className="row" style={{ gap: 'var(--space-2)', marginTop: 'var(--space-2)', justifyContent: 'flex-end' }}>
                 <button className="btn primary" onClick={submitNoteExplain}>开始讲解</button>
               </div>
             )}
@@ -154,14 +156,14 @@ export default function DeepTools({ send, notebook, pan, words, cards, packs, ad
 
         {tab === 'outline' && (
           <div>
-            <p className="deep-hint" style={{ marginBottom: 8 }}>基于错题数据生成知识导图（按科目 → 考点 → 薄弱点层级）：</p>
-            <div className="seg" style={{ marginBottom: 8 }}>
+            <p className="deep-hint" style={{ marginBottom: 'var(--space-2)' }}>基于错题数据生成知识导图（按科目 → 考点 → 薄弱点层级）：</p>
+            <div className="seg" style={{ marginBottom: 'var(--space-2)' }}>
               <button className={`seg-btn ${subjectFilter === 'all' ? 'on' : ''}`} onClick={() => setSubjectFilter('all')}>全部科目</button>
               {Object.entries(SUBJECT_NAME).map(([k, l]) => (
                 <button key={k} className={`seg-btn ${subjectFilter === k ? 'on' : ''}`} onClick={() => setSubjectFilter(k)}>{l}</button>
               ))}
             </div>
-            <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+            <div className="row" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
               <button className="btn primary" onClick={submitOutline}>生成知识导图</button>
             </div>
           </div>
@@ -169,9 +171,9 @@ export default function DeepTools({ send, notebook, pan, words, cards, packs, ad
 
         {tab === 'kb' && (
           <div>
-            <p className="deep-hint" style={{ marginBottom: 6 }}>仿 NotebookLM：基于网盘自有复习资料精准问答，回答带资料来源。</p>
-            <div className="note-select-list" style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 8 }}>
-              {pan.length === 0 && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>网盘暂无资料，先去「网盘联动」添加。</p>}
+            <p className="deep-hint" style={{ marginBottom: 'var(--space-2)' }}>仿 NotebookLM：基于网盘自有复习资料精准问答，回答带资料来源。</p>
+            <div className="note-select-list" style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 'var(--space-2)' }}>
+              {pan.length === 0 && <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>网盘暂无资料，先去「网盘联动」添加。</p>}
               {pan.map((p) => (
                 <button key={p.id} className={`ns-item ${selectedDoc?.id === p.id ? 'on' : ''}`} onClick={() => setSelectedDoc(p)}>
                   <b>{p.name}</b>
@@ -181,10 +183,11 @@ export default function DeepTools({ send, notebook, pan, words, cards, packs, ad
             </div>
             <textarea
               className="input" rows={2}
+              aria-label="基于资料的提问"
               placeholder={`基于「${selectedDoc ? selectedDoc.name : '选中资料'}」提问…（如：总结这套真题的重点题型）`}
               value={docQuestion} onChange={(e) => setDocQuestion(e.target.value)}
             />
-            <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+            <div className="row" style={{ gap: 'var(--space-2)', marginTop: 'var(--space-2)', justifyContent: 'flex-end' }}>
               <button className="btn primary" onClick={submitDocQ}>基于资料回答</button>
             </div>
           </div>
@@ -192,7 +195,7 @@ export default function DeepTools({ send, notebook, pan, words, cards, packs, ad
 
         {tab === 'cards' && (
           <div>
-            <p className="deep-hint" style={{ marginBottom: 6 }}>把错题一键转成 SM-2 记忆卡片（归入第一个卡包），在「记忆卡片」页按遗忘曲线复习。当前已有 {words.length} 词、{cards.length} 卡：</p>
+            <p className="deep-hint" style={{ marginBottom: 'var(--space-2)' }}>把错题一键转成 SM-2 记忆卡片（归入第一个卡包），在「记忆卡片」页按遗忘曲线复习。当前已有 {words.length} 词、{cards.length} 卡：</p>
             <div className="note-select-list" style={{ maxHeight: 220, overflowY: 'auto' }}>
               {notebook.map((n) => (
                 <button key={n.id} className="ns-item" onClick={() => toCard(n)}>

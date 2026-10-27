@@ -27,6 +27,7 @@
     fields = ex.extract_notice("清华大学2027年硕士研究生招生考试报名公告", "正文……")
 """
 from __future__ import annotations
+import logging
 
 import asyncio
 import json
@@ -217,8 +218,12 @@ class LLMNoticeExtractor:
                     fb["method"] = "llm-local"
                     fb["model"] = result.get("model")
                     return fb
-        except Exception:
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
+            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
+            logging.getLogger(__name__).warning(
+                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+            )
 
         # 3) 最终兜底：纯正则
         return _regex_fallback(title, content)

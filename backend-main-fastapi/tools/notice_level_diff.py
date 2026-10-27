@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 import os
 import sqlite3
 import sys
@@ -19,7 +20,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.kaoyan.notice_alert import classify_importance, load_rules  # noqa: E402
 
-DB = r"D:\平台\database\kaoyan.db"
+# 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
+_REPO = Path(__file__).resolve().parents[2]
+DB = str(_REPO / "database" / "kaoyan.db")
 
 
 def main() -> int:

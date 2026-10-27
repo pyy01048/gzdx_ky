@@ -435,6 +435,23 @@ _PAGE_NO = re.compile(r"^\s*[-—–\s]*第?\s*\d{1,4}\s*页?\s*(共\s*\d{1,4}\s
 _WATERMARK = re.compile(r"(扫描全能王|CamScanner|扫描王|仅供学习|请勿传播|内部资料|盗版必究)")
 
 
+def strip_surrogates(text: str) -> str:
+    """去掉 UTF-16 代理对（surrogate）。
+
+    PDF 的 ToUnicode 映射出错时会产出半代理字符（U+D800–U+DFFF），这类字符串
+    在 Python 里能正常拼接/切片，但一旦写 PostgreSQL 就会在 UTF-8 编码阶段抛
+    UnicodeEncodeError: 'utf-8' codec can't encode ... surrogates not allowed，
+    整篇文档入库失败。必须在入库前清掉，否则这类文件永远进不了库。
+    """
+    if not text:
+        return text
+    try:
+        text.encode("utf-8")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("utf-8", "ignore").decode("utf-8")
+
+
 def clean_text(text: str, *, drop_page_no: bool = True,
                drop_watermark: bool = True) -> str:
     """文本清洗：去图片引用 / 零宽字符 / 控制字符 / 噪声行 / 页码 / 水印。"""
@@ -812,8 +829,15 @@ def validate_for_ingest(text: str, subject: str = "", db=None,
                 elif hit[1] >= 0.90:
                     out["review_flag"] = "need_review"
                     out["reasons"].append(f"与文档#{hit[0]} 高度相似（{hit[1]:.3f}），建议复核")
-        except Exception:
-            pass  # 去重失败不阻断入库
+        except Exception as e:
+            # 去重失败不阻断入库，但必须回滚：查询失败已把事务打挂（InFailedSqlTransaction），
+            # 不回滚会让本 session 后续所有语句（幂等检查、INSERT documents）全部连带失败——
+            # 2026-10-18 实测 PG 上 _dedup_check 的 SQLite 风格查询即触发此坑。
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            out["reasons"].append(f"向量去重跳过（{type(e).__name__}）")
 
     return out
 
@@ -959,7 +983,9 @@ def smart_ingest_file(
                 out["engine"], out["ocr_used"] = "pdf-ocr", eng
 
     # --- 清洗 ---
-    text = clean_text(text)
+    # 先去代理对再清洗：PDF 的 ToUnicode 映射错误会产出 U+D800–U+DFFF 半代理字符，
+    # 写 PG 时整篇报 UnicodeEncodeError 而入库失败（实测 44 篇里 2 篇因此失败）。
+    text = clean_text(strip_surrogates(text))
 
     # **占位串拦截**：错误提示不是正文。必须在清洗后、入库前判定，
     # 否则「[扫描版 PDF OCR 失败: ...]」会被当成 39 字正文成功入库。
@@ -989,7 +1015,12 @@ def smart_ingest_file(
     out["section"] = meta.get("section", "")
 
     # --- 校验 ---
-    v = validate_for_ingest(text, subject=meta.get("subject", ""), db=db)
+    # check_dedup=False：向量去重要加载本地嵌入模型（单次 1~3s），且其查询走
+    # knowledge_chunks_vec 镜像表 + SQLite 风格占位符，在 PG 上必然失败（2026-10-18
+    # 实测：异常被吞但事务已挂，后续 INSERT 全部连带失败）。批量扫描按 gate_for_write
+    # 同一口径关它——正文全等去重（纯 SQL）保留，足够拦重复导入。
+    v = validate_for_ingest(text, subject=meta.get("subject", ""), db=db,
+                            check_dedup=False)
     out["dedup_hit"] = v["dedup_hit"]
     out["review_flag"] = v["review_flag"]
     out["reasons"].extend(v["reasons"])
@@ -1041,6 +1072,7 @@ def smart_ingest_file(
                 file_name=os.path.basename(path),
                 file_path=file_path_abs,
                 source_format=_norm_doc_format(ext),
+                size=os.path.getsize(path),
                 content=text,
                 subject=meta.get("subject", ""),
                 doc_type=kb_service.classify_doc_type(os.path.basename(path),
@@ -1066,6 +1098,8 @@ def smart_ingest_file(
             n_chunks = kb_service.ingest_document(db, doc, replace=True)
         # 分块是「可被 RAG 检索」的唯一凭据：库里一块都没有就不许标 indexed，
         # 否则又会多一篇「UI 说已入库、检索搜不到」的文档。
+        # 同步回填 chunk_count（2026-10-18 体检发现该字段从未回填、全部漂移为 0）。
+        doc.chunk_count = n_chunks
         doc.index_status = "indexed" if kb_service.has_searchable_chunks(
             db, doc.id) else "failed"
         db.commit()

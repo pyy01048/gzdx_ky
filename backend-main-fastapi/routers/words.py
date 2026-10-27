@@ -1,5 +1,6 @@
 """单词词库路由：词库管理、单词CRUD、SM-2复习调度、批量导入。"""
 
+from utils.security import require_admin
 import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
@@ -48,6 +49,9 @@ class WordCreate(BaseModel):
     example: Optional[str] = None
     example_cn: Optional[str] = None
     tag: Optional[str] = None
+    # P0-1：来源标注（如「刷题生词」）。不传时行为完全不变；
+    # 传入时若 tag 为空，则透传写入 tag 列（复用既有列，不加新列）。
+    source_label: Optional[str] = None
 
 
 class WordUpdate(BaseModel):
@@ -81,6 +85,7 @@ class WordOut(BaseModel):
     due_date: Optional[datetime.date] = None
     last_review: Optional[datetime.date] = None
     review_history: Optional[list] = None
+    extra: Optional[dict] = None
     created_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -115,6 +120,24 @@ class WordReview(BaseModel):
     grade: int  # 0-5，SM-2评分
 
 
+class SpellCheckRequest(BaseModel):
+    word_id: int
+    answer: str = Field(..., min_length=1, max_length=200)
+    #: 拼写练习同时记录一次复习：正确=5（满分），错误=1（重来）
+    record_review: bool = True
+
+
+class SpellCheckOut(BaseModel):
+    correct: bool
+    word: str
+    user_answer: str
+    phonetic: Optional[str] = None
+    pos: Optional[str] = None
+    meaning: str
+    #: 若 record_review=True，返回更新后的单词（SM-2/FSRS 调度结果）
+    review: Optional[dict] = None
+
+
 class WordBatchImport(BaseModel):
     deck_id: Optional[int] = None
     words: List[WordCreate]
@@ -143,11 +166,178 @@ def _api_status(db_status: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# 例句 / 词根增强（P1：word_examples / word_roots 数据在独立表，words 主表列空）
+#
+# 背景：words.root / words.example 列在批量导入时大多为空（example 全空、
+# root 仅 1476 词非空），而真实语料在 word_examples（26842 行，覆盖 5390 词）
+# 和 word_roots（611 条词根词典）两张独立表。GET /api/words 直接序列化主表列
+# → root/example 恒为 null，前端「例句/词根词缀」区域空白（docx/50 P1）。
+#
+# 修复方案：在**序列化层**做只读增强，不写库、不改表结构：
+#   - example：取 word_examples 中该词的第一条句子（优先有中文翻译的）；
+#   - root：主表 root 列非空则原样返回；否则用 word_roots.example_words 反查
+#     命中该词的词根，拼成「morpheme（中文含义）」。
+# 兼容性：word_examples / word_roots 表在 SQLite 回退库可能不存在，
+# 查询包 try/except，缺表时退化为原有（null）行为，不影响其它字段。
+# --------------------------------------------------------------------------- #
+def _load_word_examples(db, word_ids) -> dict:
+    """批量取一批单词的推荐例句。
+
+    Args:
+        db: SQLAlchemy Session。
+        word_ids: 单词 ID 列表（可空）。
+
+    Returns:
+        ``{word_id: {"en": str, "cn": str|None}}``，每词一条，优先带中文翻译。
+    """
+    ids = [int(i) for i in (word_ids or []) if i is not None]
+    if not ids:
+        return {}
+    from sqlalchemy import text
+
+    try:
+        rows = db.execute(
+            text(
+                "SELECT word_id, sentence_en, sentence_cn FROM word_examples "
+                "WHERE word_id = ANY(:ids) ORDER BY word_id, id"
+            ),
+            {"ids": ids},
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - 表不存在（SQLite 回退库）时静默降级
+        return {}
+    out: dict = {}
+    for word_id, en, cn in rows:
+        word_id = int(word_id)
+        if word_id not in out:
+            out[word_id] = {"en": en or "", "cn": cn or None}
+        elif not out[word_id].get("cn") and cn:
+            out[word_id] = {"en": en or "", "cn": cn or None}
+    return out
+
+
+def _load_word_roots(db) -> dict:
+    """把 word_roots 全量装载为「例词 → 词根条目」反查索引。
+
+    Returns:
+        ``{example_word_lower: {"morpheme": str, "meaning_cn": str}}``。
+    """
+    from sqlalchemy import text
+
+    try:
+        rows = db.execute(
+            text("SELECT morpheme, meaning, meaning_cn, example_words FROM word_roots")
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - 表不存在（SQLite 回退库）时静默降级
+        return {}
+    by_example_word: dict = {}
+    for morpheme, meaning, meaning_cn, example_words in rows:
+        entry = {
+            "morpheme": morpheme or "",
+            "meaning_cn": (meaning_cn or meaning or "").strip(),
+        }
+        for ew in (example_words or []):
+            key = str(ew).strip().lower()
+            if key and key not in by_example_word:
+                by_example_word[key] = entry
+    return by_example_word
+
+
+def _build_root(w, root_by_word: dict):
+    """生成词根展示串：主表 root 列优先，否则用 word_roots 反查。"""
+    if w.root and str(w.root).strip():
+        return w.root
+    entry = root_by_word.get((w.word or "").strip().lower())
+    if not entry:
+        return None
+    morpheme = entry.get("morpheme") or ""
+    cn = entry.get("meaning_cn") or ""
+    return f"{morpheme}（{cn}）" if morpheme and cn else (morpheme or None)
+
+
+def _word_out(w, db, examples: dict = None, root_by_word: dict = None) -> dict:
+    """序列化单词并做例句/词根增强（只读，不修改 ORM 行，避免隐式写库）。
+
+    基础字段仍走 WordOut 校验（status 枚举映射、review_history 归一），
+    再在返回字典上覆盖 example / example_cn / root 三个增强字段。
+    """
+    data = WordOut.model_validate(w).model_dump(mode="json")
+    if not data.get("example") and examples:
+        ex = examples.get(int(w.id))
+        if ex and ex.get("en"):
+            data["example"] = ex["en"]
+            data["example_cn"] = ex.get("cn")
+    if not data.get("root") and root_by_word is not None:
+        data["root"] = _build_root(w, root_by_word)
+    return data
+
+
+# --------------------------------------------------------------------------- #
 # 词库管理
 # --------------------------------------------------------------------------- #
+def _ensure_personal_wordbook(db: Session, user: User) -> None:
+    """B4 懒加载：为新用户自动分配内置词库副本。
+
+    平台内置模板词库（word_decks user_id=1 名下的「考研核心词汇」「考研熟词僻义」等）
+    历史上挂在 user_id=1 名下，新用户按 B4 行级隔离看到的是空词库（`/api/words` total=0）。
+    这里在用户首次访问 /api/words/decks 时，把**全部内置模板词库**克隆到该用户
+    自己的命名空间（词条内容复制、SM-2 调度字段重置为初始态），让「单词记忆」
+    功能对每个用户开箱即用；复习进度仍按 B4 隔离在各自的行上。
+    只做新增，不改动模板词库与既有用户数据；已有人词库则跳过。
+    """
+    uid = owner_id(user)
+    if not uid:
+        return
+    # 已有个人词库（哪怕空库）则跳过，避免重复克隆
+    if db.query(WordDeck.id).filter(WordDeck.user_id == uid).first():
+        return
+    # 内置模板词库：挂在 user_id=1（模板所有者）名下
+    templates = (
+        db.query(WordDeck)
+        .filter(WordDeck.user_id == 1)
+        .order_by(WordDeck.id)
+        .all()
+    )
+    if not templates:
+        return
+    from sqlalchemy import text
+    for template in templates:
+        tpl_words = (
+            db.query(Word)
+            .filter(Word.deck_id == template.id, Word.user_id == template.user_id)
+            .count()
+        )
+        if not tpl_words:
+            continue
+        deck = WordDeck(
+            user_id=uid,
+            name=template.name,
+            description=(template.description or "内置词库自动分配"),
+            source=template.source,
+            word_count=0,
+        )
+        db.add(deck)
+        db.flush()
+        # 批量克隆词条：只复制内容字段，SM-2 调度重置（not_mastered / 2.5 / 0 / 空历史）
+        db.execute(
+            text(
+                "INSERT INTO words (user_id, deck_id, word, phonetic, pos, meaning, root, "
+                "example, example_cn, tag, status, ease_factor, interval_days, reps, lapses, "
+                "due_date, last_review, review_history, created_at, updated_at) "
+                "SELECT :uid, :deck_id, word, phonetic, pos, meaning, root, example, example_cn, "
+                "tag, 'not_mastered', 2.5, 0, 0, 0, NULL, NULL, '[]'::jsonb, now(), now() "
+                "FROM words WHERE user_id = :tpl_uid AND deck_id = :tpl_deck_id"
+            ),
+            {"uid": uid, "deck_id": deck.id,
+             "tpl_uid": template.user_id, "tpl_deck_id": template.id},
+        )
+        deck.word_count = tpl_words
+    db.commit()
+
+
 @router.get("/decks", response_model=List[WordDeckOut])
 def list_decks(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """获取词库分类（B4：本人词库 + 内置公共词书 user_id NULL）。"""
+    _ensure_personal_wordbook(db, user)  # 新用户首访自动分配内置词库副本
     decks = db.query(WordDeck).filter(
         or_(scoped(WordDeck, user), WordDeck.user_id.is_(None))
     ).order_by(WordDeck.id).all()
@@ -157,7 +347,7 @@ def list_decks(db: Session = Depends(get_db), user: User = Depends(current_user)
     return decks
 
 
-@router.post("/decks", response_model=WordDeckOut)
+@router.post("/decks", response_model=WordDeckOut, dependencies=[Depends(require_admin)])
 def create_deck(data: WordDeckCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """创建新词库。"""
     deck = WordDeck(**data.model_dump())
@@ -168,7 +358,7 @@ def create_deck(data: WordDeckCreate, db: Session = Depends(get_db), user: User 
     return deck
 
 
-@router.delete("/decks/{deck_id}")
+@router.delete("/decks/{deck_id}", dependencies=[Depends(require_admin)])
 def delete_deck(deck_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """删除词库（单词保留，deck_id置空；B4：仅本人词库，内置公共词书不可删）。"""
     deck = db.query(WordDeck).filter(WordDeck.id == deck_id, scoped(WordDeck, user)).first()
@@ -184,7 +374,7 @@ def delete_deck(deck_id: int, db: Session = Depends(get_db), user: User = Depend
 # --------------------------------------------------------------------------- #
 # 单词 CRUD
 # --------------------------------------------------------------------------- #
-@router.get("")
+@router.get("", dependencies=[Depends(require_admin)])
 def list_words(
     deck_id: Optional[int] = None,
     status: Optional[str] = None,
@@ -213,10 +403,11 @@ def list_words(
     # not_mastered 两边都接不住 → 导入后队列恒空，页面却显示「已全部复习完成」。
     total = q.count()
     offset = (page - 1) * page_size
-    items = [
-        WordOut.model_validate(w).model_dump(mode="json")
-        for w in q.offset(offset).limit(page_size).all()
-    ]
+    rows = q.offset(offset).limit(page_size).all()
+    # P1 增强：例句/词根来自独立表（word_examples / word_roots），序列化层合并
+    examples = _load_word_examples(db, [w.id for w in rows])
+    root_by_word = _load_word_roots(db)
+    items = [_word_out(w, db, examples, root_by_word) for w in rows]
     return {
         "items": items,
         "total": total,
@@ -267,7 +458,10 @@ def due_words(
         scoped(Word, user),
         Word.due_date <= today
     ).filter(Word.status.in_(["learning", "reviewing"])).order_by(Word.status, Word.id).limit(limit).all()
-    return words
+    # P1 增强：例句/词根合并（与列表接口同一序列化层）
+    examples = _load_word_examples(db, [w.id for w in words])
+    root_by_word = _load_word_roots(db)
+    return [_word_out(w, db, examples, root_by_word) for w in words]
 
 
 @router.get("/export-pdf")
@@ -283,6 +477,11 @@ def export_words_pdf(
 
     支持与列表页一致的筛选参数（deck_id / status / tag / search），
     导出结果为中文 PDF，前端直接以 blob 下载。
+
+    P2 增强：
+    - 标题自动使用词库名（不再硬编码「考研核心词汇」）；
+    - 单次上限提升到 5000 词，超过部分在封面明确提示（不静默截断）；
+    - 输出 words.extra 中的同近义/短语（KyleBing 词库结构化数据）。
     """
     from fastapi.responses import Response
     from services import pdf_export
@@ -296,11 +495,24 @@ def export_words_pdf(
         q = q.filter(Word.tag == tag)
     if search:
         q = q.filter(Word.word.like(f"%{search}%"))
-    rows = q.order_by(Word.id).limit(1000).all()
+    rows = q.order_by(Word.id).limit(5000).all()
+    truncated = False
+    # 全量计数（不加载正文），用于封面提示截断
+    total = q.count()
+    if total > len(rows):
+        truncated = True
+
+    # 词库名（标题用）
+    deck_name = None
+    if deck_id is not None:
+        deck = db.query(WordDeck).filter(WordDeck.id == deck_id).first()
+        if deck:
+            deck_name = deck.name
+    title = deck_name or "考研词汇"
 
     words = []
     for w in rows:
-        words.append({
+        item = {
             "word": w.word,
             "phonetic": w.phonetic,
             "pos": w.pos,
@@ -311,15 +523,18 @@ def export_words_pdf(
             "tag": w.tag,
             "status": _api_status(w.status),
             "reps": w.reps,
-        })
+            "extra": w.extra,
+        }
+        words.append(item)
 
     pdf_bytes = pdf_export.build_words_pdf(
         words,
-        title="考研核心词汇",
-        subtitle="FSRS 间隔重复 · 真题例句 · 导出自考研备考平台",
+        title=title,
+        subtitle=f"FSRS 间隔重复 · 真题例句 · 共 {total} 词",
+        truncated=truncated,
     )
     from urllib.parse import quote
-    filename = f"单词本_{datetime.date.today().isoformat()}.pdf"
+    filename = f"单词本_{local_today().isoformat()}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -335,15 +550,45 @@ def get_word(word_id: int, db: Session = Depends(get_db), user: User = Depends(c
     w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
     if not w:
         raise HTTPException(404, "单词不存在")
-    return w
+    # P1 增强：例句/词根合并（与列表接口同一序列化层）
+    examples = _load_word_examples(db, [w.id])
+    root_by_word = _load_word_roots(db)
+    return _word_out(w, db, examples, root_by_word)
 
 
-@router.post("", response_model=WordOut)
+@router.post("", response_model=WordOut, dependencies=[Depends(require_admin)])
 def create_word(data: WordCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """添加单个单词。"""
+    """添加单个单词。
+
+    P0-1：创建前按当前用户查重（全库按 user_id 过滤）。若该用户已有相同
+    word，返回 409，且 detail 为 ``{"exists": true, "word": ..., "id": 已有id}``，
+    避免重复入库。``source_label`` 若传入且 ``tag`` 为空，则写入 ``tag`` 列。
+    """
+    # —— P0-1 查重（仅针对当前用户）——
+    existing = (
+        db.query(Word)
+        .filter(Word.word == data.word.strip(), scoped(Word, user))
+        .order_by(Word.id.asc())
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "exists": True,
+                "word": existing.word,
+                "id": existing.id,
+                "message": "该单词已在词库中",
+            },
+        )
+
     data_dict = data.model_dump()
     if data_dict.get("status"):
         data_dict["status"] = _db_status(data_dict["status"])
+    # P0-1：来源标注复用 tag 列（tag 为空时）
+    source_label = data_dict.pop("source_label", None)
+    if source_label and not data_dict.get("tag"):
+        data_dict["tag"] = source_label[:50]
     w = Word(**data_dict)
     w.user_id = owner_id(user)  # B4：归属当前用户
     w.due_date = local_today()
@@ -353,7 +598,7 @@ def create_word(data: WordCreate, db: Session = Depends(get_db), user: User = De
     return w
 
 
-@router.put("/{word_id}", response_model=WordOut)
+@router.put("/{word_id}", response_model=WordOut, dependencies=[Depends(require_admin)])
 def update_word(word_id: int, data: WordUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """更新单词信息。"""
     w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
@@ -366,7 +611,7 @@ def update_word(word_id: int, data: WordUpdate, db: Session = Depends(get_db), u
     return w
 
 
-@router.delete("/{word_id}")
+@router.delete("/{word_id}", dependencies=[Depends(require_admin)])
 def delete_word(word_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """删除单词。"""
     w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
@@ -380,20 +625,16 @@ def delete_word(word_id: int, db: Session = Depends(get_db), user: User = Depend
 # --------------------------------------------------------------------------- #
 # SM-2 复习调度
 # --------------------------------------------------------------------------- #
-@router.post("/{word_id}/review", response_model=WordOut)
-def review_word(word_id: int, data: WordReview, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """SM-2 复习评分，更新调度状态（使用统一的 ReviewScheduler 算法）。"""
+def _apply_review(db: Session, w: Word, grade: int, user: User) -> Word:
+    """SM-2 复习评分统一逻辑（review 接口与拼写练习共用），更新调度状态。
+
+    使用统一的 ReviewScheduler 算法 + FSRS 统一调度表；SM-2 字段保留兼容快照。
+    """
     from services.review_scheduler import ReviewScheduler
     from services.srs import fsrs
 
-    w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
-    if not w:
-        raise HTTPException(404, "单词不存在")
-
-    grade = data.grade
     today = local_today()
 
-    # 使用统一的 SM-2 算法
     _, new_reps, new_interval, new_ef, new_status = ReviewScheduler.calculate_next_review(
         quality=grade,
         repetitions=w.reps or 0,
@@ -432,16 +673,78 @@ def review_word(word_id: int, data: WordReview, db: Session = Depends(get_db), u
     return w
 
 
+@router.post("/{word_id}/review", response_model=WordOut)
+def review_word(word_id: int, data: WordReview, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """SM-2 复习评分，更新调度状态（使用统一的 ReviewScheduler 算法）。"""
+    w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
+    if not w:
+        raise HTTPException(404, "单词不存在")
+
+    _apply_review(db, w, data.grade, user)
+    # P1 增强：例句/词根合并（与列表接口同一序列化层）
+    examples = _load_word_examples(db, [w.id])
+    root_by_word = _load_word_roots(db)
+    return _word_out(w, db, examples, root_by_word)
+
+
+# --------------------------------------------------------------------------- #
+# 拼写练习（对标「不背单词」拼写模式）
+# --------------------------------------------------------------------------- #
+@router.post("/spell-check", response_model=SpellCheckOut)
+def spell_check_word(
+    data: SpellCheckRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """拼写练习：给出释义/音标，用户输入英文单词，服务端判对错。
+
+    - 大小写不敏感、忽略首尾空白；
+    - 默认自动记录一次复习：正确 → SM-2 grade=5，错误 → grade=1（重来），
+      拼写练习因此同时推进间隔重复调度；
+    - record_review=False 时可纯练习不干扰调度。
+    """
+    w = db.query(Word).filter(Word.id == data.word_id, scoped(Word, user)).first()
+    if not w:
+        raise HTTPException(404, "单词不存在")
+
+    user_answer = (data.answer or "").strip()
+    correct = bool(user_answer) and user_answer.lower() == (w.word or "").strip().lower()
+
+    review_out: Optional[dict] = None
+    if data.record_review:
+        _apply_review(db, w, 5 if correct else 1, user)
+        examples = _load_word_examples(db, [w.id])
+        root_by_word = _load_word_roots(db)
+        review_out = _word_out(w, db, examples, root_by_word)
+
+    return SpellCheckOut(
+        correct=correct,
+        word=w.word,
+        user_answer=user_answer,
+        phonetic=w.phonetic,
+        pos=w.pos,
+        meaning=w.meaning,
+        review=review_out,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # 批量导入
 # --------------------------------------------------------------------------- #
-@router.post("/batch-import")
+@router.post("/batch-import", dependencies=[Depends(require_admin)])
 def batch_import_words(data: WordBatchImport, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """批量导入单词。"""
+    """批量导入单词。
+
+    P0-1：每个词条透传 ``source_label``——若传入且 ``tag`` 为空，写入 ``tag`` 列。
+    """
     count = 0
     today = local_today()
     for w_data in data.words:
-        w = Word(**w_data.model_dump())
+        w_dict = w_data.model_dump()
+        source_label = w_dict.pop("source_label", None)
+        if source_label and not w_dict.get("tag"):
+            w_dict["tag"] = source_label[:50]
+        w = Word(**w_dict)
         w.user_id = owner_id(user)  # B4：归属当前用户
         if data.deck_id is not None:
             w.deck_id = data.deck_id
@@ -459,9 +762,11 @@ class TextImportRequest(BaseModel):
     text: str
     deck_id: Optional[int] = None
     delimiter: Optional[str] = None  # 自定义分隔符，默认自动识别
+    # P0-1：来源标注（如「刷题生词」），透传写入 tag 列
+    source_label: Optional[str] = None
 
 
-@router.post("/import-text")
+@router.post("/import-text", dependencies=[Depends(require_admin)])
 def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """从文本批量导入单词，支持多种格式：
     - "apple 苹果"
@@ -537,6 +842,8 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
                 meaning=meaning[:2000],
                 status="not_mastered",  # DB 枚举无 'new'，未学即 not_mastered
                 due_date=today,
+                # P0-1：来源标注复用 tag 列
+                tag=(data.source_label[:50] if data.source_label else None),
             )
             db.add(w)
             existing_words.add(word)
@@ -567,7 +874,7 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
 # --------------------------------------------------------------------------- #
 # V3.0 Excel批量导入
 # --------------------------------------------------------------------------- #
-@router.post("/import-excel")
+@router.post("/import-excel", dependencies=[Depends(require_admin)])
 async def import_words_from_excel(
     file: bytes = File(...),
     deck_id: Optional[int] = Query(None),

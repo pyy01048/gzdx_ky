@@ -73,6 +73,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
                         default=True, help="尊重 robots.txt（默认）")
     robots.add_argument("--no-robots", dest="respect_robots", action="store_false",
                         help="不查 robots.txt（不推荐）")
+    attach = parser.add_mutually_exclusive_group()
+    attach.add_argument("--attachments", dest="attachments", action="store_true", default=True,
+                        help="下载公告附件并解析 PDF（默认开，仅真实落库时生效）")
+    attach.add_argument("--no-attachments", dest="attachments", action="store_false",
+                        help="不下载附件")
     parser.add_argument("--stats", action="store_true", help="只打印队列统计")
     return parser.parse_args(argv)
 
@@ -227,6 +232,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             limit=args.limit,
             respect_robots=args.respect_robots,
             write_pages=not args.dry_run,
+            download_attachments=bool(args.attachments),
             queue=queue,
             page_index=page_index,
             page_writer=page_writer,

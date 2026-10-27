@@ -17,12 +17,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 from services.review_scheduler import ReviewScheduler
 from utils.response import (
+    MAX_PAGE_SIZE,
     PaginatedResponse,
+    page_params,
     paginate_query,
-    to_camel,
-    to_snake,
-    _snake_to_camel,
-    _camel_to_snake,
+    stamp_utc_z,
+    to_utc_z,
 )
 
 
@@ -191,7 +191,13 @@ class TestErrorCreationSchedulesFirstReview:
                 ErrorRecord.content == "首排程测试题").order_by(ErrorRecord.id.desc()).first()
             assert err is not None and err.next_review is not None
             now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-            delta_days = (err.next_review - now).total_seconds() / 86400
+            # DB 列是 TIMESTAMPTZ，psycopg 回读为 **aware** datetime；项目内部
+            # 统一用 naive UTC（utils.timeutil.utcnow，P0-4 规范）。比较前先归一，
+            # 否则 naive 与 aware 相减直接 TypeError（实测）。
+            nr = err.next_review
+            if nr.tzinfo is not None:
+                nr = nr.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            delta_days = (nr - now).total_seconds() / 86400
             assert 0.9 <= delta_days <= 1.1, (
                 f"新错题首间隔应约 1 天，实际 {delta_days:.3f} 天")
         finally:
@@ -204,8 +210,14 @@ class TestErrorCreationSchedulesFirstReview:
 
         db = SessionLocal()
         try:
-            q = QuizQuestion(content="首排程刷题测试题", options='["A", "B"]',
-                             answer="B", subject="数学", question_type="single")
+            # 选项用**正典格式** [{key,text}]：DB 约束 ck_quiz_questions_options
+            # （is_canonical_options）只认该格式，字符串数组会被拒绝——
+            # 这是刻意的严格契约，导入侧的规整由 services.content_sanitizer 统一负责。
+            q = QuizQuestion(
+                content="首排程刷题测试题",
+                options=[{"key": "A", "text": "甲"}, {"key": "B", "text": "乙"}],
+                answer="B", subject="数学", question_type="single",
+            )
             db.add(q)
             db.commit()
             qid = q.id
@@ -222,7 +234,13 @@ class TestErrorCreationSchedulesFirstReview:
                 ErrorRecord.question_id == qid).order_by(ErrorRecord.id.desc()).first()
             assert err is not None and err.next_review is not None
             now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-            delta_days = (err.next_review - now).total_seconds() / 86400
+            # DB 列是 TIMESTAMPTZ，psycopg 回读为 **aware** datetime；项目内部
+            # 统一用 naive UTC（utils.timeutil.utcnow，P0-4 规范）。比较前先归一，
+            # 否则 naive 与 aware 相减直接 TypeError（实测）。
+            nr = err.next_review
+            if nr.tzinfo is not None:
+                nr = nr.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            delta_days = (nr - now).total_seconds() / 86400
             assert 0.9 <= delta_days <= 1.1, (
                 f"刷题新错题首间隔应约 1 天，实际 {delta_days:.3f} 天")
         finally:
@@ -265,61 +283,112 @@ class TestPaginatedResponse:
 
 
 # --------------------------------------------------------------------------- #
-# 字段命名转换测试
+# 响应约定：时间格式（#19）
 # --------------------------------------------------------------------------- #
 
-class TestFieldNameConversion:
-    """字段命名转换测试"""
+class TestUtcZTimeFormat:
+    """naive UTC 串补 ``Z`` —— 不补，前端 ``new Date()`` 会按本地时间解析，
+    北京用户看什么时间都早 8 小时。"""
 
-    def test_snake_to_camel(self):
-        """snake_case 转 camelCase"""
-        assert _snake_to_camel("hello_world") == "helloWorld"
-        assert _snake_to_camel("user_id") == "userId"
-        assert _snake_to_camel("created_at") == "createdAt"
-        assert _snake_to_camel("single") == "single"
-        assert _snake_to_camel("a_b_c_d") == "aBCD"
+    @pytest.mark.parametrize("value", [
+        "2026-10-16T16:00:00",
+        "2026-10-16T16:00:00.123456",
+        "2026-10-16T16:00",
+    ])
+    def test_naive_iso_gets_z(self, value):
+        assert to_utc_z(value) == value + "Z"
 
-    def test_camel_to_snake(self):
-        """camelCase 转 snake_case"""
-        assert _camel_to_snake("helloWorld") == "hello_world"
-        assert _camel_to_snake("userId") == "user_id"
-        assert _camel_to_snake("createdAt") == "created_at"
-        assert _camel_to_snake("single") == "single"
+    @pytest.mark.parametrize("value", [
+        "2026-10-16T16:00:00Z",
+        "2026-10-16T16:00:00+08:00",
+        "2026-10-16T16:00:00-05:00",
+        "2026-10-16",               # 纯日期：本来就不该带时区
+        "2026-10-16 16:00:00",      # 展示串：补 Z 等于谎报它是 UTC
+        "T16:00:00",
+        "not-a-date",
+        "",
+    ])
+    def test_other_shapes_untouched(self, value):
+        assert to_utc_z(value) == value
 
-    def test_dict_conversion(self):
-        """字典递归转换"""
-        data = {
-            "user_id": 1,
-            "user_name": "test",
-            "created_at": "2024-01-01",
-            "nested": {
-                "first_name": "John",
-                "last_name": "Doe",
-            },
-            "list": [
-                {"item_id": 1},
-                {"item_id": 2},
-            ],
+    def test_stamp_is_recursive_and_only_touches_values(self):
+        stamped = stamp_utc_z({
+            "created_at": "2026-10-16T16:00:00",
+            "day": "2026-10-16",
+            "items": ["2026-10-16T16:00:00", 5, None, {"last_review": "2026-10-16T16:00:00"}],
+            "count": 3,
+        })
+        assert stamped["created_at"] == "2026-10-16T16:00:00Z"
+        assert stamped["day"] == "2026-10-16"
+        assert stamped["items"][0] == "2026-10-16T16:00:00Z"
+        assert stamped["items"][3]["last_review"] == "2026-10-16T16:00:00Z"
+        # 键名一律不动（snake_case 约定，不做 camel 转换）
+        assert set(stamped) == {"created_at", "day", "items", "count"}
+
+    def test_stamp_leaves_scalar_and_none_alone(self):
+        assert stamp_utc_z(5) == 5
+        assert stamp_utc_z(None) is None
+
+
+# --------------------------------------------------------------------------- #
+# 响应约定：分页（#19）
+# --------------------------------------------------------------------------- #
+
+class _FakeQuery:
+    """只实现 paginate_query 用到的那段 Query API。"""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.offset_value = 0
+        self.limit_value = None
+
+    def count(self):
+        return len(self.rows)
+
+    def offset(self, n):
+        self.offset_value = n
+        return self
+
+    def limit(self, n):
+        self.limit_value = n
+        return self
+
+    def all(self):
+        end = None if self.limit_value is None else self.offset_value + self.limit_value
+        return self.rows[self.offset_value:end]
+
+
+class TestPageParamsAndPaginate:
+
+    def test_page_params_carry_offset_and_limit(self):
+        assert page_params(page=3, page_size=50) == {
+            "page": 3, "page_size": 50, "offset": 100, "limit": 50,
         }
-        camel = to_camel(data)
-        assert camel["userId"] == 1
-        assert camel["userName"] == "test"
-        assert camel["createdAt"] == "2024-01-01"
-        assert camel["nested"]["firstName"] == "John"
-        assert camel["nested"]["lastName"] == "Doe"
-        assert camel["list"][0]["itemId"] == 1
-        assert camel["list"][1]["itemId"] == 2
 
-        # 反向转换
-        snake = to_snake(camel)
-        assert snake["user_id"] == 1
-        assert snake["nested"]["first_name"] == "John"
+    def test_page_size_cap_applies(self):
+        """>200 的页长会被收敛，不能由调用方决定拉多少行。"""
+        rows = list(range(1000))
+        resp = paginate_query(_FakeQuery(rows), page=1, page_size=100000)
+        assert resp.page_size == MAX_PAGE_SIZE
+        assert len(resp.items) == MAX_PAGE_SIZE
 
-    def test_roundtrip(self):
-        """往返转换一致性"""
-        original = {"user_id": 1, "created_at": "2024-01-01", "is_active": True}
-        result = to_snake(to_camel(original))
-        assert result == original
+    def test_illegal_page_clamped_to_first(self):
+        resp = paginate_query(_FakeQuery([1, 2, 3]), page=0, page_size=2)
+        assert (resp.page, resp.items, resp.total_pages) == (1, [1, 2], 2)
+
+    def test_serialize_hook_runs_per_row(self):
+        """paginate_query 交出的必须是可 JSON 化的行；serialize 就是把这层责任
+        显式化（老实现直接把 ORM 对象塞进 items，渲染时才炸）。"""
+        resp = paginate_query(_FakeQuery([1, 2]), page=1, page_size=10, serialize=lambda r: {"n": r})
+        assert resp.dict() == {
+            "items": [{"n": 1}, {"n": 2}], "total": 2,
+            "page": 1, "page_size": 10, "total_pages": 1,
+        }
+
+    def test_offset_window(self):
+        resp = paginate_query(_FakeQuery(list(range(10))), page=3, page_size=4)
+        assert resp.items == [8, 9]
+        assert resp.total_pages == 3
 
 
 # --------------------------------------------------------------------------- #

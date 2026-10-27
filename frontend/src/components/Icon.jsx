@@ -53,6 +53,27 @@ export const Clock = (props) => (
   </IconBase>
 )
 
+export const User = (props) => (
+  <IconBase {...props}>
+    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </IconBase>
+)
+
+export const LogOut = (props) => (
+  <IconBase {...props}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" x2="9" y1="12" y2="12" />
+  </IconBase>
+)
+
+export const Shield = (props) => (
+  <IconBase {...props}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </IconBase>
+)
+
 export const Calendar = (props) => (
   <IconBase {...props}>
     <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
@@ -328,6 +349,70 @@ export const Keyboard = (props) => (
   </IconBase>
 )
 
+/* 打卡/成就语义图标：lucide 线条风格，与上方其它图标同一 24 网格、同一描边。 */
+export const Flame = (props) => (
+  <IconBase {...props}>
+    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+  </IconBase>
+)
+
+export const Trophy = (props) => (
+  <IconBase {...props}>
+    <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+    <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+    <path d="M4 22h16" />
+    <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+    <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+    <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+  </IconBase>
+)
+
+export const Zap = (props) => (
+  <IconBase {...props}>
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </IconBase>
+)
+
+/* 通用补充图标（与 Lucide 24 网格一致） */
+export const Camera = (props) => (
+  <IconBase {...props}>
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </IconBase>
+)
+
+export const Layers = (props) => (
+  <IconBase {...props}>
+    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+    <polyline points="2 17 12 22 22 17" />
+    <polyline points="2 12 12 17 22 12" />
+  </IconBase>
+)
+
+export const Type = (props) => (
+  <IconBase {...props}>
+    <polyline points="4 7 4 4 20 4 20 7" />
+    <line x1="9" x2="15" y1="20" y2="20" />
+    <line x1="12" x2="12" y1="4" y2="20" />
+  </IconBase>
+)
+
+export const ExternalLink = (props) => (
+  <IconBase {...props}>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <polyline points="15 3 21 3 21 9" />
+    <line x1="10" x2="21" y1="14" y2="3" />
+  </IconBase>
+)
+
+export const Database = (props) => (
+  <IconBase {...props}>
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+    <path d="M3 12a9 3 0 0 0 18 0" />
+  </IconBase>
+)
+
 // 图标映射表（用于动态渲染）
 export const iconMap = {
   Activity,
@@ -369,6 +454,14 @@ export const iconMap = {
   moon: Moon,
   command: Command,
   keyboard: Keyboard,
+  flame: Flame,
+  trophy: Trophy,
+  zap: Zap,
+  camera: Camera,
+  layers: Layers,
+  type: Type,
+  externalLink: ExternalLink,
+  database: Database,
 }
 
 /**

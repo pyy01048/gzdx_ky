@@ -32,7 +32,7 @@ export const SEED_PACKS = [
   { id: 'pk-math', name: '数学公式卡', subject: 'math', color: 0 },
   { id: 'pk-english', name: '英语高频词卡', subject: 'english', color: 1 },
   { id: 'pk-politics', name: '政治知识点卡', subject: 'politics', color: 3 },
-  { id: 'pk-major', name: '834 专业卡', subject: 'major', color: 2 }
+  { id: 'pk-major', name: '专业课题卡', subject: 'major', color: 2 }
 ]
 
 /**

@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 from sqlalchemy.orm import Session
 
+from services.dbapi_compat import wrap_conn
 from models import AIProvider, KnowledgeChunk
 
 # 离线引擎配置
@@ -223,8 +224,44 @@ async def build_all_embeddings(
     """
     from services.search_service import ensure_vec_table
 
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     ensure_vec_table(conn)
+
+    # ---- PostgreSQL：转交权威向量路径 ----
+    #
+    # 下面的分支写的是 SQLite 时代的镜像表 `knowledge_chunks_vec`，而 PG 侧：
+    #   1. 该表**不存在** —— `ensure_vec_table` 对 PG 直接 return
+    #      （权威表是 core/sql/020 建好的 `chunk_vectors` + pgvector HNSW）；
+    #   2. 用的是 `INSERT OR REPLACE`，PG 无法识别，适配层也改不了
+    #      （缺冲突键信息，只能原样透传 → 语法错误）。
+    #
+    # 结果：用户在界面上点"重建向量"**必定失败**（表不存在 + 语法错误）。
+    # 这里转交 services/vector_builder.py —— 与 CLI 灌库脚本同一份实现，
+    # 避免两条路径再次漂移。
+    from services.dbapi_compat import is_sqlite
+
+    if not is_sqlite(conn):
+        from services.vector_builder import build_pg_vectors
+
+        raw = db.connection().connection  # 裸 psycopg 连接
+        res = build_pg_vectors(
+            raw,
+            generate_local_embeddings,
+            rebuild=force,
+            batch=batch_size,
+            on_progress=progress_callback,
+        )
+        return {
+            "total": res["total"],
+            "built": res["inserted"],
+            "skipped": res["skipped"],
+            "failed": res["failed"],
+            "rate_per_sec": round(res["rate"], 2),
+            "elapsed_sec": round(res["elapsed"], 1),
+            "engine": "pgvector:bge",
+            "local_model": get_local_model_info(),
+            "table": "chunk_vectors",
+        }
 
     # 清空旧向量，避免混用不同引擎/维度导致召回噪声
     if force:

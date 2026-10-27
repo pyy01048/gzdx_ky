@@ -263,7 +263,7 @@ class TestEbbinghausDueCalculation:
         assert "TypeError" not in resp.text
         assert "offset-naive" not in resp.text
 
-    def test_earlybird_streak_consecutive_days(self, client):
+    def test_earlybird_streak_consecutive_days(self, client, fresh_earlybird):  # noqa: ARG002
         """连续早起天数：种子里有今天+昨天 → current_streak 应 ≥ 2。"""
         data = client.get("/api/planner/earlybird/streak").json()
         assert set(data) >= {"current_streak", "total_days", "avg_wake_time"}, \
@@ -442,9 +442,10 @@ class TestPhasePlanSchemaExists:
         db = SessionLocal()
         try:
             names = [
-                r[0] for r in db.execute(
-                    text("SELECT name FROM sqlite_master WHERE type='table'")
-                ).fetchall()
+                r[0] for r in db.execute(text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = current_schema()"
+                )).fetchall()
             ]
         finally:
             db.close()

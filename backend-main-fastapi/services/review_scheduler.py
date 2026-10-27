@@ -1,12 +1,19 @@
-﻿"""艾宾浩斯/SM-2 复习调度算法。"""
+"""艾宾浩斯/SM-2 复习调度算法。"""
 
 import datetime
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from models import Flashcard, Task, ErrorRecord
+from utils.scope import scoped
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+
+def _scoped_uid(model, user_id: Optional[int]):
+    """B4：user_id 形式的行级过滤（复用 scoped()，开关 off / user_id 空 → 恒真）。"""
+    return scoped(model, SimpleNamespace(id=user_id))
 
 
 class ReviewScheduler:
@@ -109,8 +116,10 @@ class ReviewScheduler:
         return utcnow() + datetime.timedelta(days=days)  # naive UTC（P0-4）
 
     @staticmethod
-    def get_due_flashcards(db: Session, limit: int = 100) -> List[Flashcard]:
-        """获取今日待复习卡片。"""
+    def get_due_flashcards(
+        db: Session, limit: int = 100, *, user_id: Optional[int] = None
+    ) -> List[Flashcard]:
+        """获取今日待复习卡片（B4：user_id 提供时只看本人卡片）。"""
         now = utcnow()  # naive UTC，与 DB 列比较（P0-4）
         # V12 修复：next_review 为 NULL 的卡片是"新卡"（从未学习），不计入今日待复习。
         # 旧逻辑把 NULL 全算到期 → 500/500 卡全部"今日待复习"，调度失真。
@@ -119,6 +128,7 @@ class ReviewScheduler:
             .filter(
                 (Flashcard.next_review != None),
                 (Flashcard.next_review <= now),
+                _scoped_uid(Flashcard, user_id),
             )
             .order_by(Flashcard.next_review.asc())
             .limit(limit)
@@ -126,8 +136,10 @@ class ReviewScheduler:
         )
 
     @staticmethod
-    def get_due_tasks(db: Session, limit: int = 100) -> List[Task]:
-        """获取今日待复习任务。"""
+    def get_due_tasks(
+        db: Session, limit: int = 100, *, user_id: Optional[int] = None
+    ) -> List[Task]:
+        """获取今日待复习任务（B4：user_id 提供时只看本人任务）。"""
         now = utcnow()  # naive UTC，与 DB 列比较（P0-4）
         return (
             db.query(Task)
@@ -135,6 +147,7 @@ class ReviewScheduler:
                 (Task.next_review != None),
                 (Task.next_review <= now),
                 (Task.status != "done"),
+                _scoped_uid(Task, user_id),
             )
             .order_by(Task.next_review.asc())
             .limit(limit)
@@ -142,8 +155,10 @@ class ReviewScheduler:
         )
 
     @staticmethod
-    def get_due_errors(db: Session, limit: int = 100) -> List[ErrorRecord]:
-        """获取今日待复习错题。"""
+    def get_due_errors(
+        db: Session, limit: int = 100, *, user_id: Optional[int] = None
+    ) -> List[ErrorRecord]:
+        """获取今日待复习错题（B4：user_id 提供时只看本人错题）。"""
         now = utcnow()  # naive UTC，与 DB 列比较（P0-4）
         return (
             db.query(ErrorRecord)
@@ -151,6 +166,7 @@ class ReviewScheduler:
                 (ErrorRecord.next_review != None),
                 (ErrorRecord.next_review <= now),
                 (ErrorRecord.status == "active"),
+                _scoped_uid(ErrorRecord, user_id),
             )
             .order_by(ErrorRecord.next_review.asc())
             .limit(limit)

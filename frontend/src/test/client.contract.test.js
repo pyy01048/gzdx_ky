@@ -169,9 +169,10 @@ describe('响应解析', () => {
     mockFetch({ ok: false, status: 500, body: { code: 'UNKNOWN_ERROR', message: '服务器内部错误' } })
     const { request } = await import('../api/client')
 
-    // client 统一把 HTTP 层失败归类为 code='http_error'，并保留 status
+    // client 把后端错误壳的 code 原样透传（RESOURCE_NOT_FOUND / UNKNOWN_ERROR…），
+    // 调用方可按 code 分支；壳里缺 code 时才回退泛化的 'http_error'。
     await expect(request('/review/stats')).rejects.toMatchObject({
-      code: 'http_error',
+      code: 'UNKNOWN_ERROR',
       status: 500,
     })
     // 后端 message 必须透传到异常文案里（否则用户只看到"请求失败"）
@@ -265,6 +266,7 @@ describe('响应解析', () => {
 describe('业务 API 封装路径', () => {
   const cases = [
     ['dashboardApi', 'get', [], '/api/dashboard'],
+    ['dashboardApi', 'summary', [], '/api/dashboard/summary'],
     ['dashboardApi', 'countdown', [], '/api/dashboard/countdown'],
     ['dashboardApi', 'todayTasks', [], '/api/dashboard/today-tasks'],
     ['tasksApi', 'reviewSchedule', [], '/api/tasks/review-schedule'],

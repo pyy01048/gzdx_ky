@@ -124,27 +124,18 @@ def _resolve_ollama_host() -> str:
 
     实测踩到的坑：本机**用户级**环境变量 `OLLAMA_HOST=0.0.0.0:11434`（为开放局域网
     访问而设）。它是**监听地址**（服务端语义），直接当客户端目标用有两处硬伤：
-      1. 缺 `http://` scheme -> `urllib` 抛 `unknown url type: 0.0.0.0`，
-         模型调用**秒败**（0.1-0.4s），表现为 `knowledge_points` 恒为 0 且无超时告警；
+      1. 缺 `http://` scheme → `urllib` 抛 `unknown url type: 0.0.0.0`，
+         模型调用**秒败**（0.1–0.4s），表现为 `knowledge_points` 恒为 0 且无超时告警；
       2. 即便补了 scheme，Windows 上连 `0.0.0.0` 也不可达（Linux 才等价 localhost）。
 
-    所以这里统一：缺 scheme 则补 `http://`；主机名是通配监听地址则换 `127.0.0.1`。
+    这里曾是全后端**唯一**正确实现；现算法下沉到 `utils/ollama_host.py` 供
+    ai_service / ai_router / retrieval_enhance / chunk_classifier / circuit_analysis /
+    routers.ai 等模块共用，本函数保留为兼容壳（`scripts/kp_backfill_batch.py` 等
+    仍引用 `kp._OLLAMA_HOST`）。
     """
-    from urllib.parse import urlparse
+    from utils.ollama_host import resolve_ollama_host
 
-    raw = (os.environ.get("OLLAMA_HOST") or "").strip().rstrip("/")
-    if not raw:
-        return "http://127.0.0.1:11434"
-    if "://" not in raw:
-        raw = "http://" + raw
-    parts = urlparse(raw)
-    if (parts.hostname or "") in ("0.0.0.0", "::"):
-        auth = ""
-        if parts.username:
-            auth = parts.username + (f":{parts.password}" if parts.password else "") + "@"
-        port = f":{parts.port}" if parts.port else ""
-        raw = f"{parts.scheme}://{auth}127.0.0.1{port}{parts.path}"
-    return raw
+    return resolve_ollama_host()
 
 
 _OLLAMA_HOST = _resolve_ollama_host()
@@ -152,12 +143,14 @@ _OLLAMA_HOST = _resolve_ollama_host()
 #: **进程级**模型并发闸门 —— 6 个 ingest worker 共用，避免把本地模型打爆
 _MODEL_SEM = threading.BoundedSemaphore(KP_MODEL_SLOTS)
 
-#: 新增列（幂等 ALTER，见 `ensure_kp_trace_columns`）
+#: 新增列（幂等 ALTER，见 `ensure_kp_trace_columns`）。
+#: 关键：必须带 `IF NOT EXISTS` —— PG（与 SQLite 3.30+）都支持。否则在已迁移的库上
+#: 重复 ALTER 会抛 DuplicateColumn，且不回滚会污染整条事务（InFailedSqlTransaction）。
 KP_TRACE_COLUMNS: Tuple[Tuple[str, str], ...] = (
-    ("source_chunk_id", "ALTER TABLE knowledge_points ADD COLUMN source_chunk_id INTEGER"),
-    ("source_chunk_index", "ALTER TABLE knowledge_points ADD COLUMN source_chunk_index INTEGER"),
-    ("extract_source", "ALTER TABLE knowledge_points ADD COLUMN extract_source TEXT"),
-    ("subject_source", "ALTER TABLE knowledge_points ADD COLUMN subject_source TEXT"),
+    ("source_chunk_id", "ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS source_chunk_id INTEGER"),
+    ("source_chunk_index", "ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS source_chunk_index INTEGER"),
+    ("extract_source", "ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS extract_source TEXT"),
+    ("subject_source", "ALTER TABLE knowledge_points ADD COLUMN IF NOT EXISTS subject_source TEXT"),
 )
 
 
@@ -711,8 +704,16 @@ def ensure_kp_trace_columns(db) -> List[str]:
             db.execute(sqlalchemy.text(ddl))
             added.append(col)
         except Exception as e:  # noqa: BLE001
-            # 列已存在 = 幂等成功，不算失败
-            if "duplicate column" in str(e).lower():
+            # 任何异常都先回滚，否则 PG 事务进入 aborted 态会拖累后续 SELECT
+            # （InFailedSqlTransaction），导致溯源/去重整体失效。
+            try:
+                db.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            # 列已存在 = 幂等成功，不算失败（PG 报 duplicate column；
+            # 老版本 SQLite 无 IF NOT EXISTS 时也会报 already exists）。
+            msg = str(e).lower()
+            if "duplicate column" in msg or "already exists" in msg:
                 continue
             logger.warning("knowledge_points 加列 %s 失败: %s", col, e)
     if added:

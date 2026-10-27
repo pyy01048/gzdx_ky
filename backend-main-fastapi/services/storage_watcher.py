@@ -17,7 +17,7 @@ import time
 import hashlib
 import logging
 import threading
-from datetime import datetime
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -374,8 +374,8 @@ class StorageWatcher:
                     size=file_info.get('size', 0),
                     index_status='pending',
                     parse_progress=0,
-                    created_at=datetime.now(),
-                    updated_at=datetime.now(),
+                    created_at=utcnow(),
+                    updated_at=utcnow(),
                 )
                 self.db.add(doc)
                 self.db.flush()
@@ -416,7 +416,7 @@ class StorageWatcher:
                     'hash': file_info['hash'],
                     'fingerprint': file_info['hash'],
                     'size': file_info['size'],
-                    'processed_at': datetime.now().isoformat(),
+                    'processed_at': utcnow().isoformat(),
                     'doc_id': doc.id,
                     'chunk_count': 0,
                     'status': 'rejected',
@@ -462,14 +462,14 @@ class StorageWatcher:
             doc.index_status = 'indexed' if has_searchable_chunks(self.db, doc.id) else 'failed'
             doc.knowledge_point_count = chunk_count
             doc.parse_progress = 1.0
-            doc.updated_at = datetime.now()
+            doc.updated_at = utcnow()
 
             # 6. 记录已处理文件（fingerprint 用于下次的增量比对）
             self.processed_files[file_info['relative_path']] = {
                 'hash': file_info['hash'],
                 'fingerprint': file_info['hash'],
                 'size': file_info['size'],
-                'processed_at': datetime.now().isoformat(),
+                'processed_at': utcnow().isoformat(),
                 'doc_id': doc.id,
                 'chunk_count': chunk_count,
                 'status': 'success',

@@ -41,11 +41,15 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from utils.compute_nodes import ocr_service_url
+
 # --------------------------------------------------------------------------- #
 # 配置（环境变量可覆盖；只允许本地回环地址）
 # --------------------------------------------------------------------------- #
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-OCR_PADDLE_URL = os.getenv("PADDLE_OCR_URL", "http://127.0.0.1:8888").rstrip("/")
+from utils.ollama_host import resolve_ollama_host as _resolve_ollama_host
+
+OLLAMA_HOST = _resolve_ollama_host()
+OCR_PADDLE_URL = ocr_service_url()
 TEXT_MODEL = os.getenv("CIRCUIT_LLM_MODEL", "qwen3:8b")          # 文本结构化描述
 VLM_MODEL = os.getenv("CIRCUIT_VLM_MODEL", "qwen2.5vl:7b")       # VLM 直接读图兜底
 TEXT_TIMEOUT = float(os.getenv("CIRCUIT_TEXT_TIMEOUT", "360"))    # qwen3 思考模型，给够

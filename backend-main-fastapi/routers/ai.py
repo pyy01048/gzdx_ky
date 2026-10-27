@@ -1,5 +1,6 @@
 """AI 路由。"""
 
+from utils.security import require_admin
 import asyncio
 import datetime
 import json
@@ -226,7 +227,7 @@ async def list_providers(db: Session = Depends(get_db)):
     ]
 
 
-@router.post("/providers")
+@router.post("/providers", dependencies=[Depends(require_admin)])
 async def create_provider(provider: AIProviderCreate, db: Session = Depends(get_db)):
     """添加 AI 配置。"""
     # 如果设为默认，取消其他默认
@@ -240,7 +241,7 @@ async def create_provider(provider: AIProviderCreate, db: Session = Depends(get_
     return {"id": new_provider.id, "message": "AI 配置添加成功"}
 
 
-@router.put("/providers/{provider_id}")
+@router.put("/providers/{provider_id}", dependencies=[Depends(require_admin)])
 async def update_provider(provider_id: int, provider: AIProviderUpdate, db: Session = Depends(get_db)):
     """更新配置。"""
     db_provider = db.query(AIProvider).filter(AIProvider.id == provider_id).first()
@@ -261,7 +262,7 @@ async def update_provider(provider_id: int, provider: AIProviderUpdate, db: Sess
     return {"id": db_provider.id, "message": "AI 配置更新成功"}
 
 
-@router.delete("/providers/{provider_id}")
+@router.delete("/providers/{provider_id}", dependencies=[Depends(require_admin)])
 async def delete_provider(provider_id: int, db: Session = Depends(get_db)):
     """删除配置。"""
     db_provider = db.query(AIProvider).filter(AIProvider.id == provider_id).first()
@@ -273,7 +274,7 @@ async def delete_provider(provider_id: int, db: Session = Depends(get_db)):
     return {"message": "AI 配置已删除"}
 
 
-@router.post("/providers/{provider_id}/test")
+@router.post("/providers/{provider_id}/test", dependencies=[Depends(require_admin)])
 async def test_provider(provider_id: int, db: Session = Depends(get_db)):
     """测试 AI API 连通性。"""
     ai = AIService(db)
@@ -317,7 +318,7 @@ async def get_routing(db: Session = Depends(get_db)):
     }
 
 
-@router.put("/routing")
+@router.put("/routing", dependencies=[Depends(require_admin)])
 async def set_routing(req: RoutingModeRequest, db: Session = Depends(get_db)):
     """设置 AI 路由模式并立即生效（清网关缓存，无需重启）。"""
     from services import model_gateway as gw
@@ -673,7 +674,7 @@ async def search_status(db: Session = Depends(get_db)):
     return get_index_stats(db)
 
 
-@router.post("/rebuild-fts")
+@router.post("/rebuild-fts", dependencies=[Depends(require_admin)])
 async def rebuild_fts(db: Session = Depends(get_db)):
     """重建 FTS5 全文检索索引（删除并重新同步 5164 条分块）。"""
     from services.search_service import ensure_fts_table
@@ -685,7 +686,7 @@ async def rebuild_fts(db: Session = Depends(get_db)):
     return {"success": True, "fts_indexed": count, "message": f"FTS 索引重建完成，共 {count} 条记录"}
 
 
-@router.post("/build-embeddings")
+@router.post("/build-embeddings", dependencies=[Depends(require_admin)])
 async def build_embeddings(force: bool = False):
     """构建知识分块的 embedding 向量索引（完全离线，后台异步执行，不阻塞服务）。
 
@@ -795,7 +796,9 @@ async def model_catalog(db: Session = Depends(get_db)):
     installed = set()
     try:
         import httpx
-        host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+        from utils.ollama_host import resolve_ollama_host
+
+        host = resolve_ollama_host()
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(f"{host}/api/tags")
             if r.status_code == 200:
@@ -809,7 +812,11 @@ async def model_catalog(db: Session = Depends(get_db)):
             '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
         )
 
-    return mr.full_report(installed=installed)
+    # P0-2：full_report 会再调 detect_hardware()（内含 nvidia-smi 子进程），
+    # async 端点直调会阻塞事件循环 → 挪线程池。
+    from starlette.concurrency import run_in_threadpool
+
+    return await run_in_threadpool(mr.full_report, installed=installed)
 
 
 @router.get("/models/recommend")
@@ -847,7 +854,11 @@ async def model_hardware():
 
     from services import model_registry as mr
 
-    hw = mr.detect_hardware()
+    # P0-2：detect_hardware() 里跑 nvidia-smi / wmic 子进程（timeout 最长 10s），
+    # async 端点直调会阻塞事件循环 → 挪线程池。
+    from starlette.concurrency import run_in_threadpool
+
+    hw = await run_in_threadpool(mr.detect_hardware)
     return {**asdict(hw), "tier": hw.tier, "fit_levels": mr.FIT_LEVELS}
 
 
@@ -864,7 +875,9 @@ async def local_model_status(db: Session = Depends(get_db)):
     import os
 
     ai = AIService(db)
-    host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    from utils.ollama_host import resolve_ollama_host
+
+    host = resolve_ollama_host()
     available = await ai._check_ollama_available(force_recent=True)
 
     # 可用时顺带把已装模型列出来，用户一眼看到"本地有什么能用"
@@ -925,7 +938,7 @@ async def local_model_list(db: Session = Depends(get_db)):
         return {"available": False, "models": [], "count": 0, "error": str(e)}
 
 
-@router.post("/local/test")
+@router.post("/local/test", dependencies=[Depends(require_admin)])
 async def local_model_test(
     model: str = "qwen3:8b",
     prompt: str = "你好，请用一句话介绍你自己。",

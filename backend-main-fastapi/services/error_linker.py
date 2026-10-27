@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """错题本 ↔ 知识库联动服务。
 
 这是用户明确要求的"错题本与知识库的联动"落地层。此前 `error_records`
@@ -405,7 +405,9 @@ def mastery_state_condition(state: str):
     return None
 
 
-def error_stats(db: Session, *, subject: str | None = None) -> dict[str, Any]:
+def error_stats(
+    db: Session, *, subject: str | None = None, user_id: int | None = None
+) -> dict[str, Any]:
     """**错题统计的唯一口径**（错题本 / 错题复盘 / 仪表盘共用同一实现）。
 
     修复背景：此前"错题数 / 今日待复习"至少有三套算法在跑 ——
@@ -430,6 +432,8 @@ def error_stats(db: Session, *, subject: str | None = None) -> dict[str, Any]:
 
     now = utcnow()
     q = db.query(ErrorRecord)
+    if user_id is not None:
+        q = q.filter(ErrorRecord.user_id == user_id)
     if subject:
         q = q.filter(ErrorRecord.subject == taxonomy.normalize_subject(subject))
 
@@ -455,11 +459,14 @@ def error_stats(db: Session, *, subject: str | None = None) -> dict[str, Any]:
     ).first()
 
     _day, day_start, day_end = local_day_window()
-    rrow = db.query(
+    rq = db.query(
         func.count(ReviewRecord.id),
         _cnt((ReviewRecord.created_at >= day_start) & (ReviewRecord.created_at < day_end)),
         _cnt(ReviewRecord.item_type == "error"),
-    ).first()
+    )
+    if user_id is not None:
+        rq = rq.filter(ReviewRecord.user_id == user_id)
+    rrow = rq.first()
 
     return {
         "total": int(row[0] or 0),
@@ -616,6 +623,7 @@ def weak_knowledge_points(
     *,
     subject: str | None = None,
     limit: int = 20,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """错题密度最高的知识点 —— 直接指出"我最近错得最多的知识点"。
 
@@ -636,6 +644,8 @@ def weak_knowledge_points(
         .join(ErrorRecord, ErrorRecord.id == ErrorKnowledgeLink.error_id)
         .filter(ErrorRecord.status == "active")
     )
+    if user_id is not None:
+        q = q.filter(ErrorRecord.user_id == user_id)
     if subject:
         q = q.filter(KnowledgePoint.subject == taxonomy.normalize_subject(subject))
     q = q.group_by(KnowledgePoint.id)
@@ -671,6 +681,7 @@ def weak_points_view(
     *,
     subject: str | None = None,
     limit: int = 20,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """``weak_knowledge_points`` 的展示投影：评分与排序不变，只留界面字段。
 
@@ -679,7 +690,7 @@ def weak_points_view(
     """
     return [
         {k: p[k] for k in WEAK_POINT_VIEW_KEYS}
-        for p in weak_knowledge_points(db, subject=subject, limit=limit)
+        for p in weak_knowledge_points(db, subject=subject, limit=limit, user_id=user_id)
     ]
 
 

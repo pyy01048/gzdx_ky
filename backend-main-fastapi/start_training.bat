@@ -6,7 +6,8 @@ echo ============================================================
 echo.
 
 set PYY_PYTHON=C:\Users\33884\.conda\envs\pyy\python.exe
-set SCRIPT_DIR=D:\平台\backend-main-fastapi
+rem 路径由 bat 自身位置推导，不写死机器专属绝对路径（P0-B2）
+set "SCRIPT_DIR=%~dp0"
 
 echo [1/4] 检查Python环境...
 "%PYY_PYTHON%" --version

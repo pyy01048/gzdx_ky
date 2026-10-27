@@ -35,7 +35,8 @@ def test_health_keeps_legacy_fields(client):
     body = resp.json()
     assert body["service"] == "kaoyan-backend"
     assert body["version"] == "3.0.0"
-    assert body["timestamp"].endswith("+00:00")
+    # timestamp 按项目时间约定统一为 UTC+Z（前端不消费该字段，只做格式守护）
+    assert body["timestamp"].endswith("Z")
     assert body["status"] in ("ok", "degraded")
 
 
@@ -48,7 +49,10 @@ def test_health_kb_section_shape(client):
     assert kb["database"]["status"] in ("healthy", "unhealthy")
 
     vec = kb["vector_store"]
-    assert vec["backend"] == "numpy-brute-force"
+    # backend 随方言变化：SQLite 侧是 numpy 暴力检索（BLOB 表），
+    # PostgreSQL 侧是 pgvector + HNSW（chunk_vectors.embedding_f32）。
+    # 原先写死 numpy-brute-force → 切到 PG 后必挂（实测）。
+    assert vec["backend"] in ("numpy-brute-force", "pgvector-hnsw", "pgvector")
     assert vec["status"] in ("ok", "empty", "partial", "missing", "unknown")
     assert isinstance(vec["rows"], int)
 

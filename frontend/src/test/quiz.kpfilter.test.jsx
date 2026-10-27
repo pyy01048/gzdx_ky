@@ -32,9 +32,19 @@ const errorsApiMock = {
   list: vi.fn().mockResolvedValue({ items: [] }),
 }
 
-vi.mock('../api/client', () => ({
+vi.mock('../api/client', async (importOriginal) => ({
+  // 派生真实模块的导出清单：client.js 新增导出（如 fetchAllPages）不必再回来补枚举，
+  // 否则页面一 import 就报 "No export is defined on the mock"。
+  ...(await importOriginal()),
   request: vi.fn().mockResolvedValue({}),
   DEFAULT_TIMEOUT: 30000,
+  favoritesApi: {
+    list: vi.fn().mockResolvedValue({ total: 0, items: [] }),
+    add: vi.fn().mockResolvedValue({ ok: true, id: 1 }),
+    check: vi.fn().mockResolvedValue({ favorited: false, id: null }),
+    toggle: vi.fn().mockResolvedValue({ favorited: false }),
+    remove: vi.fn().mockResolvedValue({ ok: true }),
+  },
   quizApi: quizApiMock,
   taxonomyApi: taxonomyApiMock,
   errorsApi: errorsApiMock,
@@ -59,7 +69,7 @@ afterEach(() => {
 
 /** 在指定路由下渲染 Quiz，并等待深链拉题副作用落地。 */
 async function renderQuiz(route) {
-  const Quiz = (await import('../pages/Quiz')).default
+  const Quiz = (await import('../v3/pages/Quiz')).default
   const utils = render(
     <MemoryRouter initialEntries={[route]}>
       <Quiz />

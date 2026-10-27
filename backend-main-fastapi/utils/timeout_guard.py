@@ -54,6 +54,10 @@ DEFAULT_PATH_TIMEOUTS = {
     # A6 答案交叉校验：LLM 独立重做，单批 50 题实测 11~509s，60s 默认写超时触发 504 -> 放宽到 600s
     "/api/answers/check-batch": 600.0,
     "/api/kaoyan/collection/refresh": 600.0,
+    # 院校备考策略：AI 生成实测可达 70s+（tests/test_api_contract.py 的耗时容差同为 90s）。
+    # 默认 GET 30s 会在路由自己的 AI 超时降级（routers/goals.py STRATEGY_AI_TIMEOUT）
+    # 生效前抢先 504，页面白屏而不是拿到模板策略。
+    "/api/goals/strategy": 90.0,
 }
 
 # 写方法（比读更宽松：入库/AI 生成等操作本来就慢）
@@ -217,16 +221,21 @@ class TimeoutGuardMiddleware:
         """发送一个符合 HTTP 规范的 504 Gateway Timeout 响应。"""
         import json
 
+        from utils.exceptions import ErrorCode
+
         body = json.dumps({
-            "detail": (
+            "code": ErrorCode.REQUEST_TIMEOUT,
+            "message": (
                 f"请求处理超时（阈值 {timeout:.0f}秒），已中断。"
                 "该接口耗时异常，请查看服务端日志定位慢查询。"
             ),
-            "error": "request_timeout",
-            "method": method,
-            "path": path,
-            "timeout_seconds": timeout,
-            "elapsed_ms": round(elapsed_ms, 1),
+            "detail": {
+                "error": "request_timeout",
+                "method": method,
+                "path": path,
+                "timeout_seconds": timeout,
+                "elapsed_ms": round(elapsed_ms, 1),
+            },
         }, ensure_ascii=False).encode("utf-8")
 
         await send({

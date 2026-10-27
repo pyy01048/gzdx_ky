@@ -13,6 +13,7 @@ import datetime
 import pytest
 
 from database import Base, SessionLocal, engine
+from utils.timeutil import local_today, utcnow
 from models import Goal, QuizQuestion, StudyEvent
 from tests.asgi_client import ASGIClient
 from main import app
@@ -25,7 +26,7 @@ def _seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        db.add(Goal(exam_date=datetime.date.today() + datetime.timedelta(days=100),
+        db.add(Goal(exam_date=local_today() + datetime.timedelta(days=100),
                     total_score_target=360))
         for i in range(12):
             db.add(QuizQuestion(
@@ -33,7 +34,7 @@ def _seed():
                 answer="A", analysis="测试解析", subject="数电",
                 knowledge_point=f"组合逻辑{i % 3}", is_available=True,
             ))
-        now = datetime.datetime.utcnow()
+        now = utcnow()  # naive UTC，与 DB 列同语义
         for i in range(10):
             db.add(StudyEvent(
                 event_type="answer", subject="数电", is_correct=(i % 2 == 0),

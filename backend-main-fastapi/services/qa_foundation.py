@@ -27,11 +27,13 @@ import json
 import logging
 import re
 from datetime import datetime
+from utils.timeutil import iso_utc_z, local_today, utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import text as _text
+from sqlalchemy import func, text as _text
 from sqlalchemy.orm import Session
 
+from services.dbapi_compat import insert_returning_id, wrap_conn
 from models import ErrorRecord, Paper, PaperQuestion, QuizQuestion, StudyEvent
 
 logger = logging.getLogger(__name__)
@@ -80,13 +82,30 @@ _QA_DDL = [
 
 
 def ensure_qa_schema(db: Session) -> None:
-    """幂等建列/建表（ALTER 失败=列已存在，忽略）。"""
-    conn = db.connection().connection
+    """幂等建列/建表（ALTER 失败=列已存在，忽略）。
+
+    PG 关键差异（2026-10-15 实测）：ALTER 失败会把**整个事务打成 aborted**，
+    后续同事务的一切命令都被拒 —— SQLite 只报错不传染。因此每条 DDL 必须
+    包在 SAVEPOINT 里，失败只回滚到存档点，不污染外层事务。
+    """
+    conn = wrap_conn(db.connection().connection)
     for ddl in _QA_DDL:
+        conn.execute("SAVEPOINT qa_ddl_guard")
         try:
             conn.execute(ddl if isinstance(ddl, str) else _text(ddl))
-        except Exception:  # noqa: BLE001  已存在即目标状态
-            pass
+            conn.execute("RELEASE SAVEPOINT qa_ddl_guard")
+        except Exception as exc:  # noqa: BLE001
+            conn.execute("ROLLBACK TO SAVEPOINT qa_ddl_guard")
+            # 不静默：建表/加列失败必须留痕。历史上这里 `pass` 吞掉 PG 上的
+            # DDL 失败，导致 weak_knowledge / answer_review_queue 表**从未建出**，
+            # 症状漂移到"弱项统计 500"，排查成本极高（项目血泪教训 #1）。
+            # 权威 DDL 已收进 core/sql/098_runtime_tables.sql，此处只是兜底。
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "qa_foundation 懒建 DDL 未生效（多半已存在，由 098 分片负责）: %s",
+                str(exc)[:160],
+            )
     conn.commit()
 
 
@@ -147,7 +166,7 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
     if not items:
         return {"total": 0, "imported": 0, "skipped_dup": 0, "qc": {"error": "未识别到题目列表"}}
 
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     qc = {"total": len(items), "imported": 0, "would_import": 0, "skipped_dup": 0,
           "missing_options": 0, "missing_answer": 0, "ocr_noise": 0,
           "papers_created": 0}
@@ -192,15 +211,35 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
         if dup:
             qc["skipped_dup"] += 1
             continue
-        cur = conn.execute(
+        # question_type 是 DB 枚举（single/multiple/judge/fill/calc/essay/draw/proof/other）；
+        # 'objective' 是 answer_type 词表，误填会 500（InvalidTextRepresentation）。
+        raw_qt = (_first(it, _TYPE, "") or "").strip().lower()
+        qt = {"": "single", "单选": "single", "多选": "multiple", "判断": "judge",
+              "填空": "fill", "解答": "calc", "计算": "calc", "简答": "essay",
+              "objective": "single", "choice": "single", "multi_choice": "multiple",
+              "blank": "fill", "solve": "calc"}.get(raw_qt, raw_qt)
+        if qt not in {"single", "multiple", "judge", "fill", "calc", "essay",
+                      "draw", "proof", "other"}:
+            qt = "single"
+        # options 走裸 DBAPI 写入，不过 ORM 的 NullSafeJSON 规整：dict 形态
+        # （{"A": "..."}）必须在这里转成正典数组 [{key,text}]，否则 PG 触发器
+        # jsonb_array_elements 报 non-array（实测）。
+        opts_json = options
+        if isinstance(opts_json, dict) and opts_json:
+            opts_json = [
+                {"key": str(k).strip().upper()[:1], "text": str(v)}
+                for k, v in opts_json.items() if str(v).strip()
+            ]
+        # PG 无 lastrowid：统一走 insert_returning_id（PG 注入 RETURNING id）
+        qid = insert_returning_id(
+            conn,
             "INSERT INTO quiz_questions (content, options, answer, analysis, subject, "
             "question_type, year, answer_source, answer_confidence, is_available) "
-            "VALUES (?,?,?,?,?,?,?,?,?,1)",
-            (content, json.dumps(options, ensure_ascii=False) if options else None,
+            "VALUES (?,?,?,?,?,?,?,?,?,TRUE)",
+            (content, json.dumps(opts_json, ensure_ascii=False) if opts_json else None,
              answer, _first(it, _AN), subj,
-             _first(it, _TYPE, "objective"), year, src, conf),
+             qt, year, src, conf),
         )
-        qid = cur.lastrowid
         qc["imported"] += 1
         imported_questions.append({"id": qid, "subject": subj, "year": year, "content": content})
 
@@ -209,11 +248,11 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
             pkey = f"{subj}-{year}"
             if pkey not in paper_cache:
                 ptitle = f"{subj} 真题 {year}（题库包导入）"
-                pc = conn.execute(
+                paper_cache[pkey] = insert_returning_id(
+                    conn,
                     "INSERT INTO papers (title, subject, description, total_score) VALUES (?,?,?,?)",
-                    (ptitle, subj, f"来源：题库包导入 · {datetime.now().isoformat()[:10]}", 100),
+                    (ptitle, subj, f"来源：题库包导入 · {local_today().isoformat()}", 100),
                 )
-                paper_cache[pkey] = pc.lastrowid
                 qc["papers_created"] += 1
             seq = conn.execute(
                 "SELECT COUNT(*) FROM paper_questions WHERE paper_id=?",
@@ -223,7 +262,7 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
                 "INSERT INTO paper_questions (paper_id, question_id, seq, content, options) "
                 "VALUES (?,?,?,?,?)",
                 (paper_cache[pkey], qid, seq, content,
-                 json.dumps(options, ensure_ascii=False) if options else None),
+                 json.dumps(opts_json, ensure_ascii=False) if opts_json else None),
             )
 
         if src == "llm_generated":
@@ -231,7 +270,7 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
                 "INSERT OR IGNORE INTO answer_review_queue (question_id, conflict_type, detail, status, created_at) "
                 "VALUES (?,?,?,?,?)",
                 (qid, "low_confidence", json.dumps({"reason": "missing_answer_or_noise"}, ensure_ascii=False),
-                 "pending", datetime.now().isoformat()),
+                 "pending", utcnow().isoformat()),
             )
 
     if not dry_run:
@@ -241,6 +280,101 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
 
 def qc_noise_flag(noise_chars: int, content: str) -> bool:
     return noise_chars >= 2 or (len(content) > 20 and noise_chars / len(content) > 0.02)
+
+
+# --------------------------------------------------------------------------- #
+# 答疑「题库确定性答案优先」（云端方案第三步①，2026-10-18）
+# --------------------------------------------------------------------------- #
+#: 允许直接展示的高置信答案来源（与 SOURCE_CONFIDENCE 对齐；llm_generated 不在内）
+BANK_ANSWER_SOURCES = ("bank", "source_extract", "user_confirmed")
+#: 题干命中句的最短归一长度：低于此值的子串匹配误报率不可接受
+BANK_MIN_SENT = 10
+#: 最多尝试的候选句数（控制 LIKE 扫描成本）
+BANK_MAX_CANDS = 5
+
+
+def _bank_norm(s: str) -> str:
+    """匹配归一化：去所有空白 + 统一常见全角引号。与 SQL 侧 regexp_replace 口径一致。"""
+    s = re.sub(r"\s+", "", (s or ""))
+    return s.replace("\u201c", "\"").replace("\u201d", "\"").replace("\u2018", "'").replace("\u2019", "'")
+
+
+def find_bank_answer(db: Session, query: str) -> Optional[Dict]:
+    """答疑「先查题库」：用户问题命中题库题干（句级逐字）时返回确定性答案。
+
+    命中标准（宁缺勿滥）：
+      * 答案来源必须是高置信（bank / source_extract / user_confirmed），
+        llm_generated 不直接展示；answer_confidence < AUTO_GRADE_MIN_CONFIDENCE 不展示；
+      * 用户问题中至少一个 ≥10 字的连续句段在题干中逐字出现（空白归一后）。
+
+    Returns: dict(id/content/options/answer/analysis/subject/question_type/
+              answer_source/answer_confidence/year/source_label/matched) 或 None
+    """
+    q = (query or "").strip()
+    if len(q) < BANK_MIN_SENT:
+        return None
+
+    # 候选句：按标点/换行切块，取 ≥10 字的块；整段问题（限长）也作为候选兜底
+    raw_parts = re.split(r"[。；;！!？?\n\r\t，,、（）()【】\[\]\"“”‘’]+", q)
+    cands = [c for c in (_bank_norm(x) for x in raw_parts) if len(c) >= BANK_MIN_SENT]
+    whole = _bank_norm(q)
+    if len(whole) <= 120:
+        cands.append(whole)
+    cands = sorted(dict.fromkeys(cands), key=len, reverse=True)[:BANK_MAX_CANDS]
+    if not cands:
+        return None
+
+    is_pg = bool(db.bind is not None and getattr(db.bind, "dialect", None) is not None
+                 and db.bind.dialect.name == "postgresql")
+    for pat in cands:
+        esc = pat.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        content_expr = (
+            func.regexp_replace(QuizQuestion.content, r"\s+", "", "g")
+            if is_pg
+            else func.replace(QuizQuestion.content, " ", "")
+        )
+        try:
+            rows = (
+                db.query(
+                    QuizQuestion.id, QuizQuestion.content, QuizQuestion.options,
+                    QuizQuestion.answer, QuizQuestion.analysis, QuizQuestion.subject,
+                    QuizQuestion.question_type, QuizQuestion.answer_source,
+                    QuizQuestion.answer_confidence, QuizQuestion.year,
+                    QuizQuestion.source_label,
+                )
+                .filter(
+                    QuizQuestion.is_available.is_(True),
+                    QuizQuestion.is_junk.is_(False),
+                    QuizQuestion.answer.isnot(None),
+                    QuizQuestion.answer != "",
+                    QuizQuestion.answer_source.in_(BANK_ANSWER_SOURCES),
+                    content_expr.like(f"%{esc}%", escape="\\"),
+                )
+                .limit(3)
+                .all()
+            )
+        except Exception as e:
+            logger.warning("find_bank_answer 查询失败（pat len=%d）: %s", len(pat), e)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            return None
+        for r in rows:
+            conf = r[8]
+            if conf is not None and conf < AUTO_GRADE_MIN_CONFIDENCE:
+                continue
+            if pat not in _bank_norm(r[1] or ""):
+                continue  # LIKE/转义层的兑底复核
+            return {
+                "id": r[0], "content": r[1],
+                "options": r[2] if isinstance(r[2], dict) else None,
+                "answer": r[3], "analysis": r[4], "subject": r[5],
+                "question_type": str(r[6] or ""), "answer_source": str(r[7] or ""),
+                "answer_confidence": conf, "year": r[9], "source_label": r[10],
+                "matched": pat,
+            }
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -275,8 +409,8 @@ def refresh_weak_knowledge(db: Session) -> Dict:
         if ok is False:
             d["wrong"] += 1
 
-    conn = db.connection().connection
-    now = datetime.now().isoformat()
+    conn = wrap_conn(db.connection().connection)
+    now = utcnow().isoformat()
     for (kp, subj), d in agg.items():
         if d["total"] < 1:
             continue
@@ -298,7 +432,7 @@ def refresh_weak_knowledge(db: Session) -> Dict:
 def list_weak_knowledge(db: Session, subject: Optional[str] = None,
                         limit: int = 50) -> List[Dict]:
     ensure_qa_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     sql = ("SELECT knowledge_point, subject, wrong_count, total_count, accuracy, mastery, "
            "last_wrong_at FROM weak_knowledge")
     args: list = []
@@ -316,7 +450,7 @@ def list_weak_knowledge(db: Session, subject: Optional[str] = None,
 # --------------------------------------------------------------------------- #
 def review_queue(db: Session, status: str = "pending", limit: int = 100) -> List[Dict]:
     ensure_qa_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     rows = conn.execute(
         "SELECT id, question_id, conflict_type, detail, status, resolution, created_at "
         "FROM answer_review_queue WHERE status=? ORDER BY id LIMIT ?",
@@ -336,7 +470,7 @@ def resolve_review(db: Session, queue_id: int, action: str,
     if action not in ("confirm", "reject"):
         return False
     ensure_qa_schema(db)
-    conn = db.connection().connection
+    conn = wrap_conn(db.connection().connection)
     row = conn.execute(
         "SELECT question_id FROM answer_review_queue WHERE id=?", (queue_id,)
     ).fetchone()
@@ -370,7 +504,7 @@ def export_snapshot(db: Session) -> Dict:
     weak = list_weak_knowledge(db, limit=30)
     errors = db.query(ErrorRecord).filter(ErrorRecord.status == "active").limit(50).all()
     return {
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": iso_utc_z(utcnow()),
         "weak_knowledge": weak,
         "recent_errors": [
             {"id": e.id, "subject": e.subject, "content": (e.content or "")[:120],
