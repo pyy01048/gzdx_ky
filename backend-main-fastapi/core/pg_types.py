@@ -93,6 +93,10 @@ ENUM_CATALOG: dict[str, tuple[str, ...]] = {
     ),
     # 题目校验门结果：未校验 / 通过 / 有告警 / 不通过
     "question_validation_status": ("pending", "pass", "warn", "fail"),
+    # 记忆轨迹类型（L1 memory_traces.trace_type，见 core/sql/115_memory_traces.sql）
+    "memory_trace_type": ("qa", "tutoring", "grading", "study", "document", "feedback"),
+    # 记忆层级来源（L2/L3 source_layer，见 core/sql/115_memory_traces.sql）
+    "memory_source_layer": ("l1_trace", "l2_fact", "l3_synthesis"),
 }
 
 

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """电路图理解服务（V11 模块3）。
 
 主路径：本地 Ollama 上的 qwen2.5vl:7b VLM 直接读图，输出结构化拓扑

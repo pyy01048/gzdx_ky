@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from routers import ai_tutoring as t
+from routers.ai import ai_tutoring as t
 
 
 def _q(source=None, subject=None, options=None):

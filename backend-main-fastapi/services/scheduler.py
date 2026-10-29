@@ -1,4 +1,4 @@
-﻿"""APScheduler 定时任务管理（网盘同步 / 复习提醒）。"""
+"""APScheduler 定时任务管理（网盘同步 / 复习提醒）。"""
 
 import asyncio
 import datetime

@@ -33,16 +33,18 @@ def main():
     else:
         print("所有表已存在，无需迁移")
     # 导入种子学科
+    # 注意：写入 **Discipline**（disciplines 表），而不是 KaoyanSubject——
+    # kaoyan_subjects 是 PG 视图（SELECT ... FROM disciplines），对视图 INSERT 会失败。
     from services.kaoyan.seed_txkyer import SEED_SUBJECTS
     from database import SessionLocal
-    from core.models import KaoyanSubject
+    from core.models import Discipline
     db = SessionLocal()
     try:
-        existing_codes = {s.code for s in db.query(KaoyanSubject).all()}
+        existing_codes = {s.code for s in db.query(Discipline).all()}
         added = 0
         for i, sub in enumerate(SEED_SUBJECTS):
             if sub["code"] not in existing_codes:
-                db.add(KaoyanSubject(sort_order=i, **sub))
+                db.add(Discipline(sort_order=i, **sub))
                 added += 1
         if added:
             db.commit()

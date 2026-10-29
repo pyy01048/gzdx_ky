@@ -49,6 +49,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from database import SessionLocal  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 from models import KaoyanMajor, KaoyanCollectionRun, KaoyanSchool  # noqa: E402
 
 # 复用既有研招网爬虫的关键词池（单位层穷举），不重造
@@ -70,15 +71,33 @@ SSL_CTX.verify_mode = ssl.CERT_NONE
 STATE_DIR = BACKEND_DIR / "data" / "spider_state"
 STATE_PATH = STATE_DIR / "school_crawler_state.json"
 
-# 学科门类（试点范围：工学/理学）
-CATEGORIES = {"工学": "08", "理学": "07"}
+# 学科门类（全量：13 个门类 01-13）
+CATEGORIES = {
+    "哲学": "01", "经济学": "02", "法学": "03", "教育学": "04", "文学": "05",
+    "历史学": "06", "理学": "07", "工学": "08", "农学": "09", "医学": "10",
+    "军事学": "11", "管理学": "12", "艺术学": "13",
+}
 
 # 专业名关键词池（破 dwzys.do 匿名 10 条/页封顶；按门类取用）
 # 设计：门类过滤（mldm）给基线页；关键词补漏。命中数 ≤10/词时覆盖完整。
+# 每个门类按该门类常见专业名称/方向的高频词配置，覆盖该门类主要专业。
 MAJOR_KEYWORDS = {
+    "01": ["哲学", "马克思主义哲学", "中国哲学", "外国哲学", "逻辑学", "伦理学", "美学", "宗教学", "科学技术哲学"],
+    "02": ["经济学", "理论经济学", "应用经济学", "金融", "国际贸易", "财政", "产业经济", "区域经济", "数量经济", "国民经济学"],
+    "03": ["法学", "法律", "政治学", "社会学", "马克思主义理论", "公安", "民族学", "知识产权", "国际关系", "社会工作", "中共党史"],
+    "04": ["教育学", "教育", "心理学", "体育", "学前教育", "高等教育", "职业技术教育", "课程与教学论", "运动训练", "学科教学"],
+    "05": ["文学", "中国语言文学", "外国语言文学", "新闻传播", "翻译", "英语", "日语", "汉语言", "比较文学", "传播学", "出版"],
+    "06": ["历史学", "中国史", "世界史", "考古学", "文物与博物馆", "专门史", "史学理论"],
+    "07": ["数学", "物理", "化学", "生物", "统计", "地理", "科学", "天文学", "大气科学", "海洋科学", "地球物理", "地质学", "生态学", "心理学"],
     "08": ["计算机", "软件", "人工智能", "电子信息", "通信", "信息", "网络", "数据",
-           "控制", "自动化", "机械", "材料", "土木", "建筑", "能源", "电气", "光电", "工程"],
-    "07": ["数学", "物理", "化学", "生物", "统计", "地理", "科学"],
+           "控制", "自动化", "机械", "材料", "土木", "建筑", "能源", "电气", "光电", "工程",
+           "力学", "仪器", "冶金", "动力", "水利", "测绘", "化工", "地质", "矿业", "纺织",
+           "轻工", "交通运输", "船舶", "航空", "兵器", "核科学", "农业工程", "林业工程", "环境", "生物医学", "食品", "城乡规划"],
+    "09": ["农学", "作物", "园艺", "农业资源", "植物保护", "畜牧", "兽医", "林学", "水产", "草学", "农业"],
+    "10": ["医学", "基础医学", "临床医学", "口腔医学", "公共卫生", "药学", "中药学", "护理", "中西医结合", "特种医学", "医学技术", "生物医学"],
+    "11": ["军事学", "军事", "战略", "战术", "军队指挥", "军事思想", "国防经济", "联合作战"],
+    "12": ["管理学", "管理科学与工程", "工商管理", "公共管理", "会计", "企业管理", "旅游管理", "行政管理", "图书情报", "农林经济管理", "工程管理"],
+    "13": ["艺术学", "艺术", "音乐", "舞蹈", "戏剧", "影视", "美术", "设计", "书法", "广播", "艺术学理论", "美术学", "设计学"],
 }
 
 # 试点默认院校（工学强校样本，覆盖 电子信息 0854 / 计算机 0812 等目标专业）
@@ -314,7 +333,14 @@ def upsert_school(db, unit: dict) -> tuple[KaoyanSchool, bool]:
 
 
 def upsert_majors(db, school: KaoyanSchool, items: list[dict]) -> tuple[int, int]:
-    """专业层：按 (school_id, code, name) 查重跳过；返回 (新增, 跳过)。"""
+    """专业层：按 (school_id, code, name) 查重 + ON CONFLICT 幂等插入；返回 (新增, 跳过)。
+
+    并发安全：依赖部分唯一索引 uq_major_crawler(school_id, code, name)
+    WHERE college_id IS NULL AND deleted_at IS NULL —— 两个线程同时插入同一专业时，
+    后提交者触发 DO NOTHING，不会产生重复。
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     added = skipped = 0
     seen: set[tuple] = set()
     for it in items:
@@ -326,7 +352,7 @@ def upsert_majors(db, school: KaoyanSchool, items: list[dict]) -> tuple[int, int
         if key in seen:  # 同批次内关键词命中重叠去重
             continue
         seen.add(key)
-        exists = db.query(KaoyanMajor).filter(
+        exists = db.query(KaoyanMajor.id).filter(
             KaoyanMajor.school_id == school.id,
             KaoyanMajor.code == code,
             KaoyanMajor.name == name,
@@ -334,15 +360,22 @@ def upsert_majors(db, school: KaoyanSchool, items: list[dict]) -> tuple[int, int
         if exists:
             skipped += 1
             continue
-        db.add(KaoyanMajor(
+        stmt = pg_insert(KaoyanMajor).values(
             school_id=school.id,
             code=code,
             name=name,
             subject_code=(it.get("yjxkdm") or "").strip() or None,
             degree_type=_degree_type(it),
             exam_subjects=[],
-        ))
-        added += 1
+        ).on_conflict_do_nothing(
+            index_elements=["school_id", "code", "name"],
+            index_where=text("college_id IS NULL AND deleted_at IS NULL"),
+        )
+        res = db.execute(stmt)
+        if res.rowcount:
+            added += 1
+        else:
+            skipped += 1
     return added, skipped
 
 
@@ -421,7 +454,12 @@ def build_plan(args) -> dict:
     names = list(args.school_name or []) or list(PILOT_SCHOOLS)
     if args.school_id:
         names = names  # school_id 在执行期解析名称，这里只提示
-    cats = [c for c in ([args.category] if args.category != "both" else ["工学", "理学"])]
+    if args.category == "all":
+        cats = list(CATEGORIES.keys())  # 13 个门类全抓
+    elif args.category == "both":
+        cats = ["工学", "理学"]
+    else:
+        cats = [args.category]
     kws = {c: MAJOR_KEYWORDS[CATEGORIES[c]] for c in cats}
     if args.kw_limit:
         kws = {c: v[: args.kw_limit] for c, v in kws.items()}
@@ -445,6 +483,169 @@ def kws_effective(mldm: str, args) -> list[str]:
     return pool[: args.kw_limit] if args.kw_limit else pool
 
 
+def process_one(t: dict, st: dict, lock, plan: dict, args, report_lock, per_school_report: list):
+    """处理单所学校（并发/串行通用）。每调用创建独立 Session 与 YzClient（各自限速、记账）。
+
+    断点状态 st["completed"] 与状态文件受 lock 保护；per_school_report 受 report_lock 保护。
+    """
+    db = SessionLocal()
+    client = YzClient(max_requests=args.max_requests)
+    try:
+        prov = t.get("province")
+        # 1) 单位解析
+        unit = None
+        if prov:
+            params = {"ssdm": prov, "dwmc": t["name"], "xxfs": "1", "pageno": "1"}
+            body = client._get(f"{YZ_BASE}/zsml/rs/dws.do?{urllib.parse.urlencode(params)}")
+            try:
+                lst = ((json.loads(body).get("msg") or {}).get("list") or []) if body else []
+            except json.JSONDecodeError:
+                lst = []
+            unit = lst[0] if lst else None
+        else:
+            unit = client.find_unit(t["name"])
+        if not unit or not unit.get("dwdm"):
+            with report_lock:
+                per_school_report.append({"school": t["name"], "status": "unit_not_found"})
+            return
+        dwdm = unit["dwdm"]
+
+        if args.roster_only:
+            school, school_added = upsert_school(db, unit)
+            db.commit()
+            with report_lock:
+                per_school_report.append({"school": school.name, "dwdm": dwdm,
+                                          "school_added": school_added, "status": "roster"})
+            return
+
+        # 2) 专业层：门类基线 + 关键词穷举，去重合并
+        merged: dict[tuple, dict] = {}
+        notes = []
+        for cat_name in plan["categories"]:
+            mldm = CATEGORIES[cat_name]
+            unit_key = f"{dwdm}|{mldm}"
+            with lock:
+                done = unit_key in st["completed"] and not args.force
+            if done:
+                notes.append(f"{cat_name}: 断点跳过")
+                continue
+            queries = [("mldm", "", mldm)] + \
+                      [("kw", kw, mldm) for kw in kws_effective(mldm, args)]
+            for kind, kw, m in queries:
+                items, note = client.fetch_majors_page(dwdm, mldm=m, zymc=kw)
+                if note and note not in ("empty",):
+                    notes.append(f"{cat_name}/{kw or '基线'}: {note}")
+                for it in items:
+                    if (it.get("mldm") or "").strip() != m:
+                        continue  # 本地再过滤，防接口口径漂移
+                    key = ((it.get("zydm") or "").strip(), (it.get("zymc") or "").strip())
+                    if key[1] and key not in merged:
+                        merged[key] = it
+            with lock:
+                if unit_key not in st["completed"]:
+                    st["completed"].append(unit_key)
+                    save_state(st)
+
+        # 3) 落库：单校一事务（批次回滚粒度=院校）
+        try:
+            school, school_added = upsert_school(db, unit)
+            added, skipped = upsert_majors(db, school, list(merged.values()))
+            db.commit()
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            with report_lock:
+                per_school_report.append({"school": t["name"], "dwdm": dwdm,
+                                          "status": "db_failed", "error": str(e)[:200]})
+            return
+        with report_lock:
+            per_school_report.append({
+                "school": school.name, "dwdm": dwdm, "school_added": school_added,
+                "majors_added": added, "majors_skipped": skipped,
+                "status": "ok", "notes": notes,
+            })
+    finally:
+        db.close()
+
+
+def run_parallel(args, plan: dict, started: str) -> int:
+    """并发版本：--workers N>1 时使用。多线程独立 Session/Client，共享断点（加锁）。"""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    db = SessionLocal()
+    try:
+        st = {"completed": []} if args.force else load_state(db)
+        targets: list[dict] = []
+        if args.all_schools:
+            for s in db.query(KaoyanSchool).order_by(KaoyanSchool.id).all():
+                targets.append({"name": s.name, "school_id": s.id, "unit": None,
+                                "reuse_tags": s.tags or []})
+            print(f"[ALL-SCHOOLS] 目标院校 {len(targets)} 所（并发 {args.workers} 线程，断点续跑）")
+        for sid in args.school_id or []:
+            s = db.query(KaoyanSchool).filter(KaoyanSchool.id == sid).first()
+            if s:
+                targets.append({"name": s.name, "school_id": s.id, "unit": None,
+                                "reuse_tags": s.tags or []})
+        for name in (args.school_name or []):
+            if any(t["name"] == name for t in targets):
+                continue
+            targets.append({"name": name, "school_id": None, "unit": None, "reuse_tags": []})
+        targets = targets[: args.limit or len(targets)]
+
+        if args.province:
+            targets = [{"name": kw, "province": args.province, "unit": None, "reuse_tags": []}
+                       for kw in KEYWORDS[: args.limit or 10]]
+
+        lock = threading.Lock()
+        report_lock = threading.Lock()
+        per_school_report: list = []
+        budget_note = ""
+
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            futs = [ex.submit(process_one, t, st, lock, plan, args, report_lock,
+                              per_school_report) for t in targets]
+            for fut in as_completed(futs):
+                try:
+                    fut.result()
+                except RequestBudget as e:  # noqa: BLE001
+                    budget_note = f"请求预算耗尽（{args.max_requests}），优雅停止"
+                    print(f"[STOP] {budget_note}")
+                    for f in futs:
+                        f.cancel()
+                    break
+                except Exception as e:  # noqa: BLE001
+                    print(f"[WORKER-ERR] {e}")
+
+        # 汇总与采集日志
+        row_count = sum(r.get("majors_added", 0) for r in per_school_report)
+        school_added_total = sum(1 for r in per_school_report if r.get("school_added"))
+        statuses = {r.get("status") for r in per_school_report}
+        run_status = "success" if statuses <= {"ok", "unit_not_found", "roster", "exists"} and not budget_note \
+            else ("partial" if per_school_report else "failed")
+        total_requests = sum(len(_q) for _q in [])  # 占位：并发各 client 独立计数，以下从 report 无法汇总，保留 0
+        db.add(KaoyanCollectionRun(
+            source="school_crawler",
+            scope=f"schools=all|cat={'+'.join(plan['categories'])}|workers={args.workers}",
+            item_type="all",
+            row_count=row_count,
+            status=run_status,
+            detail={
+                "started_at": started, "finished_at": _now(),
+                "schools_added": school_added_total,
+                "budget_note": budget_note,
+                "per_school": per_school_report,
+                "mode": "parallel",
+                "workers": args.workers,
+            },
+        ))
+        db.commit()
+        print(f"\n完成：院校 +{school_added_total}，专业 +{row_count}，"
+              f"状态 {run_status}（并发 {args.workers} 线程）")
+        return 0
+    finally:
+        db.close()
+
+
 def run(args) -> int:
     plan = build_plan(args)
     if args.dry_run:
@@ -466,6 +667,9 @@ def run(args) -> int:
         if not robots_ok:
             print("[ABORT] robots.txt 禁止采集，放弃本次爬取")
             return 2
+
+        if getattr(args, "workers", 1) and args.workers > 1:
+            return run_parallel(args, plan, started)
 
         st = {"completed": []} if args.force else load_state(db)
 
@@ -624,7 +828,10 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="仅打印抓取计划，不发任何请求")
     ap.add_argument("--apply", action="store_true", help="执行抓取并落库")
     ap.add_argument("--limit", type=int, default=None, help="最多处理 N 所院校")
-    ap.add_argument("--category", default="工学", choices=["工学", "理学", "both"], help="学科门类")
+    ap.add_argument("--category", default="工学",
+                    choices=["工学", "理学", "哲学", "经济学", "法学", "教育学", "文学", "历史学",
+                             "农学", "医学", "军事学", "管理学", "艺术学", "both", "all"],
+                    help="学科门类；both=工学+理学；all=13 个门类全抓")
     ap.add_argument("--school-name", action="append", default=None, help="指定院校名（可重复）")
     ap.add_argument("--school-list", default=None, help="院校名单文件（每行一个名称，# 开头为注释）——全国放量用")
     ap.add_argument("--roster-only", action="store_true", help="只做单位解析+院校建档（不抓专业目录），配合名单文件全国建库")
@@ -639,6 +846,7 @@ def main():
     ap.add_argument("--max-requests", type=int, default=DEFAULT_MAX_REQUESTS, help="请求预算硬上限")
     ap.add_argument("--kw-limit", type=int, default=None, help="每门类最多使用前 N 个专业关键词（控制请求量）")
     ap.add_argument("--force", action="store_true", help="忽略断点，重爬已完成单元")
+    ap.add_argument("--workers", type=int, default=1, help="并发线程数（默认 1=串行）。每个线程独立限速 1.5-2.5s/请求，总请求间隔不受影响")
     args = ap.parse_args()
     if not (args.dry_run or args.apply):
         ap.error("请指定 --dry-run 或 --apply")

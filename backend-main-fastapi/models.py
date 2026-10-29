@@ -809,6 +809,8 @@ class Document(Base):
     # 于是 smart_ingest 的赋值落在 Python 属性上、从未落库（705/705 恒为 0）。
     chunk_count = Column(Integer, default=0, server_default="0", comment="已产生的分块数")
     parse_progress = Column(Float, default=0, comment="解析进度 0-1")
+    # 解析失败原因（对齐 core/sql/020_documents.sql：index_status=failed 时必填）
+    parse_error = Column(Text, nullable=True, comment="解析失败原因")
     content = Column(Text, nullable=True, comment="解析后文本内容")
     subject = Column(String(50), nullable=True, index=True, comment="学科分类")
     # —— 结构化文档组织：# 原始层 / 加工层 / 索引层 —— #

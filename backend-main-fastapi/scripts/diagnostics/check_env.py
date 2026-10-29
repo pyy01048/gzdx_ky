@@ -93,31 +93,69 @@ for mod, desc in OPTIONAL.items():
 
 # --------------------------------------------------------------------------- #
 hdr("3. 数据库")
-if os.path.exists(DB):
-    size = os.path.getsize(DB) / 1024 / 1024
-    print(f"  {OK} 数据库存在  {size:.0f} MB")
+# 后端开关：postgresql | sqlite（与 core.db_session.database_backend() 同口径）。
+# 2026-10-28 修复（P2-3）：此前只认 SQLite，在 DATABASE_BACKEND=postgresql 时
+# 会误报「数据库不存在」。现在按后端分派：PG 走真实连接检查，sqlite 走文件检查。
+BACKEND_TYPE = os.environ.get("DATABASE_BACKEND", "").strip().lower() or "postgresql"
+
+if BACKEND_TYPE == "postgresql":
     try:
-        conn = sqlite3.connect(DB)
-        tables = conn.execute(
-            "select count(*) from sqlite_master where type='table'").fetchone()[0]
-        docs = conn.execute("select count(*) from documents").fetchone()[0]
-        chunks = conn.execute("select count(*) from knowledge_chunks").fetchone()[0]
-        kps = conn.execute("select count(*) from knowledge_points").fetchone()[0]
-        quiz = conn.execute("select count(*) from quiz_questions").fetchone()[0]
-        print(f"       表 {tables} 个 · 文档 {docs} · 分块 {chunks} · 知识点 {kps} · 真题 {quiz}")
-        empty = conn.execute(
-            "select count(*) from documents where content is null or length(trim(content))=0"
-        ).fetchone()[0]
-        if empty:
-            warnings.append(f"{empty} 篇文档正文为空（可跑 kb_pipeline --heal）")
-            print(f"  {WARN} {empty} 篇文档正文为空")
-        conn.close()
+        from sqlalchemy import text
+        from core.db_session import SessionLocal as PGSession, IS_POSTGRES
+
+        if not IS_POSTGRES:
+            problems.append("DATABASE_BACKEND=postgresql 但连接串不是 PostgreSQL，请检查 .env")
+            print(f"  {FAIL} 配置为 PostgreSQL，但 SQLALCHEMY_DATABASE_URL 不是 postgresql://")
+        else:
+            db = PGSession()
+            try:
+                tables = db.execute(
+                    text("SELECT count(*) FROM pg_tables WHERE schemaname='public'")
+                ).scalar()
+                docs = db.execute(text("SELECT count(*) FROM documents")).scalar()
+                chunks = db.execute(text("SELECT count(*) FROM knowledge_chunks")).scalar()
+                kps = db.execute(text("SELECT count(*) FROM knowledge_points")).scalar()
+                quiz = db.execute(text("SELECT count(*) FROM quiz_questions")).scalar()
+                empty = db.execute(text(
+                    "SELECT count(*) FROM documents "
+                    "WHERE content IS NULL OR length(trim(content))=0"
+                )).scalar()
+                print(f"  {OK} PostgreSQL 已连接（{tables} 张表）")
+                print(f"       文档 {docs} · 分块 {chunks} · 知识点 {kps} · 真题 {quiz}")
+                if empty:
+                    warnings.append(f"{empty} 篇文档正文为空（可跑 kb_pipeline --heal）")
+                    print(f"  {WARN} {empty} 篇文档正文为空")
+            finally:
+                db.close()
     except Exception as e:
-        problems.append(f"数据库读取失败: {e}")
-        print(f"  {FAIL} 读取失败: {e}")
+        problems.append(f"PostgreSQL 连接失败: {e}")
+        print(f"  {FAIL} PostgreSQL 连接失败: {e}")
 else:
-    problems.append("数据库不存在，首次启动会自动创建（但知识库是空的）")
-    print(f"  {WARN} 数据库不存在，首次启动会自动创建")
+    if os.path.exists(DB):
+        size = os.path.getsize(DB) / 1024 / 1024
+        print(f"  {OK} 数据库存在  {size:.0f} MB")
+        try:
+            conn = sqlite3.connect(DB)
+            tables = conn.execute(
+                "select count(*) from sqlite_master where type='table'").fetchone()[0]
+            docs = conn.execute("select count(*) from documents").fetchone()[0]
+            chunks = conn.execute("select count(*) from knowledge_chunks").fetchone()[0]
+            kps = conn.execute("select count(*) from knowledge_points").fetchone()[0]
+            quiz = conn.execute("select count(*) from quiz_questions").fetchone()[0]
+            print(f"       表 {tables} 个 · 文档 {docs} · 分块 {chunks} · 知识点 {kps} · 真题 {quiz}")
+            empty = conn.execute(
+                "select count(*) from documents where content is null or length(trim(content))=0"
+            ).fetchone()[0]
+            if empty:
+                warnings.append(f"{empty} 篇文档正文为空（可跑 kb_pipeline --heal）")
+                print(f"  {WARN} {empty} 篇文档正文为空")
+            conn.close()
+        except Exception as e:
+            problems.append(f"数据库读取失败: {e}")
+            print(f"  {FAIL} 读取失败: {e}")
+    else:
+        problems.append("数据库不存在，首次启动会自动创建（但知识库是空的）")
+        print(f"  {WARN} 数据库不存在，首次启动会自动创建")
 
 # --------------------------------------------------------------------------- #
 hdr("4. 本地模型（Ollama）")

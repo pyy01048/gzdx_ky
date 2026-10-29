@@ -75,6 +75,10 @@ def health_report(db: Session) -> dict[str, Any]:
         (Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0)
     ).scalar() or 0
 
+    # 入库/解析失败（index_status='failed'）：这些文档没有进入知识库，
+    # 是「已入库」之外最需要被体检面板如实暴露的缺口（P1-1）。
+    failed_docs = by_status.get("failed", 0) or 0
+
     # 未向量化的分块（用 NOT EXISTS 避免把整张向量表读进内存）
     try:
         conn = wrap_conn(db.connection().connection)
@@ -147,6 +151,15 @@ def health_report(db: Session) -> dict[str, Any]:
             "fix": "reparse_empty",
             "auto": True,
         })
+    if failed_docs:
+        issues.append({
+            "key": "failed_docs",
+            "level": "error",
+            "title": f"{failed_docs} 篇文档解析/入库失败",
+            "impact": "这些文档没有可检索分块，AI 检索不到（parse_error 已记录原因）",
+            "fix": "retry_failed",
+            "auto": True,
+        })
     if missing_embed:
         issues.append({
             "key": "missing_embedding",
@@ -175,6 +188,7 @@ def health_report(db: Session) -> dict[str, Any]:
             "legacy_status": legacy,
             "unknown_status": unknown,
             "empty_content": empty_docs,
+            "failed": failed_docs,
             "ocr_used": ocr_docs,
             "missing_doc_type": missing_type,
             "missing_structure_level": missing_level,
@@ -406,6 +420,7 @@ def reparse_empty(
         if not text or not text.strip():
             stats["empty_again"] += 1
             doc.index_status = "failed"
+            doc.parse_error = "重新解析后正文仍为空"
             db.commit()          # 不 commit 这行 failed 会随下一轮的 rollback 一起丢
             continue
 
@@ -415,6 +430,7 @@ def reparse_empty(
         if not verdict["ok"]:
             stats["rejected"] += 1
             doc.index_status = "failed"
+            doc.parse_error = "质量闸门拒绝：" + "；".join(verdict["reasons"])
             db.commit()
             print(f"  [x] {doc.file_name} 质量闸门拒绝：{'；'.join(verdict['reasons'])}")
             continue
@@ -431,6 +447,7 @@ def reparse_empty(
         except Exception as e:
             stats["failed"] += 1
             doc.index_status = "failed"
+            doc.parse_error = f"分块失败: {e}"
             db.commit()
             print(f"  [!] {doc.file_name} 分块失败: {e}")
             continue
@@ -443,10 +460,91 @@ def reparse_empty(
             logging.getLogger(__name__).warning(
                 '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
             )
-        doc.index_status = "indexed" if has_searchable_chunks(db, doc.id) else "failed"
+        if has_searchable_chunks(db, doc.id):
+            doc.index_status = "indexed"
+        else:
+            doc.index_status = "failed"
+            doc.parse_error = "分块入库后无可检索分块（has_searchable_chunks=False）"
         doc.parse_progress = 1.0
         db.commit()
         stats["reparsed"] += 1
+
+    return stats
+
+
+# --------------------------------------------------------------------------- #
+# 失败文档重试（P1-1）
+# --------------------------------------------------------------------------- #
+def retry_failed(
+    db: Session,
+    *,
+    limit: Optional[int] = None,
+    progress: Optional[Callable[[int, int, str], None]] = None,
+) -> dict:
+    """重试 index_status='failed' 的文档：重新分块入库。
+
+    背景：历史脚本把「没有可检索分块」的文档标成 failed，但当时没有写
+    ``parse_error``，体检面板也把 failed 当隐形缺口（P1-1 修复）。
+
+    处理逻辑（只处理真正可重试的）：
+    * 源文件缺失 → 保留 failed，补写 parse_error，跳过。
+    * 正文为空/过短（<MIN_CHUNK_CHARS，切不出块）→ 保留 failed，补写 parse_error，跳过。
+    * 正文存在且源文件在盘 → 重新 ``ingest_text(replace=True)`` 分块入库，
+      成功且 ``has_searchable_chunks`` 为真 → 置 indexed；
+      否则保留 failed 并更新 parse_error。
+    """
+    from services.kb_service import has_searchable_chunks, ingest_text
+
+    docs = db.query(Document).filter(Document.index_status == "failed").order_by(Document.id).all()
+    if limit:
+        docs = docs[:limit]
+
+    stats = {"total": len(docs), "retried": 0, "recovered": 0,
+             "no_file": 0, "no_content": 0, "still_failed": 0, "errors": 0}
+
+    for i, doc in enumerate(docs, 1):
+        if progress:
+            progress(i, len(docs), f"{doc.file_name} (id={doc.id})")
+
+        # 1. 源文件缺失 → 不可重试
+        path = doc.file_path or ""
+        if not path or not os.path.exists(path):
+            stats["no_file"] += 1
+            if not doc.parse_error:
+                doc.parse_error = "源文件缺失，无法重试"
+            continue
+
+        # 2. 正文为空/过短 → 切不出块，不可重试
+        content = (doc.content or "").strip()
+        if not content:
+            stats["no_content"] += 1
+            if not doc.parse_error:
+                doc.parse_error = "正文为空，无法分块"
+            continue
+
+        # 3. 正文存在且有源文件 → 重新分块入库
+        stats["retried"] += 1
+        try:
+            n = ingest_text(db, doc.id, doc.file_name, content,
+                            subject=doc.subject, replace=True)
+            if has_searchable_chunks(db, doc.id):
+                doc.index_status = "indexed"
+                doc.parse_error = None
+                doc.parse_progress = 1.0
+                stats["recovered"] += 1
+            else:
+                doc.index_status = "failed"
+                doc.parse_error = (
+                    f"重试后仍无可检索分块（切出 {n} 块，全部低于可检索下限）"
+                )
+                stats["still_failed"] += 1
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            stats["errors"] += 1
+            doc.index_status = "failed"
+            doc.parse_error = f"重试分块异常: {e}"
+            print(f"  [!] {doc.file_name} 重试分块异常: {e}")
+        db.commit()
 
     return stats
 
@@ -525,6 +623,14 @@ def heal(
     if empty:
         note("reparse_empty", reparse_empty(db, use_ocr=use_ocr, limit=limit))
 
+    # 4.5 失败文档重试（P1-1）：把有正文且源文件在盘的 failed 文档重新分块入库。
+    # 放在 reparse_empty 之后，因为空正文重解析可能新产生 failed 行。
+    failed_count = db.query(func.count(Document.id)).filter(
+        Document.index_status == "failed"
+    ).scalar() or 0
+    if failed_count:
+        note("retry_failed", retry_failed(db, limit=limit))
+
     # 5. 向量（需显式开启，依赖外部 embedding 服务）
     if do_embeddings:
         note("build_embeddings", build_embeddings())
@@ -550,6 +656,7 @@ def print_report(rep: dict) -> None:
     if d["unknown_status"]:
         print(f"    ⚠️ 未知状态  {d['unknown_status']}")
     print(f"    正文为空    {d['empty_content']}")
+    print(f"    入库失败    {d['failed']}")
     print(f"    扫描件 OCR  {d['ocr_used']}")
     print(f"    缺 doc_type {d['missing_doc_type']}")
     print(f"    缺层级标记  {d['missing_structure_level']}")

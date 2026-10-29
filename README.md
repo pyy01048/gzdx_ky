@@ -507,7 +507,7 @@ python tools/make_bats.py    # 重新生成，会自动校验 BOM
 
 | 层 | 技术 |
 | :--- | :--- |
-| 后端 | FastAPI · SQLAlchemy 2.0 · PostgreSQL 17（便携版，SQLite 降级路径保留） · APScheduler · uvicorn |
+| 后端 | FastAPI · SQLAlchemy 2.0 · PostgreSQL 16.15（便携版，SQLite 降级路径保留） · APScheduler · uvicorn |
 | 前端 | React 18 · Vite 5 · Zustand · React Router（HashRouter） |
 | 检索 | PostgreSQL GIN（jieba BM25） · 向量 KNN / pgvector · RRF 融合 |
 | 嵌入 | bge-small-zh-v1.5（fastembed 本地） |

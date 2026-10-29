@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from models import Milestone
-from routers.plan import MILESTONE_SPECS, _seed_milestones
+from routers.study.plan import MILESTONE_SPECS, _seed_milestones
 
 RACE_YEAR = 2099
 

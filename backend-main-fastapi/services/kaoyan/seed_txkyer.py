@@ -6,7 +6,9 @@
 """
 import re, json, urllib.request, sys
 from database import SessionLocal
-from core.models import KaoyanSchool, KaoyanSubject
+# 注意：学科种子写入 **Discipline**（disciplines 表），而不是 KaoyanSubject——
+# kaoyan_subjects 是 PG 视图（SELECT ... FROM disciplines），对视图 INSERT 会失败。
+from core.models import KaoyanSchool, Discipline
 
 BASE = "http://www.txkyer.cn/"
 
@@ -69,12 +71,12 @@ def extract_schools_from_js():
 def run():
     db = SessionLocal()
     try:
-        # 导入学科
-        existing = {s.code for s in db.query(KaoyanSubject).all()}
+        # 导入学科（写入 disciplines 表，见模块头注释）
+        existing = {s.code for s in db.query(Discipline).all()}
         added = 0
         for i, sub in enumerate(SEED_SUBJECTS):
             if sub["code"] not in existing:
-                db.add(KaoyanSubject(sort_order=i, **sub))
+                db.add(Discipline(sort_order=i, **sub))
                 added += 1
         if added:
             db.commit()

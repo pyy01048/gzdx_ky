@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import inspect
 
-from routers.kaoyan import collection_refresh
-from routers.plan import get_roadmap, list_milestones
+from routers.kaoyan.kaoyan import collection_refresh
+from routers.study.plan import get_roadmap, list_milestones
 
 
 def _assert_year_list_shape(years, target):

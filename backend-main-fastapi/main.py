@@ -20,60 +20,7 @@ from database import engine, Base, SessionLocal
 from models import (
     AIProvider, CustomLink, PlatformConfig,
 )
-from routers import (
-    auth as auth_routes,
-    stats_export,
-    kaoyan,
-    kaoyan_ext,
-    insight,
-    qa_tools,
-    conflicts,
-    ai_tutoring,
-    codebank,
-    dashboard,
-    tasks,
-    quiz,
-    errors,
-    ai,
-    netdisk,
-    goals,
-    documents,
-    flashcards,
-    customization,
-    watermark_admin,
-    imports,
-    analytics,
-    planner,
-    words,
-    taxonomy,
-    review,
-    kb,
-    quality,
-    backup,
-    storage,
-    analysis,
-    papers,
-    formula,
-    exam,
-    answers,
-    gate,
-    blind_spot,
-    plan,
-    growth,
-    kb_import,
-    model_training,
-    notices,
-    notice_alert,
-    textbooks,
-    favorites,
-    admin_schools,
-    admin_netdisk,
-    admin_system,
-    admin_schools_crawler,
-    memory,
-    recommend,
-    tutor_orchestrator,
-)
+from routers.registry import iter_routers
 
 # --------------------------------------------------------------------------- #
 # ORM 旧属性名兼容别名
@@ -85,9 +32,8 @@ from routers import (
 # --------------------------------------------------------------------------- #
 try:
     import orm_aliases
-    # 注意：此处位于 `from routers import (...)` **之后**，此时全部 ORM 映射类
-    # 已通过各 router 的 import 注册完毕，枚举类型适配才能覆盖全表。
-    # （database.get_db() 里另有一次懒初始化兜住非 FastAPI 场景。）
+    # 注意：此处位于 `from models import ...` **之后**，全部 ORM 映射类已注册完毕，
+    # 枚举类型适配才能覆盖全表。（database.get_db() 里另有一次懒初始化兜住非 FastAPI 场景。）
     _alias_done = orm_aliases.install()
     logging.getLogger(__name__).info(
         "ORM 兼容适配：%d 个模型，%d 处变更",
@@ -244,69 +190,16 @@ app.add_middleware(GZipApiMiddleware, minimum_size=1000, compresslevel=6)
 
 # --------------------------------------------------------------------------- #
 # 挂载路由
+#
+# V3.1 重构后路由统一收口到 routers/registry.py，这里只做一件事：
+#   for r in iter_routers(): app.include_router(r)
+# 唯一例外：code_oj（/api/code/*，代码上机 OJ）保持**不挂载**——判题要起子进程
+# 跑用户代码，2C2G 节点扛不住；97 号表与代码全部保留，恢复时删掉下面一行即可。
 # --------------------------------------------------------------------------- #
-app.include_router(auth_routes.router)
-app.include_router(auth_routes.admin_router)
-app.include_router(kaoyan.router)
-app.include_router(kaoyan_ext.router)
-app.include_router(insight.router)
-app.include_router(qa_tools.router)
-app.include_router(conflicts.router)
-app.include_router(ai_tutoring.router)
-app.include_router(tutor_orchestrator.router)  # P1-E 多Agent答疑编排（retrieve→solve→verify→remedy）
-app.include_router(codebank.router)
-app.include_router(dashboard.router)
-app.include_router(tasks.router)
-app.include_router(quiz.router)
-app.include_router(errors.router)
-app.include_router(stats_export.router)
-app.include_router(stats_export.errors_router)  # 错题 CSV 导出 + 批量删除（挂同前缀 /api/errors）
-app.include_router(stats_export.quiz_export_router)  # 题库 CSV 导出 + 批量删除（挂同前缀 /api/quiz）
-app.include_router(ai.router)
-app.include_router(netdisk.router)
-app.include_router(goals.router)
-app.include_router(documents.router)
-app.include_router(flashcards.router)
-app.include_router(customization.router)
-app.include_router(watermark_admin.router)  # 水印词库自学习管理（智能识别入口）
-app.include_router(imports.router)
-app.include_router(analytics.router)
-app.include_router(planner.router)
-app.include_router(words.router)
-app.include_router(taxonomy.router)
-app.include_router(textbooks.router)
-app.include_router(review.router)
-app.include_router(kb.router)
-app.include_router(backup.router)
-app.include_router(storage.router)
-app.include_router(analysis.router)
-app.include_router(papers.router)
-# 代码上机 OJ 暂不挂载：判题要起子进程跑用户代码，2C2G 节点扛不住。
-# 模型/服务/097 表都保留，恢复时加回 import 与本行即可。
-app.include_router(formula.router)
-app.include_router(exam.router)
-app.include_router(answers.router)
-app.include_router(gate.router)
-app.include_router(blind_spot.router)
-app.include_router(plan.router)
-app.include_router(growth.router)
-app.include_router(favorites.router)  # S7 全站收藏
-app.include_router(kb_import.router)
-app.include_router(model_training.router)
-app.include_router(notice_alert.router)
-# 通知已读标记（/api/notices/*）：单用户设计，状态落在 kaoyan_notices 列上
-app.include_router(notices.router)
-# 评测与数据质量只读接口（/api/quality/*）：eval_runs 趋势 + 语料体检口径
-app.include_router(quality.router)
-# 院校后台管理（/api/admin/schools/*）：CRUD + 软删除 + 审计日志
-app.include_router(admin_schools.router)
-# 网盘四表管理（/api/admin/netdisk/*）：凭据/缓存/会话/日志
-app.include_router(admin_netdisk.router)
-app.include_router(admin_system.router)  # 外部算力节点（OCR/重排/Ollama）在线灯
-# 院校数据自动采集（/api/admin/schools/crawler/*）：爬虫触发/调度/覆盖率
-app.include_router(admin_schools_crawler.router)
-app.include_router(memory.router)  # 三层可审计记忆（55 号方案 P0-1）
-app.include_router(recommend.router)  # 闭环个性化推题（55 号方案 P0-C）
+for _r in iter_routers():
+    if getattr(_r, "prefix", "") == "/api/code":
+        continue  # 代码上机 OJ 暂不挂载（见上方注释）
+    app.include_router(_r)
 
 
 # --------------------------------------------------------------------------- #
@@ -435,6 +328,15 @@ def on_startup():
         print(f"[启动] OCR 预热发起失败（不影响主服务）: {e}")
     Base.metadata.create_all(bind=engine)
     _init_default_config()
+    # 幂等补建缺失的平台配置行（存量库升级用；已有则跳过）
+    try:
+        db = SessionLocal()
+        try:
+            _ensure_missing_platform_configs(db)
+        finally:
+            db.close()
+    except Exception as e:  # noqa: BLE001
+        print(f"[启动] 平台配置补建失败（不影响主服务）: {e}")
     try:
         from utils.security import ensure_bootstrap_admin
         db = SessionLocal()
