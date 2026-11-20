@@ -47,13 +47,26 @@ jobs:
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt 2>/dev/null || true
+          pip install -r requirements.txt -r requirements-dev.txt 2>/dev/null || true
           pip install pytest pytest-timeout httpx
       - name: 体检（project_healthcheck）
         run: python scripts/project_healthcheck.py
+      - name: 依赖漏洞扫描（pip-audit，0 high/critical 才绿）
+        run: pip-audit -r requirements.txt --strict
       - name: 单测（pytest）
         # --continue-on-collection 不需要；失败即红。现有已知漂移用例修复后再收紧
         run: python -m pytest tests -q --timeout=300
+
+  gitleaks:
+    name: 密钥扫描（gitleaks）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   frontend:
     name: 前端 vitest
