@@ -62,7 +62,7 @@ tzdata==2025.2
 # ---- 环境变量 ----
 python-dotenv==1.0.1
 # ---- 本地 Embedding（bge-small-zh，数据不出网）----
-fastembed==0.8.0
+fastembed==0.9.1
 # 说明：不装 ollama 客户端包——本项目经 httpx 直连 Ollama 的 OpenAI 兼容端点
 # （/v1/chat/completions）与 /api/tags，无 `import ollama`；ollama==0.4.7 会强行
 # 拉高 pydantic>=2.9 / httpx>=0.27，与锁定的 pydantic==2.5.2 + fastapi==0.104.1 冲突，
