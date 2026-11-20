@@ -66,16 +66,6 @@ _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _BACKEND)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from services.docx_formula import (  # noqa: E402
-    MARKER_RE,
-    build_aligned,
-    parse_docx_with_images,
-    strip_markers,
-)
-# 语义级误识别门（\prod 误认多重积分、微分元被多加上标、空 \bar{}）
-# 放在 services 层是因为题干/解析那条链路也要用同一套判据——
-# 之前只有本脚本做这道检查，等于一半的公式没有语义校验。
-from services.formula_latex import latex_suspect  # noqa: E402
 from repair_quiz_stems import (  # noqa: E402
     _ensure_web_png,
     _media_root,
@@ -87,6 +77,17 @@ from repair_quiz_stems import (  # noqa: E402
     sanitize_latex,
     strip_rendered,
 )
+from services.docx_formula import (  # noqa: E402
+    MARKER_RE,
+    build_aligned,
+    parse_docx_with_images,
+    strip_markers,
+)
+
+# 语义级误识别门（\prod 误认多重积分、微分元被多加上标、空 \bar{}）
+# 放在 services 层是因为题干/解析那条链路也要用同一套判据——
+# 之前只有本脚本做这道检查，等于一半的公式没有语义校验。
+from services.formula_latex import latex_suspect  # noqa: E402
 
 # 选项起始标记：A． / B. / C、 / D）
 # 只在行首、或前面隔了 2 个以上空格时才认（防止题干里的 "A．" 字样被误当选项）
@@ -190,7 +191,7 @@ def _render_markers(
     """
     stats = {"n": 0, "tex": 0}
 
-    def _repl(m: "re.Match[str]") -> str:
+    def _repl(m: re.Match[str]) -> str:
         idx = int(m.group(1))
         stats["n"] += 1
         tex = (latex_map.get(idx) or "").strip()

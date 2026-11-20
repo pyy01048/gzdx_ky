@@ -64,9 +64,9 @@ from services.parsers.base import (
     BLOCK_UNKNOWN,
     PDF_KIND_DIGITAL,
     PDF_KIND_SCANNED,
-    ParseResult,
     ParsedBlock,
     ParsedPage,
+    ParseResult,
     normalize_block_type,
 )
 

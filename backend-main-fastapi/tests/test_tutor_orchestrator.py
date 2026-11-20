@@ -19,12 +19,11 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
 from database import SessionLocal
+from main import app
 from models import QuizQuestion
 from services import tutor_orchestrator
 from tests.asgi_client import ASGIClient
-from main import app
 
 client = ASGIClient(app)
 

@@ -3,26 +3,25 @@
 
 保留（安全网）
 ------------
-* D:\平台\database\kaoyan.db                         —— 线上库（权威）
-* D:\平台\database\kaoyan.db.safe_20261012.db        —— 本次新建的「最终干净态」备份
-* D:\平台\database\kaoyan.db.bak_m0-20261012_002221.db —— 历史基线（readmark 前）
+* D:\\平台\\database\\kaoyan.db                         —— 线上库（权威）
+* D:\\平台\\database\\kaoyan.db.safe_20261012.db        —— 本次新建的「最终干净态」备份
+* D:\\平台\\database\\kaoyan.db.bak_m0-20261012_002221.db —— 历史基线（readmark 前）
 
 删除（均为可重建 / 已过期的冗余副本）
 --------------------------------------
-* database\ 下其余所有 *.bak* / 遗留 *.db（-shm/-wal 一并删）
-* backend\data\backups\ 全部（脚本生成的备份堆，3.4GB，可重建）
-* backend\data\backup_v11_20261010\ 全部
-* backend\data\kaoyan_before_readmark.db            （已被历史基线覆盖）
-* backend\data\kaoyan.db.bak_20261007               （过期）
-* backend\scripts\_*.log/_*.json/_*.jsonl/_*.txt/_*.out 临时诊断产物
-* backend\ 下所有 __pycache__                        （可重建）
+* database\\ 下其余所有 *.bak* / 遗留 *.db（-shm/-wal 一并删）
+* backend\\data\backups\\ 全部（脚本生成的备份堆，3.4GB，可重建）
+* backend\\data\backup_v11_20261010\\ 全部
+* backend\\data\\kaoyan_before_readmark.db            （已被历史基线覆盖）
+* backend\\data\\kaoyan.db.bak_20261007               （过期）
+* backend\\scripts\\_*.log/_*.json/_*.jsonl/_*.txt/_*.out 临时诊断产物
+* backend\\ 下所有 __pycache__                        （可重建）
 
 纪律：先造安全网备份，再删；打印回收空间与删除清单（落 manifest）。
 """
 from __future__ import annotations
 
 import os
-import shutil
 import sqlite3
 import sys
 from datetime import datetime

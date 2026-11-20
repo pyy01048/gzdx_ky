@@ -11,7 +11,6 @@ if BACKEND_DIR not in sys.path:
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
-
 from services.crawl.fetcher import PoliteFetcher, clear_robots_cache  # noqa: E402
 
 PAGE_URL = "https://yz.example.edu.cn/2025/jzsh.html"
@@ -73,7 +72,7 @@ def test_200_ok():
         "robots.txt": [FakeResponse(404, b"")],
         "jzsh.html": [FakeResponse(
             200,
-            "<html><body>2025年硕士研究生招生简章</body></html>".encode("utf-8"),
+            "<html><body>2025年硕士研究生招生简章</body></html>".encode(),
             {"content-type": "text/html; charset=utf-8"},
             url=PAGE_URL,
         )],

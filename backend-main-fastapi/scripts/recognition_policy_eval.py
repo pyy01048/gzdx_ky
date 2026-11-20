@@ -151,7 +151,7 @@ def report(db, fs):
         print(f"  {name:<10} 命中 {len(hit):>3}  其中域外 {len(hit)-fp:>3}  误伤域内 {fp:>3}")
 
     base = score(fs, {})
-    print(f"\n[2] 策略对比（precision=学科池判对率，recall=域内块归到自己学科的比例）")
+    print("\n[2] 策略对比（precision=学科池判对率，recall=域内块归到自己学科的比例）")
     print(f"{'策略':<28}{'prec':>7}{'recall':>8}{'F1':>7}{'覆盖':>7}{'域外污染':>9}")
 
     def line(name, policy):

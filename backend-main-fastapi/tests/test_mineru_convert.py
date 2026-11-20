@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from services.parsers.base import (
     BLOCK_FIGURE,
     BLOCK_FORMULA,

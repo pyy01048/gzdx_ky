@@ -16,9 +16,8 @@ import datetime
 import math
 from typing import Any, Optional
 
-from sqlalchemy.orm import Session
-
 from models import ReviewSchedule
+from sqlalchemy.orm import Session
 from utils.timeutil import utcnow
 
 # FSRS-4.5 默认参数

@@ -15,7 +15,6 @@ import os
 
 import pytest
 from PIL import Image
-
 from services.parsers.pdf_formula_extract import (
     CLS_DISPLAY_FORMULA,
     CLS_INLINE_FORMULA,

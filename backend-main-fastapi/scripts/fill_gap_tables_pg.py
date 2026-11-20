@@ -20,7 +20,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -28,14 +27,13 @@ from datetime import datetime, timezone
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+import sys
+from pathlib import Path
 
-DB = dict(
-    host="127.0.0.1",
-    port=5432,
-    user="kaoyan",
-    password="kaoyan_dev_2026",
-    dbname="kaoyan",
-)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn
+
+DB = dsn()  # 口令来自 .env
 
 # 核心 11 科规范化信息（short_name / description）
 CORE_SUBJECTS = {
@@ -139,7 +137,7 @@ DEFAULT_SCORES = {
 
 
 def connect():
-    return psycopg.connect(**DB, row_factory=dict_row)
+    return psycopg.connect(DB, row_factory=dict_row)
 
 
 def now():

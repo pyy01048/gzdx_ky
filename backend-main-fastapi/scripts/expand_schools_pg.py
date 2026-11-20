@@ -15,20 +15,19 @@
 import csv
 import json
 import os
-import sys
 
 import psycopg
 
 # ---------------------------------------------------------------------------
 # 数据库连接
 # ---------------------------------------------------------------------------
-DB_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "user": "kaoyan",
-    "password": "kaoyan_dev_2026",
-    "dbname": "kaoyan",
-}
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env（scripts/_conn.py）
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(BASE_DIR, "data", "china-universities.csv")
@@ -247,7 +246,7 @@ def load_ky_universities() -> list:
 
 def main():
     # 1. 读取现有库院校名称（规范化后），用于去重
-    conn = psycopg.connect(**DB_CONFIG)
+    conn = psycopg.connect(DB_CONFIG)
     cur = conn.cursor()
     cur.execute("SELECT name FROM kaoyan_schools")
     existing_names = set()
@@ -312,7 +311,7 @@ def main():
     # 5. 验证
     cur.execute("SELECT count(*) FROM kaoyan_schools")
     total = cur.fetchone()[0]
-    print(f"\n===== 验证结果 =====")
+    print("\n===== 验证结果 =====")
     print(f"kaoyan_schools 总行数: {total}")
 
     cur.execute("""

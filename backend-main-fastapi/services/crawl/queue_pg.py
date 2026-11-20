@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from utils.timeutil import to_aware_utc, to_naive_utc
 
 from services.crawl.queue import (
     ALL_STATUSES,
@@ -31,7 +32,6 @@ from services.crawl.queue import (
     _ModelsUnavailable,
     _utcnow,
 )
-from utils.timeutil import to_aware_utc, to_naive_utc
 
 __all__ = ["PgJobStore", "PgPageIndex", "PgPageWriter", "load_models"]
 

@@ -18,9 +18,7 @@
 from __future__ import annotations
 
 import pytest
-
 from services import taxonomy
-
 
 # 用唯一前缀隔离，避免与其他测试文件的数据冲突；每个用例结束自清理。
 PREFIX = "QA-V8-"

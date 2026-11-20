@@ -26,10 +26,8 @@
 
 from __future__ import annotations
 
-import datetime
 import json
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,7 +35,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal  # noqa: E402
 from models import Document, KnowledgePoint, QuizQuestion  # noqa: E402
-from services import taxonomy, qbank_builder, kp_builder, kp_cleaner  # noqa: E402
+from services import kp_builder, kp_cleaner, qbank_builder, taxonomy  # noqa: E402
 
 DRY_RUN = "--dry-run" in sys.argv
 ARCHIVE_DIR = os.path.join(
@@ -350,9 +348,8 @@ def main() -> int:
             # 安全闸：一旦有错题/复习记录挂在这些知识点上，说明系统已在真实使用，
             # 直接 DELETE 会把 error_knowledge_links / review_records 变成悬空引用。
             # 此时拒绝执行，要求走增量补齐（不加 --force）。
-            from sqlalchemy import func
-
             from models import ErrorKnowledgeLink, ReviewRecord
+            from sqlalchemy import func
 
             link_refs = db.query(func.count(ErrorKnowledgeLink.id)).filter(
                 ErrorKnowledgeLink.knowledge_point_id.isnot(None)

@@ -15,7 +15,7 @@ import logging
 import re
 import sqlite3
 import unicodedata
-from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 # 括号内"代码:NNNN"后缀, 如「(代码:10614)」「（代码：10614）」「[代码 10614]」
 _CODE_SUFFIX_RE = re.compile(

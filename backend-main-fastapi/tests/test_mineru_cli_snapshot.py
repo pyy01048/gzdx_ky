@@ -20,7 +20,6 @@ MinerU 一升级就会**静默跑错参数**（要么 no such option，要么参
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 

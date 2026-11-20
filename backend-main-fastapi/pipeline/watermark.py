@@ -24,7 +24,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable
 
 from .config import WATERMARK_RULES_PATH
 

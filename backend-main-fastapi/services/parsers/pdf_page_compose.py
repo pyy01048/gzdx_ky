@@ -53,17 +53,15 @@ for el in r.elements:  # 结构化元素
 from __future__ import annotations
 
 import os
-import re
 import statistics
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from PIL import Image
 
 from .pdf_formula_extract import (
-    CLS_DISPLAY_FORMULA,
     CLS_INLINE_FORMULA,
     CLS_TABLE,
     FORMULA_CLASSES,

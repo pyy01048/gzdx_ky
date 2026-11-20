@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pytest  # noqa: E402
 
 import services.retrieval_enhance as re_  # noqa: E402
 

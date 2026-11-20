@@ -22,15 +22,15 @@ import json
 import logging
 import random
 import re
-import sqlite3
 import time
 import urllib.request
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from services.kaoyan.notice_dedup import upsert_notice
-from services.dbapi_compat import wrap_conn
 from utils.timeutil import naive_utc_iso
+
+from services.dbapi_compat import wrap_conn
+from services.kaoyan.notice_dedup import upsert_notice
 
 logger = logging.getLogger(__name__)
 
@@ -665,7 +665,7 @@ def crawl_school_notices(
     school_names 指定时只采指定院校。robots 允许才采，2-5s 延迟。
     """
     from database import SessionLocal
-    from models import KaoyanSchool, KaoyanCrawlTarget
+    from models import KaoyanCrawlTarget, KaoyanSchool
 
     close = False
     if db_session is None:

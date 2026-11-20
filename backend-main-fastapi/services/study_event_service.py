@@ -37,10 +37,9 @@ import logging
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
+from models import StudyEvent
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
-
-from models import StudyEvent
 from utils.timeutil import (
     day_bucket_expr,
     local_today,

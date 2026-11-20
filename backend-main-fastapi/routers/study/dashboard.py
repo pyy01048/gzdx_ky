@@ -7,17 +7,12 @@
 的改动都会重新制造同一应用两个答案。
 """
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 from typing import Literal, Optional
 
 from database import get_db
+from fastapi import APIRouter, Depends, Query
 from models import StudySession, User
-from utils.exceptions import BusinessException, ErrorCode
-from utils.scope import owner_id  # B4 行级隔离：驾驶舱个人数据只看本人
-from utils.security import current_user
-from utils.timeutil import local_today
+from pydantic import BaseModel, Field
 from services.dashboard_service import DashboardService
 from services.study_calendar import (
     FOCUS_SOURCES,
@@ -25,8 +20,12 @@ from services.study_calendar import (
     MAX_FOCUS_MINUTES_PER_SESSION,
     focus_minutes_on,
 )
-
+from sqlalchemy.orm import Session
+from utils.exceptions import BusinessException, ErrorCode
 from utils.response import MAX_PAGE_SIZE
+from utils.scope import owner_id  # B4 行级隔离：驾驶舱个人数据只看本人
+from utils.security import current_user
+from utils.timeutil import local_today
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 

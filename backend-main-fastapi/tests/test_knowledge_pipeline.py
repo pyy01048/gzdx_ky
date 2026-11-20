@@ -9,16 +9,14 @@
 这些测试**不依赖数据库**，因此可在任意环境运行：
     pytest tests/test_knowledge_pipeline.py -v
 """
+import datetime
 import os
 import sys
-import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pytest
 
-from services import taxonomy, kp_cleaner, qbank_builder, structure_parser, review_service
-
+from services import kp_cleaner, qbank_builder, review_service, structure_parser, taxonomy
 
 # --------------------------------------------------------------------------- #
 # 一、科目 / 章节 / 题型口径
@@ -417,7 +415,7 @@ class TestSubjectClassification:
 
     def test_classify_returns_standard_subject(self):
         """分类结果必须落在标准科目表内（否则前端筛选会漏数据）。"""
-        from services.kb_service import classify_subject
         from services import taxonomy
+        from services.kb_service import classify_subject
         for name in ("邱关源电路.pdf", "未知文件.xyz", "英语真题.pdf", "第1章.pptx"):
             assert classify_subject(name) in taxonomy.ALL_SUBJECTS

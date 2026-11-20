@@ -3,23 +3,24 @@
 import re
 from pathlib import Path
 
+
 def migrate_pydantic_v2(file_path):
     """将文件中的 Pydantic V1 Config 类转换为 V2 ConfigDict"""
-    
+
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-    
+
     new_lines = []
     i = 0
     converted_count = 0
-    
+
     while i < len(lines):
         line = lines[i]
-        
+
         # 检测 class Config:
         if re.match(r'^\s+class Config:\s*$', line):
             indent = re.match(r'(\s+)', line).group(1)
-            
+
             # 收集Config块内的所有行
             config_body = []
             j = i + 1
@@ -27,7 +28,7 @@ def migrate_pydantic_v2(file_path):
                 if lines[j].strip():  # 跳过空行
                     config_body.append(lines[j])
                 j += 1
-            
+
             # 解析配置项
             config_dict_items = []
             for config_line in config_body:
@@ -40,19 +41,19 @@ def migrate_pydantic_v2(file_path):
                     elif key == 'allow_population_by_field_name':
                         key = 'populate_by_name'
                     config_dict_items.append(f'{key}={value.strip()}')
-            
+
             # 生成 model_config 行
             if config_dict_items:
                 config_str = ', '.join(config_dict_items)
                 new_lines.append(f'{indent}model_config = ConfigDict({config_str})\n')
                 converted_count += 1
-            
+
             # 跳过原来的Config块
             i = j
         else:
             new_lines.append(line)
             i += 1
-    
+
     # 添加 ConfigDict 导入
     content = ''.join(new_lines)
     if converted_count > 0:
@@ -66,15 +67,15 @@ def migrate_pydantic_v2(file_path):
                 'from pydantic import BaseModel',
                 'from pydantic import BaseModel, ConfigDict'
             )
-    
+
     with open(file_path, 'w', encoding='utf-8') as f:
         f.write(content)
-    
+
     return converted_count
 
 if __name__ == '__main__':
     files = ['schemas.py', 'routers/words.py']
-    
+
     for file_path in files:
         path = Path(file_path)
         if path.exists():

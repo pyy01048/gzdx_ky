@@ -20,8 +20,6 @@ backup API 复制出来的库副本上，生产文件未改）。实测数字：
 """
 from __future__ import annotations
 
-import pytest
-
 
 def _hit(score, document_id=1):
     """构造一条只有分数的检索结果：evaluate_gate 无 rerank_score 时回退读 score。"""
@@ -66,8 +64,7 @@ def test_subject_scale_spans_the_threshold_by_two_orders():
 
 def test_abstain_band_is_the_narrow_window_between_the_two_thresholds():
     """唯一会拒答的区间就是 [relevance, accept)，实测该区间里 4/4 都是可答题。"""
-    from services.retrieval_gate import (
-        RERANKER_RELEVANCE_THRESHOLD, RETRIEVAL_ACCEPT_TOP1_THRESHOLD, evaluate_gate)
+    from services.retrieval_gate import RERANKER_RELEVANCE_THRESHOLD, RETRIEVAL_ACCEPT_TOP1_THRESHOLD, evaluate_gate
 
     mid = (RERANKER_RELEVANCE_THRESHOLD + RETRIEVAL_ACCEPT_TOP1_THRESHOLD) / 2
     assert RERANKER_RELEVANCE_THRESHOLD < mid < RETRIEVAL_ACCEPT_TOP1_THRESHOLD
@@ -79,8 +76,7 @@ def test_abstain_band_is_the_narrow_window_between_the_two_thresholds():
 
 def test_complex_query_uses_released_thresholds_but_same_scale_problem():
     """复杂题放宽到 0.35/0.45，但名次分仍整体低于该区间 → 放宽并不解决量纲问题。"""
-    from services.retrieval_gate import (
-        COMPLEX_ACCEPT_TOP1_THRESHOLD, COMPLEX_RELEVANCE_THRESHOLD, evaluate_gate)
+    from services.retrieval_gate import COMPLEX_ACCEPT_TOP1_THRESHOLD, COMPLEX_RELEVANCE_THRESHOLD, evaluate_gate
 
     assert COMPLEX_RELEVANCE_THRESHOLD < COMPLEX_ACCEPT_TOP1_THRESHOLD
 

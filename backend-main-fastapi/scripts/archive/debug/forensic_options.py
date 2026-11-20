@@ -21,8 +21,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services import qbank_builder as qb  # noqa: E402
 from services import extraction_noise as E  # noqa: E402
+from services import qbank_builder as qb  # noqa: E402
 
 DB = r"D:\平台\database\kaoyan.db"
 
@@ -100,7 +100,7 @@ def main() -> int:
             m = qb._SECTION_RE.match(ln.strip())
             if m and qb._is_real_section_title(m.group(1)):
                 sec = qb._norm_section(m.group(1))
-        print(f"\n  【Q3】逐阶段追踪：")
+        print("\n  【Q3】逐阶段追踪：")
         print(f"    阶段A 题型识别 sec_type = {sec!r}")
 
         # 阶段 B：抽选项（旧逻辑 vs 新逻辑）
@@ -124,7 +124,7 @@ def main() -> int:
                             source=src_name, section_type=sec)
             print(f"    阶段C 闸门 admit -> {ok} ({why})")
 
-        print(f"\n  【Q2】结论：", end="")
+        print("\n  【Q2】结论：", end="")
         if n_opt_src >= 2 and not r["options"]:
             print("源文档有选项但入库 options 为空 → 切题丢失")
         elif n_opt_src >= 2 and r["options"]:

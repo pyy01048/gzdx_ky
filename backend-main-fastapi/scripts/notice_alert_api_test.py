@@ -24,16 +24,14 @@ for _k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
 # 注意：本项目 starlette 0.27 + httpx 0.28 的 TestClient 不兼容
 #（TypeError: Client.__init__() got an unexpected keyword argument 'app'），
 # 所以这里**起真实 uvicorn 服务**再用 requests 打，验证链路更接近生产。
+# 动态取空闲端口：避免复用固定端口时命中「上次遗留的旧进程」导致假404
+import socket  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 
 import requests  # noqa: E402
 import uvicorn  # noqa: E402
-
 from main import app  # noqa: E402
-
-# 动态取空闲端口：避免复用固定端口时命中「上次遗留的旧进程」导致假404
-import socket  # noqa: E402
 
 with socket.socket() as _sk:
     _sk.bind(("127.0.0.1", 0))

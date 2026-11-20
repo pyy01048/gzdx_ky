@@ -17,17 +17,18 @@
 from __future__ import annotations
 
 import argparse
-import json
-import re
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 
-import psycopg
 from psycopg.types.json import Jsonb
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-DB = dict(host="127.0.0.1", port=5432, dbname="kaoyan", user="kaoyan", password="kaoyan_dev_2026")
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import pg_connect
 
 # ---------------------------------------------------------------- #
 # 公共课模板
@@ -584,7 +585,7 @@ def main() -> None:
     ap.add_argument("--rebuild-all", action="store_true", help="重建全部记录的 exam_subjects/reference_books")
     args = ap.parse_args()
 
-    conn = psycopg.connect(**DB)
+    conn = pg_connect()
     cur = conn.cursor()
 
     # 读取需要填充的专业

@@ -23,7 +23,6 @@
 from __future__ import annotations
 
 import pytest
-
 from models import QuizQuestion
 from services import quiz_query as qq
 

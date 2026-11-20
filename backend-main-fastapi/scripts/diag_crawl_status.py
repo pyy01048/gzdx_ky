@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
 """爬取进度诊断脚本（独立运行，避免 bash SIGTERM）。"""
 import json
-import sys
 import time
 
-import psycopg
+import sys
+from pathlib import Path
 
-CONN = "postgresql://kaoyan:kaoyan_dev_2026@127.0.0.1:5432/kaoyan"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import psycopg
+from scripts._conn import dsn
+
+CONN = dsn()  # 口令来自 .env
 
 
 def main():

@@ -10,17 +10,16 @@ POST /api/codebank/subjects           添加科目（用户可随时扩展模块
 POST /api/codebank/import             批量灌题（dry_run 支持）
 """
 from __future__ import annotations
-from utils.security import require_admin
 
 from typing import List, Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
-from database import get_db
 from services import codebank_service as svc
 from services.kaoyan.codebank_seed import SEED_QUESTIONS
+from sqlalchemy.orm import Session
+from utils.security import require_admin
 
 router = APIRouter(prefix="/api/codebank", tags=["复试代码题库"])
 

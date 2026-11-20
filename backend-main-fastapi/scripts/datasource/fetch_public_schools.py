@@ -7,7 +7,10 @@
 用法: python fetch_public_schools.py
 输出: public_schools.json
 """
-import json, re, ssl, urllib.request
+import json
+import re
+import ssl
+import urllib.request
 from pathlib import Path
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
@@ -28,7 +31,6 @@ def main():
             out.append({"name": cells[0], "province": cells[1]})
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"抓取 {len(out)} 所院校 → {OUT}")
-    from collections import Counter
     print("省市分布:", len(set(x["province"] for x in out)), "个省市")
     print("前5:", out[:5])
 

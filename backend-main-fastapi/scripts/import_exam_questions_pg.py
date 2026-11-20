@@ -44,13 +44,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import create_engine, text  # noqa: E402
-
 from pipeline.exam_bank_extractor import (  # noqa: E402
-    ExtractStats,
     SECTION_RE,
+    ExtractStats,
     extract_from_text,
 )
+from sqlalchemy import create_engine, text  # noqa: E402
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DB_ROOT = BACKEND_ROOT.parent / "database"
@@ -495,7 +494,7 @@ def main() -> int:
         print("\n没有需要新增的题目。")
         return 0
 
-    print(f"\n开始写库（单文档一事务）...")
+    print("\n开始写库（单文档一事务）...")
     inserted, failed = apply_plan(eng, plan)
     print(f"已入库 {inserted} 题；回滚文档 {failed} 篇")
     verify(eng, "apply 后")

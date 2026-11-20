@@ -11,9 +11,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any
 
-from sqlalchemy import CheckConstraint, Text
+from sqlalchemy import Text
 from sqlalchemy.dialects.postgresql import BYTEA, JSONB, TSVECTOR
 from sqlalchemy.types import JSON, TypeDecorator
 

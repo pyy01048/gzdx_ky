@@ -35,10 +35,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from models import Document, ErrorRecord, KnowledgeChunk, QuizQuestion, SubjectConfig
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from models import Document, ErrorRecord, KnowledgeChunk, QuizQuestion, SubjectConfig
 from services import taxonomy
 
 # --------------------------------------------------------------------------- #

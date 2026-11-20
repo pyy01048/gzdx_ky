@@ -56,10 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
-PG_URL = os.environ.get(
-    "KP_BACKFILL_DB_URL",
-    "postgresql+psycopg://kaoyan:kaoyan_dev_2026@127.0.0.1:5432/kaoyan",
-)
+PG_URL = os.environ.get("KP_BACKFILL_DB_URL", "postgresql+psycopg://kaoyan:" + os.environ['"PG_PASSWORD'] + "@127.0.0.1:5432/kaoyan")
 
 #: 优先级排序：目标科目靠前，其次按正文长度（长的通常内容更实）
 _ORDER_BY = """

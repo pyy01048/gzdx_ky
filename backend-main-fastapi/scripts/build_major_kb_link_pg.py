@@ -18,14 +18,16 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from collections import Counter, defaultdict
-
-import psycopg
-from psycopg.types.json import Jsonb
+from collections import Counter
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-DB = dict(host="127.0.0.1", port=5432, dbname="kaoyan", user="kaoyan", password="kaoyan_dev_2026")
+# 连接统一走 scripts/_conn.py（口令只从 .env 的 PG_PASSWORD 读取）
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import pg_connect
 
 # 公共课：不参与专业匹配
 PUBLIC_SUBJECTS = {
@@ -120,7 +122,7 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    conn = psycopg.connect(**DB)
+    conn = pg_connect()
     cur = conn.cursor()
 
     # 知识库科目及其内容量（文档 + 知识点 + 分块）

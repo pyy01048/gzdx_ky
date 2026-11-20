@@ -38,13 +38,13 @@ WORD_LIST_CSV = os.path.join(DATA_DIR, "Words-List-csv-5500-main", "ordered.csv"
 ECDICT_CSV = os.path.join(DATA_DIR, "ECDICT-master", "ecdict.csv")
 WORDROOT_JSON = os.path.join(DATA_DIR, "ECDICT-master", "wordroot.txt")
 
-DB_CONFIG = dict(
-    host="127.0.0.1",
-    port=5432,
-    user="kaoyan",
-    password="kaoyan_dev_2026",
-    dbname="kaoyan",
-)
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env（scripts/_conn.py）
 
 DECK_NAME = "考研核心词汇"
 DECK_DESCRIPTION = "考研英语核心词汇 5500"

@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import hashlib
 import re
-from utils.timeutil import naive_utc_iso
 from typing import Dict, List, Optional
+
+from utils.timeutil import naive_utc_iso
+
 from services.dbapi_compat import wrap_conn
 
 # 规则优先级（同标题多命中时取信息量最大的类型）

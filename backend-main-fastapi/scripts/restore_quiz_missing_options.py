@@ -85,12 +85,6 @@ _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _BACKEND)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from services.docx_formula import (  # noqa: E402
-    MARKER_RE,
-    build_aligned,
-    parse_docx_with_images,
-    strip_markers,
-)
 from repair_quiz_options import (  # noqa: E402
     OPTION_MARK_RE,
     _line_of,
@@ -111,6 +105,12 @@ from repair_quiz_stems import (  # noqa: E402
     resolve_doc,
     sanitize_latex,
     strip_rendered,
+)
+from services.docx_formula import (  # noqa: E402
+    MARKER_RE,
+    build_aligned,
+    parse_docx_with_images,
+    strip_markers,
 )
 
 # 单选四个选项的标准 key 顺序

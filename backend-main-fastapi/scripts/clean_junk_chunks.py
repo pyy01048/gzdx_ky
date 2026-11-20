@@ -543,7 +543,7 @@ def main() -> int:
         print()
 
         if not args.apply:
-            print(f">>> DRY-RUN 结束，未做任何改动。")
+            print(">>> DRY-RUN 结束，未做任何改动。")
             print(f">>>   删除 {n} 行（约 {n * 100.0 / max(before['knowledge_chunks'], 1):.1f}%，全是纯垃圾）")
             print(f">>>   截尾 {len(truncates)} 行（保住正文，只去掉尾部引流水印）")
             print(">>> 确认无误后加 --apply 执行（会自动先备份）。")

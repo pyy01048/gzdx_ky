@@ -19,8 +19,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from services import taxonomy, kp_cleaner
-
+from services import kp_cleaner, taxonomy
 
 # --------------------------------------------------------------------------- #
 # 一、834 考纲 → 知识点
@@ -244,6 +243,7 @@ def upsert_knowledge_points(db, items: list[dict[str, Any]], *, commit: bool = T
             skipped += 0 if changed else 1
         else:
             import datetime
+
             from utils.timeutil import utcnow
 
             db.add(KnowledgePoint(

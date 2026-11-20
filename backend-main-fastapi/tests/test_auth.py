@@ -6,10 +6,8 @@ import asyncio
 
 import httpx
 import pytest
-from sqlalchemy import text
-
 from conftest import TEST_USER_ID
-
+from sqlalchemy import text
 from utils import security
 from utils.access_policy import enforce_access, is_public, needs_admin
 from utils.security import current_user, ensure_bootstrap_admin, hash_password, verify_password
@@ -90,9 +88,9 @@ def auth_app(app_module, db_schema, monkeypatch):  # noqa: ARG001
     外键列置空，用例结束再把它们挂回测试主体 —— 身份相关的断言要的是"没有用户"，
     而不是"顺带把别人的学习数据删掉"。
     """
+    from core.models.schools import AuditLog
     from database import SessionLocal
     from models import User
-    from core.models.schools import AuditLog
 
     s0 = SessionLocal()
     try:
@@ -287,8 +285,8 @@ def test_learner_cannot_reach_admin_and_last_admin_is_protected(auth_app):
 
 
 def test_user_admin_writes_are_audited(auth_app):
-    from database import SessionLocal
     from core.models.schools import AuditLog
+    from database import SessionLocal
 
     admin = _bootstrap_and_change(auth_app)
     uid = admin.post("/api/admin/users", json={"username": "stu3"}).json()["user"]["id"]

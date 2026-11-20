@@ -17,11 +17,11 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 import datetime
 import os
 import sqlite3
 import sys
+from pathlib import Path
 
 # 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
 _REPO = Path(__file__).resolve().parents[2]
@@ -105,9 +105,9 @@ def dryrun_diff() -> int:
         for grp, (id1, id2) in CONFLICT_GROUPS:
             for qid in (id1, id2):
                 row = conn.execute(
-                    f"SELECT b.is_junk, c.is_junk "
-                    f"FROM bak.quiz_questions b JOIN main.quiz_questions c "
-                    f"ON c.id = b.id WHERE b.id = ?",
+                    "SELECT b.is_junk, c.is_junk "
+                    "FROM bak.quiz_questions b JOIN main.quiz_questions c "
+                    "ON c.id = b.id WHERE b.id = ?",
                     (qid,),
                 ).fetchone()
                 if row is None:

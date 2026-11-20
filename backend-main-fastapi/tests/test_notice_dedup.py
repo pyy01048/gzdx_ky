@@ -25,7 +25,6 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from services.kaoyan.notice_dedup import (  # noqa: E402
-    normalize_notice_title,
     normalize_notice_url,
     notice_dedup_key,
     upsert_notice,

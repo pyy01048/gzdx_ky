@@ -13,11 +13,10 @@
   python scripts/diagnose_school_data.py --section3   # 只看院校层级错标
 """
 import argparse
-import json
 import re
 import sqlite3
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -148,7 +147,7 @@ def section3():
     for (cur, exp), c in dist.most_common():
         print(f"    {cur:<10s} -> 应为 {exp:<6s} : {c}")
 
-    print(f"\n  全部错标院校名单：")
+    print("\n  全部错标院校名单：")
     for r, exp in sorted(mis, key=lambda x: (x[1], x[0]["name"])):
         print(f"    {r['id']:<5d} {r['name'][:30]:<32s} 库内={str(r['level'] or '<NULL>'):<8s} 应为={exp}")
 

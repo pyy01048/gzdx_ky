@@ -46,7 +46,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
 from services.ddl_compat import adapt_ddl, is_postgres, is_sqlite  # noqa: F401 复用方言判定
 

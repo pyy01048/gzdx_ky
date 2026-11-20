@@ -34,8 +34,8 @@ def main() -> int:
 
     from database import SessionLocal
     from models import QuizQuestion
-    from sqlalchemy import func
     from services.quiz_classifier_v2 import classify_batch_v2
+    from sqlalchemy import func
 
     db = SessionLocal()
     try:

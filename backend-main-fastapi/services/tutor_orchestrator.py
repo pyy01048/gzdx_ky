@@ -23,8 +23,8 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from services.ai_service import AIService
 from services import subjective_grader
+from services.ai_service import AIService
 
 logger = logging.getLogger(__name__)
 

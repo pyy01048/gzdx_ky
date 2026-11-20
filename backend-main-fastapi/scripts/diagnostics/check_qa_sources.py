@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal
-from models import SFTExample, QuizQuestion
+from models import QuizQuestion, SFTExample
 
 
 def main():
@@ -70,7 +70,7 @@ def main():
         print("=" * 74)
         print("3) 知识点 + 知识分块 —— 能否生成「讲解式」训练样本")
         print("=" * 74)
-        from models import KnowledgePoint, KnowledgeChunk
+        from models import KnowledgeChunk, KnowledgePoint
 
         kp_total = db.query(KnowledgePoint).count()
         print(f"  知识点 {kp_total}（含 description 的: "

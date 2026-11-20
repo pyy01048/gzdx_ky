@@ -15,9 +15,8 @@ utils/access_policy.enforce_access 的约定：
 from __future__ import annotations
 
 import pytest
-
-from tests.asgi_client import ASGIClient
 from main import app
+from tests.asgi_client import ASGIClient
 from utils.access_policy import enforce_access
 from utils.security import current_user
 

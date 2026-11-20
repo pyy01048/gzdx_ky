@@ -131,7 +131,7 @@ def main() -> int:
             continue
 
         if not os.path.exists(path):
-            print(f"      [!] 脚本缺失，跳过")
+            print("      [!] 脚本缺失，跳过")
             if required:
                 return 1
             continue
@@ -148,7 +148,7 @@ def main() -> int:
         if result.returncode != 0:
             print(f"      [x] 退出码 {result.returncode}，迁移中止")
             return result.returncode
-        print(f"      [✓] 完成\n")
+        print("      [✓] 完成\n")
 
     if list_only:
         print("（--list 模式，未执行）")

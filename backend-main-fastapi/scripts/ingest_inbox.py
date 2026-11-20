@@ -48,8 +48,8 @@ def main() -> int:
     _load_env_path()
 
     if args.status:
-        from services.ocr_router import get_ocr_router
         from services import kb_ingest
+        from services.ocr_router import get_ocr_router
 
         router = get_ocr_router()
         print(json.dumps({

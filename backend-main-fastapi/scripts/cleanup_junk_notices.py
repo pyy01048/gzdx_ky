@@ -31,11 +31,11 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import os
 import sqlite3
 import sys
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -103,7 +103,6 @@ def referrer_scan(conn: sqlite3.Connection, ids: set[int]) -> list[tuple[str, in
 def physical_delete(conn: sqlite3.Connection, ids: set[int]) -> int:
     """走 delete_guard 闸门的物理删除。"""
     from services.delete_guard import (  # noqa: PLC0415 —— 仅在写库路径导入
-        PhysicalDeleteBlocked,
         backup_before_delete,
         require_physical_delete_enabled,
     )

@@ -28,7 +28,6 @@ if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
 import psycopg  # noqa: E402
-
 from pipeline.config import pg_database_url  # noqa: E402
 
 #: 入库时写入的物理页标记，形如 “--- 第20页(OCR) ---”

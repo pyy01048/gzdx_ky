@@ -13,12 +13,11 @@
 from __future__ import annotations
 
 import pytest
-
-from database import Base, SessionLocal, engine
 from core.models import KaoyanAdmission, KaoyanMajor, KaoyanSchool, KaoyanScoreline
+from database import SessionLocal
+from main import app
 from services.kaoyan import reform_detector
 from tests.asgi_client import ASGIClient
-from main import app
 
 client = ASGIClient(app)
 
@@ -79,8 +78,8 @@ def _seed(db_schema):
 
 def _add_notices(rows):
     """直接往 kaoyan_notices 表插数据（原生 DDL 表）。"""
-    from services.kaoyan.spider_notices import ensure_notices_schema
     from services.kaoyan.reform_detector import ensure_reforms_schema
+    from services.kaoyan.spider_notices import ensure_notices_schema
     db = SessionLocal()
     try:
         ensure_notices_schema(db)

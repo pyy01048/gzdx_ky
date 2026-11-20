@@ -21,12 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
+from models import Document, QuizQuestion
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-
-from database import get_db
-from models import Document, QuizQuestion
 from utils.security import require_admin
 
 router = APIRouter(prefix="/api/model-training", tags=["model-training"], dependencies=[Depends(require_admin)])

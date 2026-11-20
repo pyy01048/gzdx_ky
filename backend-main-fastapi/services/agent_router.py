@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Optional
+from typing import Dict
 
 # 意图关键词 → Agent（按命中优先级排序，扫分模式：命中数最多者胜）
 INTENT_RULES = [

@@ -49,11 +49,11 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from database import SessionLocal  # noqa: E402
-from sqlalchemy import text  # noqa: E402
-from models import KaoyanMajor, KaoyanCollectionRun, KaoyanSchool  # noqa: E402
+from models import KaoyanCollectionRun, KaoyanMajor, KaoyanSchool  # noqa: E402
 
 # 复用既有研招网爬虫的关键词池（单位层穷举），不重造
 from services.kaoyan.spider_yz import KEYWORDS  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 YZ_BASE = "https://yz.chsi.com.cn"
 UA = {
@@ -212,7 +212,7 @@ class YzClient:
             return True, f"http {e.code}（无法判定，按允许并留痕）"
         except Exception as e:  # noqa: BLE001
             self._record("GET", "robots.txt", False, str(e)[:80])
-            return True, f"网络异常（无法判定，按允许并留痕）"
+            return True, "网络异常（无法判定，按允许并留痕）"
         self._record("GET", "robots.txt", True)
         self._throttle()
         disallows, cur = [], None
@@ -607,7 +607,7 @@ def run_parallel(args, plan: dict, started: str) -> int:
             for fut in as_completed(futs):
                 try:
                     fut.result()
-                except RequestBudget as e:  # noqa: BLE001
+                except RequestBudget:  # noqa: BLE001
                     budget_note = f"请求预算耗尽（{args.max_requests}），优雅停止"
                     print(f"[STOP] {budget_note}")
                     for f in futs:

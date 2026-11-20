@@ -24,13 +24,13 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 WORDROOT_JSON = DATA_DIR / "ECDICT-master" / "wordroot.txt"
 
-DB_CONFIG = dict(
-    host="127.0.0.1",
-    port=5432,
-    user="kaoyan",
-    password="kaoyan_dev_2026",
-    dbname="kaoyan",
-)
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env（scripts/_conn.py）
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_MODEL = "qwen2.5-coder:1.5b"

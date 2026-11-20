@@ -28,7 +28,6 @@
   python scripts/backfill_degree_type.py --apply --verify
 """
 import argparse
-import json
 import os
 import sqlite3
 import sys

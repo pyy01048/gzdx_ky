@@ -24,7 +24,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 from sqlalchemy import text
-
 from utils.timeutil import local_now, local_today, naive_utc_iso
 
 logger = logging.getLogger(__name__)

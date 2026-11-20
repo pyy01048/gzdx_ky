@@ -27,12 +27,11 @@
     fields = ex.extract_notice("清华大学2027年硕士研究生招生考试报名公告", "正文……")
 """
 from __future__ import annotations
-import logging
 
 import asyncio
 import json
+import logging
 import re
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from services.kaoyan.spider_notices import infer_notice_type
@@ -163,6 +162,7 @@ class LLMNoticeExtractor:
 
     async def _extract_async(self, title: str, content: str) -> Dict[str, Any]:
         from models import AIProvider
+
         from services.ai_service import AIService
 
         # 1. 优先在线强模型（doubao/deepseek），仅当配置了真实密钥才走 LLM 完整抽取。

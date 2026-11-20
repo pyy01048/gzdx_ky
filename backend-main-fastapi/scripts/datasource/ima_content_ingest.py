@@ -12,7 +12,6 @@ field, truncates it to `max_chars` (default 30000) and writes it into
 Only `documents.content` and `documents.updated_at` are touched.
 """
 import json
-import os
 import sqlite3
 import sys
 import time

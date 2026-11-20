@@ -8,12 +8,10 @@ resolve 幂等 409 / reject 降权 ×0.7 / stats 看板 / 非法 status 400。
 from __future__ import annotations
 
 import pytest
-
 from database import Base, SessionLocal, engine
-from models import QuizQuestion
-from services import confidence_service
-from tests.asgi_client import ASGIClient
 from main import app
+from models import QuizQuestion
+from tests.asgi_client import ASGIClient
 
 client = ASGIClient(app)
 

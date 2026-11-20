@@ -28,14 +28,13 @@ from __future__ import annotations
 import random
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Iterable, Sequence
 
 from . import watermark as wm
 from .config import (
     DEFAULT_ACCURACY_THRESHOLD,
     DEFAULT_SAMPLE_SIZE,
     DEFAULT_SEED,
-    ETL_OUT_DIR,
     MIN_CONTENT_CHARS,
 )
 from .question_schema import CanonicalQuestion, validate_question

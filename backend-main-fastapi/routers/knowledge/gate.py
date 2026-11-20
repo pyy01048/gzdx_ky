@@ -3,14 +3,13 @@ from __future__ import annotations
 
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
+from services import blind_spot_pool, retrieval_gate
 from services.dbapi_compat import wrap_conn
-from database import get_db
-from services import retrieval_gate, blind_spot_pool
 from services.module_a_schema import ensure_module_a_schema
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/gate", tags=["RAG门控"])
 

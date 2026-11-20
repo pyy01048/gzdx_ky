@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
@@ -36,7 +35,6 @@ if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
 import psycopg  # noqa: E402
-
 from pipeline.config import pg_database_url  # noqa: E402
 
 CN_DIGIT = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,

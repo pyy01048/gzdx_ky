@@ -20,12 +20,11 @@ import math
 from collections import defaultdict
 from typing import Dict, List, Optional
 
-from sqlalchemy.orm import Session
-
 # 必须用 models.py 的正典模型：core/models/schools.py 里映射同一张表的旧模型
 # 缺 major_code/diff_total/source_id 等 kaoyan.cn 字段，用它查分数全景会
 # AttributeError 500。
 from models import KaoyanAdmission, KaoyanMajor, KaoyanSchool, KaoyanScoreLine
+from sqlalchemy.orm import Session
 
 # 正态假设的σ经验值：考研录取分数分布相对集中，公开分析常取 15~22。
 # 取 18 为中位估计；结果仅作信心参考，非精确位次。

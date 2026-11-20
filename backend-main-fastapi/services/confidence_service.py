@@ -13,11 +13,12 @@ reviewer_note、reviewed_at；幂等索引 UNIQUE(question_id) WHERE status='ope
 """
 from __future__ import annotations
 
-from services.dbapi_compat import wrap_conn
-from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
+
+from services.dbapi_compat import wrap_conn
 
 _CONFLICT_DDL = """
 CREATE TABLE IF NOT EXISTS conflict_review_queue (

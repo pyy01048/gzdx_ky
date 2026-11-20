@@ -37,9 +37,9 @@ from services.parsers.base import (
     BLOCK_TEXT,
     BLOCK_TITLE,
     PDF_KIND_DIGITAL,
-    ParseResult,
     ParsedBlock,
     ParsedPage,
+    ParseResult,
 )
 from services.parsers.pdf_classifier import load_pymupdf
 

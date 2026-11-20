@@ -1,27 +1,26 @@
 """文档路由。"""
 
-from utils.security import require_admin
 import logging
 import mimetypes
 import os
 import re
-from urllib.parse import quote
 from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, UploadFile, File
+from database import BASE_DIR, get_db
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-
-from database import get_db, BASE_DIR
-from models import Document, KnowledgePoint, KnowledgeChunk
-from utils.exceptions import http_error_response
-from services.doc_naming import apply_display_name
-from services.smart_ingest import gate_for_write
-from services.quiz_content_gate import admit as gate_admit
-from services.quiz_content_gate import gate_log_summary
-from services.delete_guard import require_physical_delete_enabled
+from models import Document, KnowledgeChunk, KnowledgePoint
 from services import quiz_dedupe as _quiz_dedupe
 from services import subject_vocab
+from services.delete_guard import require_physical_delete_enabled
+from services.doc_naming import apply_display_name
+from services.quiz_content_gate import admit as gate_admit
+from services.quiz_content_gate import gate_log_summary
+from services.smart_ingest import gate_for_write
+from sqlalchemy.orm import Session
+from utils.exceptions import http_error_response
+from utils.security import require_admin
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -347,8 +346,8 @@ async def list_subjects(db: Session = Depends(get_db)):
 @router.post("/{doc_id}/parse")
 async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     """解析文档（本地 DocumentParser：PDF/DOCX/PPTX/TXT，扫描版 PDF 走 OCR）。"""
-    from services.document_parser import DocumentParser
     from services.ai_service import AIService
+    from services.document_parser import DocumentParser
 
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
@@ -400,8 +399,7 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
 
     # —— 知识库闭环（P0-1）：文本 -> 分块 -> knowledge_chunks + FTS —— #
     # 这一步让上传的文档真正进入 RAG 知识库，可被 AI 检索引用。
-    from services.kb_service import (detect_doc_meta, has_searchable_chunks,
-                                     ingest_document)
+    from services.kb_service import detect_doc_meta, has_searchable_chunks, ingest_document
     chunk_count = 0
     try:
         chunk_count = ingest_document(db, doc, replace=True)
@@ -539,8 +537,8 @@ async def get_document_chunks(doc_id: int, db: Session = Depends(get_db)):
 @router.post("/{doc_id}/generate-quiz")
 async def generate_quiz(doc_id: int, db: Session = Depends(get_db)):
     """从文档生成题目。"""
-    from services.ai_service import AIService
     from models import QuizQuestion
+    from services.ai_service import AIService
 
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
@@ -870,8 +868,8 @@ async def analyze_document(
     if not doc.content:
         raise HTTPException(status_code=400, detail="文档尚未解析，请先调用 /parse")
 
-    from services.document_analyzer import analyze_document as do_analyze
     from services.ai_service import AIService
+    from services.document_analyzer import analyze_document as do_analyze
 
     ai = AIService(db)
     result = await do_analyze(
@@ -897,8 +895,9 @@ async def extract_knowledge_points(doc_id: int, db: Session = Depends(get_db)):
     if not doc.content:
         raise HTTPException(status_code=400, detail="文档尚未解析")
 
-    from services.document_analyzer import smart_chunk_text, extract_knowledge_points as do_extract
     from services.ai_service import AIService
+    from services.document_analyzer import extract_knowledge_points as do_extract
+    from services.document_analyzer import smart_chunk_text
 
     chunks = smart_chunk_text(doc.content)
     ai = AIService(db)
@@ -920,8 +919,9 @@ async def extract_questions(doc_id: int, db: Session = Depends(get_db)):
     if not doc.content:
         raise HTTPException(status_code=400, detail="文档尚未解析")
 
-    from services.document_analyzer import smart_chunk_text, extract_questions as do_extract
     from services.ai_service import AIService
+    from services.document_analyzer import extract_questions as do_extract
+    from services.document_analyzer import smart_chunk_text
 
     chunks = smart_chunk_text(doc.content)
     ai = AIService(db)
@@ -957,8 +957,8 @@ async def batch_analyze(payload: dict, db: Session = Depends(get_db)):
     extract_kp = payload.get("extract_kp", True)
     extract_questions = payload.get("extract_questions", True)
 
-    from services.document_analyzer import batch_analyze_documents
     from services.ai_service import AIService
+    from services.document_analyzer import batch_analyze_documents
 
     ai = AIService(db)
     results = await batch_analyze_documents(
@@ -990,9 +990,10 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
     if not doc.content:
         raise HTTPException(status_code=400, detail="文档尚未解析")
 
-    from services.document_analyzer import smart_chunk_text, QUESTION_EXTRACT_PROMPT
-    from services.ai_service import AIService
     import json
+
+    from services.ai_service import AIService
+    from services.document_analyzer import QUESTION_EXTRACT_PROMPT, smart_chunk_text
 
     chunks = smart_chunk_text(doc.content)
     ai = AIService(db)
@@ -1072,7 +1073,7 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
                     "selected": True,  # 默认选中，用户可取消
                 })
                 existing_contents.add(content_key)
-        except Exception as e:
+        except Exception:
             # AI 不可用/超时降级：本地正则引擎识别（纯本地、无 AI 依赖，保证接口可用）
             try:
                 from services.qbank_builder import extract_questions as _regex_extract
@@ -1264,8 +1265,8 @@ async def classify_doc_chunks(
 @router.get("/{doc_id}/classify-summary")
 async def classify_summary(doc_id: int, db: Session = Depends(get_db)):
     """chunk 标签聚合视图：学科占比 / L3 分布 / 置信度均值 / 是否混合文档。"""
-    from sqlalchemy import func
     from services import chunk_classifier
+    from sqlalchemy import func
 
     doc = db.get(Document, doc_id)
     if doc is None:
@@ -1438,7 +1439,9 @@ async def bulk_documents(payload: dict, db: Session = Depends(get_db)):
     """
     from services.delete_guard import PhysicalDeleteBlocked, require_physical_delete_enabled
     from services.kb_service import (
-        archive_source_file, ensure_write_backup, soft_delete_source_file,
+        archive_source_file,
+        ensure_write_backup,
+        soft_delete_source_file,
     )
 
     action = (payload.get("action") or "").strip()

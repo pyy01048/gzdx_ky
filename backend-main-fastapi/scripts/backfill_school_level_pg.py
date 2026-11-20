@@ -23,7 +23,6 @@ if str(BASE) not in sys.path:
 
 import psycopg  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-
 from scripts.school_level_truth import truth_level  # noqa: E402
 
 

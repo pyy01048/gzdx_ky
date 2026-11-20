@@ -80,9 +80,9 @@ def main() -> int:
     ap.add_argument("--show", type=int, default=15)
     args = ap.parse_args()
 
-    from sqlalchemy import text as sqltext
     from database import SessionLocal
     from models import QuizQuestion
+    from sqlalchemy import text as sqltext
 
     db = SessionLocal()
     try:

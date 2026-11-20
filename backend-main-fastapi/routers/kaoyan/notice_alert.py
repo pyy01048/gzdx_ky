@@ -11,20 +11,16 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
+from database import SessionLocal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
-from database import SessionLocal
 from services.kaoyan.notice_alert import (
-    LEVEL_IMPORTANT,
+    LEVEL_LABEL_CN,
     LEVEL_NORMAL,
     LEVEL_ORDER,
-    LEVEL_URGENT,
-    LEVEL_LABEL_CN,
     backfill_all,
     classify_and_store,
     classify_importance,
@@ -36,12 +32,13 @@ from services.kaoyan.notice_alert import (
     notice_matches_subscription,
     parse_date_loose,
     raw_conn,
+    rules_path,
     runs_trigger_column,
     scalar,
-    table_columns,
-    rules_path,
     scan_alerts,
+    table_columns,
 )
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 from utils.response import MAX_PAGE_SIZE

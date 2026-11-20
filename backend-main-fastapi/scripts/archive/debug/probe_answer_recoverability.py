@@ -30,7 +30,6 @@ from collections import Counter, defaultdict
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quiz_quality_gate import classify  # noqa: E402
 
 LAYER_DEF = [
     ("L1-真题", re.compile(r"真题|试卷|联考|真题解析")),

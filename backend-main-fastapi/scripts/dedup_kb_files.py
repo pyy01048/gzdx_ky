@@ -151,7 +151,7 @@ def main() -> int:
 
     # 4) 执行删除 + manifest
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    manifest = os.path.join(KB, f"_trash", f"dedup_manifest_{stamp}.csv")
+    manifest = os.path.join(KB, "_trash", f"dedup_manifest_{stamp}.csv")
     os.makedirs(os.path.dirname(manifest), exist_ok=True)
     with open(manifest, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)

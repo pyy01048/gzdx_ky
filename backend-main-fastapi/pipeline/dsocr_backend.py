@@ -24,7 +24,7 @@ import logging
 import os
 import re
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib
-import os
 import sys
 from pathlib import Path
 
@@ -23,13 +22,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 CONTENT_DIR = Path(__file__).resolve().parent / "kb_content"
 sys.path.insert(0, str(CONTENT_DIR))
 
-DB_CONFIG = dict(
-    host="127.0.0.1",
-    port=5432,
-    user="kaoyan",
-    password="kaoyan_dev_2026",
-    dbname="kaoyan",
-)
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env（scripts/_conn.py）
 
 # 内容模块 subject -> (documents.subject, subject_id)
 SUBJECT_MAP = {

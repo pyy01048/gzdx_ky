@@ -52,7 +52,6 @@ if str(BASE) not in sys.path:
 
 import numpy as np  # noqa: E402
 import psycopg  # noqa: E402
-
 from pipeline.config import pg_database_url  # noqa: E402
 
 #: 图片根目录（与 data/storage/images 约定一致；库内只存相对路径）

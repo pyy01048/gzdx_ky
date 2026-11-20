@@ -28,7 +28,6 @@ Guarantees:
   * Touches ONLY the staging DB - never D:/平台/database/kaoyan.db.
 """
 import json
-import os
 import sqlite3
 import sys
 import time

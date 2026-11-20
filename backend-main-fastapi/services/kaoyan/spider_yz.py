@@ -14,8 +14,13 @@
     # 全量
     python -c "from services.kaoyan.spider_yz import crawl; crawl(all_provinces=True)"
 """
+import json
 import logging
-import re, time, random, json, ssl, urllib.request, urllib.parse
+import random
+import ssl
+import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 YZ_BASE = "https://yz.chsi.com.cn"

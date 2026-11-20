@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import pytest
-
 from services import chunk_classifier as cc
 
 
@@ -92,8 +91,8 @@ def test_llm_classify_drops_subject_outside_candidates(monkeypatch):
 # --------------------------------------------------------------------------- #
 def test_llm_cap_counts_attempts_not_success(db_schema, monkeypatch):  # noqa: ARG001
     """模型全失败时也必须停在 LLM_MAX_PER_DOC，否则每篇低置信文档无限重试。"""
-    from models import Document, KnowledgeChunk
     from database import SessionLocal
+    from models import Document, KnowledgeChunk
 
     db = SessionLocal()
     try:

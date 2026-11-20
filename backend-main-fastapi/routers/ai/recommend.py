@@ -9,13 +9,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
 from database import get_db
+from fastapi import APIRouter, Depends, Query
 from models import User
+from pydantic import BaseModel, Field
 from services import recommend_loop
+from sqlalchemy.orm import Session
 from utils.scope import owner_id
 from utils.security import current_user
 

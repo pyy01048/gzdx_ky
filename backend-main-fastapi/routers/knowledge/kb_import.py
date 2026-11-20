@@ -38,16 +38,15 @@ import time
 from difflib import SequenceMatcher
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
 from database import get_db
+from fastapi import APIRouter, Depends, HTTPException
 from models import Document, QuizQuestion
+from pydantic import BaseModel
 from services import qbank_builder as qb
 from services import taxonomy
 from services.quiz_content_gate import admit as gate_admit
 from services.quiz_content_gate import build_stem_answer_index, gate_log_summary
+from sqlalchemy.orm import Session
 from utils.security import require_admin
 
 router = APIRouter(prefix="/api/kb-import", tags=["kb-import"], dependencies=[Depends(require_admin)])

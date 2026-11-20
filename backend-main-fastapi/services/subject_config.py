@@ -25,11 +25,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, Optional
 
-from sqlalchemy.orm import Session
-
 from models import Goal
-from services import taxonomy
+from sqlalchemy.orm import Session
 from utils.scope import scoped
+
+from services import taxonomy
 
 
 def _scoped_uid(model, user_id: Optional[int]):

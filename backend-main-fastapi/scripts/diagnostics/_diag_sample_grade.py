@@ -1,5 +1,6 @@
 import sqlite3
 import sys
+
 sys.path.insert(0, r'D:\平台\backend-main-fastapi\scripts')
 from quiz_quality_gate import classify
 
@@ -12,6 +13,7 @@ for r in rows:
     groups[g].append((r, why))
 
 import random
+
 random.seed(7)
 for g in ('A', 'B', 'C', 'JUNK'):
     print(f'=== {g} 类抽样（{len(groups[g])}）===')

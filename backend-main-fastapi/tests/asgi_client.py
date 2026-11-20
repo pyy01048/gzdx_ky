@@ -140,7 +140,7 @@ class ASGIClient:
             except Exception:  # noqa: BLE001 - loop 可能已在别处关闭
                 pass
 
-    def __enter__(self) -> "ASGIClient":
+    def __enter__(self) -> ASGIClient:
         return self
 
     def __exit__(self, *exc_info) -> None:

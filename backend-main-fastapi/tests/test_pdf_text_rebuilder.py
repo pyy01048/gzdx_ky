@@ -9,13 +9,12 @@
 """
 import unittest
 
+from pipeline.exam_bank_extractor import SECTION_RE, extract_from_text
 from pipeline.pdf_text_rebuilder import (
     rebuild_lines,
     rebuild_stats,
-    rebuild_text_with_options,
     split_inline_options,
 )
-from pipeline.exam_bank_extractor import SECTION_RE, extract_from_text
 
 
 class TestSplitInlineOptions(unittest.TestCase):

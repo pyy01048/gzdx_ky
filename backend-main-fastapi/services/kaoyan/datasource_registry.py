@@ -15,9 +15,10 @@
 2. register_datasource() 新增注册（持久化到 datasource_registry.json，不覆盖内置清单）
 3. resolve_source_type() 将库内 source 标记归一化为 官方/聚合/未验证 三档
 """
-import logging
 import json
+import logging
 from pathlib import Path
+
 from utils.timeutil import naive_utc_iso
 
 REGISTRY_FILE = Path(__file__).parent / "datasource_registry.json"

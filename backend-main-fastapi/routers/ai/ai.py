@@ -1,6 +1,5 @@
 """AI 路由。"""
 
-from utils.security import require_admin
 import asyncio
 import datetime
 import json
@@ -10,22 +9,27 @@ import threading
 import time
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
-from services.dbapi_compat import wrap_conn
 from database import SessionLocal, get_db
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from models import AIProvider, PlatformConfig
+from pydantic import BaseModel
 from schemas import (
-    AIProviderCreate, AIProviderUpdate,
-    ChatRequest, ExplainRequest, EssayGradeRequest,
-    SentenceAnalyzeRequest, GeneratePlanRequest, SummarizeTrendRequest,
+    AIProviderCreate,
+    AIProviderUpdate,
+    ChatRequest,
+    EssayGradeRequest,
+    ExplainRequest,
+    GeneratePlanRequest,
     RAGSearchRequest,
+    SentenceAnalyzeRequest,
+    SummarizeTrendRequest,
 )
-from services.ai_service import AIService
 from services import retrieval_gate
+from services.ai_service import AIService
+from services.dbapi_compat import wrap_conn
+from sqlalchemy.orm import Session
+from utils.security import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -872,7 +876,6 @@ async def local_model_status(db: Session = Depends(get_db)):
     只在缓存超过 30 秒时才重新探测，既保证"用户点按钮能立刻看到
     Ollama 刚启动的状态"，又不会把接口变成慢查询。
     """
-    import os
 
     ai = AIService(db)
     from utils.ollama_host import resolve_ollama_host

@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """用 3 张 fixture 电路图真实跑一遍 VLM，打印结构化结果。"""
-import sys, os, json, time
+import json
+import os
+import sys
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.circuit_vision import CircuitVisionService
@@ -38,7 +42,7 @@ for fname in sorted(os.listdir(FIX)):
     dt = time.time() - t0
     print(f"[elapsed] {dt:.1f}s  ok={res['ok']}  engines={res['engines']}")
     print(f"[circuit_type] {res.get('circuit_type')} / {res.get('circuit_type_cn')}")
-    print(f"[components]")
+    print("[components]")
     for c in res.get("components", []):
         print(f"  - {c.get('designator'):8s} {c.get('type'):14s} value={c.get('value'):10s} nets={c.get('net_nodes')} conf={c.get('confidence')}")
     print(f"[connections] ({len(res.get('connections', []))})")

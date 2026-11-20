@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import json
 import re
-from services.dbapi_compat import wrap_conn
 from typing import Dict, List
 
 from sqlalchemy.orm import Session
+
+from services.dbapi_compat import wrap_conn
 
 SCHOOL_TYPES = ["综合类", "理工类", "农林类", "医药类", "师范类", "语言类",
                 "财经类", "政法类", "体育类", "艺术类", "民族类", "军事类"]

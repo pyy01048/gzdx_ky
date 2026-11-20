@@ -45,8 +45,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from screen_electronic_schools_6provinces import (  # noqa: E402
     KNOWN_STRONG,
     NON_ICT_ELITE,
-    PROVINCES,
-    STRONG_KW,
     load,
 )
 

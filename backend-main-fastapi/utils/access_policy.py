@@ -10,10 +10,9 @@ import os
 import re
 from typing import Iterable, Tuple
 
+from database import get_db
 from fastapi import Depends, Request, status
 from sqlalchemy.orm import Session
-
-from database import get_db
 from utils.exceptions import BusinessException, ErrorCode
 from utils.security import ROLE_ADMIN, current_user
 

@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from services.dbapi_compat import wrap_conn
 
 MARK = "exam_report_test"

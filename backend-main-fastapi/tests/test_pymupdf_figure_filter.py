@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import pytest
-
 from services.parsers.pymupdf_parser import (
     MIN_FIGURE_SIDE,
     filter_figure_regions,

@@ -13,8 +13,6 @@ import logging
 import os
 import re
 import tempfile
-from typing import Optional
-
 
 _MINERU_AVAILABLE = None
 

@@ -100,7 +100,7 @@ _CONTACT_INLINE_PATTERNS: Tuple[re.Pattern, ...] = tuple(re.compile(p) for p in 
 #: 必须排除常见数学/单位符号（×÷±°²³¼½¾µ 等）——它们落在 U+00C0-00FF 区间内，
 #: 不排除会把公式行整行误判为乱码删掉（实测：
 #: "= 0.7 X(51 + 47×2)×103 ×910 X10-9" 因 3 个 × 被判乱码）。
-_MATH_SAFE_CHARS = set("×÷±°²³¹¼½¾µ‰·–—‘’“”…−") 
+_MATH_SAFE_CHARS = set("×÷±°²³¹¼½¾µ‰·–—‘’“”…−")
 _MOJIBAKE_CHARS = re.compile(
     "[\ufffd\u00ff\u0160\u0161\u017d\u017e\u0178\u0152\u0153\u00c0-\u00ff]")
 _ENGLISH_WORD = re.compile(r"[a-z]{4}")

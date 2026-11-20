@@ -186,12 +186,16 @@ def run_eval(db_path, out_path):
         os.environ["DATABASE_PATH"] = db_path
     os.chdir(BASE_DIR)  # database.py 里的相对路径（data/、.env）以此为准
 
-    from database import SessionLocal            # noqa: E402  （必须在 DATABASE_PATH 覆盖之后）
-    from services import search_service          # noqa: E402
-    from services.retrieval_gate import (        # noqa: E402
-        RERANKER_RELEVANCE_THRESHOLD, RETRIEVAL_ACCEPT_TOP1_THRESHOLD,
-        COMPLEX_RELEVANCE_THRESHOLD, COMPLEX_ACCEPT_TOP1_THRESHOLD,
-        RETRIEVAL_GATE_MODE, evaluate_gate, is_complex_query,
+    from database import SessionLocal  # noqa: E402  （必须在 DATABASE_PATH 覆盖之后）
+    from services import search_service  # noqa: E402
+    from services.retrieval_gate import (  # noqa: E402
+        COMPLEX_ACCEPT_TOP1_THRESHOLD,
+        COMPLEX_RELEVANCE_THRESHOLD,
+        RERANKER_RELEVANCE_THRESHOLD,
+        RETRIEVAL_ACCEPT_TOP1_THRESHOLD,
+        RETRIEVAL_GATE_MODE,
+        evaluate_gate,
+        is_complex_query,
     )
 
     with open(EVAL_SET, encoding="utf-8") as f:

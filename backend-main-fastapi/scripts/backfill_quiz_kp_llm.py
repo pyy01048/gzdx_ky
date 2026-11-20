@@ -49,7 +49,6 @@ if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
 import psycopg  # noqa: E402
-
 from pipeline.config import pg_database_url  # noqa: E402
 
 OLLAMA_URL = "http://127.0.0.1:11434"
@@ -456,7 +455,7 @@ def main() -> int:
         questions = all_questions[:limit] if limit else all_questions
 
         print(f"[data] 全库空知识点 {total_empty} 道；本次判断 {len(questions)} 道")
-        print(f"[pool] 知识点科目：" + "，".join(
+        print("[pool] 知识点科目：" + "，".join(
             f"{s}={len(v)}" for s, v in sorted(kps_by_subject.items(), key=lambda kv: -len(kv[1]))))
         print(f"[model] {args.model} @ {OLLAMA_URL}  threshold={args.threshold} "
               f"timeout={args.timeout}s  mode={'APPLY' if apply else 'DRY-RUN'}")

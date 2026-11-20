@@ -40,7 +40,6 @@ import re
 from typing import Any, Dict, List, Optional
 
 import httpx
-
 from utils.compute_nodes import ocr_service_url
 
 # --------------------------------------------------------------------------- #

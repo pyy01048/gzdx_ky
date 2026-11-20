@@ -45,6 +45,7 @@ def collect_engineering(db_session=None, provinces: Optional[list] = None, dry_r
     ``/zsml/querySchAction.do`` 二级学科接口（probe 后接入）。
     """
     from database import SessionLocal
+
     from services.kaoyan.engineering_codes import is_engineering_code
     from services.kaoyan.spider_yz import crawl
 
@@ -53,7 +54,7 @@ def collect_engineering(db_session=None, provinces: Optional[list] = None, dry_r
         db_session = SessionLocal()
         close = True
     try:
-        from models import KaoyanSchool, KaoyanMajor
+        from models import KaoyanMajor, KaoyanSchool
 
         before_schools = db_session.query(KaoyanSchool).count()
         res = crawl(province_codes=provinces, subject_codes=["07", "08"]) or {}
@@ -82,6 +83,7 @@ def collect_engineering(db_session=None, provinces: Optional[list] = None, dry_r
 def backfill_national_lines_task(db_session=None, dry_run: bool = False) -> Dict:
     """国家线回填任务（官方核实静态数据 → kaoyan_scorelines）。"""
     from database import SessionLocal
+
     from services.kaoyan.engineering_codes import backfill_national_lines
 
     close = False
@@ -102,6 +104,7 @@ def backfill_national_lines_task(db_session=None, dry_run: bool = False) -> Dict
 def collect_notices_task(db_session=None, max_schools: int = 20, dry_run: bool = False) -> Dict:
     """公告采集任务。"""
     from database import SessionLocal
+
     from services.kaoyan.spider_notices import crawl_school_notices
 
     close = False
@@ -145,6 +148,7 @@ def summarize_schools(db_session=None, target_provinces=None, notices_limit: int
     汇总卡。target_provinces 为空时默认六省目标院校。
     """
     from database import SessionLocal
+
     from services.kaoyan.school_summarizer import SchoolSummarizer
 
     close = False

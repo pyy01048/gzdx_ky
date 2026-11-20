@@ -4,10 +4,14 @@
 既匹配 ```text 代码块，也匹配描述中直接以「输入：」「输出：」开头的普通段落。
 """
 import re
-import psycopg
 
-conn = psycopg.connect(host="127.0.0.1", port=5432, user="kaoyan",
-                      password="kaoyan_dev_2026", dbname="kaoyan")
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import pg_connect
+
+conn = pg_connect()
 cur = conn.cursor()
 cur.execute("""SELECT id, title, description FROM code_problems
                WHERE sample_input IS NULL OR sample_input=''

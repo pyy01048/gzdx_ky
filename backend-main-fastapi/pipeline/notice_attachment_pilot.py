@@ -6,11 +6,10 @@ openpyxl 解析名单（拟录取：人数/均分/最低分；复试：人数）
 合规：仅公开页面，1.5-2.5s 限速，附件 ≤8MB，data_source 溯源到通知 URL。
 """
 import io
+import random
 import re
 import sys
 import time
-import random
-import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,10 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import urllib.request  # noqa: E402
 
 import openpyxl  # noqa: E402
-from sqlalchemy import text  # noqa: E402
-
 from database import SessionLocal  # noqa: E402
 from models import KaoyanAdmission  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 PersonalStudyTool/1.0 (kaoyan personal use)"}
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 20

@@ -27,16 +27,16 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import text  # noqa: E402
+#: 真题文件特征（文件名级判据，非 vendor 名单）
+import re  # noqa: E402
 
 from database import SessionLocal  # noqa: E402
 from services.content_sanitizer import (  # noqa: E402
     sanitize_question_fields,
     validate_question,
 )
+from sqlalchemy import text  # noqa: E402
 
-#: 真题文件特征（文件名级判据，非 vendor 名单）
-import re  # noqa: E402
 _PAST_EXAM_LABEL_RE = re.compile(
     r"真题|历年|(\d{2,4}\s*[-~至]\s*\d{2,4}\s*年)|(\d{4}\s*年.*(真题|试卷))|统考真题|回忆版")
 

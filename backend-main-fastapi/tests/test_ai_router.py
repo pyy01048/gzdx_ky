@@ -24,7 +24,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services import ai_router  # noqa: E402
 from services.ai_router import AIRouter  # noqa: E402
 
-
 # ============================================================================ #
 # V11 模块4：_chat_rag Agentic 轻量状态机测试（不触网、不连 Ollama）
 # ----------------------------------------------------------------------------

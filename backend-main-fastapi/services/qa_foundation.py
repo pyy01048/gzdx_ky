@@ -26,15 +26,15 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
-from utils.timeutil import iso_utc_z, local_today, utcnow  # 写库时间统一 naive UTC（P1-C2）
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from sqlalchemy import func, text as _text
+from models import ErrorRecord, QuizQuestion, StudyEvent
+from sqlalchemy import func
+from sqlalchemy import text as _text
 from sqlalchemy.orm import Session
+from utils.timeutil import iso_utc_z, local_today, utcnow  # 写库时间统一 naive UTC（P1-C2）
 
 from services.dbapi_compat import insert_returning_id, wrap_conn
-from models import ErrorRecord, Paper, PaperQuestion, QuizQuestion, StudyEvent
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +301,8 @@ def _bank_norm(s: str) -> str:
 
 def find_bank_answer(db: Session, query: str) -> Optional[Dict]:
     """答疑「先查题库」：用户问题命中题库题干（句级逐字）时返回确定性答案。
-
+
+
     命中标准（宁缺勿滥）：
       * 答案来源必须是高置信（bank / source_extract / user_confirmed），
         llm_generated 不直接展示；answer_confidence < AUTO_GRADE_MIN_CONFIDENCE 不展示；

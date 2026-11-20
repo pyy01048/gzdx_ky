@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from main import app
 from sqlalchemy import text
 from tests.asgi_client import ASGIClient
-from main import app
 
 client = ASGIClient(app)
 

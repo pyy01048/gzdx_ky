@@ -5,10 +5,9 @@
 - 解析单词并分类导入到数据库
 - 支持断点续传
 """
+import json
 import os
 import re
-import json
-import time
 import sys
 from datetime import datetime
 
@@ -198,7 +197,7 @@ def process_pdf(pdf_path, deck_name, db, progress):
 
     # 检查是否已处理完成
     if progress["files"].get(filename, {}).get("completed"):
-        print(f"  文件已处理完成，跳过")
+        print("  文件已处理完成，跳过")
         return 0
 
     # 获取或创建词库
@@ -295,7 +294,7 @@ def main():
             total_imported += imported
 
         print(f"\n{'='*60}")
-        print(f"全部处理完成!")
+        print("全部处理完成!")
         print(f"本次导入: {total_imported} 个单词")
         print(f"累计导入: {progress.get('total_words', 0)} 个单词")
         print(f"{'='*60}")

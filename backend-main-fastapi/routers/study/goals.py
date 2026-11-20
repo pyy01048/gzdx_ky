@@ -3,13 +3,12 @@
 import asyncio
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-
-from database import get_db
 from core.models import Goal, KaoyanSchool, KaoyanScoreline
+from database import get_db
+from fastapi import APIRouter, Depends, HTTPException
 from models import User
-from schemas import GoalCreate, GoalUpdate, UniversityCreate, UniversitySearchRequest
+from schemas import GoalUpdate
+from sqlalchemy.orm import Session
 from utils.scope import owner_id, scoped  # B4 行级隔离
 from utils.security import current_user
 from utils.timeutil import local_today

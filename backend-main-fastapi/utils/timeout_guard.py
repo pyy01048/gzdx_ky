@@ -36,7 +36,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import Iterable, List, Optional, Set
+from typing import Iterable, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,7 @@ class TimeoutGuardMiddleware:
         app_task = asyncio.ensure_future(self.app(scope, receive, send_wrapper))
         try:
             await asyncio.wait_for(asyncio.shield(app_task), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if response_started:
                 # 响应头已经发出（很可能是长连接/SSE），此时无法再改成 504，
                 # 只能继续等待——这正是 SSE 需要的行为。

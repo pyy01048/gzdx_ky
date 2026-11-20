@@ -16,7 +16,6 @@
   python scripts/cleanup_lowvalue.py --apply --only-db
   python scripts/cleanup_lowvalue.py --apply --only-fs
 """
-from pathlib import Path
 import argparse
 import json
 import os
@@ -24,6 +23,7 @@ import shutil
 import sqlite3
 import sys
 from datetime import datetime
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 

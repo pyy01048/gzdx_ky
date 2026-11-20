@@ -131,11 +131,9 @@ def main() -> int:
         print("   先运行 python download_embedding_model.py 或设置 EMBEDDING_BACKEND=bge 并缓存模型。")
         return 1
 
-    from database import SessionLocal
-    from models import SubjectPrototype
-
     # 新表可能还没被服务器启动 create_all 过，幂等补建
-    from database import Base, engine
+    from database import Base, SessionLocal, engine
+    from models import SubjectPrototype
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()

@@ -10,9 +10,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
 from services.quiz_classifier_v2 import (
-    _load_vector_assets,
-    _keyword_decision,
     _fuse_subject,
+    _keyword_decision,
+    _load_vector_assets,
 )
 
 

@@ -10,18 +10,19 @@
 - model_gateway.ModelGateway  : 本地模型 + API 灵活路由
 """
 from __future__ import annotations
-import logging
 
 import json
+import logging
 import os
 import re
 import time
 import uuid
-from services.dbapi_compat import wrap_conn
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from utils.timeutil import iso_utc_z
+
+from services.dbapi_compat import wrap_conn
 
 LECTURE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "lectures")
 

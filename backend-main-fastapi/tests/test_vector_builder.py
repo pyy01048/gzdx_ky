@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from services.vector_builder import (
     DIM,
     argmin_normalize,

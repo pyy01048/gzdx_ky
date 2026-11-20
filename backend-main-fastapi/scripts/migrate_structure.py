@@ -40,7 +40,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal  # noqa: E402
 from models import Document, KnowledgePoint  # noqa: E402
-from services import taxonomy, structure_parser  # noqa: E402
+from services import structure_parser, taxonomy  # noqa: E402
 
 DRY_RUN = "--dry-run" in sys.argv
 

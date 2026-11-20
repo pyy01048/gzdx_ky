@@ -11,7 +11,6 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.middleware.gzip import GZipResponder
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-
 # --------------------------------------------------------------------------- #
 # GZip 压缩（选择性）
 # --------------------------------------------------------------------------- #

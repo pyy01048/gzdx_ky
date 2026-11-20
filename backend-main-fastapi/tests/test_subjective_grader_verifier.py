@@ -22,7 +22,6 @@
 from __future__ import annotations
 
 import pytest
-
 from services.subjective_grader import (
     _extract_math_expr,
     _safe_eval_expr,
@@ -250,9 +249,8 @@ def _make_calc_question(db):
 def test_grade_subjective_returns_verification():
     """批改响应必须携带 verification 评分卡（含沙箱验算 + 多维维度）。"""
     from database import SessionLocal
-    from models import QuizQuestion
-    from tests.asgi_client import ASGIClient
     from main import app
+    from tests.asgi_client import ASGIClient
 
     db = SessionLocal()
     try:
@@ -292,8 +290,8 @@ def test_grade_subjective_returns_verification():
 
 
 def test_grade_subjective_missing_question_404():
-    from tests.asgi_client import ASGIClient
     from main import app
+    from tests.asgi_client import ASGIClient
 
     client = ASGIClient(app)
     r = client.post(

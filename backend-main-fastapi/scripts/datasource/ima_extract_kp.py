@@ -24,8 +24,8 @@ BACKEND = r"D:\平台\backend-main-fastapi"
 sys.path.insert(0, BACKEND)
 sys.path.insert(0, BACKEND + r"\tests")
 
-from main import app  # noqa: E402
 from asgi_client import ASGIClient  # noqa: E402
+from main import app  # noqa: E402
 
 ENDPOINT = "/api/documents/{doc_id}/extract-knowledge-points"
 

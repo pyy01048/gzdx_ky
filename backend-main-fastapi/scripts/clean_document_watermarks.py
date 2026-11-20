@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import sqlite3
 import sys
 from typing import Any
@@ -60,15 +59,17 @@ DEP_TABLES = ("knowledge_chunks_vec", "knowledge_chunks_fts", "error_knowledge_l
 # 下面用 `as` 别名保留本脚本既有内部名（clean_line/clean_text 等），
 # 使自带 selftest 与主流程零改动。
 # --------------------------------------------------------------------------- #
-from services.extraction_noise import (  # noqa: E402
-    DOC_WATERMARK_FAST_MARKERS as _FAST_MARKERS,
-    DOC_WATERMARK_SPAN_PATTERNS as _SPAN_PATTERNS,
-    DOC_URL_RE as _URL_RE,
+from services.extraction_noise import (
     MIN_MEANINGFUL_CHARS as _MIN_MEANINGFUL,
-    clean_document_line as clean_line,
+)
+from services.extraction_noise import (
     clean_document_text as clean_text,
+)
+from services.extraction_noise import (
     meaningful_count as _meaningful_count,
 )
+
+
 def backup_db(src_path: str, dst_path: str) -> str:
     """SQLite 官方 backup() API —— 唯一正确的备份方式（copy2/cp 会丢 WAL 数据）。"""
     src = sqlite3.connect(src_path)

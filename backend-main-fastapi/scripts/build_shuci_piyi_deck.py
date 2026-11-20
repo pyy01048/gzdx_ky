@@ -8,13 +8,14 @@
 - 既有用户由本脚本末尾的 backfill 逻辑克隆。
 """
 import json
-import os
-import re
 import sys
 
-import psycopg
+import sys
+from pathlib import Path
 
-DB = dict(host='127.0.0.1', port=5432, user='kaoyan', password='kaoyan_dev_2026', dbname='kaoyan')
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import pg_connect
+
 DECK_NAME = '考研熟词僻义'
 DECK_DESC = '考研英语熟词僻义专题：基于 KyleBing 多义项数据精选，标注考研真题中的僻义用法'
 DECK_SOURCE = 'KyleBing'
@@ -299,7 +300,7 @@ def find_source_word(cur, word):
 
 
 def main():
-    conn = psycopg.connect(**DB)
+    conn = pg_connect()
     cur = conn.cursor()
 
     # 1) 创建模板词库（user_id=1 内置模板）

@@ -12,7 +12,6 @@ import collections
 import shutil
 import sqlite3
 import sys
-import datetime
 
 sys.path.insert(0, ".")
 sys.stdout.reconfigure(encoding="utf-8")

@@ -136,8 +136,8 @@ def test_scan_root_dry_run_does_not_touch_disk(db_schema, kb_tmp, monkeypatch):
 
 def test_export_md_and_txt(db_schema, kb_tmp, monkeypatch):
     """导出统一快照：md 带 front-matter；txt 是纯正文；两者都做水印预清洗。"""
-    from services.kb_service import export_document
     from models import Document
+    from services.kb_service import export_document
 
     doc = Document(
         id=999001, file_name="数电真题.txt", file_type="txt", subject="数字电子技术",
@@ -161,8 +161,8 @@ def test_export_md_and_txt(db_schema, kb_tmp, monkeypatch):
 
 def test_preclean_watermarks_shared_rule():
     """预清洗与存量脚本共用同一份规则（services.extraction_noise）。"""
-    from services.kb_service import preclean_watermarks
     from services.extraction_noise import clean_document_text
+    from services.kb_service import preclean_watermarks
 
     text = "微信公众号:电子与通信工程考研\n正常题目正文"
     cleaned, _d, _m = preclean_watermarks(text)
@@ -178,7 +178,7 @@ def test_preclean_watermarks_shared_rule():
 
 def _isolate_kb_index(tmp_path, monkeypatch):
     """把文件索引根与本地可读白名单都换成临时目录，绝不扫真 knowledge_base。"""
-    import routers.documents as docs_router
+    import routers.knowledge.documents as docs_router
     from services import kb_pipeline
 
     kb = tmp_path / "kb"
@@ -193,7 +193,7 @@ def test_broken_links_marks_recoverable_and_not_found(db_schema, tmp_path, monke
     """断链报告：一条按文件名能找回（含 .pdf 回退）、一条找不回；只读不写库。"""
     import asyncio
 
-    import routers.documents as docs_router
+    import routers.knowledge.documents as docs_router
 
     kb = _isolate_kb_index(tmp_path, monkeypatch)
     real = kb / "数字电子技术" / "数电真题2020.pdf"
@@ -235,7 +235,7 @@ def test_repair_file_paths_dry_run_does_not_write(db_schema, tmp_path, monkeypat
     """默认 dry_run：给出 old→new 计划，但**不写库**（真实 file_path 不变）。"""
     import asyncio
 
-    import routers.documents as docs_router
+    import routers.knowledge.documents as docs_router
 
     kb = _isolate_kb_index(tmp_path, monkeypatch)
     real = kb / "模拟电子技术" / "模电笔记.txt"

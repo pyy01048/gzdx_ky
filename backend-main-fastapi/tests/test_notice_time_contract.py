@@ -19,7 +19,6 @@ import datetime as dt
 import re
 
 import pytest
-
 from database import SessionLocal
 from services.dbapi_compat import wrap_conn
 from services.kaoyan.notice_dedup import upsert_notice

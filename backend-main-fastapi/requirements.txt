@@ -1,15 +1,19 @@
-fastapi==0.104.1
-uvicorn==0.24.0
+# 2026-11-20 安全升级（docs/完善方案/03-依赖升级与供应链安全.md §3.1 档位A）：
+# fastapi 0.104.1 → 0.115.14：连带 starlette ≥0.40，修复 CVE-2024-47874（multipart/form-data DoS）；
+# python-multipart 0.0.6 → 0.0.20：修复 CVE-2024-53981（畸形 boundary CPU 空转）与 CVE-2024-24762（ReDoS）。
+# 平台已公网开放（60.204.223.140:80），/api/documents 上传等入口直接接收外部 multipart 请求，
+# 上述 DoS 攻击面真实暴露，故为 P0。升级后重点回归：上传接口、SSE 流式、pydantic 序列化。
+fastapi==0.115.14
+uvicorn==0.30.6
 # 2026-10-18：SQLAlchemy <2.0.31 在 Python 3.13 直接 ImportError（TypingOnly 断言），分流；服务器行为不变
 sqlalchemy==2.0.23; python_version < "3.13"
 sqlalchemy>=2.0.36,<2.1; python_version >= "3.13"
 # PostgreSQL 连接驱动（PG 16 + pgvector 迁移目标）
 psycopg[binary]==3.2.10
-# 2026-10-18：Python 3.13 无 pydantic-core 2.14 wheel，按解释器版本分流；
-# 服务器（py<3.13）行为不变。2.9+ 与 fastapi 0.104 兼容性未验证，先封顶 2.9。
+# pydantic 2.9+ 与 fastapi 0.115 兼容线（安全升级后解除 <2.9 封顶）
 pydantic==2.5.2; python_version < "3.13"
-pydantic>=2.8.2,<2.9; python_version >= "3.13"
-python-multipart==0.0.6
+pydantic>=2.8.2,<3; python_version >= "3.13"
+python-multipart==0.0.20
 httpx>=0.27,<0.29
 # ---- 院校公告采集栈（services/crawl）----
 # 正文抽取：trafilatura 为主引擎，readability-lxml 为兜底；两者都缺时走内置抽取。
@@ -31,12 +35,12 @@ jieba==0.42.1
 # ---- 文档解析（DocumentParser）----
 python-docx==1.1.0
 python-pptx==0.6.23
-pypdf==4.2.0
+# pypdf 4.2.0 → 5.4.0：扫描件解析入口直接吃用户上传 PDF，累积的解析死循环/资源耗尽修复（03 文档 §3.1）
+pypdf==5.4.0
 pdfplumber==0.11.0
 pypdfium2==4.30.0
-# 2026-10-18：Pillow 10.3.0 无 cp313 wheel（sdist 构建失败），按解释器版本分流
-Pillow==10.3.0; python_version < "3.13"
-Pillow>=10.4.0; python_version >= "3.13"
+# Pillow 统一取 ≥10.4 安全修复线（03 文档 §3.1）
+Pillow>=10.4,<12
 # ---- 本地 OCR（RapidOCR + ONNX Runtime）----
 # 实测可用组合（Python 3.13）：rapidocr-onnxruntime==1.2.3 + onnxruntime>=1.20
 # 旧锁定 rapidocr-onnxruntime==1.3.24 / onnxruntime==1.17.3 无 3.13 wheel，装不上。

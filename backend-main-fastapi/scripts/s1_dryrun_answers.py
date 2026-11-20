@@ -180,7 +180,7 @@ CONTENT_IS_ANSWER = re.compile(
 # 题干只有选项：出现 3 个以上 "A．/A、" 式选项标记
 OPTION_ONLY = re.compile(r"(?:[（(]?\s*[A-DＡ-Ｄ]\s*[．.、][^\n]{1,60}){3,}")
 
-_SYMBOL_POOL = set("=＝、，,。；;：:()（）[]【】+-*/∧∨·.．\s")
+_SYMBOL_POOL = set(r"=＝、，,。；;：:()（）[]【】+-*/∧∨·.．\s")
 
 
 def mostly_symbolic(text: str, threshold: float = 0.42) -> bool:

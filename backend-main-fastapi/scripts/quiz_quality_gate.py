@@ -41,6 +41,7 @@ DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 # 本脚本只做「存量分级 + 写库」，判定逻辑全部复用共享模块，
 # 避免历史体检与入库闸门两处逻辑漂移。
 sys.path.insert(0, BASE_DIR)
+from services.delete_guard import require_physical_delete_enabled  # noqa: E402
 from services.quiz_content_gate import (  # noqa: E402
     LECTURE_SRC,
     MIN_LEN,
@@ -52,8 +53,6 @@ from services.quiz_content_gate import (  # noqa: E402
     looks_like_question,
     mostly_symbol,
 )
-
-from services.delete_guard import require_physical_delete_enabled  # noqa: E402
 
 
 def classify(row) -> Tuple[str, str]:

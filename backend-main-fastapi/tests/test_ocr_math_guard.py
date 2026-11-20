@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import pytest
-
 from services.ocr_math_guard import (
     detect_math_corruption,
     is_math_corrupted,
@@ -113,8 +112,8 @@ def test_to_extra_for_suspect():
 # 解析层转换：rapidocr_parser 落标记
 # --------------------------------------------------------------------------- #
 def test_rapidocr_blocks_carry_math_flag():
-    from services.parsers.rapidocr_parser import ocr_result_to_blocks
     from services.ocr_router import OCRBlock, OCRResult
+    from services.parsers.rapidocr_parser import ocr_result_to_blocks
 
     result = OCRResult(
         text="",
@@ -130,8 +129,8 @@ def test_rapidocr_blocks_carry_math_flag():
 
 def test_rapidocr_text_only_fallback_marks_missing_confidence():
     """只回文本的后端拿不到置信度 → 显式标记「缺」，不能留白让人误以为是 1.0。"""
-    from services.parsers.rapidocr_parser import ocr_result_to_blocks
     from services.ocr_router import OCRResult
+    from services.parsers.rapidocr_parser import ocr_result_to_blocks
 
     result = OCRResult(text=CLEAN_TEXT, blocks=[])
     blocks = ocr_result_to_blocks(result, page_no=1)

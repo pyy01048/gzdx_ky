@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """交付前最终验收：静态页面 / 新接口 / 移除项 / 回归。"""
-import datetime
 import json
 import os
 import re

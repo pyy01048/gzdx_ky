@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import html as html_lib
 import json
-import os
 import re
-import sys
 from pathlib import Path
 
 import psycopg
@@ -21,8 +19,13 @@ import psycopg
 # ---------------------------------------------------------------------------
 # 常量
 # ---------------------------------------------------------------------------
-PG_CONFIG = dict(host="127.0.0.1", port=5432, user="kaoyan",
-                   password="kaoyan_dev_2026", dbname="kaoyan")
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn
+
+PG_CONFIG = dsn()  # 口令来自 .env
 
 # doocs/leetcode 提取出的 README 根目录
 README_ROOT = Path(r"D:/平台/backend-main-fastapi/temp/readmes")

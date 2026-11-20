@@ -11,17 +11,17 @@
 """
 from __future__ import annotations
 
-import re
 import json
 import logging
-from typing import Optional, List, Dict, Any, Callable
+import re
+from typing import Any, Callable, Dict, List, Optional
 
+from models import Document, KnowledgePoint, QuizQuestion
 from sqlalchemy.orm import Session
 
-from models import Document, KnowledgePoint, QuizQuestion, KnowledgeChunk
+from services import quiz_dedupe
 from services.quiz_content_gate import admit as gate_admit
 from services.quiz_content_gate import gate_log_summary
-from services import quiz_dedupe
 
 logger = logging.getLogger(__name__)
 

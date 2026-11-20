@@ -95,10 +95,11 @@ def _qr_svg_data_uri(text: str) -> str | None:
     没有二维码库就返回 None —— 不引入硬依赖，前端自行降级为显示网址。
     """
     try:
+        import base64
+        import io
+
         import qrcode  # type: ignore
         import qrcode.image.svg  # type: ignore
-        import io
-        import base64
 
         factory = qrcode.image.svg.SvgPathImage
         img = qrcode.make(text, image_factory=factory, box_size=10, border=2)

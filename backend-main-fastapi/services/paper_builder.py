@@ -10,16 +10,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import random
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from models import Paper, PaperQuestion, QuizQuestion
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-
-from models import Paper, PaperQuestion, QuizQuestion
-from schemas import QuizQuestionBase
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +307,7 @@ def paper_to_lecture_html(paper: Paper, questions: List[PaperQuestion], base_dir
             ) + "</div>"
         ans = f'<div class="ans"><b>答案：</b>{q.answer or "—"}　<b>分值：</b>{q.score}分</div>'
         html += f"""<div class="q"><div class="head">{q.seq}. 【{q.question_type or 'single'}·难度{q.difficulty or 3}】{q.content}</div>{opts_html}{ans}</div>\n"""
-    html += f"""<div class="footer">由贵大834考研备考系统 · 组题网生成</div>
+    html += """<div class="footer">由贵大834考研备考系统 · 组题网生成</div>
 </body>
 </html>"""
     os.makedirs(base_dir, exist_ok=True)

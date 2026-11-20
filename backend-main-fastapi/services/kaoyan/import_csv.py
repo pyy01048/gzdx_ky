@@ -10,14 +10,20 @@ CSV 格式（表头）：
     cd backend-main-fastapi
     python -m services.kaoyan.import_csv <csv文件路径>
 """
-import csv, sys, json
+import csv
+import json
+import sys
 from pathlib import Path
-from utils.timeutil import naive_utc_iso
+
 from core.db_session import SessionLocal
 from core.models.schools import (
-    KaoyanSchool, KaoyanCollege, KaoyanMajor,
-    KaoyanAdmission, KaoyanScoreline,
+    KaoyanAdmission,
+    KaoyanCollege,
+    KaoyanMajor,
+    KaoyanSchool,
+    KaoyanScoreline,
 )
+from utils.timeutil import naive_utc_iso
 
 
 def _to_int(val, default=None):
@@ -253,7 +259,7 @@ def import_from_csv(db_session, csv_path, target_table="all", encoding="utf-8-si
     filepath = Path(csv_path)
     if not filepath.exists():
         return {"success": False, "error": f"文件不存在: {csv_path}", "imported": 0, "skipped": 0, "errors": []}
-    
+
     # 复用现有逻辑
     try:
         import_csv_file(filepath)

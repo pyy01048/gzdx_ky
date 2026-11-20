@@ -3,19 +3,17 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
 from database import get_db
-from models import Task, Goal, User
-from schemas import TaskCreate, TaskUpdate, TaskResponse, GenericResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
+from models import Goal, Task, User
+from pydantic import BaseModel
+from schemas import TaskCreate, TaskUpdate
 from services.review_scheduler import ReviewScheduler
+from sqlalchemy.orm import Session
+from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id, scoped  # B4 行级隔离
 from utils.security import current_user
 from utils.timeutil import local_today, utcnow  # 统一 naive UTC 时间规范（P0-4）
-
-from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -239,7 +237,7 @@ async def ai_generate_tasks(
             available_time=f"今日 {today}，当前待办 {pending_tasks} 项",
         )
         return {"plan": plan, "message": "AI 计划生成成功"}
-    except Exception as e:
+    except Exception:
         # E2E2-002 补漏：ai-generate 的 detail 曾透传上游 401 与服务商地址；原文只进服务端日志
         logging.getLogger(__name__).exception("任务 AI 生成失败")
         raise HTTPException(status_code=502, detail="AI 服务暂时不可用：请到「设置 → AI 服务」检查 API Key 与网络后重试。")

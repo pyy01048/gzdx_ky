@@ -29,8 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import requests  # noqa: E402
 import uvicorn  # noqa: E402
-
 from main import app  # noqa: E402
+
 _TOKEN = os.getenv("KAOYAN_TOKEN", "")
 
 PREFIX = "【正文解析验证·勿删】"

@@ -5,19 +5,17 @@
 """
 
 from __future__ import annotations
-from utils.security import require_admin
 
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
+from models import Document, KnowledgeChunk, KnowledgePoint, SubjectConfig
+from services import kp_mastery, taxonomy
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-
-from database import get_db
-from models import KnowledgePoint, Document, KnowledgeChunk, SubjectConfig
-from services import kp_mastery, taxonomy
-
 from utils.response import MAX_PAGE_SIZE
+from utils.security import require_admin
 
 router = APIRouter(prefix="/api/taxonomy", tags=["知识结构"])
 
@@ -611,7 +609,6 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db)):
         "信号与系统": ["信号与系统", "通信原理", "光学与工程光学"],
         "公共课": ["公共课", "英语", "政治", "数学", "普通物理"],
     }
-    from sqlalchemy import or_ as _or
 
     subjects = _SUBJECT_ALIASES.get(kp.subject, [kp.subject] if kp.subject else [])
     base = db.query(KnowledgeChunk)

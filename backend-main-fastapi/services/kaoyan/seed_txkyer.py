@@ -4,11 +4,14 @@
     cd backend-main-fastapi
     python -c "from services.kaoyan.seed_txkyer import run; run()"
 """
-import re, json, urllib.request, sys
-from database import SessionLocal
+import json
+import re
+import urllib.request
+
 # 注意：学科种子写入 **Discipline**（disciplines 表），而不是 KaoyanSubject——
 # kaoyan_subjects 是 PG 视图（SELECT ... FROM disciplines），对视图 INSERT 会失败。
-from core.models import KaoyanSchool, Discipline
+from core.models import Discipline, KaoyanSchool
+from database import SessionLocal
 
 BASE = "http://www.txkyer.cn/"
 

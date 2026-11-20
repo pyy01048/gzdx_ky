@@ -39,7 +39,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-import numpy as np  # noqa: E402
 import psycopg  # noqa: E402
 
 from pipeline.config import pg_database_url  # noqa: E402
@@ -56,14 +55,9 @@ BATCH = 64
 # 这里只保留薄壳：常量再导出 + 委托，方便旧调用方 from pipeline.build_vectors import ...
 from services.vector_builder import (  # noqa: E402
     BATCH,
-    build_pg_vectors,
     DIM,
-    MAX_CHARS,
     MODEL_VERSION,
-    argmin_normalize as _argmin_normalize,
-    clean_text as _clean,
-    fetch_pending,
-    vec_literal as _vec_literal,
+    build_pg_vectors,
 )
 
 
@@ -88,7 +82,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # 延迟导入模型（避免 --help 时也加载 onnx）
     from services.embedding_service import (
-        generate_local_embeddings, is_local_model_available,
+        generate_local_embeddings,
+        is_local_model_available,
     )
 
     if not is_local_model_available():

@@ -9,21 +9,19 @@
 - 自动调整    POST /api/kaoyan/analysis/auto-adjust （冲稳保+理由）
 """
 from __future__ import annotations
-from utils.security import require_admin
 
 from typing import List, Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
+from models import KaoyanCrawlTarget, KaoyanSchool
 from pydantic import BaseModel, Field
+from services.dbapi_compat import wrap_conn
+from services.kaoyan import reform_detector, score_insight
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-
-from services.dbapi_compat import wrap_conn
-from database import get_db
-from services.kaoyan import reform_detector, score_insight
-from models import KaoyanSchool, KaoyanCrawlTarget
-
 from utils.response import MAX_PAGE_SIZE
+from utils.security import require_admin
 
 router = APIRouter(prefix="/api/kaoyan", tags=["考研择校扩展"])
 

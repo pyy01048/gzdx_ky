@@ -23,7 +23,7 @@ import json
 import os
 import sqlite3
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -160,7 +160,9 @@ def _estimate_kp_recovery(
     """
     try:
         from scripts.backfill_kp_links_v2 import (
-            _load_points, _points_by_subject, match_question_rule,
+            _load_points,
+            _points_by_subject,
+            match_question_rule,
         )
 
         points = _load_points(cur)
@@ -318,7 +320,7 @@ def main() -> int:
 
     # ---- 落盘 Markdown 报告 ----
     _write_markdown(payload, args.sample, out_json)
-    print(f"已写报告 → docx/_analysis/question-subject-mismatch.md")
+    print("已写报告 → docx/_analysis/question-subject-mismatch.md")
     con.close()
     return 0
 

@@ -8,17 +8,15 @@
 """
 from __future__ import annotations
 
-import calendar
 import datetime
 import math
 from typing import Any, Dict, List, Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends
+from models import Goal, Milestone, User
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
-from database import get_db
-from models import Goal, Milestone, User
 from utils.scope import scoped
 from utils.security import current_user
 from utils.timeutil import local_today

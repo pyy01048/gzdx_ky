@@ -309,9 +309,8 @@ def test_mojibake_rejected(db_schema):  # noqa: ARG001
 # --------------------------------------------------------------------------- #
 def test_chunk_gate_filters_bad_chunks_and_keeps_mirror_in_sync(db_schema, chunk_fts_mirror):  # noqa: ARG001
     """短块/乱码块不写 knowledge_chunks；写了的块必须同时在 FTS 里。"""
-    from sqlalchemy import text as sql_text
-
     from services.kb_service import chunk_is_retrievable, ingest_text
+    from sqlalchemy import text as sql_text
 
     db = _session()
     try:

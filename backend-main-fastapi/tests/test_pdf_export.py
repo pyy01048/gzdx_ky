@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 
-
 PDF_MAGIC = b"%PDF"
 
 

@@ -553,8 +553,8 @@ def ensure_knowledge_points(db, subject_id: int, chapters: dict[str, int]) -> li
 
 def _delete_old_links(db, qids: list[int]) -> int:
     """删除指向非本学科知识点的历史关联（必须过物理删除闸门）。"""
-    from sqlalchemy import bindparam, text
     from services.delete_guard import require_physical_delete_enabled
+    from sqlalchemy import bindparam, text
 
     stmt = text("""
         SELECT l.id
@@ -703,7 +703,6 @@ def main() -> int:
         print("\n确认后执行：KAOYAN_ALLOW_PHYSICAL_DELETE=1 python scripts/add_control_subject.py --apply")
         return 0
 
-    from sqlalchemy import text
     from database import SessionLocal
     from services.backup_service import create_backup
 

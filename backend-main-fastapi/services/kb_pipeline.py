@@ -24,21 +24,20 @@
 """
 
 from __future__ import annotations
-import logging
 
-import datetime
+import logging
 import os
 from typing import Any, Callable, Optional
 
+from core.db_session import IS_POSTGRES
+from models import Document, KnowledgeChunk
 from sqlalchemy import String, cast, func
 from sqlalchemy.orm import Session
+from utils.timeutil import utcnow_aware  # 统一 naive UTC 时间规范（P0-4）
 
-from core.db_session import IS_POSTGRES
 from services.dbapi_compat import wrap_conn
-from models import Document, KnowledgeChunk
 from services.doc_naming import apply_display_name
 from services.smart_ingest import gate_for_write
-from utils.timeutil import utcnow_aware  # 统一 naive UTC 时间规范（P0-4）
 
 #: index_status 的**唯一合法取值**。
 #  历史上出现过 "ready"（旧导入脚本）与 "indexed"（现行）两套词表并存，
@@ -557,7 +556,8 @@ def build_embeddings(force: bool = False) -> dict:
     旧 embedding_service.build_all_embeddings 写的是 SQLite 时代镜像表
     knowledge_chunks_vec，该表在 PG 侧不存在（见 services/vector_builder.py
     模块头说明），PG 下走它必定白跑，因此只在 SQLite 后端保留。
-    :param force: True 时全量重算（--rebuild）；默认只补缺。"""
+
+    :param force: True 时全量重算（--rebuild）；默认只补缺。"""
     if IS_POSTGRES:
         from pipeline.build_vectors import main as _bv_main
 
@@ -711,7 +711,7 @@ def main() -> int:
 
         result = heal(db, use_ocr=args.ocr, do_embeddings=args.embeddings,
                       limit=args.limit, progress=on_progress)
-        print(f"\n修复后：")
+        print("\n修复后：")
         print_report(result["after"])
         print(f"\n新增分块：{result['improved']}")
         return 0

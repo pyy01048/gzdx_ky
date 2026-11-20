@@ -33,12 +33,11 @@ except Exception:  # noqa: BLE001
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import text  # noqa: E402
-
 from services.kaoyan.notice_dedup import (  # noqa: E402
     normalize_notice_title,
     normalize_notice_url,
 )
+from sqlalchemy import text  # noqa: E402
 
 BACKUP_SUFFIX = "_dedup_backup_20261021"
 
@@ -111,7 +110,7 @@ def inspect(db) -> None:
                 print(f"      删除 id={d['id']} read={d['read']} star={d['star']} "
                       f"title={d['title'][:34]!r} fetched={str(d['fetched'])[:10]}")
         shown += 1
-    print(f"\n[dry-run] 未动库（--apply 执行）")
+    print("\n[dry-run] 未动库（--apply 执行）")
 
 
 def apply(db) -> None:

@@ -11,12 +11,10 @@ P2-M4 真题模块：papers 年份/卷种轴 + 整卷模考与报告
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
+from core.models.questions import Paper, PaperAnswer, PaperAttempt, PaperQuestion
 from sqlalchemy.orm import Session
-
-from core.models.questions import Paper, PaperQuestion, PaperAttempt, PaperAnswer, QuizQuestion
 from utils.timeutil import utcnow
 
 logger = logging.getLogger(__name__)

@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import pytest
-
 from services.ingest_pipeline import (
     GRADE_A,
     GRADE_B,
@@ -172,7 +171,7 @@ def test_clean_question_keeps_grade():
 def test_ingest_marks_corrupted_question():
     """整条管线：题干来自被标记为损坏的块 → 统计 + 留痕。"""
     from services.ingest_pipeline import ingest_pdf
-    from services.parsers.base import BLOCK_TEXT, ParseResult, ParsedBlock, ParsedPage
+    from services.parsers.base import BLOCK_TEXT, ParsedBlock, ParsedPage, ParseResult
 
     def fake(pdf_path, **kwargs):  # noqa: ARG001
         page = ParsedPage(

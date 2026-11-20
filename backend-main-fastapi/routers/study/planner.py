@@ -8,20 +8,24 @@ import datetime
 import json
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
+from models import (
+    DailyPlan,
+    EarlyBirdRecord,
+    EbbinghausItem,
+    MonthPlan,
+    PhasePlan,
+    User,
+    WeekPlan,
+)
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-
-from database import get_db
-from models import (
-    DailyPlan, WeekPlan, MonthPlan,
-    EbbinghausItem, EarlyBirdRecord, PhasePlan, User,
-)
-from utils.scope import scoped, owner_id  # B4 行级隔离：scoped 查询过滤 / owner_id 写入归属
+from utils.scope import owner_id, scoped  # B4 行级隔离：scoped 查询过滤 / owner_id 写入归属
 from utils.security import current_user
-from utils.timeutil import local_today, utcnow, to_naive_utc  # 统一 naive UTC 时间规范（P0-4）
+from utils.timeutil import local_today, to_naive_utc, utcnow  # 统一 naive UTC 时间规范（P0-4）
 
 router = APIRouter(prefix="/api/planner", tags=["planner"])
 

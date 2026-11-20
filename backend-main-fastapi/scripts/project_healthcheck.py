@@ -28,8 +28,8 @@ import io
 import os
 import pkgutil
 import sys
-from pathlib import Path
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
@@ -353,7 +353,6 @@ def check_no_drive_literals() -> None:
     """
     print("\n[6b] 运行时绝对路径绑定")
     import glob as _glob
-    import io as _io
     import re as _re
     import tokenize as _tokenize
 

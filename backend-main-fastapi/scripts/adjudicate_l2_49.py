@@ -11,11 +11,11 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import re
 import sys
 from collections import Counter
+from pathlib import Path
 
 # 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
 _REPO = Path(__file__).resolve().parents[2]

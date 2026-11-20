@@ -8,15 +8,12 @@
 找不到中文字体时降级为 Helvetica（中文会变方框，但接口不报错）。
 """
 
-import datetime
 import io
 import logging
 import os
 
-from utils.timeutil import local_today  # 统一「今天」按北京自然日（#19 时间口径）
-
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -31,6 +28,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from utils.timeutil import local_today  # 统一「今天」按北京自然日（#19 时间口径）
 
 logger = logging.getLogger(__name__)
 
@@ -254,7 +252,7 @@ def build_errors_pdf(
 
         rows = []
         if e.get("content"):
-            rows.append([Paragraph(f"<b>题干</b>", styles["label"]), Paragraph(_safe_text(e["content"], 3000), styles["body"])])
+            rows.append([Paragraph("<b>题干</b>", styles["label"]), Paragraph(_safe_text(e["content"], 3000), styles["body"])])
         if e.get("my_answer"):
             rows.append([Paragraph("<b>我的答案</b>", styles["label"]), Paragraph(_safe_text(e["my_answer"], 2000), styles["body"])])
         if e.get("correct_answer"):

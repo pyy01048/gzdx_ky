@@ -31,7 +31,6 @@ from collections import Counter, defaultdict
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quiz_quality_gate import classify  # noqa: E402
 
 # 问句/题型标记（与门禁 Q_MARK 对齐但更严格：要求真的可判分）
 ASK = ("？", "?", "____", "＿＿", "（ ）", "( )", "求", "试", "简述", "写出", "画出",

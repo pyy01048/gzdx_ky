@@ -117,11 +117,10 @@ def main() -> int:
         return 2
 
     # ---- 临时库 + 两轮入库 ----
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
     from models import QuizQuestion
     from services import quiz_dedupe as dd
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
 
     fd, path = tempfile.mkstemp(suffix=".db", prefix="rebuild_verify_")
     os.close(fd)

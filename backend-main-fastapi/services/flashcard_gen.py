@@ -8,9 +8,8 @@
 from types import SimpleNamespace
 from typing import Optional
 
-from sqlalchemy.orm import Session
-
 from models import Flashcard, KnowledgePoint
+from sqlalchemy.orm import Session
 from utils.scope import scoped
 
 

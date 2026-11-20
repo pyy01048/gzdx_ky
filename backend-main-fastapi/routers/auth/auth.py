@@ -5,14 +5,13 @@ import ipaddress
 import secrets
 from typing import Optional
 
+from core.models.schools import AuditLog
+from database import get_db
 from fastapi import APIRouter, Depends, Request, Response, status
+from models import User
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-
-from core.models.schools import AuditLog
-from database import get_db
-from models import User
 from utils.exceptions import BusinessException, ErrorCode
 from utils.response import page_params, paginate_query
 from utils.security import (

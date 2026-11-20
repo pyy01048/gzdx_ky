@@ -6,13 +6,13 @@ V3.0 数据库连接与会话管理模块（性能优化版）
 - 会话管理
 """
 
+import logging
 import os
 import time
-import logging
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import QueuePool
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 def _resolve_database_url() -> tuple[str, bool]:
     """解析连接串与后端类型，与 core.db_session 保持单一来源。"""
     try:
-        from core.db_session import build_database_url, IS_POSTGRES
+        from core.db_session import IS_POSTGRES, build_database_url
         return build_database_url(), IS_POSTGRES
     except Exception as exc:  # pragma: no cover - core 不可用时退回 SQLite
         logger.warning("core.db_session 不可用，退回 SQLite：%s", exc)

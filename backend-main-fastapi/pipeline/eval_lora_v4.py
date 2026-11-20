@@ -30,7 +30,6 @@ import argparse
 import json
 import re
 import statistics
-import sys
 import time
 import urllib.request
 from pathlib import Path

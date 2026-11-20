@@ -13,7 +13,6 @@ prompt 过长导致 assistant 目标被 max_len 截掉一半）。
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import re
@@ -81,7 +80,7 @@ def main() -> int:
     rows = []
     for name in ("train.jsonl", "val.jsonl"):
         path = os.path.join(args.in_dir, name)
-        with io.open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     d = json.loads(line)
@@ -113,7 +112,7 @@ def main() -> int:
     os.makedirs(args.out_dir, exist_ok=True)
     for name in ("train.jsonl", "val.jsonl"):
         sub = [r for r in kept if r["_split"] == name]
-        with io.open(os.path.join(args.out_dir, name), "w", encoding="utf-8") as f:
+        with open(os.path.join(args.out_dir, name), "w", encoding="utf-8") as f:
             for r in sub:
                 f.write(json.dumps({k: v for k, v in r.items() if k != "_split"},
                                    ensure_ascii=False) + "\n")

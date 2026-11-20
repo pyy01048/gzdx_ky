@@ -13,15 +13,15 @@ import io
 import json
 import os
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 # 允许从任意 CWD 运行
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
+from core.models import ErrorRecord, KnowledgePoint, StudySession, StudyStat, Task
 from database import SessionLocal
-from core.models import StudySession, StudyStat, Task, ErrorRecord, KnowledgePoint
 from sqlalchemy import func
 
 
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(buf.getvalue())
         print(f"RESULT_WRITTEN {out_path}")
-    except Exception as e:
+    except Exception:
         import traceback
         with open(out_path, "w", encoding="utf-8") as f:
             traceback.print_exc(file=f)

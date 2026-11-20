@@ -167,7 +167,7 @@ def main() -> int:
     # 无 chapter 交叉统计
     no_ch_high = sum(1 for r, _ in high if not (r["chapter"] or "").strip())
     no_ch_all = sum(1 for r in rows if not (r["chapter"] or "").strip())
-    print(f"\n== 交叉：无 chapter ==")
+    print("\n== 交叉：无 chapter ==")
     print(f"   全库无 chapter: {no_ch_all}/{total} ({no_ch_all / total * 100:.1f}%)")
     print(f"   确定垃圾中无 chapter: {no_ch_high}/{len(high)}")
 
@@ -181,8 +181,8 @@ def main() -> int:
 
     # ---- 落盘 JSON + Markdown ----
     _write_outputs(rows, high, medium, ctrl_rows, total, no_ch_all, no_ch_high, args.sample)
-    print(f"\n已写报告 → docx/_analysis/junk-questions-report.md")
-    print(f"已写清单 → tools/datasource/junk_questions_candidates.json")
+    print("\n已写报告 → docx/_analysis/junk-questions-report.md")
+    print("已写清单 → tools/datasource/junk_questions_candidates.json")
     con.close()
     return 0
 

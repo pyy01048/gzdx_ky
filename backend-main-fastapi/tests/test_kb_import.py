@@ -20,7 +20,6 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from database import SessionLocal
 from models import Document, QuizQuestion
 from services.delete_guard import (
@@ -28,7 +27,6 @@ from services.delete_guard import (
     ENV_FLAG,
     require_physical_delete_enabled,
 )
-
 
 PREFIX = "QA-KB-IMPORT"
 

@@ -37,7 +37,7 @@ DB = r"D:\平台\database\kaoyan.db"
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from detect_notice_noise import classify_noise, EXISTING_NOISE_REASONS  # noqa: E402
+from detect_notice_noise import EXISTING_NOISE_REASONS, classify_noise  # noqa: E402
 
 BACKUP_DIR = r"D:\平台\data\backups"
 

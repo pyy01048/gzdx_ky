@@ -153,7 +153,7 @@ def build() -> List[Dict]:
             print(f"[warn] 读取 documents.file_path 失败，孤儿项跳过：{e}", file=sys.stderr)
         if orph_n:
             out.append(item("storage_orphans", STORAGE_DOCS,
-                            f"storage/documents 中 DB 无引用的孤儿文件", "needs_review",
+                            "storage/documents 中 DB 无引用的孤儿文件", "needs_review",
                             "若某文档记录被删过而正文仍在，删除只丢原始文件（索引/chunk 已不在库里）；"
                             "但文件名归一/大小写差异会误判，必须人工抽查",
                             "逐条比对 documents.file_name，确认无引用再删",
@@ -209,7 +209,7 @@ def main() -> int:
         return 0
 
     print(f"扫描根：{ROOT}｜生产库只读打开，本脚本不删除任何文件\n")
-    print(f"| 项 | 体量 | 文件 | 风险 | 删了会坏什么 | 怎么复核 |")
+    print("| 项 | 体量 | 文件 | 风险 | 删了会坏什么 | 怎么复核 |")
     print("|---|---|---|---|---|---|")
     for r in rows:
         sz = f"{r['size_gb']:.2f} GB" if r["bytes"] >= _GB else f"{r['size_mb']:.0f} MB"

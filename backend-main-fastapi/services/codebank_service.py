@@ -21,10 +21,11 @@ ensure_schema 幂等补列（add_column_if_missing），保持 API 响应结构�
 from __future__ import annotations
 
 import json
-from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
+
 from services.dbapi_compat import wrap_conn  # noqa: E402  PG/SQLite 双底座连接适配
 
 _DDL = """

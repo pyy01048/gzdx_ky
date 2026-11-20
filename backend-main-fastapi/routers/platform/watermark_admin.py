@@ -15,14 +15,11 @@
 from __future__ import annotations
 
 import urllib.parse
-from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
-
-from database import get_db
-
 from utils.response import MAX_PAGE_SIZE
 from utils.security import require_admin
 

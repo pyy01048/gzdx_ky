@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest  # noqa: E402
-
 from services.ai_router import AIRouter  # noqa: E402
 
 

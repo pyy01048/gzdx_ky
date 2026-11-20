@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 import time
@@ -18,11 +19,16 @@ import urllib.error
 import urllib.request
 from typing import List
 
-import os
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from clean_knowledge_points import _KEEP_SHORT, _RE_ONLY_NUM, _RE_ONLY_PUNCT, \
-    _RE_ONLY_SEQ, _RE_SUBSCRIPT, _RE_CJK_MIN, _SUBJECT_MAP  # noqa: E402
+from clean_knowledge_points import (
+    _KEEP_SHORT,
+    _RE_CJK_MIN,
+    _RE_ONLY_NUM,
+    _RE_ONLY_PUNCT,
+    _RE_ONLY_SEQ,  # noqa: E402
+    _RE_SUBSCRIPT,
+    _SUBJECT_MAP,
+)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))

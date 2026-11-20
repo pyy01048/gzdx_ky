@@ -10,7 +10,6 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 import pytest  # noqa: E402
-
 from services.crawl.classifier import (  # noqa: E402
     NOTICE_TYPES,
     OTHER,

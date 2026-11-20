@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import pytest
-
 from services.parsers import pdf_classifier
 from services.parsers.pdf_classifier import (
     DIGITAL_MIN_CHARS,

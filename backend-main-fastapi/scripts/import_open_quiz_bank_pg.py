@@ -16,24 +16,24 @@
 
 运行: python scripts/import_open_quiz_bank_pg.py
 """
-import os
-import sys
-import re
-import json
 import glob
-import html
-import hashlib
+import json
 import logging
+import os
+import re
 from collections import Counter
 
 import psycopg
-from psycopg.rows import dict_row
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(PROJECT_ROOT, "data", "open_quiz_bank")
 
-DB_DSN = "host=127.0.0.1 port=5432 user=kaoyan password=kaoyan_dev_2026 dbname=kaoyan"
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("import_open_quiz_bank")
@@ -1014,13 +1014,13 @@ def main():
     print("\n===== 导入统计 =====")
     print(f"解析总数: {stats['total_parsed']}")
     print(f"成功插入: {stats['inserted']}")
-    print(f"\n按来源:")
+    print("\n按来源:")
     for src, cnt in stats["by_source"].most_common():
         print(f"  {src}: {cnt}")
-    print(f"\n按科目:")
+    print("\n按科目:")
     for subj, cnt in stats["by_subject"].most_common():
         print(f"  {subj}: {cnt}")
-    print(f"\n跳过原因:")
+    print("\n跳过原因:")
     for k, v in stats.items():
         if k.startswith("skipped") and v:
             print(f"  {k}: {v}")

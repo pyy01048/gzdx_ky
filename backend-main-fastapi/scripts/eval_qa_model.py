@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import random
@@ -237,7 +236,7 @@ def train_fingerprints(path: str) -> str:
         p = os.path.join(path, name) if os.path.isdir(path) else path
         if not os.path.exists(p):
             continue
-        with io.open(p, encoding="utf-8") as f:
+        with open(p, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

@@ -11,9 +11,6 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 import pytest  # noqa: E402
-from sqlalchemy import create_engine  # noqa: E402
-from sqlalchemy.pool import StaticPool  # noqa: E402
-
 from services.crawl.queue import (  # noqa: E402
     STATUS_DEAD,
     STATUS_DONE,
@@ -26,6 +23,8 @@ from services.crawl.queue import (  # noqa: E402
     _ModelsUnavailable,
     open_store,
 )
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
 
 
 def sqlite_engine():

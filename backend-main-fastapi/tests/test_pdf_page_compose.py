@@ -16,19 +16,16 @@ from __future__ import annotations
 import os
 
 import pytest
-
+from services.parsers.pdf_formula_extract import _default_layout_model
 from services.parsers.pdf_page_compose import (
-    COLUMN_GAP_RATIO,
-    ROW_TOLERANCE,
     PageComposeResult,
     PageElement,
+    _compose_by_ocr_lines,
     _looks_multi_column,
     _overlaps_x,
     assign_reading_order,
-    _compose_by_ocr_lines,
     compose_page_text,
 )
-from services.parsers.pdf_formula_extract import _default_layout_model
 
 
 # --------------------------------------------------------------------------- #

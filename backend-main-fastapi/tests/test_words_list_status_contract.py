@@ -23,11 +23,10 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-
 from database import SessionLocal
+from main import app
 from models import User, Word
 from tests.asgi_client import ASGIClient
-from main import app
 from utils.security import current_user
 
 client = ASGIClient(app)

@@ -11,18 +11,18 @@
 用法：
     python scripts/backfill_content_category.py
 """
+import collections
 import os
 import sys
 import time
-import collections
 
 # 以脚本所在项目根目录为 import 根
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE)
 
-from sqlalchemy import text  # noqa: E402
 from database import SessionLocal  # noqa: E402
 from services.kb_service import classify_content_category  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 
 def ensure_column(db) -> bool:

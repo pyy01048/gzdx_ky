@@ -1,35 +1,31 @@
 """刷题路由。"""
 
-from utils.security import require_admin
-import datetime
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from sqlalchemy import Integer, func
-from sqlalchemy.orm import Session
-
 from database import get_db
+from fastapi import APIRouter, Depends, HTTPException, Query
 from models import (
-    User,
-    QuizQuestion,
-    ErrorRecord,
     AnswerRecord,
     ErrorKnowledgeLink,
-    QuestionKnowledgeLink,
+    ErrorRecord,
     KnowledgePoint,
+    QuestionKnowledgeLink,
+    QuizQuestion,
     StudyEvent,
+    User,
     Word,
 )
-from schemas import QuizQuestionCreate, QuizQuestionUpdate, QuizSubmit, GenericResponse
-from services.quiz_content_gate import admit as gate_admit
+from pydantic import BaseModel, Field
+from schemas import QuizQuestionCreate, QuizQuestionUpdate, QuizSubmit
 from services.delete_guard import require_physical_delete_enabled
+from services.quiz_content_gate import admit as gate_admit
 from services.review_scheduler import ReviewScheduler
-
+from sqlalchemy import Integer, func
+from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id, scoped  # B4 行级隔离：个人域查询按用户过滤、写入落归属
-from utils.security import current_user
+from utils.security import current_user, require_admin
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
@@ -41,8 +37,12 @@ router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 # --------------------------------------------------------------------------- #
 from services.quiz_query import (  # noqa: E402
     SOURCE_KIND_CHOICES as _SOURCE_KIND_CHOICES,
-    source_kind_expr as _source_kind_expr_shared,
+)
+from services.quiz_query import (
     answerable_expr as _answerable_expr_shared,
+)
+from services.quiz_query import (
+    source_kind_expr as _source_kind_expr_shared,
 )
 
 SOURCE_KIND_CHOICES = _SOURCE_KIND_CHOICES
@@ -113,8 +113,8 @@ async def list_questions(
     - ``source_kind`` / ``subject`` / ``applied``：回显本次生效的筛选（前端「依据明示」）。
     原有字段语义不变（``total`` 仍为应用 answerable 后的结果总数，分页依赖它）。
     """
-    from sqlalchemy import func, or_
     from services.quiz_query import visible_quiz_filter
+    from sqlalchemy import func, or_
 
     # —— 基础筛选（不含 answerable 限制，用于口径计数）——
     base = db.query(QuizQuestion)
@@ -415,8 +415,8 @@ async def quiz_frequency(
     差额即被 ``limit`` 截掉的部分）。
     只读端点，无副作用。题数默认排除 OCR 碎片题（``is_junk=1``）。
     """
-    from sqlalchemy import func, distinct
     from services.quiz_query import visible_quiz_filter
+    from sqlalchemy import distinct, func
 
     if dimension == "paper":
         base = visible_quiz_filter(
@@ -588,8 +588,8 @@ async def papers_index(
     题数默认排除 OCR 碎片题（``is_junk=1``）。
     ``source_kind`` 用于「真题 / 教材题」分页隔离（教材题通常无 paper，默认列表为空属正常）。
     """
-    from sqlalchemy import func
     from services.quiz_query import visible_quiz_filter
+    from sqlalchemy import func
 
     query = visible_quiz_filter(
         db.query(
@@ -652,8 +652,8 @@ async def years_index(
     诚实口径：只覆盖能可靠解析年份的真题子集，不伪造年份。
     题数默认排除 OCR 碎片题（``is_junk=1``）。
     """
-    from sqlalchemy import func
     from services.quiz_query import visible_quiz_filter
+    from sqlalchemy import func
 
     yquery = visible_quiz_filter(
         db.query(QuizQuestion.year, QuizQuestion.subject, func.count(QuizQuestion.id)),
@@ -1407,7 +1407,7 @@ async def _quiz_stats_payload(
     None（旧行为）不过滤，兼容未传用户的直接调用。
     """
     # M1-1h：统一走共享过滤，避免口径漂移
-    from services.quiz_query import visible_quiz_filter, answerable_expr, normalize_source_kind
+    from services.quiz_query import answerable_expr, normalize_source_kind, visible_quiz_filter
 
     sk = normalize_source_kind(source_kind)
     sk_expr = _source_kind_expr(source_kind)  # 非法值 → 400
@@ -2002,7 +2002,7 @@ async def retest_stats(
     口径与题库列表一致：排除 OCR 碎片题（is_junk=1）。is_retest 为 NULL 的存量题
     归入初试（向后兼容，与 is_retest=False 过滤语义一致）。
     """
-    from sqlalchemy import or_, case
+    from sqlalchemy import case, or_
 
     # 逐科目聚合：total（可用题）/initial（初试）/retest（复试）。
     rows = (
@@ -2070,8 +2070,8 @@ async def extract_knowledge_from_text(
     max_chunk_size = int(payload.get("max_chunk_size", 3000) or 3000)
     limit = int(payload.get("limit", 50) or 50)
 
-    from services.document_analyzer import smart_chunk_text, KNOWLEDGE_POINT_PROMPT
     from services.ai_service import AIService
+    from services.document_analyzer import KNOWLEDGE_POINT_PROMPT, smart_chunk_text
 
     chunks = smart_chunk_text(text, max_chunk_size=max_chunk_size, overlap=200)
     ai = AIService(db)
@@ -2164,7 +2164,7 @@ async def quiz_subjects(
     #   * answerable_count ：其中可自动判分的题（is_available 为 True/NULL）
     # `question_count` 保留为 visible_count 的**同义字段**（不改语义，避免 taxonomy/
     # documents/papers 四个共用该 registry 的页面出现口径回退）。
-    from services.quiz_query import visible_quiz_filter, answerable_expr
+    from services.quiz_query import answerable_expr, visible_quiz_filter
 
     rows = (
         db.query(QuizQuestion.subject, func.count(QuizQuestion.id))
@@ -2234,8 +2234,8 @@ async def quiz_sections(
     user: User = Depends(current_user),  # B4 访客兜底
 ):
     """分项列表：指定科目（或全部）下的章节分布。题数默认排除 OCR 碎片题。"""
-    from sqlalchemy import func
     from services.quiz_query import visible_quiz_filter
+    from sqlalchemy import func
     q = visible_quiz_filter(
         db.query(QuizQuestion.chapter, func.count(QuizQuestion.id)),
         include_junk=include_junk,

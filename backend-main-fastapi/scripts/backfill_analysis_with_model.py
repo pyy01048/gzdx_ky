@@ -132,10 +132,8 @@ def parse_output(text: str) -> tuple[set, str, bool]:
 
 
 def fetch_missing() -> list[dict]:
-    import psycopg
-    conn = psycopg.connect(
-        host="127.0.0.1", port=5432, user="kaoyan",
-        password="kaoyan_dev_2026", dbname="kaoyan")
+    from scripts._conn import pg_connect
+    conn = pg_connect()
     cur = conn.cursor()
     cur.execute(
         """
@@ -244,7 +242,7 @@ def main() -> int:
         json.dump(report, f, ensure_ascii=False, indent=1)
     os.makedirs(os.path.dirname(OUT_MD), exist_ok=True)
     with open(OUT_MD, "w", encoding="utf-8") as f:
-        f.write(f"# 缺解析题目批量生成（dry-run）\n\n")
+        f.write("# 缺解析题目批量生成（dry-run）\n\n")
         f.write(f"- 模型：`{args.model}`\n")
         f.write(f"- 样本：{len(records)} 题\n")
         f.write(f"- 答案准确率：{report['accuracy']:.3f}\n")
@@ -263,17 +261,15 @@ def main() -> int:
                     f"| {'✓' if r['correct'] else '✗'} "
                     f"| {'✓' if r['formatted'] else '✗'} | {ana} |\n")
 
-    print(f"\n===== 汇总 =====")
+    print("\n===== 汇总 =====")
     print(f"答案准确率: {report['accuracy']:.3f}  ({correct}/{len(records)})")
     print(f"格式合规率: {report['format_rate']:.3f}  ({formatted}/{len(records)})")
     print(f"拒答率:     {report['refusal_rate']:.3f}")
     print(f"dry-run 报告: {OUT_JSON}\n            {OUT_MD}")
 
     if args.apply:
-        import psycopg
-        conn = psycopg.connect(
-            host="127.0.0.1", port=5432, user="kaoyan",
-            password="kaoyan_dev_2026", dbname="kaoyan")
+        from scripts._conn import pg_connect
+        conn = pg_connect()
         cur = conn.cursor()
         updated = 0
         skipped = 0

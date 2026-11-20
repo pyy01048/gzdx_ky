@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
 """批量处理：解析文档 + 构建向量索引 + 网盘入库。"""
 
-import sys
-import os
 import asyncio
 import datetime
+import os
+import sys
+
 # 本文件位于 backend-main-fastapi/scripts/diagnostics/，需要把仓库根目录
 # 加进 sys.path 才能 import database / models / services —— 原先只加了自身
 # 所在目录，所以这个脚本一运行就在下一行 ImportError。
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from database import SessionLocal, engine
-from models import Document, KnowledgeChunk, NetdiskFile, Base
+from database import SessionLocal
+from models import Document, KnowledgeChunk, NetdiskFile
 
 
 def clean_text(text):
@@ -140,7 +141,7 @@ def build_embeddings():
         db.close()
         return
 
-    from services.embedding_service import get_embedder, generate_embeddings
+    from services.embedding_service import generate_embeddings, get_embedder
 
     embedder = get_embedder()
     print(f"使用嵌入模型: {embedder.__class__.__name__}")

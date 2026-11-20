@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Any, Dict, List, Optional
+
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
+
 from services.dbapi_compat import wrap_conn  # noqa: E402  PG/SQLite 双底座连接适配
 
 GAP_TYPES = ("no_material", "ocr_failed", "no_answer", "ambiguous", "out_of_scope", "not_understood")

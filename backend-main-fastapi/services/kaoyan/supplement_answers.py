@@ -9,18 +9,19 @@
 
 使用：python services/kaoyan/supplement_answers.py [--limit N] [--resume]
 """
-import logging
 import argparse
 import json
+import logging
 import re
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from sqlalchemy import func
 from database import SessionLocal
 from models import QuizQuestion
+from sqlalchemy import func
+
 from services.model_gateway import ModelGateway
 
 # 断点状态同样不放包目录：部署包夹带过期 checkpoint 会让任务"假装已完成"。

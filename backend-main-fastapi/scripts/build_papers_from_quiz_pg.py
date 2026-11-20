@@ -16,8 +16,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from database import SessionLocal  # noqa: E402
-from services.paper_builder import build_paper, save_paper  # noqa: E402
 from models import Paper  # noqa: E402
+from services.paper_builder import build_paper, save_paper  # noqa: E402
 
 SUBJECTS = ["数学", "电路", "数字电子技术", "模拟电子技术", "自动控制原理", "政治"]
 

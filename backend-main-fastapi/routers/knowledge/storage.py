@@ -2,13 +2,11 @@
 V3.0 本地存储库管理路由
 提供存储库扫描、文件入库、统计等API接口。
 """
-import os
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
 from database import get_db
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
 from services.storage_watcher import StorageWatcher
+from sqlalchemy.orm import Session
 from utils.security import require_admin
 
 router = APIRouter(prefix="/api/storage", tags=["storage"], dependencies=[Depends(require_admin)])

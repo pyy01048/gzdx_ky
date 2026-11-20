@@ -1,20 +1,18 @@
 """单词词库路由：词库管理、单词CRUD、SM-2复习调度、批量导入。"""
 
-from utils.security import require_admin
 import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Word, WordDeck, User
+from fastapi import APIRouter, Depends, File, HTTPException, Query
+from models import User, Word, WordDeck
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_
-from utils.scope import owner_id, scoped  # B4 行级隔离：词库公共读，单词严格本人
-from utils.security import current_user
-from utils.timeutil import local_today
-
+from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
+from utils.scope import owner_id, scoped  # B4 行级隔离：词库公共读，单词严格本人
+from utils.security import current_user, require_admin
+from utils.timeutil import local_today
 
 router = APIRouter(prefix="/api/words", tags=["单词词库"])
 

@@ -17,10 +17,9 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-from sqlalchemy import func
-
 from database import SessionLocal
 from models import AnswerRecord, StudySession
+from sqlalchemy import func
 from utils import timeutil as tu
 
 

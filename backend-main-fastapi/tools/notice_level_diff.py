@@ -10,11 +10,11 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 import os
 import sqlite3
 import sys
 from collections import Counter
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

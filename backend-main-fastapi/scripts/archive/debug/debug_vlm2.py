@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """诊断 qwen2.5vl:7b：纯文本 / 简单视觉 / 中文视觉。"""
-import base64, json, time, urllib.request
+import base64
+import json
+import time
+import urllib.request
+
 
 def post(url, payload):
     req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),

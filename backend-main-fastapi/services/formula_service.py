@@ -160,7 +160,7 @@ def validate_latex(latex: str) -> Dict[str, Any]:
                 return {"compile_ok": ok, "compiler": os.path.basename(compiler),
                         "validator": "compiler", "problems": problems,
                         "pending_flags": pending_flags}
-        except Exception as e:
+        except Exception:
             pass  # 编译失败回退检查
 
     problems = _balance_check(latex)
@@ -279,7 +279,6 @@ def batch_recognize(image_paths: List[str], prefer: Optional[str] = None, db=Non
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     sample = r"\(\int_0^1 x^2 dx = \frac{1}{3}\)"
     print(json.dumps(validate_latex(sample), ensure_ascii=False, indent=2))

@@ -29,13 +29,12 @@ import re
 import shutil
 import tempfile
 from collections import Counter
-from services.dbapi_compat import wrap_conn
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import func, or_
 
-from services import kp_extract
-from services import chunk_classifier
+from services import chunk_classifier, kp_extract
+from services.dbapi_compat import wrap_conn
 from services.doc_naming import apply_display_name
 
 # --- 文件格式 → doc_format 枚举归一（修复 PG 迁移 schema 漂移）---
@@ -578,7 +577,7 @@ def extract_metadata(file_name: str, text: str, path: str = "") -> Dict[str, Any
     （`.../政治/xxx.pdf` → 政治）。此前调用方只传 `os.path.basename(path)`，
     目录里的学科信息被整段丢掉，是政治资料被判成数学的直接原因之一。
     """
-    from services.kb_service import classify_subject, classify_content_category
+    from services.kb_service import classify_content_category, classify_subject
 
     head = text[:4000]
 
@@ -865,6 +864,7 @@ def _dedup_check(db, text: str, subject: str) -> Optional[Tuple[int, float]]:
     Returns: (document_id, cosine_similarity) 或 None
     """
     import numpy as np
+
     from services.embedding_service import generate_local_embeddings
 
     vecs = generate_local_embeddings([text])
@@ -1037,6 +1037,7 @@ def smart_ingest_file(
     # --- 入库 ---
     try:
         from models import Document
+
         from services import kb_service
 
         # --- 幂等保护：同一文件路径已入库则复用旧 Document，不再新建 ---
@@ -1143,6 +1144,7 @@ def smart_ingest_file(
 
         if do_embeddings:
             import asyncio
+
             from services import embedding_service
 
             asyncio.run(embedding_service.build_all_embeddings(db, force=False))

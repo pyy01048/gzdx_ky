@@ -20,7 +20,6 @@ if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
 import psycopg  # noqa: E402
-
 from pipeline.config import pg_database_url  # noqa: E402
 
 CN = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}

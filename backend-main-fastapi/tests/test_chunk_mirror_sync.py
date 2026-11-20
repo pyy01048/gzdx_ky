@@ -9,7 +9,6 @@ fts / vec **镜像列**上。全库实测漂移 15.90%、1235 块弃权后镜像
 """
 from __future__ import annotations
 
-import pytest
 from sqlalchemy import text
 
 
@@ -222,7 +221,6 @@ def test_manual_label_endpoint_writes_through_to_mirrors(db_schema, client):  # 
     review 实测该接口原先只 commit chunk 表，没调 `sync_mirror_subjects`。
     """
     from database import SessionLocal
-    from services import search_service as ss
 
     db = SessionLocal()
     doc_id = None

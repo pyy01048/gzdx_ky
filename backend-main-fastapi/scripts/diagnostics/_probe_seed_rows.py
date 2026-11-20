@@ -68,6 +68,7 @@ with open(p2, "w", newline="", encoding="utf-8-sig") as f:
     w.writerows(over)
 print(f"\n[2] 过度隔离（is_junk=1 但闸门判 {('A','B','C')}）共 {len(over)} 条 → {p2}")
 from collections import Counter
+
 print("    等级分布:", Counter(o[1] for o in over))
 print("    学科分布:", Counter(o[3] for o in over).most_common(8))
 print("    样例:")

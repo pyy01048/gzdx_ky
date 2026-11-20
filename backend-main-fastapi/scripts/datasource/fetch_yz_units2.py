@@ -12,7 +12,13 @@
 合规: 请求间隔 0.4~0.9s，带 UA，失败跳过；逐省落盘，可中断续跑。
 输出: yz_units.json（含 dwdm 单位代码 / dwmc 名称 / province / zhx 自划线 / bs 博士点 / syl 双一流）
 """
-import json, ssl, sys, time, random, urllib.parse, urllib.request
+import json
+import random
+import ssl
+import sys
+import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}

@@ -16,7 +16,6 @@ from __future__ import annotations
 import datetime
 
 import pytest
-
 from services.study_calendar import (
     EFFECTIVE_FOCUS_MINUTES,
     EFFECTIVE_QUESTIONS,

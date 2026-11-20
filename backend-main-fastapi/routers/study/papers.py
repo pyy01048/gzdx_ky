@@ -1,20 +1,17 @@
 """组题网路由：组卷 / 试卷管理 / 导出。"""
 from __future__ import annotations
-from utils.security import require_admin
 
 import os
-from typing import List, Optional, Dict, Any
-
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from typing import Any, Dict, List, Optional
 
 from database import get_db
-from models import Paper, PaperQuestion, QuizQuestion, User
+from fastapi import APIRouter, Depends, HTTPException, Query
+from models import Paper, PaperQuestion, User
+from pydantic import BaseModel
 from services import paper_builder
-
+from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
-from utils.security import current_user
+from utils.security import current_user, require_admin
 
 router = APIRouter(prefix="/api/papers", tags=["组题网"])
 

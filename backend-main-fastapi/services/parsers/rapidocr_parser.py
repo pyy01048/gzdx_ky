@@ -22,9 +22,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from services.parsers.base import (
     BLOCK_TEXT,
     PDF_KIND_SCANNED,
-    ParseResult,
     ParsedBlock,
     ParsedPage,
+    ParseResult,
 )
 
 logger = logging.getLogger(__name__)

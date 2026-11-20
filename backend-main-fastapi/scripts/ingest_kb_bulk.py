@@ -178,8 +178,8 @@ def main() -> int:
     print(f"待处理候选文件: {len(files)}（仅统计磁盘，未判断是否已入库）")
 
     # 已入库过滤（用 manifest md5 + 路径双重判断）
-    from services.kb_ingest import _load_manifest_hashes, ingest_file
     from database import SessionLocal
+    from services.kb_ingest import _load_manifest_hashes, ingest_file
 
     # 去重：库里已有同 stem 的文档（如 xxx.txt 是 xxx.pdf 的解析产物），
     # 或同 stem 已入库过任何格式，则跳过，避免重复内容占用向量与检索
@@ -311,6 +311,7 @@ def main() -> int:
     if args.embed_at_end:
         print("\n=== 统一向量化 ===")
         import asyncio
+
         from services import embedding_service
 
         r = asyncio.run(embedding_service.build_all_embeddings(db, force=False))

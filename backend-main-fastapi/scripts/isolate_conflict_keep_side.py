@@ -19,11 +19,11 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 import datetime
 import os
 import sqlite3
 import sys
+from pathlib import Path
 
 # 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
 _REPO = Path(__file__).resolve().parents[2]
@@ -194,7 +194,7 @@ def verify() -> None:
     finally:
         conn.close()
 
-    print(f"\n=== team-lead 点名 5 条（必须 is_junk=1）===")
+    print("\n=== team-lead 点名 5 条（必须 is_junk=1）===")
     for i in SPOTCHECK:
         print(f"  #{i} is_junk={wrong_now.get(i)}")
     spot_bad = [i for i in SPOTCHECK if wrong_now.get(i) != 1]

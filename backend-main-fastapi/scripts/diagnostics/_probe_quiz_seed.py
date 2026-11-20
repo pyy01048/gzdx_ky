@@ -30,6 +30,7 @@ for r in cur.execute("SELECT id, title, subject, status, created_at FROM tasks O
 print()
 print("=== JUNK 交叉表：现存 is_junk 与当前闸门判定是否一致 ===")
 import sys
+
 sys.path.insert(0, os.path.join(os.getcwd(), "scripts"))
 from quiz_quality_gate import classify  # noqa: E402
 

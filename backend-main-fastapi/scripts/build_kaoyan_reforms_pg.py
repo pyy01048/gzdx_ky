@@ -21,11 +21,13 @@ import re
 import sys
 from collections import Counter
 
-import psycopg
-
 sys.stdout.reconfigure(encoding="utf-8")
 
-DB = dict(host="127.0.0.1", port=5432, dbname="kaoyan", user="kaoyan", password="kaoyan_dev_2026")
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import pg_connect
 
 # 改革类型关键词映射
 CHANGE_TYPE_RULES = [
@@ -99,7 +101,7 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    conn = psycopg.connect(**DB)
+    conn = pg_connect()
     cur = conn.cursor()
 
     # 读取候选公告（仅明确的改革信号词，不含宽泛的"招生"）

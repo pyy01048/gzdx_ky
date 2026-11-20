@@ -28,12 +28,12 @@ def fix_missing_tables():
     print("=" * 60)
     print("A1: 修复缺失的数据库表")
     print("=" * 60)
-    
+
     # conflict_review_queue 表应该在 core/sql 中有定义
     missing_sql_files = [
         "core/sql/090_conflict_review_queue.sql",
     ]
-    
+
     for sql_file in missing_sql_files:
         sql_path = BACKEND_DIR / sql_file
         if not sql_path.exists():
@@ -42,7 +42,7 @@ def fix_missing_tables():
             create_conflict_review_table()
         else:
             print(f"✓ SQL文件存在: {sql_file}")
-    
+
     # 应用到测试数据库
     apply_migrations_to_test_db()
 
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS conflict_review_queue (
 CREATE INDEX IF NOT EXISTS idx_conflict_status ON conflict_review_queue(status);
 CREATE INDEX IF NOT EXISTS idx_conflict_created ON conflict_review_queue(created_at);
 """
-    
+
     sql_path = BACKEND_DIR / "core/sql/090_conflict_review_queue.sql"
     sql_path.write_text(sql, encoding='utf-8')
     print(f"✓ 已创建: {sql_path}")
@@ -78,15 +78,15 @@ def fix_enum_types():
     print("\n" + "=" * 60)
     print("A2: 修复ENUM类型定义")
     print("=" * 60)
-    
+
     from models import QuizQuestion
-    
+
     # 检查哪些字段还是String类型
     fields_to_check = [
         ('answer_type', 'answer_type'),
         ('answer_source', 'answer_source'),
     ]
-    
+
     fixed = []
     for field_name, enum_name in fields_to_check:
         col = getattr(QuizQuestion, field_name, None)
@@ -97,7 +97,7 @@ def fix_enum_types():
                 fixed.append((field_name, enum_name))
             else:
                 print(f"✓ {field_name} 已是 {type_name} 类型")
-    
+
     if fixed:
         print(f"\n需要修复 {len(fixed)} 个字段")
         # 已在之前的会话中修复
@@ -110,7 +110,7 @@ def fix_boolean_integer_mismatch():
     print("\n" + "=" * 60)
     print("A3: 修复Boolean/Integer类型转换")
     print("=" * 60)
-    
+
     # 检查dbapi_compat.py中的类型转换
     dbapi_path = BACKEND_DIR / "services/dbapi_compat.py"
     if dbapi_path.exists():
@@ -130,18 +130,18 @@ def apply_migrations_to_test_db():
     print("\n" + "=" * 60)
     print("应用迁移到测试数据库")
     print("=" * 60)
-    
-    os.environ['DATABASE_URL'] = 'postgresql+psycopg://kaoyan:kaoyan_dev_2026@127.0.0.1:5432/kaoyan_test'
-    
+
+    os.environ['DATABASE_URL'] = 'postgresql+psycopg://kaoyan:' + os.environ['PG_PASSWORD'] + '@127.0.0.1:5432/kaoyan_test'
+
     from sqlalchemy import create_engine, text
     engine = create_engine(os.environ['DATABASE_URL'])
-    
+
     migration_files = [
         "core/sql/090_conflict_review_queue.sql",
-        "core/sql/102_schools_admin_schema.sql", 
+        "core/sql/102_schools_admin_schema.sql",
         "core/sql/103_netdisk_four_tables.sql",
     ]
-    
+
     with engine.connect() as conn:
         for mig_file in migration_files:
             mig_path = BACKEND_DIR / mig_file
@@ -163,7 +163,7 @@ def run_tests():
     print("\n" + "=" * 60)
     print("运行测试套件")
     print("=" * 60)
-    
+
     import subprocess
     result = subprocess.run(
         ['python', '-m', 'pytest', 'tests/', '-v', '--tb=no', '-q'],
@@ -171,24 +171,24 @@ def run_tests():
         capture_output=True,
         text=True
     )
-    
+
     # 提取最后一行摘要
     for line in result.stdout.split('\n'):
         if 'passed' in line or 'failed' in line:
             print(line)
-    
+
     return result.returncode
 
 
 if __name__ == '__main__':
     print("开始系统性修复所有测试问题...\n")
-    
+
     # A类修复
     fix_missing_tables()
     fix_enum_types()
     fix_boolean_integer_mismatch()
-    
+
     # 验证
     exit_code = run_tests()
-    
+
     sys.exit(exit_code)

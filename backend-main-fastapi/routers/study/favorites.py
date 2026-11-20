@@ -18,12 +18,11 @@ from __future__ import annotations
 
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
+from models import User
 from pydantic import BaseModel
 from sqlalchemy import bindparam, text
-
-from database import get_db
-from models import User
 from utils.scope import owner_id  # B4 行级隔离：原生 SQL 按 user_id 过滤
 from utils.security import current_user
 

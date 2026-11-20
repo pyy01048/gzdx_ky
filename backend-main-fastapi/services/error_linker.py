@@ -14,21 +14,25 @@
 """
 
 from __future__ import annotations
-import logging
 
 import datetime
+import logging
 from typing import Any
 
+from models import (
+    Document,
+    ErrorKnowledgeLink,
+    ErrorRecord,
+    KnowledgeChunk,
+    KnowledgePoint,
+    QuestionKnowledgeLink,
+    ReviewRecord,
+)
 from sqlalchemy import and_, func, not_, or_
 from sqlalchemy.orm import Session
-
-from models import (
-    ErrorRecord, KnowledgePoint, KnowledgeChunk, Document,
-    ErrorKnowledgeLink, QuestionKnowledgeLink, ReviewRecord,
-)
-from services import taxonomy, kp_cleaner
-from services.delete_guard import require_physical_delete_enabled
 from utils.timeutil import local_day_window, utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+from services import kp_cleaner, taxonomy
 
 
 def _now() -> datetime.datetime:

@@ -14,22 +14,21 @@
 """
 
 from __future__ import annotations
-import logging
 
 import datetime
+import logging
 from typing import Any
 
+from models import ErrorRecord, KnowledgePoint, ReviewRecord
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-
-from models import KnowledgePoint, ErrorRecord, ReviewRecord
-from services import kp_mastery, taxonomy
 from utils.timeutil import (  # 统一 naive UTC 时间规范（P0-4）
     local_today,
     local_window_for_day,
     utcnow,
 )
 
+from services import kp_mastery, taxonomy
 
 # 复习结果 → 质量分（对应 SM-2 的 0-5）
 RESULT_GRADE = {

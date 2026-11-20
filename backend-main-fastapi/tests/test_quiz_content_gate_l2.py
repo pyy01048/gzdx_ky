@@ -27,8 +27,8 @@ from services.quiz_content_gate import (  # noqa: E402
     admit,
     build_stem_text_list,
     detect_stem_similarity_alert,
-    gate_stats_snapshot,
     gate_reset_stats,
+    gate_stats_snapshot,
     normalize_dedup,
     stem_similarity_alert_enabled,
 )

@@ -59,9 +59,8 @@ def _opener():
 
 
 def _routes():
-    from fastapi.routing import APIRoute
-
     import main as app_module
+    from fastapi.routing import APIRoute
 
     out = []
     for r in app_module.app.routes:

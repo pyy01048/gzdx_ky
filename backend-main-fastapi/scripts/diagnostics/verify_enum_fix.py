@@ -16,10 +16,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from sqlalchemy import text  # noqa: E402
-
 from database import SessionLocal  # noqa: E402
 from services.kaoyan.spider_notices import ensure_notices_schema  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 SCHOOL = "枚举修复验收校"
 

@@ -18,7 +18,6 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import csv
 import os
@@ -26,6 +25,7 @@ import sqlite3
 import sys
 import time
 from collections import Counter
+from pathlib import Path
 from typing import Set
 
 if hasattr(sys.stdout, "reconfigure"):

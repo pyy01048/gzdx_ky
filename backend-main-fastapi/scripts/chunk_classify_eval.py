@@ -32,7 +32,7 @@ MIN_CHARS = 150
 def sample_seed(db, n: int, out_path: str) -> int:
     """按学科分层随机抽 chunk，导出标注模板。"""
     from models import Document, KnowledgeChunk
-    from services.chunk_classifier import keyword_scores, load_prototypes, subject_candidates
+    from services.chunk_classifier import keyword_scores, subject_candidates
 
     cands = set(subject_candidates())
     by_subject: dict = defaultdict(list)
@@ -102,7 +102,7 @@ def _prf(golds: list, preds: list, labels: list):
 
 def grade(db, source: str, use_llm: bool) -> int:
     from services import chunk_classifier as cc
-    from services.chunk_classifier import keyword_scores, load_prototypes, vector_scores, encode_texts
+    from services.chunk_classifier import encode_texts, keyword_scores, load_prototypes, vector_scores
 
     if source == "--db":
         from models import AnnotationSample
@@ -234,8 +234,7 @@ def main() -> int:
     ap.add_argument("--llm", action="store_true", help="判分时启用路3")
     args = ap.parse_args()
 
-    from database import SessionLocal
-    from database import Base, engine
+    from database import Base, SessionLocal, engine
     Base.metadata.create_all(bind=engine)  # annotation_samples 幂等补建
     db = SessionLocal()
     try:

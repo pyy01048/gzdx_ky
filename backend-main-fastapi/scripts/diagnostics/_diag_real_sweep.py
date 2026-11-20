@@ -7,8 +7,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
 from models import QuizQuestion
-from sqlalchemy import func
 from services.quiz_classifier_v2 import classify_batch_v2
+from sqlalchemy import func
 
 
 def main():
@@ -42,7 +42,7 @@ def main():
                 print(f"{s_th:>7.2f}{t_th:>7.2f}{auto/n:>8.1%}{prec:>8.3f}{auto:>8}")
         # 题型准确率（全量）
         ttype_ok = sum(1 for d in decs if True)
-        print(f"\n[注] 库内题型标签含噪声，精度以科目为准；自动集精度为下界。")
+        print("\n[注] 库内题型标签含噪声，精度以科目为准；自动集精度为下界。")
     finally:
         db.close()
 

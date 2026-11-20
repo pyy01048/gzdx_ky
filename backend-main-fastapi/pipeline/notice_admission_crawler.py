@@ -13,14 +13,12 @@
   4. 合规：仅公开页，1.5-2.5s 限速，附件 ≤8MB。
 """
 import io
-import re
-import sys
-from pathlib import Path
-import time
 import random
+import re
 import statistics
-import traceback
-from datetime import datetime, timezone
+import sys
+import time
+from pathlib import Path
 
 # 仓库根目录按文件位置推导（原先写死本机 D:\平台\...，换机即失效，
 # 且 test_path_binding_guard 会红）。
@@ -29,10 +27,9 @@ import urllib.parse  # noqa: E402
 import urllib.request  # noqa: E402
 
 import openpyxl  # noqa: E402
-from sqlalchemy import text  # noqa: E402
-
 from database import SessionLocal  # noqa: E402
 from models import KaoyanAdmission  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 PersonalStudyTool/1.0 (kaoyan personal use)"}
 TITLE_OK = re.compile(r"拟录取|录取名单|复试名单|复试结果|成绩公示|复试成绩")

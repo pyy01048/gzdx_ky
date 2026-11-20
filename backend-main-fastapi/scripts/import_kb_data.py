@@ -10,14 +10,14 @@
   kaoyan.db 新增 knowledge_chunks / sft_examples 表，
   documents 表重建为 processed 清洗全文并按学科分类。
 """
-import os
-import sys
-import json
-import re
-import sqlite3
-import shutil
-import datetime
 import collections
+import datetime
+import json
+import os
+import re
+import shutil
+import sqlite3
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.delete_guard import require_physical_delete_enabled  # noqa: E402

@@ -5,7 +5,11 @@
 1. 先测最简请求（健康检查）
 2. 再测短文本抽取（判断"答案本就在题里"的切分任务）
 """
-import json, sys, time, urllib.request
+import json
+import sys
+import time
+import urllib.request
+
 sys.stdout.reconfigure(encoding="utf-8")
 
 OLLAMA = "http://127.0.0.1:11434"

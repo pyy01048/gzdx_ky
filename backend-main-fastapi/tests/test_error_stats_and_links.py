@@ -17,11 +17,10 @@
 from __future__ import annotations
 
 import pytest
-
 from database import SessionLocal
 from models import (
-    ErrorRecord,
     ErrorKnowledgeLink,
+    ErrorRecord,
     KnowledgePoint,
     QuestionKnowledgeLink,
     QuizQuestion,
@@ -136,7 +135,7 @@ class TestErrorMasteryState:
             ErrorRecord.content.like("三态-%")
         ).delete(synchronize_session=False)
         db.commit()
-        
+
         _mk_error(db, "三态-未学样本", accuracy=0.0, review_count=0, status="active")
         _mk_error(db, "三态-学习中样本", accuracy=0.2, review_count=1, status="active")
         _mk_error(db, "三态-薄弱样本", accuracy=0.5, review_count=2, status="active")
@@ -152,17 +151,17 @@ class TestErrorMasteryState:
         ]:
             err = db.query(ErrorRecord).filter(ErrorRecord.content == content).first()
             assert err is not None, f"找不到 {content}"
-            
+
             # 逐条判定与预期一致
             actual_state = kp_mastery.error_mastery_state(err.accuracy, err.review_count, err.status)
             assert actual_state == expected_state, f"{content}: {actual_state} != {expected_state}"
-            
+
             # API 筛选能把它找出来
             items = _fetch_all(client, "/api/errors",
                                {"mastery_state": expected_state, "page_size": 200})
             ids = {i["id"] for i in items}
             assert err.id in ids, f"{content} (id={err.id}) 未被 mastery_state={expected_state} 筛出"
-            
+
             # 每条都自带四态与中文标签
             item = next(i for i in items if i["id"] == err.id)
             assert item["mastery_state"] == expected_state

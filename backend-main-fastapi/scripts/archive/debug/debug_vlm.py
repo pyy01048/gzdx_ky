@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """直接打 Ollama，对比 generate vs chat 接口、不同 prompt 的原始返回。"""
-import base64, json, time, urllib.request
+import base64
+import json
+import time
+import urllib.request
+
 
 def post(url, payload):
     req = urllib.request.Request(

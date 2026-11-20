@@ -17,14 +17,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-
 from models import MemoryFact, MemorySynthesis, MemoryTrace
+from sqlalchemy.orm import Session
 from utils.timeutil import utcnow
 
 logger = logging.getLogger(__name__)

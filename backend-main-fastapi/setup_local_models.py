@@ -92,8 +92,9 @@ def installed_models() -> list[dict]:
 
 def check_hardware() -> dict:
     try:
-        from services import model_registry as mr
         from dataclasses import asdict
+
+        from services import model_registry as mr
         hw = mr.detect_hardware()
         return {**asdict(hw), "tier": hw.tier}
     except Exception as e:
@@ -156,7 +157,7 @@ def main() -> int:
         print(f"  {c('33')}服务未运行{c('0m')} —— 需要启动 Ollama（开始菜单里打开，")
         print("        或运行 `ollama serve`）。启动后重新运行本脚本。")
     print(f"  可执行文件: {exe}")
-    print(f"  注意：新版 Ollama 自带 NVIDIA 支持；CPU 版 torch 不影响 Ollama 使用 GPU。")
+    print("  注意：新版 Ollama 自带 NVIDIA 支持；CPU 版 torch 不影响 Ollama 使用 GPU。")
 
     # ---------------- 3. 已装模型 ----------------
     hdr("3. 已装模型")

@@ -10,23 +10,18 @@ import re
 from collections import Counter
 from typing import Optional
 
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-
 from models import (
     ErrorRecord,
     Flashcard,
     Goal,
     KaoyanSchool,
     KaoyanScoreLine,
-    QuizQuestion,
     StudySession,
-    StudyStats,
     Task,
     Word,
 )
-from services import study_calendar
-from services import error_linker
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 from utils.timeutil import (
     KAOYAN_TZ_NAME,
     day_bucket_expr,
@@ -35,6 +30,8 @@ from utils.timeutil import (
     local_window_for_day,
     utcnow,
 )
+
+from services import error_linker, study_calendar
 
 #: 趋势折线回看天数（D-09 固定 14 天）
 TREND_DAYS = 14

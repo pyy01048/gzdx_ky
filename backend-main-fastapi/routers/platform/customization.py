@@ -1,16 +1,15 @@
 """自定义链接与系统设置路由。"""
 
-from utils.security import require_admin
 import json
 import os
 from typing import Any, Dict, Optional
 
+from database import BASE_DIR, get_db
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-
-from database import get_db, BASE_DIR
 from models import CustomLink
 from schemas import CustomLinkCreate, CustomLinkUpdate
+from sqlalchemy.orm import Session
+from utils.security import require_admin
 
 router = APIRouter(prefix="/api", tags=["customization"])
 

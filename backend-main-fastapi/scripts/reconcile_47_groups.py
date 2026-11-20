@@ -113,7 +113,7 @@ def main() -> int:
             print(f"{gid:<5}{a:<7}{b:<7}{keep:<8}{wrong:<8}{r['is_junk']:<14}{st}")
 
     print()
-    print(f"47 组对账完成：")
+    print("47 组对账完成：")
     print(f"  两侧都错（已写库）        : {len(both_wrong)} 组")
     print(f"  有正确侧·错误侧仍未标 junk: {len(pending)} 组")
     print(f"  数据库缺失               : {len(missing)} 组 {missing if missing else ''}")

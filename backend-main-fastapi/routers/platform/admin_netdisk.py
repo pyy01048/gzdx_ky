@@ -8,12 +8,12 @@
 """
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
 
 from core.db_session import get_db
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from services import netdisk_service
+from sqlalchemy.orm import Session
 from utils.security import require_admin
 
 router = APIRouter(prefix="/api/admin/netdisk", tags=["admin-netdisk"], dependencies=[Depends(require_admin)])
@@ -52,7 +52,7 @@ async def list_accounts(
 ):
     """列出用户的第三方账号"""
     accounts = netdisk_service.list_user_accounts(db, user_id)
-    
+
     return {
         "total": len(accounts),
         "items": [
@@ -80,12 +80,12 @@ async def create_account(
 ):
     """创建第三方账号（token加密存储）"""
     from datetime import datetime
-    
+
     try:
         expires_at = datetime.fromisoformat(payload.token_expires_at.replace("Z", "+00:00"))
     except ValueError:
         raise HTTPException(status_code=400, detail="无效的过期时间格式")
-    
+
     account = netdisk_service.create_account(
         db=db,
         user_id=user_id,
@@ -96,7 +96,7 @@ async def create_account(
         token_expires_at=expires_at,
         account_name=payload.account_name,
     )
-    
+
     # 记录操作日志
     netdisk_service.log_operation(
         db=db,
@@ -107,7 +107,7 @@ async def create_account(
         resource_id=str(account.id),
         ip_address=request.client.host if request.client else None,
     )
-    
+
     return {"id": account.id, "message": "账号绑定成功"}
 
 
@@ -121,23 +121,23 @@ async def update_tokens(
 ):
     """更新账号token"""
     from datetime import datetime
-    
+
     # 验证账号归属
     account = db.query(netdisk_service.ThirdPartyAccount).filter(
         netdisk_service.ThirdPartyAccount.id == account_id,
         netdisk_service.ThirdPartyAccount.user_id == user_id,
     ).first()
-    
+
     if not account:
         raise HTTPException(status_code=404, detail="账号不存在")
-    
+
     expires_at = None
     if payload.token_expires_at:
         try:
             expires_at = datetime.fromisoformat(payload.token_expires_at.replace("Z", "+00:00"))
         except ValueError:
             raise HTTPException(status_code=400, detail="无效的过期时间格式")
-    
+
     success = netdisk_service.update_account_tokens(
         db=db,
         account_id=account_id,
@@ -145,10 +145,10 @@ async def update_tokens(
         refresh_token=payload.refresh_token,
         token_expires_at=expires_at,
     )
-    
+
     if not success:
         raise HTTPException(status_code=500, detail="更新失败")
-    
+
     # 记录操作日志
     netdisk_service.log_operation(
         db=db,
@@ -159,7 +159,7 @@ async def update_tokens(
         resource_id=str(account_id),
         ip_address=request.client.host if request.client else None,
     )
-    
+
     return {"message": "token更新成功"}
 
 
@@ -175,14 +175,14 @@ async def delete_account(
         netdisk_service.ThirdPartyAccount.id == account_id,
         netdisk_service.ThirdPartyAccount.user_id == user_id,
     ).first()
-    
+
     if not account:
         raise HTTPException(status_code=404, detail="账号不存在")
-    
+
     success = netdisk_service.deactivate_account(db, account_id)
     if not success:
         raise HTTPException(status_code=500, detail="解绑失败")
-    
+
     # 记录操作日志
     netdisk_service.log_operation(
         db=db,
@@ -193,7 +193,7 @@ async def delete_account(
         resource_id=str(account_id),
         ip_address=request.client.host if request.client else None,
     )
-    
+
     return {"message": "账号已解绑"}
 
 
@@ -210,7 +210,7 @@ async def cache_stats(
         .filter(netdisk_service.NetdiskFileCache.expires_at < netdisk_service.datetime.now(netdisk_service.timezone.utc))
         .count()
     )
-    
+
     return {
         "total_cached": total,
         "expired": expired,
@@ -244,7 +244,7 @@ async def list_sessions(
         .order_by(netdisk_service.PreviewSession.updated_at.desc())
         .all()
     )
-    
+
     return {
         "total": len(sessions),
         "items": [
@@ -278,7 +278,7 @@ async def update_session(
         progress_percent=payload.progress_percent,
         page_number=payload.page_number,
     )
-    
+
     # 记录操作日志
     netdisk_service.log_operation(
         db=db,
@@ -288,7 +288,7 @@ async def update_session(
         resource_id=payload.file_id,
         ip_address=request.client.host if request.client else None,
     )
-    
+
     return {"id": session.id, "message": "进度已保存"}
 
 
@@ -316,17 +316,17 @@ async def list_logs(
     q = db.query(netdisk_service.NetdiskOperationLog).filter(
         netdisk_service.NetdiskOperationLog.user_id == user_id
     )
-    
+
     if action:
         q = q.filter(netdisk_service.NetdiskOperationLog.action == action)
     if status:
         q = q.filter(netdisk_service.NetdiskOperationLog.status == status)
-    
+
     total = q.count()
     logs = q.order_by(
         netdisk_service.NetdiskOperationLog.created_at.desc()
     ).offset((page - 1) * limit).limit(limit).all()
-    
+
     return {
         "total": total,
         "page": page,

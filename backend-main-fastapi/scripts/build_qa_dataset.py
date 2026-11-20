@@ -40,7 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal  # noqa: E402
-from models import QuizQuestion, KnowledgeChunk, KnowledgePoint  # noqa: E402
+from models import KnowledgeChunk, KnowledgePoint, QuizQuestion  # noqa: E402
 from services import taxonomy  # noqa: E402
 
 DRY_RUN = "--dry-run" in sys.argv
@@ -535,7 +535,7 @@ _FAKE_TERMS = {
     "哪些", "可以", "应该", "必须", "需要", "进行", "实现", "表示", "说明",
     "指出", "认为", "如下", "上述", "这种", "那种", "某种", "一般", "通常",
     "主要", "重要", "基本", "直接", "间接", "不同", "相同", "有关", "所有",
-    "任何", "每个", "一个", "两个", "三个", "以及", "同时", "并且",
+    "任何", "每个", "一个", "两个", "三个", "以及", "同时",
 }
 
 
@@ -649,7 +649,7 @@ def from_chunks(db, *, per_chunk: int = 5) -> list[dict]:
             )
             # crc32 而非内置 hash()：后者受 PYTHONHASHSEED 影响，同一份库
             # 两次运行会选出不同模板，破坏"确定性生成"。
-            pick = zlib.crc32(f"{c.doc_name}|{c.chunk_index}|{kind}".encode("utf-8"))
+            pick = zlib.crc32(f"{c.doc_name}|{c.chunk_index}|{kind}".encode())
             question = tpls[pick % len(tpls)].format(sub=subject, t=topic)
             answer = f"{head}\n{body}\n{tail}"
             if answer_is_copy(question, answer):

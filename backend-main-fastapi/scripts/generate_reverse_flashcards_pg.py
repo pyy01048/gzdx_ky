@@ -19,13 +19,9 @@ import psycopg
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-DB_CONFIG = dict(
-    host="127.0.0.1",
-    port=5432,
-    user="kaoyan",
-    password="kaoyan_dev_2026",
-    dbname="kaoyan",
-)
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env（scripts/_conn.py）
 
 USER_ID = 1
 

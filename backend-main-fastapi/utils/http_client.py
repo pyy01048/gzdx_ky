@@ -2,8 +2,9 @@
 全局 HTTP 客户端单例 V3.0
 解决：每次请求新建 httpx.AsyncClient 导致连接池失效、延迟增加 100-300ms
 """
-import httpx
 from contextlib import asynccontextmanager
+
+import httpx
 
 # 全局单例客户端，连接池复用
 _global_client = None

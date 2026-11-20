@@ -16,10 +16,9 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import text
-
 from database import SessionLocal
 from services.kaoyan.spider_notices import _ENUM_EXTEND_DDL, ensure_notices_schema
+from sqlalchemy import text
 
 SCHOOL = "幂等契约测试校"
 

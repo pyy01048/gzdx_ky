@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""按文件名在项目内实际存储目录中找回"丢失"的源文件。
+r"""按文件名在项目内实际存储目录中找回"丢失"的源文件。
 
 背景：documents.file_path 记录的是历史绝对路径 D:\考研资料数据集V1.0\...，
 该目录已不存在；但同一批资料在项目内有副本
@@ -13,9 +13,9 @@ from collections import defaultdict
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding="utf-8")
 
-from sqlalchemy import func
-from database import SessionLocal, BASE_DIR
+from database import BASE_DIR, SessionLocal
 from models import Document
+from sqlalchemy import func
 
 STORAGE_ROOTS = [
     os.path.join(BASE_DIR, "data", "storage", "documents"),

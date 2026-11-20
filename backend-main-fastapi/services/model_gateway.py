@@ -20,13 +20,11 @@ import json
 import logging
 import os
 import re
-import sqlite3
 import threading
 import time
 from typing import Any, Dict, List, Optional
 
 import httpx
-
 from utils.ollama_host import resolve_ollama_host
 
 logger = logging.getLogger(__name__)
@@ -73,9 +71,8 @@ def get_routing_mode() -> str:
         # sqlite3 会去打开一个叫 kaoyan 的本地文件 → 必然失败 → 异常被吞 →
         # **用户在设置页切换的路由模式永不生效**（永远回退到 env 默认值）。
         # 改为走 SQLAlchemy 引擎（跨后端），并显式区分"没配置"与"读取失败"。
-        from sqlalchemy import text as _sql_text
-
         from database import engine
+        from sqlalchemy import text as _sql_text
 
         with engine.connect() as conn:
             row = conn.execute(_sql_text(

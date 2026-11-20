@@ -22,17 +22,24 @@ import hashlib
 import re
 from typing import Any
 
-from services import taxonomy, kp_cleaner
-from services.quiz_content_gate import admit as _gate_admit
-from services.quiz_content_gate import gate_log_summary
+from services import kp_cleaner, taxonomy
 from services.extraction_noise import (
     clean_answer as _clean_answer,
+)
+from services.extraction_noise import (
     clean_content as _clean_content,
+)
+from services.extraction_noise import (
     split_options_enabled as _split_options_enabled,
+)
+from services.extraction_noise import (
     split_stem_and_options as _split_stem_options,
+)
+from services.extraction_noise import (
     strip_cross_question_leak as _strip_cross_leak,
 )
-
+from services.quiz_content_gate import admit as _gate_admit
+from services.quiz_content_gate import gate_log_summary
 
 # --------------------------------------------------------------------------- #
 # 一、题型大标题 → 标准题型

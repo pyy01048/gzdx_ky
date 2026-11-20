@@ -3,13 +3,13 @@
 
 使用方法：
     python resume_train.py --checkpoint checkpoint-526
-    python resume_train.py --checkpoint D:\平台\backend-main-fastapi\data\lora_finetune\checkpoints\checkpoint-526
+    python resume_train.py --checkpoint D:\\平台\backend-main-fastapi\\data\\lora_finetune\\checkpoints\\checkpoint-526
 """
 
-import sys
-import os
 import argparse
 import datetime
+import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -44,16 +44,16 @@ def resume_training(checkpoint_path):
 
     try:
         import torch
+        from datasets import load_dataset
+        from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
-            TrainingArguments,
-            Trainer,
-            DataCollatorForLanguageModeling,
             BitsAndBytesConfig,
+            DataCollatorForLanguageModeling,
+            Trainer,
+            TrainingArguments,
         )
-        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PeftModel
-        from datasets import load_dataset
     except ImportError as e:
         print(f"✗ 缺少依赖库: {e}")
         print("请先安装：pip install torch transformers peft datasets accelerate trl bitsandbytes")

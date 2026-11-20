@@ -9,13 +9,10 @@
 from __future__ import annotations
 
 import os
-import zipfile
 
 import pytest
-
 from services.docx_formula import (
     MARKER_RE,
-    AlignedText,
     build_aligned,
     formula_marker,
     marker_positions,
@@ -35,8 +32,9 @@ def _make_png(path: str) -> str:
 
 def _build_sample_docx(tmp_path, with_table: bool = False) -> str:
     """造一个含「文字 + 内嵌公式图」的 docx。"""
-    import docx as _docx
     from docx.shared import Inches
+
+    import docx as _docx
 
     png = _make_png(str(tmp_path / "eq.png"))
     d = _docx.Document()
@@ -128,8 +126,9 @@ def test_aligned_mapping_roundtrip(tmp_path):
 
 def test_table_cells_without_text_are_dropped(tmp_path):
     """只含公式图的表格单元格要像旧管线那样被丢弃，保证对齐。"""
-    import docx as _docx
     from docx.shared import Inches
+
+    import docx as _docx
 
     png = _make_png(str(tmp_path / "eq2.png"))
     d = _docx.Document()

@@ -23,11 +23,10 @@ PAT_SHELL = re.compile(r"^\s*(答案|参考答案|解析)\s*[：:．.]?\s*$")
 
 
 def main() -> int:
-    from sqlalchemy import text
-
     from database import SessionLocal
     from models import QuizQuestion
     from services import quiz_query as qq
+    from sqlalchemy import text
 
     db = SessionLocal()
     problems = []

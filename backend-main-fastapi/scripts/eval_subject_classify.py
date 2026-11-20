@@ -36,10 +36,10 @@ SAMPLES_PATH = os.path.join(BASE_DIR, "scripts", "_subject_samples.json")
 
 _LEGACY = False
 
-from services import smart_ingest as si                     # noqa: E402
-from services.kb_service import _SUBJECT_STRONG              # noqa: E402
-from services import kb_service as kb                       # noqa: E402
-from services.document_parser import DocumentParser          # noqa: E402
+from services import kb_service as kb  # noqa: E402
+from services import smart_ingest as si  # noqa: E402
+from services.document_parser import DocumentParser  # noqa: E402
+from services.kb_service import _SUBJECT_STRONG  # noqa: E402
 
 CACHE_DIR = os.path.join(BASE_DIR, "data", "_eval_text_cache")
 
@@ -59,8 +59,8 @@ def apply_legacy_patch() -> None:
     kb._subject_from_path = lambda path: None
     si._BOOK_NAME_NOISE = re.compile(r"(?!x)x")      # 永不命中 = 关掉噪声过滤
     si._pick_book_name_from_text = lambda head: (
-        (si._BOOK_RE.search(head).group(1).strip()
-         if si._BOOK_RE.search(head) else "")
+        si._BOOK_RE.search(head).group(1).strip()
+         if si._BOOK_RE.search(head) else ""
     )
 
 

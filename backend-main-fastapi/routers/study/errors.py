@@ -3,21 +3,18 @@
 import datetime
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from models import ErrorKnowledgeLink, ErrorRecord, User
+from schemas import ErrorRecordCreate, ErrorRecordUpdate
+from services.ocr_service import OCRService
+from services.review_scheduler import ReviewScheduler
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-from database import get_db
-from models import User
+from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id, scoped  # B4 行级隔离
 from utils.security import current_user
-from models import ErrorKnowledgeLink, ErrorRecord, QuizQuestion
-from schemas import ErrorRecordCreate, ErrorRecordUpdate, GenericResponse
-from services.review_scheduler import ReviewScheduler
-from services.ocr_service import OCRService
 from utils.timeutil import local_today, utcnow  # 统一 naive UTC 时间规范（P0-4）
-
-from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/errors", tags=["errors"])
 

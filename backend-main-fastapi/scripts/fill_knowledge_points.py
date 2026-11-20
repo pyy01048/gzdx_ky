@@ -7,10 +7,9 @@
   - 每个文档最多生成 5 个知识点，避免数量爆炸
   - 幂等：先清空 knowledge_points 再写入（该表当前为空）
 """
-import os
-import sys
-import sqlite3
 import datetime
+import sqlite3
+import sys
 
 DB = r"D:\MarvisData\User\oAN1i2T40ogJFVM4CCm9d72iRr_I\workspace\conv_6307dce6ea3e494fa029dd89f1bf322a\output\kaoyan-study-platform\backend-main-fastapi\data\kaoyan.db"
 DRY_RUN = "--commit" not in sys.argv

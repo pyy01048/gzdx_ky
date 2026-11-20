@@ -32,7 +32,6 @@ from __future__ import annotations
 import argparse
 import ast
 import importlib
-import io
 import json
 import re
 import sys
@@ -85,7 +84,7 @@ def scan() -> list[dict]:
             if "_backup_" in str(p) or p.name.startswith("_"):
                 continue
             try:
-                src = io.open(p, encoding="utf-8").read()
+                src = open(p, encoding="utf-8").read()
             except Exception:  # noqa: BLE001
                 continue
             # 用 AST 而非正则：正则会把注释/docstring 里提到的

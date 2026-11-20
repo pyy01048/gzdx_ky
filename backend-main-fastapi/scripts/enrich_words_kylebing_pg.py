@@ -10,7 +10,6 @@
 幂等: 仅更新 extra IS NULL 的行
 运行: python scripts/enrich_words_kylebing_pg.py
 """
-import io
 import json
 import os
 import sys
@@ -24,13 +23,13 @@ JSONL = os.path.join(
     "full_line_jsonl", "full", "正序", "考研.jsonl",
 )
 
-DB_CONFIG = dict(
-    host="127.0.0.1",
-    port=5432,
-    user="kaoyan",
-    password="kaoyan_dev_2026",
-    dbname="kaoyan",
-)
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env（scripts/_conn.py）
 
 CORE_DECK_NAME = "考研核心词汇"
 
@@ -41,7 +40,7 @@ def load_unique_words(path: str):
         print(f"JSONL 不存在: {path}")
         sys.exit(1)
     result = {}
-    with io.open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:

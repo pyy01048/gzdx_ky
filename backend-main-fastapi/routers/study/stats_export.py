@@ -6,13 +6,12 @@ import io
 from collections import Counter
 from typing import List, Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from models import AnswerRecord, ErrorRecord, QuizQuestion, StudySession, User
 from sqlalchemy import Integer, cast, func
 from sqlalchemy.orm import Session
-
-from database import get_db
-from models import AnswerRecord, ErrorRecord, QuizQuestion, StudySession, User
 from utils.scope import scoped  # B4 行级隔离（只读不写，不需 owner_id）
 from utils.security import current_user
 from utils.timeutil import local_date_of, local_range_utc, local_today

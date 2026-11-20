@@ -152,7 +152,7 @@ def test_gate_is_registered_and_wired_at_every_write_site(client, app_module):
     handlers = app_module.exception_handlers
     assert WriteBackupBlocked in handlers, "503 闸门异常没人接 → 会退化成 500 UNKNOWN_ERROR"
 
-    import routers.documents as docs
+    import routers.knowledge.documents as docs
 
     gated = 0
     for fn in ast.walk(ast.parse(inspect.getsource(docs))):
@@ -164,7 +164,7 @@ def test_gate_is_registered_and_wired_at_every_write_site(client, app_module):
     assert gated >= 6, f"备份闸门覆盖的写点数降到 {gated}（原 6 处：archive/bulk×3/scan-root/repair）"
 
     # 批量入库路径同样要有回滚点：网盘全量入库、知识库候选题确认入库
-    for mod_name, endpoint in (("routers.netdisk", "ingest_all_netdisk"),
+    for mod_name, endpoint in (("routers.platform.netdisk", "ingest_all_netdisk"),
                                ("routers.kb_import", "confirm")):
         mod = __import__(mod_name, fromlist=["*"])
         fn = getattr(mod, endpoint)

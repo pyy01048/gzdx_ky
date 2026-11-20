@@ -1,29 +1,23 @@
 """网盘路由。"""
 
-import datetime
-from typing import Optional
 
+import mimetypes
 import os
 import re
-import httpx
-import mimetypes
-from urllib.parse import unquote, quote
+from urllib.parse import quote
 
+import httpx
+from database import BASE_DIR, get_db
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-
-
-
-from database import get_db, BASE_DIR
-from models import NetdiskFile, PlatformConfig, Document
+from models import Document, NetdiskFile, PlatformConfig
 from services.doc_naming import apply_display_name
+from services.netdisk_service import NetdiskAuthError, NetdiskError, NetdiskService
 from services.smart_ingest import gate_for_write
-from services.netdisk_service import NetdiskService, NetdiskError, NetdiskAuthError
+from sqlalchemy.orm import Session
+from utils.response import MAX_PAGE_SIZE
 from utils.secret_codec import scrub_extra, seal_extra, unseal_extra
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
-
-from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/netdisk", tags=["netdisk"])
 
@@ -630,8 +624,8 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
     注意：下载走**流式**写入磁盘（`download_to_file`），不再把整个文件
     读进内存 —— 之前用 `resp.content` 一次性读，遇上百 MB 课件容易把进程撑爆。
     """
-    from services.kb_service import detect_doc_meta, has_searchable_chunks, ingest_text
     from services.document_parser import DocumentParser
+    from services.kb_service import detect_doc_meta, has_searchable_chunks, ingest_text
 
     if not file.fs_id:
         return {"file_name": file.file_name, "success": False, "message": "缺少网盘 ID，无法下载"}
@@ -953,7 +947,6 @@ async def test_platform_connection(platform: str, db: Session = Depends(get_db))
     - bilibili: 检查 SESSDATA Cookie 有效性
     - shengcai/momo/xmind: 检查必要配置是否填写
     """
-    import httpx
 
     if platform not in {"baidu", "quark"}:
         raise HTTPException(status_code=404, detail="仅支持百度网盘和夸克网盘")

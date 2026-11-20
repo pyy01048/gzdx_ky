@@ -100,8 +100,9 @@ BACKEND_TYPE = os.environ.get("DATABASE_BACKEND", "").strip().lower() or "postgr
 
 if BACKEND_TYPE == "postgresql":
     try:
+        from core.db_session import IS_POSTGRES
+        from core.db_session import SessionLocal as PGSession
         from sqlalchemy import text
-        from core.db_session import SessionLocal as PGSession, IS_POSTGRES
 
         if not IS_POSTGRES:
             problems.append("DATABASE_BACKEND=postgresql 但连接串不是 PostgreSQL，请检查 .env")

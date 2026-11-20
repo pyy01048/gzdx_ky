@@ -148,11 +148,10 @@ def test_parse_without_any_chunk_is_not_marked_indexed(client, _no_llm, tmp_path
 def test_blocked_reparse_keeps_existing_chunks_and_stays_indexed(client, _no_llm, tmp_path,
                                                                  monkeypatch):
     """闸门拦住重建时旧分块和检索镜像都还在，照样能被 RAG 搜到 —— 标 failed 是另一句谎话。"""
-    from sqlalchemy import text
-
     from database import SessionLocal
     from models import Document, KnowledgeChunk
     from services import kb_service
+    from sqlalchemy import text
 
     monkeypatch.delenv("KAOYAN_ALLOW_PHYSICAL_DELETE", raising=False)
 

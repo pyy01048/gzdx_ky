@@ -10,9 +10,9 @@
 from __future__ import annotations
 
 from services.kb_service import (
-    classify_content_category,
-    chunk_size_for_category,
     CONTENT_CATEGORY_CHUNK,
+    chunk_size_for_category,
+    classify_content_category,
 )
 
 
@@ -83,7 +83,7 @@ def test_chunk_size_fallback():
 # ---------- DB 侧：ingest 按类别差异化（临时库） ----------
 def test_ingest_uses_category_chunk_size(db_schema):
     from database import SessionLocal
-    from models import Document, KnowledgeChunk
+    from models import Document
     from services.kb_service import ingest_text
 
     # 构造一段约 5000 字、多段落的重复文本

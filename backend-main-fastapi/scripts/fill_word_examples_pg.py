@@ -17,9 +17,7 @@
 from __future__ import annotations
 
 import bz2
-import json
 import re
-import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -33,13 +31,13 @@ ENG_SENTENCES = DATA_DIR / "eng_sentences.tsv"
 CMN_SENTENCES = DATA_DIR / "cmn_sentences.tsv"
 CMN_ENG_LINKS = DATA_DIR / "cmn-eng_links.tsv.bz2"
 
-DB_CONFIG = dict(
-    host="127.0.0.1",
-    port=5432,
-    user="kaoyan",
-    password="kaoyan_dev_2026",
-    dbname="kaoyan",
-)
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env（scripts/_conn.py）
 
 # 每个词最多保留的例句数
 MAX_EXAMPLES_PER_WORD = 5
@@ -58,9 +56,8 @@ STOP_WORDS = {
     "when", "where", "why", "how", "all", "any", "some", "each", "every",
     "both", "few", "more", "most", "other", "such", "only", "own", "same",
     "too", "very", "just", "can", "will", "shall", "may", "must", "would",
-    "could", "should", "into", "onto", "upon", "about", "like", "than",
-    "because", "while", "before", "after", "between", "through", "during",
-    "against", "without", "with", "within", "among", "beyond", "etc",
+    "could", "should", "into", "onto", "upon", "about", "like", "because", "while", "before", "after", "between", "through", "during",
+    "against", "without", "within", "among", "beyond", "etc",
 }
 
 

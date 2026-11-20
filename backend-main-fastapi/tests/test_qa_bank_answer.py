@@ -5,7 +5,6 @@
 数据用「flush 不 commit、测完 rollback」方式，不污染测试库。
 """
 import pytest
-
 from services.qa_foundation import find_bank_answer
 
 STEM = "已知逻辑函数表达式为L=AB+AC，画出实现该式的逻辑电路图，限使用非门和2输入或非门。"

@@ -1,26 +1,20 @@
-﻿"""考研备考平台 FastAPI 后端主入口。"""
+"""考研备考平台 FastAPI 后端主入口。"""
 
-import os
-import datetime
-import time
 import logging
+import os
+import time
 
 from dotenv import load_dotenv
 
 # 加载 .env（含网盘凭证、监听地址等）
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
+from app_lifecycle import lifespan
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-
-from utils.response import UtcZJSONResponse
-
-from database import engine, Base, SessionLocal
-from models import (
-    AIProvider, CustomLink, PlatformConfig,
-)
 from routers.registry import iter_routers
+from utils.response import UtcZJSONResponse
 
 # --------------------------------------------------------------------------- #
 # ORM 旧属性名兼容别名
@@ -45,8 +39,6 @@ except Exception as _exc:  # noqa: BLE001
 # --------------------------------------------------------------------------- #
 # 定时任务
 # --------------------------------------------------------------------------- #
-from services.scheduler import start_scheduler
-
 # --------------------------------------------------------------------------- #
 # 应用实例
 # --------------------------------------------------------------------------- #
@@ -59,6 +51,7 @@ app = FastAPI(
     title="考研备考平台 API",
     description="一站式考研备考管理后端服务",
     version="3.0.0",
+    lifespan=lifespan,
     # 时间格式的唯一闸门：库里是 naive UTC，默认编码出的 "…T16:00:00" 没有偏移，
     # 前端 new Date() 会当本地时间解析 → 北京用户看什么都早 8 小时。
     # 见 utils/response.py:UtcZJSONResponse。
@@ -73,8 +66,10 @@ app = FastAPI(
 # --------------------------------------------------------------------------- #
 # 统一日志系统初始化
 # --------------------------------------------------------------------------- #
-from utils.logger import setup_logging, get_logger, info as log_info
-from utils.timeutil import utcnow, utcnow_aware  # 统一时间规范（P0-4）
+from utils.logger import get_logger, setup_logging
+from utils.logger import info as log_info
+from utils.timeutil import utcnow_aware  # 统一时间规范（P0-4）
+
 setup_logging()
 logger = get_logger("main")
 log_info("=" * 60)
@@ -85,10 +80,11 @@ log_info("=" * 60)
 # 全局异常处理器注册
 # --------------------------------------------------------------------------- #
 from utils.exceptions import register_exception_handlers
+
 register_exception_handlers(app)
 
 # V3.0 性能优化中间件
-from services.server_optimizer import request_timer, get_task_queue, perf_monitor
+from services.server_optimizer import perf_monitor, request_timer
 
 # --------------------------------------------------------------------------- #
 # 请求超时守卫（P1-1，通用保险）
@@ -97,6 +93,7 @@ from services.server_optimizer import request_timer, get_task_queue, perf_monito
 # 因此 SSE 长连接（/api/ai/chat/stream）天然免疫，不会被破坏。
 # 阈值：API_TIMEOUT_GET_SECONDS=30 / API_TIMEOUT_WRITE_SECONDS=60
 from utils.timeout_guard import TimeoutGuardMiddleware
+
 app.add_middleware(TimeoutGuardMiddleware)
 
 @app.middleware("http")
@@ -185,6 +182,7 @@ async def api_token_auth(request, call_next):
 # （见 utils/middleware.py 的实测说明），不会破坏 AI 流式对话与视频 seek。
 # --------------------------------------------------------------------------- #
 from utils.middleware import GZipApiMiddleware, StaticCacheControlMiddleware
+
 app.add_middleware(StaticCacheControlMiddleware)
 app.add_middleware(GZipApiMiddleware, minimum_size=1000, compresslevel=6)
 
@@ -239,9 +237,10 @@ async def access_info():
 @app.get("/api/performance")
 async def performance_stats():
     """获取系统性能统计信息。"""
+    from services.ai_optimizer import get_ai_cache
+    from services.ai_optimizer import get_perf_monitor as get_ai_perf
+    from services.search_optimizer import get_search_cache, get_search_monitor
     from services.server_optimizer import perf_monitor
-    from services.ai_optimizer import get_ai_cache, get_perf_monitor as get_ai_perf
-    from services.search_optimizer import get_search_monitor, get_search_cache
 
     return {
         "server": perf_monitor.get_stats(),
@@ -264,6 +263,7 @@ MEDIA_IMAGES_DIR = os.path.join(BASE_DIR, "data", "storage", "images")
 # P0 修复：Windows 下 FastAPI StaticFiles 将 .js 返回为 text/plain 导致前端白屏，
 # 挂载前显式注册 MIME 类型（strict=True 覆盖内置映射）
 import mimetypes
+
 mimetypes.add_type("application/javascript", ".js", strict=True)
 mimetypes.add_type("application/javascript", ".mjs", strict=True)
 mimetypes.add_type("text/css", ".css", strict=True)
@@ -288,6 +288,7 @@ if os.path.exists(STATIC_DIR):
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import FileResponse
 
+
 @app.exception_handler(404)
 async def spa_fallback_handler(request: FastAPIRequest, exc):
     """SPA 前端路由 fallback：非 API 路径的 404 返回 index.html，支持直接访问前端路由。"""
@@ -311,316 +312,8 @@ async def spa_fallback_handler(request: FastAPIRequest, exc):
 
 
 # --------------------------------------------------------------------------- #
-# 启动事件：创建表 + 插入示例数据
+# 启动逻辑已迁 app_lifecycle.lifespan（docs/完善方案/04 §3.5）
 # --------------------------------------------------------------------------- #
-@app.on_event("startup")
-def on_startup():
-    """创建数据库表并写入默认配置（不写任何学习内容，见 docx/16 §1.5-G）。"""
-    # P0-2：OCR 可用性预热提前到启动期。RapidOCR 的 ONNX 引擎冷初始化 ~6.6s，
-    # 若等第一个请求才触发，那次请求（乃至事件循环）要白吃 6.6s。
-    # start_warmup 是 fire-and-forget 守护线程，不阻塞启动。
-    try:
-        from services.ocr_router import get_ocr_router
-
-        get_ocr_router()
-        print("[启动] OCR 可用性预热已发起（后台线程）")
-    except Exception as e:  # noqa: BLE001
-        print(f"[启动] OCR 预热发起失败（不影响主服务）: {e}")
-    Base.metadata.create_all(bind=engine)
-    _init_default_config()
-    # 幂等补建缺失的平台配置行（存量库升级用；已有则跳过）
-    try:
-        db = SessionLocal()
-        try:
-            _ensure_missing_platform_configs(db)
-        finally:
-            db.close()
-    except Exception as e:  # noqa: BLE001
-        print(f"[启动] 平台配置补建失败（不影响主服务）: {e}")
-    try:
-        from utils.security import ensure_bootstrap_admin
-        db = SessionLocal()
-        try:
-            ensure_bootstrap_admin(db)
-        finally:
-            db.close()
-    except Exception as e:  # noqa: BLE001
-        print(f"[启动] 内置管理员初始化失败: {e}")
-    # 幂等补建非ORM 映射的原生表（如 phase_daily_reviews）。
-    # create_all 只能建 Base.metadata 里声明过的表，而 planner.py 的阶段
-    # 复习接口直接用 text() 读写 phase_daily_reviews，该表无 ORM 模型，
-    # 因此必须显式执行 DDL，否则空库/新部署时 /api/planner/phase 必 500。
-    try:
-        from services.module_a_schema import ensure_module_a_schema
-        db = SessionLocal()
-        result = ensure_module_a_schema(db)
-        db.close()
-        print(f"[启动] 原生表DDL 补建完成: {result}")
-    except Exception as e:
-        print(f"[启动] 原生表 DDL 补建失败（不影响主服务）: {e}")
-    # chunk 三层标签补列（models.KnowledgeChunk 已声明新列，但 create_all 不给
-    # 存量表加列 —— 必须在任何 ORM 查询 knowledge_chunks 之前幂等 ALTER 补齐）。
-    try:
-        from services.chunk_classifier import ensure_chunk_label_columns
-        db = SessionLocal()
-        added = ensure_chunk_label_columns(db)
-        db.close()
-        if added:
-            print(f"[启动] knowledge_chunks 新增标签列: {added}")
-    except Exception as e:
-        print(f"[启动] chunk 标签列补建失败: {e}")
-    # V3.0 数据库性能优化（创建缺失索引+WAL模式+缓存）
-    try:
-        from services.db_optimizer import init_database_optimization
-        db = SessionLocal()
-        result = init_database_optimization(db)
-        db.close()
-        print(f"[启动] 数据库优化完成: {result}")
-    except Exception as e:
-        print(f"[启动] 数据库优化失败（不影响主服务）: {e}")
-    # V3.0 启动后台任务队列
-    try:
-        import asyncio
-        task_queue = get_task_queue()
-        asyncio.create_task(task_queue.start())
-        print("[启动] 后台任务队列已启动")
-    except Exception as e:
-        print(f"[启动] 后台任务队列启动失败（不影响主服务）: {e}")
-    # 自动登记本机已下载的 Ollama 本地模型（仅新增，不覆盖用户配置）
-    _register_ollama_providers()
-    # 启动定时任务（复习提醒 / 网盘同步）
-    try:
-        start_scheduler()
-    except Exception as e:  # noqa: BLE001
-        print(f"[启动] 定时任务启动失败（不影响主服务）: {e}")
-    # V3.0 数据库自动备份（每天一次；多 worker 时只由持调度锁的进程执行）
-    try:
-        from services.backup_service import daily_backup_if_needed
-        from services.scheduler import acquire_singleton_lock
-        backup_path = daily_backup_if_needed() if acquire_singleton_lock() else None
-        if backup_path:
-            print(f"[启动] 数据库自动备份完成: {backup_path}")
-    except Exception as e:
-        print(f"[启动] 数据库备份失败（不影响主服务）: {e}")
-
-
-def _register_ollama_providers():
-    """若本机 Ollama 可用，自动登记已下载的本地模型为 AI 服务商。
-
-    9b 用于学术答疑（高数/线代/专业课），4b 用于文档处理（总结/改写）。
-    仅新增、不覆盖：已存在同 model_name 的配置则跳过，保留用户设置。
-    """
-    try:
-        import json
-        import urllib.request
-
-        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3) as r:
-            models = [m["name"] for m in json.loads(r.read()).get("models", [])]
-    except Exception:
-        return
-    if not models:
-        return
-    db = SessionLocal()
-    try:
-        # 模型名 -> (展示名, 降级优先级)
-        wanted = {
-            "qwen3:8b": ("本地学术答疑 qwen3.5:9b", 5),
-            "qwen3:4b": ("本地文档处理 qwen3.5:4b", 6),
-        }
-        added = []
-        for model_name, (name, prio) in wanted.items():
-            if model_name not in models:
-                continue
-            if db.query(AIProvider).filter(AIProvider.model_name == model_name).first():
-                continue  # 已存在则跳过，保留用户配置
-            db.add(AIProvider(
-                name=name,
-                provider_type="ollama",
-                base_url="http://127.0.0.1:11434/v1",
-                api_key="ollama",
-                model_name=model_name,
-                temperature=0.7,
-                is_enabled=True,
-                fallback_priority=prio,
-            ))
-            added.append(model_name)
-        db.commit()
-        if added:
-            print(f"[启动] 已登记本地 Ollama 模型：{', '.join(added)}")
-    except Exception as e:
-        db.rollback()
-        print(f"[启动] Ollama 模型登记失败（不影响主服务）: {e}")
-    finally:
-        db.close()
-
-
-def _ensure_missing_platform_configs(db):
-    """幂等补建缺失的平台配置行（存量库升级用）。
-
-    只新增不更新：用户改过的 web_view_url / app_key 一律保留。
-    目前只需补 quark_netdisk（2026-10 网盘重构新增）。
-    """
-    existing = {
-        c.platform_name
-        for c in db.query(PlatformConfig.platform_name).all()
-    }
-    if "quark_netdisk" not in existing:
-        db.add(PlatformConfig(
-            platform_name="quark_netdisk",
-            sync_enabled=False,
-            sync_frequency="daily",
-            extra={
-                "web_view_url": "https://pan.quark.cn/",
-                "embed_mode": "web_view",
-            },
-        ))
-        db.commit()
-        print("[初始化] 补建平台配置: quark_netdisk")
-
-
-def _init_default_config():
-    """写入平台默认配置（AI 供应商 / 快捷链接 / 网盘与平台开关）。
-
-    这里**只写配置，不写学习内容**。原先本函数还会在 goals 为空时播种
-    一条 Goal（exam_date 硬编码 2027-12-25）、7 条 Task、4 道 QuizQuestion、
-    2 条 ErrorRecord —— 那些是演示数据，不是用户数据，且已被实测确认写进了
-    生产库（tasks id 1-7 标题逐字相同、goals 行与播种同事务），而 #22 之后
-    倒计时以 Goal.exam_date 为唯一时间源，等于让假日期决定全站倒计时。
-    口径依据：docx/16 §1.5-G 与已批准的「空库必须渲染空状态，绝不播种内容」。
-    """
-    db = SessionLocal()
-    try:
-        # 幂等判据换成配置表本身：内容播种已删除，不能再拿 goals 当判据
-        if db.query(PlatformConfig).count() > 0:
-            return
-
-        # ---- AI 配置模板 ----
-        ai_providers = [
-            AIProvider(
-                name="豆包（默认）",
-                provider_type="doubao",
-                base_url="https://ark.cn-beijing.volces.com/api/v3",
-                model_name="doubao-pro-32k",
-                temperature=0.7,
-                is_default=True,
-                is_enabled=True,
-                fallback_priority=1,
-            ),
-            AIProvider(
-                name="DeepSeek",
-                provider_type="deepseek",
-                base_url="https://api.deepseek.com/v1",
-                model_name="deepseek-chat",
-                temperature=0.7,
-                is_default=False,
-                is_enabled=True,
-                fallback_priority=2,
-            ),
-            AIProvider(
-                name="通义千问",
-                provider_type="qwen",
-                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-                model_name="qwen-plus",
-                temperature=0.7,
-                is_default=False,
-                is_enabled=False,
-                fallback_priority=3,
-            ),
-        ]
-        db.add_all(ai_providers)
-
-        # ---- 快捷链接 ----
-        links = [
-            CustomLink(name="中国研究生招生信息网", url="https://yz.chsi.com.cn/",
-                       category="官方", sort_order=1),
-            CustomLink(name="学信网", url="https://www.chsi.com.cn/",
-                       category="官方", sort_order=2),
-            CustomLink(name="中国教育在线考研", url="https://kaoyan.eol.cn/",
-                       category="资讯", sort_order=3),
-            CustomLink(name="B站考研", url="https://search.bilibili.com/all?keyword=考研",
-                       category="学习", sort_order=4),
-        ]
-        db.add_all(links)
-
-        # ---- 平台配置 ----
-        platform_configs = [
-            PlatformConfig(
-                platform_name="baidu_netdisk",
-                app_key=os.getenv("BAIDU_NETDISK_APP_KEY", ""),
-                secret_key=os.getenv("BAIDU_NETDISK_SECRET_KEY", ""),
-                sync_enabled=True,
-                sync_frequency="hourly",
-                extra={
-                    "app_id": os.getenv("BAIDU_NETDISK_APP_ID", ""),
-                    "sync_dir": "/考研资料/2026",
-                    "auto_sync": True,
-                    "connected": True,
-                },
-            ),
-            PlatformConfig(
-                platform_name="shengcai",
-                sync_enabled=False,
-                sync_frequency="daily",
-                extra={
-                    "username": "",
-                    "password": "",
-                    "cookie": "",
-                    "sync_question_bank": False,
-                    "auto_fetch": False,
-                },
-            ),
-            PlatformConfig(
-                platform_name="anki",
-                sync_enabled=False,
-                sync_frequency="daily",
-                extra={
-                    "anki_connect_url": "http://localhost:8765",
-                    "deck_sync": False,
-                    "auto_export_errors": False,
-                },
-            ),
-            PlatformConfig(
-                platform_name="momo",
-                sync_enabled=False,
-                sync_frequency="daily",
-                extra={
-                    "device_id": "",
-                    "data_import": False,
-                    "daily_word_goal": 100,
-                    "ai_mnemonic": False,
-                },
-            ),
-            PlatformConfig(
-                platform_name="bilibili",
-                sync_enabled=False,
-                sync_frequency="daily",
-                extra={
-                    "sessdata": "",
-                    "favorites_sync": False,
-                    "watch_progress": False,
-                    "auto_notes": False,
-                },
-            ),
-            PlatformConfig(
-                platform_name="xmind",
-                sync_enabled=False,
-                sync_frequency="daily",
-                extra={
-                    "import_dir": "",
-                    "auto_link_knowledge": False,
-                    "preview": False,
-                },
-            ),
-        ]
-        db.add_all(platform_configs)
-
-        db.commit()
-        print("[初始化] 默认配置写入完成")
-    except Exception as e:
-        db.rollback()
-        print(f"[初始化] 默认配置写入失败: {e}")
-    finally:
-        db.close()
 
 
 # --------------------------------------------------------------------------- #
@@ -636,20 +329,20 @@ if __name__ == "__main__":
         from utils.network import get_access_info
 
         _info = get_access_info(port=_port)
-        print("=" * 62)
-        print("  考研学习平台 · 服务启动")
-        print("=" * 62)
-        print(f"  本机访问 : {_info['local_url']}")
+        logger.info("=" * 62)
+        logger.info("  考研学习平台 · 服务启动")
+        logger.info("=" * 62)
+        logger.info(f"  本机访问 : {_info['local_url']}")
         if _info["exposed"] and _info["lan_url"]:
-            print(f"  手机访问 : {_info['lan_url']}   ← 同一 WiFi 下可用")
+            logger.info(f"  手机访问 : {_info['lan_url']}   ← 同一 WiFi 下可用")
         elif _info["lan_ip"]:
-            print(f"  手机访问 : 需先把 .env 的 HOST 改为 0.0.0.0")
-            print(f"             （本机局域网 IP 为 {_info['lan_ip']}）")
+            logger.info("  手机访问 : 需先把 .env 的 HOST 改为 0.0.0.0")
+            logger.info(f"             （本机局域网 IP 为 {_info['lan_ip']}）")
         for _t in _info["tips"]:
-            print(f"  · {_t.replace('**', '')}")
-        print("=" * 62)
+            logger.info(f"  · {_t.replace('**', '')}")
+        logger.info("=" * 62)
     except Exception as _e:
-        print(f"[warn] 无法生成访问信息: {_e}")
+        logger.warning(f"[warn] 无法生成访问信息: {_e}")
 
     # P0-3：统一走看门狗 —— 进程半死（accept 循环挂掉但进程还在，
     # 实测 WinError 64 那次）时会干净退出并给出非零码，而不是挂着假装正常。

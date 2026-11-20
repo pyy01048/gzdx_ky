@@ -21,15 +21,15 @@
 """
 import json
 import re
-import sys
-import time
-import random
 import statistics
-from datetime import datetime
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from database import SessionLocal  # noqa: E402
+from services.dbapi_compat import wrap_conn  # noqa: E402
+from services.kaoyan.notice_dedup import upsert_notice  # noqa: E402
 from services.kaoyan.spider_notices import (  # noqa: E402
     _abs,
     _fetch,
@@ -39,11 +39,8 @@ from services.kaoyan.spider_notices import (  # noqa: E402
     infer_notice_type,
     parse_notice_links,
 )
-from services.kaoyan.notice_dedup import upsert_notice  # noqa: E402
-from services.dbapi_compat import wrap_conn  # noqa: E402
-from database import SessionLocal  # noqa: E402
-from utils.timeutil import naive_utc_iso  # noqa: E402
 from sqlalchemy import text  # noqa: E402
+from utils.timeutil import naive_utc_iso  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # 深度入口配置（名单主产区专栏）
@@ -536,7 +533,7 @@ def main(
                             ]
                         elif r["status"] == "no_data":
                             per_school["no_data"] += 1
-                    except Exception as e:  # noqa: BLE001
+                    except Exception:  # noqa: BLE001
                         db_session.rollback()
                         stats.setdefault("extract_err", 0)
                         stats["extract_err"] += 1

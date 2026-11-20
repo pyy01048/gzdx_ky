@@ -29,9 +29,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
-import shutil
 
 import pytest
 
@@ -373,18 +373,18 @@ def db_schema(app_module):
     由于大量router使用 ``from __future__ import annotations``，
     Pydantic V2无法自动解析类型注解，需要在导入后调用 model_rebuild()。
     """
-    from database import Base, engine, SessionLocal
     import models  # noqa: F401  确保所有 ORM 模型被注册到 Base.metadata
+    from database import Base, SessionLocal, engine
     from services.module_a_schema import ensure_module_a_schema
-    
+
     # Pydantic V2: rebuild all models with forward references
     try:
         from pydantic import BaseModel
-        
+
         def rebuild_pydantic_models():
             """递归rebuild所有Pydantic模型"""
             import sys
-            
+
             # 收集所有已加载模块中的Pydantic模型
             all_models = []
             for module_name, module in sys.modules.items():
@@ -392,7 +392,7 @@ def db_schema(app_module):
                     for name, obj in module.__dict__.items():
                         if isinstance(obj, type) and issubclass(obj, BaseModel) and obj is not BaseModel:
                             all_models.append(obj)
-            
+
             # Rebuild每个模型
             rebuilt = 0
             for model_cls in all_models:
@@ -402,9 +402,9 @@ def db_schema(app_module):
                         rebuilt += 1
                 except Exception:
                     pass  # 有些模型可能不需要rebuild或已经rebuild过
-            
+
             return rebuilt
-        
+
         count = rebuild_pydantic_models()
         print(f"[conftest] 已rebuild {count} 个Pydantic模型")
     except Exception as exc:
@@ -518,13 +518,24 @@ def sample_data(db_schema):  # noqa: ARG001
     """
     import datetime
 
-    from utils.timeutil import local_today
     from database import SessionLocal
     from models import (
-        Goal, Task, QuizQuestion, ErrorRecord, Document, Word, WordDeck,
-        Paper, EbbinghausItem, KnowledgePoint, Flashcard, CustomLink,
-        EarlyBirdRecord, PhasePlan,
+        CustomLink,
+        Document,
+        EarlyBirdRecord,
+        EbbinghausItem,
+        ErrorRecord,
+        Flashcard,
+        Goal,
+        KnowledgePoint,
+        Paper,
+        PhasePlan,
+        QuizQuestion,
+        Task,
+        Word,
+        WordDeck,
     )
+    from utils.timeutil import local_today
 
     db = SessionLocal()
     try:
@@ -791,9 +802,8 @@ def chunk_fts_mirror(db_schema):  # noqa: ARG001
     测试库改为每会话重建后，这种隐式的顺序依赖必须显式化。
     列结构与 ``tests/test_chunk_mirror_sync.py::_make_mirrors`` 一致。
     """
-    from sqlalchemy import text
-
     from database import SessionLocal
+    from sqlalchemy import text
 
     db = SessionLocal()
     try:

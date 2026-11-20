@@ -2,17 +2,14 @@
 from __future__ import annotations
 
 import pytest
-
 from services.parsers.base import (
     BLOCK_FIGURE,
     BLOCK_HEADER,
     BLOCK_PAGE_NO,
-    BLOCK_TEXT,
-    BLOCK_TITLE,
     BLOCK_UNKNOWN,
-    ParseResult,
     ParsedBlock,
     ParsedPage,
+    ParseResult,
     available_parsers,
     clear_registry,
     get_parser,

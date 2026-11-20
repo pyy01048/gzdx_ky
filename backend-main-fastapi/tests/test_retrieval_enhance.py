@@ -21,7 +21,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
-
 from services import retrieval_enhance as enh  # noqa: E402
 
 

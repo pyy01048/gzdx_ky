@@ -14,7 +14,7 @@
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 # --------------------------------------------------------------------------- #
 # 工科定向采集专业代码集（用户指定的 6 系列）

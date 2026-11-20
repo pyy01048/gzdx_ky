@@ -11,7 +11,12 @@
     cd backend-main-fastapi
     python -c "from services.kaoyan.spider_school import crawl_school; crawl_school('清华大学')"
 """
-import re, time, random, ssl, urllib.request, urllib.parse
+import random
+import re
+import ssl
+import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
@@ -181,8 +186,8 @@ def parse_scoreline_pdf(pdf_path):
 
 def crawl_school(school_name, year=2026):
     """C3: 爬取单所院校的复试线和拟录取数据。"""
-    from database import SessionLocal
     from core.models import KaoyanSchool, KaoyanScoreline
+    from database import SessionLocal
 
     db = SessionLocal()
     try:
@@ -215,7 +220,8 @@ def crawl_school(school_name, year=2026):
         print(f"  找到 {len(pdf_links)} 个PDF")
 
         # 3. 下载并解析（PDF 落到会话中间产物目录）
-        import tempfile, os
+        import os
+        import tempfile
         pdf_dir = os.path.join(tempfile.gettempdir(), "kaoyan_school_pdfs", school_name)
         for pdf_url in pdf_links[:3]:
             time.sleep(random.uniform(2, 5))

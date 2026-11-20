@@ -22,27 +22,23 @@ P5（2026-10-19）：已读/加星为 per-user 状态，落 ``notice_user_states
   POST /backfill-important   将关键类型默认加星（一次性，可选）
 """
 from __future__ import annotations
-from utils.security import require_admin
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
-from models import User
-from services.dbapi_compat import wrap_conn
 from database import SessionLocal
-from utils.timeutil import naive_utc_iso
+from fastapi import APIRouter, Depends, HTTPException, Query
+from models import User
+from pydantic import BaseModel, Field
+from services.dbapi_compat import wrap_conn
 from services.kaoyan.notice_read import (
     IMPORTANT_LEVELS,
     IMPORTANT_TYPES,
     _has_importance_column,
     _read_pred,
     _row_to_dict,
+    _starred_pred,
     _state_cols,
     _state_join,
-    _starred_pred,
     _table_columns,
     ensure_notice_read_schema,
     mark_read,
@@ -50,8 +46,10 @@ from services.kaoyan.notice_read import (
     set_starred,
     unread_stats,
 )
+from sqlalchemy.orm import Session
 from utils.scope import owner_id
-from utils.security import current_user
+from utils.security import current_user, require_admin
+from utils.timeutil import naive_utc_iso
 
 router = APIRouter(prefix="/api/notices", tags=["通知已读"])
 

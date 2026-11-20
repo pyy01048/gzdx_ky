@@ -21,9 +21,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from core.db_session import engine  # noqa: E402
 from sqlalchemy import text  # noqa: E402
-
-from core.db_session import build_database_url, engine  # noqa: E402
 
 
 def _engine():

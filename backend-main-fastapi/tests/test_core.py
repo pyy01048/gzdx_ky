@@ -7,9 +7,9 @@
 
 运行方式：pytest tests/ -v
 """
+import datetime
 import os
 import sys
-import datetime
 
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,7 +24,6 @@ from utils.response import (
     stamp_utc_z,
     to_utc_z,
 )
-
 
 # --------------------------------------------------------------------------- #
 # SM-2 算法测试

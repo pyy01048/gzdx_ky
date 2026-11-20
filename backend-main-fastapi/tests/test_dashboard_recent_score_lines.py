@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import pytest
-
 from models import KaoyanSchool, KaoyanScoreLine
 
 MARK = "__score_lines_test_school__"

@@ -3,13 +3,12 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
-from database import get_db
 from services import answer_cross_check
 from services.module_a_schema import ensure_module_a_schema
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/answers", tags=["答案交叉校验"])
 

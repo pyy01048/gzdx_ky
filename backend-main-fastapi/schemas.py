@@ -1,7 +1,7 @@
 """Pydantic 请求/响应模型。"""
 
 import datetime
-from typing import Any, Optional, List, Dict
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 

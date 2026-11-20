@@ -16,9 +16,9 @@
 import datetime as dt
 
 import pytest
+from core.db_session import IS_POSTGRES
+from core.db_session import engine as app_engine
 from sqlalchemy import Column, DateTime, Integer, MetaData, Table, create_engine, func, select, text
-
-from core.db_session import IS_POSTGRES, engine as app_engine
 from utils import timeutil as tu
 
 # 每个瞬间都标注它落在北京的哪一天，方便读失败信息。

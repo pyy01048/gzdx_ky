@@ -28,9 +28,8 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:  # noqa: BLE001
         pass
 
-from sqlalchemy import text  # noqa: E402
-
 from services.chunk_classifier import MIRROR_TABLES, sync_mirror_subjects  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 
 def _subject_map(db, sql: str) -> dict:

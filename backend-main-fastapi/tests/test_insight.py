@@ -11,12 +11,11 @@ from __future__ import annotations
 import datetime
 
 import pytest
-
 from database import Base, SessionLocal, engine
-from utils.timeutil import local_today, utcnow
+from main import app
 from models import Goal, QuizQuestion, StudyEvent
 from tests.asgi_client import ASGIClient
-from main import app
+from utils.timeutil import local_today, utcnow
 
 client = ASGIClient(app)
 

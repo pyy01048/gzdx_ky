@@ -6,7 +6,12 @@
 用法: python fetch_yz_units.py [--province 52]
 合规: 间隔 1.2~2s，UA，重试 2 次，逐省落盘（中断可续）。
 """
-import json, ssl, sys, time, random, urllib.request
+import json
+import random
+import ssl
+import sys
+import time
+import urllib.request
 from pathlib import Path
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}

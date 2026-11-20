@@ -11,18 +11,21 @@
 
 运行: python scripts/fill_example_cn_translation.py
 """
-import os
-import re
-import sys
-import time
 import json
 import logging
+import os
+import re
+import time
 import urllib.request
 
 import psycopg
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DSN = "host=127.0.0.1 port=5432 user=kaoyan password=kaoyan_dev_2026 dbname=kaoyan"
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "qwen2.5:1.5b"
 BATCH_SIZE = 5

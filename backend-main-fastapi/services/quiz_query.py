@@ -17,9 +17,8 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-from sqlalchemy import and_, func, not_, or_, text
-
 from models import QuizQuestion
+from sqlalchemy import and_, func, not_, or_, text
 
 
 # --------------------------------------------------------------------------- #

@@ -72,10 +72,9 @@ STEM_SIN = "计算 lim(x→0) (sin 2x) / (sin 3x) 的值。"
 
 def _fresh_session():
     """建临时库 + 返回 (session, QuizQuestion, Document, db_path)。"""
+    from models import Document, QuizQuestion
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-
-    from models import Document, QuizQuestion
     global _ENGINES
 
     fd, path = tempfile.mkstemp(suffix=".db", prefix="dedupe_selftest_")

@@ -25,7 +25,6 @@ import os
 import socket
 import sys
 import threading
-import time
 import urllib.request
 
 #: 看门狗触发退出码 —— 上层守护据此区分"人为停止"与"看门狗自愈"

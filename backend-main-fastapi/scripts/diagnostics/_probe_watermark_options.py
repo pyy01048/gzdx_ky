@@ -71,6 +71,7 @@ print("  行级分布:", dict(chunk_line.most_common(6)))
 print()
 print("=== ③ 题目选项数量分布（'怎么会有两三个 abcd 选项'）===")
 import json
+
 rows = cur.execute("SELECT id, options, question_type, content FROM quiz_questions").fetchall()
 dist = Counter()
 weird = []

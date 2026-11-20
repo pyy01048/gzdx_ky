@@ -24,7 +24,8 @@ import tempfile
 import time
 from concurrent.futures import (
     ThreadPoolExecutor,
-    as_completed,
+)
+from concurrent.futures import (
     TimeoutError as FuturesTimeoutError,
 )
 
@@ -182,15 +183,14 @@ def main() -> int:
             targets = [p for p in targets if _need(p) is False]
         print(f"OCR 筛选({('only' if args.only_ocr else 'skip')}): {before} → {len(targets)}")
 
-    from database import SessionLocal
-    from services.smart_ingest import smart_ingest_file
-
     # PG 迁移后，models 的若干列改了名 / 改了原生枚举类型。orm_aliases.install()
     # 补挂旧属性名别名（file_type→source_format、chunk_id→chunk_index 等）并对
     # PG 原生枚举列做类型适配，否则脚本里 `doc.file_type` 等属性访问会 AttributeError、
     # 枚举比较会报 `operator does not exist`，全量入库直接崩。main.py 入口已调用，
     # 这里脚本侧也要调用一次（幂等）。
     import orm_aliases
+    from database import SessionLocal
+    from services.smart_ingest import smart_ingest_file
     orm_aliases.install()
 
     def _kp_brief(r: dict) -> str:

@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -32,8 +31,6 @@ from services.kaoyan.notice_alert import (  # noqa: E402
     backfill_all,
     cn_now,
     ensure_alert_schema,
-    extract_dates,
-    parse_date_loose,
     scan_alerts,
 )
 

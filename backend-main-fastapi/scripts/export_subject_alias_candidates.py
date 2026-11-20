@@ -34,8 +34,14 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 from services.major_coverage import (  # noqa: E402
-    _WS_RE, _lookup, _norm, coverage_state, decode_subjects, is_public_subject,
-    professional_subject, subject_supply,
+    _WS_RE,
+    _lookup,
+    _norm,
+    coverage_state,
+    decode_subjects,
+    is_public_subject,
+    professional_subject,
+    subject_supply,
 )
 
 

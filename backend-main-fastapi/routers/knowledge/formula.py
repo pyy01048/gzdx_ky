@@ -3,12 +3,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
-from database import get_db
 from services import formula_service
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/formula", tags=["公式识别"])
 

@@ -13,7 +13,11 @@ import psycopg
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-DB = dict(host="127.0.0.1", port=5432, dbname="kaoyan", user="kaoyan", password="kaoyan_dev_2026")
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import pg_connect
 
 # 从 kaoyan_majors 提取 subject_code -> (代表专业名, 专业数)
 CODE_NAMES = {
@@ -67,7 +71,7 @@ CATEGORY_CODES = {
 
 
 def main() -> None:
-    conn = psycopg.connect(**DB)
+    conn = pg_connect()
     cur = conn.cursor()
 
     # 读取已有 code，避免重复

@@ -204,7 +204,7 @@ def case_c_backup_rollback(sandbox: str, n_q: int) -> bool:
 
     # 3) 查回滚窗口
     info = dg.rollback_window("quiz_questions", sandbox, minutes=30)
-    print(f"\n  rollback_window() 返回:")
+    print("\n  rollback_window() 返回:")
     if info:
         for k, v in info.items():
             print(f"    {k}: {v}")

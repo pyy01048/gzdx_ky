@@ -28,12 +28,13 @@ A3 RAG 检索门控（services/retrieval_gate.py）
 每轮打点落库 retrieval_gate_logs。
 """
 from __future__ import annotations
-import logging
 
 import json
+import logging
 import time
-from services.dbapi_compat import wrap_conn
 from typing import Any, Dict, List, Optional
+
+from services.dbapi_compat import wrap_conn
 
 # --------------------------------------------------------------------------- #
 # 配置分层

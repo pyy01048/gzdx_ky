@@ -13,10 +13,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pytest
 
 from services import model_registry as mr
-
 
 # --------------------------------------------------------------------------- #
 # 显存估算

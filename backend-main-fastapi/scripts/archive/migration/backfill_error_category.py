@@ -21,10 +21,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import text  # noqa: E402
-
 from database import SessionLocal  # noqa: E402
 from services.error_analyzer import infer_error_category  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 
 def main() -> int:

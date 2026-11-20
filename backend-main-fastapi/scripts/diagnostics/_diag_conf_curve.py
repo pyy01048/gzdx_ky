@@ -7,8 +7,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
 from models import QuizQuestion
-from sqlalchemy import func
 from services.quiz_classifier_v2 import classify_batch_v2
+from sqlalchemy import func
 
 BUCKETS = [(0.92, 1.01), (0.88, 0.92), (0.84, 0.88), (0.80, 0.84),
            (0.70, 0.80), (0.60, 0.70), (0.0, 0.60)]

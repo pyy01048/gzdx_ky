@@ -11,19 +11,19 @@ V3.0 本地存储库自动扫描与入库服务
 5. 记录已处理文件，避免重复处理
 6. 支持手动触发扫描和增量扫描
 """
-import os
-import json
-import time
 import hashlib
+import json
 import logging
+import os
 import threading
-from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
+import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from models import Document, KnowledgeChunk, KnowledgePoint
 from sqlalchemy.orm import Session
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 
-from models import Document, KnowledgeChunk, KnowledgePoint, PlatformConfig
 from services.doc_naming import apply_display_name
 from services.smart_ingest import gate_for_write
 

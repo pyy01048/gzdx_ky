@@ -1,16 +1,31 @@
 """SQLAlchemy ORM 模型定义。"""
 
 import datetime
+
+from core.pg_enum_aware import PgEnumAware
+from database import Base
 from sqlalchemy import (
-    BigInteger, Column, Integer, SmallInteger, String, Text, Float, Boolean, DateTime, Date, Time,
-    ForeignKey, JSON, Index, LargeBinary, UniqueConstraint, text,
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    SmallInteger,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship, synonym
 from sqlalchemy.types import TypeDecorator
-
-from database import Base
-from core.pg_enum_aware import PgEnumAware
 from utils.secret_codec import EncryptedText
 
 

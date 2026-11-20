@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
-from services.quiz_classifier_v2 import classify_subject_v2, _load_vector_assets
+from services.quiz_classifier_v2 import _load_vector_assets, classify_subject_v2
 
 
 def main():

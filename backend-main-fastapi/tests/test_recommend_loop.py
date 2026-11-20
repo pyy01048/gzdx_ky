@@ -15,11 +15,10 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from database import SessionLocal
+from main import app
 from models import KnowledgePoint, QuizQuestion
 from tests.asgi_client import ASGIClient
-from main import app
 
 client = ASGIClient(app)
 

@@ -17,14 +17,15 @@ A5 组卷-模考引擎（services/exam_builder.py）
 错题回流：交卷后错误题写入 error_records（去重），并联动 A4 盲区池记录弱知识点。
 """
 from __future__ import annotations
-import logging
 
 import json
+import logging
 import random
 from collections import defaultdict
 from datetime import timedelta
-from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Any, Dict, List, Optional
+
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 
 from services.db_retry import exec_retry
 from services.dbapi_compat import wrap_conn  # noqa: E402  PG/SQLite 双底座连接适配
@@ -38,7 +39,7 @@ def _now_str() -> str:
 # 蓝图
 # --------------------------------------------------------------------------- #
 def load_blueprints(db, subject: str, paper: str, year: Optional[int] = None) -> List[Dict[str, Any]]:
-    from services.module_a_schema import ensure_module_a_schema, ensure_blueprints
+    from services.module_a_schema import ensure_blueprints, ensure_module_a_schema
 
     ensure_module_a_schema(db)
     ensure_blueprints(db)
@@ -623,8 +624,9 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
     # 模考回流此前只插 error_records、不挂知识点，导致模考错题在复盘页成「孤岛」
     # （联调实测：20 条模考错题 0 条有链路）。此处与刷题/手动收录对齐。
     try:
-        from services import error_linker
         from models import ErrorRecord
+
+        from services import error_linker
 
         qids = [wq["question_id"] for wq in wrong_questions]
         if qids:

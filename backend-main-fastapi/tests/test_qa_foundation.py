@@ -6,12 +6,11 @@
 from __future__ import annotations
 
 import pytest
-
 from database import Base, SessionLocal, engine
+from main import app
 from models import Paper, QuizQuestion
 from services import qa_foundation
 from tests.asgi_client import ASGIClient
-from main import app
 
 client = ASGIClient(app)
 

@@ -13,14 +13,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy.orm import Session
-
 from core.models.code_oj import (
     CodeProblem,
     CodeProblemTestcase,
     CodeSubmission,
     CodeSubmissionResult,
 )
+from sqlalchemy.orm import Session
+
 from services.code_judge import judge_python_code
 
 logger = logging.getLogger(__name__)

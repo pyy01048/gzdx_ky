@@ -38,10 +38,8 @@ answer_review_queue 表从未建出）和 `confidence_service`
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import re
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,7 +90,7 @@ def scan() -> list[dict]:
             if "_backup_" in str(p):
                 continue
             try:
-                lines = io.open(p, encoding="utf-8").read().splitlines()
+                lines = open(p, encoding="utf-8").read().splitlines()
             except Exception:  # noqa: BLE001
                 continue
             for i, ln in enumerate(lines):

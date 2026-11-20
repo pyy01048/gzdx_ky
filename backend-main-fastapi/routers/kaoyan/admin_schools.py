@@ -5,12 +5,12 @@
 """
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
 
 from core.db_session import get_db
-from core.models.schools import KaoyanSchool, KaoyanCollege, KaoyanMajor, AuditLog
+from core.models.schools import AuditLog, KaoyanCollege, KaoyanMajor, KaoyanSchool
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 from utils.security import require_admin
 
 router = APIRouter(prefix="/api/admin/schools", tags=["admin-schools"], dependencies=[Depends(require_admin)])
@@ -108,22 +108,22 @@ async def list_schools(
 ):
     """列出院校（支持筛选、分页）"""
     q = db.query(KaoyanSchool)
-    
+
     if not include_disabled:
         q = q.filter(KaoyanSchool.enabled == True)
-    
+
     q = _soft_delete_filter(q, KaoyanSchool)
-    
+
     if keyword:
         q = q.filter(KaoyanSchool.name.ilike(f"%{keyword}%"))
     if province:
         q = q.filter(KaoyanSchool.province == province)
     if level:
         q = q.filter(KaoyanSchool.level == level)
-    
+
     total = q.count()
     items = q.order_by(KaoyanSchool.name).offset((page - 1) * limit).limit(limit).all()
-    
+
     return {
         "total": total,
         "page": page,
@@ -156,12 +156,12 @@ async def create_school(
     existing = db.query(KaoyanSchool).filter(KaoyanSchool.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="院校名称已存在")
-    
+
     school = KaoyanSchool(**payload.model_dump())
     db.add(school)
     db.commit()
     db.refresh(school)
-    
+
     return {"id": school.id, "name": school.name, "message": "院校创建成功"}
 
 
@@ -173,7 +173,7 @@ async def get_school(school_id: int, db: Session = Depends(get_db)):
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
-    
+
     return {
         "id": school.id,
         "name": school.name,
@@ -204,15 +204,15 @@ async def update_school(
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
-    
+
     # 更新字段
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(school, key, value)
-    
+
     db.commit()
     db.refresh(school)
-    
+
     return {"id": school.id, "message": "院校更新成功"}
 
 
@@ -226,12 +226,12 @@ async def delete_school(
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
-    
+
     from datetime import datetime, timezone
     school.deleted_at = datetime.now(timezone.utc)
     school.enabled = False
     db.commit()
-    
+
     return {"id": school.id, "message": "院校已删除"}
 
 
@@ -245,10 +245,10 @@ async def toggle_school_enabled(
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
-    
+
     school.enabled = not school.enabled
     db.commit()
-    
+
     return {"id": school.id, "enabled": school.enabled, "message": "状态已更新"}
 
 
@@ -262,14 +262,14 @@ async def list_colleges(
 ):
     """列出院校下属学院"""
     q = db.query(KaoyanCollege).filter(KaoyanCollege.school_id == school_id)
-    
+
     if not include_disabled:
         q = q.filter(KaoyanCollege.enabled == True)
-    
+
     q = _soft_delete_filter(q, KaoyanCollege)
-    
+
     colleges = q.order_by(KaoyanCollege.name).all()
-    
+
     return {
         "total": len(colleges),
         "items": [
@@ -295,12 +295,12 @@ async def create_college(
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == payload.school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
-    
+
     college = KaoyanCollege(**payload.model_dump())
     db.add(college)
     db.commit()
     db.refresh(college)
-    
+
     return {"id": college.id, "name": college.name, "message": "学院创建成功"}
 
 
@@ -315,14 +315,14 @@ async def update_college(
     college = db.query(KaoyanCollege).filter(KaoyanCollege.id == college_id).first()
     if not college:
         raise HTTPException(status_code=404, detail="学院不存在")
-    
+
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(college, key, value)
-    
+
     db.commit()
     db.refresh(college)
-    
+
     return {"id": college.id, "message": "学院更新成功"}
 
 
@@ -336,12 +336,12 @@ async def delete_college(
     college = db.query(KaoyanCollege).filter(KaoyanCollege.id == college_id).first()
     if not college:
         raise HTTPException(status_code=404, detail="学院不存在")
-    
+
     from datetime import datetime, timezone
     college.deleted_at = datetime.now(timezone.utc)
     college.enabled = False
     db.commit()
-    
+
     return {"id": college.id, "message": "学院已删除"}
 
 
@@ -356,19 +356,19 @@ async def list_majors(
 ):
     """列出专业（支持按院校/学院筛选）"""
     q = db.query(KaoyanMajor)
-    
+
     if school_id:
         q = q.filter(KaoyanMajor.school_id == school_id)
     if college_id:
         q = q.filter(KaoyanMajor.college_id == college_id)
-    
+
     if not include_disabled:
         q = q.filter(KaoyanMajor.enabled == True)
-    
+
     q = _soft_delete_filter(q, KaoyanMajor)
-    
+
     majors = q.order_by(KaoyanMajor.code).all()
-    
+
     return {
         "total": len(majors),
         "items": [
@@ -398,12 +398,12 @@ async def create_major(
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == payload.school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
-    
+
     major = KaoyanMajor(**payload.model_dump())
     db.add(major)
     db.commit()
     db.refresh(major)
-    
+
     return {"id": major.id, "name": major.name, "message": "专业创建成功"}
 
 
@@ -418,14 +418,14 @@ async def update_major(
     major = db.query(KaoyanMajor).filter(KaoyanMajor.id == major_id).first()
     if not major:
         raise HTTPException(status_code=404, detail="专业不存在")
-    
+
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(major, key, value)
-    
+
     db.commit()
     db.refresh(major)
-    
+
     return {"id": major.id, "message": "专业更新成功"}
 
 
@@ -439,12 +439,12 @@ async def delete_major(
     major = db.query(KaoyanMajor).filter(KaoyanMajor.id == major_id).first()
     if not major:
         raise HTTPException(status_code=404, detail="专业不存在")
-    
+
     from datetime import datetime, timezone
     major.deleted_at = datetime.now(timezone.utc)
     major.enabled = False
     db.commit()
-    
+
     return {"id": major.id, "message": "专业已删除"}
 
 
@@ -462,7 +462,7 @@ async def list_audit_logs(
 ):
     """查询审计日志（只读，不可修改删除）"""
     q = db.query(AuditLog)
-    
+
     if table_name:
         q = q.filter(AuditLog.table_name == table_name)
     if record_id:
@@ -471,10 +471,10 @@ async def list_audit_logs(
         q = q.filter(AuditLog.action == action)
     if operator_id:
         q = q.filter(AuditLog.operator_id == operator_id)
-    
+
     total = q.count()
     logs = q.order_by(AuditLog.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
-    
+
     return {
         "total": total,
         "page": page,

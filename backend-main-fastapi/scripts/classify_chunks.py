@@ -47,12 +47,11 @@ def main() -> int:
                     help="显式关闭路3（与当前默认一致，保留给旧命令与文档示例）")
     args = ap.parse_args()
 
-    from sqlalchemy import func
-
     from database import SessionLocal
     from models import Document, KnowledgeChunk
     from services import chunk_classifier
     from services.chunk_classifier import encode_texts, load_prototypes
+    from sqlalchemy import func
 
     db = SessionLocal()
     try:

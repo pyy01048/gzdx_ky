@@ -228,7 +228,9 @@ def cmd_purge(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     if BASE_DIR not in sys.path:
         sys.path.insert(0, BASE_DIR)
     from services.delete_guard import (  # 延迟导入，复用同一道闸门
-        ENV_FLAG, backup_before_delete, require_physical_delete_enabled,
+        ENV_FLAG,
+        backup_before_delete,
+        require_physical_delete_enabled,
     )
 
     cutoff = (datetime.now() - timedelta(days=args.keep_days)).strftime("%Y-%m-%d %H:%M:%S")

@@ -1,4 +1,5 @@
 import sqlite3
+
 con = sqlite3.connect(r'D:\平台\database\kaoyan.db')
 V = "coalesce(is_junk,0)=0"
 

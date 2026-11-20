@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
 """再测：用真实照片 + JPEG + 不同尺寸，定位视觉塔问题。"""
-import base64, json, time, urllib.request, io
+import base64
+import io
+import json
+import time
+import urllib.request
+
 from PIL import Image
+
 
 def post(url, payload):
     req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
@@ -12,7 +18,8 @@ def post(url, payload):
 
 # 造一张最简单的图：白底黑字 "HELLO"
 img = Image.new("RGB", (400, 200), "white")
-from PIL import ImageDraw, ImageFont
+from PIL import ImageDraw
+
 d = ImageDraw.Draw(img)
 d.text((100, 80), "HELLO", fill="black")
 buf = io.BytesIO()

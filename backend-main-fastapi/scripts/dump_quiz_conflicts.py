@@ -5,13 +5,13 @@
 签名归一化要点：把连续下划线填空位整体删除，使「保留了填空下划线的版本」
 与「OCR 吃掉填空位的版本」能落到同一个签名上。
 """
-from pathlib import Path
 import json
 import re
 import sqlite3
 import sys
 import unicodedata
 from collections import defaultdict
+from pathlib import Path
 
 # 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
 _REPO = Path(__file__).resolve().parents[2]

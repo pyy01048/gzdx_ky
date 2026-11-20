@@ -40,7 +40,6 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.engine import Engine
-
 from utils.timeutil import utcnow
 
 __all__ = [

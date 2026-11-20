@@ -25,8 +25,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services import qbank_builder as qb  # noqa: E402
 from services import extraction_noise as E  # noqa: E402
+from services import qbank_builder as qb  # noqa: E402
 
 DB = r"D:\平台\database\kaoyan.db"
 OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "diagnostics")

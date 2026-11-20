@@ -43,7 +43,7 @@ PG 事务已进入 aborted 状态（``InFailedSqlTransaction``），
 from __future__ import annotations
 
 from sqlalchemy import String
-from sqlalchemy.types import TypeDecorator, VARCHAR
+from sqlalchemy.types import VARCHAR, TypeDecorator
 
 # 枚举值缓存：优先用权威目录，缺失时运行时从 pg_enum 反射（兜底）。
 _ENUM_VALUES_CACHE: dict = {}

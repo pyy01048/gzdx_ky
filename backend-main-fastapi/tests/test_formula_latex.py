@@ -17,14 +17,12 @@ import os
 import numpy as np
 import pytest
 from PIL import Image, ImageDraw
-
 from services.formula_latex import (
     INPUT_SIZE,
     MAX_ASPECT,
     UNRENDERABLE_EXTS,
     FormulaRecognizer,
     FormulaResult,
-    FormulaResult as _FR,
     _crop_margin,
     _default_model_dir,
     _flatten_alpha,
@@ -33,6 +31,9 @@ from services.formula_latex import (
     latex_is_plausible,
     latex_suspect,
     unknown_commands,
+)
+from services.formula_latex import (
+    FormulaResult as _FR,
 )
 
 

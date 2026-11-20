@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Dict, List, Optional
+
 from utils.timeutil import (  # P1-C2
     day_bucket_expr,
     iso_utc_z,
@@ -23,11 +25,9 @@ from utils.timeutil import (  # P1-C2
     local_today,
     utcnow,
 )
-from typing import Dict, List, Optional
 
 from services import error_linker, kp_mastery
 from services.dbapi_compat import wrap_conn
-
 
 #: 画像页「薄弱知识点 TOP」名额。评分与排序不在这里，见
 #: services/error_linker.weak_knowledge_points（仪表盘 D-10 用同一出口的 Top3）。
@@ -87,9 +87,10 @@ def build_profile(db_session, days: int = 30) -> Dict:
     # 学习天数：answer_records/error_records/tasks 有行为的去重**北京自然日**。
     # 旧写法 substring(CAST(ts AS text),1,10) 切的是 UTC 日（PG 会话时区钉在 UTC），
     # 北京 00:00~08:00 的学习因此记在前一天；分桶的唯一出口是 day_bucket_expr。
-    from sqlalchemy import func as sa_func, select as sa_select, union_all
-
     from models import AnswerRecord, ErrorRecord, Task
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+    from sqlalchemy import union_all
 
     active_days_q = union_all(
         sa_select(day_bucket_expr(AnswerRecord.created_at, db_session).label("d")),

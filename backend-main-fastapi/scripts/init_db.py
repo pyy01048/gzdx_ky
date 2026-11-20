@@ -44,9 +44,9 @@ def main() -> int:
             print(f"core/sql/{name}")
         return 0
 
+    import models  # noqa: F401  注册 ORM 表
     from core.db_session import IS_POSTGRES, apply_schema
     from database import Base, SessionLocal, engine
-    import models  # noqa: F401  注册 ORM 表
 
     print(f"目标库: {engine.url.render_as_string(hide_password=True)}")
     if not IS_POSTGRES:

@@ -30,12 +30,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import base64
 
 import pytest
-from sqlalchemy import orm as sa_orm, text
-
 from database import SessionLocal, engine
 from models import AIProvider, NetdiskFile, PlatformConfig
 from services.netdisk_service import NetdiskService
+from sqlalchemy import orm as sa_orm
+from sqlalchemy import text
 from utils import secret_codec as sc
+
 
 def _b64(raw: bytes) -> str:
     return base64.b64encode(raw).decode("ascii")

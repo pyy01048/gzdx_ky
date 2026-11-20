@@ -5,13 +5,13 @@ V3.0 数据库性能优化模块
 - 连接池优化
 - 常用查询预编译
 """
-import time
 import logging
+import time
 from collections import OrderedDict
-from typing import Any, Callable, Optional, Dict, List
 from functools import wraps
+from typing import Any, Callable, Dict, List, Optional
 
-from sqlalchemy import text, Index
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -239,7 +239,7 @@ def get_study_stats_cached(db: Session) -> Dict[str, Any]:
     注意：番茄钟（pomodoro_sessions）模块已移除，学习时长统计
     以 study_sessions 表为准，此处不再统计番茄钟次数。
     """
-    from models import Task, QuizQuestion, ErrorRecord, Word, StudySession
+    from models import ErrorRecord, QuizQuestion, StudySession, Task, Word
     from sqlalchemy import func
 
     stats = {

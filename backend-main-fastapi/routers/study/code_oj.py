@@ -1,16 +1,15 @@
 """P2-M5 代码上机 OJ 路由。"""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
-
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from typing import Optional
 
 from database import get_db
+from fastapi import APIRouter, Depends, HTTPException, Query
 from models import User
-from utils.security import current_user
+from pydantic import BaseModel
 from services import code_oj_service
+from sqlalchemy.orm import Session
+from utils.security import current_user
 
 router = APIRouter(prefix="/api/code", tags=["代码上机OJ"])
 

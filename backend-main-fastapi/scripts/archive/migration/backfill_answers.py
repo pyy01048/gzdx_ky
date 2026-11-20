@@ -19,7 +19,6 @@ ModelGateway（本地 Ollama 优先）生成答案与解析，写回 quiz_questi
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import re
@@ -31,9 +30,8 @@ sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
 from database import SessionLocal  # noqa: E402
-from models import QuizQuestion   # noqa: E402
+from models import QuizQuestion  # noqa: E402
 from services import qbank_builder  # noqa: E402
-
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.S)
 

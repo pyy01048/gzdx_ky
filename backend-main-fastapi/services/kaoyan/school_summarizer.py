@@ -37,11 +37,14 @@ class SchoolSummarizer:
     # 单校汇总
     # ------------------------------------------------------------------ #
     def summarize_school(self, school_id: int, notices_limit: int = 5) -> Optional[Dict[str, Any]]:
-        from sqlalchemy import text
         from models import (
-            KaoyanSchool, KaoyanCollege, KaoyanMajor, KaoyanAdmission,
+            KaoyanAdmission,
+            KaoyanCollege,
+            KaoyanMajor,
+            KaoyanSchool,
             KaoyanScoreLine,
         )
+        from sqlalchemy import text
 
         school = self.db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
         if not school:

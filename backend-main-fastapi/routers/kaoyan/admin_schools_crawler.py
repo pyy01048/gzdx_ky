@@ -8,13 +8,13 @@
 """
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
 
 from core.db_session import get_db
-from services.kaoyan import collector, spider_yz, spider_school
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from services.kaoyan import collector, spider_school
 from services.scheduler import scheduler
+from sqlalchemy.orm import Session
 from utils.security import require_admin
 
 router = APIRouter(prefix="/api/admin/schools/crawler", tags=["admin-schools-crawler"], dependencies=[Depends(require_admin)])
@@ -51,7 +51,7 @@ class ImportCSVConfig(BaseModel):
 async def crawler_status(db: Session = Depends(get_db)):
     """查看爬虫运行状态"""
     from models import KaoyanCollectionRun
-    
+
     # 最近10次运行记录
     runs = (
         db.query(KaoyanCollectionRun)
@@ -59,7 +59,7 @@ async def crawler_status(db: Session = Depends(get_db)):
         .limit(10)
         .all()
     )
-    
+
     return {
         "scheduler_running": scheduler.running if scheduler else False,
         "recent_runs": [
@@ -87,7 +87,7 @@ async def trigger_yz_crawl(
     db: Session = Depends(get_db),
 ):
     """手动触发研招网爬取（后台任务）"""
-    
+
     def run_crawl():
         try:
             result = collector.collect_engineering(
@@ -98,7 +98,7 @@ async def trigger_yz_crawl(
             return {"success": True, "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     if config.dry_run:
         # 同步执行返回预览
         result = run_crawl()
@@ -116,7 +116,7 @@ async def trigger_school_crawl(
     db: Session = Depends(get_db),
 ):
     """手动触发单校数据采集"""
-    
+
     def run_school_crawl():
         try:
             # 调用spider_school模块
@@ -124,7 +124,7 @@ async def trigger_school_crawl(
             return {"success": True, "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     background_tasks.add_task(run_school_crawl)
     return {"message": f"已开始爬取 {config.school_name}", "school_name": config.school_name}
 
@@ -136,11 +136,11 @@ async def import_csv_data(
     db: Session = Depends(get_db),
 ):
     """CSV批量导入"""
-    
+
     def run_import():
         try:
             from services.kaoyan.import_csv import import_from_csv
-            
+
             result = import_from_csv(
                 db_session=db,
                 csv_path=config.file_path,
@@ -151,7 +151,7 @@ async def import_csv_data(
             return {"success": True, "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     background_tasks.add_task(run_import)
     return {"message": "CSV导入任务已加入后台队列", "config": config.model_dump()}
 
@@ -164,18 +164,18 @@ async def toggle_scheduled_task(
     enable: bool = Query(..., description="启用/禁用"),
 ):
     """启用/禁用定时采集任务"""
-    
+
     task_map = {
         "engineering": "collect_engineering_daily",
         "national_line": "backfill_national_lines_weekly",
         "notices": "collect_notices_hourly",
     }
-    
+
     if task_name not in task_map:
         raise HTTPException(status_code=400, detail=f"未知任务: {task_name}")
-    
+
     job_id = task_map[task_name]
-    
+
     if enable:
         # 重新添加调度任务
         from services.scheduler import add_scheduled_jobs
@@ -192,12 +192,12 @@ async def toggle_scheduled_task(
 @router.get("/schedule/list")
 async def list_scheduled_tasks():
     """列出所有定时采集任务"""
-    
+
     if not scheduler:
         return {"tasks": [], "scheduler_running": False}
-    
+
     jobs = scheduler.get_jobs()
-    
+
     return {
         "scheduler_running": scheduler.running,
         "tasks": [
@@ -219,9 +219,9 @@ async def data_coverage_stats(db: Session = Depends(get_db)):
     """查看数据采集覆盖率统计"""
     # models 里的类名是 KaoyanScoreLine（大写 L）；KaoyanScoreline 只存在于
     # core.models 新口径里，从 models 导入会 ImportError → 本接口恒 500。
-    from models import KaoyanSchool, KaoyanMajor, KaoyanAdmission
+    from models import KaoyanAdmission, KaoyanMajor, KaoyanSchool
     from models import KaoyanScoreLine as KaoyanScoreline
-    
+
     total_schools = db.query(KaoyanSchool).count()
     schools_with_majors = (
         db.query(KaoyanSchool)
@@ -241,7 +241,7 @@ async def data_coverage_stats(db: Session = Depends(get_db)):
         .distinct()
         .count()
     )
-    
+
     return {
         "total_schools": total_schools,
         "schools_with_majors": schools_with_majors,

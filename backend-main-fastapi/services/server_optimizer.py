@@ -8,15 +8,15 @@ V3.0 后端服务优化模块
 说明：响应压缩由部署层的 nginx gzip 负责（gzip_types 含
 application/json 等），应用层不再做假压缩头。
 """
-import time
 import asyncio
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+import time
 from collections import deque
 from functools import wraps
+from typing import Dict, List, Optional
 
-from fastapi import Request, Response
+from fastapi import Request
 from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)

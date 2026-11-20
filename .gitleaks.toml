@@ -1,0 +1,24 @@
+# gitleaks 自定义规则：考研平台项目特征口令（docs/完善方案/02 §3.3）
+# 用法：gitleaks detect --source . --redact -v --config .gitleaks.toml
+title = "gzdx_ky gitleaks config"
+
+[extend]
+# 继承默认规则库，再追加项目规则
+useDefault = true
+
+[[rules]]
+id = "kaoyan-db-password"
+description = "考研平台数据库口令"
+regex = '''kaoyan_dev_\d{4}|PG_PASSWORD\s*=\s*["'][^"'<\s]{6,}'''
+
+[[rules]]
+id = "kaoyan-dsn-inline"
+description = "文档/脚本内联 PG 连接串"
+regex = '''postgres(ql)?(\+psycopg)?://[a-z_]+:[^@\s"']{4,}@'''
+
+[allowlist]
+description = "global allow lists"
+paths = [
+    '''(^|/)backend-main-fastapi/\.env\.example$''',
+    '''(^|/)deploy/backend\.env\.template$''',
+]

@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
 
 __all__ = [
     "is_running_header_noise",

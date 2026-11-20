@@ -7,32 +7,40 @@ D5: 区域择校地图热力图数据
 D6: 招生人数分布散点图数据
 C5: 数据版本管理（历史对比）
 """
-from utils.security import require_admin
-from fastapi import APIRouter, HTTPException, Query, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, text, tuple_
-from typing import Optional, List
 import json
 import re
+from typing import List, Optional
 
+from database import SessionLocal
+from fastapi import APIRouter, Depends, HTTPException, Query
+from models import (
+    Goal,
+    KaoyanAdmission,
+    KaoyanAdmissionDetail,
+    KaoyanCollectionRun,
+    KaoyanCollege,
+    KaoyanMajor,
+    KaoyanSchool,
+    KaoyanScoreLine,
+    KaoyanSubject,
+)
 from services.dbapi_compat import wrap_conn
+from services.kaoyan.data_years import available_years, resolve_year
+from services.kaoyan.datasource_registry import (
+    get_datasource,
+    list_datasources,
+    resolve_source_type,
+)
+from services.kaoyan.school_alias import match_aliases
+from sqlalchemy import func, or_, text, tuple_
+from sqlalchemy.orm import Session
+from utils.security import require_admin
 from utils.timeutil import (
     day_bucket_text_expr,
     iso_utc_z,
     local_today,
     utcnow,
 )
-from database import SessionLocal
-from models import (
-    KaoyanSchool, KaoyanCollege, KaoyanMajor,
-    KaoyanAdmission, KaoyanAdmissionDetail, KaoyanScoreLine, KaoyanSubject, Goal,
-    KaoyanCollectionRun, SchoolAlias,
-)
-from services.kaoyan.datasource_registry import (
-    list_datasources, register_datasource, get_datasource, resolve_source_type,
-)
-from services.kaoyan.school_alias import normalize_alias, match_aliases
-from services.kaoyan.data_years import available_years, resolve_year
 
 router = APIRouter(prefix="/api/kaoyan", tags=["考研择校"])
 
@@ -1478,8 +1486,8 @@ def collection_refresh(
                 results.append({"source": "yz", "status": "failed", "error": str(e)})
         elif src_lower in ("school", "school_official"):
             # ---- 院校官网 ----
-            from services.kaoyan.spider_school import crawl_school
             from services import exam_calendar
+            from services.kaoyan.spider_school import crawl_school
 
             if not school:
                 raise HTTPException(400, "school 源必须提供 school 院校名参数")
@@ -1643,7 +1651,6 @@ def list_all_notices(
 
     过滤参数均可选，可组合；``since`` 用 ``>= since``（当日含）。
     """
-    from services.kaoyan.spider_notices import ensure_notices_schema
     from services.kaoyan.notice_read import ensure_notice_read_schema
 
     # 补齐 is_read/is_starred 列，使首页公告栏也能渲染未读状态
@@ -1741,8 +1748,9 @@ def notice_updates(
     时退化为采集日，并按**北京自然日**归日（采集时间存的是 naive UTC，UTC 16:00
     之后属于北京的次日）。退化而来而非过滤掉，如实标注。
     """
-    from services.kaoyan.spider_notices import ensure_notices_schema
     from datetime import timedelta
+
+    from services.kaoyan.spider_notices import ensure_notices_schema
 
     ensure_notices_schema(db)
     conn = wrap_conn(db.connection().connection)
@@ -1942,4 +1950,3 @@ def analysis_dashboard(db: Session = Depends(get_db)):
         "math_score_dist": math_score_dist,
         "generated_at": iso_utc_z(utcnow()),
     }
-

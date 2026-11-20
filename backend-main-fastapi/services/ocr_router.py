@@ -23,7 +23,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 

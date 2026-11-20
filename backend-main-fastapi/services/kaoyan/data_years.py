@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import func
-
 from core.models import KaoyanAdmission, KaoyanScoreline
 
 #: 参与年度派生的表（表名, 模型）。新增按年组织的数据源时只改这里。

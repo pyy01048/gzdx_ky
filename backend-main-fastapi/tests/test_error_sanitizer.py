@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
-
 from utils.exceptions import sanitize_error_detail
 
 

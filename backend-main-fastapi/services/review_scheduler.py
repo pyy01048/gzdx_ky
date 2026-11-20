@@ -2,11 +2,10 @@
 
 import datetime
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
+from models import ErrorRecord, Flashcard, Task
 from sqlalchemy.orm import Session
-
-from models import Flashcard, Task, ErrorRecord
 from utils.scope import scoped
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
 

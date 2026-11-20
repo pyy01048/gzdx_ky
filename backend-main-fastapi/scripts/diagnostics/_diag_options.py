@@ -1,5 +1,6 @@
-import sqlite3
 import re
+import sqlite3
+
 con = sqlite3.connect(r'D:\平台\database\kaoyan.db')
 q = ("question_type in ('single','multiple','choice') and (options is null "
      "or options='null' or options='[]' or trim(coalesce(options,''))='')")

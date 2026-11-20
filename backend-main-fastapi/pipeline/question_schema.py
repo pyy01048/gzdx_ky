@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
 from .config import MIN_CONTENT_CHARS
 

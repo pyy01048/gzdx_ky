@@ -192,9 +192,8 @@ def load_pg_samples() -> list[dict]:
     """从 PG 读取 sft_examples（列名 user_input，PG 侧改名后的口径）。"""
     out: list[dict] = []
     try:
-        from sqlalchemy import text as _t
-
         from database import engine
+        from sqlalchemy import text as _t
         with engine.connect() as conn:
             rows = conn.execute(_t(
                 "SELECT system, user_input, assistant, subject FROM sft_examples"

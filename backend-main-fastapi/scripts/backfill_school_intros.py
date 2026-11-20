@@ -15,9 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import text  # noqa: E402
-
 from database import engine  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # 内置简介（按院校名称精确匹配）

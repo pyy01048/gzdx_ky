@@ -1,4 +1,4 @@
-﻿"""百度网盘模块回归测试。
+"""百度网盘模块回归测试。
 
 **不联网**：用假的 httpx 响应验证错误解析、token 刷新判定、下载行为。
 这些正是原实现出错的地方（不检查 errno、不刷新 token、下载不带 UA → 403）。
@@ -12,10 +12,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
-
 from services.netdisk_service import (
-    NetdiskService, NetdiskError, NetdiskAuthError, ERRNO_HINT,
-    _looks_valid_device_id, _generate_device_id,
+    ERRNO_HINT,
+    NetdiskAuthError,
+    NetdiskError,
+    NetdiskService,
+    _generate_device_id,
+    _looks_valid_device_id,
 )
 
 
@@ -345,24 +348,24 @@ class TestHttpErrorMapping:
     """
 
     def test_auth_error_maps_to_409_not_401(self):
-        from routers.netdisk import _netdisk_http_error
+        from routers.platform.netdisk import _netdisk_http_error
         err = _netdisk_http_error(NetdiskAuthError(-6, "invalid access_token"))
         assert err.status_code == 409
         assert err.detail["action"] == "reauthorize"
         assert err.detail["code"] == "NETDISK_AUTH_EXPIRED"
 
     def test_auth_errno_maps_to_409_not_401(self):
-        from routers.netdisk import _netdisk_http_error
+        from routers.platform.netdisk import _netdisk_http_error
         err = _netdisk_http_error(NetdiskError(-6, "no permission"))
         assert err.status_code == 409
         assert err.detail["action"] == "reauthorize"
 
     def test_not_found_errno_still_404(self):
-        from routers.netdisk import _netdisk_http_error
+        from routers.platform.netdisk import _netdisk_http_error
         err = _netdisk_http_error(NetdiskError(-9, "file not found"))
         assert err.status_code == 404
 
     def test_generic_errno_still_502(self):
-        from routers.netdisk import _netdisk_http_error
+        from routers.platform.netdisk import _netdisk_http_error
         err = _netdisk_http_error(NetdiskError(31023, "upload failed"))
         assert err.status_code == 502

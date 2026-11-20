@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """临时验证 v2：全量院校通知爬取（ENGINEERING 清单）+ 枚举/统计校验。执行后删除。"""
-import sys
 import logging
+import sys
 
 sys.path.insert(0, r"D:\平台\backend-main-fastapi")
 logging.basicConfig(level=logging.ERROR)

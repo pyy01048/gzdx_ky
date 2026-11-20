@@ -9,14 +9,15 @@ answer_candidates 四态来源：bank | extracted | llm | user_confirmed
 confidence 0.0~1.0；used_for_grading 仅高置信度参与自动判分与正确率统计。
 """
 from __future__ import annotations
-import logging
 
+import logging
 import re
-from services.dbapi_compat import wrap_conn
-from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Any, Dict, List, Optional
 
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
+
 from services.answer_rules import ANSWER_RULES  # E4 答题规则注入
+from services.dbapi_compat import wrap_conn
 
 try:
     from services.llm_output import looks_like_chain_of_thought  # 复用思维链检测

@@ -1,0 +1,10 @@
+# 开发/测试依赖（docs/完善方案/03-依赖升级与供应链安全.md §3.2）
+# 安装：pip install -r requirements.txt -r requirements-dev.txt
+# CI 与本地统一用同一份，消除"本地与 CI 不一致"。
+pytest>=8,<10
+pytest-timeout
+pytest-cov
+httpx
+pip-audit
+ruff
+pre-commit

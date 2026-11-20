@@ -261,7 +261,7 @@ def render(
     stats = {"latex": 0, "image": 0, "kept": 0}
     latex = latex or {}
 
-    def _repl(m: "re.Match") -> str:
+    def _repl(m: re.Match) -> str:
         idx = int(m.group(1))
         tex = (latex.get(idx) or "").strip()
         if tex:

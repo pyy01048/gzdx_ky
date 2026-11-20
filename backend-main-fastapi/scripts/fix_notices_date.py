@@ -57,10 +57,14 @@ def phase_b_refetch(cur, dry: bool) -> tuple[int, int]:
     仅更新能精确匹配标题的行；匹配不到的保持 NULL（不伪造）。
     返回 (更新行数, 仍无日期行数)。
     """
-    from services.kaoyan.spider_notices import (
-        _collect_notices, _fetch, ENGINEERING_NOTICE_URLS, KNOWN_SECTION_URLS,
-    )
     import re as _re
+
+    from services.kaoyan.spider_notices import (
+        ENGINEERING_NOTICE_URLS,
+        KNOWN_SECTION_URLS,
+        _collect_notices,
+        _fetch,
+    )
 
     # 待回填的校与行
     rows = cur.execute(

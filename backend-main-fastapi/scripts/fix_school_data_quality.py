@@ -36,7 +36,7 @@ import sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from school_level_truth import canon, truth_level  # noqa: E402
+from school_level_truth import truth_level  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8")
 

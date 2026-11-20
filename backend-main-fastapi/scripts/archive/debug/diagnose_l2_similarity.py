@@ -24,7 +24,6 @@ sys.path.insert(0, r"D:\平台\backend-main-fastapi")
 from services.quiz_content_gate import (  # noqa: E402
     MAX_INDEX_STEM_LEN,
     MIN_CONFLICT_STEM_LEN,
-    build_stem_answer_index,
     normalize_dedup,
     stem_signature,
 )

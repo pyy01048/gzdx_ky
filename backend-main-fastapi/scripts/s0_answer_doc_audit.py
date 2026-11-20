@@ -16,7 +16,6 @@ import json
 import os
 import re
 import sqlite3
-import sys
 from collections import Counter, defaultdict
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

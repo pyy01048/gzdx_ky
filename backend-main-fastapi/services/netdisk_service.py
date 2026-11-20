@@ -10,20 +10,19 @@
 下载流 / 自动分类），供 routers/netdisk.py 与 services/scheduler.py 使用。
 """
 
-import os
 import logging
-from datetime import datetime, timezone, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy.orm import Session
-from cryptography.fernet import Fernet
-
 from core.models.netdisk import (
-    ThirdPartyAccount,
     NetdiskFileCache,
-    PreviewSession,
     NetdiskOperationLog,
+    PreviewSession,
+    ThirdPartyAccount,
 )
+from cryptography.fernet import Fernet
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +96,7 @@ def get_account_tokens(db: Session, account_id: int) -> Optional[dict]:
     account = db.query(ThirdPartyAccount).filter(ThirdPartyAccount.id == account_id).first()
     if not account:
         return None
-    
+
     return {
         "access_token": _decrypt_token(account.access_token_encrypted) if account.access_token_encrypted else None,
         "refresh_token": _decrypt_token(account.refresh_token_encrypted) if account.refresh_token_encrypted else None,
@@ -116,14 +115,14 @@ def update_account_tokens(
     account = db.query(ThirdPartyAccount).filter(ThirdPartyAccount.id == account_id).first()
     if not account:
         return False
-    
+
     if access_token:
         account.access_token_encrypted = _encrypt_token(access_token)
     if refresh_token:
         account.refresh_token_encrypted = _encrypt_token(refresh_token)
     if token_expires_at:
         account.token_expires_at = token_expires_at
-    
+
     account.updated_at = datetime.now(timezone.utc)
     db.commit()
     return True
@@ -147,7 +146,7 @@ def deactivate_account(db: Session, account_id: int) -> bool:
     account = db.query(ThirdPartyAccount).filter(ThirdPartyAccount.id == account_id).first()
     if not account:
         return False
-    
+
     account.is_active = False
     account.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -177,12 +176,12 @@ def set_cached_file_list(
 ) -> NetdiskFileCache:
     """设置文件列表缓存（默认10分钟TTL）"""
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
-    
+
     # 先删除旧缓存
     db.query(NetdiskFileCache).filter(
         NetdiskFileCache.uk_account_fs == uk_account_fs
     ).delete()
-    
+
     cache = NetdiskFileCache(
         uk_account_fs=uk_account_fs,
         file_list=file_list,
@@ -231,7 +230,7 @@ def create_or_update_preview_session(
 ) -> PreviewSession:
     """创建或更新预览会话"""
     session = get_preview_session(db, user_id, file_id)
-    
+
     if not session:
         session = PreviewSession(
             user_id=user_id,
@@ -239,14 +238,14 @@ def create_or_update_preview_session(
             session_expires_at=datetime.now(timezone.utc) + timedelta(hours=session_ttl_hours),
         )
         db.add(session)
-    
+
     if play_position is not None:
         session.play_position = play_position
     if progress_percent is not None:
         session.progress_percent = progress_percent
     if page_number is not None:
         session.page_number = page_number
-    
+
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(session)
@@ -339,10 +338,9 @@ from contextlib import asynccontextmanager  # noqa: E402
 from typing import Any, Dict, Iterator  # noqa: E402
 
 import httpx  # noqa: E402
-
 from models import PlatformConfig  # noqa: E402
 from utils.secret_codec import seal_extra, unseal_extra  # noqa: E402
-from utils.timeutil import utcnow, to_naive_utc  # noqa: E402  统一 naive UTC 时间规范（P0-4）
+from utils.timeutil import to_naive_utc, utcnow  # noqa: E402  统一 naive UTC 时间规范（P0-4）
 
 # 从 .env 加载网盘凭证（避免密钥硬编码）
 try:

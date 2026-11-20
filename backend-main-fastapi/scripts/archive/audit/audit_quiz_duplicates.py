@@ -29,7 +29,9 @@ DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 OUT_DIR = os.path.abspath(os.path.join(BASE_DIR, "data", "diagnostics"))
 
 from services.qbank_builder import (  # noqa: E402
-    content_hash, normalize_text, similarity_ratio,
+    content_hash,
+    normalize_text,
+    similarity_ratio,
 )
 
 # 讲义/垃圾来源特征（用于「垃圾重复」判定）
@@ -306,8 +308,8 @@ def main() -> None:
     L.append("  其余条目的处置建议：")
     junk_all = sum(1 for d in detail if all(x == 1 for x in d["is_junk"]))
     L.append(f"    - 整组本来就全 is_junk=1（{junk_all} 组）→ 无需去重动作，保持隔离即可")
-    L.append(f"    - 至少一条 is_junk=0 的组 → 冗余条建议 is_junk=1 而非真删（可回滚、可追溯）")
-    L.append(f"    - 保留 is_junk=0 且有 answer 的那条；若组内全无 answer，保留任一条仅去冗余")
+    L.append("    - 至少一条 is_junk=0 的组 → 冗余条建议 is_junk=1 而非真删（可回滚、可追溯）")
+    L.append("    - 保留 is_junk=0 且有 answer 的那条；若组内全无 answer，保留任一条仅去冗余")
     L.append("")
     L.append("  说明：不建议物理 DELETE —— quiz_questions 被 knowledge_points/quiz 相关外键与")
     L.append("  学习记录(study_events)引用，物理删除会留下断链；标 is_junk=1 可回滚且前端已过滤。")

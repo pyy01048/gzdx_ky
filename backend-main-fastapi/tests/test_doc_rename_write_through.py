@@ -22,10 +22,8 @@ import importlib.util
 import os
 import sqlite3
 
-import pytest
-from sqlalchemy import text
-
 from services import doc_naming
+from sqlalchemy import text
 
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 
@@ -324,8 +322,8 @@ def _kb_doc(db, file_name, file_path, kp=1):
 def test_kb_dedup_survives_rename_and_ignores_truncated_copy(db_schema):  # noqa: ARG001
     """`_find_existing_doc` 的兜底若按 file_name 认，改名后就会重复入库。"""
     from database import SessionLocal
-    from services.smart_ingest import _find_existing_doc, _trunc_copy_dir
     from models import Document
+    from services.smart_ingest import _find_existing_doc, _trunc_copy_dir
 
     db = SessionLocal()
     made = []
@@ -365,7 +363,7 @@ def test_netdisk_dedup_survives_rename(db_schema, tmp_path, monkeypatch):  # noq
     """#27 之后 file_name 不等于网盘原名，只按名字去重会把同一文件再下一遍。"""
     import asyncio
 
-    import routers.netdisk as nd
+    import routers.platform.netdisk as nd
     from database import SessionLocal
     from models import Document, NetdiskFile
 
@@ -516,7 +514,7 @@ def test_netdisk_dedup_does_not_skip_a_different_file(db_schema, tmp_path, monke
     前端还拿到它的 id —— 网盘里真正那个文件永远进不了库。"""
     import asyncio
 
-    import routers.netdisk as nd
+    import routers.platform.netdisk as nd
     from database import SessionLocal
     from models import Document, NetdiskFile
 

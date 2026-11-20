@@ -1,4 +1,5 @@
 import sqlite3
+
 con = sqlite3.connect(r'D:\平台\database\kaoyan.db')
 
 print('=== 1. seed 伪题（id<=7，AI凭空生成）===')
@@ -26,7 +27,7 @@ print('=== 5. 题目知识点关联 ===')
 print('  quiz_questions.knowledge_point 非空:', con.execute("select count(*) from quiz_questions where knowledge_point is not null and trim(knowledge_point)<>''").fetchone()[0])
 try:
     print('  question_knowledge_link:', con.execute("select count(*) from question_knowledge_link").fetchone()[0])
-except Exception as e:
+except Exception:
     print('  question_knowledge_link: 无表')
 
 print()

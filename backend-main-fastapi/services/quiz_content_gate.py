@@ -165,7 +165,7 @@ def question_signature(content: Any, answer: Any = None) -> str:
     """
     c = normalize_dedup(content)
     a = normalize_dedup(answer) or "<noans>"
-    return hashlib.md5(f"{c}\x1f{a}".encode("utf-8")).hexdigest()[:16]
+    return hashlib.md5(f"{c}\x1f{a}".encode()).hexdigest()[:16]
 
 
 def stem_signature(content: Any) -> str:
@@ -328,7 +328,7 @@ def detect_stem_similarity_alert(
 _TRUTHY = {"1", "true", "on", "yes", "y", "t"}
 _FALSY = {"0", "false", "off", "no", "n", "f"}
 
-GATE_STATS: "Counter[str]" = Counter()
+GATE_STATS: Counter[str] = Counter()
 _STATS_LOCK = threading.Lock()
 
 

@@ -4,14 +4,16 @@
 算法与 scripts/fill_kb_docs_and_kps.py 的 token_count() 保持一致：
     汉字算 1 token，连续字母数字/下划线算 1 token，其余标点不计。
 """
-import os
 import sys
-import psycopg
 
-DB_CONFIG = dict(
-    host="127.0.0.1", port=5432, user="kaoyan",
-    password="kaoyan_dev_2026", dbname="kaoyan",
-)
+import psycopg
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env
 
 
 def token_count(text: str) -> int:
@@ -74,7 +76,7 @@ def main() -> int:
         positive = cur.fetchone()[0]
         cur.execute("SELECT COUNT(*) FROM knowledge_chunks")
         total = cur.fetchone()[0]
-        print(f"\n=== 结果 ===")
+        print("\n=== 结果 ===")
         print(f"总块数: {total}")
         print(f"token_count>0: {positive}")
         print(f"token_count=0/null 剩余: {remain}")

@@ -21,11 +21,11 @@
     python lora_finetune.py --stage ollama
 """
 
-import sys
-import os
-import json
 import argparse
 import datetime
+import json
+import os
+import sys
 
 # Windows 控制台默认 GBK，打印 ✓/中文进度会直接 UnicodeEncodeError 让训练白跑一轮
 for _s in (sys.stdout, sys.stderr):
@@ -182,16 +182,16 @@ def train_lora(data_dir: str = None, output_dir: str = None):
 
     try:
         import torch
+        from datasets import load_dataset
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
-            TrainingArguments,
-            Trainer,
-            DataCollatorForSeq2Seq,
             BitsAndBytesConfig,
+            DataCollatorForSeq2Seq,
+            Trainer,
+            TrainingArguments,
         )
-        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-        from datasets import load_dataset
     except ImportError as e:
         print(f"✗ 缺少依赖库: {e}")
         print("请先安装：pip install torch transformers peft datasets accelerate trl bitsandbytes")
@@ -438,8 +438,8 @@ def merge_model(data_dir: str = None, output_dir: str = None):
 
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
         from peft import PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as e:
         print(f"✗ 缺少依赖库: {e}")
         return

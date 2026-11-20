@@ -17,16 +17,15 @@ import time
 import urllib.request
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
 from database import get_db
+from fastapi import APIRouter, Depends, HTTPException
 from models import Document
-from services.document_parser import DocumentParser
+from pydantic import BaseModel
 from services.doc_naming import apply_display_name
+from services.document_parser import DocumentParser
 from services.kb_service import has_searchable_chunks, ingest_document, ingest_text
 from services.smart_ingest import gate_for_write, is_self_produced
+from sqlalchemy.orm import Session
 from utils.security import require_admin
 
 router = APIRouter(prefix="/api/imports", tags=["imports"], dependencies=[Depends(require_admin)])

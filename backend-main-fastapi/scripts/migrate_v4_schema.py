@@ -13,11 +13,11 @@
 
 from __future__ import annotations
 
+import datetime
 import os
 import shutil
 import sqlite3
 import sys
-import datetime
 
 sys.stdout.reconfigure(encoding="utf-8")
 

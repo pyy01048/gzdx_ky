@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """清理后完整性校验：确认没误伤真题/题库/词汇书，且核心数据仍在。"""
+import os
+import sqlite3
+import sys
 from pathlib import Path
-import sqlite3, os, sys, re
+
 sys.stdout.reconfigure(encoding="utf-8")
 
 # 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）

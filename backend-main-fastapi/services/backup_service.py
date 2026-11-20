@@ -171,9 +171,8 @@ def _run(cmd: list[str], password: str | None = None) -> subprocess.CompletedPro
 
 def _live_table_count() -> int | None:
     """当前 PG 库 public schema 的基表数——备份完整性的对照锚点。"""
-    from sqlalchemy import text
-
     from core.db_session import engine
+    from sqlalchemy import text
 
     try:
         with engine.connect() as conn:
@@ -472,7 +471,7 @@ def restore_backup(backup_path: str) -> bool:
         print(f"[backup] 备份文件不存在: {backup_path}")
         return False
     if not _is_valid_backup(backup_path):
-        print(f"[backup] 恢复中止：备份文件未通过校验，拒绝覆盖真库")
+        print("[backup] 恢复中止：备份文件未通过校验，拒绝覆盖真库")
         return False
 
     ensure_backup_dir()

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""研招网采集覆盖率实测脚本（关键词穷举版）。
+r"""研招网采集覆盖率实测脚本（关键词穷举版）。
 
 目标：
 1) 调用改进后的 `fetch_schools(省码, '08')` 遍历全部 31 省，统计每省抓到多少所；
@@ -18,7 +18,7 @@ from pathlib import Path
 BACKEND = Path(r"D:\平台\backend-main-fastapi")
 sys.path.insert(0, str(BACKEND))
 
-from services.kaoyan.spider_yz import fetch_schools, PROVINCES, check_robots  # noqa: E402
+from services.kaoyan.spider_yz import PROVINCES, check_robots, fetch_schools  # noqa: E402
 
 DB_PATH = Path(r"D:\平台\database\kaoyan.db")
 OUT_JSON = Path(__file__).parent / "yz_units_v2.json"

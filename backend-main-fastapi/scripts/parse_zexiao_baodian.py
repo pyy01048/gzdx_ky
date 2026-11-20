@@ -23,7 +23,6 @@
 }
 """
 import json
-import os
 import re
 
 JSONL = r'D:\平台\data_sources\kaoyan-zexiao-baodian\text_pages.jsonl'

@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import io
 import os
 import sys
 from datetime import datetime
@@ -49,7 +48,7 @@ AUDIT_DIR = os.path.join(ROOT, "docx", "_audit")
 
 def load_plan(path: str) -> List[dict]:
     """CSV 里「有拟改名且 reason 为空」的行才是被批的条目；collision 行 reason 非空。"""
-    with io.open(path, "r", encoding="utf-8-sig", newline="") as fh:
+    with open(path, "r", encoding="utf-8-sig", newline="") as fh:
         return [r for r in csv.DictReader(fh)
                 if (r.get("proposed") or "").strip() and not (r.get("reason") or "").strip()]
 

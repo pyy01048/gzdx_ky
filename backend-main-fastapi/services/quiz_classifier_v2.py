@@ -26,7 +26,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     import numpy as np
@@ -49,7 +49,9 @@ VALID_TYPES = {"single", "multiple", "judge", "fill", "calc", "essay", "draw"}
 # 数据复用：v1 的关键词规则（科目/知识点映射），直接复用其词表避免漂移
 # --------------------------------------------------------------------------- #
 from services.quiz_autoclassify import (  # noqa: E402
-    _SUBJECT_RULES, _KP_RULES, _llm_chat_with_budget,
+    _KP_RULES,
+    _SUBJECT_RULES,
+    _llm_chat_with_budget,
 )
 
 # 题型结构特征（复用 v1 的正则思路，但带置信度）
@@ -136,7 +138,7 @@ def _load_vector_assets(db):
     改读自建的 ``quiz_subject_centroids``（原始 SQL 管理，bytea 向量）。
     """
     try:
-        from services.chunk_classifier import encode_texts, vector_scores
+        from services.chunk_classifier import encode_texts
         if db is None:
             return None, None
         centroids = _load_quiz_centroids(db)
@@ -148,7 +150,7 @@ def _load_vector_assets(db):
         return None, None
 
 
-def _load_quiz_centroids(db) -> Dict[str, "np.ndarray"]:
+def _load_quiz_centroids(db) -> Dict[str, np.ndarray]:
     """从 quiz_subject_centroids 读取各科目质心（缓存于进程内）。
 
     注意：返回的字典**只含** subject->向量，绝不可混入加载标记等杂项键，

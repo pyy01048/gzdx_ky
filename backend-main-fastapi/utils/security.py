@@ -20,10 +20,9 @@ from types import SimpleNamespace
 from typing import Optional
 
 import jwt
+from database import get_db
 from fastapi import Depends, Request, status
 from sqlalchemy.orm import Session
-
-from database import get_db
 from utils.exceptions import BusinessException, ErrorCode
 
 logger = logging.getLogger(__name__)

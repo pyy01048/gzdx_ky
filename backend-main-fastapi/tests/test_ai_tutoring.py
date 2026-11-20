@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import pytest
-
 from database import Base, SessionLocal, engine
+from main import app
 from models import QuizQuestion
 from tests.asgi_client import ASGIClient
-from main import app
 
 client = ASGIClient(app)
 

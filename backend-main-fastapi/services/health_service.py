@@ -62,7 +62,7 @@ def _is_pg_conn(conn) -> bool:
         from services.dbapi_compat import is_postgres
 
         raw = conn
-        if hasattr(conn, "connection") and callable(getattr(conn, "connection")):
+        if hasattr(conn, "connection") and callable(conn.connection):
             raw = conn.connection()
         return is_postgres(raw)
     except Exception:  # noqa: BLE001
@@ -81,9 +81,9 @@ def _existing_tables(conn) -> set:
 
         # Session/Connection → 取底层 DBAPI；注意 connection 可能是**方法**
         raw = conn
-        if hasattr(conn, "connection") and callable(getattr(conn, "connection")):
+        if hasattr(conn, "connection") and callable(conn.connection):
             raw = conn.connection()
-        if hasattr(raw, "connection") and not callable(getattr(raw, "connection")):
+        if hasattr(raw, "connection") and not callable(raw.connection):
             raw = raw.connection
         return set(list_tables(raw))
     except Exception:  # noqa: BLE001

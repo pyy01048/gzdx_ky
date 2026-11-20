@@ -21,6 +21,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import psycopg  # noqa: E402
+
 from pipeline.config import pg_database_url, read_only_sqlite_uri  # noqa: E402
 from pipeline.migrate_all import TABLES  # noqa: E402
 

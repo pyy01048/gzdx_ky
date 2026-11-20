@@ -39,7 +39,8 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from core.db_session import SessionLocal  # noqa: E402
-from core.models import Subject as CoreSubject, SubjectConfig as CoreSubjectConfig  # noqa: E402
+from core.models import Subject as CoreSubject  # noqa: E402
+from core.models import SubjectConfig as CoreSubjectConfig
 from services import taxonomy  # noqa: E402
 
 #: 待补种的目标 subject_id 列表（经诊断确认的 14 个缺失科目）
@@ -56,7 +57,7 @@ def _backup_subject_configs() -> str:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = os.path.join(BACKUP_DIR, f"subject_configs_backup_before_p14_{stamp}.sql")
     env = dict(os.environ)
-    env["PGPASSWORD"] = env.get("PGPASSWORD", "kaoyan_dev_2026")
+    env["PGPASSWORD"] = os.environ["PG_PASSWORD"]  # 口令来自 .env（scripts/_conn 加载）
     cmd = [
         "D:/pgsql/pgenv/Library/bin/pg_dump",
         "-h", "127.0.0.1", "-U", "kaoyan", "-d", "kaoyan",

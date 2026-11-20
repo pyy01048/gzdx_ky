@@ -14,21 +14,23 @@ error_linker.weak_knowledge_points（今日薄弱点与智能组卷的考点依�
 from __future__ import annotations
 
 import datetime
-import random
 from typing import List, Optional
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query
+from database import get_db
+from fastapi import APIRouter, Depends, HTTPException
+from models import (
+    ErrorRecord,
+    QuizQuestion,
+    StudyEvent,
+    StudyStats,
+    User,
+)
 from pydantic import BaseModel, Field
+from services import error_linker, kp_mastery, review_service
+from services.dashboard_service import DashboardService
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-
-from database import get_db
-from models import (
-    ErrorRecord, Goal, QuizQuestion, StudyEvent, StudyStats, User,
-)
-from services.dashboard_service import DashboardService
-from services import error_linker, kp_mastery, review_service
 from utils.scope import owner_id  # B4 行级隔离：今日引导只看本人流水
 from utils.security import current_user
 from utils.timeutil import (

@@ -33,9 +33,8 @@ import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from sqlalchemy import Integer, func
-
 from models import AnswerRecord, ErrorRecord, ReviewRecord, StudySession, Task
+from sqlalchemy import Integer, func
 from utils.timeutil import (
     day_bucket_expr,
     local_today,

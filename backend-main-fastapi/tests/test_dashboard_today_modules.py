@@ -66,8 +66,8 @@ def _by_module(payload):
 
 
 def test_module_set_and_no_invented_percent(seeded):
-    from services.dashboard_service import DashboardService
     from database import SessionLocal
+    from services.dashboard_service import DashboardService
 
     db = SessionLocal()
     try:
@@ -85,8 +85,8 @@ def test_module_set_and_no_invented_percent(seeded):
 
 def test_modules_without_scheduler_report_null_with_note(seeded):
     """刷题/真题没有排程源：due=null + not_tracked + 说明缺的是哪一块。"""
-    from services.dashboard_service import DashboardService
     from database import SessionLocal
+    from services.dashboard_service import DashboardService
 
     db = SessionLocal()
     try:
@@ -104,8 +104,8 @@ def test_modules_without_scheduler_report_null_with_note(seeded):
 
 def test_scheduled_modules_count_only_due(seeded):
     """到期数只数真到期的：未来排程与 resolved 错题都不该进账。"""
-    from services.dashboard_service import DashboardService
     from database import SessionLocal
+    from services.dashboard_service import DashboardService
     from utils.timeutil import local_today
 
     db = SessionLocal()

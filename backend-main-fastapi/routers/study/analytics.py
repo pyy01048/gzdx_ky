@@ -10,14 +10,12 @@
 - 作文/主观题智能评分
 """
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
-from database import get_db
 from services.learning_analytics_service import LearningAnalyticsService
 from services.study_event_service import learning_summary
-
+from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])

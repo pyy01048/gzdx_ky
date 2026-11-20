@@ -2,14 +2,12 @@
 """通用题目分析引擎路由（模块1：MathLens 式结构化分析 + HTML 讲义）。"""
 
 import os
-from typing import Optional
-
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
 from database import get_db
+from fastapi import APIRouter, Depends, HTTPException
 from schemas import AnalysisRequest, LectureRequest
 from services import analysis_engine
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 

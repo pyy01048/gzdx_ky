@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """只读盘点：低价值文档（答题卡/打卡/计划表等）现状。不做任何删除。"""
-import os, sys, sqlite3, json
+import json
+import os
+import sqlite3
 
 DB = r"D:\平台\database\kaoyan.db"
 KB = r"D:\平台\knowledge_base"

@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -23,15 +22,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from pipeline import verify as ver                      # noqa: E402
-from pipeline.config import (                           # noqa: E402
-    DEFAULT_ACCURACY_THRESHOLD, DEFAULT_LIMIT, DEFAULT_SAMPLE_SIZE, DEFAULT_SEED,
+from pipeline import watermark as wm  # noqa: E402
+from pipeline.classifier import classify_origin, normalize_subject  # noqa: E402
+from pipeline.config import (  # noqa: E402
+    DEFAULT_ACCURACY_THRESHOLD,
+    DEFAULT_LIMIT,
+    DEFAULT_SAMPLE_SIZE,
+    DEFAULT_SEED,
     read_only_sqlite_uri,
 )
-from pipeline.etl_sqlite_to_pg import run_etl           # noqa: E402
-from pipeline.question_schema import normalize_options, validate_question, CanonicalQuestion  # noqa: E402
-from pipeline import watermark as wm                    # noqa: E402
-from pipeline.classifier import classify_origin, normalize_subject  # noqa: E402
+from pipeline.etl_sqlite_to_pg import run_etl  # noqa: E402
+from pipeline.question_schema import CanonicalQuestion, normalize_options, validate_question  # noqa: E402
 
 __all__ = ["build_parser", "selftest", "print_report", "main"]
 
@@ -190,7 +191,6 @@ def show_samples(n: int, db_path: str | None = None) -> int:
     """
     import sqlite3
 
-    from pipeline.config import read_only_sqlite_uri
 
     bundle = wm.load_rules()
     conn = sqlite3.connect(read_only_sqlite_uri(db_path), uri=True)

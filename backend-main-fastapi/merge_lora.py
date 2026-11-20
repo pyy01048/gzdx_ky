@@ -4,9 +4,9 @@
 使用本地 ModelScope 缓存的基础模型，避免 HuggingFace 网络问题。
 """
 
+import datetime
 import os
 import sys
-import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -39,8 +39,8 @@ def merge_lora():
 
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
         from peft import PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as e:
         print(f"✗ 缺少依赖库: {e}")
         print("请先安装：pip install torch transformers peft")

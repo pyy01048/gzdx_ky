@@ -11,17 +11,16 @@
 """
 from __future__ import annotations
 
+import collections
 import os
 import re
-import collections
 
+from models import Document, KnowledgeChunk
 from sqlalchemy.orm import Session
 
-from services.dbapi_compat import wrap_conn
-from models import Document, KnowledgeChunk
 from services import search_service
+from services.dbapi_compat import wrap_conn
 from services.delete_guard import require_physical_delete_enabled
-
 
 # --------------------------------------------------------------------------- #
 # 学科分类
@@ -1211,4 +1210,3 @@ def scan_root_and_archive(
 def scan_root_preview(db: Session, *, kb_root: str | None = None) -> dict:
     """只读预览：不落盘、不写库，返回与 :func:`scan_root_and_archive` 同结构的统计。"""
     return scan_root_and_archive(db, kb_root=kb_root, dry_run=True)
-

@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """测试文档152 OCR 前几页，估算全量耗时。"""
-import os, sys, time, tempfile
+import os
+import sys
+import tempfile
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 p = r'D:/平台/knowledge_base/模拟电子技术/教材/【电子技术基础-模拟部分】康华光 第6版.pdf'

@@ -19,9 +19,8 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import text
-
 from services.delete_guard import ENV_ENABLED_VALUE, ENV_FLAG, PhysicalDeleteBlocked
+from sqlalchemy import text
 
 BODY = "第 1 章 逻辑代数基础\n" + "逻辑代数的基本运算与公式。" * 40
 

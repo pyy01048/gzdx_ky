@@ -11,10 +11,10 @@
 from __future__ import annotations
 
 import os
-import sys
-import time
-import tempfile
 import shutil
+import sys
+import tempfile
+import time
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
@@ -27,10 +27,9 @@ CKPT_PATH = os.path.join(BASE_DIR, "data", "ocr_152_checkpoint.txt")
 LOG_PATH = os.path.join(BASE_DIR, "data", "ocr_152_progress.log")
 SUBJECT = "模拟电子技术"
 
-DB_CONFIG = dict(
-    host="127.0.0.1", port=5432, user="kaoyan",
-    password="kaoyan_dev_2026", dbname="kaoyan",
-)
+from scripts._conn import dsn
+
+DB_CONFIG = dsn()  # 口令来自 .env
 
 RENDER_DPI = 200
 PDF_MAX_SIDE_PX = 4000  # 与 services/smart_ingest 的 PDF_MAX_SIDE_PX 保持一致
@@ -248,8 +247,8 @@ def write_to_db(text: str):
 
         # 补向量（增量，只处理缺向量的块）
         log("开始为文档152的分块补向量...")
-        from pipeline.build_vectors import main as build_vectors_main
         import psycopg as _pg
+        from pipeline.build_vectors import main as build_vectors_main
 
         # build_vectors 是全库增量，会包含文档152的新块。跑它即可。
         rc = build_vectors_main([])

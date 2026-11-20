@@ -2,7 +2,6 @@
 """只读探针：题库假数据来源 + 各写入路径的实际产出。绝不写库（mode=ro）。"""
 import os
 import sqlite3
-import sys
 
 DB = os.path.join("D:", os.sep, "平台", "database", "kaoyan.db")
 before = os.stat(DB)

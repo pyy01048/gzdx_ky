@@ -20,9 +20,8 @@ from __future__ import annotations
 
 from typing import Iterator
 
-from sqlalchemy.orm import DeclarativeMeta
-
 from .models import (  # noqa: F401  —— 显式重导出，保证 from core.pg_models import X 可用
+    NAMING_CONVENTION,
     AIProvider,
     AnnotationSample,
     AnswerCandidate,
@@ -62,7 +61,6 @@ from .models import (  # noqa: F401  —— 显式重导出，保证 from core.p
     Milestone,
     Misconception,
     MonthPlan,
-    NAMING_CONVENTION,
     NetdiskFile,
     Paper,
     PaperQuestion,
@@ -85,8 +83,8 @@ from .models import (  # noqa: F401  —— 显式重导出，保证 from core.p
     SubjectDisciplineLink,
     SubjectPrototype,
     Task,
-    TimestampMixin,
     TimestampedBigIntPKMixin,
+    TimestampMixin,
     UniversityLegacy,
     WeekPlan,
     Word,

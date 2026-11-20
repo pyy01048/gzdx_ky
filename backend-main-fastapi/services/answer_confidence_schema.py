@@ -117,7 +117,7 @@ def ensure_answer_confidence_schema(conn: sqlite3.Connection) -> dict:
                 name = stmt.split("(", 1)[0].replace("CREATE TABLE IF NOT EXISTS", "").strip()
                 created.append(name)
         conn.commit()
-    except sqlite3.Error as e:  # pragma: no cover - 依赖 SQLite 行为
+    except sqlite3.Error:  # pragma: no cover - 依赖 SQLite 行为
         conn.rollback()
         logger.exception("答案置信度 Schema 创建失败")
         raise

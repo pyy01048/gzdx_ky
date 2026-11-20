@@ -4,20 +4,18 @@
 支持 OpenAI 兼容接口的 SSE 流式输出与本地知识库 RAG 检索。
 """
 
-import asyncio
 import json
 import os
 import re
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
-import httpx
+from models import AIProvider, KnowledgeChunk, KnowledgePoint
 from sqlalchemy.orm import Session
+from utils.http_client import get_async_client
 
-from models import AIProvider, Document, KnowledgePoint, KnowledgeChunk
 from services import search_service
 from services.embedding_service import EmbeddingService
-from utils.http_client import get_async_client
 
 # --------------------------------------------------------------------------- #
 # Ollama 可用性探测的模块级共享缓存（2026-10-14）
@@ -262,7 +260,6 @@ class AIService:
             时才重新探测。用于"用户点了检测按钮"这类既要新鲜、
             又不能每次都付一次超时的场景。
         """
-        import os
         import time
 
         now = time.time()

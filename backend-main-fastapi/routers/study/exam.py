@@ -3,18 +3,17 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-
-from services.dbapi_compat import wrap_conn
 from database import get_db
+from fastapi import APIRouter, Depends, HTTPException
+from models import User
+from pydantic import BaseModel
 from services import exam_builder
+from services.dbapi_compat import wrap_conn
 from services.exam_report import session_report
 from services.module_a_schema import ensure_module_a_schema
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 from utils.security import current_user
-from models import User
 
 router = APIRouter(prefix="/api/exam", tags=["组卷模考"])
 

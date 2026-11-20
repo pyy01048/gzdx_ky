@@ -60,8 +60,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
-import sqlalchemy
 from sqlalchemy.orm import Session
+
 from services.dbapi_compat import wrap_conn  # noqa: E402  PG/SQLite 双底座连接适配
 
 logger = logging.getLogger("chunk_classifier")
@@ -246,8 +246,8 @@ def ensure_chunk_label_columns(db) -> List[str]:
 def subject_candidates() -> Tuple[str, ...]:
     """chunk 学科候选 = CORE_SUBJECTS ∪ DOC_LOCK_ALLOWLIST（归一、去压平标签）。"""
     try:
-        from services.taxonomy import CORE_SUBJECTS
         from services.doc_lock_subjects import DOC_LOCK_ALLOWLIST
+        from services.taxonomy import CORE_SUBJECTS
     except Exception:  # noqa: BLE001
         return ("数字电子技术", "模拟电子技术", "数学", "英语", "政治", "真题综合")
     cands = []
@@ -337,7 +337,8 @@ def encode_texts(texts: Sequence[str]) -> Optional[np.ndarray]:
     """bge 批量编码（同步）；模型不可用返回 None → 调用方整路降级。"""
     try:
         from services.embedding_service import (
-            generate_local_embeddings, is_local_model_available,
+            generate_local_embeddings,
+            is_local_model_available,
         )
 
         if not is_local_model_available():
@@ -383,7 +384,7 @@ def keyword_scores(file_name: str, text: str) -> Tuple[str, float]:
 # --------------------------------------------------------------------------- #
 # L3 内容语义类型：规则速判（LLM 缺席时兜底；LLM 在场时以其输出为准）
 # --------------------------------------------------------------------------- #
-_L3_RULES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
+_L3_RULES: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     ("习题", re.compile(r"(习题|练习|课后题|作业|思考题|题\s*\d|[（(]\d+[)）].{0,12}(求|证|计算)|\bA[．.、]\s*\S+.*\bB[．.、]\s*\S+.*(C[．.、]|D[．.、]))")),
     ("例题", re.compile(r"(【?例\s*[一二三四五六七八九十\d]+】?|典型题|例题)")),
     ("证明", re.compile(r"(证明如下|证\s*明[:：]|试证|求证)")),
@@ -405,7 +406,7 @@ def l3_rules(text: str) -> str:
 # --------------------------------------------------------------------------- #
 # 路3：LLM 判定（低置信兜底；一次输出三层标签）
 # --------------------------------------------------------------------------- #
-def _build_opener() -> "urllib.request.OpenerDirector":
+def _build_opener() -> urllib.request.OpenerDirector:
     """绕代理的 opener —— 同 kp_extract._build_opener，实测教训不要优化掉。"""
     return urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -448,7 +449,7 @@ _JSON_RE = re.compile(r"\{[\s\S]*\}")
 # 实测 3B 模型最爱在 reason 里写未转义的中文引号
 # （`"reason": "文本属于"生理学"范畴"`），正是它让 json.loads 报错；
 # reason 只是留痕字段，丢了不影响判定。
-_LLM_FIELD_RE: Dict[str, Tuple["re.Pattern[str]", "re.Pattern[str]"]] = {
+_LLM_FIELD_RE: Dict[str, Tuple[re.Pattern[str], re.Pattern[str]]] = {
     k: (re.compile('"' + k + r'"\s*:\s*"([^"]*)"'),
          re.compile('"' + k + r'"\s*:\s*([^,\n}\s][^,\n}]*)'))
     for k in ("l1_subject", "l2_chapter", "l3_content_type", "confidence")

@@ -12,14 +12,13 @@
 from __future__ import annotations
 
 import os
-import time
 from typing import List, Optional, Tuple
 
 import numpy as np
+from models import AIProvider
 from sqlalchemy.orm import Session
 
 from services.dbapi_compat import wrap_conn
-from models import AIProvider, KnowledgeChunk
 
 # 离线引擎配置
 OFFLINE_DIM = 512  # 与 bge-small-zh 对齐

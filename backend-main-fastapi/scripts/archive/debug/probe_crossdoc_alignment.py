@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sqlite3
 import sys
 import time
@@ -37,7 +36,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 
 from classify_noanswer_abc import (  # noqa: E402
-    classify, norm, probe_align, extract_answer_after,
+    classify,
+    extract_answer_after,
+    norm,
+    probe_align,
 )
 
 #: 归一化后长度 >= 该值的文档才参与跨文档检索（太短的文档命中率极低且拖慢速度）

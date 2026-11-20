@@ -11,12 +11,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
-from database import get_db
 from services import confidence_service
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/conflicts", tags=["冲突复核台"])
 

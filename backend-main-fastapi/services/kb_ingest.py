@@ -20,11 +20,10 @@ import json
 import os
 import shutil
 import time
-from typing import Any, Dict, List, Optional
-
-from sqlalchemy.orm import Session
+from typing import Any, Dict, List
 
 from models import Document
+from sqlalchemy.orm import Session
 
 # --------------------------------------------------------------------------- #
 # 路径常量（一律经 services.kb_service.resolve_kb_root 推导）

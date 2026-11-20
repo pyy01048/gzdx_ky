@@ -55,7 +55,6 @@ WAL 注意事项
 from __future__ import annotations
 
 import logging
-import sqlite3
 from typing import Any, Dict, List, Optional
 
 from utils.timeutil import naive_utc_iso

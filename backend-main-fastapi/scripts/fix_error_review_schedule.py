@@ -39,7 +39,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
-from services.backup_service import create_backup, DB_PATH  # noqa: E402
+from services.backup_service import DB_PATH, create_backup  # noqa: E402
 from services.db_retry import exec_retry  # noqa: E402
 
 #: 与 services/review_scheduler.ReviewScheduler.first_review_at 相同的分档口径

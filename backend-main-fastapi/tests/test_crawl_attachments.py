@@ -12,8 +12,8 @@ if BACKEND_DIR not in sys.path:
 
 from services.crawl.attachments import (  # noqa: E402
     STATUS_FAILED,
-    STATUS_PARSED,
     STATUS_PARSE_SKIPPED,
+    STATUS_PARSED,
     STATUS_STORED,
     AttachmentPipeline,
     storage_root,

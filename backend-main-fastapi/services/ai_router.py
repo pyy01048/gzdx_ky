@@ -6,9 +6,10 @@ V3.0 AI 智能路由网关
 - 资料题 → RAG检索 + 在线API，基于本地知识库精准回答
 - 敏感内容 → 拦截或转人工
 """
-import re
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+import re
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy.orm import Session
 from utils.http_client import get_async_client
 
@@ -494,7 +495,6 @@ class AIRouter:
         2. **超时要给够** —— Qwen3 是思考模型，实测单问 60-320 秒，
            原来的 120 秒经常不够。
         """
-        import os
 
         from services.llm_output import extract_answer
 

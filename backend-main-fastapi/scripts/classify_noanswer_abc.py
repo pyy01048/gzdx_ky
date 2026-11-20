@@ -35,8 +35,11 @@ sys.path.insert(0, BASE_DIR)
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 
 from services.quiz_content_gate import (  # noqa: E402
-    admit, has_answer, looks_like_question, looks_like_answer_body,
-    has_ppt_residue, is_mojibake, mostly_symbol, REAL_SRC, LECTURE_SRC,
+    admit,
+    has_ppt_residue,
+    is_mojibake,
+    looks_like_answer_body,
+    mostly_symbol,
 )
 
 # --------------------------------------------------------------------------- #

@@ -13,8 +13,8 @@ import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import text
 from sqlalchemy.orm import Session
+
 from services.dbapi_compat import wrap_conn  # noqa: E402  PG/SQLite 双底座连接适配
 
 logger = logging.getLogger(__name__)

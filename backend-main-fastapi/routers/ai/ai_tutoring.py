@@ -23,19 +23,18 @@ import json as _json
 import logging
 from typing import Dict, List, Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
 from services.dbapi_compat import wrap_conn
-from database import get_db
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 from models import QuizQuestion, User
 from services import blind_spot_pool
 from services.ai_service import AIService
 from services.error_analyzer import _guess_category, _practice_questions
-from services.quiz_query import source_kind_of, normalize_source_kind
+from services.quiz_query import normalize_source_kind, source_kind_of
 from utils.scope import owner_id  # B4 行级隔离：写入归属
 from utils.security import current_user
 

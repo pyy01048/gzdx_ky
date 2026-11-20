@@ -8,11 +8,11 @@ from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-
 from database import SessionLocal
 from models import NetdiskFile, PlatformConfig
-from services.review_scheduler import ReviewScheduler
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+from services.review_scheduler import ReviewScheduler
 
 logger = logging.getLogger("kaoyan.scheduler")
 
@@ -46,8 +46,8 @@ def acquire_singleton_lock() -> bool:
     global _singleton_conn
     if _singleton_conn is not None:
         return True
-    from sqlalchemy import text
     from core.db_session import engine
+    from sqlalchemy import text
 
     if engine.dialect.name != "postgresql":
         return True
@@ -328,7 +328,7 @@ def _notice_alert_job() -> None:
     时区：job 用显式 tzinfo 的 CronTrigger（不用字符串），见模块头部说明，
     规避 Windows 缺 tzdata 导致的静默不注册。
     """
-    from services.kaoyan.notice_alert import scan_alerts, cn_now
+    from services.kaoyan.notice_alert import cn_now, scan_alerts
 
     db = SessionLocal()
     try:

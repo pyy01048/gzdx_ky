@@ -50,7 +50,6 @@ import random
 import re
 import sqlite3
 import ssl
-import sys
 import time
 import urllib.error
 import urllib.parse

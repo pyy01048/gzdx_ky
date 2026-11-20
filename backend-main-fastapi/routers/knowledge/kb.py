@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import os
 
+from database import SessionLocal, get_db
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy.orm import Session
-
-from database import get_db, SessionLocal
 from services import kb_pipeline
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/kb", tags=["知识库健康"])
 
@@ -173,11 +172,10 @@ async def kb_ingest_status(db: Session = Depends(get_db)):
     6.7s 的全局假死，全站接口跟着卡。这里用 ``run_in_threadpool`` 把两段快照
     挪到工作线程：慢的只有本请求自己，事件循环照常服务其它连接。
     """
-    from starlette.concurrency import run_in_threadpool
-
-    from services.ocr_router import get_ocr_router
-    from services.model_gateway import get_gateway
     from services import kb_ingest
+    from services.model_gateway import get_gateway
+    from services.ocr_router import get_ocr_router
+    from starlette.concurrency import run_in_threadpool
 
     def _snapshots() -> tuple:
         # 同一快照线程内顺序执行：gateway.status 会用到 db 会话，

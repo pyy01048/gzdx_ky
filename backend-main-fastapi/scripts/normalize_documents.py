@@ -27,10 +27,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import text  # noqa: E402
-
 from database import SessionLocal  # noqa: E402
 from services.content_sanitizer import document_has_page_markers, sanitize_text  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 
 def _clean_doc(text):

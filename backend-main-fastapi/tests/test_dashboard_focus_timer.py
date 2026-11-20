@@ -19,7 +19,6 @@ from __future__ import annotations
 import datetime
 
 import pytest
-
 from conftest import TEST_USER_ID
 from models import StudySession
 from services.study_calendar import (

@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import json
 import re
-from services.dbapi_compat import wrap_conn
-from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 from typing import Any, Dict, List, Optional
+
+from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
+
+from services.dbapi_compat import wrap_conn
 
 CATEGORIES = ("概念混淆", "审题失误", "计算错误", "记忆缺失", "方法没想到", "时间不足")
 DEFAULT_CATEGORY = "概念混淆"

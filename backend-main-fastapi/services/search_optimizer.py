@@ -6,15 +6,15 @@ V3.0 检索算法优化模块
 - 批量检索
 - 增量索引更新
 """
+import logging
 import re
 import time
-import logging
-from services.dbapi_compat import wrap_conn
-from typing import Any, Dict, List, Optional, Tuple
 from collections import OrderedDict
-from functools import wraps
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
+
+from services.dbapi_compat import wrap_conn
 
 logger = logging.getLogger(__name__)
 

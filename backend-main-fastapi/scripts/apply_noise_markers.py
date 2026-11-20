@@ -16,12 +16,12 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import os
 import sqlite3
 import sys
 from datetime import datetime
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

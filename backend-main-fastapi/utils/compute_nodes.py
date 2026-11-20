@@ -66,8 +66,9 @@ def probe_nodes(timeout: float | None = None) -> List[Dict[str, Any]]:
             timeout = float(os.getenv("COMPUTE_PROBE_TIMEOUT", "") or 2.0)
         except ValueError:
             timeout = 2.0
-    import httpx
     from concurrent.futures import ThreadPoolExecutor
+
+    import httpx
 
     headers = service_headers()
     limits = httpx.Timeout(timeout, connect=min(timeout, 1.5))

@@ -27,10 +27,11 @@ ALTER 增强：
 from __future__ import annotations
 
 import logging
-from services.dbapi_compat import wrap_conn
 from typing import Optional
 
 from sqlalchemy.orm import Session
+
+from services.dbapi_compat import wrap_conn
 
 logger = logging.getLogger(__name__)
 
@@ -424,7 +425,7 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
                 "documents": altered_d,
             },
         }
-    except Exception as e:
+    except Exception:
         db.rollback()
         logger.exception("模块 A Schema 升级失败")
         raise
@@ -517,7 +518,7 @@ def ensure_blueprints(db: Optional[Session] = None) -> int:
             added += 1
         db.commit()
         return added
-    except Exception as e:
+    except Exception:
         db.rollback()
         logger.exception("预置蓝图写入失败")
         raise
@@ -528,6 +529,7 @@ def ensure_blueprints(db: Optional[Session] = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     import json
+
     from database import SessionLocal
 
     db = SessionLocal()

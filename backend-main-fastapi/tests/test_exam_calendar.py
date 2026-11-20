@@ -12,7 +12,6 @@ import datetime
 from types import SimpleNamespace
 
 import pytest
-
 from services import exam_calendar as ec
 
 

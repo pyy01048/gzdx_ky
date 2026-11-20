@@ -5,12 +5,10 @@
 - 错误日志单独文件
 - 统一日志格式
 """
+import logging
 import os
 import sys
-import logging
 from logging.handlers import TimedRotatingFileHandler
-from datetime import datetime
-
 
 # 日志目录
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "logs")

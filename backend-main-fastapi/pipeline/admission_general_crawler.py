@@ -26,19 +26,25 @@ import os
 import re
 import statistics
 import sys
-import traceback
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import text  # noqa: E402
-
 from database import SessionLocal  # noqa: E402
 from models import KaoyanAdmission  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+
 from pipeline.notice_admission_crawler import (  # noqa: E402
-    TITLE_OK, TITLE_NO, UA, fetch, polite, _decode_html,
-    find_table_attachments, parse_xlsx, parse_html_tables, _extract_table,
+    TITLE_NO,
+    TITLE_OK,
+    _decode_html,
+    _extract_table,
+    fetch,
+    find_table_attachments,
+    parse_html_tables,
+    parse_xlsx,
+    polite,
 )
 
 REPORT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ocr_cache")

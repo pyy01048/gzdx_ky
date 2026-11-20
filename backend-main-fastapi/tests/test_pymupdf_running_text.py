@@ -10,10 +10,8 @@
 from __future__ import annotations
 
 import pytest
-
 from services.parsers.base import (
     BLOCK_FIGURE,
-    BLOCK_FOOTER,
     BLOCK_HEADER,
     BLOCK_PAGE_NO,
     BLOCK_TEXT,

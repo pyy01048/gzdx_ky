@@ -54,7 +54,6 @@ MANUAL_WHITELIST = {
 LIVE_DB = os.path.join(os.path.dirname(BACKEND), "database", "kaoyan.db")
 
 
-import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone

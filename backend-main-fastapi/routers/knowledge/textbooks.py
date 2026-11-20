@@ -20,11 +20,10 @@ from __future__ import annotations
 
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
-from database import get_db
 
 router = APIRouter(prefix="/api/textbooks", tags=["教材目录"])
 

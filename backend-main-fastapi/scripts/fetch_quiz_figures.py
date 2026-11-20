@@ -220,7 +220,6 @@ class Docx:
 
 def fetch_rows(qids: list[int]) -> tuple[dict[int, dict], dict[int, tuple]]:
     import psycopg
-
     from pipeline.config import pg_database_url
 
     with psycopg.connect(pg_database_url()) as conn, conn.cursor() as cur:
@@ -494,7 +493,6 @@ def main() -> int:
 
     # ---- ⑦ 写库（只写 images 一列） ----
     import psycopg
-
     from pipeline.config import pg_database_url
 
     print("=" * 122)

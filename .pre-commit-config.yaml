@@ -1,0 +1,27 @@
+# 密钥扫描 + 大文件拦截 + 通用卫生（docs/完善方案/02-密钥与敏感信息治理.md §3.3）
+# 安装：pip install pre-commit && pre-commit install
+repos:
+  # gitleaks 官方 hook 本机首次运行要拉 Go 模块编译（网络受限时拖不动），
+  # 改为本地包装脚本：有 gitleaks 可执行就扫 staged，没有就跳过（CI job 兜底）。
+  - repo: local
+    hooks:
+      - id: gitleaks-local
+        name: gitleaks（本地缺失时跳过，CI job 兜底）
+        entry: sh .githooks/gitleaks-local.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files      # >500KB 拒绝提交（挡 dump/tar.gz）
+        args: ['--maxkb=500']
+      - id: detect-private-key
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+        exclude: '\.bat$'
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+        exclude: '\.(bat|cmd)$'           # .bat 必须 CRLF（make_bats.py 校验）
+      - id: check-yaml
+        files: '^(\.pre-commit-config\.yaml|\.gitleaks\.toml|\.github/.*\.ya?ml)$'

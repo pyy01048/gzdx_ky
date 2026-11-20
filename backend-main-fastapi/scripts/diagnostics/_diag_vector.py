@@ -7,8 +7,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
 from services.quiz_classifier_v2 import (
-    _load_vector_assets,
     _keyword_decision,
+    _load_vector_assets,
 )
 
 
@@ -33,8 +33,8 @@ def main():
             print(f"\n[{gold_subj}] text={txt[:40]!r}")
             print(f"  kw -> {kw.value}({kw.confidence},{kw.source})")
             if embed_func is not None and centroids:
+                from services.chunk_classifier import vector_scores
                 from services.quiz_classifier_v2 import _vector_decision_from_embedding
-                from services.chunk_classifier import encode_texts, vector_scores
                 embs = embed_func([txt])
                 print("  embed None?", embs is None)
                 if embs is not None:

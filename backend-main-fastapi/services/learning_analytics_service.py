@@ -16,13 +16,13 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from models import AnswerRecord, ErrorRecord
 from sqlalchemy.orm import Session
+from utils.timeutil import iso_utc_z, local_today, utcnow
 
-from models import ErrorRecord, AnswerRecord
 from services import error_linker, kp_mastery
 from services.ai_service import AIService
 from services.study_calendar import day_ledger, fill_series, streak_summary
-from utils.timeutil import iso_utc_z, local_today, utcnow
 
 
 class LearningAnalyticsService:

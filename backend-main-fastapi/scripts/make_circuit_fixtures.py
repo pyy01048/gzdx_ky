@@ -7,7 +7,9 @@
   03_bridge_rectifier.png  - 桥式整流（D1-D4 + 交流源 + C1 + Rload）
 """
 from __future__ import annotations
+
 import os
+
 from PIL import Image, ImageDraw, ImageFont
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),

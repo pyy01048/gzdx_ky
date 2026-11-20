@@ -102,10 +102,8 @@ def ocr_pdf_admission(
     - 逐页累加名单行：姓名列中文名即一个学生，行带内取成绩列数字；
     - 全程不抛异常：任何一页失败只记日志继续。
     """
-    import io
 
     import pypdfium2 as pdfium
-
     from services.ocr_service import _get_engine, _reserve_project_utils
 
     _reserve_project_utils()

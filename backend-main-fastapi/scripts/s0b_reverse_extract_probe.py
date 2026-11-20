@@ -23,7 +23,6 @@ OUT_DIR = os.path.abspath(os.path.join(BASE_DIR, "data", "diagnostics"))
 import sqlite3  # noqa: E402
 
 from services.qbank_builder import extract_questions  # noqa: E402
-from services import quiz_content_gate as G  # noqa: E402
 
 DOC_ANSWER_NAME = re.compile(r"答案|解析|详解|答案版")
 MIN_DOC_LEN = 500

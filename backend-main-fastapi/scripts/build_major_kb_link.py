@@ -20,7 +20,6 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import json
 import os
@@ -29,6 +28,7 @@ import sqlite3
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 

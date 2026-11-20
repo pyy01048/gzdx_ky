@@ -18,8 +18,22 @@ _archive/
 .agent-runs/
 *.log
 *.log.*
-*.txt
-!requirements.txt
+
+# ── 构建/部署产物（可再生，不入库；docs/完善方案/01 §3.2）──
+# 替换原 "*.txt / !requirements.txt" 全局封杀——那会静默忽略任何新增 txt。
+deploy/*.tar.gz
+deploy/*.dump
+deploy/artifacts/
+*.dump
+*.dump.enc
+data/backups/
+backend-main-fastapi/scripts/tmp_repo/
+# 一次性 txt 报告放 docs/reports/（入库）或 temp/（已忽略）
+# ── 调试截图与一次性报告（精确路径）──
+frontend/*.png
+!frontend/public/**
+# ── 第三方参考仓库（改由 fetch.ps1 按需拉取，见 tools/ocr/DeepSeek-OCR/）──
+tools/ocr/DeepSeek-OCR/DeepSeek-OCR-main/
 
 # 密钥文件绝对不可入库
 .env
@@ -68,7 +82,10 @@ tools/datasource/payload/
 tools/datasource/_shards/
 
 # ── 本地模型权重与下载缓存（体积大、可再生，严禁入库）──
+# 注意：仅忽略根级与 tools 级的模型权重目录；backend 的 ORM 代码包
+# backend-main-fastapi/core/models/ 是源码，必须入库（曾被 models/ 误伤导致浅克隆缺包）。
 models/
+!backend-main-fastapi/core/models/
 .ruff_cache/
 
 # 部署上传暂存 / 数据源存档 / 历史 dogfood 审计输出

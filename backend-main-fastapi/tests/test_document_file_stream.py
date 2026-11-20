@@ -26,7 +26,7 @@ NAME = "数字电子技术 第6版.pdf"
 @pytest.fixture()
 def local_root(tmp_path, monkeypatch):
     """把允许读取的根换成临时目录（真原文在 BASE_DIR 下，测试不能依赖它）。"""
-    import routers.documents as dmod
+    import routers.knowledge.documents as dmod
 
     root = os.path.realpath(str(tmp_path))
     monkeypatch.setattr(dmod, "LOCAL_FILE_ROOTS", [root])
@@ -323,7 +323,7 @@ def test_netdisk_content_proxies_bytes_through_server(client, fake_pan):
 
 
 def test_netdisk_content_attachment_and_size_guard(client, fake_pan, monkeypatch):
-    import routers.netdisk as nd
+    import routers.platform.netdisk as nd
 
     monkeypatch.setattr(nd, "MAX_DOWNLOAD_BYTES", 8)
     fid = _netdisk_row(file_name="过大的视频.pdf", fs_id="10002", size=len(BODY))

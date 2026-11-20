@@ -5,14 +5,12 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
-from database import get_db
-from services import qa_foundation
 from services import agent_router as agent_router_svc
-
+from services import qa_foundation
+from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.security import require_admin
 

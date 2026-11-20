@@ -14,9 +14,6 @@
 from __future__ import annotations
 
 import pytest
-
-from sqlalchemy import text
-
 from database import SessionLocal
 from models import (
     AnswerRecord,
@@ -27,6 +24,7 @@ from models import (
     ReviewRecord,
 )
 from services import kp_mastery, review_service
+from sqlalchemy import text
 
 # 与 conftest 示例数据同一主线科目（taxonomy 只收大纲内科目进 tree）
 SUBJECT = "数学"

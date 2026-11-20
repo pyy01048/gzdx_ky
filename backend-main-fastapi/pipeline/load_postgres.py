@@ -4,9 +4,13 @@
 原则：只写 PostgreSQL，不修改 SQLite；每批事务提交，失败自动回滚。
 """
 from __future__ import annotations
-import argparse, json, sys
-from pathlib import Path
+
+import argparse
+import json
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
 import psycopg
 from psycopg.types.json import Json
 
@@ -15,6 +19,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from pipeline.config import ETL_OUT_DIR, pg_database_url  # noqa: E402
+
 
 def read_jsonl(path: Path):
     if not path.exists(): return []
@@ -55,7 +60,7 @@ def load_questions(cur, rows):
         """, (r.get("stem",""), Json(opts) if opts is not None else None,
               r.get("answer") or None, r.get("analysis") or None, qtype,
               "objective" if qtype in {"single","multiple","judge"} else "subjective",
-              3, origin, r.get("subject_norm") or None, 
+              3, origin, r.get("subject_norm") or None,
               ",".join(r.get("knowledge_points") or []) or None,
               "high" if r.get("origin_confidence", 0) >= .8 else "medium",
               "pass", json.dumps([], ensure_ascii=False), datetime.now(timezone.utc), datetime.now(timezone.utc)))

@@ -11,14 +11,13 @@
 from __future__ import annotations
 
 import pytest
+from core.models import KaoyanAdmission, KaoyanSchool, KaoyanScoreline
+from database import Base
+from main import app
+from services.kaoyan.data_years import available_years, resolve_year, year_range
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
-from database import Base
-from core.models import KaoyanAdmission, KaoyanSchool, KaoyanScoreline
-from services.kaoyan.data_years import available_years, resolve_year, year_range
 from tests.asgi_client import ASGIClient
-from main import app
 
 client = ASGIClient(app)
 

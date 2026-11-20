@@ -5,8 +5,8 @@
 - normalize_alias(db, name_or_alias) -> dict | None：将简称/别名解析为标准院校
 - match_aliases(db, keyword) -> List[KaoyanSchool]：按别名/标准名/模糊名查询院校
 """
-from sqlalchemy.orm import Session
 from models import KaoyanSchool, SchoolAlias
+from sqlalchemy.orm import Session
 
 
 def normalize_alias(db: Session, name_or_alias: str):

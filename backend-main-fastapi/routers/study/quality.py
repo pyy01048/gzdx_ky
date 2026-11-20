@@ -7,12 +7,11 @@
 
 from typing import Optional
 
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
+from models import Document, EvalRun, KnowledgeChunk
 from sqlalchemy import String, case, cast, func, select
 from sqlalchemy.orm import Session
-
-from database import get_db
-from models import Document, EvalRun, KnowledgeChunk
 
 router = APIRouter(prefix="/api/quality", tags=["quality"])
 

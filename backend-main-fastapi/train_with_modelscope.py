@@ -25,7 +25,7 @@ def download_model(model_name="Qwen/Qwen2.5-4B-Instruct"):
         )
 
         elapsed = time.time() - start_time
-        print(f"\n✓ 模型下载完成！")
+        print("\n✓ 模型下载完成！")
         print(f"  模型路径: {model_dir}")
         print(f"  下载耗时: {elapsed/60:.1f} 分钟")
 
@@ -58,10 +58,9 @@ def start_training(model_dir):
 
     # 导入训练模块
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from lora_finetune import train_lora, DATA_DIR, OUTPUT_DIR
-
     # 临时修改模型名称为本地路径
     import lora_finetune
+    from lora_finetune import train_lora
     original_model_name = lora_finetune.MODEL_NAME
     lora_finetune.MODEL_NAME = model_dir
 

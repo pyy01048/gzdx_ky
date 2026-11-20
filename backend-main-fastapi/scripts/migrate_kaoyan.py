@@ -2,15 +2,14 @@
 """建表迁移：创建考研择校数据中心的6张表。
 用法: python scripts/migrate_kaoyan.py
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import engine, Base
+from database import Base, engine
+
 # 导入所有模型确保表被注册
-from models import (
-    KaoyanSchool, KaoyanCollege, KaoyanMajor,
-    KaoyanAdmission, KaoyanScoreLine, KaoyanSubject,
-)
 
 TABLES = ["kaoyan_schools", "kaoyan_colleges", "kaoyan_majors",
           "kaoyan_admissions", "kaoyan_scorelines", "kaoyan_subjects"]
@@ -35,9 +34,9 @@ def main():
     # 导入种子学科
     # 注意：写入 **Discipline**（disciplines 表），而不是 KaoyanSubject——
     # kaoyan_subjects 是 PG 视图（SELECT ... FROM disciplines），对视图 INSERT 会失败。
-    from services.kaoyan.seed_txkyer import SEED_SUBJECTS
-    from database import SessionLocal
     from core.models import Discipline
+    from database import SessionLocal
+    from services.kaoyan.seed_txkyer import SEED_SUBJECTS
     db = SessionLocal()
     try:
         existing_codes = {s.code for s in db.query(Discipline).all()}

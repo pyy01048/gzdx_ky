@@ -63,10 +63,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+from scripts.clean_document_watermarks import (
+    _FAST_MARKERS as _BASE_FAST_MARKERS,
+)
 from scripts.clean_document_watermarks import (  # noqa: E402  （复用同族规则）
     _SPAN_PATTERNS,
     _URL_RE,
-    _FAST_MARKERS as _BASE_FAST_MARKERS,
 )
 
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))

@@ -225,9 +225,8 @@ def apply_display_name(db, doc, text) -> str:
     `knowledge_chunks.doc_name`，免得答疑引用（`ai_service` 用 `c.doc_name`）挂旧名。
     调用方负责 commit。
     """
-    from sqlalchemy import func
-
     from models import Document, KnowledgeChunk
+    from sqlalchemy import func
 
     current = doc.file_name or ""
     new = auto_rename(current, text, taken_names=lambda n: db.query(Document.id).filter(

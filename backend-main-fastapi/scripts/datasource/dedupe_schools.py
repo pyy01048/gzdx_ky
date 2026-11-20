@@ -16,9 +16,10 @@
 """
 from __future__ import annotations
 
-import shutil, sqlite3, sys
+import shutil
+import sqlite3
+import sys
 from datetime import datetime
-from pathlib import Path
 
 DB = r"D:\平台\database\kaoyan.db"
 # 关联表（含 school_id 外键）

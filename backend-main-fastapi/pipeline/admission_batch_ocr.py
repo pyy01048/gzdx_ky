@@ -20,7 +20,6 @@
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import re
@@ -31,11 +30,11 @@ from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import text  # noqa: E402
-
 from database import SessionLocal  # noqa: E402
 from models import KaoyanAdmission  # noqa: E402
-from pipeline.notice_admission_crawler import fetch, polite  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+
+from pipeline.notice_admission_crawler import fetch  # noqa: E402
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ocr_cache")
 
@@ -207,7 +206,7 @@ def run(notice_id: int, year: int, start_page: int = 1, end_page: int = 0,
         print("PDF:", pdf_url)
 
         blob = _get_pdf(nid, pdf_url)
-        from pipeline.dsocr_backend import ocr_pdf_admission_ds, _load_model
+        from pipeline.dsocr_backend import _load_model, ocr_pdf_admission_ds
 
         if _load_model()[0] is None:
             raise SystemExit("[中止] DeepSeek-OCR 模型不可用（检查 GPU/模型目录）")

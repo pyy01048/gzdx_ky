@@ -19,7 +19,6 @@ from typing import Any
 
 from services import taxonomy
 
-
 # 一行的最大长度：超过此长度不可能是标题
 _MAX_HEADING_LEN = 60
 

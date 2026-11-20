@@ -10,19 +10,18 @@
   GET /api/growth/timeline       近 N 天学习轨迹（事件计数 + 同一口径的 streak）
 """
 from __future__ import annotations
-import logging
 
 import datetime
+import logging
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends
 import sqlalchemy
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from database import get_db
+from fastapi import APIRouter, Depends
 from models import StudyEvent
 from services.study_calendar import day_ledger, streak_summary
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 from utils.timeutil import day_bucket_expr, local_range_utc, local_today
 
 router = APIRouter(prefix="/api/growth", tags=["成长体系"])

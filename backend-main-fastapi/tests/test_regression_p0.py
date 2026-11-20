@@ -24,7 +24,6 @@ routers/exam.py:95 裸 SQL 字符串              /api/exam/blueprints → 500�
 """
 from __future__ import annotations
 
-import datetime
 import os
 import sys
 
@@ -33,7 +32,6 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import SessionLocal  # noqa: E402
-
 
 # --------------------------------------------------------------------------- #
 # 一、list_blueprints 返回结构（直接防 exam.py:95 裸 SQL 回归）

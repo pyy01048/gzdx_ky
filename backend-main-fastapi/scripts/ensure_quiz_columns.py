@@ -31,7 +31,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE)
 
-from services.backup_service import create_backup, _resolve_db_path  # noqa: E402
+from services.backup_service import _resolve_db_path, create_backup  # noqa: E402
 
 # (列名, 列定义) —— 与 models.QuizQuestion 对齐
 NEW_COLUMNS: list[tuple[str, str]] = [

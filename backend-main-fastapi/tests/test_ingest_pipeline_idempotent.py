@@ -13,14 +13,13 @@
 from __future__ import annotations
 
 import pytest
-
 from services.ingest_pipeline import ingest_pdf
 from services.parsers.base import (
     BLOCK_FIGURE,
     BLOCK_TEXT,
-    ParseResult,
     ParsedBlock,
     ParsedPage,
+    ParseResult,
 )
 
 
