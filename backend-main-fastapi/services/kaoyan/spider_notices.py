@@ -16,6 +16,7 @@ module_a_schema 同模式——不动 ORM 基线，避免已有库迁移风险�
 合规：每站先查 robots.txt（复用 spider_school.check_robots 模式），
 2-5s 随机延迟，UA 声明个人备考用途。
 """
+
 from __future__ import annotations
 
 import json
@@ -92,9 +93,11 @@ def ensure_notices_schema(db_session) -> None:
     """幂等建表（原生 DDL，避开 ORM 基线迁移）。"""
     conn = wrap_conn(db_session.connection().connection)
     from services.ddl_compat import adapt_ddl
+
     conn.executescript(adapt_ddl(_DDL, conn))
     # 枚举扩展：仅 PG 有 ENUM；逐条执行，失败（如 SQLite 底座）静默跳过
     from services.ddl_compat import is_postgres
+
     if is_postgres(conn):
         from sqlalchemy import text as _sql_text
 
@@ -103,9 +106,9 @@ def ensure_notices_schema(db_session) -> None:
         # 且本函数被 kaoyan/kaoyan_ext 接口每次请求调用 → 全库 36% 事务是回滚。
         ext = db_session.get_bind().connect()
         try:
-            for stmt in [s.strip() for s in _ENUM_EXTEND_DDL.split(';') if 'ALTER TYPE' in s]:
+            for stmt in [s.strip() for s in _ENUM_EXTEND_DDL.split(";") if "ALTER TYPE" in s]:
                 try:
-                    ext.execute(_sql_text(stmt + ';'))
+                    ext.execute(_sql_text(stmt + ";"))
                 except Exception:  # noqa: BLE001 老 PG 不支持 IF NOT EXISTS → 忽略并清掉毒化
                     ext.rollback()
             ext.commit()
@@ -114,6 +117,21 @@ def ensure_notices_schema(db_session) -> None:
         # ADD VALUE 必须提交后新值才对本会话可用；原 rollback 会把枚举扩展一并撤销，
         # 导致后续「大纲/目录/初试/报名」类型写入仍被拒（2026-10-19 实测教训）。
         db_session.commit()
+    # C 批次2 治理列幂等补齐（123 迁移同口径；sqlite 不支持 IF NOT EXISTS → 裸 ALTER 兜底）
+    _GOV_COLS = (
+        ("date_source", "TEXT"),
+        ("title_raw", "TEXT"),
+        ("review_status", "TEXT NOT NULL DEFAULT 'ok'"),
+        ("review_source", "TEXT NOT NULL DEFAULT 'auto'"),
+    )
+    for col, typ in _GOV_COLS:
+        try:
+            conn.execute(f"ALTER TABLE kaoyan_notices ADD COLUMN IF NOT EXISTS {col} {typ}")
+        except Exception:  # noqa: BLE001
+            try:
+                conn.execute(f"ALTER TABLE kaoyan_notices ADD COLUMN {col} {typ}")
+            except Exception:  # noqa: BLE001 - 列已存在
+                pass
     db_session.commit()
 
 
@@ -193,9 +211,16 @@ def _robots_allows(domain: str) -> bool:
 # 公告类型推断（标题→类型，规则确定性）
 # --------------------------------------------------------------------------- #
 _TYPE_RULES = [
-    ("简章", "简章"), ("招生简章", "简章"), ("复试", "复试"), ("调剂", "调剂"),
-    ("录取", "录取"), ("公示", "录取"), ("大纲", "大纲"), ("目录", "目录"),
-    ("报名", "报名"), ("初试", "初试"),
+    ("简章", "简章"),
+    ("招生简章", "简章"),
+    ("复试", "复试"),
+    ("调剂", "调剂"),
+    ("录取", "录取"),
+    ("公示", "录取"),
+    ("大纲", "大纲"),
+    ("目录", "目录"),
+    ("报名", "报名"),
+    ("初试", "初试"),
 ]
 
 
@@ -213,36 +238,82 @@ def infer_notice_type(title: str) -> str:
 # 长度下限 2 字：支持「复试通知」「录取公告」等短标题（原 6 字会漏掉）。
 # 锚文本允许包裹内联标签（<font>/<span>/<em> 等）——大量高校（如东北大学）
 # 在 <a> 内套 <font> 做高亮，原 [^<]+ 会整体漏掉。
-_LINK_RE = re.compile(
-    r'<a\b[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.S | re.I
-)
+_LINK_RE = re.compile(r'<a\b[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.S | re.I)
 _STRIP_TAG_RE = re.compile(r"<[^>]+>")
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 _DATE_NEAR_RE = re.compile(r"(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})")
 # 拆分日期块（如西电：<div>17</div><div>2026-09</div><a>标题</a>，
 # 日与年月分属两个 div）。剥标签后形如「17 2026-09 标题」，日年在前。
 _DAY_YM_RE = re.compile(r"\b(\d{1,2})\s+(20\d{2})[-/.](\d{1,2})\b")
-_TITLE_KW = ("招生", "简章", "复试", "调剂", "录取", "硕士", "考研", "初试",
-             "公告", "通知", "大纲", "目录", "公示", "推免", "报考")
+_TITLE_KW = (
+    "招生",
+    "简章",
+    "复试",
+    "调剂",
+    "录取",
+    "硕士",
+    "考研",
+    "初试",
+    "公告",
+    "通知",
+    "大纲",
+    "目录",
+    "公示",
+    "推免",
+    "报考",
+)
 # 栏目导航链接（首页的「硕士招生/招生工作/通知公告」入口——首页常无具体公告，
 # 需跟进一层到列表页才有）。
 # 扩充常见研究生院栏目名（原白名单过窄，贵州师范/贵州财经等站漏跟）：
 _SECTION_KW = (
     # 精确栏目词（原白名单）
-    "硕士招生", "招生工作", "通知公告", "招生信息", "硕士", "招生",
+    "硕士招生",
+    "招生工作",
+    "通知公告",
+    "招生信息",
+    "硕士",
+    "招生",
     # 新增：研究生招生体系常见栏目名
-    "研究生招生", "研招", "招生管理", "招生动态", "招生就业",
-    "硕士公告", "硕士简章", "硕士研究生", "研究生教育",
-    "通知通告", "最新通知", "新闻动态", "招生简章", "招生专业目录",
-    "公示公告", "研究生院",
+    "研究生招生",
+    "研招",
+    "招生管理",
+    "招生动态",
+    "招生就业",
+    "硕士公告",
+    "硕士简章",
+    "硕士研究生",
+    "研究生教育",
+    "通知通告",
+    "最新通知",
+    "新闻动态",
+    "招生简章",
+    "招生专业目录",
+    "公示公告",
+    "研究生院",
 )
 # 纯导航短词（≤6 字且等于栏目名）——避免被当作「具体公告」计入；
 # 具体公告标题通常 ≥8 字且含年份/动词（如「东北大学2027年...公告」）。
 _NAV_EXACT = set(_SECTION_KW) | {
-    "博士招生", "博士公告", "博士简章", "港澳台招生", "招生学院",
-    "硕士目录", "专业目录", "报考指南", "招生指南", "统考硕士",
-    "统考博士", "招生简章", "招生目录", "招生章程", "硕士简章",
-    "硕士公告", "通知公告", "新闻动态", "最新通知", "招生信息",
+    "博士招生",
+    "博士公告",
+    "博士简章",
+    "港澳台招生",
+    "招生学院",
+    "硕士目录",
+    "专业目录",
+    "报考指南",
+    "招生指南",
+    "统考硕士",
+    "统考博士",
+    "招生简章",
+    "招生目录",
+    "招生章程",
+    "硕士简章",
+    "硕士公告",
+    "通知公告",
+    "新闻动态",
+    "最新通知",
+    "招生信息",
 }
 
 # 部分高校（如上海交大）列表页把日期拼在锚文本开头，解析时未拆出：
@@ -285,7 +356,7 @@ def extract_title_date_prefix(title: str):
             y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
         if not (1 <= mo <= 12 and 1 <= d <= 31 and 2000 <= y <= 2099):
             continue
-        rest = t[m.end():].strip()
+        rest = t[m.end() :].strip()
         if rest:
             return f"{y:04d}-{mo:02d}-{d:02d}", rest
         return f"{y:04d}-{mo:02d}-{d:02d}", t  # 剥完为空则保留原题（异常防御）
@@ -353,15 +424,18 @@ def parse_notice_links(html: str, base_url: str, wide_date: bool = False) -> Lis
             continue
         href = _abs(href, base_url)
         window = 300 if wide_date else 120
-        zone = html[max(0, m.start() - window): m.end() + window]
-        dm = _DATE_NEAR_RE.search(html[m.end(): m.end() + 120]) or _DATE_NEAR_RE.search(text) \
+        zone = html[max(0, m.start() - window) : m.end() + window]
+        dm = (
+            _DATE_NEAR_RE.search(html[m.end() : m.end() + 120])
+            or _DATE_NEAR_RE.search(text)
             or (wide_date and (_DATE_NEAR_RE.search(zone)))
+        )
         date = None
         if dm:
             date = f"{dm.group(1)}-{int(dm.group(2)):02d}-{int(dm.group(3)):02d}"
         # 拆分日期块兜底（西电等：日在前、年月在后，分属相邻 div）
         if not date:
-            pre = html[max(0, m.start() - 300): m.start()]
+            pre = html[max(0, m.start() - 300) : m.start()]
             dym = _DAY_YM_RE.search(_strip_tags(pre))
             if dym:
                 d, y, mo = int(dym.group(1)), int(dym.group(2)), int(dym.group(3))
@@ -447,6 +521,8 @@ def parse_webplus_notices(domain: str, html: str, max_pages: int = 2) -> List[Di
             break
         _polite()
     return out
+
+
 # --------------------------------------------------------------------------- #
 # 工科定向院校的研究生院官网清单（T5 公告采集入口）
 # 优先级：目标院校贵大 → 四邮四电 → 用户指定的工科系列强校。
@@ -572,8 +648,8 @@ KNOWN_SECTION_URLS: Dict[str, List[str]] = {
     ],
     # 东北大学：首页含真实公告，但栏目页更全
     "东北大学": [
-        "https://yz.neu.edu.cn/5932/list.htm",   # 硕士公告
-        "https://yz.neu.edu.cn/5933/list.htm",   # 硕士简章
+        "https://yz.neu.edu.cn/5932/list.htm",  # 硕士公告
+        "https://yz.neu.edu.cn/5933/list.htm",  # 硕士简章
     ],
 }
 
@@ -602,8 +678,9 @@ def _collect_notices(domain: str, url: str, html: str, school: str = "") -> List
                 continue
             sec_domain = re.match(r"https?://([^/]+)", sec_url)
             sec_domain = sec_domain.group(1) if sec_domain else domain
-            sec_links = parse_webplus_notices(sec_domain, sec_html) \
-                or parse_notice_links(sec_html, sec_url, wide_date=True)
+            sec_links = parse_webplus_notices(sec_domain, sec_html) or parse_notice_links(
+                sec_html, sec_url, wide_date=True
+            )
             # 栏目页仍无 → 再跟一层二级栏目（如「研究生招生」→「硕士公告」）
             if not sec_links:
                 for sub_url in parse_section_links(sec_html, sec_url, limit=2):
@@ -628,8 +705,7 @@ def _collect_notices(domain: str, url: str, html: str, school: str = "") -> List
             sec_domain = re.match(r"https?://([^/]+)", sec_url)
             sec_domain = sec_domain.group(1) if sec_domain else domain
             links.extend(
-                parse_webplus_notices(sec_domain, sec_html)
-                or parse_notice_links(sec_html, sec_url, wide_date=True)
+                parse_webplus_notices(sec_domain, sec_html) or parse_notice_links(sec_html, sec_url, wide_date=True)
             )
             _polite()
     # 去重（保序）：title+date 为键；空标题跳过。
@@ -679,16 +755,17 @@ def crawl_school_notices(
         if school_names:
             targets = {n: u for n, u in targets.items() if n in school_names}
         # 库中真官网补充（去重）
-        for s in db_session.query(KaoyanSchool).filter(
-            KaoyanSchool.official_url.like("http%")
-        ).limit(max_schools).all():
+        for s in (
+            db_session.query(KaoyanSchool).filter(KaoyanSchool.official_url.like("http%")).limit(max_schools).all()
+        ):
             if s.name not in targets and s.official_url.startswith("http"):
                 targets[s.name] = s.official_url
 
         # 「院校采集源」里被排除的院校：公告采集直接跳过。
         # 口径与 /api/kaoyan/crawl-targets 一致（无记录 = 参与）。
         excluded_names = {
-            row[0] for row in db_session.query(KaoyanSchool.name)
+            row[0]
+            for row in db_session.query(KaoyanSchool.name)
             .join(KaoyanCrawlTarget, KaoyanCrawlTarget.school_id == KaoyanSchool.id)
             .filter(KaoyanCrawlTarget.enabled.is_(False))
             .all()
@@ -699,12 +776,9 @@ def crawl_school_notices(
         items = list(targets.items())[:max_schools]
 
         # school_id 映射（可能未入库，公告仍存 school_name 供检索）
-        name_to_id = {
-            s.name: s.id for s in db_session.query(KaoyanSchool).all()
-        }
+        name_to_id = {s.name: s.id for s in db_session.query(KaoyanSchool).all()}
 
-        stats = {"schools": 0, "notices": 0, "skipped_robots": 0, "parse_failed": 0,
-                 "not_in_db": 0, "by_school": {}}
+        stats = {"schools": 0, "notices": 0, "skipped_robots": 0, "parse_failed": 0, "not_in_db": 0, "by_school": {}}
         for name, url in items:
             domain = re.match(r"https?://([^/]+)", url)
             if not domain:
@@ -783,4 +857,10 @@ if __name__ == "__main__":  # pragma: no cover
     ap.add_argument("--schools", nargs="*", help="指定院校名（默认取有官网的前20所）")
     ap.add_argument("--max", type=int, default=20)
     args = ap.parse_args()
-    print(json.dumps(crawl_school_notices(school_names=args.schools, max_schools=args.max, dry_run=args.dry_run), ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            crawl_school_notices(school_names=args.schools, max_schools=args.max, dry_run=args.dry_run),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )

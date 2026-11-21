@@ -53,7 +53,7 @@ def notices_feed(
     ensure_notices_schema(db)
     conn = wrap_conn(db.connection().connection)
 
-    where = ["1=1"]
+    where = ["review_status = 'ok'", "is_noise = FALSE"]
     args: list = []
     if q:
         where.append("title LIKE ?")
@@ -69,7 +69,7 @@ def notices_feed(
     total = conn.execute(f"SELECT COUNT(*) FROM kaoyan_notices WHERE {wsql}", args).fetchone()[0]
     rows = conn.execute(
         f"SELECT id, school_id, school_name, title, notice_type, publish_date, "
-        f"url, source FROM kaoyan_notices WHERE {wsql} "
+        f"url, source, date_source FROM kaoyan_notices WHERE {wsql} "
         f"ORDER BY publish_date DESC, id DESC LIMIT ? OFFSET ?",
         args + [page_size, (page - 1) * page_size],
     ).fetchall()
@@ -87,6 +87,8 @@ def notices_feed(
                 "publish_date": r[5],
                 "url": r[6],
                 "source": r[7],
+                # C 批次2：日期证据留痕；unknown → 前端显示「日期未知」不伪造
+                "date_source": r[8],
             }
             for r in rows
         ],
@@ -102,7 +104,8 @@ def notices_recent(limit: int = Query(12, ge=1, le=50), db: Session = Depends(ge
     conn = wrap_conn(db.connection().connection)
     rows = conn.execute(
         "SELECT id, school_id, school_name, title, notice_type, publish_date, url "
-        "FROM kaoyan_notices ORDER BY publish_date DESC, id DESC LIMIT ?",
+        "FROM kaoyan_notices WHERE review_status = 'ok' AND is_noise = FALSE "
+        "ORDER BY publish_date DESC, id DESC LIMIT ?",
         (limit,),
     ).fetchall()
     return [
@@ -117,6 +120,80 @@ def notices_recent(limit: int = Query(12, ge=1, le=50), db: Session = Depends(ge
         }
         for r in rows
     ]
+
+
+# --------------------------------------------------------------------------- #
+# C 批次2：公告审核队列 + 人工裁定（admin；白名单分类器兜底人工复核）
+# --------------------------------------------------------------------------- #
+@router.get("/notices/review-queue", dependencies=[Depends(require_admin)])
+def notices_review_queue(
+    status: str = Query("pending_review", description="pending_review/noise/duplicate"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+):
+    """待审核/噪声/重复公告队列（admin；标准分页口径，total 为全量计数）。"""
+    from services.kaoyan.spider_notices import ensure_notices_schema
+
+    ensure_notices_schema(db)
+    conn = wrap_conn(db.connection().connection)
+    total = conn.execute("SELECT COUNT(*) FROM kaoyan_notices WHERE review_status = ?", (status,)).fetchone()[0]
+    rows = conn.execute(
+        "SELECT id, school_name, title, publish_date, date_source, review_status, url "
+        "FROM kaoyan_notices WHERE review_status = ? ORDER BY id LIMIT ? OFFSET ?",
+        (status, page_size, (page - 1) * page_size),
+    ).fetchall()
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": r[0],
+                "school_name": r[1],
+                "title": r[2],
+                "publish_date": r[3],
+                "date_source": r[4],
+                "review_status": r[5],
+                "url": r[6],
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/notices/{notice_id}/review", dependencies=[Depends(require_admin)])
+def notices_review(notice_id: int, payload: dict, db: Session = Depends(get_db)):
+    """人工裁定：ok / noise / duplicate；manual 留痕后治理重跑不覆盖。"""
+    action = (payload or {}).get("action") or ""
+    if action not in ("ok", "noise", "duplicate"):
+        raise HTTPException(status_code=400, detail="action 必须为 ok/noise/duplicate")
+    conn = wrap_conn(db.connection().connection)
+    cur = conn.execute(
+        "UPDATE kaoyan_notices SET review_status=?, review_source='manual', is_noise=? WHERE id=?",
+        (action, action == "noise", notice_id),
+    )
+    conn.commit()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="公告不存在")
+    return {"id": notice_id, "review_status": action}
+
+
+@router.post("/reforms/{reform_id}/review", dependencies=[Depends(require_admin)])
+def reforms_review(reform_id: int, payload: dict, db: Session = Depends(get_db)):
+    """改考人工裁定：ok / noise（误判情报出列）。"""
+    action = (payload or {}).get("action") or ""
+    if action not in ("ok", "noise"):
+        raise HTTPException(status_code=400, detail="action 必须为 ok/noise")
+    reform_detector.ensure_reforms_schema(db)
+    conn = wrap_conn(db.connection().connection)
+    cur = conn.execute(
+        "UPDATE kaoyan_reforms SET review_status=?, review_source='manual' WHERE id=?", (action, reform_id)
+    )
+    conn.commit()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="改考记录不存在")
+    return {"id": reform_id, "review_status": action}
 
 
 # --------------------------------------------------------------------------- #

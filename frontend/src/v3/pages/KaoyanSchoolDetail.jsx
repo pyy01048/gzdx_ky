@@ -1406,7 +1406,7 @@ export default function KaoyanSchoolDetail() {
                     <span className="kyv3-notice-title" title={n.title}>{n.title}</span>
                     {n.notice_type ? <Badge tone="outline">{n.notice_type}</Badge> : null}
                   </span>
-                  <span className="kyv3-notice-date">{n.publish_date || ''}</span>
+                  <span className="kyv3-notice-date">{n.publish_date || '日期未知'}</span>
                 </a>
               ))}
             </div>

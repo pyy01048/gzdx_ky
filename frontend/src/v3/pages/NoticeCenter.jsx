@@ -724,7 +724,7 @@ export default function NoticeCenter() {
                       >
                         <span className="v3-notices-item__top">
                           <span className="v3-notices-item__school">{n.school_name || '未知院校'}</span>
-                          <span className="v3-notices-item__date">{humanDate(n.publish_date) || '—'}</span>
+                          <span className="v3-notices-item__date">{n.publish_date ? humanDate(n.publish_date) : '日期未知'}</span>
                         </span>
                         <span className="v3-notices-item__title">{n.title}</span>
                         <span className="v3-notices-item__tags">

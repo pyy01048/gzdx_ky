@@ -137,6 +137,19 @@ def ensure_reforms_schema(db_session) -> None:
 
     conn.executescript(adapt_ddl(_REFORM_TABLE_DDL, conn))
     conn.executescript(adapt_ddl(_REFORM_IDX_DDL, conn))
+    # C 批次2 治理列幂等补齐（123 迁移同口径；sqlite 无 IF NOT EXISTS 时裸 ALTER 兜底）
+    for col, typ in (
+        ("review_status", "TEXT NOT NULL DEFAULT 'ok'"),
+        ("review_source", "TEXT NOT NULL DEFAULT 'auto'"),
+        ("confidence_basis", "TEXT"),
+    ):
+        try:
+            conn.execute(f"ALTER TABLE kaoyan_reforms ADD COLUMN IF NOT EXISTS {col} {typ}")
+        except Exception:  # noqa: BLE001
+            try:
+                conn.execute(f"ALTER TABLE kaoyan_reforms ADD COLUMN {col} {typ}")
+            except Exception:  # noqa: BLE001 - 列已存在
+                pass
     conn.commit()
 
 
@@ -277,8 +290,8 @@ def list_reforms(
     conn = wrap_conn(db_session.connection().connection)
     sql = (
         "SELECT id, school_id, school_name, notice_id, title, year, "
-        "change_type, keywords, confidence, url, source, created_at "
-        "FROM kaoyan_reforms WHERE 1=1"
+        "change_type, keywords, confidence, url, source, created_at, confidence_basis "
+        "FROM kaoyan_reforms WHERE review_status = 'ok'"
     )
     args: list = []
     if school_id:
@@ -306,6 +319,7 @@ def list_reforms(
         "url",
         "source",
         "created_at",
+        "confidence_basis",
     ]
     out = []
     for r in conn.execute(sql, args).fetchall():
@@ -320,11 +334,15 @@ def reform_stats(db_session) -> Dict:
     """改考事件统计（按类型 / 按院校 top10）。"""
     ensure_reforms_schema(db_session)
     conn = wrap_conn(db_session.connection().connection)
-    by_type = dict(conn.execute("SELECT change_type, COUNT(*) FROM kaoyan_reforms GROUP BY change_type").fetchall())
+    by_type = dict(
+        conn.execute(
+            "SELECT change_type, COUNT(*) FROM kaoyan_reforms WHERE review_status = 'ok' GROUP BY change_type"
+        ).fetchall()
+    )
     top_schools = [
         {"school": r[0], "count": r[1]}
         for r in conn.execute(
-            "SELECT school_name, COUNT(*) c FROM kaoyan_reforms GROUP BY school_name ORDER BY c DESC LIMIT 10"
+            "SELECT school_name, COUNT(*) c FROM kaoyan_reforms WHERE review_status = 'ok' GROUP BY school_name ORDER BY c DESC LIMIT 10"
         ).fetchall()
     ]
     total = sum(by_type.values())
