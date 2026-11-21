@@ -103,6 +103,19 @@ async def submit_review(payload: dict, db: Session = Depends(get_db), user=Depen
             entity.interval_days = int(scheduled["interval_days"])
     db.commit()
 
+    # S1：kernel 事件镜像（schema 校验追加 jsonl；失败 warning 不阻断，红线 5）
+    try:
+        from services import kernel_bridge
+
+        kernel_bridge.mirror_event(
+            "review",
+            {"item_type": item_type, "rating": rating, "interval_days": scheduled.get("interval_days")},
+            subject_id=f"{item_type}:{item_id}",
+            source="review_submit",
+        )
+    except Exception:  # noqa: BLE001 - 镜像绝不影响复习主链
+        pass
+
     return {"message": "复习已记录", **out, "interval": scheduled["interval_days"], "fsrs": scheduled}
 
 

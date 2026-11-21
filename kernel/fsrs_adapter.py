@@ -6,16 +6,16 @@ ReviewScheduler）。依赖 py-fsrs（fsrs>=6）＋标准库；时间一律 naiv
 
 公式基准（总方案 §5.1）：R(t,S) = (1 + 19/81 · t/S)^(-0.5)。
 """
+
 from __future__ import annotations
 
 import datetime
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from fsrs import Rating, Scheduler, State as FsrsState
 from fsrs import Card as FsrsCard
-from fsrs import ReviewLog as FsrsReviewLog
+from fsrs import Rating, Scheduler
+from fsrs import State as FsrsState
 
 from kernel.config_loader import FsrsConfig
 
@@ -27,16 +27,16 @@ class CardState:
     """与 ORM 解耦的卡片 DTO。"""
 
     card_id: str
-    kind: str                       # word | flashcard | error | task
+    kind: str  # word | flashcard | error | task
     stability: float
     difficulty: float
-    due: datetime.datetime          # naive UTC
+    due: datetime.datetime  # naive UTC
     last_review: Optional[datetime.datetime]  # naive UTC | None
     reps: int
     lapses: int
     mastered: bool = False
-    learning: bool = False          # FSRS state==Learning（新卡首间隔口径用）
-    legacy: Optional[dict] = None   # {quality,repetitions,interval_days,ef} 迁移期保留
+    learning: bool = False  # FSRS state==Learning（新卡首间隔口径用）
+    legacy: Optional[dict] = None  # {quality,repetitions,interval_days,ef} 迁移期保留
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ class ReviewLogDTO:
 
     card_id: str
     rating: int
-    review_ts: datetime.datetime     # naive UTC
+    review_ts: datetime.datetime  # naive UTC
     review_duration_ms: Optional[int]
     state: int
     stability: float
@@ -58,8 +58,9 @@ def _clamp(lo: float, hi: float, v: float) -> float:
     return max(lo, min(hi, v))
 
 
-def from_legacy(quality: int, repetitions: int, interval_days: int,
-                ef: float, *, now: Optional[datetime.datetime] = None) -> CardState:
+def from_legacy(
+    quality: int, repetitions: int, interval_days: int, ef: float, *, now: Optional[datetime.datetime] = None
+) -> CardState:
     """SM-2 → FSRS 初始估算（首版保守，影子期校准）：
     S_init = max(0.5, interval_days)；D_init = clamp(1, 10, 10-(ef-1.3)*4)。
     lapses 由 quality<3 历史推算（此处只有最近一次 quality，回填脚本统计全史）。"""
@@ -69,12 +70,22 @@ def from_legacy(quality: int, repetitions: int, interval_days: int,
     lapses = 1 if quality < 3 else 0
     due = t0 + datetime.timedelta(days=max(1, int(round(s_init))))
     return CardState(
-        card_id="", kind="word", stability=s_init, difficulty=d_init,
-        due=due, last_review=None, reps=int(repetitions), lapses=lapses,
+        card_id="",
+        kind="word",
+        stability=s_init,
+        difficulty=d_init,
+        due=due,
+        last_review=None,
+        reps=int(repetitions),
+        lapses=lapses,
         mastered=(repetitions >= 5 and interval_days >= 15),
         learning=False,
-        legacy={"quality": int(quality), "repetitions": int(repetitions),
-                "interval_days": int(interval_days), "ef": float(ef)},
+        legacy={
+            "quality": int(quality),
+            "repetitions": int(repetitions),
+            "interval_days": int(interval_days),
+            "ef": float(ef),
+        },
     )
 
 
@@ -126,6 +137,10 @@ def _to_fsrs_card(state: CardState) -> FsrsCard:
     card.stability = max(0.1, state.stability)
     card.difficulty = _clamp(1.0, 10.0, state.difficulty)
     card.due = _utc(state.due)
+    # S1 修复：last_review 必须透传，否则 fsrs 以 elapsed=0/None 算 retrievability，
+    # Review 态成功复习的 stability/间隔会激进失真（影子期探针实证 210 天间隔）。
+    if state.last_review is not None:
+        card.last_review = _utc(state.last_review)
     card.last_rating = Rating.Good
     card.reps = state.reps
     card.lapses = state.lapses
@@ -135,9 +150,13 @@ def _to_fsrs_card(state: CardState) -> FsrsCard:
     return card
 
 
-def review(state: CardState, rating: Rating, now: datetime.datetime,
-           duration_ms: Optional[int],
-           cfg: Optional[FsrsConfig] = None) -> Tuple[CardState, ReviewLogDTO]:
+def review(
+    state: CardState,
+    rating: Rating,
+    now: datetime.datetime,
+    duration_ms: Optional[int],
+    cfg: Optional[FsrsConfig] = None,
+) -> Tuple[CardState, ReviewLogDTO]:
     """委托 fsrs.Scheduler.review_card，全字段落日志。
 
     V12 口径：复习后新卡（reps==0 且 Again）首间隔 ≥ first_interval_min_days。
@@ -150,24 +169,35 @@ def review(state: CardState, rating: Rating, now: datetime.datetime,
     elapsed_days = max(0, (now - (state.last_review or now)).days)
     new_card, log = sched.review_card(card, rating, _utc(now))
     due = new_card.due
-    if due.tzinfo is not None:      # py-fsrs 返回 aware-UTC → 折回 naive
+    if due.tzinfo is not None:  # py-fsrs 返回 aware-UTC → 折回 naive
         due = due.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     min_days = cfg.first_interval_min_days if cfg else 1
     if state.reps == 0 and (due - now).total_seconds() < min_days * 86400:
         due = now + datetime.timedelta(days=min_days)
     out_state = CardState(
-        card_id=state.card_id, kind=state.kind,
-        stability=float(new_card.stability), difficulty=float(new_card.difficulty),
-        due=due, last_review=now, reps=int(new_card.reps),
-        lapses=int(new_card.lapses), mastered=state.mastered,
+        card_id=state.card_id,
+        kind=state.kind,
+        stability=float(new_card.stability),
+        difficulty=float(new_card.difficulty),
+        due=due,
+        last_review=now,
+        reps=int(new_card.reps),
+        lapses=int(new_card.lapses),
+        mastered=state.mastered,
         learning=bool(new_card.state == FsrsState.Learning),
-        legacy=state.legacy)
+        legacy=state.legacy,
+    )
     dto = ReviewLogDTO(
-        card_id=state.card_id, rating=int(rating), review_ts=now,
-        review_duration_ms=duration_ms, state=int(new_card.state),
-        stability=float(new_card.stability), difficulty=float(new_card.difficulty),
+        card_id=state.card_id,
+        rating=int(rating),
+        review_ts=now,
+        review_duration_ms=duration_ms,
+        state=int(new_card.state),
+        stability=float(new_card.stability),
+        difficulty=float(new_card.difficulty),
         elapsed_days=int(getattr(log, "elapsed_days", elapsed_days) or 0),
-        scheduled_days=int(getattr(log, "scheduled_days", 0) or 0))
+        scheduled_days=int(getattr(log, "scheduled_days", 0) or 0),
+    )
     return out_state, dto
 
 
@@ -177,9 +207,14 @@ def _risk_key(state: CardState, now: datetime.datetime):
     return (r, -overdue_days, state.card_id)
 
 
-def queue(states: List[CardState], now: datetime.datetime, cfg: FsrsConfig,
-          *, quota_new: Optional[int] = None,
-          quota_review: Optional[int] = None) -> List[CardState]:
+def queue(
+    states: List[CardState],
+    now: datetime.datetime,
+    cfg: FsrsConfig,
+    *,
+    quota_new: Optional[int] = None,
+    quota_review: Optional[int] = None,
+) -> List[CardState]:
     """到期队列：过滤 mastered → R 升序（最危险优先）→ 逾期天数降序 →
     配额裁剪（新卡/复习分池，超配额顺延不丢弃）。"""
     if now.tzinfo is not None:
@@ -187,15 +222,12 @@ def queue(states: List[CardState], now: datetime.datetime, cfg: FsrsConfig,
     qn = cfg.queue_quota_new if quota_new is None else quota_new
     qr = cfg.queue_quota_review if quota_review is None else quota_review
     due_states = [s for s in states if not s.mastered and s.due <= now]
-    review_pool = sorted((s for s in due_states if s.reps > 0),
-                         key=lambda s: _risk_key(s, now))
-    new_pool = sorted((s for s in due_states if s.reps == 0),
-                      key=lambda s: (s.due, s.card_id))
+    review_pool = sorted((s for s in due_states if s.reps > 0), key=lambda s: _risk_key(s, now))
+    new_pool = sorted((s for s in due_states if s.reps == 0), key=lambda s: (s.due, s.card_id))
     return review_pool[:qr] + new_pool[:qn]
 
 
-def reinsert_positions(session_queue: List[str], again_ids: List[str],
-                       offset: int = 4) -> List[str]:
+def reinsert_positions(session_queue: List[str], again_ids: List[str], offset: int = 4) -> List[str]:
     """轮内 +offset 重现：只动会话队列，不写 FSRS 状态。
 
     语义：对每个刚答 Again 的词，把它插到当前队首之后第 offset 位；
@@ -213,14 +245,12 @@ def reinsert_positions(session_queue: List[str], again_ids: List[str],
     return q
 
 
-def due_forecast(states: List[CardState], now: datetime.datetime,
-                 days: int = 7) -> Dict[str, int]:
+def due_forecast(states: List[CardState], now: datetime.datetime, days: int = 7) -> Dict[str, int]:
     """未来 N 日逐日到期数（含今日），key 为 ISO 日期串。"""
     if now.tzinfo is not None:
         raise ValueError("now 必须是 naive UTC datetime")
     base = now.date()
-    out: Dict[str, int] = {(base + datetime.timedelta(days=i)).isoformat(): 0
-                           for i in range(days)}
+    out: Dict[str, int] = {(base + datetime.timedelta(days=i)).isoformat(): 0 for i in range(days)}
     for s in states:
         if s.mastered:
             continue

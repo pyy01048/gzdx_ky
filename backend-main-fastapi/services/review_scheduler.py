@@ -1,6 +1,7 @@
 """艾宾浩斯/SM-2 复习调度算法。"""
 
 import datetime
+import logging
 from types import SimpleNamespace
 from typing import List, Optional, Tuple
 
@@ -8,6 +9,8 @@ from models import ErrorRecord, Flashcard, Task
 from sqlalchemy.orm import Session
 from utils.scope import scoped
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+logger = logging.getLogger(__name__)
 
 
 def _scoped_uid(model, user_id: Optional[int]):
@@ -20,13 +23,13 @@ class ReviewScheduler:
 
     # 艾宾浩斯复习间隔（分钟）
     EBINGHAUS_INTERVALS = [
-        20,            # 20 分钟后
-        60,            # 1 小时后
-        9 * 60,        # 9 小时后
-        24 * 60,       # 1 天后
-        2 * 24 * 60,   # 2 天后
-        5 * 24 * 60,   # 5 天后
-        8 * 24 * 60,   # 8 天后
+        20,  # 20 分钟后
+        60,  # 1 小时后
+        9 * 60,  # 9 小时后
+        24 * 60,  # 1 天后
+        2 * 24 * 60,  # 2 天后
+        5 * 24 * 60,  # 5 天后
+        8 * 24 * 60,  # 8 天后
         15 * 24 * 60,  # 15 天后
     ]
 
@@ -75,6 +78,29 @@ class ReviewScheduler:
         else:
             mastery = "new"
 
+        # ── S1 kernel 影子/切流钩子（附加式；任何异常降级 legacy）──
+        # KAOYAN_FSRS_SHADOW=1（默认）：只记 SM-2 vs FSRS 差异日志，行为不变；
+        # KAOYAN_FSRS_ENGINE=kernel：切流，返回 kernel 建议（影子期验证后才开）。
+        try:
+            from services import kernel_bridge
+
+            alt = kernel_bridge.fsrs_alternative(quality, repetitions, interval, ef, now=utcnow())
+            if alt is not None:
+                kernel_tuple, meta = alt
+                if kernel_bridge.fsrs_engine() == "kernel":
+                    return kernel_tuple
+                if kernel_bridge.fsrs_shadow():
+                    logger.info(
+                        "FSRS_SHADOW q=%s legacy_interval=%s kernel_interval=%s diff_days=%s meta=%s",
+                        quality,
+                        new_interval,
+                        kernel_tuple[2],
+                        kernel_tuple[2] - new_interval,
+                        meta,
+                    )
+        except Exception as exc:  # noqa: BLE001 - 红线：影子钩子绝不炸主链
+            logger.warning("FSRS 影子钩子降级 legacy: %s", exc)
+
         return next_review, new_repetitions, new_interval, new_ef, mastery
 
     @staticmethod
@@ -115,9 +141,7 @@ class ReviewScheduler:
         return utcnow() + datetime.timedelta(days=days)  # naive UTC（P0-4）
 
     @staticmethod
-    def get_due_flashcards(
-        db: Session, limit: int = 100, *, user_id: Optional[int] = None
-    ) -> List[Flashcard]:
+    def get_due_flashcards(db: Session, limit: int = 100, *, user_id: Optional[int] = None) -> List[Flashcard]:
         """获取今日待复习卡片（B4：user_id 提供时只看本人卡片）。"""
         now = utcnow()  # naive UTC，与 DB 列比较（P0-4）
         # V12 修复：next_review 为 NULL 的卡片是"新卡"（从未学习），不计入今日待复习。
@@ -125,7 +149,7 @@ class ReviewScheduler:
         return (
             db.query(Flashcard)
             .filter(
-                (Flashcard.next_review != None),
+                (Flashcard.next_review != None),  # noqa: E711 - SQLAlchemy IS NOT NULL 惯用
                 (Flashcard.next_review <= now),
                 _scoped_uid(Flashcard, user_id),
             )
@@ -135,15 +159,13 @@ class ReviewScheduler:
         )
 
     @staticmethod
-    def get_due_tasks(
-        db: Session, limit: int = 100, *, user_id: Optional[int] = None
-    ) -> List[Task]:
+    def get_due_tasks(db: Session, limit: int = 100, *, user_id: Optional[int] = None) -> List[Task]:
         """获取今日待复习任务（B4：user_id 提供时只看本人任务）。"""
         now = utcnow()  # naive UTC，与 DB 列比较（P0-4）
         return (
             db.query(Task)
             .filter(
-                (Task.next_review != None),
+                (Task.next_review != None),  # noqa: E711 - SQLAlchemy IS NOT NULL 惯用
                 (Task.next_review <= now),
                 (Task.status != "done"),
                 _scoped_uid(Task, user_id),
@@ -154,15 +176,13 @@ class ReviewScheduler:
         )
 
     @staticmethod
-    def get_due_errors(
-        db: Session, limit: int = 100, *, user_id: Optional[int] = None
-    ) -> List[ErrorRecord]:
+    def get_due_errors(db: Session, limit: int = 100, *, user_id: Optional[int] = None) -> List[ErrorRecord]:
         """获取今日待复习错题（B4：user_id 提供时只看本人错题）。"""
         now = utcnow()  # naive UTC，与 DB 列比较（P0-4）
         return (
             db.query(ErrorRecord)
             .filter(
-                (ErrorRecord.next_review != None),
+                (ErrorRecord.next_review != None),  # noqa: E711 - SQLAlchemy IS NOT NULL 惯用
                 (ErrorRecord.next_review <= now),
                 (ErrorRecord.status == "active"),
                 _scoped_uid(ErrorRecord, user_id),

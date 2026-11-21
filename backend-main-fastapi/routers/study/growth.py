@@ -23,6 +23,7 @@ from models import StudyEvent
 from services.study_calendar import day_ledger, streak_summary
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from utils.security import current_user
 from utils.timeutil import day_bucket_expr, local_range_utc, local_today
 
 router = APIRouter(prefix="/api/growth", tags=["成长体系"])
@@ -442,3 +443,24 @@ def growth_timeline(days: int = Query(30, ge=1, le=365), db: Session = Depends(g
         "timeline": timeline,
         "subject_breakdown": [{"subject": s or "未分类", "events": n} for s, n in subj_rows],
     }
+
+
+# --------------------------------------------------------------------------- #
+# S1：kernel drift 接线端点（day_ledger → export_ledger → compute_drift）
+# --------------------------------------------------------------------------- #
+@router.get("/drift")
+def growth_drift(
+    window: int = Query(30, ge=7, le=90),
+    db: Session = Depends(get_db),
+    user=Depends(current_user),
+):
+    """本人近 N 天执行漂移（kernel G2 口径）。
+
+    计划分钟暂无 shell 数据源 → planned=0 → 显式 ``no_plan``（不伪造计划量）；
+    学习天数 < min_days → ``insufficient_data``；kernel 依赖缺失 →
+    ``kernel_unavailable``（降级不 500）。按 user_id 隔离（B4）。
+    """
+    from services.kernel_bridge import drift_for_user
+    from utils.scope import owner_id
+
+    return drift_for_user(db, owner_id(user), days=window)

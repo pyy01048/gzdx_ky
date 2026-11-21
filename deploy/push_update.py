@@ -126,6 +126,7 @@ def package(out_path: str) -> str:
         "scripts/execute_core_sql.py",
         "scripts/import_school_eval_pg.py",
         "scripts/sync_quiz_chapter_exercise.py",
+        "scripts/kernel_event_rebuild.py",
         "scripts/_conn.py",
         "main.py",
         "app_lifecycle.py",
@@ -146,6 +147,12 @@ def package(out_path: str) -> str:
                 print(f"[警告] 缺少 {e}，跳过")
                 continue
             tar.add(p, arcname=f"backend-main-fastapi/{e}", filter=_tar_filter)
+            count += 1
+        # S1：kernel 纯函数层随包部署（服务器 /opt/kaoyan/kernel；
+        # services/kernel_bridge.py 以仓库根入 sys.path 导入 kernel.*）
+        kernel_src = os.path.join(BASE, "kernel")
+        if os.path.exists(kernel_src):
+            tar.add(kernel_src, arcname="kernel", filter=_tar_filter)
             count += 1
     size_mb = os.path.getsize(out_path) / 1024 / 1024
     print(f"打包完成：{out_path}（{count} 项，{size_mb:.1f} MB）")
@@ -295,14 +302,18 @@ def main() -> int:
         # 个人数据 /api/tasks 仍默认拒绝（期望 401）——两条一起才证明门控没被放开过头。
         _, code_guest = remote(cli, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/documents")
         _, code_auth = remote(cli, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/tasks")
-        print(f"首页 HTTP {code_home}（期望 200）；访客读 /api/documents HTTP {code_guest}（期望 200）；未登录 /api/tasks HTTP {code_auth}（期望 401）")
+        print(
+            f"首页 HTTP {code_home}（期望 200）；访客读 /api/documents HTTP {code_guest}（期望 200）；未登录 /api/tasks HTTP {code_auth}（期望 401）"
+        )
         for label, got, want in (
             ("首页", code_home, "200"),
             ("访客读 /api/documents", code_guest, "200"),
             ("未登录 /api/tasks", code_auth, "401"),
         ):
             if got != want:
-                print(f"[警告] {label} HTTP {got} ≠ 期望 {want} —— 门控/静态可能异常，请查 journalctl 与 nginx，必要时 rollback.sh")
+                print(
+                    f"[警告] {label} HTTP {got} ≠ 期望 {want} —— 门控/静态可能异常，请查 journalctl 与 nginx，必要时 rollback.sh"
+                )
         # 2026-11-21 评审整改：/api/health 已脱敏（只回 status/version，零 DB 查询），
         # git_sha 移到鉴权的 /api/health/detail。这里只校验 status ok + version 存在。
         if '"ok"' not in health or '"version"' not in health:

@@ -88,3 +88,8 @@ fastembed==0.9.1
 
 # PDF 导出的运行时依赖（services/kb_service.py 的 reportlab canvas；缺失会让 /api/words/export-pdf 等 500）
 reportlab==4.2.5
+
+# S1 kernel 桥接层依赖（kernel/ 纯函数层：FSRS 适配器 + 事件 schema 校验；
+# 缺失时 services/kernel_bridge.py 降级 legacy + warning，不 500）
+fsrs==6.3.3
+jsonschema==4.26.0
