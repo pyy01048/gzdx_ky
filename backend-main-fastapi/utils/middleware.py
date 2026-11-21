@@ -90,6 +90,11 @@ class _ApiGZipResponder(GZipResponder):
             self.content_encoding_set = "content-encoding" in Headers(raw=message["headers"])
             self.partial_response = message["status"] == 206
             self.content_type_is_excluded = True
+            # 复测整改（2026-11-21）：starlette 0.46 的 body 排除分支会在
+            # `not self.started` 时补发 initial_message → 与本处的立即转发撞成
+            # 二次 http.response.start（ASGI RuntimeError，PDF/二进制流断连）。
+            # 置 started=True 后 0.46 不再补发；1.10 的 body 排除分支不读该位，无副作用。
+            self.started = True
             await self.send(message)
             return
         await super().send_with_compression(message)

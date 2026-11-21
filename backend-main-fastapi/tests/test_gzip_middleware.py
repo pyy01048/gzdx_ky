@@ -98,3 +98,57 @@ def test_identity_accept_encoding_no_compression(media_type):
     assert resp.status_code == 200
     assert "content-encoding" not in resp.headers
     assert resp.content == payload
+
+
+def test_passthrough_start_sent_once_and_started_flag():
+    """starlette 0.46 回归锁（2026-11-21 线上复测实证）。
+
+    0.46 的 ``IdentityResponder.send_with_compression`` body 排除分支会在
+    ``not self.started`` 时补发 ``initial_message``；适配层若立即转发 start 却
+    不置 ``started=True``，就会二次 ``http.response.start`` → ASGI RuntimeError、
+    PDF/二进制流中途断连（线上 /api/errors/export-pdf 实测 received 0 bytes）。
+    本用例在消息级锁死：start 恰好一条、started 位为 True、body 逐字节透传。
+    """
+    import asyncio
+
+    from utils.middleware import _ApiGZipResponder
+
+    payload = b"%PDF-1.4\n" + b"0" * 4000
+    sent = []
+
+    async def app(scope, receive, send):  # noqa: ARG001
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"application/pdf"),
+                    (b"content-length", str(len(payload)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": payload, "more_body": False})
+
+    async def send(msg):
+        sent.append(msg)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    responder = _ApiGZipResponder(app, 1000)
+    scope = {"type": "http", "headers": [(b"accept-encoding", b"gzip")]}
+    asyncio.run(responder(scope, receive, send))
+
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert len(starts) == 1, "透传响应 start 必须恰好一条（0.46 父类补发会撞成二次 start）"
+    assert responder.started is True, "立即转发 start 后必须置 started，阻断 0.46 父类补发"
+    bodies = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
+    assert bodies == payload
+
+
+def test_errors_export_pdf_e2e_gzip(client):
+    """e2e：错题本 PDF 导出带 gzip 协商时完整可达（空错题也须产出合法 PDF）。"""
+    r = client.get("/api/errors/export-pdf", headers={"accept-encoding": "gzip"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/pdf")
+    assert r.content[:5] == b"%PDF-"
