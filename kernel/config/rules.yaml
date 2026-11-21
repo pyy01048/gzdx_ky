@@ -1,0 +1,34 @@
+# kernel 规则引擎配置（附录 C：rules.yaml）
+# 阈值调整只改本文件并对事件流重放验证，不改代码。
+# 等号归属语义见 drift_detector 与验收规范 §2.2-1。
+
+# --- 漂移分带（drift_detector 消费）---
+drift:
+  window_days: 7          # 滑动窗口
+  min_days: 3             # <3 天 → insufficient_data（冷启动保护）
+  on_track_band: 0.15     # drift >= -0.15 → on_track（含等号）
+  recovery_band: 0.35     # drift >= -0.35 → micro_adjust；更差 → recovery
+  micro_adjust_pct: 0.25  # R1 明日任务量下调幅度上限（15–25% 取上界）
+
+# --- 规则阈值 ---
+debt_soft_gate_hours: 10.0   # R2' 核心欠账软闸门（只封顶不切模式）
+debt_exit_hours: 3.0         # 恢复退出：欠账 < 3h
+recovery_exit_days: 3        # 且 drift >= -0.15 连续 3 天 → 提案恢复
+review_backlog_ratio: 1.5    # R5 复习积压 > 日配额 × 1.5
+zero_report_days: 3          # R6 连续 3 天零汇报
+expire_after_days: 14        # 非核心任务积压超期转 expired
+milestone_delay_days: 7      # R9 里程碑延迟 > 7 天
+too_hard_accuracy: 0.6       # R3 正确率 < 60%
+too_easy_accuracy: 0.9       # R4 正确率 > 90%
+too_easy_streak: 5           # R4 连续 5 天
+
+# --- 配额 ---
+quota_new: 50                # 单词日新学上限
+quota_review: 200            # 单词日复习上限
+new_learn_cap_on_debt: 0.5   # 软闸门期间新学配额封顶 50%
+
+# --- 仲裁优先级（总方案 §4.3）---
+priority_order: [R2, R5, R8, R3, R4, R1, R10, R6, R9, R7]
+
+# --- R10 时间预算重排块（分钟）---
+reflow_block_minutes: [25, 45]

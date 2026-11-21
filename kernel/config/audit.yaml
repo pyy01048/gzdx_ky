@@ -1,0 +1,9 @@
+# 择校风险审计阈值（附录 C：audit.yaml）
+# 等号归属：全部为「达到即触发」（>= / <= 含等号），入测试断言。
+
+tuimian_cum_pp: 10.0    # 推免挤压：推免占计划比例三年累计上升 >= 10pp
+shrink_pct: 20.0        # 缩招：统考真实名额同比下降 >= 20%
+heat_rise_pct: 30.0     # 爆热：报录比同比上升 >= 30%
+heat_abs_ratio: 8.0     # 且报录比绝对值 > 8（严格大于）
+retest_ratio_high: 1.5  # 复录比高判定（进复试/录取 >= 1.5）
+stale_seasons: 1        # access_date 超 1 个招生季 → 待复核徽标

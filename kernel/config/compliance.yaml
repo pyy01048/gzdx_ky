@@ -1,0 +1,13 @@
+# 合规静态检查配置（附录 C：compliance.yaml）
+# exam 模式：C 基础库 + C++ 标准子集（官方 C++ 视同 C）
+# strict 模式：仅 C 白名单；函数黑名单两模式通用。
+
+c_whitelist_headers: [stdio.h, stdlib.h, string.h, math.h, ctype.h, limits.h, stddef.h, stdbool.h, assert.h]
+
+cpp_subset_headers: [cstdio,cstdlib,cstring,cmath,cctype,climits,cstddef,cstdbool,cassert,vector,queue,stack,algorithm,utility,iostream,string]
+
+banned_functions: [gets, qsort, bsearch, system, popen, fork, exec, execl, execle, execlp, execv, execve, execvp, execvpe]
+
+file_io_functions: [fopen, fclose, freopen, remove, rename, fscanf, fprintf, fread, fwrite, rewind, fgetc, fputc, fgets, fputs]
+
+allowed_streams: [stdin, stdout, stderr]

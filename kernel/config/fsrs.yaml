@@ -1,0 +1,13 @@
+# FSRS 调度配置（附录 C：fsrs.yaml）
+# 三档映射默认保守：陌生→Again、有印象→Hard、熟悉→Good。
+# Easy 作为可配置项保留（总方案裁决 #15），不默认。
+
+desired_retention: 0.9
+familiar_maps_to: Good       # Good（默认）| Easy
+impression_maps_to: Hard     # Hard（默认）| Good
+optimizer_gate: 1000         # 自设保守闸门：日志 >=1000 条才启用 Optimizer
+optimizer_gate_min: 512      # 允许配置下调到的下限
+queue_quota_new: 50
+queue_quota_review: 200
+first_interval_min_days: 1   # V12 口径：新卡首间隔 >= 1 天
+reinsert_offset: 4           # 轮内 +4 重现
