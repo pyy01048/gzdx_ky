@@ -767,9 +767,16 @@ def _unique_username(db: Session, email: str) -> str:
 
 
 def _floor_elapsed(start: float, min_ms: int = 150) -> None:
-    """抹平响应时间侧信道（§4.1）：所有分支耗时不低于 min_ms。"""
-    left = min_ms / 1000 - (time.monotonic() - start)
-    if left > 0:
+    """抹平响应时间侧信道（§4.1）：所有分支耗时不低于 min_ms。
+
+    单次 time.sleep 在粗粒度时钟平台（Windows ~15.6ms）会下冲，击穿防枚举下限；
+    改用单调时钟 deadline 循环补睡，保证真实耗时 ≥ min_ms（跨平台确定性达标）。
+    """
+    deadline = start + min_ms / 1000
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            break
         time.sleep(left)
 
 
