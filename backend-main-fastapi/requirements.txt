@@ -75,7 +75,7 @@ urllib3>=2.0
 # ---- 定时任务 ----
 APScheduler==3.10.4
 # Windows 必须显式装：APScheduler 用字符串时区名(如 Asia/Shanghai)时缺 tzdata 会静默不注册
-tzdata==2025.2
+tzdata==2026.6
 # ---- 环境变量 ----
 python-dotenv==1.2.2
 # ---- 本地 Embedding（bge-small-zh，数据不出网）----
