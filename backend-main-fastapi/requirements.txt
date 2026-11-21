@@ -36,7 +36,7 @@ trafilatura>=2.0,<3
 readability-lxml>=0.8.1
 lxml>=4.9
 aiofiles==23.2.1
-PyJWT==2.15.0
+PyJWT==2.15.1
 # 凭据落库加密（utils/secret_codec.py：AES-256-GCM 保护 platform_configs 的网盘 token/app_key/secret_key）
 cryptography==50.0.0
 # 2026-10-18：numpy 1.26.4 无 cp313 wheel，按解释器版本分流（服务器行为不变）
