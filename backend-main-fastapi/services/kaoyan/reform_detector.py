@@ -12,6 +12,7 @@
   INSERT OR IGNORE，重复扫描不产生重复事件。
 - 每条事件附 confidence（0-1）与匹配到的关键词，可审计、可人工复核。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -23,8 +24,7 @@ from utils.timeutil import naive_utc_iso
 from services.dbapi_compat import wrap_conn
 
 # 规则优先级（同标题多命中时取信息量最大的类型）
-_REFORM_PRIORITY = ["改考科目", "停招", "恢复招生", "新增专业",
-                    "参考书变更", "大纲调整", "复试调整", "学制/学费调整"]
+_REFORM_PRIORITY = ["改考科目", "停招", "恢复招生", "新增专业", "参考书变更", "大纲调整", "复试调整", "学制/学费调整"]
 
 # --------------------------------------------------------------------------- #
 # 规则库：change_type → (正则模式列表, 基础置信度)
@@ -134,6 +134,7 @@ def ensure_reforms_schema(db_session) -> None:
     """幂等建表（与 notices 同套路，不动 ORM）。"""
     conn = wrap_conn(db_session.connection().connection)
     from services.ddl_compat import adapt_ddl
+
     conn.executescript(adapt_ddl(_REFORM_TABLE_DDL, conn))
     conn.executescript(adapt_ddl(_REFORM_IDX_DDL, conn))
     conn.commit()
@@ -159,7 +160,9 @@ def classify_reform_title(title: str) -> Optional[Dict]:
                     "keywords": kw,
                 }
                 # 同标题多命中时取信息量大的（模块级 _REFORM_PRIORITY）
-                if best is None or _REFORM_PRIORITY.index(cand["change_type"]) < _REFORM_PRIORITY.index(best["change_type"]):
+                if best is None or _REFORM_PRIORITY.index(cand["change_type"]) < _REFORM_PRIORITY.index(
+                    best["change_type"]
+                ):
                     best = cand
                 break
     if best:
@@ -186,8 +189,7 @@ def scan_notices_for_reforms(
     ensure_reforms_schema(db_session)
     conn = wrap_conn(db_session.connection().connection)
 
-    sql = ("SELECT id, school_id, school_name, title, notice_type, url, source "
-           "FROM kaoyan_notices")
+    sql = "SELECT id, school_id, school_name, title, notice_type, url, source FROM kaoyan_notices"
     args: list = []
     if school_ids:
         sql += " WHERE school_id IN (%s)" % ",".join("?" * len(school_ids))
@@ -202,18 +204,19 @@ def scan_notices_for_reforms(
         hit = classify_reform_title(title or "")
         if not hit:
             continue
-        detected.append({
-            "school_id": sch_id,
-            "school_name": sch_name,
-            "notice_id": notice_id,
-            "notice_type": notice_type,
-            "title": title,
-            "url": url,
-            "source": source,
-            **hit,
-            "detail_hash": _detail_hash(sch_name or "", hit["change_type"],
-                                        hit.get("year"), title or ""),
-        })
+        detected.append(
+            {
+                "school_id": sch_id,
+                "school_name": sch_name,
+                "notice_id": notice_id,
+                "notice_type": notice_type,
+                "title": title,
+                "url": url,
+                "source": source,
+                **hit,
+                "detail_hash": _detail_hash(sch_name or "", hit["change_type"], hit.get("year"), title or ""),
+            }
+        )
 
     inserted = 0
     if not dry_run:
@@ -224,10 +227,22 @@ def scan_notices_for_reforms(
                 "notice_id, notice_type, title, year, change_type, change_detail, "
                 "keywords, confidence, url, source, created_at, detail_hash) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (d["school_id"], d["school_name"], d["notice_id"], d["notice_type"],
-                 d["title"], d.get("year") or 0, d["change_type"], d["title"],
-                 d["keywords"], d["confidence"], d["url"], d["source"], now,
-                 d["detail_hash"]),
+                (
+                    d["school_id"],
+                    d["school_name"],
+                    d["notice_id"],
+                    d["notice_type"],
+                    d["title"],
+                    d.get("year") or 0,
+                    d["change_type"],
+                    d["title"],
+                    d["keywords"],
+                    d["confidence"],
+                    d["url"],
+                    d["source"],
+                    now,
+                    d["detail_hash"],
+                ),
             )
             inserted += cur.rowcount
         conn.commit()
@@ -244,16 +259,27 @@ def scan_notices_for_reforms(
     }
 
 
-def list_reforms(db_session, school_id: Optional[int] = None,
-                 change_type: Optional[str] = None,
-                 year: Optional[int] = None,
-                 limit: int = 100) -> List[Dict]:
-    """改考事件查询（前端改考雷达 / 院校详情提醒）。"""
+def list_reforms(
+    db_session,
+    school_id: Optional[int] = None,
+    change_type: Optional[str] = None,
+    year: Optional[int] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> List[Dict]:
+    """改考事件查询（前端改考雷达 / 院校详情提醒）。
+
+    2026-11-21 审计 P0-2 修复：新增 ``offset`` 支持真分页。
+    此前只有 LIMIT 没有 OFFSET，page 参数被路由层丢弃，
+    导致 total=158 时永远只能取回首屏 100 条（36.7% 情报不可达）。
+    """
     ensure_reforms_schema(db_session)
     conn = wrap_conn(db_session.connection().connection)
-    sql = ("SELECT id, school_id, school_name, notice_id, title, year, "
-           "change_type, keywords, confidence, url, source, created_at "
-           "FROM kaoyan_reforms WHERE 1=1")
+    sql = (
+        "SELECT id, school_id, school_name, notice_id, title, year, "
+        "change_type, keywords, confidence, url, source, created_at "
+        "FROM kaoyan_reforms WHERE 1=1"
+    )
     args: list = []
     if school_id:
         sql += " AND school_id = ?"
@@ -264,13 +290,26 @@ def list_reforms(db_session, school_id: Optional[int] = None,
     if year:
         sql += " AND (year = ? OR year = 0 OR year IS NULL)"
         args.append(year)
-    sql += " ORDER BY created_at DESC, id DESC LIMIT ?"
+    sql += " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
     args.append(limit)
-    cols = ["id", "school_id", "school_name", "notice_id", "title", "year",
-            "change_type", "keywords", "confidence", "url", "source", "created_at"]
+    args.append(max(0, int(offset)))
+    cols = [
+        "id",
+        "school_id",
+        "school_name",
+        "notice_id",
+        "title",
+        "year",
+        "change_type",
+        "keywords",
+        "confidence",
+        "url",
+        "source",
+        "created_at",
+    ]
     out = []
     for r in conn.execute(sql, args).fetchall():
-        d = dict(zip(cols, r))
+        d = dict(zip(cols, r, strict=True))
         if d.get("year") == 0:  # 0 = 年份未知（入库占位，规避 UNIQUE 对 NULL 不去重）
             d["year"] = None
         out.append(d)
@@ -281,14 +320,11 @@ def reform_stats(db_session) -> Dict:
     """改考事件统计（按类型 / 按院校 top10）。"""
     ensure_reforms_schema(db_session)
     conn = wrap_conn(db_session.connection().connection)
-    by_type = dict(conn.execute(
-        "SELECT change_type, COUNT(*) FROM kaoyan_reforms GROUP BY change_type"
-    ).fetchall())
+    by_type = dict(conn.execute("SELECT change_type, COUNT(*) FROM kaoyan_reforms GROUP BY change_type").fetchall())
     top_schools = [
         {"school": r[0], "count": r[1]}
         for r in conn.execute(
-            "SELECT school_name, COUNT(*) c FROM kaoyan_reforms "
-            "GROUP BY school_name ORDER BY c DESC LIMIT 10"
+            "SELECT school_name, COUNT(*) c FROM kaoyan_reforms GROUP BY school_name ORDER BY c DESC LIMIT 10"
         ).fetchall()
     ]
     total = sum(by_type.values())

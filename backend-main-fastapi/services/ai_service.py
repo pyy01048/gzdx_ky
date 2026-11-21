@@ -26,9 +26,9 @@ from services.embedding_service import EmbeddingService
 # 改成模块级后，跨实例跨请求真正生效。
 # --------------------------------------------------------------------------- #
 _OLLAMA_CACHE: Dict[str, float | bool] = {"value": False, "time": 0.0}
-_OLLAMA_TTL = 300.0        # 默认缓存有效期（秒）
-_FORCE_RECENT_TTL = 30.0   # 用户点"检测"时的最大容忍陈旧度（秒）
-_OLLAMA_TIMEOUT = 3.0      # 单次探测超时（秒）—— 必须远小于上游网关阈值
+_OLLAMA_TTL = 300.0  # 默认缓存有效期（秒）
+_FORCE_RECENT_TTL = 30.0  # 用户点"检测"时的最大容忍陈旧度（秒）
+_OLLAMA_TIMEOUT = 3.0  # 单次探测超时（秒）—— 必须远小于上游网关阈值
 
 # qwen3 思维链标签：成对剥离；模型被 max_tokens 截断时只剩开标签，也要清掉
 _THINK_TAG_RE = re.compile(r"<think\b[^>]*>.*?</think\s*>", re.S | re.I)
@@ -46,7 +46,7 @@ class AIService:
         "gpt": "https://api.openai.com/v1",
         "claude": "https://api.anthropic.com/v1",
         "ollama": "http://127.0.0.1:11434/v1",  # 本地 Ollama（OpenAI 兼容接口）
-        "local": "http://127.0.0.1:11434/v1",   # 本地模型别名
+        "local": "http://127.0.0.1:11434/v1",  # 本地模型别名
     }
 
     # 各服务商默认模型名
@@ -57,28 +57,68 @@ class AIService:
         "gpt": "gpt-3.5-turbo",
         "claude": "claude-3-haiku-20240307",
         "ollama": "kaoyan-assistant",  # 本地考研微调模型（Ollama）
-        "local": "kaoyan-assistant",   # 本地模型别名
+        "local": "kaoyan-assistant",  # 本地模型别名
     }
 
     # 智能路由配置
     ROUTING_CONFIG = {
-        "local_max_tokens": 900,       # 本地模型最大输出 token（500 时答疑常被截断）
-        "local_max_input_chars": 2000, # 本地模型最大输入字符数
-        "simple_keywords": [            # 简单问题关键词，优先走本地
-            "你好", "hello", "hi", "谢谢", "感谢", "再见", "bye",
-            "现在几点", "今天几号", "星期几", "日期", "时间",
-            "什么是", "定义", "概念", "解释一下", "简单说",
-            "翻译", "translate", "同义词", "反义词",
+        "local_max_tokens": 900,  # 本地模型最大输出 token（500 时答疑常被截断）
+        "local_max_input_chars": 2000,  # 本地模型最大输入字符数
+        "simple_keywords": [  # 简单问题关键词，优先走本地
+            "你好",
+            "hello",
+            "hi",
+            "谢谢",
+            "感谢",
+            "再见",
+            "bye",
+            "现在几点",
+            "今天几号",
+            "星期几",
+            "日期",
+            "时间",
+            "什么是",
+            "定义",
+            "概念",
+            "解释一下",
+            "简单说",
+            "翻译",
+            "translate",
+            "同义词",
+            "反义词",
         ],
-        "complex_keywords": [           # 复杂问题关键词，强制走在线
-            "详细分析", "深度", "论文", "研究", "报告",
-            "代码", "编程", "debug", "算法", "复杂",
-            "长文本", "总结", "摘要", "写作", "作文",
-            "数学题", "证明", "推导", "计算",
+        "complex_keywords": [  # 复杂问题关键词，强制走在线
+            "详细分析",
+            "深度",
+            "论文",
+            "研究",
+            "报告",
+            "代码",
+            "编程",
+            "debug",
+            "算法",
+            "复杂",
+            "长文本",
+            "总结",
+            "摘要",
+            "写作",
+            "作文",
+            "数学题",
+            "证明",
+            "推导",
+            "计算",
         ],
-        "sensitive_keywords": [         # 敏感内容，优先本地（数据不出网）
-            "我的", "个人", "隐私", "成绩", "排名", "错题",
-            "学习计划", "目标", "院校", "专业",
+        "sensitive_keywords": [  # 敏感内容，优先本地（数据不出网）
+            "我的",
+            "个人",
+            "隐私",
+            "成绩",
+            "排名",
+            "错题",
+            "学习计划",
+            "目标",
+            "院校",
+            "专业",
         ],
     }
 
@@ -87,12 +127,30 @@ class AIService:
     # ------------------------------------------------------------------ #
     UNSAFE_PATTERNS = [
         # 违法与人身伤害
-        r"制作炸弹", r"爆炸物", r"自制武器", r"制毒", r"毒品配方", r"冰毒",
-        r"怎么自杀", r"自杀方法", r"自残方法", r"怎样伤害自己",
-        r"网络诈骗", r"盗取密码", r"入侵网站", r"ddos", r"黑客攻击",
-        r"裸聊", r"约炮", r"卖淫", r"色情网站",
+        r"制作炸弹",
+        r"爆炸物",
+        r"自制武器",
+        r"制毒",
+        r"毒品配方",
+        r"冰毒",
+        r"怎么自杀",
+        r"自杀方法",
+        r"自残方法",
+        r"怎样伤害自己",
+        r"网络诈骗",
+        r"盗取密码",
+        r"入侵网站",
+        r"ddos",
+        r"黑客攻击",
+        r"裸聊",
+        r"约炮",
+        r"卖淫",
+        r"色情网站",
         # 政治敏感（按中国法律不予回答）
-        r"颠覆国家", r"分裂国家", r"煽动叛乱", r"政治体制评价",
+        r"颠覆国家",
+        r"分裂国家",
+        r"煽动叛乱",
+        r"政治体制评价",
     ]
 
     @staticmethod
@@ -129,7 +187,7 @@ class AIService:
             )
         blocks = []
         for i, h in enumerate(kb_hits, 1):
-            blocks.append(f"[片段{i}｜来源：{h.get('source')}｜{h.get('title','')}]\n{h.get('content','')}")
+            blocks.append(f"[片段{i}｜来源：{h.get('source')}｜{h.get('title', '')}]\n{h.get('content', '')}")
         return (
             "（本地知识库离线回答 · 未使用任何 AI 模型，数据不出网）\n\n"
             + "\n\n".join(blocks)
@@ -168,7 +226,7 @@ class AIService:
 
         enabled = (
             self.db.query(AIProvider)
-            .filter(AIProvider.is_enabled == True)
+            .filter(AIProvider.is_enabled.is_(True))
             .order_by(AIProvider.fallback_priority.asc())
             .all()
         )
@@ -186,7 +244,7 @@ class AIService:
         """获取备用服务商列表（按降级优先级排序，跳过无 Key 的云端服务商）。"""
         rows = (
             self.db.query(AIProvider)
-            .filter(AIProvider.is_enabled == True, AIProvider.id != exclude_id)
+            .filter(AIProvider.is_enabled.is_(True), AIProvider.id != exclude_id)
             .order_by(AIProvider.fallback_priority.asc())
             .all()
         )
@@ -218,7 +276,7 @@ class AIService:
         # 先查数据库（已登记的本地模型，如 kaoyan-assistant / qwen3.5:9b / qwen3.5:4b）
         providers = (
             self.db.query(AIProvider)
-            .filter(AIProvider.provider_type.in_(["ollama", "local"]), AIProvider.is_enabled == True)
+            .filter(AIProvider.provider_type.in_(["ollama", "local"]), AIProvider.is_enabled.is_(True))
             .all()
         )
         if providers:
@@ -250,7 +308,7 @@ class AIService:
         self,
         force_check: bool = False,
         force_recent: bool = False,
-) -> bool:
+    ) -> bool:
         """检查本地 Ollama 服务是否可用（默认 5 分钟缓存）。
 
         :param force_check: 忽略缓存强制探测。**仅供后台任务使用**——
@@ -282,9 +340,7 @@ class AIService:
         cache["time"] = now
         return result
 
-    def _route_query(
-        self, messages: List[Dict[str, str]], kb_hit_count: int = 0
-    ) -> Tuple[str, str]:
+    def _route_query(self, messages: List[Dict[str, str]], kb_hit_count: int = 0) -> Tuple[str, str]:
         """智能路由决策：判断该走本地模型还是在线 API。
 
         结合「问题复杂度」「隐私」「本地知识库覆盖度」综合判断。
@@ -370,9 +426,7 @@ class AIService:
         return {"content": content, "usage": usage}
 
     def _get_model_name(self, provider: AIProvider) -> str:
-        return provider.model_name or self.DEFAULT_MODELS.get(
-            provider.provider_type or "", "gpt-3.5-turbo"
-        )
+        return provider.model_name or self.DEFAULT_MODELS.get(provider.provider_type or "", "gpt-3.5-turbo")
 
     def _get_chat_url(self, provider: AIProvider) -> str:
         base = self._get_base_url(provider).rstrip("/")
@@ -458,9 +512,7 @@ class AIService:
             force_local: 强制本地（绝不回退在线；本地不可用则走离线知识库兜底）
         """
         # 有害/违规内容拦截（先于任何模型调用）
-        last_user = next(
-            (m["content"] for m in reversed(messages) if m.get("role") == "user"), ""
-        )
+        last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
         if self.is_unsafe(last_user):
             return {
                 "content": self.guard_message(),
@@ -550,7 +602,7 @@ class AIService:
                         "route_reason": f"本地调用失败（{str(e)[:50]}），离线知识库兜底",
                         "model": None,
                     }
-                raise RuntimeError(f"本地模型调用失败：{str(e)}")
+                raise RuntimeError(f"本地模型调用失败：{str(e)}") from e
 
         fallbacks = self._get_fallback_providers(provider.id)
         all_providers = [provider] + fallbacks
@@ -611,9 +663,7 @@ class AIService:
           {"type": "error", "message": str}   错误
         """
         # 有害/违规内容拦截
-        last_user = next(
-            (m["content"] for m in reversed(messages) if m.get("role") == "user"), ""
-        )
+        last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
         if self.is_unsafe(last_user):
             yield {"type": "provider", "name": "guard"}
             yield {"type": "delta", "content": self.guard_message()}
@@ -778,11 +828,7 @@ class AIService:
                             # 输出任何 delta，前端就会永远"生成中…"直至 ERR_ABORTED。
                             # 当思维链累积超过阈值且从未输出过正式 content 时，
                             # 主动把已收集的思维链作为 delta 输出，让用户看到进展。
-                            if (
-                                not reasoning_flushed
-                                and not full
-                                and reasoning_len >= REASONING_FLUSH_THRESHOLD
-                            ):
+                            if not reasoning_flushed and not full and reasoning_len >= REASONING_FLUSH_THRESHOLD:
                                 reasoning_flushed = True
                                 yield {
                                     "type": "delta",
@@ -826,13 +872,15 @@ class AIService:
         if not query:
             return []
 
+        # 审计 P1-11：「全部科目」等哨兵值 = 不过滤，避免字面匹配空结果
+        subject = search_service.normalize_subject_filter(subject)
+
         # 0) 知识图谱增强：沿 prerequisite/parallel 关系扩展查询词（55 号 P1-D）
         #    旁路容错：kg_rag.expand_query_with_graph 内部 try/except，不抛异常。
         try:
             from services import kg_rag
-            _graph_exp = kg_rag.expand_query_with_graph(
-                self.db, query, subject=subject, max_expansions=3
-            )
+
+            _graph_exp = kg_rag.expand_query_with_graph(self.db, query, subject=subject, max_expansions=3)
             _search_query = _graph_exp.get("expanded_query") or query
         except Exception:  # noqa: BLE001 —— 图谱扩展不可用时退化为原查询
             _search_query = query
@@ -885,17 +933,14 @@ class AIService:
             return sorted(chunk_results, key=lambda x: -x["score"])[:limit]
 
         # 取查询里最长的 3 个词做 SQL LIKE 预筛（长词区分度高，漏召回少）
-        probe_terms = sorted({t for t in q_tokens if len(t) >= 2},
-                             key=len, reverse=True)[:3]
+        probe_terms = sorted({t for t in q_tokens if len(t) >= 2}, key=len, reverse=True)[:3]
         if probe_terms:
             from sqlalchemy import or_ as _or
-            cond = _or(*[
-                KnowledgePoint.name.ilike(f"%{t}%")
-                for t in probe_terms
-            ] + [
-                KnowledgePoint.description.ilike(f"%{t}%")
-                for t in probe_terms
-            ])
+
+            cond = _or(
+                *[KnowledgePoint.name.ilike(f"%{t}%") for t in probe_terms]
+                + [KnowledgePoint.description.ilike(f"%{t}%") for t in probe_terms]
+            )
             kp_q = self.db.query(KnowledgePoint).filter(cond)
             if subject:
                 kp_q = kp_q.filter(KnowledgePoint.subject == subject)
@@ -925,9 +970,7 @@ class AIService:
         q_tokens = set(self._tokenize(query))
         if not q_tokens:
             return []
-        chunk_q = self.db.query(KnowledgeChunk).filter(
-            KnowledgeChunk.text.isnot(None), KnowledgeChunk.text != ""
-        )
+        chunk_q = self.db.query(KnowledgeChunk).filter(KnowledgeChunk.text.isnot(None), KnowledgeChunk.text != "")
         if subject:
             chunk_q = chunk_q.filter(KnowledgeChunk.subject == subject)
         chunks = chunk_q.limit(8000).all()
@@ -982,9 +1025,8 @@ class AIService:
         #    hybrid_search 的文本参数 —— 混合后图谱词提升 FTS 召回，向量语义不变。
         try:
             from services import kg_rag
-            _graph_exp = kg_rag.expand_query_with_graph(
-                self.db, query, subject=subject, max_expansions=3
-            )
+
+            _graph_exp = kg_rag.expand_query_with_graph(self.db, query, subject=subject, max_expansions=3)
             _search_query = _graph_exp.get("expanded_query") or query
         except Exception:  # noqa: BLE001 —— 图谱扩展不可用时退化为原查询
             _search_query = query
@@ -1016,16 +1058,16 @@ class AIService:
             # 混合检索失败，回退到同步 FTS 检索
             return self.search_knowledge_base(query, limit=limit, subject=subject)
 
-    def build_rag_context(self, query: str, limit: int = 4, subject: Optional[str] = None) -> Tuple[str, List[Dict[str, Any]]]:
+    def build_rag_context(
+        self, query: str, limit: int = 4, subject: Optional[str] = None
+    ) -> Tuple[str, List[Dict[str, Any]]]:
         """构建 RAG 上下文 prompt 片段。返回 (context_text, hits)。"""
         hits = self.search_knowledge_base(query, limit=limit, subject=subject)
         if not hits:
             return "", []
         blocks = []
         for i, h in enumerate(hits, 1):
-            blocks.append(
-                f"[片段{i}｜来源：{h['source']}｜{h['title']}]\n{h['content']}"
-            )
+            blocks.append(f"[片段{i}｜来源：{h['source']}｜{h['title']}]\n{h['content']}")
         return "\n\n".join(blocks), hits
 
     # ------------------------------------------------------------------ #

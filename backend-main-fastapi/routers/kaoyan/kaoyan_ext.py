@@ -8,6 +8,7 @@
 - 分数全景    GET  /api/kaoyan/analysis/score-detail/{school_id}
 - 自动调整    POST /api/kaoyan/analysis/auto-adjust （冲稳保+理由）
 """
+
 from __future__ import annotations
 
 from typing import List, Optional
@@ -28,6 +29,7 @@ router = APIRouter(prefix="/api/kaoyan", tags=["考研择校扩展"])
 
 class ReformScanReq(BaseModel):
     """POST /reforms/scan 请求体。"""
+
     school_ids: Optional[List[int]] = Field(None, description="限定院校，空=全量")
     dry_run: bool = Field(False, description="只检测不入库（预览）")
     limit: int = Field(5000, ge=1, le=20000, description="最多扫描公告数")
@@ -64,9 +66,7 @@ def notices_feed(
         args.append(school_id)
     wsql = " AND ".join(where)
 
-    total = conn.execute(
-        f"SELECT COUNT(*) FROM kaoyan_notices WHERE {wsql}", args
-    ).fetchone()[0]
+    total = conn.execute(f"SELECT COUNT(*) FROM kaoyan_notices WHERE {wsql}", args).fetchone()[0]
     rows = conn.execute(
         f"SELECT id, school_id, school_name, title, notice_type, publish_date, "
         f"url, source FROM kaoyan_notices WHERE {wsql} "
@@ -78,16 +78,23 @@ def notices_feed(
         "page": page,
         "page_size": page_size,
         "items": [
-            {"id": r[0], "school_id": r[1], "school_name": r[2], "title": r[3],
-             "notice_type": r[4], "publish_date": r[5], "url": r[6], "source": r[7]}
+            {
+                "id": r[0],
+                "school_id": r[1],
+                "school_name": r[2],
+                "title": r[3],
+                "notice_type": r[4],
+                "publish_date": r[5],
+                "url": r[6],
+                "source": r[7],
+            }
             for r in rows
         ],
     }
 
 
 @router.get("/notices/recent")
-def notices_recent(limit: int = Query(12, ge=1, le=50),
-                   db: Session = Depends(get_db)):
+def notices_recent(limit: int = Query(12, ge=1, le=50), db: Session = Depends(get_db)):
     """首页速览：最新 N 条公告（供择校中心/仪表盘引用）。"""
     from services.kaoyan.spider_notices import ensure_notices_schema
 
@@ -99,8 +106,15 @@ def notices_recent(limit: int = Query(12, ge=1, le=50),
         (limit,),
     ).fetchall()
     return [
-        {"id": r[0], "school_id": r[1], "school_name": r[2], "title": r[3],
-         "notice_type": r[4], "publish_date": r[5], "url": r[6]}
+        {
+            "id": r[0],
+            "school_id": r[1],
+            "school_name": r[2],
+            "title": r[3],
+            "notice_type": r[4],
+            "publish_date": r[5],
+            "url": r[6],
+        }
         for r in rows
     ]
 
@@ -114,12 +128,19 @@ def reforms_list(
     change_type: Optional[str] = Query(None, description="改考科目/停招/新增专业/…"),
     year: Optional[int] = Query(None),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
+    page: int = Query(1, ge=1, description="页码（2026-11-21 审计 P0-2：真分页）"),
+    page_size: int = Query(0, ge=0, le=MAX_PAGE_SIZE, description="每页条数；0/缺省沿用 limit（向后兼容）"),
     db: Session = Depends(get_db),
 ):
-    """改考事件列表（通知中心·改考雷达 / 院校详情改考提醒）。"""
-    return reform_detector.list_reforms(db, school_id=school_id,
-                                        change_type=change_type,
-                                        year=year, limit=limit)
+    """改考事件列表（通知中心·改考雷达 / 院校详情改考提醒）。
+
+    分页口径：``page`` 从 1 起；``page_size`` 为 0 或缺省时等于 ``limit``。
+    响应仍为数组（前端既有契约不变），total 走 ``/reforms/stats``。
+    """
+    effective = page_size or limit
+    return reform_detector.list_reforms(
+        db, school_id=school_id, change_type=change_type, year=year, limit=effective, offset=(page - 1) * effective
+    )
 
 
 @router.get("/reforms/stats")
@@ -195,6 +216,7 @@ def auto_adjust(
 # 这样新导入的院校默认就会被采集，不会因为忘配置而漏数据。
 # --------------------------------------------------------------------------- #
 
+
 class CrawlTargetToggleReq(BaseModel):
     school_id: int = Field(..., description="院校 ID")
     enabled: bool = Field(True, description="是否参与采集")
@@ -240,9 +262,7 @@ def list_crawl_targets(
 
     total_schools = db.query(func.count(KaoyanSchool.id)).scalar() or 0
     disabled_total = (
-        db.query(func.count(KaoyanCrawlTarget.id))
-        .filter(KaoyanCrawlTarget.enabled.is_(False))
-        .scalar() or 0
+        db.query(func.count(KaoyanCrawlTarget.id)).filter(KaoyanCrawlTarget.enabled.is_(False)).scalar() or 0
     )
 
     # enabled 过滤走反连接：没有开关记录的院校视为默认启用
@@ -270,26 +290,24 @@ def list_crawl_targets(
     items = []
     for s in rows:
         t = targets.get(s.id)
-        items.append({
-            "id": s.id,
-            "name": s.name,
-            "province": s.province,
-            "city": s.city,
-            "level": s.level,
-            "data_source": s.data_source,
-            "official_url": s.official_url,
-            "enabled": True if t is None else bool(t.enabled),
-            "priority": t.priority if t else 0,
-            "note": t.note if t else None,
-            "last_crawled_at": t.last_crawled_at.isoformat() if t and t.last_crawled_at else None,
-        })
+        items.append(
+            {
+                "id": s.id,
+                "name": s.name,
+                "province": s.province,
+                "city": s.city,
+                "level": s.level,
+                "data_source": s.data_source,
+                "official_url": s.official_url,
+                "enabled": True if t is None else bool(t.enabled),
+                "priority": t.priority if t else 0,
+                "note": t.note if t else None,
+                "last_crawled_at": t.last_crawled_at.isoformat() if t and t.last_crawled_at else None,
+            }
+        )
 
-    provinces = [
-        r[0] for r in db.query(KaoyanSchool.province).distinct().all() if r[0]
-    ]
-    levels = [
-        r[0] for r in db.query(KaoyanSchool.level).distinct().all() if r[0]
-    ]
+    provinces = [r[0] for r in db.query(KaoyanSchool.province).distinct().all() if r[0]]
+    levels = [r[0] for r in db.query(KaoyanSchool.level).distinct().all() if r[0]]
 
     return {
         "total": total,
@@ -325,9 +343,7 @@ def toggle_crawl_target(req: CrawlTargetToggleReq, db: Session = Depends(get_db)
 @router.post("/crawl-targets/bulk", dependencies=[Depends(require_admin)])
 def bulk_crawl_targets(req: CrawlTargetBulkReq, db: Session = Depends(get_db)):
     """批量开关：页面上「全选当前页 / 排除当前页」用。"""
-    existing = {
-        row[0] for row in db.query(KaoyanSchool.id).filter(KaoyanSchool.id.in_(req.school_ids)).all()
-    }
+    existing = {row[0] for row in db.query(KaoyanSchool.id).filter(KaoyanSchool.id.in_(req.school_ids)).all()}
     changed = 0
     for sid in req.school_ids:
         if sid not in existing:

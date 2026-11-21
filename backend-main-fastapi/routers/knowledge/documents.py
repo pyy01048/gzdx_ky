@@ -85,6 +85,10 @@ def _resolve_local_file(doc: Document, *, strict: bool = False):
     if not os.path.isabs(raw):
         # IMA 导入的 238 篇把媒体号写在 file_path 上，本地从来没有这个文件
         media = getattr(doc, "ima_media_id", None) or raw[:32]
+        # 审计 P2-29：媒体号兜底取自 file_path 前 32 字符，可能带服务器盘符
+        # 路径（如 D:\平台\knowledge_base\...）。对外输出前脱敏，不暴露目录结构。
+        if re.search(r"[A-Za-z]:[\\/]", str(media)):
+            media = "外部知识库"
         return None, f"原文在外部知识库（媒体号 {media}），本地未下载该文件"
     abspath = os.path.abspath(raw)
     if not _inside_roots(abspath):

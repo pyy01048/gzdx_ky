@@ -11,6 +11,7 @@
   - 有记录且 30 ≤ mastery < 70 → 薄弱（黄）；
   - 有记录且 mastery ≥ 70 → 已掌握（绿）。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -48,18 +49,30 @@ def _mk_kp(db, name, *, mastery=0, review_count=0):
     这里临时禁用触发器后直接 UPDATE，再重新启用。
     """
     from sqlalchemy import text
+
     kp = KnowledgePoint(
-        name=name, subject=SUBJECT, chapter="三态测试章",
-        exam_frequency=1, difficulty=2, review_count=review_count,
+        name=name,
+        subject=SUBJECT,
+        chapter="三态测试章",
+        exam_frequency=1,
+        difficulty=2,
+        review_count=review_count,
     )
     db.add(kp)
     db.commit()
     db.refresh(kp)
+    if review_count:
+        # B4 行级隔离：按用户的 learned 口径只认学习流水（review_records 等），
+        # knowledge_points.review_count 是全局派生列、无法归属到某个用户。
+        # 旧用例靠 review_count 捷径造"已学"，这里补测试主体（id=0，与
+        # stub_principal 一致）的流水，使全库口径与按用户口径同时成立。
+        for _ in range(review_count):
+            db.add(ReviewRecord(item_type="knowledge", item_id=kp.id, user_id=0, result="good", grade=3))
+        db.commit()
     # 强制写入 mastery：临时禁用触发器 → UPDATE → 重新启用
     if mastery:
         db.execute(text("ALTER TABLE knowledge_points DISABLE TRIGGER trg_kp_mastery_sync"))
-        db.execute(text("UPDATE knowledge_points SET mastery = :m WHERE id = :id"),
-                   {"m": mastery, "id": kp.id})
+        db.execute(text("UPDATE knowledge_points SET mastery = :m WHERE id = :id"), {"m": mastery, "id": kp.id})
         db.execute(text("ALTER TABLE knowledge_points ENABLE TRIGGER trg_kp_mastery_sync"))
         db.commit()
         db.refresh(kp)
@@ -79,18 +92,27 @@ def _mk_learned_kp(db, name, *, good=3, bad=0):
     mastery = 100 * weighted_correct / weighted_total，全 good 即 100（>70 → 已掌握）。
     """
     kp = KnowledgePoint(
-        name=name, subject=SUBJECT, chapter="三态测试章",
-        exam_frequency=1, difficulty=2, review_count=good + bad,
+        name=name,
+        subject=SUBJECT,
+        chapter="三态测试章",
+        exam_frequency=1,
+        difficulty=2,
+        review_count=good + bad,
     )
     db.add(kp)
     db.commit()
     db.refresh(kp)
 
     for i in range(good + bad):
-        db.add(ReviewRecord(
-            item_type="knowledge", item_id=kp.id, subject=SUBJECT,
-            result="good" if i < good else "again", grade=5 if i < good else 1,
-        ))
+        db.add(
+            ReviewRecord(
+                item_type="knowledge",
+                item_id=kp.id,
+                subject=SUBJECT,
+                result="good" if i < good else "again",
+                grade=5 if i < good else 1,
+            )
+        )
     db.commit()
     # 掌握度只在 knowledge_points 被 UPDATE 时由触发器刷新，
     # 仅写 review_records 不会自动刷 —— 必须显式 touch。
@@ -101,7 +123,6 @@ def _mk_learned_kp(db, name, *, good=3, bad=0):
     return kp
 
 
-
 def _purge_test_chapter(db):
     """清掉本章节的历史遗留。
 
@@ -110,9 +131,11 @@ def _purge_test_chapter(db):
     顺序漂移（实测："三态-薄弱样本 not in names"）。
     本文件所有用例都自建数据，清理不伤及后续用例。
     """
-    db.execute(text(
-        "DELETE FROM review_records WHERE item_id IN "
-        "(SELECT id FROM knowledge_points WHERE chapter = '三态测试章')"))
+    db.execute(
+        text(
+            "DELETE FROM review_records WHERE item_id IN (SELECT id FROM knowledge_points WHERE chapter = '三态测试章')"
+        )
+    )
     db.execute(text("DELETE FROM knowledge_points WHERE chapter = '三态测试章'"))
     db.commit()
 
@@ -121,8 +144,8 @@ def _purge_test_chapter(db):
 # 一、classify_state 纯函数
 # --------------------------------------------------------------------------- #
 
-class TestClassifyState:
 
+class TestClassifyState:
     def test_no_records_is_unlearned(self):
         assert kp_mastery.classify_state(None, False) == "unlearned"
         assert kp_mastery.classify_state(0, False) == "unlearned"
@@ -141,7 +164,10 @@ class TestClassifyState:
 
     def test_labels_map(self):
         assert kp_mastery.STATE_LABELS == {
-            "unlearned": "未学", "learning": "学习中", "weak": "薄弱", "mastered": "已掌握",
+            "unlearned": "未学",
+            "learning": "学习中",
+            "weak": "薄弱",
+            "mastered": "已掌握",
         }
 
 
@@ -149,16 +175,15 @@ class TestClassifyState:
 # 二、「有学习记录」判定
 # --------------------------------------------------------------------------- #
 
-class TestLearnedDetection:
 
+class TestLearnedDetection:
     def test_review_count_counts_as_learned(self, db):
         kp = _mk_kp(db, "三态-复习过", review_count=1)
         assert kp.id in kp_mastery.learned_kp_ids(db)
 
     def test_linked_answer_counts_as_learned(self, db):
         kp = _mk_kp(db, "三态-答过题")
-        q = QuizQuestion(content="三态测试题-答", subject=SUBJECT,
-                         answer="B", question_type="single")
+        q = QuizQuestion(content="三态测试题-答", subject=SUBJECT, answer="B", question_type="single")
         db.add(q)
         db.commit()
         db.refresh(q)
@@ -171,8 +196,7 @@ class TestLearnedDetection:
         from models import ErrorKnowledgeLink
 
         kp = _mk_kp(db, "三态-错过题")
-        db.add(ErrorRecord(content="三态错题", subject=SUBJECT, status="active",
-                           accuracy=0.0))
+        db.add(ErrorRecord(content="三态错题", subject=SUBJECT, status="active", accuracy=0.0))
         db.commit()
         err = db.query(ErrorRecord).filter(ErrorRecord.content == "三态错题").first()
         db.add(ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp.id, source="manual"))
@@ -188,21 +212,23 @@ class TestLearnedDetection:
 # 三、progress_overview 三态口径
 # --------------------------------------------------------------------------- #
 
-class TestProgressOverviewThreeState:
 
+class TestProgressOverviewThreeState:
     def test_unlearned_not_counted_as_weak(self, db):
         _purge_test_chapter(db)
         # 注意：mastery 是派生列（触发器无条件覆盖手写值），
         # 所以"薄弱/已掌握"必须用真实学习记录造，不能直接写 mastery。
-        _mk_learned_kp(db, "三态-薄弱样本", good=2, bad=1)   # ~67% → weak (30-69)
+        _mk_learned_kp(db, "三态-薄弱样本", good=2, bad=1)  # ~67% → weak (30-69)
         _mk_learned_kp(db, "三态-已掌握样本", good=3, bad=0)  # 100% → mastered
         _mk_kp(db, "三态-未学样本")  # 无任何学习记录 → unlearned
 
         ov = review_service.progress_overview(db)
 
         # 四态计数自洽：learning + weak + mastered + unlearned == total
-        assert (ov.get("learning_count", 0) + ov["weak_count"] + ov["mastered_count"] + ov["unlearned_count"]
-                == ov["total_knowledge_points"])
+        assert (
+            ov.get("learning_count", 0) + ov["weak_count"] + ov["mastered_count"] + ov["unlearned_count"]
+            == ov["total_knowledge_points"]
+        )
         assert ov["weak_count"] >= 1
         assert ov["mastered_count"] >= 1
         assert ov["unlearned_count"] >= 1
@@ -223,11 +249,12 @@ class TestProgressOverviewThreeState:
         assert all(p["state"] in ("learning", "weak", "mastered") for p in ov["weak_points"])
 
         # 本用例造的样本必须被正确分类（用计数验证，不依赖 TOP10 名额）
-        mine = db.query(KnowledgePoint).filter(
-            KnowledgePoint.name.in_(["三态-薄弱样本", "三态-已掌握样本", "三态-未学样本"])
-        ).all()
-        by_name = {k.name: kp_mastery.classify_state(int(k.mastery or 0), k.id in learned)
-                   for k in mine}
+        mine = (
+            db.query(KnowledgePoint)
+            .filter(KnowledgePoint.name.in_(["三态-薄弱样本", "三态-已掌握样本", "三态-未学样本"]))
+            .all()
+        )
+        by_name = {k.name: kp_mastery.classify_state(int(k.mastery or 0), k.id in learned) for k in mine}
         assert by_name.get("三态-已掌握样本") == "mastered", by_name
         assert by_name.get("三态-薄弱样本") == "weak", by_name
         assert by_name.get("三态-未学样本") == "unlearned", by_name
@@ -249,15 +276,14 @@ class TestProgressOverviewThreeState:
 # 四、taxonomy 接口四态字段
 # --------------------------------------------------------------------------- #
 
-class TestTaxonomyThreeStateAPI:
 
+class TestTaxonomyThreeStateAPI:
     def test_tree_has_three_state_fields(self, client):
         resp = client.get("/api/taxonomy/tree")
         assert resp.status_code == 200
         tree = resp.json()["tree"]
         for subj in tree:
-            for key in ("mastered_count", "weak_count", "unlearned_count",
-                        "learned_avg_mastery"):
+            for key in ("mastered_count", "weak_count", "unlearned_count", "learned_avg_mastery"):
                 assert key in subj, f"科目节点缺字段 {key}"
             for ch in subj["chapters"]:
                 for key in ("mastered_count", "weak_count", "unlearned_count"):
@@ -266,7 +292,7 @@ class TestTaxonomyThreeStateAPI:
                     assert kp["state"] in ("unlearned", "learning", "weak", "mastered")
 
     def test_low_mastery_filter_excludes_unlearned(self, client, db):
-        _mk_kp(db, "四态-筛选薄弱", mastery=50, review_count=1)   # 30 ≤ m < 70 → weak
+        _mk_kp(db, "四态-筛选薄弱", mastery=50, review_count=1)  # 30 ≤ m < 70 → weak
         _mk_kp(db, "四态-筛选学习中", mastery=20, review_count=1)  # 0 < m < 30 → learning
         _mk_kp(db, "四态-筛选未学")  # mastery=0、无记录 → unlearned
         # 用 chapter 把范围收到本用例自己造的知识点上：全站知识点有几百条，
@@ -296,8 +322,8 @@ class TestTaxonomyThreeStateAPI:
 # 五、learner_profile 三态块
 # --------------------------------------------------------------------------- #
 
-class TestLearnerProfileFourState:
 
+class TestLearnerProfileFourState:
     def test_profile_knowledge_points_block(self, client, db):
         _mk_kp(db, "四态-画像薄弱", mastery=50, review_count=1)
         _mk_kp(db, "四态-画像学习中", mastery=20, review_count=1)

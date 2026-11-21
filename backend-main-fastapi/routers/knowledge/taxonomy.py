@@ -15,9 +15,48 @@ from services import kp_mastery, taxonomy
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
-from utils.security import require_admin
+from utils.scope import owner_id
+from utils.security import optional_user, require_admin
 
 router = APIRouter(prefix="/api/taxonomy", tags=["知识结构"])
+
+# --------------------------------------------------------------------------- #
+# 访客字段级隔离（2026-11-21 审计 P0-1 修复）
+# --------------------------------------------------------------------------- #
+# 知识树/知识点是访客可读的公共目录，但掌握度、复习排期、个人计数属于
+# **个人域字段**：匿名响应必须整体剔除（服务层过滤，而非前端隐藏）；
+# 登录态则按本人 user_id 隔离学习流水（B4），不再走全库口径。
+_PERSONAL_KP_KEYS = frozenset(
+    {
+        "mastery",
+        "state",
+        "review_count",
+        "last_review",
+        "next_review",
+        "interval",
+        "ease_factor",
+        "lapses",
+    }
+)
+_PERSONAL_AGG_KEYS = frozenset(
+    {
+        "mastered_count",
+        "weak_count",
+        "avg_mastery",
+        "learned_avg_mastery",
+    }
+)
+
+
+def _strip_personal(node):
+    """递归剔除个人域字段（dict/list 结构通用）。"""
+    if isinstance(node, dict):
+        return {
+            k: _strip_personal(v) for k, v in node.items() if k not in _PERSONAL_KP_KEYS and k not in _PERSONAL_AGG_KEYS
+        }
+    if isinstance(node, list):
+        return [_strip_personal(x) for x in node]
+    return node
 
 
 @router.get("/subjects")
@@ -72,9 +111,7 @@ async def list_subjects(db: Session = Depends(get_db)):
             "is_custom": s["is_custom"],
             "unregistered": s["unregistered"],
             "knowledge_point_count": (
-                raw_kp_counts.get(s["subject"], 0)
-                if s["unregistered"]
-                else normalized_kp_counts.get(s["subject"], 0)
+                raw_kp_counts.get(s["subject"], 0) if s["unregistered"] else normalized_kp_counts.get(s["subject"], 0)
             ),
             "question_count": s["question_count"],
             "error_count": s["error_count"],
@@ -231,7 +268,9 @@ async def update_subject(subject: str, payload: dict, db: Session = Depends(get_
 # 死引用会让已删科目继续出现在各页面下拉里。
 # 因此删除/重命名科目时，必须把 goals 两层里的同名引用一并清掉/换掉。
 # --------------------------------------------------------------------------- #
-def _sync_goal_subject_refs(db: Session, *, removed: str = None, renamed_from: str = None, renamed_to: str = None) -> None:
+def _sync_goal_subject_refs(
+    db: Session, *, removed: str = None, renamed_from: str = None, renamed_to: str = None
+) -> None:
     """删除科目时移除 goals 两层引用；重命名时把旧名替换为新名。
 
     Args:
@@ -300,6 +339,7 @@ async def structure_tree(
     subject: Optional[str] = None,
     include_extension: bool = Query(True, description="是否包含拓展科目"),
     db: Session = Depends(get_db),
+    user=Depends(optional_user),
 ):
     """三级结构树：科目 → 章节 → 知识点（含题型与掌握度三态）。
 
@@ -328,7 +368,8 @@ async def structure_tree(
         rows_query = rows_query.filter(KnowledgePoint.subject == std)
         subjects = [s for s in subjects if s == std] or [std]
     rows = rows_query.all()
-    learned = kp_mastery.learned_kp_ids(db)
+    # 审计 P0-1：访客无个人学习流水（空集）；登录态按本人 user_id 隔离（B4）
+    learned = kp_mastery.learned_kp_ids(db, user_id=owner_id(user)) if user is not None else set()
     by_subject: dict[str, list[KnowledgePoint]] = {}
     for kp in rows:
         by_subject.setdefault(taxonomy.normalize_subject(kp.subject), []).append(kp)
@@ -366,29 +407,33 @@ async def structure_tree(
         total = len(kps)
         counts = kp_mastery.tally(kps, learned)
         learned_n = total - counts["unlearned"]
-        tree.append({
-            "subject": s,
-            "is_core": taxonomy.is_core(s),
-            "knowledge_point_count": total,
-            "mastered_count": counts["mastered"],
-            "weak_count": counts["weak"],
-            "unlearned_count": counts["unlearned"],
-            "avg_mastery": round(counts["mastery_sum"] / total, 1) if total else 0.0,
-            "learned_avg_mastery": (
-                round(counts["learned_mastery_sum"] / learned_n, 1) if learned_n else 0.0
-            ),
-            "outline_chapter_count": len(taxonomy.chapters_of(s)),
-            "filled_chapter_count": sum(1 for c in chapters if c["knowledge_point_count"] > 0),
-            "chapters": chapters,
-        })
+        tree.append(
+            {
+                "subject": s,
+                "is_core": taxonomy.is_core(s),
+                "knowledge_point_count": total,
+                "mastered_count": counts["mastered"],
+                "weak_count": counts["weak"],
+                "unlearned_count": counts["unlearned"],
+                "avg_mastery": round(counts["mastery_sum"] / total, 1) if total else 0.0,
+                "learned_avg_mastery": (round(counts["learned_mastery_sum"] / learned_n, 1) if learned_n else 0.0),
+                "outline_chapter_count": len(taxonomy.chapters_of(s)),
+                "filled_chapter_count": sum(1 for c in chapters if c["knowledge_point_count"] > 0),
+                "chapters": chapters,
+            }
+        )
 
-    return {"tree": tree}
+    result = {"tree": tree}
+    if user is None:
+        # 审计 P0-1：匿名响应剔除一切个人域字段（服务层过滤）
+        result = _strip_personal(result)
+    return result
 
 
 def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str, learned: set) -> dict:
     types: list[str] = []
     for kp in kps:
-        for t in (kp.question_types or []):
+        for t in kp.question_types or []:
             if t not in types:
                 types.append(t)
     if not types:
@@ -403,9 +448,7 @@ def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str, learned: 
         "weak_count": counts["weak"],
         "unlearned_count": counts["unlearned"],
         "avg_mastery": round(counts["mastery_sum"] / counts["total"], 1) if kps else 0.0,
-        "learned_avg_mastery": (
-            round(counts["learned_mastery_sum"] / learned_n, 1) if learned_n else 0.0
-        ),
+        "learned_avg_mastery": (round(counts["learned_mastery_sum"] / learned_n, 1) if learned_n else 0.0),
         "question_types": types,
         "knowledge_points": [
             {
@@ -435,11 +478,15 @@ async def list_knowledge_points(
     page: int = 1,
     page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    user=Depends(optional_user),
 ):
     """知识点列表（支持 科目 / 章节 / 题型 / 关键词 / 薄弱 筛选）。
 
     ``low_mastery`` 按三态口径过滤：只有**已学且掌握度 < 70** 的才算薄弱，
     未学知识点（无任何学习记录）不入选 —— 见 services/kp_mastery.py。
+
+    审计 P0-1：访客响应剔除个人域字段；``low_mastery`` 属个人筛选，
+    匿名请求直接返回空集；登录态学习流水按本人隔离（B4）。
     """
     q = db.query(KnowledgePoint)
     if subject:
@@ -450,12 +497,17 @@ async def list_knowledge_points(
         q = q.filter(KnowledgePoint.name.like(f"%{keyword}%"))
     rows = q.all()
 
-    learned = kp_mastery.learned_kp_ids(db)
+    learned = kp_mastery.learned_kp_ids(db, user_id=owner_id(user)) if user is not None else set()
     if low_mastery:
-        rows = [
-            r for r in rows
-            if kp_mastery.classify_state(r.mastery, r.id in learned) in (kp_mastery.STATE_LEARNING, kp_mastery.STATE_WEAK)
-        ]
+        if user is None:
+            rows = []
+        else:
+            rows = [
+                r
+                for r in rows
+                if kp_mastery.classify_state(r.mastery, r.id in learned)
+                in (kp_mastery.STATE_LEARNING, kp_mastery.STATE_WEAK)
+            ]
 
     if question_type:
         rows = [r for r in rows if question_type in (r.question_types or [])]
@@ -463,9 +515,9 @@ async def list_knowledge_points(
     total = len(rows)
     rows.sort(key=lambda k: (taxonomy.normalize_subject(k.subject), k.chapter or "", k.name or ""))
     start = (page - 1) * page_size
-    page_rows = rows[start:start + page_size]
+    page_rows = rows[start : start + page_size]
 
-    return {
+    payload = {
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -490,6 +542,9 @@ async def list_knowledge_points(
             for k in page_rows
         ],
     }
+    if user is None:
+        payload = _strip_personal(payload)
+    return payload
 
 
 @router.get("/coverage")
@@ -499,13 +554,11 @@ async def structure_coverage(db: Session = Depends(get_db)):
     直接回答"知识库搭好了没有、缺哪一块"。
     """
     # 按科目统计
-    kp_rows = (
-        db.query(KnowledgePoint.subject, func.count(KnowledgePoint.id))
-        .group_by(KnowledgePoint.subject)
-        .all()
-    )
+    kp_rows = db.query(KnowledgePoint.subject, func.count(KnowledgePoint.id)).group_by(KnowledgePoint.subject).all()
     doc_rows = dict(db.query(Document.subject, func.count(Document.id)).group_by(Document.subject).all())
-    chunk_rows = dict(db.query(KnowledgeChunk.subject, func.count(KnowledgeChunk.id)).group_by(KnowledgeChunk.subject).all())
+    chunk_rows = dict(
+        db.query(KnowledgeChunk.subject, func.count(KnowledgeChunk.id)).group_by(KnowledgeChunk.subject).all()
+    )
 
     kp_counts: dict[str, int] = {}
     for subject, cnt in kp_rows:
@@ -550,17 +603,19 @@ async def structure_coverage(db: Session = Depends(get_db)):
         kpc = kp_counts.get(s, 0)
         chc = chapter_counts.get(s, 0)
         outline = taxonomy.chapters_of(s)
-        subjects.append({
-            "subject": s,
-            "is_core": taxonomy.is_core(s),
-            "documents": doc_rows.get(s, 0),
-            "chunks": chunk_rows.get(s, 0),
-            "knowledge_points": kpc,
-            "structured_knowledge_points": chc,
-            "structure_rate": round(chc / kpc * 100, 1) if kpc else 0.0,
-            "outline_chapters": len(outline),
-            "covered_chapters": _covered_chapters(outline, subject_chapter_sets.get(s, set())),
-        })
+        subjects.append(
+            {
+                "subject": s,
+                "is_core": taxonomy.is_core(s),
+                "documents": doc_rows.get(s, 0),
+                "chunks": chunk_rows.get(s, 0),
+                "knowledge_points": kpc,
+                "structured_knowledge_points": chc,
+                "structure_rate": round(chc / kpc * 100, 1) if kpc else 0.0,
+                "outline_chapters": len(outline),
+                "covered_chapters": _covered_chapters(outline, subject_chapter_sets.get(s, set())),
+            }
+        )
 
     return {
         "subjects": subjects,
@@ -586,15 +641,19 @@ def _covered_chapters(outline: list[str], have: set) -> int:
 
 
 @router.get("/knowledge-points/{kp_id}")
-async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db)):
-    """知识点详情：含关联错题、关联分块、复习记录。"""
+async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db), user=Depends(optional_user)):
+    """知识点详情：含关联错题、关联分块、复习记录。
+
+    审计 P0-1：访客只读公共目录字段，个人域字段与个人关联数据
+    （错题/复习历史）整体剔除；登录态按本人隔离（B4）。
+    """
     kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == kp_id).first()
     if not kp:
         raise HTTPException(status_code=404, detail="知识点不存在")
 
     from services import error_linker, review_service
 
-    learned = kp_mastery.learned_kp_ids(db)
+    learned = kp_mastery.learned_kp_ids(db, user_id=owner_id(user)) if user is not None else set()
 
     # —— 知识块关联（2026-10 修复）—— #
     # 问题：knowledge_points.subject 是归一后的主分类（数模电/408/公共课），
@@ -635,7 +694,7 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db)):
         chunks = named + filler
     chunks = chunks[:5]
 
-    return {
+    payload = {
         "id": kp.id,
         "name": kp.name,
         "subject": kp.subject,
@@ -652,15 +711,27 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db)):
         "interval": kp.interval or 0,
         "ease_factor": kp.ease_factor or 2.5,
         "lapses": kp.lapses or 0,
-        "related_errors": error_linker.related_errors(db, kp.id, limit=20),
+        "related_errors": ([] if user is None else error_linker.related_errors(db, kp.id, limit=20)),
         "related_chunks": [
             {"chunk_id": c.id, "document_id": c.document_id, "doc_name": c.doc_name, "text": (c.text or "")[:400]}
             for c in chunks
         ],
-        "review_history": review_service.review_history(
-            db, item_type="knowledge", item_id=kp.id, days=180, limit=50
+        "review_history": (
+            []
+            if user is None
+            else review_service.review_history(
+                db,
+                item_type="knowledge",
+                item_id=kp.id,
+                days=180,
+                limit=50,
+                user_id=owner_id(user),
+            )
         ),
     }
+    if user is None:
+        payload = _strip_personal(payload)
+    return payload
 
 
 @router.post("/knowledge-points", dependencies=[Depends(require_admin)])

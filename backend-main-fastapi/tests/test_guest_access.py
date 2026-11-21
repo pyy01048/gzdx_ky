@@ -147,6 +147,13 @@ def test_guest_plan_calendar_without_goal_leak():
     s.commit()
     uid, gid = u.id, g.id
     s.close()
+    # conftest 的 auth_bypass 会把 optional_user 也 bypass 成登录态；
+    # 本用例测真匿名口径，显式还原为 None（teardown 恢复原 override）。
+    from main import app
+    from utils.security import optional_user
+
+    prev = app.dependency_overrides.get(optional_user)
+    app.dependency_overrides[optional_user] = lambda: None
     try:
         r = client.get("/api/plan/roadmap")
         assert r.status_code == 200
@@ -155,6 +162,10 @@ def test_guest_plan_calendar_without_goal_leak():
         assert body.get("stages") and body.get("milestones")
         assert client.get("/api/plan/milestones").status_code == 200
     finally:
+        if prev is None:
+            app.dependency_overrides.pop(optional_user, None)
+        else:
+            app.dependency_overrides[optional_user] = prev
         s = SessionLocal()
         s.query(Goal).filter(Goal.id == gid).delete()
         s.query(User).filter(User.id == uid).delete()

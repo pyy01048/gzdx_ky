@@ -5,6 +5,7 @@
 SQLAlchemy + SQLite 架构。向量后端默认 numpy brute-force（无需 vec0 扩展），
 embedding 通过在线 API 生成（豆包/通义兼容接口）。
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,12 +29,53 @@ VEC_MIN_DIST = 0.6  # cosine distance 阈值，超过则视为不相关
 # ---------------------------------------------------------------------------
 # 领域核心术语表：检索时对这些词加权，帮助命中真正讲解概念的段落
 CORE_TERMS = [
-    "TTL", "CMOS", "MOS", "DAC", "ADC", "ROM", "RAM", "555", "74LS",
-    "卡诺图", "与非门", "或非门", "触发器", "寄存器", "计数器", "译码器", "编码器",
-    "选择器", "加法器", "比较器", "锁存器", "静态工作点", "共射极", "放大电路",
-    "运算放大器", "虚短", "虚断", "差模", "共模", "反馈", "二极管", "三极管",
-    "晶体管", "稳压", "整流", "滤波器", "振荡器", "多谐", "施密特", "逻辑函数",
-    "真值表", "二进制", "格雷", "奇偶校验", "传输延迟", "扇出", "噪声容限",
+    "TTL",
+    "CMOS",
+    "MOS",
+    "DAC",
+    "ADC",
+    "ROM",
+    "RAM",
+    "555",
+    "74LS",
+    "卡诺图",
+    "与非门",
+    "或非门",
+    "触发器",
+    "寄存器",
+    "计数器",
+    "译码器",
+    "编码器",
+    "选择器",
+    "加法器",
+    "比较器",
+    "锁存器",
+    "静态工作点",
+    "共射极",
+    "放大电路",
+    "运算放大器",
+    "虚短",
+    "虚断",
+    "差模",
+    "共模",
+    "反馈",
+    "二极管",
+    "三极管",
+    "晶体管",
+    "稳压",
+    "整流",
+    "滤波器",
+    "振荡器",
+    "多谐",
+    "施密特",
+    "逻辑函数",
+    "真值表",
+    "二进制",
+    "格雷",
+    "奇偶校验",
+    "传输延迟",
+    "扇出",
+    "噪声容限",
 ]
 
 # 同义词组：不同写法但指向同一概念（查询命中任一组内词，则对组内所有写法加权）
@@ -74,6 +116,7 @@ def _term_boost(query: str, text: str) -> float:
             boost -= 8.0
     return boost
 
+
 # FTS5 查询里需要剔除的字符：
 #   1) FTS5 语法字符（" ' ( ) * : ^）—— 会让查询串解析失败
 #   2) 控制字符（\x00 等）—— jieba 会把 \x00 当成一个独立 token 保留下来，
@@ -88,6 +131,7 @@ def _is_pg(conn) -> bool:
     避免"测试连 PG 但配置说 SQLite"的错配。
     """
     from services.dbapi_compat import is_postgres
+
     return is_postgres(conn)
 
 
@@ -98,6 +142,7 @@ def segment(text: str) -> str:
     """jieba search-mode 分词，空格分隔。jieba 未安装时回退到简单分词。"""
     try:
         import jieba
+
         return " ".join(t.strip() for t in jieba.cut_for_search(text) if t.strip())
     except ImportError:
         # 回退：中文2-gram + 英文单词
@@ -106,7 +151,7 @@ def segment(text: str) -> str:
             tokens.append(w)
         cjk = re.sub(r"[^\u4e00-\u9fff]", "", text)
         for i in range(len(cjk) - 1):
-            tokens.append(cjk[i:i + 2])
+            tokens.append(cjk[i : i + 2])
         return " ".join(tokens)
 
 
@@ -131,9 +176,7 @@ def ensure_fts_table(conn) -> None:
     if _is_pg(conn):
         # PG：确认生成列与索引就位即可，无需同步数据
         try:
-            conn.execute(
-                "SELECT 1 FROM knowledge_chunks WHERE search_vector IS NOT NULL LIMIT 1"
-            )
+            conn.execute("SELECT 1 FROM knowledge_chunks WHERE search_vector IS NOT NULL LIMIT 1")
         except Exception:  # noqa: BLE001
             logger.warning("PG 侧 knowledge_chunks.search_vector 不可用，全文检索将降级")
         return
@@ -243,9 +286,35 @@ def fts_search(
         # 几乎不可能原样出现在某个 chunk 里 → 全文这一路长期返回空，混合检索实际
         # 只剩向量一路（向量一挂就完全无召回）。这里改为按分词后的关键词 OR 召回，
         # 再用命中词数/密度精排，保留"整句子串"作为最高权重信号。
-        stop = {"的", "了", "是", "有", "和", "与", "及", "在", "对", "把", "被",
-                "什么", "怎么", "怎样", "为什么", "如何", "哪些", "哪个", "这个",
-                "那个", "一下", "请问", "请", "问", "用", "作用", "时候"}
+        stop = {
+            "的",
+            "了",
+            "是",
+            "有",
+            "和",
+            "与",
+            "及",
+            "在",
+            "对",
+            "把",
+            "被",
+            "什么",
+            "怎么",
+            "怎样",
+            "为什么",
+            "如何",
+            "哪些",
+            "哪个",
+            "这个",
+            "那个",
+            "一下",
+            "请问",
+            "请",
+            "问",
+            "用",
+            "作用",
+            "时候",
+        }
         terms = []
         for t in segment(core).split():
             t = _CTRL.sub("", t).strip()
@@ -261,15 +330,9 @@ def fts_search(
             for i, t in enumerate(terms):
                 ors.append(f"kc.text ILIKE %(like{i})s")
                 params[f"like{i}"] = f"%{t}%"
-            sql = (
-                "SELECT kc.id, kc.text, kc.doc_name FROM knowledge_chunks kc "
-                f"WHERE ({' OR '.join(ors)})"
-            )
+            sql = f"SELECT kc.id, kc.text, kc.doc_name FROM knowledge_chunks kc WHERE ({' OR '.join(ors)})"
         else:
-            sql = (
-                "SELECT kc.id, kc.text, kc.doc_name FROM knowledge_chunks kc "
-                "WHERE kc.text ILIKE %(like)s"
-            )
+            sql = "SELECT kc.id, kc.text, kc.doc_name FROM knowledge_chunks kc WHERE kc.text ILIKE %(like)s"
             params = {"like": f"%{core}%"}
         if subject:
             # subject 用子查询换算成 subject_id，与 030 分片的外键设计一致
@@ -302,8 +365,7 @@ def fts_search(
     if q_seg == '""':
         return []
     sql = (
-        "SELECT chunk_id, bm25(knowledge_chunks_fts) AS s "
-        "FROM knowledge_chunks_fts WHERE knowledge_chunks_fts MATCH ?"
+        "SELECT chunk_id, bm25(knowledge_chunks_fts) AS s FROM knowledge_chunks_fts WHERE knowledge_chunks_fts MATCH ?"
     )
     params = [q_seg]
     if subject:
@@ -364,11 +426,7 @@ def vec_search(
     q_norm = q / (np.linalg.norm(q) or 1)
     sims = mat_norm @ q_norm
     # cosine distance = 1 - similarity
-    candidates = [
-        (valid[i][0], float(1.0 - sims[i]))
-        for i in range(len(valid))
-        if (1.0 - sims[i]) < VEC_MIN_DIST
-    ]
+    candidates = [(valid[i][0], float(1.0 - sims[i])) for i in range(len(valid)) if (1.0 - sims[i]) < VEC_MIN_DIST]
     candidates.sort(key=lambda x: x[1])
     return [(c, i + 1) for i, (c, _d) in enumerate(candidates[:topn])]
 
@@ -432,6 +490,21 @@ def rrf_fuse(*lanes: List[Tuple[int, int]], k: int = RRF_K) -> List[int]:
 # ---------------------------------------------------------------------------
 # 对外主接口
 # ---------------------------------------------------------------------------
+_SUBJECT_FILTER_SENTINELS = {"", "全部科目", "全部", "所有科目", "all", "All", "*"}
+
+
+def normalize_subject_filter(subject: Optional[str]) -> Optional[str]:
+    """学科过滤参数归一（2026-11-21 审计 P1-11 修复）。
+
+    前端「全部科目」哨兵值此前被当字面学科名去匹配，必然空结果。
+    哨兵值一律归一为 None（不过滤）；其余仅做 strip。
+    """
+    if subject is None:
+        return None
+    s = str(subject).strip()
+    return None if s in _SUBJECT_FILTER_SENTINELS else s
+
+
 def hybrid_search(
     db: Session,
     query: str,
@@ -457,6 +530,7 @@ def hybrid_search(
     conn = wrap_conn(db.connection().connection)
     ensure_fts_table(conn)
     ensure_vec_table(conn)
+    subject = normalize_subject_filter(subject)
 
     # ---- 第一路：knowledge_chunks（FTS + 向量）----
     fts_lane = fts_search(conn, query, topn=TOPN_PER_LANE, subject=subject)
@@ -497,7 +571,7 @@ def hybrid_search(
 
     # 按分数排序
     fused_sorted = sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
-    fused_ids = [cid for cid, _ in fused_sorted[:limit * 2]]  # 多取一些，后面过滤
+    fused_ids = [cid for cid, _ in fused_sorted[: limit * 2]]  # 多取一些，后面过滤
 
     if not fused_ids:
         return []
@@ -523,49 +597,52 @@ def hybrid_search(
         for cid in chunk_id_list:
             if cid in id_to_row:
                 r = id_to_row[cid]
-                results.append({
-                    "chunk_id": r[0],
-                    "document_id": r[1],
-                    "subject": r[2],
-                    "content": r[3] or "",
-                    "document_title": r[4] or "",
-                    # 引用溯源（2026-10-20）：答疑回答必须能标到「哪份文档、第几页」。
-                    # page_start 由解析阶段写入；历史 docx 资料可能为 NULL，
-                    # 此时前端/回答退化为「第 N 段」（chunk_index）。
-                    "doc_name": r[4] or "",
-                    "page_start": r[5],
-                    "page_end": r[6],
-                    "chunk_index": r[7],
-                    "score": fused_scores.get(cid, 0),
-                    "source_type": "chunk",
-                })
+                results.append(
+                    {
+                        "chunk_id": r[0],
+                        "document_id": r[1],
+                        "subject": r[2],
+                        "content": r[3] or "",
+                        "document_title": r[4] or "",
+                        # 引用溯源（2026-10-20）：答疑回答必须能标到「哪份文档、第几页」。
+                        # page_start 由解析阶段写入；历史 docx 资料可能为 NULL，
+                        # 此时前端/回答退化为「第 N 段」（chunk_index）。
+                        "doc_name": r[4] or "",
+                        "page_start": r[5],
+                        "page_end": r[6],
+                        "chunk_index": r[7],
+                        "score": fused_scores.get(cid, 0),
+                        "source_type": "chunk",
+                    }
+                )
 
     # 取 points 详情
     if point_id_list:
         placeholders = ",".join("?" * len(point_id_list))
         rows = conn.execute(
-            f"SELECT id, name, description, subject, document_id "
-            f"FROM knowledge_points WHERE id IN ({placeholders})",
+            f"SELECT id, name, description, subject, document_id FROM knowledge_points WHERE id IN ({placeholders})",
             point_id_list,
         ).fetchall()
         id_to_row = {r[0]: r for r in rows}
         for pid in point_id_list:
             if pid in id_to_row:
                 r = id_to_row[pid]
-                results.append({
-                    "chunk_id": -100000 - r[0],
-                    "document_id": r[4] or 0,
-                    "subject": r[3] or "",
-                    "content": f"【知识点】{r[1]}\n{r[2] or ''}",
-                    "document_title": "",
-                    "doc_name": "",
-                    "page_start": None,
-                    "page_end": None,
-                    "chunk_index": None,
-                    "score": fused_scores.get(-100000 - r[0], 0),
-                    "source_type": "knowledge_point",
-                    "point_name": r[1],
-                })
+                results.append(
+                    {
+                        "chunk_id": -100000 - r[0],
+                        "document_id": r[4] or 0,
+                        "subject": r[3] or "",
+                        "content": f"【知识点】{r[1]}\n{r[2] or ''}",
+                        "document_title": "",
+                        "doc_name": "",
+                        "page_start": None,
+                        "page_end": None,
+                        "chunk_index": None,
+                        "score": fused_scores.get(-100000 - r[0], 0),
+                        "source_type": "knowledge_point",
+                        "point_name": r[1],
+                    }
+                )
 
     # 取 documents 详情
     #
@@ -591,20 +668,22 @@ def hybrid_search(
                 r = id_to_row[did]
                 # 文档内容取前500字符作为摘要
                 doc_content = (r[3] or "")[:500]
-                results.append({
-                    "chunk_id": -200000 - r[0],
-                    "document_id": r[0],
-                    "subject": r[2] or "",
-                    "content": f"【文档】{r[1]}\n{doc_content}",
-                    "document_title": r[1] or "",
-                    "doc_name": r[1] or "",
-                    "page_start": None,
-                    "page_end": None,
-                    "chunk_index": None,
-                    "score": fused_scores.get(-200000 - r[0], 0),
-                    "source_type": "document",
-                    "file_type": r[4] or "",
-                })
+                results.append(
+                    {
+                        "chunk_id": -200000 - r[0],
+                        "document_id": r[0],
+                        "subject": r[2] or "",
+                        "content": f"【文档】{r[1]}\n{doc_content}",
+                        "document_title": r[1] or "",
+                        "doc_name": r[1] or "",
+                        "page_start": None,
+                        "page_end": None,
+                        "chunk_index": None,
+                        "score": fused_scores.get(-200000 - r[0], 0),
+                        "source_type": "document",
+                        "file_type": r[4] or "",
+                    }
+                )
 
     # ---- RRF 后精排：kaoyan_ai 术语加权（CORE_TERMS/TERM_SYNONYMS/NOISE_TERMS + 前200字符加权）----
     for r in results:
@@ -696,15 +775,9 @@ def get_index_stats(db: Session) -> dict:
     conn = wrap_conn(db.connection().connection)
 
     if _is_pg(conn):
-        total_chunks = conn.execute(
-            "SELECT COUNT(*) FROM knowledge_chunks"
-        ).fetchone()[0]
-        fts_count = conn.execute(
-            "SELECT COUNT(*) FROM knowledge_chunks WHERE search_vector IS NOT NULL"
-        ).fetchone()[0]
-        vec_count = conn.execute(
-            "SELECT COUNT(*) FROM chunk_vectors WHERE embedding_f32 IS NOT NULL"
-        ).fetchone()[0]
+        total_chunks = conn.execute("SELECT COUNT(*) FROM knowledge_chunks").fetchone()[0]
+        fts_count = conn.execute("SELECT COUNT(*) FROM knowledge_chunks WHERE search_vector IS NOT NULL").fetchone()[0]
+        vec_count = conn.execute("SELECT COUNT(*) FROM chunk_vectors WHERE embedding_f32 IS NOT NULL").fetchone()[0]
         return {
             "total_chunks": total_chunks,
             "fts_indexed": fts_count,
@@ -721,9 +794,7 @@ def get_index_stats(db: Session) -> dict:
     ensure_vec_table(conn)
     total_chunks = conn.execute("SELECT COUNT(*) FROM knowledge_chunks").fetchone()[0]
     fts_count = conn.execute("SELECT COUNT(*) FROM knowledge_chunks_fts").fetchone()[0]
-    vec_count = conn.execute(
-        "SELECT COUNT(*) FROM knowledge_chunks_vec WHERE embedding IS NOT NULL"
-    ).fetchone()[0]
+    vec_count = conn.execute("SELECT COUNT(*) FROM knowledge_chunks_vec WHERE embedding IS NOT NULL").fetchone()[0]
     return {
         "total_chunks": total_chunks,
         "fts_indexed": fts_count,
@@ -798,11 +869,10 @@ def rerank_results(results, query, limit=6):
                 early_match += 0.2
 
         final_score = (
-            original_score * 0.4 +
-            coverage * 0.3 +
-            title_match * 0.15 +
-            early_match * 0.15
-        ) * source_weight * length_weight
+            (original_score * 0.4 + coverage * 0.3 + title_match * 0.15 + early_match * 0.15)
+            * source_weight
+            * length_weight
+        )
 
         # 术语加权精排（移植 kaoyan_ai）：核心术语命中数加权 + 噪声词降权
         term_boost = _term_boost(query, content)
@@ -838,6 +908,4 @@ def hybrid_search_with_exam(db, query, query_vec=None, limit=6, subject=None, ex
     from services.exam_engine import search_with_exam
 
     # search_with_exam 内部使用 RRF_K_EXAM=20；exam_k 参数保留兼容外部调用方
-    return search_with_exam(
-        db, query, query_vec=query_vec, limit=limit, subject=subject
-    )
+    return search_with_exam(db, query, query_vec=query_vec, limit=limit, subject=subject)

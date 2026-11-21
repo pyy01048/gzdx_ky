@@ -8,6 +8,7 @@ D6: 招生人数分布散点图数据
 C5: 数据版本管理（历史对比）
 """
 
+import ast
 import json
 import re
 from typing import List, Optional
@@ -723,6 +724,27 @@ def _split_exam_subject_segments(raw) -> List[str]:
     return segments
 
 
+def _canonical_exam_subject_name(name: str) -> str:
+    """考试科目名聚合口径归一（2026-11-21 审计 P0-5 修复）。
+
+    招生目录里同一科目存在多种文本变体：半角/全角括号、空白、
+    备选语种后缀（「或 (202)俄语 或 (203)日语」）、简写（「英（一）」）。
+    此前各变体独立计数，导致考情大盘英语标签碎裂成十余个。
+    归一规则：括号转全角 → 去空白 → 截断备选语种 → 简写展开。
+    """
+    s = (name or "").strip()
+    if not s:
+        return s
+    s = s.replace("(", "（").replace(")", "）")
+    s = re.sub(r"\s+", "", s)
+    for sep in ("或", "/"):
+        if sep in s:
+            s = s.split(sep)[0]
+    if s.startswith("英（"):
+        s = "英语（" + s[len("英（") :]
+    return s
+
+
 def _parse_exam_subjects(raw) -> List[dict]:
     """把考试科目原始值解析为结构化列表 ``[{"code": "302", "name": "数学（二）"}]``。
 
@@ -732,6 +754,11 @@ def _parse_exam_subjects(raw) -> List[dict]:
       - 空段丢弃；结果保序，并按 ``(code, name)`` 去重。
 
     无编号的科目（如 "无" 或纯文本）仍会保留，``code`` 为 ``None``。
+
+    2026-11-21 审计 P0-5 增补：
+      - dict repr / JSON 对象段（``{'code': '201', 'name': '英语（一）'}``）
+        先解析出 code/name，绝不把整串字典当标签展示；
+      - name 统一过 :func:`_canonical_exam_subject_name` 归一聚合口径。
     """
     structured: List[dict] = []
     seen = set()
@@ -739,13 +766,33 @@ def _parse_exam_subjects(raw) -> List[dict]:
         seg = seg.strip()
         if not seg:
             continue
+        if seg.startswith("{") and seg.endswith("}"):
+            obj = None
+            try:
+                obj = json.loads(seg)
+            except Exception:
+                try:
+                    obj = ast.literal_eval(seg)
+                except Exception:
+                    obj = None
+            if isinstance(obj, dict) and str(obj.get("name") or "").strip():
+                code = str(obj.get("code") or "").strip() or None
+                name = _canonical_exam_subject_name(str(obj["name"]))
+                if not name:
+                    continue
+                key = (code, name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                structured.append({"code": code, "name": name})
+                continue
         match = _EXAM_SUBJECT_RE.match(seg)
         if match:
             code = match.group("code")
-            name = match.group("name").strip()
+            name = _canonical_exam_subject_name(match.group("name"))
         else:
             code = None
-            name = seg
+            name = _canonical_exam_subject_name(seg)
         if not name:
             continue
         key = (code, name)

@@ -340,15 +340,22 @@ def app_module():
 
 @pytest.fixture(scope="session", autouse=True)
 def auth_bypass(app_module):
-    """全站默认拒绝之后，业务用例统一以管理员身份跑；鉴权本身由 test_auth*.py 覆盖。"""
+    """全站默认拒绝之后，业务用例统一以管理员身份跑；鉴权本身由 test_auth*.py 覆盖。
+
+    2026-11-21：访客可读端点（taxonomy 等）改用 ``optional_user`` 依赖后，
+    业务用例的"登录态"假设必须同时覆盖该依赖，否则会被当匿名剥离个人字段。
+    匿名隔离用例自行 override 回 None（见 test_audit_p0_fixes.py）。
+    """
     from utils.access_policy import enforce_access
-    from utils.security import current_user, stub_principal
+    from utils.security import current_user, optional_user, stub_principal
 
     app_module.dependency_overrides[enforce_access] = lambda: None
     app_module.dependency_overrides[current_user] = lambda: stub_principal()
+    app_module.dependency_overrides[optional_user] = lambda: stub_principal()
     yield
     app_module.dependency_overrides.pop(enforce_access, None)
     app_module.dependency_overrides.pop(current_user, None)
+    app_module.dependency_overrides.pop(optional_user, None)
 
 
 @pytest.fixture(scope="session", autouse=True)
