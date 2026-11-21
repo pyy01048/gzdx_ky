@@ -59,6 +59,9 @@ export function normalizeDoc(x = {}) {
     has_local_file: !!x.has_local_file,
     local_file_note: x.local_file_note || '',
     chunk_count_raw: x.chunk_count || 0,
+    knowledge_point_count: x.knowledge_point_count || 0,
+    // C 批次1：已索引但未挂知识点 = 未结构化（不计入可用资料量）
+    is_structured: !!x.is_structured,
     stage: x.stage || '',
     content_type: x.content_type || '',
     subject_source: x.subject_source || '',
@@ -84,7 +87,11 @@ export function fileMetaOf(d) {
 
 export function docStateOf(d) {
   if (isEmptyBody(d)) return { label: '正文缺失', tone: 'danger', empty: true }
-  if (d?.status === 'parsed') return { label: '已入库', tone: 'success', empty: false }
+  if (d?.status === 'parsed') {
+    // C 批次1：入库但未挂知识点 → 显式「未结构化」，不冒充可用资料
+    if (!d.is_structured) return { label: '未结构化', tone: 'warning', empty: false }
+    return { label: '已入库', tone: 'success', empty: false }
+  }
   if (d?.status === 'failed') return { label: '入库失败', tone: 'danger', empty: false }
   return { label: '未解析', tone: 'warning', empty: false }
 }

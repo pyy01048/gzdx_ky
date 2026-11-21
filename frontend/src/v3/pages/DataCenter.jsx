@@ -60,11 +60,13 @@ function buildTasks() {
       load: () => kbApi.health(),
       summary: (d) => {
         const total = num(d?.documents?.total) ?? 0
+        // C 批次1：可用资料量 = 已结构化（挂到知识点）；未结构化单列不冒充可用
+        const structured = num(d?.documents?.structured) ?? total
         const chunks = num(d?.chunks?.total) ?? 0
         const issues = Array.isArray(d?.issues) ? d.issues.length : 0
-        return `${total} 篇文档 · ${chunks} 个分块${issues ? ` · ${issues} 个待修问题` : ''}`
+        return `${structured} 篇可用（共 ${total} 篇）· ${chunks} 个分块${issues ? ` · ${issues} 个待修问题` : ''}`
       },
-      count: (d) => num(d?.documents?.total) ?? 0,
+      count: (d) => num(d?.documents?.structured) ?? num(d?.documents?.total) ?? 0,
       unit: '篇',
     },
     {

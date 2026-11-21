@@ -15,6 +15,11 @@ from services import quiz_dedupe as _quiz_dedupe
 from services import subject_vocab
 from services.delete_guard import require_physical_delete_enabled
 from services.doc_naming import apply_display_name
+from services.document_governance import (
+    clean_md_summary,
+    extract_heading_kps,
+    reindex_failed,
+)
 from services.quiz_content_gate import admit as gate_admit
 from services.quiz_content_gate import gate_log_summary
 from services.smart_ingest import gate_for_write
@@ -353,7 +358,8 @@ def list_documents(
                 # 原文可不可读在前端就要知道：置灰按钮 + 说明原因，比点了报 404 好
                 "has_local_file": local_path is not None,
                 "local_file_note": local_note,
-                "summary": summary,
+                "summary": clean_md_summary(summary),
+                "is_structured": (d.knowledge_point_count or 0) > 0,
                 "content_length": clen,
                 "chunk_count": chunk_counts.get(d.id, 0),
                 "created_at": d.created_at.isoformat() if d.created_at else None,
@@ -379,6 +385,82 @@ def list_documents(
             ],
         },
     }
+
+
+# --------------------------------------------------------------------------- #
+# C 批次1：人工重试入口 + 科目待分类队列（admin；声明在 /{doc_id} 之前防路由吞并）
+# --------------------------------------------------------------------------- #
+@router.post("/{doc_id}/reindex", dependencies=[Depends(require_admin)])
+async def reindex_document(doc_id: int, db: Session = Depends(get_db)):
+    """失败件人工重试：有正文重建分块+章节 KP；无正文如实返回源缺失。"""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if doc is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    stats = reindex_failed(db, doc_ids=[doc_id])
+    kp = None
+    if stats["reindexed"]:
+        kp = extract_heading_kps(db, doc)
+        db.commit()
+    return {
+        "doc_id": doc_id,
+        "reindex": stats,
+        "kp": kp,
+        "index_status": doc.index_status,
+        "parse_error": doc.parse_error,
+    }
+
+
+@router.get("/classify-queue", dependencies=[Depends(require_admin)])
+async def classify_queue(status: str = "pending", db: Session = Depends(get_db)):
+    """科目待分类队列（全量，非抽样）。"""
+    from models import DocumentClassifyQueue
+
+    rows = (
+        db.query(DocumentClassifyQueue)
+        .filter(DocumentClassifyQueue.status == status)
+        .order_by(DocumentClassifyQueue.id)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "document_id": r.document_id,
+                "file_name": r.file_name,
+                "suggested_subject": r.suggested_subject,
+                "reason": r.reason,
+                "status": r.status,
+                "resolved_subject": r.resolved_subject,
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+    }
+
+
+@router.post("/classify-queue/{doc_id}/resolve", dependencies=[Depends(require_admin)])
+async def classify_resolve(doc_id: int, payload: dict, db: Session = Depends(get_db)):
+    """人工裁定科目：必须在 subject_config 字典内，否则 400。"""
+    from models import DocumentClassifyQueue, SubjectConfig
+    from services.document_governance import SUBJECT_PLACEHOLDERS
+    from utils.timeutil import utcnow
+
+    subject = (payload or {}).get("subject") or ""
+    pool = {r.subject for r in db.query(SubjectConfig.subject).all()} - SUBJECT_PLACEHOLDERS
+    if subject not in pool:
+        raise HTTPException(status_code=400, detail="科目不在标准字典内")
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if doc is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    doc.subject = subject
+    doc.subject_source = "manual"
+    row = db.query(DocumentClassifyQueue).filter(DocumentClassifyQueue.document_id == doc_id).first()
+    if row is not None:
+        row.status = "resolved"
+        row.resolved_subject = subject
+        row.resolved_at = utcnow()
+    db.commit()
+    return {"doc_id": doc_id, "subject": subject, "resolved": row is not None}
 
 
 @router.get("/subjects")

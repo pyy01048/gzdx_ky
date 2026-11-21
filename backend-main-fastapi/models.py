@@ -1868,3 +1868,28 @@ class CrawlDeadLetter(Base):
     attempts = Column(Integer, nullable=False, default=0, server_default="0", comment="已尝试次数")
     payload = Column(RawJSON, nullable=True, comment="失败时的任务负载 JSON")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
+class DocumentClassifyQueue(Base):
+    """C 批次1：科目待分类队列（目录名/文件名未命中字典别名时入队，不静默落「其他」）。"""
+
+    __tablename__ = "document_classify_queue"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(
+        Integer,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+        comment="待分类文档 ID",
+    )
+    file_name = Column(String(500), nullable=True, comment="文件名快照")
+    suggested_subject = Column(String(100), nullable=True, comment="建议科目（可空）")
+    reason = Column(String(200), nullable=True, comment="入队原因")
+    status = Column(
+        String(20), nullable=False, default="pending", server_default="pending", comment="pending / resolved"
+    )
+    resolved_subject = Column(String(100), nullable=True, comment="人工裁定的科目")
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)

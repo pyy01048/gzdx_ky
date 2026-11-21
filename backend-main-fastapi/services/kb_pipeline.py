@@ -58,21 +58,29 @@ def health_report(db: Session) -> dict[str, Any]:
     """如实报告知识库当前状态与缺口。"""
     total_docs = db.query(func.count(Document.id)).scalar() or 0
     total_chunks = db.query(func.count(KnowledgeChunk.id)).scalar() or 0
+    # C 批次1：可用资料量口径 = 已索引且挂到知识点（未结构化不计入可用）
+    structured_docs = (
+        db.query(func.count(Document.id))
+        .filter(Document.index_status == "indexed", Document.knowledge_point_count > 0)
+        .scalar()
+        or 0
+    )
 
     # 状态分布
     by_status = {
         str(s or "null"): c
-        for s, c in db.query(Document.index_status, func.count(Document.id))
-        .group_by(Document.index_status).all()
+        for s, c in db.query(Document.index_status, func.count(Document.id)).group_by(Document.index_status).all()
     }
     legacy = {k: v for k, v in by_status.items() if k in STATUS_ALIAS}
-    unknown = {k: v for k, v in by_status.items()
-               if k not in VALID_STATUS and k not in STATUS_ALIAS and k != "null"}
+    unknown = {k: v for k, v in by_status.items() if k not in VALID_STATUS and k not in STATUS_ALIAS and k != "null"}
 
     # 正文为空
-    empty_docs = db.query(func.count(Document.id)).filter(
-        (Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0)
-    ).scalar() or 0
+    empty_docs = (
+        db.query(func.count(Document.id))
+        .filter((Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0))
+        .scalar()
+        or 0
+    )
 
     # 入库/解析失败（index_status='failed'）：这些文档没有进入知识库，
     # 是「已入库」之外最需要被体检面板如实暴露的缺口（P1-1）。
@@ -89,13 +97,9 @@ def health_report(db: Session) -> dict[str, Any]:
         # 这里曾写死镜像表名 → 报 UndefinedTable → 被 except 吞成
         # have_vec=None → 「未向量化分块」指标长期缺失且无人察觉。
         if is_postgres(conn):
-            have_vec = conn.execute(
-                "SELECT COUNT(*) FROM chunk_vectors WHERE embedding_f32 IS NOT NULL"
-            ).fetchone()[0]
+            have_vec = conn.execute("SELECT COUNT(*) FROM chunk_vectors WHERE embedding_f32 IS NOT NULL").fetchone()[0]
         else:
-            have_vec = conn.execute(
-                "SELECT COUNT(*) FROM knowledge_chunks_vec"
-            ).fetchone()[0]
+            have_vec = conn.execute("SELECT COUNT(*) FROM knowledge_chunks_vec").fetchone()[0]
     except Exception:
         # 关键：PG 里一条语句失败会把**整个事务**打成 aborted，此后任何查询
         # 都报 InFailedSqlTransaction。光 except 不够 —— 事务已废，下面所有
@@ -109,80 +113,86 @@ def health_report(db: Session) -> dict[str, Any]:
     # 注意：doc_type 在 PG 是 ENUM('raw','note','index')，与空串 '' 比较会先把
     # '' 隐式 cast 成枚举 → ``invalid input value for enum doc_type: ""``
     # （DataError）。枚举列不存在空串形态，"缺失"只有 NULL 一种，故只判 NULL。
-    missing_type = db.query(func.count(Document.id)).filter(
-        Document.doc_type.is_(None)
-    ).scalar() or 0
+    missing_type = db.query(func.count(Document.id)).filter(Document.doc_type.is_(None)).scalar() or 0
     # structure_level 同为 ENUM，理由同上，只判 NULL。
-    missing_level = db.query(func.count(Document.id)).filter(
-        Document.structure_level.is_(None)
-    ).scalar() or 0
+    missing_level = db.query(func.count(Document.id)).filter(Document.structure_level.is_(None)).scalar() or 0
 
     ocr_docs = db.query(func.count(Document.id)).filter(Document.ocr_used == True).scalar() or 0  # noqa: E712
 
-    # 目录存在但未入库的文件（可选，目录不存在则跳过）
-    unimported = None
-
     issues: list[dict[str, Any]] = []
     if legacy:
-        issues.append({
-            "key": "legacy_status",
-            "level": "warn",
-            "title": f"{sum(legacy.values())} 篇文档用了历史状态值 {list(legacy)}",
-            "impact": "幂等判断与统计口径对不上，重复导入可能遗漏",
-            "fix": "normalize_status",
-            "auto": True,
-        })
+        issues.append(
+            {
+                "key": "legacy_status",
+                "level": "warn",
+                "title": f"{sum(legacy.values())} 篇文档用了历史状态值 {list(legacy)}",
+                "impact": "幂等判断与统计口径对不上，重复导入可能遗漏",
+                "fix": "normalize_status",
+                "auto": True,
+            }
+        )
     if unknown:
-        issues.append({
-            "key": "unknown_status",
-            "level": "warn",
-            "title": f"{sum(unknown.values())} 篇文档状态值未知 {list(unknown)}",
-            "impact": "这些文档不会被统计为已入库",
-            "fix": None,
-            "auto": False,
-        })
+        issues.append(
+            {
+                "key": "unknown_status",
+                "level": "warn",
+                "title": f"{sum(unknown.values())} 篇文档状态值未知 {list(unknown)}",
+                "impact": "这些文档不会被统计为已入库",
+                "fix": None,
+                "auto": False,
+            }
+        )
     if empty_docs:
-        issues.append({
-            "key": "empty_content",
-            "level": "error",
-            "title": f"{empty_docs} 篇文档正文为空",
-            "impact": "内容完全没进知识库，AI 检索不到",
-            "fix": "reparse_empty",
-            "auto": True,
-        })
+        issues.append(
+            {
+                "key": "empty_content",
+                "level": "error",
+                "title": f"{empty_docs} 篇文档正文为空",
+                "impact": "内容完全没进知识库，AI 检索不到",
+                "fix": "reparse_empty",
+                "auto": True,
+            }
+        )
     if failed_docs:
-        issues.append({
-            "key": "failed_docs",
-            "level": "error",
-            "title": f"{failed_docs} 篇文档解析/入库失败",
-            "impact": "这些文档没有可检索分块，AI 检索不到（parse_error 已记录原因）",
-            "fix": "retry_failed",
-            "auto": True,
-        })
+        issues.append(
+            {
+                "key": "failed_docs",
+                "level": "error",
+                "title": f"{failed_docs} 篇文档解析/入库失败",
+                "impact": "这些文档没有可检索分块，AI 检索不到（parse_error 已记录原因）",
+                "fix": "retry_failed",
+                "auto": True,
+            }
+        )
     if missing_embed:
-        issues.append({
-            "key": "missing_embedding",
-            "level": "warn",
-            "title": f"{missing_embed} 个分块没有向量",
-            "impact": "向量召回漏掉这些内容（FTS5 仍可检索）",
-            "fix": "build_embeddings",
-            "auto": False,  # 需要 embedding 服务/API Key，交由显式调用
-        })
+        issues.append(
+            {
+                "key": "missing_embedding",
+                "level": "warn",
+                "title": f"{missing_embed} 个分块没有向量",
+                "impact": "向量召回漏掉这些内容（FTS5 仍可检索）",
+                "fix": "build_embeddings",
+                "auto": False,  # 需要 embedding 服务/API Key，交由显式调用
+            }
+        )
     if missing_type or missing_level:
-        issues.append({
-            "key": "missing_meta",
-            "level": "info",
-            "title": f"元信息缺失：doc_type {missing_type} 篇 / structure_level {missing_level} 篇",
-            "impact": "前端无法按资料层级筛选",
-            "fix": "backfill_meta",
-            "auto": True,
-        })
+        issues.append(
+            {
+                "key": "missing_meta",
+                "level": "info",
+                "title": f"元信息缺失：doc_type {missing_type} 篇 / structure_level {missing_level} 篇",
+                "impact": "前端无法按资料层级筛选",
+                "fix": "backfill_meta",
+                "auto": True,
+            }
+        )
 
     return {
         # 纯展示字段：带 +00:00 偏移的 ISO8601 对前端更友好，使用 aware 模式
         "checked_at": utcnow_aware().isoformat(),
         "documents": {
             "total": total_docs,
+            "structured": structured_docs,
             "by_status": by_status,
             "legacy_status": legacy,
             "unknown_status": unknown,
@@ -213,8 +223,7 @@ def normalize_status(db: Session, *, commit: bool = True) -> int:
         # 直接 == 比较会抛 InvalidTextRepresentation，把整个自愈链路炸掉
         # （2026-10-19 实测：--heal 在 normalize_status 秒挂 rc=1）。
         # cast 成 varchar 后比较：枚举里没有的别名自然匹配 0 行，SQLite 语义不变。
-        rows = db.query(Document).filter(
-            cast(Document.index_status, String) == alias).all()
+        rows = db.query(Document).filter(cast(Document.index_status, String) == alias).all()
         for d in rows:
             d.index_status = canonical
             changed += 1
@@ -308,16 +317,12 @@ def repair_file_paths(
     `data/storage/documents/`，旧路径就全部失效了 —— 于是这些文档
     再也无法重新解析，OCR 也就无从触发。
     """
-    broken = [
-        d for d in db.query(Document).all()
-        if not (d.file_path and os.path.exists(d.file_path))
-    ]
+    broken = [d for d in db.query(Document).all() if not (d.file_path and os.path.exists(d.file_path))]
     if not broken:
         # 无断链时不建索引（walk knowledge_base 5000+ 文件），保持幂等调用的低成本
         return {"broken": 0, "repaired": 0, "not_found": 0, "indexed_files": 0}
     idx = build_file_index()
-    stats = {"broken": len(broken), "repaired": 0, "not_found": 0,
-             "indexed_files": sum(len(v) for v in idx.values())}
+    stats = {"broken": len(broken), "repaired": 0, "not_found": 0, "indexed_files": sum(len(v) for v in idx.values())}
 
     for i, doc in enumerate(broken, 1):
         hits = _index_hits(doc.file_name or "", idx)
@@ -341,10 +346,7 @@ def plan_file_path_repairs(db: Session, *, max_candidates: int = 5) -> dict:
     区别只是不写 `doc.file_path`、不 commit。给用户一次"要不要批量修复"的
     知情决策：`recoverable` 为 0 就说明这些文件真的不在盘上，不该给假承诺。
     """
-    broken_docs = [
-        d for d in db.query(Document).all()
-        if not (d.file_path and os.path.exists(d.file_path))
-    ]
+    broken_docs = [d for d in db.query(Document).all() if not (d.file_path and os.path.exists(d.file_path))]
     # 无断链就不建索引：build_file_index 要 walk 整个 knowledge_base（5000+ 文件），
     # 空库/健康库走这条零成本快路径。
     idx = build_file_index() if broken_docs else {}
@@ -353,13 +355,15 @@ def plan_file_path_repairs(db: Session, *, max_candidates: int = 5) -> dict:
     for doc in broken_docs:
         hits = _index_hits(doc.file_name or "", idx)
         if hits:
-            plan.append({
-                "doc_id": doc.id,
-                "file_name": doc.file_name,
-                "old": doc.file_path,
-                "new": hits[0],
-                "candidates": hits[:max_candidates],
-            })
+            plan.append(
+                {
+                    "doc_id": doc.id,
+                    "file_name": doc.file_name,
+                    "old": doc.file_path,
+                    "new": hits[0],
+                    "candidates": hits[:max_candidates],
+                }
+            )
         else:
             not_found += 1
     return {
@@ -387,15 +391,12 @@ def reparse_empty(
     from services.document_parser import DocumentParser
     from services.kb_service import detect_doc_meta, has_searchable_chunks, ingest_text
 
-    q = db.query(Document).filter(
-        (Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0)
-    )
+    q = db.query(Document).filter((Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0))
     if limit:
         q = q.limit(limit)
     docs = q.all()
 
-    stats = {"total": len(docs), "reparsed": 0, "chunks": 0, "rejected": 0,
-             "no_file": 0, "empty_again": 0, "failed": 0}
+    stats = {"total": len(docs), "reparsed": 0, "chunks": 0, "rejected": 0, "no_file": 0, "empty_again": 0, "failed": 0}
 
     for i, doc in enumerate(docs, 1):
         path = doc.file_path or ""
@@ -420,7 +421,7 @@ def reparse_empty(
             stats["empty_again"] += 1
             doc.index_status = "failed"
             doc.parse_error = "重新解析后正文仍为空"
-            db.commit()          # 不 commit 这行 failed 会随下一轮的 rollback 一起丢
+            db.commit()  # 不 commit 这行 failed 会随下一轮的 rollback 一起丢
             continue
 
         # 质量闸门：OCR 重新解析出来的"正文"有相当一部分是占位错误提示或乱码，
@@ -440,8 +441,7 @@ def reparse_empty(
         db.commit()
 
         try:
-            n = ingest_text(db, doc.id, doc.file_name, text,
-                            subject=doc.subject, replace=True)
+            n = ingest_text(db, doc.id, doc.file_name, text, subject=doc.subject, replace=True)
             stats["chunks"] += n
         except Exception as e:
             stats["failed"] += 1
@@ -456,9 +456,7 @@ def reparse_empty(
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
         if has_searchable_chunks(db, doc.id):
             doc.index_status = "indexed"
         else:
@@ -498,8 +496,15 @@ def retry_failed(
     if limit:
         docs = docs[:limit]
 
-    stats = {"total": len(docs), "retried": 0, "recovered": 0,
-             "no_file": 0, "no_content": 0, "still_failed": 0, "errors": 0}
+    stats = {
+        "total": len(docs),
+        "retried": 0,
+        "recovered": 0,
+        "no_file": 0,
+        "no_content": 0,
+        "still_failed": 0,
+        "errors": 0,
+    }
 
     for i, doc in enumerate(docs, 1):
         if progress:
@@ -524,8 +529,7 @@ def retry_failed(
         # 3. 正文存在且有源文件 → 重新分块入库
         stats["retried"] += 1
         try:
-            n = ingest_text(db, doc.id, doc.file_name, content,
-                            subject=doc.subject, replace=True)
+            n = ingest_text(db, doc.id, doc.file_name, content, subject=doc.subject, replace=True)
             if has_searchable_chunks(db, doc.id):
                 doc.index_status = "indexed"
                 doc.parse_error = None
@@ -533,9 +537,7 @@ def retry_failed(
                 stats["recovered"] += 1
             else:
                 doc.index_status = "failed"
-                doc.parse_error = (
-                    f"重试后仍无可检索分块（切出 {n} 块，全部低于可检索下限）"
-                )
+                doc.parse_error = f"重试后仍无可检索分块（切出 {n} 块，全部低于可检索下限）"
                 stats["still_failed"] += 1
         except Exception as e:  # noqa: BLE001
             db.rollback()
@@ -617,17 +619,18 @@ def heal(
         note("repair_file_paths", repair)
 
     # 4. 空正文重解析（含 OCR）
-    empty = db.query(func.count(Document.id)).filter(
-        (Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0)
-    ).scalar() or 0
+    empty = (
+        db.query(func.count(Document.id))
+        .filter((Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0))
+        .scalar()
+        or 0
+    )
     if empty:
         note("reparse_empty", reparse_empty(db, use_ocr=use_ocr, limit=limit))
 
     # 4.5 失败文档重试（P1-1）：把有正文且源文件在盘的 failed 文档重新分块入库。
     # 放在 reparse_empty 之后，因为空正文重解析可能新产生 failed 行。
-    failed_count = db.query(func.count(Document.id)).filter(
-        Document.index_status == "failed"
-    ).scalar() or 0
+    failed_count = db.query(func.count(Document.id)).filter(Document.index_status == "failed").scalar() or 0
     if failed_count:
         note("retry_failed", retry_failed(db, limit=limit))
 
@@ -685,8 +688,7 @@ def main() -> int:
 
     ap = argparse.ArgumentParser(description="本地知识库体检与自愈")
     ap.add_argument("--heal", action="store_true", help="执行修复（默认只体检）")
-    ap.add_argument("--ocr", action="store_true", default=True,
-                    help="修复空正文时启用 OCR（默认开）")
+    ap.add_argument("--ocr", action="store_true", default=True, help="修复空正文时启用 OCR（默认开）")
     ap.add_argument("--no-ocr", dest="ocr", action="store_false")
     ap.add_argument("--embeddings", action="store_true", help="同时补向量（需 embedding 服务）")
     ap.add_argument("--limit", type=int, default=None, help="限制处理数量")
@@ -709,8 +711,7 @@ def main() -> int:
         def on_item(i, total, label):
             print(f"      ({i}/{total}) {label}")
 
-        result = heal(db, use_ocr=args.ocr, do_embeddings=args.embeddings,
-                      limit=args.limit, progress=on_progress)
+        result = heal(db, use_ocr=args.ocr, do_embeddings=args.embeddings, limit=args.limit, progress=on_progress)
         print("\n修复后：")
         print_report(result["after"])
         print(f"\n新增分块：{result['improved']}")
