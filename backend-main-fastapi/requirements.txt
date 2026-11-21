@@ -28,7 +28,7 @@ pydantic>=2.9,<3; python_version >= "3.11"
 # 5.x 线在 2026-11 新增暴露大量解析类 CVE，7.1.1 已清零。升级后重点回归：扫描件解析、页数统计。
 pypdf==7.1.1
 python-multipart==0.0.31
-httpx>=0.27,<0.29
+httpx>=0.28.1,<0.29
 # ---- 院校公告采集栈（services/crawl）----
 # 正文抽取：trafilatura 为主引擎，readability-lxml 为兜底；两者都缺时走内置抽取。
 # 缺失不报错，但抽取质量下降（services/crawl/extractor.py 会自动降级）。
