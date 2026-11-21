@@ -46,6 +46,7 @@ def seed(db_schema):
             ("2027年改考科目：812 改为 408", "改考科目", 0, 0.8, "auto", ids["n1"]),
             ("JOINT TRAINING 联培专项招生（BRT）基本制度测试", "新增专业", 0, 0.8, "auto", None),
             ("停招某专业通知", "停招", 2026, 0.8, "manual", None),
+            ("研究生招生校园开放日精彩瞬间", "招生政策变化", 0, 0.8, "auto", None),
         ]
         for i, (title, ctype, year, conf, rsource, nid) in enumerate(reforms, start=1):
             cur = conn.execute(
@@ -132,6 +133,10 @@ class TestUnits:
         assert any(s.startswith("year_in_title") for s in json.loads(b1))
         cn, bn = score_reform_confidence("JOINT TRAINING 测试", "", "", "新增专业", 0.75)
         assert cn < 0.75 and any(s.startswith("noise_marker") for s in json.loads(bn))
+        from services.kaoyan.notice_governance import REFORM_NOISE_RE
+
+        assert REFORM_NOISE_RE.search("研究生招生校园开放日精彩瞬间")
+        assert REFORM_NOISE_RE.search("关于开展研究生“评优评奖示范月”专项工作的通知")
 
 
 class TestGovern:
@@ -169,6 +174,8 @@ class TestGovern:
             assert r1[0] != 0.8 and json.loads(r1[1]) and r1[2] == 2027 and r1[3] == "ok"
             r2 = conn.execute("SELECT review_status FROM kaoyan_reforms WHERE id=?", (seed["r2"],)).fetchone()
             assert r2[0] == "noise"
+            r4 = conn.execute("SELECT review_status FROM kaoyan_reforms WHERE id=?", (seed["r4"],)).fetchone()
+            assert r4[0] == "noise"  # 校园开放日/评优评奖类活动误判出列
             r3 = conn.execute(
                 "SELECT confidence, review_source FROM kaoyan_reforms WHERE id=?", (seed["r3"],)
             ).fetchone()

@@ -99,7 +99,7 @@ NOISE_DEPT_RE = re.compile(
     r"^(组织部|宣传部|财务处|校医院|图书馆|档案馆|信息办|研工部|学工部|团委|工会|"
     r"后勤|保卫处|教务处|人事处|国际处|校友会|基金会|人文复旦|桂电晨曦|.{0,6}部)$"
 )
-REFORM_NOISE_RE = re.compile(r"JOINT\s*TRAINING|基本制度测试|（BRT）|\(BRT\)|联培专项招生", re.I)
+REFORM_NOISE_RE = re.compile(r"JOINT\s*TRAINING|基本制度测试|（BRT）|\(BRT\)|联培专项招生|校园开放日|评优评奖", re.I)
 
 
 def classify_notice(title: str) -> str:
