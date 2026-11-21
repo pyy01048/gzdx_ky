@@ -17,13 +17,62 @@
 """
 
 from .base import (
+    NAMING_CONVENTION,
     Base,
     BigIntPKMixin,
     DateTimeUTC,
-    NAMING_CONVENTION,
-    TimestampMixin,
     TimestampedBigIntPKMixin,
+    TimestampMixin,
     utcnow,
+)
+from .code_oj import CodeProblem, CodeProblemTag, CodeProblemTestcase, CodeSubmission, CodeSubmissionResult, CodeTag
+from .documents import ChunkVector, Document, KnowledgeChunk
+from .errors import ErrorKnowledgeLink, ErrorRecord, Flashcard
+from .exams import (
+    AnswerCandidate,
+    AnswerRecord,
+    ExamAnswer,
+    ExamBlueprint,
+    ExamSession,
+    PendingQuestion,
+)
+from .knowledge import KnowledgePoint, KnowledgePointRelation
+from .learning import Goal, ReviewRecord, ReviewSchedule, Task
+from .notices import (
+    KaoyanAlertRecord,
+    KaoyanAlertRun,
+    KaoyanCollectionRun,
+    KaoyanMajorKbLink,
+    KaoyanNotice,
+    KaoyanSubscription,
+    NoticeUserState,
+    UniversityLegacy,
+)
+from .planning import (
+    DailyPlan,
+    EarlyBirdRecord,
+    EbbinghausItem,
+    FocusSession,
+    Milestone,
+    Misconception,
+    MonthPlan,
+    PhaseDailyReview,
+    PhasePlan,
+    StudyEvent,
+    StudySession,
+    StudyStat,
+    WeekPlan,
+)
+from .questions import Paper, PaperAnswer, PaperAttempt, PaperQuestion, QuestionKnowledgeLink, QuizQuestion
+from .quiz_sessions import QuizAttempt, QuizSession
+from .schools import (
+    KaoyanAdmission,
+    KaoyanCollege,
+    KaoyanMajor,
+    KaoyanSchool,
+    KaoyanScoreline,
+    KaoyanSubject,
+    SchoolAlias,
 )
 from .system import (
     AIProvider,
@@ -37,55 +86,6 @@ from .system import (
     SubjectDisciplineLink,
     SubjectPrototype,
 )
-from .documents import ChunkVector, Document, KnowledgeChunk
-from .knowledge import KnowledgePoint, KnowledgePointRelation
-from .questions import Paper, PaperQuestion, PaperAttempt, PaperAnswer, QuestionKnowledgeLink, QuizQuestion
-from .code_oj import CodeProblem, CodeProblemTestcase, CodeSubmission, CodeSubmissionResult, CodeTag, CodeProblemTag
-from .quiz_sessions import QuizAttempt, QuizSession
-from .exams import (
-    AnswerCandidate,
-    AnswerRecord,
-    ExamAnswer,
-    ExamBlueprint,
-    ExamSession,
-    PendingQuestion,
-)
-from .learning import Goal, ReviewRecord, ReviewSchedule, Task
-from .errors import ErrorKnowledgeLink, ErrorRecord, Flashcard
-from .planning import (
-    DailyPlan,
-    EarlyBirdRecord,
-    EbbinghausItem,
-    FocusSession,
-    MonthPlan,
-    PhaseDailyReview,
-    PhasePlan,
-    StudyEvent,
-    StudySession,
-    StudyStat,
-    WeekPlan,
-    Milestone,
-    Misconception,
-)
-from .schools import (
-    KaoyanAdmission,
-    KaoyanCollege,
-    KaoyanMajor,
-    KaoyanSchool,
-    KaoyanScoreline,
-    KaoyanSubject,
-    SchoolAlias,
-)
-from .notices import (
-    KaoyanAlertRecord,
-    KaoyanAlertRun,
-    KaoyanCollectionRun,
-    KaoyanMajorKbLink,
-    KaoyanNotice,
-    KaoyanSubscription,
-    NoticeUserState,
-    UniversityLegacy,
-)
 from .words_misc import (
     AnnotationSample,
     EvalRun,
@@ -98,34 +98,96 @@ from .words_misc import (
 
 __all__ = [
     # base
-    "Base", "BigIntPKMixin", "TimestampMixin", "TimestampedBigIntPKMixin",
-    "DateTimeUTC", "NAMING_CONVENTION", "utcnow",
+    "Base",
+    "BigIntPKMixin",
+    "TimestampMixin",
+    "TimestampedBigIntPKMixin",
+    "DateTimeUTC",
+    "NAMING_CONVENTION",
+    "utcnow",
     # system
-    "Subject", "Discipline", "SubjectDisciplineLink", "SubjectAlias",
-    "SubjectChapter", "SubjectConfig", "SubjectPrototype",
-    "PlatformConfig", "AIProvider", "CustomLink",
+    "Subject",
+    "Discipline",
+    "SubjectDisciplineLink",
+    "SubjectAlias",
+    "SubjectChapter",
+    "SubjectConfig",
+    "SubjectPrototype",
+    "PlatformConfig",
+    "AIProvider",
+    "CustomLink",
     # documents
-    "Document", "KnowledgeChunk", "ChunkVector",
+    "Document",
+    "KnowledgeChunk",
+    "ChunkVector",
     # knowledge
-    "KnowledgePoint", "KnowledgePointRelation",
+    "KnowledgePoint",
+    "KnowledgePointRelation",
     # questions
-    "QuizQuestion", "QuestionKnowledgeLink", "Paper", "PaperQuestion",
-    "QuizSession", "QuizAttempt",
-    "ExamBlueprint", "ExamSession", "ExamAnswer", "PendingQuestion",
-    "AnswerCandidate", "AnswerRecord",
+    "QuizQuestion",
+    "QuestionKnowledgeLink",
+    "Paper",
+    "PaperQuestion",
+    "PaperAnswer",
+    "PaperAttempt",
+    "QuizSession",
+    "QuizAttempt",
+    "ExamBlueprint",
+    "ExamSession",
+    "ExamAnswer",
+    "PendingQuestion",
+    "AnswerCandidate",
+    "AnswerRecord",
     # learning
-    "ReviewSchedule", "Goal", "Task", "ReviewRecord", "ErrorRecord",
-    "ErrorKnowledgeLink", "Flashcard", "FocusSession", "EbbinghausItem",
-    "EarlyBirdRecord", "MonthPlan", "WeekPlan", "DailyPlan", "PhasePlan",
-    "PhaseDailyReview", "StudySession", "StudyStat", "StudyEvent",
-    "Milestone", "Misconception",
+    "ReviewSchedule",
+    "Goal",
+    "Task",
+    "ReviewRecord",
+    "ErrorRecord",
+    "ErrorKnowledgeLink",
+    "Flashcard",
+    "FocusSession",
+    "EbbinghausItem",
+    "EarlyBirdRecord",
+    "MonthPlan",
+    "WeekPlan",
+    "DailyPlan",
+    "PhasePlan",
+    "PhaseDailyReview",
+    "StudySession",
+    "StudyStat",
+    "StudyEvent",
+    "Milestone",
+    "Misconception",
     # schools
-    "KaoyanSchool", "SchoolAlias", "KaoyanCollege", "KaoyanMajor",
-    "KaoyanAdmission", "KaoyanScoreline", "KaoyanSubject", "KaoyanNotice",
-    "KaoyanSubscription", "KaoyanAlertRecord", "KaoyanAlertRun",
-    "KaoyanCollectionRun", "KaoyanMajorKbLink", "UniversityLegacy",
+    "KaoyanSchool",
+    "SchoolAlias",
+    "KaoyanCollege",
+    "KaoyanMajor",
+    "KaoyanAdmission",
+    "KaoyanScoreline",
+    "KaoyanSubject",
+    "KaoyanNotice",
+    "KaoyanSubscription",
+    "KaoyanAlertRecord",
+    "KaoyanAlertRun",
+    "KaoyanCollectionRun",
+    "KaoyanMajorKbLink",
+    "UniversityLegacy",
     "NoticeUserState",
     # words & misc
-    "WordDeck", "Word", "NetdiskFile", "AnnotationSample", "SftExample",
-    "EvalRun", "RetrievalGateLog",
+    "WordDeck",
+    "Word",
+    "NetdiskFile",
+    "AnnotationSample",
+    "SftExample",
+    "EvalRun",
+    "RetrievalGateLog",
+    # code_oj
+    "CodeProblem",
+    "CodeTag",
+    "CodeProblemTag",
+    "CodeProblemTestcase",
+    "CodeSubmission",
+    "CodeSubmissionResult",
 ]

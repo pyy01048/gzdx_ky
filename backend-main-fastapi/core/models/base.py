@@ -66,10 +66,10 @@ class TimestampMixin:
     保证不依赖数据库特性也能拿到正确值。
     """
 
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTimeUTC, server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTimeUTC, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTimeUTC, server_default=func.now(), onupdate=func.now(), nullable=False)
+        DateTimeUTC, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class TimestampedBigIntPKMixin(BigIntPKMixin, TimestampMixin):

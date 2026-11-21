@@ -30,7 +30,9 @@ class ThirdPartyAccount(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true", comment="是否启用")
     last_synced_at: Mapped[datetime.datetime | None] = mapped_column(DateTimeUTC, comment="最后同步时间")
     created_at: Mapped[datetime.datetime] = mapped_column(DateTimeUTC, server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime.datetime] = mapped_column(DateTimeUTC, server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTimeUTC, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class NetdiskFileCache(Base):
@@ -39,7 +41,9 @@ class NetdiskFileCache(Base):
     __tablename__ = "netdisk_file_cache"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    uk_account_fs: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True, comment="uk+provider+fs_path组合键")
+    uk_account_fs: Mapped[str] = mapped_column(
+        String(200), nullable=False, unique=True, index=True, comment="uk+provider+fs_path组合键"
+    )
     file_list: Mapped[list] = mapped_column(JSONBObject, nullable=False, comment="文件列表快照")
     expires_at: Mapped[datetime.datetime] = mapped_column(DateTimeUTC, nullable=False, comment="过期时间")
     created_at: Mapped[datetime.datetime] = mapped_column(DateTimeUTC, server_default=func.now(), nullable=False)
@@ -58,7 +62,9 @@ class PreviewSession(Base):
     page_number: Mapped[int | None] = mapped_column(Integer, comment="PDF当前页码")
     session_expires_at: Mapped[datetime.datetime] = mapped_column(DateTimeUTC, nullable=False, comment="会话过期时间")
     created_at: Mapped[datetime.datetime] = mapped_column(DateTimeUTC, server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime.datetime] = mapped_column(DateTimeUTC, server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTimeUTC, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class NetdiskOperationLog(Base):

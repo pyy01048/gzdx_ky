@@ -11,7 +11,7 @@ select = ["E", "F", "W", "B", "I", "UP"]   # 错误/flake8/警告/bugbug/import�
 # UP0xx（PEP585/604 现代化）、W191（tab缩进）、B008 等存量量大且需人工确认，先豁免后逐迭代缩小。
 ignore = [
     "E501",       # 行长交给 format
-    "UP006", "UP045", "UP007", "UP035", "UP009", "UP031", "UP032", "UP015", "UP017", "UP025",  # 存量风格现代化，分批做
+    "UP006", "UP045", "UP007", "UP035", "UP009", "UP031", "UP032", "UP015", "UP017", "UP025", "UP037",  # 存量风格现代化，分批做
     "W191",       # 存量 tab 缩进（1203 处），ruff format 会逐步消化
     "B008",       # FastAPI Depends 用法是项目惯例
 ]
@@ -20,6 +20,9 @@ ignore = [
 "tests/*" = ["B011"]
 "scripts/*" = ["E402"]                     # 脚本常见 sys.path 前置
 "backend-main-fastapi/main.py" = ["E402"]  # load_dotenv 必须先于模块级 import
+# SQLAlchemy 跨分片 relationship 前向引用（Mapped["X"] / relationship("X")）由共享 Base
+# registry 在 mapper 配置期解析，X 不必在本模块 import 期可见，故 F821 为误报。
+"**/core/models/*.py" = ["F821"]
 
 [tool.ruff.format]
 quote-style = "double"
