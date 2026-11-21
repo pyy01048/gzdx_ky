@@ -335,3 +335,95 @@ class TestReformsPagination:
         r = client.get("/api/kaoyan/reforms", params={"school_id": self.SCHOOL_ID, "limit": 30})
         assert r.status_code == 200
         assert len(r.json()) == 30
+
+
+class TestErrorStatsUserIsolation:
+    """复测整改（2026-11-21）：/api/errors/stats 曾漏传 user_id → 新账号看到他人错题计数。
+
+    线上实证：reviewer02（空账号）stats.total=8，而 8 条错题归属 pyy(5)/ui_reviewer(3)。
+    服务层与路由层双断言，防回归。
+    """
+
+    UID_A = 990003
+    UID_B = 990004
+
+    @pytest.fixture()
+    def error_rows(self, db_schema):
+        from database import SessionLocal
+        from models import ErrorRecord, User
+
+        db = SessionLocal()
+        try:
+            for uid, nm in ((self.UID_A, "qa_iso_err_a"), (self.UID_B, "qa_iso_err_b")):
+                if db.query(User).filter(User.id == uid).first() is None:
+                    db.add(
+                        User(
+                            id=uid,
+                            username=nm,
+                            password_hash="!disabled",
+                            display_name=nm,
+                            role="user",
+                            is_active=True,
+                            must_change_password=False,
+                            token_version=0,
+                        )
+                    )
+            db.flush()
+            for uid, n in ((self.UID_A, 2), (self.UID_B, 1)):
+                for i in range(n):
+                    db.add(
+                        ErrorRecord(
+                            user_id=uid,
+                            content=f"QA-隔离错题-{uid}-{i}",
+                            subject="数学",
+                            status="active",
+                        )
+                    )
+            db.commit()
+            yield
+        finally:
+            db.rollback()
+            db.execute(
+                text("DELETE FROM error_records WHERE user_id IN (:a, :b)"),
+                {"a": self.UID_A, "b": self.UID_B},
+            )
+            db.execute(text("DELETE FROM users WHERE id IN (:a, :b)"), {"a": self.UID_A, "b": self.UID_B})
+            db.commit()
+            db.close()
+
+    def test_service_stats_scoped(self, db_schema, error_rows):
+        from database import SessionLocal
+        from services import error_linker
+
+        db = SessionLocal()
+        try:
+            sa = error_linker.error_stats(db, user_id=self.UID_A)
+            sb = error_linker.error_stats(db, user_id=self.UID_B)
+            assert sa["total"] == 2
+            assert sb["total"] == 1
+        finally:
+            db.close()
+
+    def test_route_stats_scoped(self, client, app_module, error_rows):
+        from types import SimpleNamespace
+
+        from utils.security import current_user, stub_principal
+
+        def as_user(uid):
+            p = stub_principal(role="user")
+            return SimpleNamespace(**{**vars(p), "id": uid})
+
+        prev = app_module.dependency_overrides.get(current_user)
+        try:
+            app_module.dependency_overrides[current_user] = lambda: as_user(self.UID_A)
+            ra = client.get("/api/errors/stats")
+            app_module.dependency_overrides[current_user] = lambda: as_user(self.UID_B)
+            rb = client.get("/api/errors/stats")
+            assert ra.status_code == 200 and rb.status_code == 200
+            assert ra.json()["total"] == 2, "路由层必须按当前用户过滤（曾漏传 user_id）"
+            assert rb.json()["total"] == 1
+        finally:
+            if prev is None:
+                app_module.dependency_overrides.pop(current_user, None)
+            else:
+                app_module.dependency_overrides[current_user] = prev

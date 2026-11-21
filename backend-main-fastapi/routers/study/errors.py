@@ -58,8 +58,7 @@ async def list_errors(
     if knowledge_point_id is not None:
         query = query.filter(
             ErrorRecord.id.in_(
-                select(ErrorKnowledgeLink.error_id)
-                .where(ErrorKnowledgeLink.knowledge_point_id == knowledge_point_id)
+                select(ErrorKnowledgeLink.error_id).where(ErrorKnowledgeLink.knowledge_point_id == knowledge_point_id)
             )
         )
     if mastery_state:
@@ -70,12 +69,7 @@ async def list_errors(
             query = query.filter(cond)
 
     total = query.count()
-    errors = (
-        query.order_by(ErrorRecord.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    errors = query.order_by(ErrorRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
     def _row(e: ErrorRecord) -> dict:
         state = kp_mastery.error_mastery_state(e.accuracy, e.review_count, e.status)
@@ -125,7 +119,9 @@ async def error_stats(subject: Optional[str] = None, db: Session = Depends(get_d
 
     return cached(
         f"errors/stats:{subject or ''}:u{owner_id(user)}",  # B4：缓存 key 带用户维度
-        lambda: error_linker.error_stats(db, subject=subject),
+        # 复测整改（2026-11-21）：key 带用户但 lambda 曾漏传 user_id → 全局口径串号；
+        # 服务层与缓存 key 必须同维度，否则新账号能看到他人错题计数。
+        lambda: error_linker.error_stats(db, subject=subject, user_id=owner_id(user)),
     )
 
 
@@ -182,7 +178,9 @@ async def error_knowledge_points(error_id: int, db: Session = Depends(get_db), u
 
 
 @router.post("/{error_id}/link-knowledge")
-async def link_error_knowledge(error_id: int, payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def link_error_knowledge(
+    error_id: int, payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """手动指定错题关联的知识点。
 
     body: {knowledge_point_id: int} 或 {auto: true} 重新自动关联
@@ -203,7 +201,7 @@ async def link_error_knowledge(error_id: int, payload: dict, db: Session = Depen
     try:
         return error_linker.link_manually(db, error_id, int(kp_id))
     except LookupError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.delete("/links/{link_id}")
@@ -218,9 +216,7 @@ async def unlink_error_knowledge(link_id: int, db: Session = Depends(get_db), us
     link = db.query(ErrorKnowledgeLink).filter(ErrorKnowledgeLink.id == link_id).first()
     if not link:
         raise HTTPException(status_code=404, detail="关联不存在")
-    parent = db.query(ErrorRecord).filter(
-        ErrorRecord.id == link.error_id, scoped(ErrorRecord, user)
-    ).first()
+    parent = db.query(ErrorRecord).filter(ErrorRecord.id == link.error_id, scoped(ErrorRecord, user)).first()
     if not parent:
         raise HTTPException(status_code=404, detail="关联不存在")
     if not error_linker.unlink(db, link_id):
@@ -228,9 +224,10 @@ async def unlink_error_knowledge(link_id: int, db: Session = Depends(get_db), us
     return {"message": "关联已解除"}
 
 
-
 @router.put("/{error_id}")
-async def update_error(error_id: int, error: ErrorRecordUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def update_error(
+    error_id: int, error: ErrorRecordUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """更新错题。"""
     db_error = db.query(ErrorRecord).filter(ErrorRecord.id == error_id, scoped(ErrorRecord, user)).first()
     if not db_error:
@@ -255,9 +252,9 @@ async def delete_error(error_id: int, db: Session = Depends(get_db), user: User 
 
     # 先删关联：error_knowledge_links.error_id 有外键约束，
     # 不先清理会直接 IntegrityError（500）。
-    removed_links = db.query(ErrorKnowledgeLink).filter(
-        ErrorKnowledgeLink.error_id == error_id
-    ).delete(synchronize_session=False)
+    removed_links = (
+        db.query(ErrorKnowledgeLink).filter(ErrorKnowledgeLink.error_id == error_id).delete(synchronize_session=False)
+    )
 
     db.delete(db_error)
     db.commit()
@@ -277,7 +274,9 @@ async def graduate_error(error_id: int, db: Session = Depends(get_db), user: Use
 
 
 @router.post("/ocr")
-async def ocr_recognize(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def ocr_recognize(
+    file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """OCR 识别错题。"""
     import os
     import tempfile
@@ -286,7 +285,7 @@ async def ocr_recognize(file: UploadFile = File(...), db: Session = Depends(get_
     MAX_IMG_SIZE = 20 * 1024 * 1024
     content = await file.read()
     if len(content) > MAX_IMG_SIZE:
-        raise HTTPException(status_code=413, detail=f"图片过大，最大支持 {MAX_IMG_SIZE // (1024*1024)}MB")
+        raise HTTPException(status_code=413, detail=f"图片过大，最大支持 {MAX_IMG_SIZE // (1024 * 1024)}MB")
 
     suffix = os.path.splitext(file.filename or "upload.png")[1] or ".png"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -351,20 +350,22 @@ async def export_errors_pdf(
     errors = []
     for e in rows:
         state = kp_mastery.error_mastery_state(e.accuracy, e.review_count, e.status)
-        errors.append({
-            "content": e.content,
-            "my_answer": e.my_answer,
-            "correct_answer": e.correct_answer,
-            "error_reason": e.error_reason,
-            "error_category": e.error_category,
-            "subject": e.subject,
-            "accuracy": e.accuracy,
-            "review_count": e.review_count,
-            "status": e.status,
-            "mastery_label": kp_mastery.STATE_LABELS.get(state, state),
-            "tags": e.tags,
-            "analysis": e.analysis,
-        })
+        errors.append(
+            {
+                "content": e.content,
+                "my_answer": e.my_answer,
+                "correct_answer": e.correct_answer,
+                "error_reason": e.error_reason,
+                "error_category": e.error_category,
+                "subject": e.subject,
+                "accuracy": e.accuracy,
+                "review_count": e.review_count,
+                "status": e.status,
+                "mastery_label": kp_mastery.STATE_LABELS.get(state, state),
+                "tags": e.tags,
+                "analysis": e.analysis,
+            }
+        )
 
     pdf_bytes = pdf_export.build_errors_pdf(
         errors,
@@ -374,6 +375,7 @@ async def export_errors_pdf(
     filename = f"错题本_{local_today().isoformat()}.pdf"
     # RFC 5987 编码文件名，保证中文文件名在浏览器中正常显示
     from urllib.parse import quote
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -424,4 +426,4 @@ async def ai_analyze_error(error_id: int, db: Session = Depends(get_db), user: U
             "practice_questions": result.get("practice_questions", []),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI 分析失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI 分析失败：{str(e)}") from e
