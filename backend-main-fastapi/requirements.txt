@@ -14,7 +14,7 @@ fastapi==0.115.14; python_version < "3.11"
 uvicorn==0.30.6
 # 2026-10-18：SQLAlchemy <2.0.31 在 Python 3.13 直接 ImportError（TypingOnly 断言），分流；服务器行为不变
 sqlalchemy==2.0.23; python_version < "3.13"
-sqlalchemy>=2.0.36,<2.1; python_version >= "3.13"
+sqlalchemy>=2.1.9,<2.2; python_version >= "3.13"
 # PostgreSQL 连接驱动（PG 16 + pgvector 迁移目标）
 psycopg[binary]==3.2.10
 # pydantic 三分支（2026-11-20 服务器实测 + fastapi 0.165 要求）：
