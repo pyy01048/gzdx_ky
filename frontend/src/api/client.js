@@ -918,6 +918,9 @@ export const wordsApi = {
   importExcel: (formData) => request('/words/import-excel', { method: 'POST', formData }),
   // PDF 导出（对标「不背单词」纸质导出）：支持与列表一致的筛选参数
   exportPdf: (params) => downloadBlob('/words/export-pdf', params, `单词本_${new Date().toISOString().slice(0, 10)}.pdf`),
+  // 内置模板词库目录 + 显式导入（首访自动克隆已废除，导入由用户主动触发；重复导入幂等返回既有词库）
+  templates: () => request('/words/templates'),
+  importDeck: (templateId) => request('/words/decks/import', { method: 'POST', body: { template_id: templateId } }),
 }
 
 /* ---------------- 学习时长记录 ---------------- */

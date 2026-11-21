@@ -125,3 +125,8 @@ data-assets/
 # QA 测试试卷导出产物与临时勘察脚本（2026-11-21 治理）
 backend-main-fastapi/routers/data/lectures/试卷_*_QA*.html
 backend-main-fastapi/scripts/_tmp_*
+
+# QA 会话凭据与临时快照产物（2026-11-21 治理：绝不入 git）
+backend-main-fastapi/qa_cookies.txt
+backend-main-fastapi/qa_hub*.json
+backend-main-fastapi/qa_roadmap.json

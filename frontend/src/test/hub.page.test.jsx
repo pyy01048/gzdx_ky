@@ -227,4 +227,74 @@ describe('Hub 今日聚合中枢', () => {
     expect(await screen.findByText('聚合数据暂时取不到')).toBeInTheDocument()
     expect(screen.getByText('后端不可达')).toBeInTheDocument()
   })
+
+  /* ---- 首跑引导清单卡（P1） ---- */
+  const zeroData = () => makeData({
+    goal: { configured: false, dailyTargets: {}, subjects: [], supportSubjects: [] },
+    goalLine: '',
+    tasks: { items: [], modules: [], total: 0, done: 0, pending: 0 },
+    words: { total: 0, new: 0, due: 0 },
+  })
+
+  it('零数据且目标未配置：显示引导清单卡，四个入口跳真实路由', async () => {
+    fetchHubOverview.mockResolvedValue(zeroData())
+    renderHub()
+    expect(await screen.findByText('开始前的四件事')).toBeInTheDocument()
+    const hrefOf = (name) => screen.getByRole('link', { name }).getAttribute('href')
+    expect(hrefOf(/设置目标/)).toBe('/settings')
+    expect(hrefOf(/导入词书/)).toBe('/words')
+    expect(hrefOf(/生成规划/)).toBe('/kaoyan/plan')
+    expect(hrefOf(/添加任务/)).toBe('/tasks')
+    /* 不得引入第二个主数字 */
+    expect(document.querySelectorAll('[data-main-figure]')).toHaveLength(1)
+  })
+
+  it('goal.configured 为 true 时引导面板不出现（验收口径）', async () => {
+    renderHub() /* 默认 fixture：configured:true */
+    await screen.findByText('今日航线')
+    expect(screen.queryByText('开始前的四件事')).toBeNull()
+  })
+
+  it('有任务数据时即使目标未配置也不出现引导面板（有数据自动消失）', async () => {
+    fetchHubOverview.mockResolvedValue(makeData({
+      goal: { configured: false, dailyTargets: {}, subjects: [], supportSubjects: [] },
+    }))
+    renderHub()
+    await screen.findByText('今日航线')
+    expect(screen.queryByText('开始前的四件事')).toBeNull()
+  })
+
+  it('未设新词配额时航线页脚给出设置入口；设了配额则不显示', async () => {
+    fetchHubOverview.mockResolvedValue(makeData({
+      goal: { configured: true, dailyTargets: {}, subjects: [], supportSubjects: [] },
+    }))
+    renderHub()
+    await screen.findByText('今日航线')
+    expect(screen.getByRole('link', { name: /未设新词配额/ })).toHaveAttribute('href', '/settings')
+
+    cleanup()
+    fetchHubOverview.mockResolvedValue(makeData({
+      goal: { configured: true, dailyTargets: { focus: 120, newWords: 20 }, subjects: [], supportSubjects: [] },
+    }))
+    renderHub()
+    await screen.findByText('今日航线')
+    expect(screen.queryByRole('link', { name: /未设新词配额/ })).toBeNull()
+  })
+
+  /* ---- 示例任务诚实化（P1） ---- */
+  it('非整数 id 的示例任务：打卡按钮禁用并给出创建入口，不发打卡请求', async () => {
+    fetchHubOverview.mockResolvedValue(makeData({
+      tasks: {
+        items: [{ id: 'demo-1', title: '示例任务', subject: '', status: 'pending' }],
+        modules: [], total: 1, done: 0, pending: 1,
+      },
+    }))
+    renderHub()
+    const check = await screen.findByRole('button', { name: /示例任务，到任务页创建真实任务/ })
+    expect(check).toBeDisabled()
+    expect(screen.getByRole('link', { name: /示例任务 · 去创建/ })).toHaveAttribute('href', '/tasks')
+    fireEvent.click(check)
+    expect(tasksApi.complete).not.toHaveBeenCalled()
+    expect(tasksApi.uncomplete).not.toHaveBeenCalled()
+  })
 })

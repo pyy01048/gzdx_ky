@@ -8,6 +8,13 @@
 import { tasksApi, errorsApi, flashcardsApi, netdiskApi, goalsApi, aiApi, dashboardApi, wordsApi, fetchAllPages } from './client'
 import useStore from '../store/useStore'
 import { todayStr } from '../utils/date'
+import { currentUid } from '../utils/userKeys'
+
+/* P0（跨账号串号）：hydrate 代际守卫。
+   A 账号发起的回填请求还在途时用户切到 B（setUser 改 uid），响应回来若
+   无条件 setState，A 的数据会落进 B 的 store 并按 B 的 uid 落盘。
+   每个 loader 发起时记录当时的 uid，回写前校验未变；变了就丢弃响应。 */
+const stale = (uidAtStart) => currentUid() !== uidAtStart
 
 /* 分类为空就留空：补成「专业课」等于凭空造了一个分类，筛选里会多出一个假桶。 */
 const PAN_TYPE_LABEL = { pdf: 'PDF', video: '视频', doc: '文档', zip: '压缩包' }
@@ -105,21 +112,29 @@ function toProvider(p) {
    以前三个域都因此从未真正回填过。 */
 const LOADERS = {
   tasks: async () => {
+    const uidAtStart = currentUid()
     const list = await fetchAllPages((p) => tasksApi.list(p), { keys: ['tasks'] })
+    if (stale(uidAtStart)) return
     useStore.setState({ tasks: list.map(toTask) })
   },
   notebook: async () => {
+    const uidAtStart = currentUid()
     const list = await fetchAllPages((p) => errorsApi.list(p), { keys: ['errors'] })
+    if (stale(uidAtStart)) return
     useStore.setState({ notebook: list.map(toNote) })
   },
   cards: async () => {
+    const uidAtStart = currentUid()
     const list = await fetchAllPages((p) => flashcardsApi.list(p), { keys: ['cards'] })
+    if (stale(uidAtStart)) return
     useStore.setState({ cards: list.map(toCard) })
   },
   /* 单词域：Settings 的「学习数据一览」读 store.words，但这里从来没有加载器，
      导致后端 /api/words 明明有数据、页面永远显示 0。补上（响应是统一分页壳 items）。 */
   words: async () => {
+    const uidAtStart = currentUid()
     const list = await fetchAllPages((p) => wordsApi.list(p), { keys: ['items', 'words'] })
+    if (stale(uidAtStart)) return
     useStore.setState({ words: list })
   },
   /* 网盘域（P2-1）：
@@ -129,8 +144,10 @@ const LOADERS = {
      这里再兜一层：即使后端仍抛 409（token 途中过期），本域也静默降级 ——
      store.pan 只喂给助手/设置页的本地文件视图，不该让整次 hydrate 记为失败。 */
   pan: async () => {
+    const uidAtStart = currentUid()
     try {
       const list = await fetchAllPages((p) => netdiskApi.files(p), { keys: ['local_files'] })
+      if (stale(uidAtStart)) return
       useStore.setState({ pan: list.map(toPan) })
     } catch (e) {
       // ApiError.status 是 HTTP 码；网盘授权类错误体里带 code=NETDISK_AUTH_*
@@ -140,11 +157,15 @@ const LOADERS = {
     }
   },
   countdown: async () => {
+    const uidAtStart = currentUid()
     const d = await dashboardApi.countdown()
+    if (stale(uidAtStart)) return
     if (d && d.exam_date) useStore.setState({ countdown: d })
   },
   settings: async () => {
+    const uidAtStart = currentUid()
     const g = await goalsApi.list()
+    if (stale(uidAtStart)) return
     const goal = Array.isArray(g) ? (g[0] || null) : (g || null)
     if (goal) {
       const patch = {}
@@ -156,7 +177,9 @@ const LOADERS = {
     }
   },
   aiProviders: async () => {
+    const uidAtStart = currentUid()
     const d = await aiApi.providers()
+    if (stale(uidAtStart)) return
     const list = d.providers || d.items || (Array.isArray(d) ? d : [])
     if (Array.isArray(list) && list.length) {
       useStore.setState((s) => ({ settings: { ...s.settings, aiProviders: list.map(toProvider) } }))
@@ -181,8 +204,10 @@ export function loadDomain(key) {
  * 仅做“后端优先”，任何单域失败不影响其它域；全部失败则保持本地兜底。
  */
 export async function hydrate() {
+  const uidAtStart = currentUid()
   const results = await Promise.allSettled(Object.values(LOADERS).map((fn) => fn()))
   const ok = results.filter((r) => r.status === 'fulfilled').length
-  useStore.setState({ backendOnline: ok > 0 })
+  /* 切号后旧 hydrate 的「在线」结论也不属于新账号，不回写 */
+  if (!stale(uidAtStart)) useStore.setState({ backendOnline: ok > 0 })
   return { online: ok > 0, total: results.length, ok }
 }

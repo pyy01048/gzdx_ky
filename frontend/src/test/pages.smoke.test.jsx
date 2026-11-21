@@ -884,6 +884,7 @@ describe('页面健壮性总守卫', () => {
     ['ForceChangePassword', '../v3/pages/ForceChangePassword', '/force-change-password', { me: { id: 1, username: 'u', role: 'user', must_change_password: true } }],
     ['Forbidden', '../v3/pages/Forbidden', '/403'],
     ['GlassLab', '../v3/pages/GlassLab', '/glass'],
+    ['Onboarding', '../v3/pages/Onboarding', '/onboarding'],
   ]
   const routes = new Set(pages.map(([, , r]) => r))
 

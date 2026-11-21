@@ -4,7 +4,7 @@ import useStore from '../../store/useStore'
 import { todayStr, weekdayIdx, WEEK_CN } from '../../utils/date'
 import { examDaysLeft, examYear, examDateMD, resolveExamDate } from '../../utils/exam'
 import { dueCards } from '../../utils/spaced'
-import { ukey } from '../../utils/userKeys'
+import { ukey, migrateKey } from '../../utils/userKeys'
 import { dashboardApi, insightApi, tasksApi } from '../../api/client'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import {
@@ -72,10 +72,17 @@ export default function Dashboard() {
   const [live, setLive] = useState(null)
   const [status, setStatus] = useState('loading')
   const [range, setRange] = useState(() => {
-    try { return localStorage.getItem(ukey('dash_range_v2')) || 'today' } catch { return 'today' }
+    /* 老键迁移：历史版本用全局裸键，首读时一次性搬到当前账号命名空间 */
+    try {
+      migrateKey('dash_range_v2')
+      return localStorage.getItem(ukey('dash_range_v2')) || 'today'
+    } catch { return 'today' }
   })
   const [auto, setAuto] = useState(() => {
-    try { return localStorage.getItem(ukey('dash_auto_v2')) === '1' } catch { return false }
+    try {
+      migrateKey('dash_auto_v2')
+      return localStorage.getItem(ukey('dash_auto_v2')) === '1'
+    } catch { return false }
   })
   const [editOpen, setEditOpen] = useState(false)
   const [taskBusy, setTaskBusy] = useState(null)
@@ -351,7 +358,18 @@ export default function Dashboard() {
                 </div>
                 <div className="v3-dash-hero__count">
                   {days == null ? (
-                    <span className="v3-dash-hero__word">先设置初试日期</span>
+                    <>
+                      <span className="v3-dash-hero__word">先设置初试日期</span>
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        icon={<CalendarClock size={15} />}
+                        onClick={() => navigate('/settings')}
+                        style={{ marginTop: 10 }}
+                      >
+                        去设置目标与日期
+                      </Button>
+                    </>
                   ) : days < 0 ? (
                     <>
                       <span className="v3-dash-hero__word">{examY} 初试已结束</span>
@@ -485,7 +503,7 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="v3-dash-trend__foot">
-                <span><Zap size={13} /> 本周答题 {live?.trend?.weekly_completed_tasks ?? 0} 个任务</span>
+                <span><Zap size={13} /> 本周完成任务 {live?.trend?.weekly_completed_tasks ?? 0} 个</span>
                 <Link to="/insights" className="v3-dash-link">学习洞察 <ArrowRight size={13} /></Link>
               </div>
             </Tile>

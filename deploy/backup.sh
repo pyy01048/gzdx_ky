@@ -45,7 +45,9 @@ ls -1t "$BK"/*.enc 2>/dev/null | tail -n +$((KEEP_LOCAL + 1)) | xargs -r rm -f
 
 # 异地同步 + 异地滚动
 if [ -n "${RCLONE_REMOTE:-}" ] && command -v rclone >/dev/null 2>&1; then
-  rclone copy "$BK" "$RCLONE_REMOTE" --include "*.enc" --min-age 1m --transfers 2
+  # 加密+shred 完成后 .enc 已完整，无需 --min-age；原 --min-age 1m 会把刚生成的
+  # 当日备份排除在同步外，导致异地副本永远滞后一天（3-2-1 当日异地未达成）。
+  rclone copy "$BK" "$RCLONE_REMOTE" --include "*.enc" --transfers 2
   rclone lsf "$RCLONE_REMOTE" --files-only 2>/dev/null | sort -r | tail -n +$((KEEP_REMOTE + 1)) \
     | while read -r f; do rclone deletefile "$RCLONE_REMOTE/$f"; done
   echo "offsite ok: $RCLONE_REMOTE"

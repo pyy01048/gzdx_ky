@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { authApi } from '../../api/client'
+import { authApi, goalsApi } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { BrandMark } from '../shell'
 import { Button, Field, Input, cx } from '../ui'
@@ -109,7 +109,9 @@ export default function Login() {
   const panelFx = usePointerFx({ spotlight: true, disabled: reduced })
   const auroraRef = useParallax(0.1, 30)
 
-  if (status === 'ready') return <Navigate to={from} replace />
+  /* busy 期间不早退：submitLogin 登录成功后还要拉 /goals 判断是否首跑，
+     若此处提前 <Navigate to={from}> 会抢在判断之前把用户带走 */
+  if (status === 'ready' && !busy) return <Navigate to={from} replace />
   if (status === 'must-change') return <Navigate to="/force-change-password" replace />
 
   const switchMode = (m) => { setMode(m); setError(''); setNotice('') }
@@ -124,7 +126,18 @@ export default function Login() {
     setError('')
     try {
       const r = await login(username.trim(), password)
-      navigate(r.must_change_password ? '/force-change-password' : from, { replace: true })
+      if (r.must_change_password) {
+        navigate('/force-change-password', { replace: true })
+        return
+      }
+      /* 首跑判断：目标档案未配置 → 初始化向导；拉取失败不阻塞登录 */
+      let dest = from
+      try {
+        const g = await goalsApi.list()
+        const goal = Array.isArray(g) ? (g[0] || null) : (g || null)
+        if (goal && goal.configured === false) dest = '/onboarding'
+      } catch { /* 后端目标接口不可达：按原目的地进入 */ }
+      navigate(dest, { replace: true })
     } catch (err) {
       setError(err?.message || '登录失败')
     } finally {

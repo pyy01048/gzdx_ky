@@ -38,8 +38,17 @@ let synced = null
 /** synced 建立时的 uid，语义同 cacheUid。 */
 let syncedUid = null
 const SYNCED_KEY = 'quiz_favorites_v9_synced'
-/** 推送失败、待重试的 qid。 */
-const pending = new Set()
+/** 推送失败、待重试的 qid（按账号隔离：切号即作废，防止把上一个账号的
+ *  待重试 qid 补推进当前账号的 favorites）。 */
+let pending = new Set()
+let pendingUid = null
+function pendingSet() {
+  if (pendingUid !== currentUid()) {
+    pending = new Set()
+    pendingUid = currentUid()
+  }
+  return pending
+}
 
 function writeLS(key, value) {
   try {
@@ -93,16 +102,19 @@ export function pushFav(qid, snapshot) {
     },
   }
   if (!Number.isFinite(body.item_id)) return
+  const uidAtStart = currentUid()
   favoritesApi
     .add(body)
     .then(() => {
-      pending.delete(String(qid))
+      if (currentUid() !== uidAtStart) return /* 响应属于旧账号：丢弃 */
+      pendingSet().delete(String(qid))
       markSynced(qid)
     })
     .catch(() => {
       // 不弹 toast：收藏的即时反馈由本地态负责，网络失败不该打断刷题节奏。
       // 记进 pending，下次 hydrate / 迁移时补推。
-      pending.add(String(qid))
+      if (currentUid() !== uidAtStart) return
+      pendingSet().add(String(qid))
     })
 }
 
@@ -186,7 +198,7 @@ export async function hydrateFavs() {
 
   const syncedMap = readSynced()
   const localOnly = Object.keys(merged).filter(
-    (k) => !syncedMap[k] || pending.has(k)
+    (k) => !syncedMap[k] || pendingSet().has(k)
   ).length
   return { serverCount: items.length, localOnly }
 }
@@ -195,7 +207,7 @@ export async function hydrateFavs() {
 export async function migrateLocalFavs() {
   const local = loadFavs()
   const syncedMap = readSynced()
-  const todo = Object.keys(local).filter((k) => !syncedMap[k] || pending.has(k))
+  const todo = Object.keys(local).filter((k) => !syncedMap[k] || pendingSet().has(k))
   let ok = 0
   for (const k of todo) {
     try {
@@ -214,10 +226,10 @@ export async function migrateLocalFavs() {
         },
       })
       markSynced(k)
-      pending.delete(String(k))
+      pendingSet().delete(String(k))
       ok += 1
     } catch {
-      pending.add(String(k))
+      pendingSet().add(String(k))
     }
   }
   return { total: todo.length, migrated: ok }
@@ -229,5 +241,6 @@ export function __resetFavCache() {
   cacheUid = null
   synced = null
   syncedUid = null
-  pending.clear()
+  pending = new Set()
+  pendingUid = null
 }

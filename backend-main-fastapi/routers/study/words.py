@@ -7,11 +7,10 @@ from database import get_db
 from fastapi import APIRouter, Depends, File, HTTPException, Query
 from models import User, Word, WordDeck
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
-from utils.scope import owner_id, scoped  # B4 行级隔离：词库公共读，单词严格本人
-from utils.security import current_user, require_admin
+from utils.scope import owner_id, scoped  # B4 行级隔离：词库/单词均严格本人
+from utils.security import current_user
 from utils.timeutil import local_today
 
 router = APIRouter(prefix="/api/words", tags=["单词词库"])
@@ -273,73 +272,116 @@ def _word_out(w, db, examples: dict = None, root_by_word: dict = None) -> dict:
 # --------------------------------------------------------------------------- #
 # 词库管理
 # --------------------------------------------------------------------------- #
-def _ensure_personal_wordbook(db: Session, user: User) -> None:
-    """B4 懒加载：为新用户自动分配内置词库副本。
+#: 内置模板词库的归属口径：历史上模板挂在 user_id=1（模板所有者）名下，
+#: 与原自动克隆逻辑的判定一致；改口径须同步 /templates 与 /decks/import。
+TEMPLATE_OWNER_ID = 1
 
-    平台内置模板词库（word_decks user_id=1 名下的「考研核心词汇」「考研熟词僻义」等）
-    历史上挂在 user_id=1 名下，新用户按 B4 行级隔离看到的是空词库（`/api/words` total=0）。
-    这里在用户首次访问 /api/words/decks 时，把**全部内置模板词库**克隆到该用户
-    自己的命名空间（词条内容复制、SM-2 调度字段重置为初始态），让「单词记忆」
-    功能对每个用户开箱即用；复习进度仍按 B4 隔离在各自的行上。
-    只做新增，不改动模板词库与既有用户数据；已有人词库则跳过。
+
+def _clone_template_deck(db: Session, template: WordDeck, uid: int) -> WordDeck:
+    """把单个模板词库克隆到用户名下（词条内容复制、SM-2 调度重置为初始态）。
+
+    只由 POST /decks/import 显式触发 —— 首访自动克隆已废除：
+    零数据新用户必须看到空词库，"开箱即用"不能以伪造个人数据为代价。
     """
-    uid = owner_id(user)
-    if not uid:
-        return
-    # 已有个人词库（哪怕空库）则跳过，避免重复克隆
-    if db.query(WordDeck.id).filter(WordDeck.user_id == uid).first():
-        return
-    # 内置模板词库：挂在 user_id=1（模板所有者）名下
-    templates = db.query(WordDeck).filter(WordDeck.user_id == 1).order_by(WordDeck.id).all()
-    if not templates:
-        return
     from sqlalchemy import text
 
-    for template in templates:
-        tpl_words = db.query(Word).filter(Word.deck_id == template.id, Word.user_id == template.user_id).count()
-        if not tpl_words:
-            continue
-        deck = WordDeck(
-            user_id=uid,
-            name=template.name,
-            description=(template.description or "内置词库自动分配"),
-            source=template.source,
-            word_count=0,
-        )
-        db.add(deck)
-        db.flush()
-        # 批量克隆词条：只复制内容字段，SM-2 调度重置（not_mastered / 2.5 / 0 / 空历史）
-        db.execute(
-            text(
-                "INSERT INTO words (user_id, deck_id, word, phonetic, pos, meaning, root, "
-                "example, example_cn, tag, status, ease_factor, interval_days, reps, lapses, "
-                "due_date, last_review, review_history, created_at, updated_at) "
-                "SELECT :uid, :deck_id, word, phonetic, pos, meaning, root, example, example_cn, "
-                "tag, 'not_mastered', 2.5, 0, 0, 0, NULL, NULL, '[]'::jsonb, now(), now() "
-                "FROM words WHERE user_id = :tpl_uid AND deck_id = :tpl_deck_id"
-            ),
-            {"uid": uid, "deck_id": deck.id, "tpl_uid": template.user_id, "tpl_deck_id": template.id},
-        )
-        deck.word_count = tpl_words
+    tpl_words = db.query(Word).filter(Word.deck_id == template.id, Word.user_id == template.user_id).count()
+    deck = WordDeck(
+        user_id=uid,
+        name=template.name,
+        description=(template.description or "内置词库导入"),
+        source=template.source,
+        word_count=0,
+    )
+    db.add(deck)
+    db.flush()
+    # 批量克隆词条：只复制内容字段，SM-2 调度重置（not_mastered / 2.5 / 0 / 空历史）
+    db.execute(
+        text(
+            "INSERT INTO words (user_id, deck_id, word, phonetic, pos, meaning, root, "
+            "example, example_cn, tag, status, ease_factor, interval_days, reps, lapses, "
+            "due_date, last_review, review_history, created_at, updated_at) "
+            "SELECT :uid, :deck_id, word, phonetic, pos, meaning, root, example, example_cn, "
+            "tag, 'not_mastered', 2.5, 0, 0, 0, NULL, NULL, '[]'::jsonb, now(), now() "
+            "FROM words WHERE user_id = :tpl_uid AND deck_id = :tpl_deck_id"
+        ),
+        {"uid": uid, "deck_id": deck.id, "tpl_uid": template.user_id, "tpl_deck_id": template.id},
+    )
+    deck.word_count = tpl_words
     db.commit()
+    db.refresh(deck)
+    return deck
+
+
+def _require_own_deck(db: Session, deck_id: int, user: User) -> WordDeck:
+    """deck_id 归属校验：他人/公共/模板词库一律 404（不泄露存在性）。"""
+    deck = db.query(WordDeck).filter(WordDeck.id == deck_id, scoped(WordDeck, user)).first()
+    if not deck:
+        raise HTTPException(404, "词库不存在")
+    return deck
 
 
 @router.get("/decks", response_model=List[WordDeckOut])
 def list_decks(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """获取词库分类（B4：本人词库 + 内置公共词书 user_id NULL）。"""
-    _ensure_personal_wordbook(db, user)  # 新用户首访自动分配内置词库副本
-    decks = (
-        db.query(WordDeck).filter(or_(scoped(WordDeck, user), WordDeck.user_id.is_(None))).order_by(WordDeck.id).all()
-    )
+    """获取词库分类（B4：只返回本人词库；内置模板走 GET /templates 目录）。"""
+    decks = db.query(WordDeck).filter(scoped(WordDeck, user)).order_by(WordDeck.id).all()
     # 实时统计每个词库的单词数（B4：只统计本人单词）
     for d in decks:
         d.word_count = db.query(Word).filter(Word.deck_id == d.id, scoped(Word, user)).count()
     return decks
 
 
-@router.post("/decks", response_model=WordDeckOut, dependencies=[Depends(require_admin)])
+@router.get("/templates")
+def list_template_decks(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """内置模板词库目录（共享内容，所有登录用户可见）。
+
+    imported/imported_deck_id 按「本人已有同名词库」判定，与
+    POST /decks/import 的幂等键一致，前端据此渲染"已导入"态。
+    """
+    uid = owner_id(user)
+    templates = db.query(WordDeck).filter(WordDeck.user_id == TEMPLATE_OWNER_ID).order_by(WordDeck.id).all()
+    own_names = {name for (name,) in db.query(WordDeck.name).filter(WordDeck.user_id == uid).all()}
+    out = []
+    for t in templates:
+        count = db.query(Word).filter(Word.deck_id == t.id, Word.user_id == TEMPLATE_OWNER_ID).count()
+        out.append(
+            {
+                "id": t.id,
+                "name": t.name,
+                "description": t.description,
+                "word_count": count,
+                "source": t.source,
+                "imported": t.name in own_names,
+            }
+        )
+    return out
+
+
+class DeckImportRequest(BaseModel):
+    template_id: int
+
+
+@router.post("/decks/import", response_model=WordDeckOut)
+def import_template_deck(data: DeckImportRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """显式导入内置模板词库到本人名下。
+
+    幂等键 = (本人 user_id, 模板同名)：重复导入同一模板返回既有词库，
+    不重复克隆词条（用户可能已改名/删词，不能按模板名再建一份）。
+    """
+    template = db.query(WordDeck).filter(WordDeck.id == data.template_id, WordDeck.user_id == TEMPLATE_OWNER_ID).first()
+    if not template:
+        raise HTTPException(404, "模板词库不存在")
+    uid = owner_id(user)
+    existing = db.query(WordDeck).filter(WordDeck.user_id == uid, WordDeck.name == template.name).first()
+    if existing:
+        existing.word_count = db.query(Word).filter(Word.deck_id == existing.id, scoped(Word, user)).count()
+        return existing
+    return _clone_template_deck(db, template, uid)
+
+
+@router.post("/decks", response_model=WordDeckOut)
 def create_deck(data: WordDeckCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """创建新词库。"""
+    """创建新词库（个人词库，登录即可；模板管理仍走管理员通道）。"""
     deck = WordDeck(**data.model_dump())
     deck.user_id = owner_id(user)  # B4：归属当前用户
     db.add(deck)
@@ -348,7 +390,7 @@ def create_deck(data: WordDeckCreate, db: Session = Depends(get_db), user: User 
     return deck
 
 
-@router.delete("/decks/{deck_id}", dependencies=[Depends(require_admin)])
+@router.delete("/decks/{deck_id}")
 def delete_deck(deck_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """删除词库（单词保留，deck_id置空；B4：仅本人词库，内置公共词书不可删）。"""
     deck = db.query(WordDeck).filter(WordDeck.id == deck_id, scoped(WordDeck, user)).first()
@@ -550,7 +592,7 @@ def get_word(word_id: int, db: Session = Depends(get_db), user: User = Depends(c
     return _word_out(w, db, examples, root_by_word)
 
 
-@router.post("", response_model=WordOut, dependencies=[Depends(require_admin)])
+@router.post("", response_model=WordOut)
 def create_word(data: WordCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """添加单个单词。
 
@@ -558,6 +600,9 @@ def create_word(data: WordCreate, db: Session = Depends(get_db), user: User = De
     word，返回 409，且 detail 为 ``{"exists": true, "word": ..., "id": 已有id}``，
     避免重复入库。``source_label`` 若传入且 ``tag`` 为空，则写入 ``tag`` 列。
     """
+    # 指定词库时校验归属：不能把生词塞进他人/模板词库
+    if data.deck_id is not None:
+        _require_own_deck(db, data.deck_id, user)
     # —— P0-1 查重（仅针对当前用户）——
     existing = db.query(Word).filter(Word.word == data.word.strip(), scoped(Word, user)).order_by(Word.id.asc()).first()
     if existing:
@@ -587,20 +632,24 @@ def create_word(data: WordCreate, db: Session = Depends(get_db), user: User = De
     return w
 
 
-@router.put("/{word_id}", response_model=WordOut, dependencies=[Depends(require_admin)])
+@router.put("/{word_id}", response_model=WordOut)
 def update_word(word_id: int, data: WordUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """更新单词信息。"""
     w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
     if not w:
         raise HTTPException(404, "单词不存在")
-    for k, v in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    # 移动词库时校验目标归属（他人/模板词库 404）
+    if updates.get("deck_id") is not None:
+        _require_own_deck(db, updates["deck_id"], user)
+    for k, v in updates.items():
         setattr(w, k, v)
     db.commit()
     db.refresh(w)
     return w
 
 
-@router.delete("/{word_id}", dependencies=[Depends(require_admin)])
+@router.delete("/{word_id}")
 def delete_word(word_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """删除单词。"""
     w = db.query(Word).filter(Word.id == word_id, scoped(Word, user)).first()
@@ -720,12 +769,14 @@ def spell_check_word(
 # --------------------------------------------------------------------------- #
 # 批量导入
 # --------------------------------------------------------------------------- #
-@router.post("/batch-import", dependencies=[Depends(require_admin)])
+@router.post("/batch-import")
 def batch_import_words(data: WordBatchImport, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """批量导入单词。
 
     P0-1：每个词条透传 ``source_label``——若传入且 ``tag`` 为空，写入 ``tag`` 列。
     """
+    if data.deck_id is not None:
+        _require_own_deck(db, data.deck_id, user)
     count = 0
     today = local_today()
     for w_data in data.words:
@@ -755,7 +806,7 @@ class TextImportRequest(BaseModel):
     source_label: Optional[str] = None
 
 
-@router.post("/import-text", dependencies=[Depends(require_admin)])
+@router.post("/import-text")
 def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """从文本批量导入单词，支持多种格式：
     - "apple 苹果"
@@ -765,6 +816,8 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
     """
     import re
 
+    if data.deck_id is not None:
+        _require_own_deck(db, data.deck_id, user)
     lines = data.text.strip().split("\n")
     imported = 0
     skipped = 0
@@ -862,7 +915,7 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
 # --------------------------------------------------------------------------- #
 # V3.0 Excel批量导入
 # --------------------------------------------------------------------------- #
-@router.post("/import-excel", dependencies=[Depends(require_admin)])
+@router.post("/import-excel")
 async def import_words_from_excel(
     file: bytes = File(...),
     deck_id: Optional[int] = Query(None),
@@ -874,6 +927,8 @@ async def import_words_from_excel(
     """
     import io
 
+    if deck_id is not None:
+        _require_own_deck(db, deck_id, user)
     try:
         import openpyxl
     except ImportError:

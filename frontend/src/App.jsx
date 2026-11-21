@@ -14,6 +14,7 @@ import { ADMIN_LEGACY_REDIRECTS, KAOYAN_TABS } from './nav/navConfig'
 const Dashboard = lazy(() => import('./v3/pages/Dashboard'))
 // 今日聚合中枢：跨模块动态聚合 + 行动航线（数据层见 api/hub.js）
 const Hub = lazy(() => import('./v3/pages/Hub'))
+const Onboarding = lazy(() => import('./v3/pages/Onboarding'))
 const Tasks = lazy(() => import('./v3/pages/Tasks'))
 const KbMap = lazy(() => import('./v3/pages/KbMap'))
 const KnowledgeArticle = lazy(() => import('./v3/pages/KnowledgeArticle'))
@@ -200,6 +201,8 @@ export default function App() {
           {/* 「/」已由公开壳的 GuestHome 承接：访客→院校库，登录用户→仪表盘 */}
           {/* 今日中枢：私域数据聚合页，访客无个人数据可聚合，故放在登录壳内 */}
           <Route path="/hub" element={<Hub />} />
+          {/* 首跑初始化向导：登录后 goal.configured === false 时由 Login 引导进入 */}
+          <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/tasks" element={<Tasks />} />
           {/* 知识图谱：KbMap 为唯一主体。
               原「知识点全景」(/panorama) 与知识地图数据源完全相同（同 taxonomyApi.subjects/tree/coverage，

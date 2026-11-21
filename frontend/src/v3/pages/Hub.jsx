@@ -401,7 +401,8 @@ export default function Hub() {
     if (taskBusy) return
     const id = Number(task.id)
     if (!Number.isInteger(id)) {
-      toast('该任务没有后端 id，暂不支持打卡')
+      /* 防御兜底：示例任务的打卡按钮已禁用，正常不会走到这里 */
+      toast('示例任务，到任务页创建真实任务')
       return
     }
     const done = task.status !== 'done'
@@ -516,6 +517,12 @@ export default function Hub() {
     modules: data.modules.length ? 'ready' : 'empty',
   }
 
+  /* 首跑引导（P1）：目标未配置且今日任务为 0 且词库为 0 —— 三个条件同时成立
+     才显示清单卡；任何一项有了真实数据，面板自动消失，不做手动关闭记忆。 */
+  const showSetup = !data.goal.configured
+    && (data.tasks?.total ?? 0) === 0
+    && (data.words?.total ?? 0) === 0
+
   return (
     <div className="hub">
       <header className="hub-hero">
@@ -608,6 +615,47 @@ export default function Hub() {
         </div>
       ) : null}
 
+      {showSetup ? (
+        <section className="hub-panel hub-setup" aria-labelledby="hub-setup-title">
+          <div className="hub-panel__head">
+            <div className="hub-panel__heading">
+              <h2 className="hub-panel__title" id="hub-setup-title"><Target size={18} /> 开始前的四件事</h2>
+              <span className="hub-panel__sub">还没有目标和学习数据。按清单把备考搭起来，有数据后这张卡会自动消失。</span>
+            </div>
+          </div>
+          <ul className="hub-setup__list">
+            <li>
+              <Link to="/settings" className="hub-setup__item">
+                <span className="hub-setup__icon" aria-hidden="true"><Target size={17} /></span>
+                <span className="hub-setup__text"><b>设置目标</b><em>院校、专业与总分目标</em></span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </Link>
+            </li>
+            <li>
+              <Link to="/words" className="hub-setup__item">
+                <span className="hub-setup__icon" aria-hidden="true"><Book size={17} /></span>
+                <span className="hub-setup__text"><b>导入词书</b><em>选一本词库，开始每日背词</em></span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </Link>
+            </li>
+            <li>
+              <Link to="/kaoyan/plan" className="hub-setup__item">
+                <span className="hub-setup__icon" aria-hidden="true"><Gauge size={17} /></span>
+                <span className="hub-setup__text"><b>生成规划</b><em>按届数与阶段排出复习节奏</em></span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </Link>
+            </li>
+            <li>
+              <Link to="/tasks" className="hub-setup__item">
+                <span className="hub-setup__icon" aria-hidden="true"><ListChecks size={17} /></span>
+                <span className="hub-setup__text"><b>添加任务</b><em>安排今天最重要的 3 件事</em></span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </Link>
+            </li>
+          </ul>
+        </section>
+      ) : null}
+
       {/* ── 今日航线：页面聚合的行动层 ─────────────────────────────── */}
       <section id="hub-journey" className="hub-journey hub-panel" aria-labelledby="hub-journey-title">
         <div className="hub-panel__head">
@@ -658,6 +706,9 @@ export default function Hub() {
         <div className="hub-journey__foot">
           <span><Gauge size={14} /> 排序规则：到期欠账 → 薄弱点 → 任务 → 单词/卡片 → 专注 → 刷题</span>
           <span className="hub-journey__links">
+            {!data.goal.dailyTargets?.newWords ? (
+              <Link to="/settings" className="hub-link">未设新词配额 · 去设置</Link>
+            ) : null}
             {isAdmin ? <Link to="/admin/caliber" className="hub-link">数据口径说明</Link> : null}
             <Link to="/planner" className="hub-link">打开完整计划 <ArrowRight size={14} /></Link>
           </span>
@@ -883,22 +934,32 @@ export default function Hub() {
                   />
                   {data.tasks.items.length ? (
                     <ul className="hub-tasks">
-                      {data.tasks.items.slice(0, 6).map((t) => (
-                        <li key={t.id} className={cx('hub-task', t.status === 'done' && 'is-done')}>
-                          <button
-                            type="button"
-                            className="hub-task__check"
-                            aria-pressed={t.status === 'done'}
-                            aria-label={`${t.status === 'done' ? '取消完成' : '完成'}：${t.title}`}
-                            disabled={taskBusy === t.id}
-                            onClick={() => toggleTask(t)}
-                          >
-                            {t.status === 'done' ? <Check size={14} /> : null}
-                          </button>
-                          <span className="hub-task__title">{t.title}</span>
-                          {t.subject ? <span className="hub-task__subject">{t.subject}</span> : null}
-                        </li>
-                      ))}
+                      {data.tasks.items.slice(0, 6).map((t) => {
+                        /* 诚实处理（P1）：非整数 id 的是本地示例任务，没有后端记录，
+                           打卡按钮直接禁用并说明去处，不再点了才弹「暂不支持」 */
+                        const isReal = Number.isInteger(Number(t.id))
+                        return (
+                          <li key={t.id} className={cx('hub-task', t.status === 'done' && 'is-done')}>
+                            <button
+                              type="button"
+                              className="hub-task__check"
+                              aria-pressed={t.status === 'done'}
+                              aria-label={isReal
+                                ? `${t.status === 'done' ? '取消完成' : '完成'}：${t.title}`
+                                : `示例任务，到任务页创建真实任务：${t.title}`}
+                              title={isReal ? undefined : '示例任务，到任务页创建真实任务'}
+                              disabled={taskBusy === t.id || !isReal}
+                              onClick={() => toggleTask(t)}
+                            >
+                              {t.status === 'done' ? <Check size={14} /> : null}
+                            </button>
+                            <span className="hub-task__title">{t.title}</span>
+                            {!isReal ? (
+                              <Link to="/tasks" className="hub-task__subject hub-task__demo">示例任务 · 去创建</Link>
+                            ) : t.subject ? <span className="hub-task__subject">{t.subject}</span> : null}
+                          </li>
+                        )
+                      })}
                     </ul>
                   ) : (
                     <Empty

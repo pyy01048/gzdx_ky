@@ -14,21 +14,26 @@
 
 import { request } from '../api/client'
 import { toDateStr } from './date'
+import { ukey, readMigrated } from './userKeys'
+
+/* P2（本机偏好隔离）：授权残留键按账号隔离（实际读写 `kaoyan_pan_token:{uid}`），
+   首读把旧全局键一次性迁给当前用户；登出/强制下线由 AuthContext 调 clearPan。 */
+const PAN_TOKEN_KEY = 'kaoyan_pan_token'
 
 export function getStoredPan() {
-  try {
-    return JSON.parse(localStorage.getItem('kaoyan_pan_token') || 'null')
-  } catch {
-    return null
-  }
+  return readMigrated(PAN_TOKEN_KEY, null)
 }
 
 export function storePan(tok) {
-  localStorage.setItem('kaoyan_pan_token', JSON.stringify(tok))
+  try {
+    localStorage.setItem(ukey(PAN_TOKEN_KEY), JSON.stringify(tok))
+  } catch { /* 隐私模式 / 配额满：授权状态以后端 token-status 为准 */ }
 }
 
 export function clearPan() {
-  localStorage.removeItem('kaoyan_pan_token')
+  try {
+    localStorage.removeItem(ukey(PAN_TOKEN_KEY))
+  } catch { /* 同上 */ }
 }
 
 /* 网盘状态：从后端 platform-configs 判断百度网盘是否已授权。

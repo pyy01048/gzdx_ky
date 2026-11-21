@@ -26,6 +26,7 @@
 本模块是四态口径的唯一事实源：review_service / taxonomy / learner_profile /
 learning_analytics 都从这里取阈值与判定，禁止在别处再写一套。
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -69,6 +70,33 @@ UNION
 SELECT knowledge_point_id FROM error_records WHERE knowledge_point_id IS NOT NULL
 UNION
 SELECT knowledge_point_id FROM study_events WHERE knowledge_point_id IS NOT NULL
+"""
+
+# 按用户口径的「有学习记录」判定（B4 隔离）：
+# - 个人流水表（review_records/answer_records/error_records/study_events）全部按
+#   user_id 过滤，他人行为不算「我学过」；
+# - error_knowledge_links 经 error_records 联表判归属（冗余 user_id 列存量可能为 NULL）；
+# - 刻意**不含** knowledge_points.review_count>0 路径：那是全局镜像字段，
+#   个人复习不再回写它（权威在 review_schedules 用户行），也不能拿它判「我学过」。
+LEARNED_KP_SQL_USER = """
+SELECT item_id FROM review_records
+  WHERE user_id = :uid AND item_type IN ('knowledge', 'knowledge_point')
+UNION
+SELECT l.knowledge_point_id FROM question_knowledge_links l
+  WHERE l.question_id IN (SELECT question_id FROM answer_records WHERE user_id = :uid)
+UNION
+SELECT l.knowledge_point_id FROM question_knowledge_links l
+  WHERE l.question_id IN (SELECT question_id FROM error_records WHERE user_id = :uid)
+UNION
+SELECT l.knowledge_point_id FROM error_knowledge_links l
+  JOIN error_records e ON e.id = l.error_id
+  WHERE e.user_id = :uid AND l.knowledge_point_id IS NOT NULL
+UNION
+SELECT knowledge_point_id FROM error_records
+  WHERE user_id = :uid AND knowledge_point_id IS NOT NULL
+UNION
+SELECT knowledge_point_id FROM study_events
+  WHERE user_id = :uid AND knowledge_point_id IS NOT NULL
 """
 
 
@@ -183,11 +211,17 @@ def touch_mastery(session, kp_ids=None) -> int:
     return res.rowcount or 0
 
 
-def learned_kp_ids(session) -> set:
-    """有学习记录的知识点 ID 集合（SQLAlchemy Session）。"""
+def learned_kp_ids(session, user_id=None) -> set:
+    """有学习记录的知识点 ID 集合（SQLAlchemy Session）。
+
+    ``user_id`` 传入时按该用户的学习流水判定（B4 隔离）；
+    不传（默认 None）保持旧的全库口径，兼容尚未接线的调用方。
+    """
     from sqlalchemy import text
 
-    return {row[0] for row in session.execute(text(LEARNED_KP_SQL))}
+    if user_id is None:
+        return {row[0] for row in session.execute(text(LEARNED_KP_SQL))}
+    return {row[0] for row in session.execute(text(LEARNED_KP_SQL_USER), {"uid": int(user_id)})}
 
 
 def learned_kp_ids_raw(conn: sqlite3.Connection) -> set:

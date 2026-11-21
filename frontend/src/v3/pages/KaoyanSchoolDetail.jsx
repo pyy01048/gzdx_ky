@@ -6,6 +6,7 @@ import {
   ADMISSION_FIELDS, SCORE_FIELDS, UNTRUSTED_FIELDS, examSubjects, resolveSourceType,
 } from '../../utils/kaoyanFields'
 import { readMigrated, ukey } from '../../utils/userKeys'
+import { readSchoolFavs, writeSchoolFavs } from '../../utils/schoolFavs'
 import { toEchartsProvince } from '../../utils/province'
 import { chartTheme } from '../charts'
 import {
@@ -26,7 +27,6 @@ import '../styles/kaoyan-core-v3.css'
    /enrollment-plan、/notices、/reforms、/analysis/score-detail/{id}
    ========================================================================== */
 
-const FAV_KEY = 'kaoyan-fav-schools'
 const CMP_KEY = 'ky_compare_school_ids'
 const MAX_CMP = 5
 
@@ -59,14 +59,9 @@ const CHANGE_TONE = {
   新增专业: 'success',
 }
 
-const loadedFavs = () => {
-  try {
-    const value = readMigrated(FAV_KEY, {})
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
-  } catch {
-    return {}
-  }
-}
+/* P2（双键分裂）：院校收藏统一走 utils/schoolFavs（kaoyan-fav-schools），
+   与列表页 KaoyanSchools 同源；旧 ky_fav_school_ids 在读时一次性并入。 */
+const loadedFavs = () => readSchoolFavs()
 
 const loadedCompare = () => {
   try {
@@ -668,7 +663,7 @@ export default function KaoyanSchoolDetail() {
     if (next[school.id]) delete next[school.id]
     else next[school.id] = { name: school.name, level: school.level }
     setFavs(next)
-    try { localStorage.setItem(ukey(FAV_KEY), JSON.stringify(next)) } catch { /* 隐私模式 */ }
+    writeSchoolFavs(next)
     toast(next[school.id] ? '已关注该院校' : '已取消关注')
   }
 

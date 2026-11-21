@@ -58,6 +58,9 @@ class ExamSession(BigIntPKMixin, Base):
 
     __tablename__ = "exam_sessions"
 
+    # 用户隔离（121 加列）：存量 NULL 行无归属，不计入任何个人统计；
+    # 与 108 同风格不加 FK 约束，避免存量数据回填前建约束失败。
+    user_id: Mapped[int | None] = mapped_column(BigIntKey, index=True, comment="归属用户 ID（个人数据隔离）")
     blueprint_key: Mapped[str | None] = mapped_column(String(100), comment="使用的蓝图标识")
     subject_id: Mapped[int | None] = mapped_column(
         ForeignKey("subjects.id", ondelete="SET NULL"), comment="权威科目 ID"

@@ -924,3 +924,46 @@
     transform: none !important;
   }
 }
+
+/* ---------- 首跑引导清单卡（P1）：零数据时出现，有数据自动消失 ---------- */
+.hub-setup { margin-bottom: 16px; }
+.hub-setup__list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.hub-setup__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 14px;
+  border-radius: var(--v3-r-sm);
+  border: 1px solid var(--hub-line);
+  background: var(--hub-well);
+  color: var(--v3-text-1);
+  text-decoration: none;
+}
+.hub-setup__item:hover { border-color: var(--hub-line-strong); background: var(--v3-fill-2, rgba(120, 120, 128, .1)); }
+.hub-setup__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--v3-primary);
+  background: var(--v3-primary-container, rgba(0, 122, 255, .12));
+}
+.hub-setup__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-setup__text b { font-size: var(--v3-fs-14); font-weight: 600; }
+.hub-setup__text em { font-style: normal; font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+.hub-setup__item > svg { flex: none; color: var(--v3-text-3); }
+.hub-task__demo { text-decoration: none; color: var(--v3-primary); }
+.hub-task__demo:hover { text-decoration: underline; }
+@media (max-width: 640px) {
+  .hub-setup__list { grid-template-columns: 1fr; }
+}

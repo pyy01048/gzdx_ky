@@ -13,6 +13,7 @@
  */
 import { useEffect, useState } from 'react'
 import { goalsApi } from '../api/client'
+import { currentUid } from '../utils/userKeys'
 
 /* 长科目名做成分/下拉标签时的简称（仅显示，存值和请求参数一律用全称） */
 const SHORT_LABELS = {
@@ -28,13 +29,14 @@ export function subjectLabel(name) {
 }
 
 /** 全局快照（模块级）：所有调用方共享同一份配置。初始为「还没取到配置」。 */
-let snapshot = {
+const emptySnapshot = () => ({
   exam: [],
   support: [],
   allKnown: [],
   usingDefault: true,
   ready: false,
-}
+})
+let snapshot = emptySnapshot()
 let version = 0
 const listeners = new Set()
 
@@ -65,19 +67,45 @@ function applyConfig(d) {
   return snapshot
 }
 
-/** 拉取科目配置。并发调用复用同一个 in-flight Promise；已就绪则不再请求。 */
+/** 拉取科目配置。并发调用复用同一个 in-flight Promise；已就绪则不再请求。
+ *  P0（跨账号串号）：发起时记录 uid，响应回来若已切号则丢弃，
+ *  否则 A 的科目配置会冒充 B 的进度分母/筛选口径。 */
 let inflight = null
 export function refreshSubjectConfig(force = false) {
   if (inflight) return inflight
   if (snapshot.ready && !force) return Promise.resolve(snapshot)
-  inflight = Promise.resolve()
-    .then(() => goalsApi.subjects())
-    .then(applyConfig)
+  const uidAtStart = currentUid()
+  /* 同步发起请求（api client 为 async 函数，不会同步抛）：
+     保证调用方在同一 tick 内即可感知 in-flight，切号丢弃断言才成立。
+     防御：mock/异常实现同步抛或返回非 Promise 时退化为 reject/undefined，
+     交由下游 catch/applyConfig 兜底，绝不让刷新函数向渲染层抛错。 */
+  let req
+  try {
+    req = goalsApi.subjects()
+  } catch (err) {
+    req = Promise.reject(err)
+  }
+  const p = Promise.resolve(req)
+    .then((d) => (currentUid() === uidAtStart ? applyConfig(d) : snapshot))
     .catch(() => snapshot)
     .finally(() => {
-      inflight = null
+      if (inflight === p) inflight = null
     })
-  return inflight
+  inflight = p
+  return p
+}
+
+/* B4（用户数据隔离，范本 useUiLayout）：登录/登出/切号广播 uid-changed 时
+   重置模块级快照 —— 否则 ready=true 短路会让新账号永远看到上一个账号的科目。
+   重置后由仍挂载的 useSubjectConfig 订阅者负责重新拉取（见下方 hook）。 */
+function resetOnUidChanged() {
+  snapshot = emptySnapshot()
+  inflight = null
+  version += 1
+  publish()
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('userkeys:uid-changed', resetOnUidChanged)
 }
 
 /**
@@ -89,7 +117,12 @@ export function useSubjectConfig() {
   const [tick, setTick] = useState(version)
 
   useEffect(() => {
-    const fn = () => setTick(version)
+    const fn = () => {
+      setTick(version)
+      /* 切号重置后快照回到未就绪：登录态下立即替新账号重拉；
+         登出（uid=null）不拉，避免访客壳收集 401 噪音。 */
+      if (!snapshot.ready && currentUid() != null) refreshSubjectConfig()
+    }
     listeners.add(fn)
     return () => {
       listeners.delete(fn)

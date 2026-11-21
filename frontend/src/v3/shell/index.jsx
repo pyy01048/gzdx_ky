@@ -4,7 +4,8 @@ import useStore from '../../store/useStore'
 import { useAuth } from '../../auth/AuthContext'
 import { useResolvedTheme } from '../../components/UI'
 import { chatCompletion, defaultProvider, hasAiConfigured } from '../../utils/api'
-import { taxonomyApi } from '../../api/client'
+import { authApi, taxonomyApi } from '../../api/client'
+import { ukey, migrateKey } from '../../utils/userKeys'
 import {
   MODULES, NAV_OTHER, NAV_ADMIN, MOBILE_TABS, crumbName, visibleModules, visibleModulesFor,
   visibleOther,
@@ -13,11 +14,11 @@ import { useUiLayout } from '../../hooks/useUiLayout'
 import {
   Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarClock, ChevronRight, Clock,
   Cloud, Command, Cpu, Database, FileText, Flag, FolderOpen, Gauge, Globe, Home, Layers,
-  Library, ListChecks, LogOut, Map, Menu, Moon, NotebookPen, PanelLeftClose, PanelLeftOpen,
+  Library, ListChecks, LogOut, Mail, Map, Menu, Moon, NotebookPen, PanelLeftClose, PanelLeftOpen,
   School, Search, Send, Settings, Sparkles, Star, Sun, Target, Type, User, Wand, X, Zap,
 } from '../icons'
 import {
-  Avatar, Badge, Button, IconButton, Kbd, MenuItem, Select, ToastHost, cx,
+  Avatar, Badge, Button, IconButton, Kbd, MenuItem, Select, ToastHost, cx, toastOk, toastErr,
 } from '../ui'
 
 /* -------------------------------------------------------------------------- */
@@ -652,18 +653,74 @@ function MobileNav() {
 const ShellCtx = createContext({ openCommand: () => {} })
 export const useShell = () => useContext(ShellCtx)
 
+const SIDEBAR_KEY = 'v3.sidebar.collapsed'
+/* 本机偏好按账号隔离（P2）：裸键一次性迁移到 uid 命名空间 */
+const readCollapsed = () => {
+  try {
+    migrateKey(SIDEBAR_KEY)
+    return localStorage.getItem(ukey(SIDEBAR_KEY)) === '1'
+  } catch { return false }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 邮箱未验证横幅（P1）：仅登录用户且 email_verified === false 时显示。          */
+/* 注意用严格 === false —— /auth/me 旧响应可能缺该字段，缺失时不打扰。           */
+/* -------------------------------------------------------------------------- */
+function VerifyEmailBanner({ user }) {
+  const dismissKey = ukey('v3.verify-banner.dismissed')
+  const [dismissed, setDismissed] = useState(() => {
+    try { return sessionStorage.getItem(dismissKey) === '1' } catch { return false }
+  })
+  const [sending, setSending] = useState(false)
+
+  if (!user || user.email_verified !== false || dismissed) return null
+
+  const resend = async () => {
+    if (sending) return
+    setSending(true)
+    try {
+      await authApi.resendVerification(user.email)
+      toastOk('验证邮件已发送，请查收邮箱')
+    } catch (e) {
+      toastErr(e?.message || '发送失败，请稍后再试')
+    } finally {
+      setSending(false)
+    }
+  }
+  const dismiss = () => {
+    setDismissed(true)
+    try { sessionStorage.setItem(dismissKey, '1') } catch { /* 隐私模式 */ }
+  }
+
+  return (
+    <div className="v3-verify-banner" role="status">
+      <Mail size={16} aria-hidden="true" />
+      <span className="v3-verify-banner__text">
+        邮箱 {user.email} 尚未验证，验证后可使用全部功能。
+      </span>
+      <Button size="sm" variant="glass" loading={sending} onClick={resend}>重发验证邮件</Button>
+      <IconButton label="本次会话内关闭提示" icon={<X size={15} />} onClick={dismiss} />
+    </div>
+  )
+}
+
 export default function AppShell({ children }) {
   const location = useLocation()
   const { user } = useAuth()
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem('v3.sidebar.collapsed') === '1' } catch { return false }
-  })
+  const [collapsed, setCollapsed] = useState(readCollapsed)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
 
   useEffect(() => {
-    try { localStorage.setItem('v3.sidebar.collapsed', collapsed ? '1' : '0') } catch { /* ignore */ }
+    try { localStorage.setItem(ukey(SIDEBAR_KEY), collapsed ? '1' : '0') } catch { /* ignore */ }
   }, [collapsed])
+
+  /* 切账号时重读该账号的折叠偏好（含登出回访客态） */
+  useEffect(() => {
+    const onUid = () => setCollapsed(readCollapsed())
+    window.addEventListener('userkeys:uid-changed', onUid)
+    return () => window.removeEventListener('userkeys:uid-changed', onUid)
+  }, [])
 
   useEffect(() => {
     setMobileOpen(false)
@@ -712,6 +769,7 @@ export default function AppShell({ children }) {
           {mobileOpen ? <div className="v3-mobile-mask" onClick={() => setMobileOpen(false)} /> : null}
           <div className="v3-main" data-collapsed={collapsed}>
             <TopBar collapsed={collapsed} onOpenMobile={() => setMobileOpen(true)} onOpenCommand={openCommand} />
+            <VerifyEmailBanner key={user?.id ?? 'anon'} user={user} />
             <main id="hub-main" className="v3-main__inner" tabIndex={-1}>
               <div className="v3-page" key={location.pathname}>{children}</div>
             </main>

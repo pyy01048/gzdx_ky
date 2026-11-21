@@ -3,6 +3,9 @@
 
 前端「复习进度」面板消费这里的数据：今天该复习什么、复习完掌握度怎么变、
 整体复习到哪一步了。
+
+B4 行级隔离：复习是纯个人域数据，全部端点要求登录并按本人 user_id 过滤；
+零数据新用户必须看到空队列/零统计，绝不能把全库内容当"我的复习"。
 """
 
 from __future__ import annotations
@@ -12,11 +15,13 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import ErrorRecord, KnowledgePoint, ReviewRecord
+from models import ErrorRecord, ReviewRecord
 from services import error_linker, review_service, taxonomy
 from services.srs import fsrs
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
+from utils.scope import owner_id
+from utils.security import current_user
 
 router = APIRouter(prefix="/api/review", tags=["复习进度"])
 
@@ -25,11 +30,12 @@ router = APIRouter(prefix="/api/review", tags=["复习进度"])
 async def due_list(
     subject: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
-    include_new: bool = Query(True, description="是否包含从未复习过的新知识点"),
+    include_new: bool = Query(True, description="是否包含本人接触过但尚未排期的新知识点"),
     db: Session = Depends(get_db),
+    user=Depends(current_user),
 ):
     """今日复习队列（逾期越久、掌握度越低越靠前）。"""
-    items = review_service.due_items(db, subject=subject, limit=limit, include_new=include_new)
+    items = review_service.due_items(db, subject=subject, limit=limit, include_new=include_new, user_id=owner_id(user))
     return {
         "total": len(items),
         "subject": taxonomy.normalize_subject(subject) if subject else None,
@@ -38,7 +44,7 @@ async def due_list(
 
 
 @router.post("/submit")
-async def submit_review(payload: dict, db: Session = Depends(get_db)):
+async def submit_review(payload: dict, db: Session = Depends(get_db), user=Depends(current_user)):
     """提交一次复习结果，回写掌握度并排下次复习。
 
     body: {item_type: 'knowledge'|'error', item_id: int,
@@ -47,6 +53,7 @@ async def submit_review(payload: dict, db: Session = Depends(get_db)):
     item_type = payload.get("item_type") or "knowledge"
     item_id = payload.get("item_id")
     result = payload.get("result")
+    uid = owner_id(user)
 
     if item_id is None:
         raise HTTPException(status_code=400, detail="缺少 item_id")
@@ -64,11 +71,12 @@ async def submit_review(payload: dict, db: Session = Depends(get_db)):
             result=result,
             duration=int(payload.get("duration") or 0),
             note=payload.get("note"),
+            user_id=uid,
         )
     except LookupError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # FSRS：把这次复习写进统一调度表（四档评分优先，缺省由旧三档映射）
     rating = payload.get("rating")
@@ -78,22 +86,18 @@ async def submit_review(payload: dict, db: Session = Depends(get_db)):
         rating = fsrs.rating_from_result(result)
     # 统一调度表的类型口径（与 093 兼容列回填一致）：
     #   knowledge → knowledge_point，error → error_record
-    fsrs_item_type = {"knowledge": "knowledge_point", "error": "error_record"}.get(
-        item_type, item_type
-    )
+    fsrs_item_type = {"knowledge": "knowledge_point", "error": "error_record"}.get(item_type, item_type)
     scheduled = fsrs.schedule(
-        db, item_type=fsrs_item_type, item_id=int(item_id), rating=rating, commit=False
+        db, item_type=fsrs_item_type, item_id=int(item_id), rating=rating, commit=False, user_id=uid
     )
 
-    # FSRS 是权威：业务表的 next_review / interval_days 只做兼容镜像，
-    # 否则两个调度器各写各的，前端看到的到期日会与实际排程打架。
-    if scheduled.get("due"):
+    # FSRS 是权威：业务表的 next_review / interval_days 只做兼容镜像。
+    # 只镜像本人错题行（apply_review 已校验归属）；knowledge 不镜像 ——
+    # KnowledgePoint 是全局内容表，个人排程权威在 review_schedules 用户行，
+    # 个人复习不得改写全局调度字段（否则别人的到期日会被我刷掉）。
+    if scheduled.get("due") and item_type == "error":
         due_dt = datetime.datetime.fromisoformat(scheduled["due"])
-        entity = (
-            db.query(KnowledgePoint).filter(KnowledgePoint.id == int(item_id)).first()
-            if item_type == "knowledge"
-            else db.query(ErrorRecord).filter(ErrorRecord.id == int(item_id)).first()
-        )
+        entity = db.query(ErrorRecord).filter(ErrorRecord.id == int(item_id), ErrorRecord.user_id == uid).first()
         if entity is not None:
             entity.next_review = due_dt
             entity.interval_days = int(scheduled["interval_days"])
@@ -103,9 +107,9 @@ async def submit_review(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/progress")
-async def progress(subject: Optional[str] = None, db: Session = Depends(get_db)):
+async def progress(subject: Optional[str] = None, db: Session = Depends(get_db), user=Depends(current_user)):
     """复习进度总览：掌握率、到期数、分科目、薄弱章节与知识点。"""
-    return review_service.progress_overview(db, subject=subject)
+    return review_service.progress_overview(db, subject=subject, user_id=owner_id(user))
 
 
 @router.get("/history")
@@ -115,10 +119,11 @@ async def history(
     days: int = Query(30, ge=1, le=365),
     limit: int = Query(200, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    user=Depends(current_user),
 ):
     """复习留痕时间线。"""
     rows = review_service.review_history(
-        db, item_type=item_type, item_id=item_id, days=days, limit=limit
+        db, item_type=item_type, item_id=item_id, days=days, limit=limit, user_id=owner_id(user)
     )
     return {"total": len(rows), "items": rows}
 
@@ -128,24 +133,25 @@ async def weak_points(
     subject: Optional[str] = None,
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    user=Depends(current_user),
 ):
     """错题密度最高的知识点（错题本 × 知识库联动的直接产出）。
 
     这就是"我最近错得最多的知识点是哪些"的答案。
     """
-    items = error_linker.weak_knowledge_points(db, subject=subject, limit=limit)
+    items = error_linker.weak_knowledge_points(db, subject=subject, limit=limit, user_id=owner_id(user))
     return {"total": len(items), "items": items}
 
 
 @router.get("/link-stats")
-async def link_stats(db: Session = Depends(get_db)):
+async def link_stats(db: Session = Depends(get_db), user=Depends(current_user)):
     """错题↔知识库联动覆盖率（还有多少错题没挂上考点）。"""
-    return error_linker.link_stats(db)
+    return error_linker.link_stats(db, user_id=owner_id(user))
 
 
 @router.get("/stats")
-async def review_stats(db: Session = Depends(get_db)):
-    """复习闭环统计：待复习 / 已完成 / 掌握进度。
+async def review_stats(db: Session = Depends(get_db), user=Depends(current_user)):
+    """复习闭环统计：待复习 / 已完成 / 掌握进度（全部只数本人行）。
 
     P0 修复：
     1. 原来 `from datetime import datetime, ...` 之后又写 `datetime.now(datetime.UTC)`，
@@ -156,17 +162,29 @@ async def review_stats(db: Session = Depends(get_db)):
        `TypeError: can't compare offset-naive and offset-aware datetimes`。
        故统一使用 utils.timeutil.utcnow()（naive UTC）。
     """
-    from sqlalchemy import func  # noqa: F401  保持与既有导入一致
     from utils.timeutil import local_day_window, utcnow
+
     now = utcnow()  # naive UTC，与 SQLite DateTime 列对齐
-    active_errors = db.query(ErrorRecord).filter(ErrorRecord.status == "active").count()
-    due_errors = db.query(ErrorRecord).filter(ErrorRecord.status == "active", ErrorRecord.next_review.isnot(None), ErrorRecord.next_review <= now).count()
-    graduated = db.query(ErrorRecord).filter(ErrorRecord.status == "graduated").count()
+    uid = owner_id(user)
+    active_errors = db.query(ErrorRecord).filter(ErrorRecord.user_id == uid, ErrorRecord.status == "active").count()
+    due_errors = (
+        db.query(ErrorRecord)
+        .filter(
+            ErrorRecord.user_id == uid,
+            ErrorRecord.status == "active",
+            ErrorRecord.next_review.isnot(None),
+            ErrorRecord.next_review <= now,
+        )
+        .count()
+    )
+    graduated = db.query(ErrorRecord).filter(ErrorRecord.user_id == uid, ErrorRecord.status == "graduated").count()
     _day, day_start, day_end = local_day_window()
-    today_reviews = db.query(ReviewRecord).filter(
-        ReviewRecord.created_at >= day_start, ReviewRecord.created_at < day_end
-    ).count()
-    total_reviews = db.query(ReviewRecord).count()
+    today_reviews = (
+        db.query(ReviewRecord)
+        .filter(ReviewRecord.user_id == uid, ReviewRecord.created_at >= day_start, ReviewRecord.created_at < day_end)
+        .count()
+    )
+    total_reviews = db.query(ReviewRecord).filter(ReviewRecord.user_id == uid).count()
     return {
         "active_errors": active_errors,
         "due_errors": due_errors,

@@ -309,6 +309,7 @@ export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestio
   const plannerCount = toNum(due?.planner)
   const focusTarget = toNum(targets?.focus)
   const quizTarget = toNum(targets?.questions)
+  const newWordQuota = toNum(targets?.newWords)
 
   const items = [
     {
@@ -358,7 +359,11 @@ export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestio
       id: 'words',
       order: 4,
       label: '单词记忆',
-      hint: `今日新词 ${toNum(due?.newWords)} · 到期 ${toNum(words?.due_today ?? due?.breakdown?.words)}`,
+      /* 诚实口径（P1）：设了每日新词配额 → 分子=今日已学、分母=配额；
+         未设配额 → 退回「词库未学」总量并明确标注，不把库内未学冒充今日任务量 */
+      hint: newWordQuota
+        ? `今日已学 ${wordsDoneToday}/${newWordQuota} · 到期 ${toNum(words?.due_today ?? due?.breakdown?.words)}`
+        : `词库未学 ${toNum(due?.newWords)} · 到期 ${toNum(words?.due_today ?? due?.breakdown?.words)}`,
       count: wordCount,
       unit: '词',
       to: '/words',
@@ -564,11 +569,11 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
       note: '复盘计划的独立队列，不计入卡片/错题调度',
     },
     {
-      label: '今日新词',
+      label: '词库未学',
       value: due.newWords,
       unit: '词',
       source: 'words/stats · new',
-      note: '新词与「到期复习词」分开，避免把新词算成复习债',
+      note: '词库内未学总量，不是今日新词配额；每日配额在目标档案单独设置',
     },
   ]
 

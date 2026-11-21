@@ -346,6 +346,35 @@
   padding: var(--v3-s-6) var(--v3-gutter) 72px;
 }
 
+/* ---------- 邮箱未验证横幅（P1） ---------- */
+.v3-verify-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: var(--v3-content-max);
+  margin: var(--v3-s-4) auto 0;
+  padding: 10px var(--v3-gutter);
+  font-size: 13px;
+  color: var(--v3-on-surface);
+  background: var(--v3-warning-container);
+  border: 1px solid color-mix(in srgb, var(--v3-warning) 24%, transparent);
+  border-radius: var(--v3-r-3, 12px);
+}
+
+.v3-verify-banner__text {
+  flex: 1;
+  min-width: 200px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.v3-verify-banner .v3-btn,
+.v3-verify-banner .v3-iconbtn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 /* ---------- Top bar ---------- */
 .v3-topbar {
   position: fixed;

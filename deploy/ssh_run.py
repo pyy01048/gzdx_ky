@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""SSH 命令执行助手（部署用）。密码经环境变量 SSH_PW 传入，绝不落盘。
+"""SSH 命令执行助手（部署用）。仅密钥认证（SSH_KEY，默认 ~/.ssh/id_ed25519），口令绝不落盘。
 
 完善方案 08 §3.4：主机指纹固定校验（RejectPolicy）——
     * 首次连接先手工核对指纹：
@@ -17,6 +17,12 @@ import os
 import sys
 
 import paramiko
+
+# 服务器输出可能含 ✓/中文；Windows GBK 控制台直接 print 会 UnicodeEncodeError 崩溃
+# （命令其实已成功，崩溃只在本地打印阶段，易误判部署失败）。errors=replace 兜底防崩。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="replace")
 
 HOST = os.environ.get("SSH_HOST", "60.204.223.140")
 USER = os.environ.get("SSH_USER", "deploy")

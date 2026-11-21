@@ -22,6 +22,7 @@ routers/exam.py:95 裸 SQL 字符串              /api/exam/blueprints → 500�
 ----
     D:/Anaconda/python.exe -m pytest tests/test_regression_p0.py -v
 """
+
 from __future__ import annotations
 
 import os
@@ -37,8 +38,8 @@ from database import SessionLocal  # noqa: E402
 # 一、list_blueprints 返回结构（直接防 exam.py:95 裸 SQL 回归）
 # --------------------------------------------------------------------------- #
 
-class TestListBlueprints:
 
+class TestListBlueprints:
     @pytest.fixture(autouse=True)
     def _blueprints(self, db_schema):  # noqa: ARG002
         """确保 exam_blueprints 表存在且有预置数据（幂等）。"""
@@ -57,16 +58,12 @@ class TestListBlueprints:
         显式 ``text()``，否则 ``ArgumentError`` → 500。这条断言直接钉死该修复。
         """
         resp = client.get("/api/exam/blueprints")
-        assert resp.status_code == 200, (
-            f"蓝图接口 500：status={resp.status_code} body={resp.text[:300]}"
-        )
+        assert resp.status_code == 200, f"蓝图接口 500：status={resp.status_code} body={resp.text[:300]}"
 
     def test_returns_list_not_error_wrapper(self, client):
         """必须返回 list（前端直接 ``.map``），不能是 {code,message} 错误壳。"""
         data = client.get("/api/exam/blueprints").json()
-        assert isinstance(data, list), (
-            f"期望 list，实际 {type(data).__name__}: {str(data)[:200]}"
-        )
+        assert isinstance(data, list), f"期望 list，实际 {type(data).__name__}: {str(data)[:200]}"
 
     def test_required_fields_present(self, client):
         """每条蓝图必须含 SQL 里 SELECT 的全部 10 个字段，一个都不能少。
@@ -76,15 +73,20 @@ class TestListBlueprints:
         data = client.get("/api/exam/blueprints").json()
         assert data, "预置蓝图未写入，测试前置条件不满足"
         required = {
-            "id", "subject", "paper", "year", "section",
-            "question_type", "count", "score_per_question",
-            "sort_order", "is_active",
+            "id",
+            "subject",
+            "paper",
+            "year",
+            "section",
+            "question_type",
+            "count",
+            "score_per_question",
+            "sort_order",
+            "is_active",
         }
         for i, row in enumerate(data):
             missing = required - set(row)
-            assert not missing, (
-                f"第 {i} 条蓝图缺字段 {missing}；实际字段={sorted(row)}"
-            )
+            assert not missing, f"第 {i} 条蓝图缺字段 {missing}；实际字段={sorted(row)}"
 
     def test_field_types_correct(self, client):
         """字段类型口径：id/count/sort_order/year 为整型，score_per_question 为浮点。"""
@@ -92,14 +94,13 @@ class TestListBlueprints:
         for row in data:
             assert isinstance(row["id"], int), f"id 应为 int，实际 {type(row['id'])}"
             assert isinstance(row["count"], int), f"count 应为 int，实际 {type(row['count'])}"
-            assert isinstance(row["sort_order"], int), \
-                f"sort_order 应为 int，实际 {type(row['sort_order'])}"
-            assert isinstance(row["score_per_question"], (int, float)), \
+            assert isinstance(row["sort_order"], int), f"sort_order 应为 int，实际 {type(row['sort_order'])}"
+            assert isinstance(row["score_per_question"], int | float), (
                 f"score_per_question 应为数值，实际 {type(row['score_per_question'])}"
+            )
             # section / question_type / subject / paper 是 NOT NULL 的 TEXT
             for f in ("subject", "paper", "section", "question_type"):
-                assert isinstance(row[f], str) and row[f], \
-                    f"{f} 是 NOT NULL TEXT，实际 {row[f]!r}"
+                assert isinstance(row[f], str) and row[f], f"{f} 是 NOT NULL TEXT，实际 {row[f]!r}"
 
     def test_sorted_by_subject_then_sort_order(self, client):
         """必须按 (subject, sort_order) 排序 —— SQL 里 ORDER BY 的语义。"""
@@ -112,8 +113,10 @@ class TestListBlueprints:
         data = client.get("/api/exam/blueprints").json()
         pairs = {(r["subject"], r["paper"]) for r in data}
         for expected in [
-            ("数学", "math2"), ("408", "cs408"),
-            ("政治", "politics"), ("英语", "english2"),
+            ("数学", "math2"),
+            ("408", "cs408"),
+            ("政治", "politics"),
+            ("英语", "english2"),
         ]:
             assert expected in pairs, f"缺少预置蓝图 {expected}；现有={sorted(pairs)}"
 
@@ -155,15 +158,14 @@ class TestListBlueprints:
 # 反复出现在待复习列表。
 # --------------------------------------------------------------------------- #
 
-class TestEbbinghausDueCalculation:
 
+class TestEbbinghausDueCalculation:
     @staticmethod
     def _due_json(client):
         """取 due 接口 JSON；先断言 200，让失败信息直接指向根因而不是 KeyError。"""
         resp = client.get("/api/planner/ebbinghaus/due")
         assert resp.status_code == 200, (
-            f"due 接口 500（planner.py:281 naive/aware 比较）："
-            f"status={resp.status_code} body={resp.text[:300]}"
+            f"due 接口 500（planner.py:281 naive/aware 比较）：status={resp.status_code} body={resp.text[:300]}"
         )
         return resp.json()
 
@@ -184,12 +186,11 @@ class TestEbbinghausDueCalculation:
         assert items, "种子数据里有一条已过期未打卡的艾宾浩斯条目，due 不应为空"
         valid_labels = {"5分钟", "30分钟", "12小时", "1天", "2天", "4天", "7天", "15天", "1个月"}
         for item in items:
-            assert set(item) >= {"id", "content", "subject", "due_cycle", "due_time"}, \
-                f"due 项缺字段：{sorted(item)}"
-            assert item["due_cycle"] in valid_labels, \
-                f"due_cycle 应为中文标签，实际 {item['due_cycle']!r}"
-            assert isinstance(item["due_time"], str) and item["due_time"], \
+            assert set(item) >= {"id", "content", "subject", "due_cycle", "due_time"}, f"due 项缺字段：{sorted(item)}"
+            assert item["due_cycle"] in valid_labels, f"due_cycle 应为中文标签，实际 {item['due_cycle']!r}"
+            assert isinstance(item["due_time"], str) and item["due_time"], (
                 f"due_time 应为非空 ISO 字符串，实际 {item['due_time']!r}"
+            )
             assert len(item["content"]) <= 100, "content 应被截断到 100 字"
 
     def test_due_picks_earliest_expired_cycle(self, client):
@@ -200,9 +201,7 @@ class TestEbbinghausDueCalculation:
         """
         items = self._due_json(client)["items"]
         assert items, "due 列表为空，无法验证周期选择逻辑"
-        assert items[0]["due_cycle"] == "5分钟", (
-            f"应取最早过期周期 5分钟，实际 {items[0]['due_cycle']}"
-        )
+        assert items[0]["due_cycle"] == "5分钟", f"应取最早过期周期 5分钟，实际 {items[0]['due_cycle']}"
 
     def test_mastered_items_excluded_from_due(self, client, sample_data):  # noqa: ARG001
         """mastered=True 的条目不得出现在 due 里。"""
@@ -215,8 +214,7 @@ class TestEbbinghausDueCalculation:
             db.commit()
             try:
                 items = self._due_json(client)["items"]
-                assert not any(i["id"] == item.id for i in items), \
-                    "已掌握条目仍出现在 due 列表中"
+                assert not any(i["id"] == item.id for i in items), "已掌握条目仍出现在 due 列表中"
             finally:
                 item.mastered = original
                 db.commit()
@@ -226,8 +224,7 @@ class TestEbbinghausDueCalculation:
     def test_not_yet_due_cycle_excluded(self, client):
         """未到期的周期不得出现在 due 里（种子条目的 7d 节点是未来时间）。"""
         items = self._due_json(client)["items"]
-        assert not any(i["due_cycle"] == "7天" for i in items), \
-            "未到期的 7 天周期被误判为到期"
+        assert not any(i["due_cycle"] == "7天" for i in items), "未到期的 7 天周期被误判为到期"
 
     def test_list_ebbinghaus_shape(self, client):
         """/api/planner/ebbinghaus 列表项字段完整性（含 1d/7d/15d 三个展示位）。"""
@@ -236,8 +233,7 @@ class TestEbbinghausDueCalculation:
         data = resp.json()
         assert isinstance(data, list)
         assert data, "种子数据应有 1 条艾宾浩斯条目"
-        required = {"id", "seq", "learn_date", "content", "subject",
-                    "mastered", "review_1d", "review_7d", "review_15d"}
+        required = {"id", "seq", "learn_date", "content", "subject", "mastered", "review_1d", "review_7d", "review_15d"}
         for row in data:
             missing = required - set(row)
             assert not missing, f"艾宾浩斯列表项缺字段 {missing}；实际={sorted(row)}"
@@ -247,8 +243,7 @@ class TestEbbinghausDueCalculation:
         for row in client.get("/api/planner/ebbinghaus").json():
             for f in ("learn_date", "review_1d", "review_7d", "review_15d"):
                 v = row[f]
-                assert v is None or isinstance(v, str), \
-                    f"{f} 应为 ISO 字符串或 None，实际 {type(v).__name__}: {v!r}"
+                assert v is None or isinstance(v, str), f"{f} 应为 ISO 字符串或 None，实际 {type(v).__name__}: {v!r}"
 
     def test_due_time_is_comparable_across_timezones(self, client):
         """回归点：SQLite 读回的 naive datetime 与 aware now 比较会 TypeError。
@@ -264,14 +259,11 @@ class TestEbbinghausDueCalculation:
     def test_earlybird_streak_consecutive_days(self, client, fresh_earlybird):  # noqa: ARG002
         """连续早起天数：种子里有今天+昨天 → current_streak 应 ≥ 2。"""
         data = client.get("/api/planner/earlybird/streak").json()
-        assert set(data) >= {"current_streak", "total_days", "avg_wake_time"}, \
-            f"streak 缺字段：{sorted(data)}"
-        assert data["current_streak"] >= 2, \
-            f"连续天数应 ≥2（今天+昨天），实际 {data['current_streak']}"
+        assert set(data) >= {"current_streak", "total_days", "avg_wake_time"}, f"streak 缺字段：{sorted(data)}"
+        assert data["current_streak"] >= 2, f"连续天数应 ≥2（今天+昨天），实际 {data['current_streak']}"
         assert data["total_days"] >= 2
         # 平均起床时间口径 06:30 与 07:00 → 06:45
-        assert data["avg_wake_time"] == "06:45", \
-            f"平均起床时间应为 06:45，实际 {data['avg_wake_time']}"
+        assert data["avg_wake_time"] == "06:45", f"平均起床时间应为 06:45，实际 {data['avg_wake_time']}"
 
 
 def _ebbinghaus_model():
@@ -293,8 +285,8 @@ def _ebbinghaus_model():
 # test_due_errors_subset_of_active 等口径断言会一起守住它。
 # --------------------------------------------------------------------------- #
 
-class TestReviewStats:
 
+class TestReviewStats:
     def test_returns_200(self, client):
         """/api/review/stats 必须 200。
 
@@ -304,59 +296,60 @@ class TestReviewStats:
         """
         resp = client.get("/api/review/stats")
         assert resp.status_code == 200, (
-            f"review/stats 500（review.py:120 datetime.UTC）："
-            f"status={resp.status_code} body={resp.text[:300]}"
+            f"review/stats 500（review.py:120 datetime.UTC）：status={resp.status_code} body={resp.text[:300]}"
         )
 
     def test_all_five_fields_present(self, client):
         """必须返回全部 5 个统计字段，缺一个前端面板就渲染成 undefined。"""
         data = client.get("/api/review/stats").json()
         required = {
-            "active_errors", "due_errors", "graduated_errors",
-            "today_reviews", "total_reviews",
+            "active_errors",
+            "due_errors",
+            "graduated_errors",
+            "today_reviews",
+            "total_reviews",
         }
         missing = required - set(data)
-        assert not missing, (
-            f"review/stats 缺字段 {missing}；实际返回={sorted(data)}，body={data}"
-        )
+        assert not missing, f"review/stats 缺字段 {missing}；实际返回={sorted(data)}，body={data}"
 
     def test_fields_are_non_negative_ints(self, client):
         """计数类字段必须是非负整数（负数说明 SQL 过滤条件写反了）。"""
         data = client.get("/api/review/stats").json()
-        for field in ("active_errors", "due_errors", "graduated_errors",
-                      "today_reviews", "total_reviews"):
+        for field in ("active_errors", "due_errors", "graduated_errors", "today_reviews", "total_reviews"):
             value = data[field]
-            assert isinstance(value, int) and not isinstance(value, bool), \
+            assert isinstance(value, int) and not isinstance(value, bool), (
                 f"{field} 应为 int，实际 {type(value).__name__}: {value!r}"
+            )
             assert value >= 0, f"{field} 不应为负数：{value}"
 
     def test_no_error_envelope(self, client):
         """不能返回 {code, message, detail} 错误壳伪装成 200。"""
         data = client.get("/api/review/stats").json()
-        assert "code" not in data or data.get("code") != "UNKNOWN_ERROR", \
-            f"返回了错误信封：{data}"
+        assert "code" not in data or data.get("code") != "UNKNOWN_ERROR", f"返回了错误信封：{data}"
         assert "active_errors" in data
 
     def test_active_errors_matches_db(self, client):
-        """统计口径校验：active_errors 必须等于库里 status='active' 的错题数。"""
+        """统计口径校验：active_errors 必须等于库里**本人** status='active' 的错题数。
+
+        B4 用户隔离后 /review/stats 只数当前用户（测试主体 id=0）的行，
+        对照查询必须带同样的归属过滤，否则他人种子数据会造成假红。
+        """
         from models import ErrorRecord
 
         db = SessionLocal()
         try:
-            expected = db.query(ErrorRecord).filter(
-                ErrorRecord.status == "active").count()
+            expected = db.query(ErrorRecord).filter(ErrorRecord.user_id == 0, ErrorRecord.status == "active").count()
         finally:
             db.close()
         assert client.get("/api/review/stats").json()["active_errors"] == expected
 
     def test_graduated_errors_matches_db(self, client):
-        """graduated_errors 口径校验。"""
+        """graduated_errors 口径校验（B4：只数本人行，测试主体 id=0）。"""
         from models import ErrorRecord
 
         db = SessionLocal()
         try:
-            expected = db.query(ErrorRecord).filter(
-                ErrorRecord.status == "graduated").count()
+            expected = db.query(ErrorRecord).filter(ErrorRecord.user_id == 0, ErrorRecord.status == "graduated").count()
         finally:
             db.close()
         assert client.get("/api/review/stats").json()["graduated_errors"] == expected
@@ -365,19 +358,20 @@ class TestReviewStats:
         """业务不变式：到期错题必然是 active 的子集，due <= active。"""
         data = client.get("/api/review/stats").json()
         assert data["due_errors"] <= data["active_errors"], (
-            f"due_errors({data['due_errors']}) 不应超过 "
-            f"active_errors({data['active_errors']})"
+            f"due_errors({data['due_errors']}) 不应超过 active_errors({data['active_errors']})"
         )
 
     def test_sibling_review_endpoints_also_ok(self, client):
         """同一 router 的兄弟接口一并守住，避免只修一个。"""
-        for path in ("/api/review/due", "/api/review/progress",
-                     "/api/review/history", "/api/review/weak-points",
-                     "/api/review/link-stats"):
+        for path in (
+            "/api/review/due",
+            "/api/review/progress",
+            "/api/review/history",
+            "/api/review/weak-points",
+            "/api/review/link-stats",
+        ):
             resp = client.get(path)
-            assert resp.status_code == 200, (
-                f"{path} → {resp.status_code}，body前200字={resp.text[:200]}"
-            )
+            assert resp.status_code == 200, f"{path} → {resp.status_code}，body前200字={resp.text[:200]}"
 
 
 class TestReviewProgressShape:
@@ -400,7 +394,7 @@ class TestReviewProgressShape:
             elif isinstance(node, list):
                 for i, v in enumerate(node[:20]):
                     problems += _walk(v, f"{path}[{i}]")
-            elif isinstance(node, (int, float)) and not isinstance(node, bool):
+            elif isinstance(node, int | float) and not isinstance(node, bool):
                 leaf = path.rsplit(".", 1)[-1].lower()
                 if any(t in leaf for t in ("rate", "pct", "percent", "ratio")):
                     if not (0.0 <= float(node) <= 100.0):
@@ -426,8 +420,8 @@ class TestReviewProgressShape:
 # 契约测试跑在**空库**上，正是为了暴露这类"本地能跑、换机就崩"的缺陷。
 # --------------------------------------------------------------------------- #
 
-class TestPhasePlanSchemaExists:
 
+class TestPhasePlanSchemaExists:
     def test_phase_daily_reviews_table_is_created(self, db_schema):  # noqa: ARG001
         """phase_daily_reviews 表必须由代码建出来（幂等）。
 
@@ -440,10 +434,10 @@ class TestPhasePlanSchemaExists:
         db = SessionLocal()
         try:
             names = [
-                r[0] for r in db.execute(text(
-                    "SELECT table_name FROM information_schema.tables "
-                    "WHERE table_schema = current_schema()"
-                )).fetchall()
+                r[0]
+                for r in db.execute(
+                    text("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()")
+                ).fetchall()
             ]
         finally:
             db.close()
@@ -456,8 +450,7 @@ class TestPhasePlanSchemaExists:
         """空库环境下 /api/planner/phase 也必须 200（这是它当前会炸的地方）。"""
         resp = client.get("/api/planner/phase")
         assert resp.status_code == 200, (
-            f"phase 接口 500（缺 phase_daily_reviews DDL）："
-            f"status={resp.status_code} body={resp.text[:300]}"
+            f"phase 接口 500（缺 phase_daily_reviews DDL）：status={resp.status_code} body={resp.text[:300]}"
         )
         assert isinstance(resp.json(), list)
 
@@ -465,6 +458,4 @@ class TestPhasePlanSchemaExists:
         """阶段复习明细接口同样不得 500。"""
         plan_id = sample_data["plan_id"]
         resp = client.get(f"/api/planner/phase/{plan_id}/reviews")
-        assert resp.status_code == 200, (
-            f"phase reviews 500：status={resp.status_code} body={resp.text[:300]}"
-        )
+        assert resp.status_code == 200, f"phase reviews 500：status={resp.status_code} body={resp.text[:300]}"

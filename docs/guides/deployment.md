@@ -10,7 +10,7 @@
 | 项 | 变化 |
 |---|---|
 | 前端回滚 | `push_update.py` 解包前自动 `static → static.prev`，`rollback.sh frontend` 真正可用 |
-| 版本标识 | 打包前生成 `_version.py`；`/api/health` 返回 `git_sha` / `built_at` |
+| 版本标识 | 打包前生成 `_version.py`；公开 `/api/health` 只回 `status`/`version`，`git_sha`/`built_at` 在管理员鉴权的 `/api/health/detail` |
 | 迁移 | 部署统一执行 `execute_core_sql.py --all-pending`（账本化） |
 | 部署包 | 输出 `deploy/artifacts/kaoyan-deploy-<ts>-<sha>.tar.gz`，本地保留 5 份 |
 | 备份 | `backup.sh` 接通 rclone 异地 + healthchecks 心跳 + 本地 7 / 异地 30 份 |

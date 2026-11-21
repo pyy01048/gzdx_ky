@@ -24,6 +24,7 @@ ALTER 增强：
                      last_review/mastery_level/last_status/recent_weight/
                      prev_ease_factor/prev_interval/prev_repetitions/user_note）
 """
+
 from __future__ import annotations
 
 import logging
@@ -130,6 +131,7 @@ NEW_TABLES_SQL: list[str] = [
     """
     CREATE TABLE IF NOT EXISTS exam_sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id BIGINT,
         blueprint_key TEXT,
         subject TEXT NOT NULL, paper TEXT,
         mode TEXT DEFAULT 'normal',
@@ -208,7 +210,7 @@ NEW_TABLES_SQL: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_qkl_q ON question_knowledge_links(question_id)
     """,
-    #阶段复习每日打卡明细表。
+    # 阶段复习每日打卡明细表。
     # planner.py 的阶段复习接口（列表/创建/明细/打卡）直接读写本表，
     # 但历史上仅存在于 283MB 真实库中，代码里从未创建——空库或新部署必然
     # 500 OperationalError: no such table: phase_daily_reviews。
@@ -295,16 +297,24 @@ _EXTRA_INDEX_SQL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_err_cat ON error_records(error_category)",
 ]
 
+# 模考场次归属（与 core/sql/121 同口径）：SQLite 回退库不走迁移分片，
+# 这里幂等补列，保证 build_paper 的 INSERT(user_id) 在两种方言下都能落库。
+EXAM_SESSIONS_ADD_COLUMNS: list[tuple[str, str]] = [
+    ("user_id", "BIGINT"),
+]
+
 
 def _is_sqlite(conn) -> bool:
     """连接是否为 SQLite（穿透 SQLAlchemy 连接池代理判断真实驱动）。"""
     from services.ddl_compat import is_sqlite
+
     return is_sqlite(conn)
 
 
 def _adapt(stmt: str, conn) -> str:
     """把 SQLite 写法的 DDL 适配到当前连接方言（见 services.ddl_compat）。"""
     from services.ddl_compat import adapt_ddl
+
     return adapt_ddl(stmt, conn)
 
 
@@ -389,6 +399,7 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
     """
     if db is None:
         from database import SessionLocal
+
         db = SessionLocal()
         close = True
     else:
@@ -401,9 +412,7 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
             except Exception as _exc:  # noqa: BLE001
                 # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
                 # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-                logging.getLogger(__name__).warning(
-                    '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-                )
+                logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
         created: list[str] = []
         for stmt in NEW_TABLES_SQL:
             _exec_with_retry(conn, _adapt(stmt, conn))
@@ -411,6 +420,7 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
         altered_e = _alter_add_columns(conn, "error_records", ERROR_RECORDS_ADD_COLUMNS)
         # IMA 导入所需：documents + stage/ima_media_id/folder_path（幂等，列存在则跳过）
         altered_d = _alter_add_columns(conn, "documents", DOCUMENTS_ADD_COLUMNS)
+        altered_es = _alter_add_columns(conn, "exam_sessions", EXAM_SESSIONS_ADD_COLUMNS)
         for stmt in _EXTRA_INDEX_SQL:
             try:
                 _exec_with_retry(conn, _adapt(stmt, conn))
@@ -423,6 +433,7 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
                 "quiz_questions": altered_q,
                 "error_records": altered_e,
                 "documents": altered_d,
+                "exam_sessions": altered_es,
             },
         }
     except Exception:
@@ -441,10 +452,10 @@ def ensure_module_a_schema(db: Optional[Session] = None) -> dict:
 #: 保留术语可追溯、入库值合法。
 _BLUEPRINT_QT_MAP: dict[str, str] = {
     "single": "single",
-    "multi_choice": "multiple",   # 多项选择
-    "blank": "fill",              # 填空
-    "solve": "calc",              # 解答
-    "comprehensive": "calc",      # 综合应用
+    "multi_choice": "multiple",  # 多项选择
+    "blank": "fill",  # 填空
+    "solve": "calc",  # 解答
+    "comprehensive": "calc",  # 综合应用
     "judge": "judge",
     "essay": "essay",
     "calc": "calc",
@@ -466,6 +477,7 @@ def ensure_blueprints(db: Optional[Session] = None) -> int:
     """
     if db is None:
         from database import SessionLocal
+
         db = SessionLocal()
         close = True
     else:
@@ -481,9 +493,7 @@ def ensure_blueprints(db: Optional[Session] = None) -> int:
             " time_limit_minutes INTEGER, sort_order INTEGER NOT NULL,"
             " kp_filters TEXT, is_active INTEGER DEFAULT 1)"
         )
-        existing = conn.execute(
-            "SELECT DISTINCT subject, paper FROM exam_blueprints"
-        ).fetchall()
+        existing = conn.execute("SELECT DISTINCT subject, paper FROM exam_blueprints").fetchall()
         have = {(r[0], r[1]) for r in existing}
         # 真实卷面结构（报告 7.2 表）
         presets = [
@@ -512,8 +522,7 @@ def ensure_blueprints(db: Optional[Session] = None) -> int:
                 f"INSERT INTO exam_blueprints (subject, paper, section, {qt_col},"
                 " count, score_per_question, time_limit_minutes, sort_order, is_active)"
                 " VALUES (?,?,?,?,?,?,?,?,?)",
-                (subject, paper, section, _normalize_blueprint_qt(qtype),
-                 count, score, 180, added + 1, True),
+                (subject, paper, section, _normalize_blueprint_qt(qtype), count, score, 180, added + 1, True),
             )
             added += 1
         db.commit()

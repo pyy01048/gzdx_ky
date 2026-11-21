@@ -16,6 +16,7 @@ A5 组卷-模考引擎（services/exam_builder.py）
       （scored_by=ai|self），统计只认 auto+self。
 错题回流：交卷后错误题写入 error_records（去重），并联动 A4 盲区池记录弱知识点。
 """
+
 from __future__ import annotations
 
 import json
@@ -55,11 +56,22 @@ def load_blueprints(db, subject: str, paper: str, year: Optional[int] = None) ->
         " WHERE subject = ? AND paper = ? AND is_active = TRUE ORDER BY sort_order",
         (subject, paper),
     ).fetchall()
-    cols = ["id", "subject", "paper", "year", "section", "question_type", "count",
-            "score_per_question", "time_limit_minutes", "sort_order", "kp_filters"]
+    cols = [
+        "id",
+        "subject",
+        "paper",
+        "year",
+        "section",
+        "question_type",
+        "count",
+        "score_per_question",
+        "time_limit_minutes",
+        "sort_order",
+        "kp_filters",
+    ]
     out = []
     for r in rows:
-        d = dict(zip(cols, r))
+        d = dict(zip(cols, r, strict=False))
         if year is not None and d["year"] is not None and d["year"] != year:
             continue
         try:
@@ -141,10 +153,26 @@ def _query_candidates(
 
     sql, params = _question_base_sql(where, params)
     rows = conn.execute(sql, params).fetchall()
-    cols = ["id", "content", "options", "answer", "analysis", "subject", "chapter",
-            "knowledge_point", "difficulty", "question_type", "answer_type", "is_available",
-            "year", "paper", "external_id", "rubric", "max_score"]
-    return [dict(zip(cols, r)) for r in rows]
+    cols = [
+        "id",
+        "content",
+        "options",
+        "answer",
+        "analysis",
+        "subject",
+        "chapter",
+        "knowledge_point",
+        "difficulty",
+        "question_type",
+        "answer_type",
+        "is_available",
+        "year",
+        "paper",
+        "external_id",
+        "rubric",
+        "max_score",
+    ]
+    return [dict(zip(cols, r, strict=False)) for r in rows]
 
 
 def recent_question_ids(db, exclude_recent_days: int = 14) -> List[int]:
@@ -224,8 +252,11 @@ def build_paper(
     kp_ids: Optional[List[int]] = None,
     question_source: str = "all",
     exclude_recent_days: int = 14,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """组卷 → 建 exam_sessions 会话（试卷冻结）。
+
+    B4：user_id 传入时会话落归属（121 加列）；None 保持旧行为（脚本/回退）。
 
     Returns:
         {"session_id", "blueprint_key", "subject", "paper", "mode", "total_count",
@@ -257,8 +288,13 @@ def build_paper(
         if n <= 0:
             continue
         candidates = _query_candidates(
-            db, bp, kp_ids=kp_ids, question_source=question_source,
-            exclude_question_ids=exclude_ids, subject=subject, paper=paper,
+            db,
+            bp,
+            kp_ids=kp_ids,
+            question_source=question_source,
+            exclude_question_ids=exclude_ids,
+            subject=subject,
+            paper=paper,
         )
         if mode == "weakest":
             picked = _weakest_pick(candidates, n, conn)
@@ -318,14 +354,27 @@ def build_paper(
     #      改为 SQLite 走 lastrowid、PG 走 RETURNING id。
     from services.dbapi_compat import insert_returning_id
 
-    session_id = insert_returning_id(conn, """
+    session_id = insert_returning_id(
+        conn,
+        """
         INSERT INTO exam_sessions
         (blueprint_key, subject, paper, mode, question_source, config, total_count,
-         total_score, time_limit_minutes, expires_at, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ongoing')
+         total_score, time_limit_minutes, expires_at, status, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ongoing', ?)
         """,
-        (blueprint_key, subject, paper, mode, question_source, json.dumps(config, ensure_ascii=False),
-         total_count, total_score, time_limit, expires_at),
+        (
+            blueprint_key,
+            subject,
+            paper,
+            mode,
+            question_source,
+            json.dumps(config, ensure_ascii=False),
+            total_count,
+            total_score,
+            time_limit,
+            expires_at,
+            user_id,
+        ),
     )
     if session_id is None:
         raise RuntimeError("创建模考场次失败：未取到 session_id")
@@ -341,8 +390,7 @@ def build_paper(
                 (session_id, question_id, question_snapshot, section, order_no, scored_by)
                 VALUES (?, ?, ?, ?, ?, 'auto')
                 """,
-                (session_id, q["question_id"], json.dumps(q, ensure_ascii=False),
-                 sec["section"], order_no),
+                (session_id, q["question_id"], json.dumps(q, ensure_ascii=False), sec["section"], order_no),
             )
     db.commit()
 
@@ -384,9 +432,7 @@ def _trusted_answer(conn, question_id: int, snap_answer: str) -> tuple:
     - 普通答案（人工/原卷）→ trusted。
     """
     try:
-        row = conn.execute(
-            "SELECT ai_generated, verified FROM quiz_questions WHERE id = ?", (question_id,)
-        ).fetchone()
+        row = conn.execute("SELECT ai_generated, verified FROM quiz_questions WHERE id = ?", (question_id,)).fetchone()
         if not row or not row[0] or row[1]:
             return snap_answer, "trusted"
         # AI 生成未核验：找交叉校验高置信候选
@@ -429,6 +475,7 @@ def _ai_score_question(db, q_snap: Dict[str, Any], user_answer: str) -> Optional
         )
         txt = (res.get("answer") or "").strip()
         import re
+
         m = re.search(r"(\d+(?:\.\d+)?)", txt)
         if not m:
             return None
@@ -438,8 +485,11 @@ def _ai_score_question(db, q_snap: Dict[str, Any], user_answer: str) -> Optional
         return None
 
 
-def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
+def submit_session(db, session_id: int, answers, *, user_id: Optional[int] = None) -> Dict[str, Any]:
     """交卷判分。
+
+    B4：user_id 传入时校验会话归属（他人会话按不存在处理），错题回流
+    与学习埋点都落本人名下；None 保持旧的全局行为（脚本/回退）。
 
     answers 兼容两种形态（路由层是 list[ExamAnswerItem]，历史调用方有 dict）：
       - dict: {question_id | str(question_id): {user_answer, self_score?, time_spent?}}
@@ -466,14 +516,13 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
         answers = _norm_answers
 
     sess = conn.execute(
-        "SELECT id, subject, paper, config, status FROM exam_sessions WHERE id = ?", (session_id,)
+        "SELECT id, subject, paper, config, status, user_id FROM exam_sessions WHERE id = ?", (session_id,)
     ).fetchone()
-    if not sess:
+    if not sess or (user_id is not None and sess[5] != user_id):
         return {"error": "session not found"}
     if sess[4] == "submitted":
         return {"error": "session already submitted"}
 
-    config = json.loads(sess[3] or "{}")
     subject = sess[1]
 
     rows = conn.execute(
@@ -488,7 +537,7 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
     wrong_questions: List[Dict[str, Any]] = []
     ai_unverified_count = 0  # T6-1：答案为 AI 生成未核验的判分题数（结果透传）
 
-    for (ea_id, qid, snap_json, section, order_no) in rows:
+    for ea_id, qid, snap_json, _section, _order_no in rows:
         snap = json.loads(snap_json or "{}")
         ans_info = answers.get(str(qid)) or answers.get(qid) or {}
         user_answer = (ans_info.get("user_answer") or "").strip()
@@ -543,8 +592,7 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
             ai_score = ?, self_score = ?, final_score = ?, scored_by = ?, error_category = ?
             WHERE id = ?
             """,
-            (user_answer, is_correct, time_spent, ai_score, self_score, final_score,
-             scored_by, error_category, ea_id),
+            (user_answer, is_correct, time_spent, ai_score, self_score, final_score, scored_by, error_category, ea_id),
         )
 
     # 错题回流 error_records（去重：同 question_id 未解决不重复插入）
@@ -552,11 +600,13 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
     for wq in wrong_questions:
         qid = wq["question_id"]
         snap = wq["snapshot"]
-        exists = conn.execute(
-            "SELECT id FROM error_records WHERE question_id = ? AND status = 'active'"
-            " ORDER BY id DESC LIMIT 1",
-            (qid,),
-        ).fetchone()
+        # 去重口径随归属：本人已有同题活跃错题才跳过，别人的错题不挡我的回流
+        dedup_sql = "SELECT id FROM error_records WHERE question_id = ? AND status = 'active'"
+        dedup_params: List[Any] = [qid]
+        if user_id is not None:
+            dedup_sql += " AND user_id = ?"
+            dedup_params.append(user_id)
+        exists = conn.execute(dedup_sql + " ORDER BY id DESC LIMIT 1", dedup_params).fetchone()
         if not exists:
             # T6-2：模考错题与刷题错题同待遇——插入即挂首次复习排期。
             # V12 同族修复：首间隔按掌握度给 ≥1 天，不再 20 分钟后即当日到期
@@ -568,33 +618,41 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
                 conn,
                 """
                 INSERT INTO error_records
-                (question_id, content, my_answer, correct_answer, error_reason, subject, status, analysis, next_review, review_count)
-                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, 0)
+                (question_id, content, my_answer, correct_answer, error_reason, subject, status, analysis, next_review, review_count, user_id)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, 0, ?)
                 """,
-                (qid, snap.get("content") or "", wq["user_answer"] or "", snap.get("answer") or "",
-                 "模考判错（自动/自评）", subject, "",
-                 next_review.strftime("%Y-%m-%d %H:%M:%S") if next_review else None),
+                (
+                    qid,
+                    snap.get("content") or "",
+                    wq["user_answer"] or "",
+                    snap.get("answer") or "",
+                    "模考判错（自动/自评）",
+                    subject,
+                    "",
+                    next_review.strftime("%Y-%m-%d %H:%M:%S") if next_review else None,
+                    user_id,
+                ),
             )
         # 联动 A4 盲区池：记录弱知识点（gap_type=no_answer，建议强化练习）
         # 延后到 db.commit() 后执行，避免内部 commit 使本函数持有的底层连接失效
         try:
             kp_name = snap.get("knowledge_point") or ""
             if kp_name:
-                blind_spot_calls.append({
-                    "question": f"【模考薄弱】{kp_name}",
-                    "subject": subject,
-                    "basis": f"题目#{qid}: {(snap.get('content') or '')[:100]}",
-                    "basis_ids": [qid],
-                    "gap_type": "no_answer",
-                    "suggestion": f"强化练习知识点：{kp_name}",
-                    "suggested_action": "add_kp",
-                })
+                blind_spot_calls.append(
+                    {
+                        "question": f"【模考薄弱】{kp_name}",
+                        "subject": subject,
+                        "basis": f"题目#{qid}: {(snap.get('content') or '')[:100]}",
+                        "basis_ids": [qid],
+                        "gap_type": "no_answer",
+                        "suggestion": f"强化练习知识点：{kp_name}",
+                        "suggested_action": "add_kp",
+                    }
+                )
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     submitted_at = _now_str()
     exec_retry(
@@ -616,9 +674,7 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     # —— 错题 ↔ 知识点联动（2026-10）—— #
     # 模考回流此前只插 error_records、不挂知识点，导致模考错题在复盘页成「孤岛」
@@ -630,14 +686,13 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
 
         qids = [wq["question_id"] for wq in wrong_questions]
         if qids:
-            refluxed = (
-                db.query(ErrorRecord)
-                .filter(
-                    ErrorRecord.question_id.in_(qids),
-                    ErrorRecord.error_reason == "模考判错（自动/自评）",
-                )
-                .all()
+            refluxed_q = db.query(ErrorRecord).filter(
+                ErrorRecord.question_id.in_(qids),
+                ErrorRecord.error_reason == "模考判错（自动/自评）",
             )
+            if user_id is not None:
+                refluxed_q = refluxed_q.filter(ErrorRecord.user_id == user_id)
+            refluxed = refluxed_q.all()
             for e in refluxed:
                 try:
                     error_linker.auto_link_error(db, e, top_k=3)
@@ -645,14 +700,12 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
                     # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
                     # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
                     logging.getLogger(__name__).warning(
-                        '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+                        "%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200]
                     )
     except Exception as _exc:  # noqa: BLE001
         # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
         # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-        logging.getLogger(__name__).warning(
-            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-        )
+        logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     # —— 学习行为埋点（2026-10）—— #
     # 模考交卷此前完全不产事件，导致学习科学/成长体系拿不到模考维度数据。
@@ -670,13 +723,12 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
                 "wrong_count": len(wrong_questions),
                 "score": round(score_sum, 2),
             },
+            user_id=user_id,
         )
     except Exception as _exc:  # noqa: BLE001
         # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
         # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-        logging.getLogger(__name__).warning(
-            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-        )
+        logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     return {
         "session_id": session_id,
@@ -693,13 +745,19 @@ def submit_session(db, session_id: int, answers) -> Dict[str, Any]:
     }
 
 
-def list_sessions(db, subject: Optional[str] = None, status: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+def list_sessions(
+    db, subject: Optional[str] = None, status: Optional[str] = None, limit: int = 50, *, user_id: Optional[int] = None
+) -> List[Dict[str, Any]]:
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)
     conn = wrap_conn(db.connection().connection)
     sql = "SELECT id, blueprint_key, subject, paper, mode, total_count, total_score, correct_count, score, status, started_at, submitted_at, expires_at FROM exam_sessions WHERE 1=1"
     params: List[Any] = []
+    # B4：只列本人会话；存量 NULL 行无归属，不计入任何个人列表
+    if user_id is not None:
+        sql += " AND user_id = ?"
+        params.append(user_id)
     if subject:
         sql += " AND subject = ?"
         params.append(subject)
@@ -709,9 +767,22 @@ def list_sessions(db, subject: Optional[str] = None, status: Optional[str] = Non
     sql += " ORDER BY id DESC LIMIT ?"
     params.append(int(limit))
     rows = conn.execute(sql, params).fetchall()
-    cols = ["id", "blueprint_key", "subject", "paper", "mode", "total_count", "total_score",
-            "correct_count", "score", "status", "started_at", "submitted_at", "expires_at"]
-    sessions = [dict(zip(cols, r)) for r in rows]
+    cols = [
+        "id",
+        "blueprint_key",
+        "subject",
+        "paper",
+        "mode",
+        "total_count",
+        "total_score",
+        "correct_count",
+        "score",
+        "status",
+        "started_at",
+        "submitted_at",
+        "expires_at",
+    ]
+    sessions = [dict(zip(cols, r, strict=False)) for r in rows]
 
     # 列表增强（P0-3）：从 exam_answers 现算每场的聚合成绩与可出报告标记。
     # 一次性取出所有相关作答，Python 聚合，避免 N+1。
@@ -743,9 +814,7 @@ def list_sessions(db, subject: Optional[str] = None, status: Optional[str] = Non
     for s in sessions:
         a = agg.get(s["id"], {"max_score": 0.0, "earned_score": 0.0, "submitted_count": 0})
         # report_available：已交卷且有实际作答（至少一条 user_answer 非空）
-        s["report_available"] = bool(
-            s.get("status") == "submitted" and a["submitted_count"] > 0
-        )
+        s["report_available"] = bool(s.get("status") == "submitted" and a["submitted_count"] > 0)
         # 从 exam_answers 聚合的满分/得分（现有 total_score=试卷满分、score=会话得分保留）
         s["max_score"] = round(a["max_score"], 2)
         s["earned_score"] = round(a["earned_score"], 2)
@@ -753,23 +822,42 @@ def list_sessions(db, subject: Optional[str] = None, status: Optional[str] = Non
     return sessions
 
 
-def session_detail(db, session_id: int) -> Dict[str, Any]:
+def session_detail(db, session_id: int, *, user_id: Optional[int] = None) -> Dict[str, Any]:
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)
     conn = wrap_conn(db.connection().connection)
-    sess = conn.execute(
+    detail_sql = (
         "SELECT id, blueprint_key, subject, paper, mode, config, total_count, total_score,"
         " correct_count, score, time_limit_minutes, status, started_at, submitted_at, expires_at"
-        " FROM exam_sessions WHERE id = ?",
-        (session_id,),
-    ).fetchone()
+        " FROM exam_sessions WHERE id = ?"
+    )
+    detail_params: List[Any] = [session_id]
+    # B4：他人会话按不存在处理（None → 路由 404，不泄露存在性）
+    if user_id is not None:
+        detail_sql += " AND user_id = ?"
+        detail_params.append(user_id)
+    sess = conn.execute(detail_sql, detail_params).fetchone()
     if not sess:
         return None
-    cols = ["id", "blueprint_key", "subject", "paper", "mode", "config", "total_count",
-            "total_score", "correct_count", "score", "time_limit_minutes", "status",
-            "started_at", "submitted_at", "expires_at"]
-    d = dict(zip(cols, sess))
+    cols = [
+        "id",
+        "blueprint_key",
+        "subject",
+        "paper",
+        "mode",
+        "config",
+        "total_count",
+        "total_score",
+        "correct_count",
+        "score",
+        "time_limit_minutes",
+        "status",
+        "started_at",
+        "submitted_at",
+        "expires_at",
+    ]
+    d = dict(zip(cols, sess, strict=False))
     try:
         d["config"] = json.loads(d["config"] or "{}")
     except Exception:
@@ -780,12 +868,24 @@ def session_detail(db, session_id: int) -> Dict[str, Any]:
         " FROM exam_answers WHERE session_id = ? ORDER BY order_no",
         (session_id,),
     ).fetchall()
-    a_cols = ["id", "question_id", "question_snapshot", "section", "order_no", "user_answer",
-              "is_correct", "time_spent", "ai_score", "self_score", "final_score", "scored_by",
-              "error_category"]
+    a_cols = [
+        "id",
+        "question_id",
+        "question_snapshot",
+        "section",
+        "order_no",
+        "user_answer",
+        "is_correct",
+        "time_spent",
+        "ai_score",
+        "self_score",
+        "final_score",
+        "scored_by",
+        "error_category",
+    ]
     answers = []
     for r in rows:
-        a = dict(zip(a_cols, r))
+        a = dict(zip(a_cols, r, strict=False))
         try:
             a["question_snapshot"] = json.loads(a["question_snapshot"] or "{}")
         except Exception:

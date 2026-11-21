@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """生成 backend-main-fastapi/_version.py（完善方案 09 §3.1）。
 
-线上版本可追溯：/api/health 返回 git_sha + built_at，回答"线上跑的是哪个 commit"。
+线上版本可追溯：git_sha + built_at 由管理员鉴权的 /api/health/detail 返回
+（公开 /api/health 已脱敏只回 status/version），回答"线上跑的是哪个 commit"。
 由 deploy/push_update.py 在打包前调用；_version.py 不入库（.gitignore）。
 
 用法：

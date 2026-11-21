@@ -6,6 +6,7 @@
 2. GET /api/insight/weekly-report 本周 vs 上周统计与逐日曲线长度=7；
 3. POST /api/insight/smart-paper 三模式抽题 + basis 说明 + 422 校验。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -25,20 +26,31 @@ def _seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        db.add(Goal(exam_date=local_today() + datetime.timedelta(days=100),
-                    total_score_target=360))
+        # B4 用户隔离：种子必须归属测试主体（id=0），否则 today/周报按本人过滤后查不到
+        db.add(Goal(user_id=0, exam_date=local_today() + datetime.timedelta(days=100), total_score_target=360))
         for i in range(12):
-            db.add(QuizQuestion(
-                content=f"测试题目{i}", options='{"A":"1","B":"2"}',
-                answer="A", analysis="测试解析", subject="数电",
-                knowledge_point=f"组合逻辑{i % 3}", is_available=True,
-            ))
+            db.add(
+                QuizQuestion(
+                    content=f"测试题目{i}",
+                    options='{"A":"1","B":"2"}',
+                    answer="A",
+                    analysis="测试解析",
+                    subject="数电",
+                    knowledge_point=f"组合逻辑{i % 3}",
+                    is_available=True,
+                )
+            )
         now = utcnow()  # naive UTC，与 DB 列同语义
         for i in range(10):
-            db.add(StudyEvent(
-                event_type="answer", subject="数电", is_correct=(i % 2 == 0),
-                occurred_at=now - datetime.timedelta(hours=i * 8),
-            ))
+            db.add(
+                StudyEvent(
+                    user_id=0,
+                    event_type="answer",
+                    subject="数电",
+                    is_correct=(i % 2 == 0),
+                    occurred_at=now - datetime.timedelta(hours=i * 8),
+                )
+            )
         db.commit()
     finally:
         db.close()
@@ -69,8 +81,7 @@ def test_weekly_report():
 
 @pytest.mark.parametrize("mode", ["weak", "error_prone", "random"])
 def test_smart_paper_modes(mode):
-    r = client.post("/api/insight/smart-paper",
-                    json={"mode": mode, "size": 5, "subject": "数电"})
+    r = client.post("/api/insight/smart-paper", json={"mode": mode, "size": 5, "subject": "数电"})
     assert r.status_code == 200
     d = r.json()
     assert d["mode"] == mode

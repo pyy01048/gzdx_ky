@@ -8,6 +8,7 @@ import useStore from '../../store/useStore'
 import { resolveExamDate, examDateMD, examDaysLeft } from '../../utils/exam'
 import { examSubjectText } from '../../utils/kaoyanFields'
 import { ukey, readMigrated } from '../../utils/userKeys'
+import { readSchoolFavs, writeSchoolFavs } from '../../utils/schoolFavs'
 import { chartTheme } from '../charts'
 import { Marquee, usePointerFx, useReducedMotion, useReveal } from '../motion'
 import {
@@ -43,7 +44,6 @@ function covTitle(c) {
 }
 
 const PAGE_SIZE = 12
-const FAV_KEY = 'ky_fav_school_ids'
 const CMP_KEY = 'ky_compare_school_ids'
 const EXAM_KEY = 'ky_exam_list'
 const MAX_CMP = 5
@@ -496,7 +496,8 @@ export default function KaoyanSchools() {
   const [onlyFav, setOnlyFav] = useState(false)
 
   const [favs, setFavs] = useState(() => {
-    try { return new Set(readMigrated(FAV_KEY, [])) } catch { return new Set() }
+    /* 与详情页同源：统一读 kaoyan-fav-schools map（含旧 id 键一次性迁移），键为 String(id) */
+    try { return new Set(Object.keys(readSchoolFavs())) } catch { return new Set() }
   })
   const [cmpSet, setCmpSet] = useState(() => {
     try { return new Set(readMigrated(CMP_KEY, [])) } catch { return new Set() }
@@ -537,7 +538,19 @@ export default function KaoyanSchools() {
     load(sort)
   }, [load, sort, authStatus])
 
-  useEffect(() => { try { localStorage.setItem(ukey(FAV_KEY), JSON.stringify([...favs])) } catch { /* ignore */ } }, [favs])
+  useEffect(() => {
+    /* 写回统一 map：保留已有条目（详情页写入的 name/level），新增 id 从当前 rows 补全 */
+    const map = readSchoolFavs()
+    const next = {}
+    favs.forEach((id) => {
+      const k = String(id)
+      const row = rows.find((r) => String(r.id) === k)
+      next[k] = map[k] && Object.keys(map[k]).length
+        ? map[k]
+        : (row ? { name: row.name, level: row.level } : {})
+    })
+    writeSchoolFavs(next)
+  }, [favs, rows])
   useEffect(() => { try { localStorage.setItem(ukey(CMP_KEY), JSON.stringify([...cmpSet])) } catch { /* ignore */ } }, [cmpSet])
 
   const provinceOptions = useMemo(() => {
@@ -552,7 +565,7 @@ export default function KaoyanSchools() {
     if (filters.type && (r.type || '') !== filters.type) return false
     if (filters.province && normProvince(r.province) !== filters.province) return false
     if (filters.only0854 && !r.has0854) return false
-    if (onlyFav && !favs.has(r.id)) return false
+    if (onlyFav && !favs.has(String(r.id))) return false
     if (filters.keyword && !(r.name || '').toLowerCase().includes(filters.keyword.trim().toLowerCase())) return false
     const avg = r.admit_avg_score
     if (filters.numAdmitMin !== '' && (avg == null || avg < Number(filters.numAdmitMin))) return false
@@ -591,8 +604,9 @@ export default function KaoyanSchools() {
   }
 
   const toggleFav = (id) => setFavs((prev) => {
+    const k = String(id)
     const n = new Set(prev)
-    if (n.has(id)) n.delete(id); else n.add(id)
+    if (n.has(k)) n.delete(k); else n.add(k)
     return n
   })
 
@@ -1100,7 +1114,7 @@ export default function KaoyanSchools() {
                 key={s.id}
                 s={s}
                 idx={i}
-                isFav={favs.has(s.id)}
+                isFav={favs.has(String(s.id))}
                 isCmp={cmpSet.has(s.id)}
                 isOpen={expandedId === s.id}
                 majors={majorsMap[s.id]}

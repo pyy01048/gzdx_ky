@@ -11,6 +11,7 @@ error_linker.weak_knowledge_points（今日薄弱点与智能组卷的考点依�
 与仪表盘 D-10 同一口径）、study_events 流水。
 模型调用约定：本模块不调用 LLM，全部本地规则计算（快、可测、可离线）。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -64,9 +65,10 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
     except Exception:
         countdown = {"days": None}
 
-    # 今日到期复习（艾宾浩斯）
+    # 今日到期复习（艾宾浩斯）—— B4：只数本人队列，零数据新用户必须是 0，
+    # 否则全局 KP 队列截断 200 会让新号首屏出现"200 条到期复习"的假数据。
     try:
-        due_items = review_service.due_items(db, limit=200)
+        due_items = review_service.due_items(db, limit=200, user_id=uid)
         due_count = len(due_items) if isinstance(due_items, list) else 0
     except Exception:
         due_count = 0
@@ -81,15 +83,19 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
         task_count = 0
 
     # 今日答题流水（study_events）—— B4：只看当前用户，否则会串其他用户的答题数
-    q = db.query(
-        func.count(StudyEvent.id),
-        func.sum(func.cast(func.coalesce(StudyEvent.is_correct, sa.false()), sa.Integer)),
-    ).filter(
-        StudyEvent.event_type == "answer",
-        StudyEvent.user_id == uid,
-        StudyEvent.occurred_at >= day_start,
-        StudyEvent.occurred_at < day_end,
-    ).first()
+    q = (
+        db.query(
+            func.count(StudyEvent.id),
+            func.sum(func.cast(func.coalesce(StudyEvent.is_correct, sa.false()), sa.Integer)),
+        )
+        .filter(
+            StudyEvent.event_type == "answer",
+            StudyEvent.user_id == uid,
+            StudyEvent.occurred_at >= day_start,
+            StudyEvent.occurred_at < day_end,
+        )
+        .first()
+    )
     today_answered = int(q[0] or 0)
     today_correct = int(q[1] or 0)
 
@@ -107,8 +113,7 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
             "mastery": p["mastery"],
             # level 保持中文标签口径不变（"薄弱"/"已掌握"），前端沿用旧展示。
             "level": kp_mastery.STATE_LABELS[
-                kp_mastery.STATE_MASTERED if p["mastery"] >= kp_mastery.MASTERED_THRESHOLD
-                else kp_mastery.STATE_WEAK
+                kp_mastery.STATE_MASTERED if p["mastery"] >= kp_mastery.MASTERED_THRESHOLD else kp_mastery.STATE_WEAK
             ],
         }
         for p in error_linker.weak_points_view(db, limit=3, user_id=uid)
@@ -118,14 +123,34 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
     # 原因：emoji 在不同系统/字体下渲染差异大，且与产品图标体系风格冲突
     # （设计铁律 P0-1：禁止 emoji 作功能图标）。前端见 components/Icon.jsx。
     suggestions = [
-        {"icon": "review", "label": "到期复习", "count": due_count, "to": "/quiz?tab=review",
-         "hint": "艾宾浩斯队列到期，先复习再学新的" if due_count else "暂无到期复习"},
-        {"icon": "todo", "label": "今日待办", "count": task_count, "to": "/tasks",
-         "hint": "按计划推进今天的任务" if task_count else "还没有安排今日任务"},
-        {"icon": "target", "label": "薄弱点练习", "count": len(weak_top), "to": "/quiz?mode=weak",
-         "hint": "、".join([w["kp"] for w in weak_top[:2]]) if weak_top else "暂无薄弱点数据"},
-        {"icon": "brain", "label": "今日已答", "count": today_answered, "to": "/quiz",
-         "hint": f"正确 {today_correct} 题" if today_answered else "今天还没开始刷题"},
+        {
+            "icon": "review",
+            "label": "到期复习",
+            "count": due_count,
+            "to": "/quiz?tab=review",
+            "hint": "艾宾浩斯队列到期，先复习再学新的" if due_count else "暂无到期复习",
+        },
+        {
+            "icon": "todo",
+            "label": "今日待办",
+            "count": task_count,
+            "to": "/tasks",
+            "hint": "按计划推进今天的任务" if task_count else "还没有安排今日任务",
+        },
+        {
+            "icon": "target",
+            "label": "薄弱点练习",
+            "count": len(weak_top),
+            "to": "/quiz?mode=weak",
+            "hint": "、".join([w["kp"] for w in weak_top[:2]]) if weak_top else "暂无薄弱点数据",
+        },
+        {
+            "icon": "brain",
+            "label": "今日已答",
+            "count": today_answered,
+            "to": "/quiz",
+            "hint": f"正确 {today_correct} 题" if today_answered else "今天还没开始刷题",
+        },
     ]
 
     return {
@@ -142,8 +167,12 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
 # F4 · 学习周报
 # --------------------------------------------------------------------------- #
 @router.get("/weekly-report")
-def weekly_report(db: Session = Depends(get_db)):
-    """近 7 天 vs 前 7 天：答题量 / 正确率 / 学习时长 / 逐日曲线，附一句总结。"""
+def weekly_report(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """近 7 天 vs 前 7 天：答题量 / 正确率 / 学习时长 / 逐日曲线，附一句总结。
+
+    B4：答题流水与学习时长全部只取本人行。
+    """
+    uid = owner_id(user)
     today = local_today()
     this_first = today - datetime.timedelta(days=6)
     last_first = this_first - datetime.timedelta(days=7)
@@ -153,37 +182,55 @@ def weekly_report(db: Session = Depends(get_db)):
     last_start, last_end = local_range_utc(last_first, this_first)
 
     def _period_stats(start, end, day_from, day_to):
-        row = db.query(
-            func.count(StudyEvent.id),
-            func.sum(func.cast(func.coalesce(StudyEvent.is_correct, sa.false()), sa.Integer)),
-        ).filter(
-            StudyEvent.event_type == "answer",
-            StudyEvent.occurred_at >= start,
-            StudyEvent.occurred_at < end,
-        ).first()
+        row = (
+            db.query(
+                func.count(StudyEvent.id),
+                func.sum(func.cast(func.coalesce(StudyEvent.is_correct, sa.false()), sa.Integer)),
+            )
+            .filter(
+                StudyEvent.event_type == "answer",
+                StudyEvent.user_id == uid,
+                StudyEvent.occurred_at >= start,
+                StudyEvent.occurred_at < end,
+            )
+            .first()
+        )
         answered = int(row[0] or 0)
         correct = int(row[1] or 0)
         # 时长：study_stats 按日（Date 列存的也是北京自然日）
-        dur_row = db.query(func.coalesce(func.sum(StudyStats.total_duration), 0)).filter(
-            StudyStats.date >= day_from, StudyStats.date < day_to
-        ).first()
+        dur_row = (
+            db.query(func.coalesce(func.sum(StudyStats.total_duration), 0))
+            .filter(StudyStats.user_id == uid, StudyStats.date >= day_from, StudyStats.date < day_to)
+            .first()
+        )
         duration = int(dur_row[0] or 0)
-        return {"answered": answered, "correct": correct, "accuracy": (correct / answered) if answered else None, "duration": duration}
+        return {
+            "answered": answered,
+            "correct": correct,
+            "accuracy": (correct / answered) if answered else None,
+            "duration": duration,
+        }
 
     this_week = _period_stats(this_start, this_end, this_first, tomorrow)
     last_week = _period_stats(last_start, last_end, last_first, this_first)
 
     # 逐日曲线（近7天）：分桶口径必须与上面的窗口同源
     day_col = day_bucket_expr(StudyEvent.occurred_at, db)
-    daily_rows = db.query(
-        day_col,
-        func.count(StudyEvent.id),
-        func.sum(func.cast(func.coalesce(StudyEvent.is_correct, sa.false()), sa.Integer)),
-    ).filter(
-        StudyEvent.event_type == "answer",
-        StudyEvent.occurred_at >= this_start,
-        StudyEvent.occurred_at < this_end,
-    ).group_by(day_col).all()
+    daily_rows = (
+        db.query(
+            day_col,
+            func.count(StudyEvent.id),
+            func.sum(func.cast(func.coalesce(StudyEvent.is_correct, sa.false()), sa.Integer)),
+        )
+        .filter(
+            StudyEvent.event_type == "answer",
+            StudyEvent.user_id == uid,
+            StudyEvent.occurred_at >= this_start,
+            StudyEvent.occurred_at < this_end,
+        )
+        .group_by(day_col)
+        .all()
+    )
     daily_map = {str(r[0]): {"answered": int(r[1] or 0), "correct": int(r[2] or 0)} for r in daily_rows}
     daily = []
     for i in range(7):
@@ -226,14 +273,19 @@ def weekly_report(db: Session = Depends(get_db)):
 # --------------------------------------------------------------------------- #
 class SmartPaperReq(BaseModel):
     """POST /insight/smart-paper 请求体。"""
+
     mode: str = Field("weak", description="weak=薄弱点 / error_prone=易错 / random=随机")
     size: int = Field(10, ge=1, le=50, description="抽题数量")
     subject: Optional[str] = Field(None, description="限定科目")
 
 
 @router.post("/smart-paper")
-def smart_paper(req: SmartPaperReq, db: Session = Depends(get_db)):
-    """按模式智能抽题组卷（只返回可练题目，供前端直接进入练习会话）。"""
+def smart_paper(req: SmartPaperReq, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """按模式智能抽题组卷（只返回可练题目，供前端直接进入练习会话）。
+
+    B4：薄弱/易错依据只取本人错题，题库本身是共享内容不受隔离影响。
+    """
+    uid = owner_id(user)
     size = req.size
     base_q = db.query(QuizQuestion).filter(QuizQuestion.is_available == True)  # noqa: E712
     if req.subject:
@@ -248,13 +300,16 @@ def smart_paper(req: SmartPaperReq, db: Session = Depends(get_db)):
         # 并不存在，却会原样出现在返回给前端的 basis 文案里。
         # 这里仍按 QuizQuestion.knowledge_point 文本做 LIKE 匹配：题→考点的权威
         # 关系是 question_knowledge_links，等 #14 五层知识树一起做（见任务备注）。
-        weak_kps = [p["name"] for p in error_linker.weak_knowledge_points(
-            db, subject=req.subject, limit=10
-        ) if p["name"]]
+        weak_kps = [
+            p["name"]
+            for p in error_linker.weak_knowledge_points(db, subject=req.subject, limit=10, user_id=uid)
+            if p["name"]
+        ]
         if weak_kps:
             # 知识点模糊匹配（quiz_questions.knowledge_point 文本）
             conds = [QuizQuestion.knowledge_point.like(f"%{kp}%") for kp in weak_kps]
             from sqlalchemy import or_
+
             picked = base_q.filter(or_(*conds)).order_by(func.random()).limit(size).all()
             basis = f"按薄弱知识点抽题：{'、'.join(weak_kps[:5])}"
         else:
@@ -262,19 +317,32 @@ def smart_paper(req: SmartPaperReq, db: Session = Depends(get_db)):
             basis = "暂无薄弱点数据，已退化为随机抽题"
     elif req.mode == "error_prone":
         # 错题高频知识点：error_records 按题聚合 → 同知识点未错过题优先
-        rows = db.query(
-            QuizQuestion.knowledge_point, func.count(ErrorRecord.id).label("n")
-        ).join(ErrorRecord, ErrorRecord.question_id == QuizQuestion.id).group_by(
-            QuizQuestion.knowledge_point
-        ).order_by(func.count(ErrorRecord.id).desc()).limit(8).all()
+        rows = (
+            db.query(QuizQuestion.knowledge_point, func.count(ErrorRecord.id).label("n"))
+            .join(ErrorRecord, ErrorRecord.question_id == QuizQuestion.id)
+            .filter(ErrorRecord.user_id == uid)
+            .group_by(QuizQuestion.knowledge_point)
+            .order_by(func.count(ErrorRecord.id).desc())
+            .limit(8)
+            .all()
+        )
         hot_kps = [r[0] for r in rows if r[0]]
         if hot_kps:
             from sqlalchemy import or_
-            missed_ids = [r[0] for r in db.query(ErrorRecord.question_id).all() if r[0] is not None]
+
+            missed_ids = [
+                r[0]
+                for r in db.query(ErrorRecord.question_id).filter(ErrorRecord.user_id == uid).all()
+                if r[0] is not None
+            ]
             conds = [QuizQuestion.knowledge_point.like(f"%{kp}%") for kp in hot_kps]
-            picked = base_q.filter(or_(*conds)).filter(
-                ~QuizQuestion.id.in_(missed_ids) if missed_ids else True
-            ).order_by(func.random()).limit(size).all()
+            picked = (
+                base_q.filter(or_(*conds))
+                .filter(~QuizQuestion.id.in_(missed_ids) if missed_ids else True)
+                .order_by(func.random())
+                .limit(size)
+                .all()
+            )
             if picked:
                 basis = f"按易错知识点抽同类新题：{'、'.join(hot_kps[:5])}"
             else:
@@ -298,10 +366,16 @@ def smart_paper(req: SmartPaperReq, db: Session = Depends(get_db)):
         "size": len(picked),
         "questions": [
             {
-                "id": q.id, "content": q.content, "options": q.options,
-                "answer": q.answer, "analysis": q.analysis, "subject": q.subject,
-                "knowledge_point": q.knowledge_point, "question_type": q.question_type,
+                "id": q.id,
+                "content": q.content,
+                "options": q.options,
+                "answer": q.answer,
+                "analysis": q.analysis,
+                "subject": q.subject,
+                "knowledge_point": q.knowledge_point,
+                "question_type": q.question_type,
                 "difficulty": q.difficulty,
-            } for q in picked
+            }
+            for q in picked
         ],
     }

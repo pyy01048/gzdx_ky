@@ -28,6 +28,12 @@ import sys
 import tarfile
 import time
 
+# 服务器输出可能含 ✓/中文；Windows GBK 控制台直接 print 会 UnicodeEncodeError 崩溃
+# （服务器命令其实已成功，崩溃只在本地打印阶段，易误判部署失败）。errors=replace 兜底防崩。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="replace")
+
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BACKEND = os.path.join(BASE, "backend-main-fastapi")
 HOST = os.environ.get("SSH_HOST", "60.204.223.140")
@@ -282,12 +288,21 @@ def main() -> int:
         # ---- 重启 + 验证 ----
         remote(cli, "systemctl restart kaoyan && sleep 4 && systemctl is-active kaoyan", check=True)
         _, health = remote(cli, "curl -s 127.0.0.1:8000/api/health | head -c 400", check=True)
-        code_home, _ = remote(cli, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/")
+        # remote() 返回 (SSH退出码, stdout)，HTTP 码在 stdout——必须取第二个元素。
+        # 此前误写成 code, _ = remote(...) 取到退出码（恒 0），校验恒打印「HTTP 0」形同虚设。
+        _, code_home = remote(cli, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/")
         # 2026-11-20 访客扩容后口径：/api/documents 对访客只读开放（期望 200），
         # 个人数据 /api/tasks 仍默认拒绝（期望 401）——两条一起才证明门控没被放开过头。
-        code_guest, _ = remote(cli, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/documents")
-        code_auth, _ = remote(cli, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/tasks")
+        _, code_guest = remote(cli, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/documents")
+        _, code_auth = remote(cli, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/tasks")
         print(f"首页 HTTP {code_home}（期望 200）；访客读 /api/documents HTTP {code_guest}（期望 200）；未登录 /api/tasks HTTP {code_auth}（期望 401）")
+        for label, got, want in (
+            ("首页", code_home, "200"),
+            ("访客读 /api/documents", code_guest, "200"),
+            ("未登录 /api/tasks", code_auth, "401"),
+        ):
+            if got != want:
+                print(f"[警告] {label} HTTP {got} ≠ 期望 {want} —— 门控/静态可能异常，请查 journalctl 与 nginx，必要时 rollback.sh")
         # 2026-11-21 评审整改：/api/health 已脱敏（只回 status/version，零 DB 查询），
         # git_sha 移到鉴权的 /api/health/detail。这里只校验 status ok + version 存在。
         if '"ok"' not in health or '"version"' not in health:

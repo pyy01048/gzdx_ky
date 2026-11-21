@@ -1,10 +1,10 @@
 # 硕途考研平台 · 云端部署 Runbook（2C2G 轻量云端 + 本地算力节点）
 
-> 架构：云端 VPS 跑「Nginx + FastAPI(静态同进程托管) + PostgreSQL16/pgvector」；
+> 架构：云端 VPS 跑「Nginx（直接服务静态 SPA + 反代 /api）+ FastAPI(2 worker) + PostgreSQL16/pgvector」；
 > 重算力（PaddleOCR:8888 / bge-reranker:8140 / Ollama:11434）常驻家中 Windows 节点，
 > 经 **Tailscale** 内网被云端安全调用。云端不装 paddle/torch/FlagEmbedding/Ollama。
 >
-> - 云端 VPS：`60.204.223.140`（公网，当前 :80 仍是 Nginx 默认页）· Tailscale `100.72.33.1`
+> - 云端 VPS：`60.204.223.140`（公网 :80 已开放，见附录 C 个人使用决策）· Tailscale `100.72.33.1`
 > - 家中算力节点：Windows · Tailscale `100.92.154.42`
 > - 目标机：Ubuntu 22.04.5 · 2C/2G · 40G（已配 2G swap）
 
@@ -86,7 +86,7 @@ nginx -t && systemctl reload nginx
 curl -sI http://100.72.33.1/             # 应返回前端 index.html
 curl -s  http://100.72.33.1/api/health   # 应返回后端健康 JSON
 ```
-> 公网 `60.204.223.140:80` 仍为默认页——**故意不切**。公网放量需先满足上线门控（见 §9）。
+> 公网 `60.204.223.140:80` 已于 2026-10-18 按个人使用决策开放（附录 C）；§9 门控是将来域名/备案就绪后正式放量的标准，当前个人使用 HTTP 状态由用户裁定维持。
 
 ## 8. 本地算力节点（家中 Windows，Tailscale 100.92.154.42）
 - 安装并登录同一 tailnet 的 Tailscale；三服务**只绑 127.0.0.1/tailscale0**，ACL 仅允许云端访问。
@@ -95,6 +95,7 @@ curl -s  http://100.72.33.1/api/health   # 应返回后端健康 JSON
 - 本地关机时云端自动降级：rapidocr(CPU) / 跳精排或 LLM rerank / 云大模型 / fastembed 小 bge，公网不瘫。
 
 ## 9. 公网放量门控（go/no-go，未满足不得对 80/443 开 Web）
+> 现状（2026-10-18 起）：用户按个人使用决策已开放公网 HTTP（附录 C），备案/HTTPS 暂缓、由用户裁定维持。下列门控是将来正式域名放量（方案 A）的标准，非当前个人使用状态的阻断项。
 - [ ] [11] JWT+RBAC 生效；默认管理员密码已改；管理/备份/采集/训练接口 401/403；生产关闭公开 `/docs`
 - [ ] `KAOYAN_SECRET_KEY`/`JWT_SECRET` 固定并异地备份；CORS 仅正式域名
 - [ ] 域名 A 记录指向本机 + **ICP 备案通过**（大陆节点；赶时间可用境外节点免备案）
@@ -104,10 +105,10 @@ curl -s  http://100.72.33.1/api/health   # 应返回后端健康 JSON
 
 ## 10. 备份 / 回滚（2026-11-20 更新，完善方案 09）
 - 备份：`deploy/backup.sh`（cron `0 3 * * *`）→ pg_dump 加密 + 本地滚动 7 份 + rclone 异地滚动 30 份 + healthchecks 心跳。**同时备份 `/etc/kaoyan/backend.env` 与密钥**（否则网盘/AI 凭据不可解）；密钥用密码管理器/纸质离线保存，**绝不与密文同存储**。恢复演练见 `docs/guides/backup-restore-drill.md`（每季度）。
-- 回滚-应用：部署前自动 `backups/pre-<ts>.tar.gz`；服务器上 `tar xzf backups/pre-<ts>.tar.gz` 后 `systemctl restart kaoyan`。
+- 回滚-应用：部署前自动 `backups/pre-<ts>.tar.gz`；服务器上 `bash deploy/rollback.sh backend-code` 一键解包最近备份并重启（回滚前自动另存 `rollback-safety-*`，注意 tar 覆盖不删新版新增文件）；或手动 `tar xzf backups/pre-<ts>.tar.gz -C /opt/kaoyan` 后 `systemctl restart kaoyan`。
 - 回滚-前端：`push_update.py` 解包前自动把当前 `static` 重命名为 `static.prev`（此前该目录从不生成，回滚链断裂）；`bash deploy/rollback.sh frontend` 可一键换回并保留新版本为 prev。
 - 回滚-库：破坏性变更走「扩列→双写→回填→切读→删列」，发布前自动 pg_dump；`rollback.sh db` 给出停机恢复命令。
-- 版本可追溯：打包前 `scripts/gen_version.py` 生成 `_version.py`；`GET /api/health` 返回 `git_sha` / `built_at`；部署包名 `kaoyan-deploy-<ts>-<sha>.tar.gz`，本地只保留最近 5 份（`deploy/artifacts/`）。
+- 版本可追溯：打包前 `scripts/gen_version.py` 生成 `_version.py`；公开 `GET /api/health` 已脱敏只回 `status`/`version`，`git_sha`/`built_at` 移到管理员鉴权的 `GET /api/health/detail`；部署包名 `kaoyan-deploy-<ts>-<sha>.tar.gz`，本地只保留最近 5 份（`deploy/artifacts/`）。
 - 迁移：部署脚本统一执行 `python scripts/execute_core_sql.py --all-pending`（账本 `schema_migrations`，不再手工插播 SQL）。首次对存量库请先 `--status` 确认；账本为空时自动 baseline 只登记不执行。
 - SSH：部署默认用户 `deploy`（最小 sudo），主机指纹固定校验（`SSH_HOST_POLICY=pin`）；首次核对指纹时临时用 `SSH_HOST_POLICY=auto`。
 

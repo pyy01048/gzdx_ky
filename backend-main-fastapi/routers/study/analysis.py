@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from schemas import AnalysisRequest, LectureRequest
 from services import analysis_engine
 from sqlalchemy.orm import Session
+from utils.scope import owner_id  # B4 行级隔离：画像的模考维度只看本人
+from utils.security import current_user
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -116,7 +118,7 @@ def ocr_layout_cut(body: dict, db: Session = Depends(get_db)):
 
 # ---------------- T7：学习者画像 ---------------- #
 @router.get("/profile")
-def learner_profile(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
+def learner_profile(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db), user=Depends(current_user)):
     """学习者画像聚合（总览/科目掌握度/薄弱知识点/复习队列/趋势/建议）。
 
     数据全部来自真实行为表（answer_records/error_records/exam_sessions/tasks），
@@ -125,4 +127,4 @@ def learner_profile(days: int = Query(30, ge=1, le=365), db: Session = Depends(g
     from services.learner_profile import build_profile
 
     days = max(7, min(days, 180))  # 窗口夹紧，防全表扫描
-    return build_profile(db, days=days)
+    return build_profile(db, days=days, user_id=owner_id(user))

@@ -11,6 +11,7 @@
 数据隔离：直接向测试库插入 exam_sessions / exam_answers（原生 SQL），
 测试结束按 session_id 清理，不影响其它用例。
 """
+
 from __future__ import annotations
 
 import json
@@ -37,6 +38,7 @@ def _insert_session(db, *, subject="数学", paper="math2", status="submitted"):
 
     注意 question_source 在 PG 是 source_kind 枚举，合法值见 core/pg_types.py，
     这里用 external_import（与 core/sql 041 默认值一致），不能用 'all'。
+    B4（121 加列）：会话必须归属测试主体（id=0），否则列表/报告按本人过滤后 404。
     """
     from services.dbapi_compat import insert_returning_id
 
@@ -46,15 +48,25 @@ def _insert_session(db, *, subject="数学", paper="math2", status="submitted"):
         conn,
         "INSERT INTO exam_sessions"
         " (blueprint_key, subject, paper, mode, question_source, config,"
-        "  total_count, total_score, correct_count, score, time_limit_minutes, status)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ("math2:general", subject, paper, "normal", "external_import", config,
-         2, 10.0, 1, 5.0, 180, status),
+        "  total_count, total_score, correct_count, score, time_limit_minutes, status, user_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("math2:general", subject, paper, "normal", "external_import", config, 2, 10.0, 1, 5.0, 180, status, 0),
     )
 
 
-def _insert_answer(db, session_id, *, order_no, qid=None, snap, user_answer="",
-                   is_correct=None, time_spent=0, final_score=None, scored_by="auto"):
+def _insert_answer(
+    db,
+    session_id,
+    *,
+    order_no,
+    qid=None,
+    snap,
+    user_answer="",
+    is_correct=None,
+    time_spent=0,
+    final_score=None,
+    scored_by="auto",
+):
     """插入一条作答记录，返回 exam_answers.id。
 
     is_correct 在 PG 是 BOOLEAN 列：None 表示未判分，否则转 bool。
@@ -67,10 +79,18 @@ def _insert_answer(db, session_id, *, order_no, qid=None, snap, user_answer="",
         " (session_id, question_id, question_snapshot, section, order_no, user_answer,"
         "  is_correct, time_spent, final_score, scored_by)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (session_id, qid, json.dumps(snap, ensure_ascii=False), "一、单项选择题",
-         order_no, user_answer,
-         None if is_correct is None else bool(is_correct),
-         time_spent, final_score, scored_by),
+        (
+            session_id,
+            qid,
+            json.dumps(snap, ensure_ascii=False),
+            "一、单项选择题",
+            order_no,
+            user_answer,
+            None if is_correct is None else bool(is_correct),
+            time_spent,
+            final_score,
+            scored_by,
+        ),
     )
     return cur.lastrowid
 
@@ -104,17 +124,41 @@ def test_report_full_structure(client, db):
     try:
         # 客观题：正确，用时 30s，满分 5
         _insert_answer(
-            db, sid, order_no=1,
-            snap={"content": "1+1=?", "answer": "B", "knowledge_point": "算术",
-                  "question_type": "single", "answer_type": "objective", "max_score": 5.0},
-            user_answer="B", is_correct=1, time_spent=30, final_score=5.0, scored_by="auto",
+            db,
+            sid,
+            order_no=1,
+            snap={
+                "content": "1+1=?",
+                "answer": "B",
+                "knowledge_point": "算术",
+                "question_type": "single",
+                "answer_type": "objective",
+                "max_score": 5.0,
+            },
+            user_answer="B",
+            is_correct=1,
+            time_spent=30,
+            final_score=5.0,
+            scored_by="auto",
         )
         # 客观题：错误，用时 60s，满分 5
         _insert_answer(
-            db, sid, order_no=2,
-            snap={"content": "2+2=?", "answer": "D", "knowledge_point": "算术",
-                  "question_type": "single", "answer_type": "objective", "max_score": 5.0},
-            user_answer="A", is_correct=0, time_spent=60, final_score=0.0, scored_by="auto",
+            db,
+            sid,
+            order_no=2,
+            snap={
+                "content": "2+2=?",
+                "answer": "D",
+                "knowledge_point": "算术",
+                "question_type": "single",
+                "answer_type": "objective",
+                "max_score": 5.0,
+            },
+            user_answer="A",
+            is_correct=0,
+            time_spent=60,
+            final_score=0.0,
+            scored_by="auto",
         )
         db.commit()
 
@@ -209,16 +253,40 @@ def test_list_sessions_aggregated_fields(client, db):
 
     try:
         _insert_answer(
-            db, sid_submitted, order_no=1,
-            snap={"content": "Q", "answer": "B", "knowledge_point": "算术",
-                  "question_type": "single", "answer_type": "objective", "max_score": 5.0},
-            user_answer="B", is_correct=1, time_spent=10, final_score=5.0, scored_by="auto",
+            db,
+            sid_submitted,
+            order_no=1,
+            snap={
+                "content": "Q",
+                "answer": "B",
+                "knowledge_point": "算术",
+                "question_type": "single",
+                "answer_type": "objective",
+                "max_score": 5.0,
+            },
+            user_answer="B",
+            is_correct=1,
+            time_spent=10,
+            final_score=5.0,
+            scored_by="auto",
         )
         _insert_answer(
-            db, sid_ongoing, order_no=1,
-            snap={"content": "Q2", "answer": "C", "knowledge_point": "算术",
-                  "question_type": "single", "answer_type": "objective", "max_score": 5.0},
-            user_answer="", is_correct=None, time_spent=0, final_score=None, scored_by="auto",
+            db,
+            sid_ongoing,
+            order_no=1,
+            snap={
+                "content": "Q2",
+                "answer": "C",
+                "knowledge_point": "算术",
+                "question_type": "single",
+                "answer_type": "objective",
+                "max_score": 5.0,
+            },
+            user_answer="",
+            is_correct=None,
+            time_spent=0,
+            final_score=None,
+            scored_by="auto",
         )
         db.commit()
 

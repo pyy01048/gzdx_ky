@@ -26,13 +26,20 @@ function notifySyncStatus(status, error = null) {
 
 /* 改进版同步：本地即时更新 UI，后端异步持久化；失败时记录错误并提示，不静默 */
 /* V3.0 修复：接受工厂函数（返回Promise的函数），确保失败队列重试时能重新发起请求 */
+/* P0（跨账号串号）：代际号。resetAll（登出/强制下线）会自增代际，
+   旧账号仍在途的请求回来后不得再动 inflight 计数、不得把失败操作塞进
+   新账号的 failedQueue —— 否则 A 的离线写会重放进 B 账号。 */
+let syncGeneration = 0
+
 function syncTask(promiseOrFn, operationName = 'unknown') {
+  const gen = syncGeneration
   notifySyncStatus('syncing')
   syncState.inflight += 1
   // 支持传入Promise或工厂函数；工厂函数确保重试时能重新发起请求
   const getPromise = typeof promiseOrFn === 'function' ? promiseOrFn : () => promiseOrFn
   getPromise()
     .then(() => {
+      if (gen !== syncGeneration) return
       syncState.inflight -= 1
       // 并发时先返回的那个不能把还在跑、甚至已失败的操作冒充成「已同步」：
       // 只有在飞请求清零、失败队列也为空时才报 synced。
@@ -41,6 +48,7 @@ function syncTask(promiseOrFn, operationName = 'unknown') {
       retryFailedQueue()
     })
     .catch((err) => {
+      if (gen !== syncGeneration) return
       syncState.inflight -= 1
       console.error(`[sync] ${operationName} 失败:`, err)
       notifySyncStatus('error', err)
@@ -118,25 +126,26 @@ function stripApiKeys(providers) {
 }
 
 /* P3（用户数据隔离）：persist 落盘键按登录账号区分。
- * 实际读写键为 `kaoyan-archive-v1:{uid}`（uid 来自 utils/userKeys 的全局状态）；
- * uid 未设置（未登录）时「不读不写、空存储语义」—— getItem 返回 null（zustand
- * 视为无持久化数据），setItem/removeItem 跳过，避免把种子态写到全局键上。
- * 登录/恢复会话后由 AuthContext 调 useStore.persist.rehydrate() 读回该账号的落盘。 */
+ * 实际读写键为 `kaoyan-archive-v1:{uid}`（uid 来自 utils/userKeys 的全局状态）。
+ * P2（访客偏好）：uid 未设置（未登录）时落到独立匿名命名空间
+ * `kaoyan-archive-v1:anon` —— 访客改主题刷新不再丢；登录/恢复会话后
+ * rehydrate 读的是 `:{uid}` 键，anon 键的数据【不会】被搬进任何账号命名空间。 */
+const archiveKey = (name) => {
+  const key = ukey(name)
+  return key === name ? `${name}:anon` : key
+}
+/* 归档基名（导出供 AuthContext 会话清理时备份/还原当前账号的落盘归档：
+   resetAll 的 seed 落盘会覆盖归档，而 AI 会话等纯本地数据要保留到下次登录） */
+export const ARCHIVE_NAME = 'kaoyan-archive-v1'
 const userArchiveStorage = {
   getItem: (name) => {
-    const key = ukey(name)
-    if (key === name) return null // uid 未设置：不读
-    try { return localStorage.getItem(key) } catch { return null }
+    try { return localStorage.getItem(archiveKey(name)) } catch { return null }
   },
   setItem: (name, value) => {
-    const key = ukey(name)
-    if (key === name) return     // uid 未设置：不写
-    try { localStorage.setItem(key, value) } catch { /* 隐私模式 / 配额满 */ }
+    try { localStorage.setItem(archiveKey(name), value) } catch { /* 隐私模式 / 配额满 */ }
   },
   removeItem: (name) => {
-    const key = ukey(name)
-    if (key === name) return
-    try { localStorage.removeItem(key) } catch { /* 同上 */ }
+    try { localStorage.removeItem(archiveKey(name)) } catch { /* 同上 */ }
   },
 }
 
@@ -431,10 +440,21 @@ const useStore = create(
       setPacks: (newPacks) => set((s) => ({ packs: typeof newPacks === 'function' ? newPacks(s.packs) : newPacks })),
 
       /* ---------- 数据管理 ---------- */
-      resetAll: () => set({ ...seedState() })
+      resetAll: () => {
+        /* P0（跨账号串号）：只重置 zustand 不够 —— 模块级同步态属于上一个账号：
+           failedQueue 里的离线写会在网络恢复后重放进下一个账号；pendingOps
+           缓存着旧账号本地 id 的后续操作；inflight 计数不清会让「已同步」误报。
+           代际自增让仍在途的旧请求回来后静默作废（见 syncTask）。 */
+        syncGeneration += 1
+        syncState.failedQueue = []
+        syncState.inflight = 0
+        Object.keys(pendingOps).forEach((k) => { delete pendingOps[k] })
+        notifySyncStatus('idle')
+        set({ ...seedState() })
+      }
     }),
     {
-      name: 'kaoyan-archive-v1',
+      name: ARCHIVE_NAME,
       /* P3：存储层换成按 uid 的自定义 storage（见上方 userArchiveStorage），
          name 保留为基名，真实键由 userKeys.ukey() 追加 `:{uid}` 后缀。
          批次2-6（P2-3）：persist 加固
@@ -482,3 +502,7 @@ function seedState() {
 }
 
 export default useStore
+
+/* 仅供测试断言同步队列清理（resetAll 后 failedQueue/pendingOps/inflight 必须为空）。
+   业务代码不得绕过 action 直接改这两个对象。 */
+export { syncState as __syncStateForTest, pendingOps as __pendingOpsForTest }

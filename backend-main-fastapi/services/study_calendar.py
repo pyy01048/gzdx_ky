@@ -27,6 +27,7 @@ streak / 热力图 / 趋势 / KPI / 未来负荷全部从同一份 ``DayActivity
 - **今日未学不算断签**：streak 从今天往前数，今天还没学时从昨天起算
   （``current_streak`` 保持不立即清零），避免白天任何时候打开首页都显示"断了"。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -167,10 +168,10 @@ def day_ledger(
         db: SQLAlchemy Session。
         start_day / end_day: 闭区间；``start_day=None`` 表示不限下界（全量历史）。
         user_id: B4 行级隔离——传入时全部个人表（study_sessions / review_records /
-            answer_records / tasks / error_records）都按该用户过滤；不传（默认
-            None）保持旧行为（不过滤），兼容尚未接线的调用方。调用方（路由层）
-            一律传 ``owner_id(user)``。注意：模考场次（core.models.exams.ExamSession）
-            尚无 user_id 列，模考场次暂按全库计数。
+            answer_records / tasks / error_records / exam_sessions）都按该用户
+            过滤；不传（默认 None）保持旧行为（不过滤），兼容尚未接线的调用方。
+            调用方（路由层）一律传 ``owner_id(user)``。模考场次存量 NULL 行
+            （121 加列前创建）无归属，不计入任何个人统计。
     """
     end_day = end_day or local_today()
     # local_window_for_day 返回该本地日的 [起, 止)，取 [1] 才是**含 end_day** 的右开边界
@@ -225,8 +226,7 @@ def day_ledger(
         _slot(str(d)).focus_minutes = int(minutes or 0)
 
     # 2. 复习行为（review_records 按 item_type 分流：word/flashcard/knowledge/error）
-    field_map = {"word": "words_done", "flashcard": "cards_done",
-                 "knowledge": "knowledge_done", "error": "errors_done"}
+    field_map = {"word": "words_done", "flashcard": "cards_done", "knowledge": "knowledge_done", "error": "errors_done"}
     for d, item_type, n in _count_by_day(
         ReviewRecord.created_at,
         ReviewRecord.id,
@@ -254,14 +254,14 @@ def day_ledger(
         act.questions_correct = int(correct or 0)
 
     # 4. 模考场次（真题模块）：表建在 core/sql/041，ORM 分片在 core.models.exams。
-    #    B4 注：ExamSession 尚无 user_id 列，模考场次暂按全库计数（待 models 层加列后补过滤）。
+    #    B4：121 分片已补 user_id，按本人过滤；存量 NULL 行不计入任何个人统计。
     try:
         from core.models.exams import ExamSession
 
         for d, _lbl, n in _count_by_day(
             ExamSession.submitted_at,
             ExamSession.id,
-            extra=(ExamSession.status == "submitted", ExamSession.submitted_at.isnot(None)),
+            extra=(ExamSession.status == "submitted", ExamSession.submitted_at.isnot(None), *_user_extra(ExamSession)),
         ):
             _slot(d).exams_done = n
     except Exception:  # noqa: BLE001 - 老库没跑 041 分片时，真题记 0，不能让整张仪表盘 500
@@ -277,9 +277,7 @@ def day_ledger(
         _slot(d).tasks_done = n
 
     # 6. 错题新增（趋势副标用，不参与打卡判定）
-    for d, _lbl, n in _count_by_day(
-        ErrorRecord.created_at, ErrorRecord.id, extra=_user_extra(ErrorRecord)
-    ):
+    for d, _lbl, n in _count_by_day(ErrorRecord.created_at, ErrorRecord.id, extra=_user_extra(ErrorRecord)):
         _slot(d).errors_added = n
 
     return ledger
@@ -293,17 +291,13 @@ def focus_minutes_on(db, day: datetime.date, user_id: Optional[int] = None) -> i
     所以「计时器说记了 25 分钟」和「KPI 卡显示 25 分钟」不可能是两个数。
     B4 行级隔离：``user_id`` 传入时只统计该用户的专注记录；不传保持旧行为。
     """
-    q = db.query(func.coalesce(func.sum(StudySession.duration), 0)).filter(
-        StudySession.date == day
-    )
+    q = db.query(func.coalesce(func.sum(StudySession.duration), 0)).filter(StudySession.date == day)
     if user_id is not None:
         q = q.filter(StudySession.user_id == user_id)
     return int(q.scalar() or 0)
 
 
-def fill_series(
-    ledger: Dict[str, DayActivity], start_day: datetime.date, end_day: datetime.date
-) -> List[DayActivity]:
+def fill_series(ledger: Dict[str, DayActivity], start_day: datetime.date, end_day: datetime.date) -> List[DayActivity]:
     """把台账补成 ``[start_day, end_day]`` 逐日连续序列（缺的日子补 0）。
 
     折线/热力图需要**每天都有一格**，否则空档会消失，用户看不出"这周只学了两天"。
@@ -316,9 +310,7 @@ def fill_series(
     return out
 
 
-def streak_summary(
-    ledger: Dict[str, DayActivity], *, today: Optional[datetime.date] = None
-) -> dict:
+def streak_summary(ledger: Dict[str, DayActivity], *, today: Optional[datetime.date] = None) -> dict:
     """连续打卡：当前 / 历史最长 / 累计有效天数。
 
     与 ``day_ledger`` 同源：只看 ``is_effective``，不再各写一套过滤条件。

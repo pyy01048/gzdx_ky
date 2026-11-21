@@ -13,6 +13,7 @@
 诚实口径：study_sessions 真实时长优先，无记录的天用行为量估算
 （沿用 learning_analytics_service 的 30min/任务、5min/题口径）。
 """
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -55,35 +56,34 @@ def _mastery_level(acc: Optional[float], error_stock: int) -> str:
     return "强"
 
 
-def build_profile(db_session, days: int = 30) -> Dict:
-    """聚合学习者画像。"""
+def build_profile(db_session, days: int = 30, *, user_id: Optional[int] = None) -> Dict:
+    """聚合学习者画像。
+
+    B4：user_id 传入时模考场次（exam_sessions）只数本人行；
+    其余聚合暂保持旧口径（本波只整改模考串号，答题/错题口径另行处理）。
+    """
 
     conn = wrap_conn(db_session.connection().connection)
     today = local_today()
     # 区间起点必须是北京日的 UTC 瞬时，不能是本地零点字符串
-    start_dt, _end_dt = local_range_utc(
-        today - timedelta(days=days - 1), today + timedelta(days=1)
-    )
+    start_dt, _end_dt = local_range_utc(today - timedelta(days=days - 1), today + timedelta(days=1))
 
     # ---------- 1. 总览 ----------
-    ar = conn.execute(
-        "SELECT COUNT(*), COALESCE(SUM(CAST(is_correct AS INTEGER)),0) FROM answer_records"
-    ).fetchone()
+    ar = conn.execute("SELECT COUNT(*), COALESCE(SUM(CAST(is_correct AS INTEGER)),0) FROM answer_records").fetchone()
     total_answers, total_correct = ar[0], ar[1]
     # error_records 的状态词表只有 active / graduated（models.py:292 注释 +
     # routers/errors.py:261 唯一非默认写点）。此前写的 'submitted' 属于
     # exam_sessions（core/sql/041_papers_exams.sql:113 CHECK 约束），
     # 'resolved' 从来没有一处写入点 —— 于是「错题已解决」恒为 0，
     # 用户把错题全部毕业移出后那个数字还是 0。
-    err_stock = conn.execute(
-        "SELECT COUNT(*) FROM error_records WHERE status = 'active'"
-    ).fetchone()[0]
-    err_resolved = conn.execute(
-        "SELECT COUNT(*) FROM error_records WHERE status = 'graduated'"
-    ).fetchone()[0]
-    exam_stats = conn.execute(
-        "SELECT COUNT(*), COALESCE(AVG(score),0) FROM exam_sessions WHERE status='submitted'"
-    ).fetchone()
+    err_stock = conn.execute("SELECT COUNT(*) FROM error_records WHERE status = 'active'").fetchone()[0]
+    err_resolved = conn.execute("SELECT COUNT(*) FROM error_records WHERE status = 'graduated'").fetchone()[0]
+    exam_sql = "SELECT COUNT(*), COALESCE(AVG(score),0) FROM exam_sessions WHERE status='submitted'"
+    exam_params: tuple = ()
+    if user_id is not None:
+        exam_sql += " AND user_id = ?"
+        exam_params = (user_id,)
+    exam_stats = conn.execute(exam_sql, exam_params).fetchone()
     # 学习天数：answer_records/error_records/tasks 有行为的去重**北京自然日**。
     # 旧写法 substring(CAST(ts AS text),1,10) 切的是 UTC 日（PG 会话时区钉在 UTC），
     # 北京 00:00~08:00 的学习因此记在前一天；分桶的唯一出口是 day_bucket_expr。
@@ -95,13 +95,14 @@ def build_profile(db_session, days: int = 30) -> Dict:
     active_days_q = union_all(
         sa_select(day_bucket_expr(AnswerRecord.created_at, db_session).label("d")),
         sa_select(day_bucket_expr(ErrorRecord.created_at, db_session).label("d")),
-        sa_select(day_bucket_expr(Task.updated_at, db_session).label("d")).where(
-            Task.status == "done"
-        ),
+        sa_select(day_bucket_expr(Task.updated_at, db_session).label("d")).where(Task.status == "done"),
     ).subquery()
-    study_days = db_session.execute(
-        sa_select(sa_func.count(sa_func.distinct(active_days_q.c.d))).select_from(active_days_q)
-    ).scalar() or 0
+    study_days = (
+        db_session.execute(
+            sa_select(sa_func.count(sa_func.distinct(active_days_q.c.d))).select_from(active_days_q)
+        ).scalar()
+        or 0
+    )
 
     overview = {
         "total_answers": total_answers,
@@ -130,13 +131,13 @@ def build_profile(db_session, days: int = 30) -> Dict:
             " WHERE status = 'active' AND subject IS NOT NULL GROUP BY subject"
         )
     }
-    subj_exam = {
-        r[0]: (r[1], r[2])
-        for r in conn.execute(
-            "SELECT subject, COUNT(*), COALESCE(AVG(score),0) FROM exam_sessions"
-            " WHERE status='submitted' AND subject IS NOT NULL GROUP BY subject"
-        )
-    }
+    subj_exam_sql = (
+        "SELECT subject, COUNT(*), COALESCE(AVG(score),0) FROM exam_sessions"
+        " WHERE status='submitted' AND subject IS NOT NULL"
+    )
+    if user_id is not None:
+        subj_exam_sql += " AND user_id = ?"
+    subj_exam = {r[0]: (r[1], r[2]) for r in conn.execute(subj_exam_sql + " GROUP BY subject", exam_params)}
     all_subjects = set(subj_acc) | set(subj_err) | set(subj_exam)
     subjects = []
     for s in sorted(all_subjects):
@@ -144,16 +145,20 @@ def build_profile(db_session, days: int = 30) -> Dict:
         stock = subj_err.get(s, 0)
         acc = _pct(ok, n)
         ec, es = subj_exam.get(s, (0, 0))
-        subjects.append({
-            "subject": s,
-            "answered": n,
-            "accuracy": acc,
-            "error_stock": stock,
-            "exam_count": ec,
-            "exam_avg": round(es, 1) if ec else None,
-            "mastery": _mastery_level(acc, stock),
-        })
-    subjects.sort(key=lambda x: ({"危": 0, "弱": 1, "稳": 2, "强": 3, "未开始": 4}.get(x["mastery"], 9), -(x["error_stock"])))
+        subjects.append(
+            {
+                "subject": s,
+                "answered": n,
+                "accuracy": acc,
+                "error_stock": stock,
+                "exam_count": ec,
+                "exam_avg": round(es, 1) if ec else None,
+                "mastery": _mastery_level(acc, stock),
+            }
+        )
+    subjects.sort(
+        key=lambda x: ({"危": 0, "弱": 1, "稳": 2, "强": 3, "未开始": 4}.get(x["mastery"], 9), -(x["error_stock"]))
+    )
 
     # ---------- 3. 薄弱知识点 TOP ----------
     # 评分与截断的唯一出口是 services/error_linker.weak_knowledge_points：
@@ -171,13 +176,9 @@ def build_profile(db_session, days: int = 30) -> Dict:
     # 上面 weak_points 来自 error_records，必然有记录，全部按薄弱处理。
     learned_ids = kp_mastery.learned_kp_ids_raw(conn)
     kp_state_counts = {"total": 0, "unlearned": 0, "learning": 0, "weak": 0, "mastered": 0}
-    for kp_id, kp_mastery_val in conn.execute(
-        "SELECT id, mastery FROM knowledge_points"
-    ).fetchall():
+    for kp_id, kp_mastery_val in conn.execute("SELECT id, mastery FROM knowledge_points").fetchall():
         kp_state_counts["total"] += 1
-        kp_state_counts[
-            kp_mastery.classify_state(kp_mastery_val, kp_id in learned_ids)
-        ] += 1
+        kp_state_counts[kp_mastery.classify_state(kp_mastery_val, kp_id in learned_ids)] += 1
     knowledge_points = {
         **kp_state_counts,
         "labels": kp_mastery.STATE_LABELS,
@@ -205,8 +206,7 @@ def build_profile(db_session, days: int = 30) -> Dict:
         # `next_review=''` 会报 invalid input syntax for type timestamp（实测踩坑）。
         # SQLite 时代用空串表示"未排程"，迁移时若残留空串已在数据清洗阶段转为 NULL。
         "no_schedule": conn.execute(
-            "SELECT COUNT(*) FROM error_records WHERE status='active'"
-            " AND next_review IS NULL"
+            "SELECT COUNT(*) FROM error_records WHERE status='active' AND next_review IS NULL"
         ).fetchone()[0],
     }
 
@@ -235,7 +235,10 @@ def build_profile(db_session, days: int = 30) -> Dict:
             sa_func.sum(trend_src.c.a),
             sa_func.sum(trend_src.c.c),
             sa_func.sum(trend_src.c.e),
-        ).select_from(trend_src).group_by(trend_src.c.d).order_by(trend_src.c.d)
+        )
+        .select_from(trend_src)
+        .group_by(trend_src.c.d)
+        .order_by(trend_src.c.d)
     ).fetchall()
     trend = [
         {
@@ -256,11 +259,15 @@ def build_profile(db_session, days: int = 30) -> Dict:
         suggestions.append(f"今日有 {review_queue['due_today']} 条错题到期待复习")
     danger = [s for s in subjects if s["mastery"] == "危"]
     if danger:
-        suggestions.append(f"『{danger[0]['subject']}』处于危险区（正确率 {danger[0]['accuracy'] if danger[0]['accuracy'] is not None else '无'}%，错题积压 {danger[0]['error_stock']}），建议今天专项突破")
+        suggestions.append(
+            f"『{danger[0]['subject']}』处于危险区（正确率 {danger[0]['accuracy'] if danger[0]['accuracy'] is not None else '无'}%，错题积压 {danger[0]['error_stock']}），建议今天专项突破"
+        )
     if total_answers > 0 and err_stock > total_answers * 0.3:
         suggestions.append("错题增速偏高：答 3 题错 1 题以上，考虑降难度或先复习再刷")
     if overview["exam_avg_score"] is not None and overview["exam_avg_score"] < 60:
-        suggestions.append(f"模考均分 {overview['exam_avg_score']}（满分90的834卷），限时训练不足，建议每周一次全真模考")
+        suggestions.append(
+            f"模考均分 {overview['exam_avg_score']}（满分90的834卷），限时训练不足，建议每周一次全真模考"
+        )
     if not suggestions:
         suggestions.append("节奏健康：保持当前学习频率，优先清空到期复习")
 

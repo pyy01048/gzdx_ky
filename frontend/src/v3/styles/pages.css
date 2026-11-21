@@ -1058,3 +1058,39 @@ button.v3-dash-link {
 .v3-auth-landing__icon.is-bad { color: var(--v3-danger, #ff3b30); background: rgba(255,59,48,.1); }
 .v3-auth-landing__icon.is-wait { color: var(--v3-primary, #007aff); background: rgba(0,122,255,.1); }
 .v3-auth-landing__form { display: flex; flex-direction: column; gap: 12px; text-align: left; margin-top: 6px; }
+
+/* ========================================================================== */
+/* 首跑初始化向导（P1）—— 字号仅用 12/13/14/16/20/24，无渐变按钮、无毛玻璃      */
+/* ========================================================================== */
+.v3-onboard { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.v3-onboard__steps { display: flex; flex-wrap: wrap; gap: 8px; }
+.v3-onboard__step {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 32px; padding: 0 12px; border-radius: 999px;
+  font-size: var(--v3-fs-13); color: var(--v3-text-3);
+  background: var(--v3-fill-2, rgba(120,120,128,.12));
+}
+.v3-onboard__step.is-active { color: var(--v3-primary); background: var(--v3-primary-container, rgba(0,122,255,.12)); }
+.v3-onboard__step.is-done { color: var(--v3-success, #34c759); }
+.v3-onboard__card { display: flex; flex-direction: column; gap: 18px; padding: 24px; }
+.v3-onboard__head { display: flex; align-items: flex-start; gap: 12px; }
+.v3-onboard__icon {
+  display: grid; place-items: center; width: 40px; height: 40px; flex: none;
+  border-radius: 12px; color: var(--v3-primary);
+  background: var(--v3-primary-container, rgba(0,122,255,.12));
+}
+.v3-onboard__title { font-size: var(--v3-fs-16); font-weight: 600; color: var(--v3-text-1); }
+.v3-onboard__sub { margin-top: 2px; font-size: var(--v3-fs-13); color: var(--v3-text-3); line-height: 1.6; }
+.v3-onboard__form { display: flex; flex-direction: column; gap: 14px; }
+.v3-onboard__form--grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.v3-onboard__note { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--v3-fs-13); color: var(--v3-text-2); line-height: 1.6; }
+.v3-onboard__group { display: flex; flex-direction: column; gap: 8px; }
+.v3-onboard__group-title { font-size: var(--v3-fs-13); font-weight: 600; color: var(--v3-text-2); }
+.v3-onboard__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.v3-onboard__chips .v3-chip { min-height: 44px; font-size: var(--v3-fs-13); }
+.v3-onboard__actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.v3-onboard__actions .v3-btn { min-height: 44px; }
+@media (max-width: 640px) {
+  .v3-onboard__form--grid { grid-template-columns: 1fr; }
+  .v3-onboard__card { padding: 18px; }
+}

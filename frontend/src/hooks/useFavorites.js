@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { favoritesApi } from '../api/client'
+import { currentUid } from '../utils/userKeys'
 
 /* ---------------------------------------------------------------------------
  * 全站收藏状态 hook（S7）
@@ -54,6 +55,14 @@ export function clearFavoriteCache() {
   sharedCache.clear()
   inflight.clear()
   notify()
+}
+
+/* P0（跨账号串号）：收藏缓存是模块级的，key 只有 item_type:item_id、不带 uid。
+   登录/登出/切号（AuthContext.setUser 广播 uid-changed）时必须整体作废，
+   否则 B 账号会直接看到 A 的收藏星标。此前只有 Favorites.jsx 手动清，
+   不经过收藏页的切号路径全部漏清。 */
+if (typeof window !== 'undefined') {
+  window.addEventListener('userkeys:uid-changed', clearFavoriteCache)
 }
 
 /**
@@ -141,6 +150,8 @@ export function useFavoriteProbe(items) {
   const probe = useCallback(async () => {
     const miss = (items || []).filter((i) => !sharedCache.has(keyOf(i.item_type, i.item_id)))
     if (miss.length === 0) return
+    /* 批量探测在途时切号：响应属于旧账号，回来不得写进新账号的缓存 */
+    const uidAtStart = currentUid()
 
     // 按 item_type 归组：ids 参数是同一类型下的 ID 列表，跨类型必须分开请求
     const byType = new Map()
@@ -163,6 +174,7 @@ export function useFavoriteProbe(items) {
         const p = favoritesApi
           .checkMany(itemType, chunk)
           .then((r) => {
+            if (currentUid() !== uidAtStart) return
             const map = r?.map || {}
             for (const id of chunk) {
               sharedCache.set(keyOf(itemType, id), Boolean(map[String(id)]))

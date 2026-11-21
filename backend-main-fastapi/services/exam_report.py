@@ -18,6 +18,7 @@ A5 模考考后报告（services/exam_report.py）
   content / options / answer / analysis / subject / chapter /
   knowledge_point / question_type / answer_type / rubric / max_score
 """
+
 from __future__ import annotations
 
 import json
@@ -47,8 +48,10 @@ def _max_score(snap: Dict[str, Any]) -> float:
         return 0.0
 
 
-def session_report(db, session_id: int) -> Optional[Dict[str, Any]]:
+def session_report(db, session_id: int, *, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """生成模考考后报告。
+
+    B4：user_id 传入时只认本人会话（他人会话 → None → 路由 404）。
 
     Returns:
         报告 dict；session 不存在时返回 None。
@@ -58,10 +61,12 @@ def session_report(db, session_id: int) -> Optional[Dict[str, Any]]:
     ensure_module_a_schema(db)
     conn = wrap_conn(db.connection().connection)
 
-    sess = conn.execute(
-        "SELECT id, subject, paper, status FROM exam_sessions WHERE id = ?",
-        (session_id,),
-    ).fetchone()
+    report_sql = "SELECT id, subject, paper, status FROM exam_sessions WHERE id = ?"
+    report_params: list = [session_id]
+    if user_id is not None:
+        report_sql += " AND user_id = ?"
+        report_params.append(user_id)
+    sess = conn.execute(report_sql, report_params).fetchone()
     if not sess:
         return None
 
@@ -71,11 +76,23 @@ def session_report(db, session_id: int) -> Optional[Dict[str, Any]]:
         " FROM exam_answers WHERE session_id = ? ORDER BY order_no",
         (session_id,),
     ).fetchall()
-    a_cols = ["id", "question_id", "question_snapshot", "section", "order_no", "user_answer",
-              "is_correct", "time_spent", "ai_score", "self_score", "final_score", "scored_by"]
+    a_cols = [
+        "id",
+        "question_id",
+        "question_snapshot",
+        "section",
+        "order_no",
+        "user_answer",
+        "is_correct",
+        "time_spent",
+        "ai_score",
+        "self_score",
+        "final_score",
+        "scored_by",
+    ]
     answers = []
     for r in rows:
-        a = dict(zip(a_cols, r))
+        a = dict(zip(a_cols, r, strict=False))
         a["question_snapshot"] = _snap(a)
         answers.append(a)
 
@@ -85,12 +102,12 @@ def session_report(db, session_id: int) -> Optional[Dict[str, Any]]:
 def _build_report(sess, answers: List[Dict[str, Any]]) -> Dict[str, Any]:
     """由会话行 + 作答列表现算聚合。answers 为空时返回空报告结构。"""
     # ---- overview 基础量 ----
-    total_score = 0.0      # 实际得分（final_score 之和）
-    max_score = 0.0        # 实际作答满分（快照 max_score 之和）
-    total_time = 0         # 总用时（秒）
-    correct_count = 0      # 客观题正确数
-    objective_count = 0     # 客观题总数（有 is_correct 判分）
-    judged_count = 0        # 有判分的题数（is_correct 非 NULL）
+    total_score = 0.0  # 实际得分（final_score 之和）
+    max_score = 0.0  # 实际作答满分（快照 max_score 之和）
+    total_time = 0  # 总用时（秒）
+    correct_count = 0  # 客观题正确数
+    objective_count = 0  # 客观题总数（有 is_correct 判分）
+    judged_count = 0  # 有判分的题数（is_correct 非 NULL）
     type_dist: Dict[str, int] = defaultdict(int)
 
     # ---- section_scores 聚合 ----
@@ -99,9 +116,7 @@ def _build_report(sess, answers: List[Dict[str, Any]]) -> Dict[str, Any]:
     )
 
     # ---- knowledge 聚合 ----
-    kp_acc: Dict[str, Dict[str, int]] = defaultdict(
-        lambda: {"correct": 0, "judged": 0, "count": 0}
-    )
+    kp_acc: Dict[str, Dict[str, int]] = defaultdict(lambda: {"correct": 0, "judged": 0, "count": 0})
 
     # ---- time / wrong ----
     time_items: List[Dict[str, Any]] = []
@@ -158,26 +173,30 @@ def _build_report(sess, answers: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         # time_analysis
         if time_spent > 0:
-            time_items.append({
-                "order_no": a.get("order_no"),
-                "question_id": a.get("question_id"),
-                "question_type": qtype,
-                "time_spent": time_spent,
-            })
+            time_items.append(
+                {
+                    "order_no": a.get("order_no"),
+                    "question_id": a.get("question_id"),
+                    "question_type": qtype,
+                    "time_spent": time_spent,
+                }
+            )
 
         # wrong_questions
         if is_correct is not None and int(is_correct) == 0:
-            wrong_questions.append({
-                "id": a.get("id"),
-                "question_id": a.get("question_id"),
-                "order_no": a.get("order_no"),
-                "question_type": qtype,
-                "content": (snap.get("content") or "")[:100],
-                "user_answer": a.get("user_answer") or "",
-                "correct_answer": snap.get("answer") or "",
-                "final_score": final,
-                "max_score": max_s,
-            })
+            wrong_questions.append(
+                {
+                    "id": a.get("id"),
+                    "question_id": a.get("question_id"),
+                    "order_no": a.get("order_no"),
+                    "question_type": qtype,
+                    "content": (snap.get("content") or "")[:100],
+                    "user_answer": a.get("user_answer") or "",
+                    "correct_answer": snap.get("answer") or "",
+                    "final_score": final,
+                    "max_score": max_s,
+                }
+            )
 
     # ---- 组装 ----
     overview = {
@@ -197,33 +216,35 @@ def _build_report(sess, answers: List[Dict[str, Any]]) -> Dict[str, Any]:
     section_scores = []
     for qtype in sorted(sec_acc.keys()):
         s = sec_acc[qtype]
-        section_scores.append({
-            "question_type": qtype,
-            "count": s["count"],
-            "score": round(s["score"], 2),
-            "max_score": round(s["max_score"], 2),
-            "accuracy": round(s["correct"] / s["count"], 4) if s["count"] else 0.0,
-        })
+        section_scores.append(
+            {
+                "question_type": qtype,
+                "count": s["count"],
+                "score": round(s["score"], 2),
+                "max_score": round(s["max_score"], 2),
+                "accuracy": round(s["correct"] / s["count"], 4) if s["count"] else 0.0,
+            }
+        )
 
     # 知识点正确率：judged=0 视为薄弱（正确率 0），参与排序
     knowledge_weakness = []
     for kp, acc in kp_acc.items():
         rate = acc["correct"] / acc["judged"] if acc["judged"] else 0.0
-        knowledge_weakness.append({
-            "knowledge_point": kp,
-            "correct_rate": round(rate, 4),
-            "correct_count": acc["correct"],
-            "question_count": acc["count"],
-        })
+        knowledge_weakness.append(
+            {
+                "knowledge_point": kp,
+                "correct_rate": round(rate, 4),
+                "correct_count": acc["correct"],
+                "question_count": acc["count"],
+            }
+        )
     knowledge_weakness.sort(key=lambda x: (x["correct_rate"], x["correct_count"]))
     knowledge_weakness = knowledge_weakness[:5]
 
     time_analysis = {
         "total_time_spent": total_time,
         "average_time_per_question": round(total_time / len(answers), 2) if answers else 0.0,
-        "top_slowest_questions": sorted(
-            time_items, key=lambda x: x["time_spent"], reverse=True
-        )[:5],
+        "top_slowest_questions": sorted(time_items, key=lambda x: x["time_spent"], reverse=True)[:5],
     }
 
     return {

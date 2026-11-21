@@ -43,15 +43,77 @@ def _now() -> datetime.datetime:
 # 领域核心术语（超出 search_service.CORE_TERMS 的补充，覆盖数据结构/计组/政治/英语等）
 # 原则：只放"出现即指向某考点"的具体术语，杜绝"特点/方法/分析"这类泛词。
 ERR_TERMS = [
-    "线性表", "栈", "队列", "链表", "二叉树", "树", "图", "查找", "排序",
-    "哈希", "时间复杂度", "空间复杂度", "递归",
-    "进制", "原码", "反码", "补码", "浮点数", "指令", "中断", "存储系统",
-    "进程", "线程", "虚拟内存", "文件系统", "网络层", "传输层", "路由",
-    "马克思主义", "哲学", "辩证法", "矛盾", "实践", "物质", "意识", "认识论", "历史唯物主义",
-    "极限", "连续", "导数", "微分", "积分", "级数", "矩阵", "行列式", "特征值", "向量组",
-    "阅读理解", "词汇", "语法", "长难句", "翻译", "作文", "书信", "完形",
-    "触发器", "计数器", "寄存器", "译码器", "编码器", "加法器", "全加器", "多谐振荡器",
-    "二极管", "三极管", "晶体管", "运算放大器", "反馈", "振荡", "滤波器", "门电路",
+    "线性表",
+    "栈",
+    "队列",
+    "链表",
+    "二叉树",
+    "树",
+    "图",
+    "查找",
+    "排序",
+    "哈希",
+    "时间复杂度",
+    "空间复杂度",
+    "递归",
+    "进制",
+    "原码",
+    "反码",
+    "补码",
+    "浮点数",
+    "指令",
+    "中断",
+    "存储系统",
+    "进程",
+    "线程",
+    "虚拟内存",
+    "文件系统",
+    "网络层",
+    "传输层",
+    "路由",
+    "马克思主义",
+    "哲学",
+    "辩证法",
+    "矛盾",
+    "实践",
+    "物质",
+    "意识",
+    "认识论",
+    "历史唯物主义",
+    "极限",
+    "连续",
+    "导数",
+    "微分",
+    "积分",
+    "级数",
+    "矩阵",
+    "行列式",
+    "特征值",
+    "向量组",
+    "阅读理解",
+    "词汇",
+    "语法",
+    "长难句",
+    "翻译",
+    "作文",
+    "书信",
+    "完形",
+    "触发器",
+    "计数器",
+    "寄存器",
+    "译码器",
+    "编码器",
+    "加法器",
+    "全加器",
+    "多谐振荡器",
+    "二极管",
+    "三极管",
+    "晶体管",
+    "运算放大器",
+    "反馈",
+    "振荡",
+    "滤波器",
+    "门电路",
 ]
 
 
@@ -85,8 +147,12 @@ def _compact(text: str) -> str:
 
 
 def _named_hits(
-    db: Session, text: str, subject: str, chapter: str | None,
-    *, strict_subject: bool = True,
+    db: Session,
+    text: str,
+    subject: str,
+    chapter: str | None,
+    *,
+    strict_subject: bool = True,
 ) -> list[tuple]:
     """知识点名直接出现在错题正文里 —— 最可靠的关联依据。
 
@@ -113,7 +179,10 @@ def _named_hits(
 
 
 def _keyword_hits(
-    db: Session, text: str, subject: str, chapter: str | None,
+    db: Session,
+    text: str,
+    subject: str,
+    chapter: str | None,
 ) -> list[tuple]:
     """领域核心术语直击：题干出现 CORE_TERMS 术语且知识点名包含该术语。
 
@@ -124,6 +193,7 @@ def _keyword_hits(
         return []
     try:
         from services.search_service import CORE_TERMS
+
         terms = list(CORE_TERMS)
     except Exception:
         terms = []
@@ -148,9 +218,7 @@ def _keyword_hits(
                     bonus += 6
                 if chapter and kp.chapter == chapter:
                     bonus += 8
-                hits.append(
-                    (kp, 5 + len(t) + bonus + (kp.exam_frequency or 0))
-                )
+                hits.append((kp, 5 + len(t) + bonus + (kp.exam_frequency or 0)))
                 break
     hits.sort(key=lambda x: -x[1])
     return hits
@@ -193,9 +261,7 @@ def auto_link_error(
         # 刷题错题自动挂考点**整条链路被拦死**（实测 submit_answer 里
         # "自动关联知识点失败（已忽略）：物理删除已拦截"，错题孤岛率回升）。
         # 此处改为函数内直接重建——语义即"重算并覆盖"，无须人工开闸。
-        db.query(ErrorKnowledgeLink).filter(
-            ErrorKnowledgeLink.error_id == err.id
-        ).delete(synchronize_session=False)
+        db.query(ErrorKnowledgeLink).filter(ErrorKnowledgeLink.error_id == err.id).delete(synchronize_session=False)
         db.flush()
 
     query = _build_query(err)
@@ -222,13 +288,15 @@ def auto_link_error(
             source=source,
         )
         db.add(link)
-        created.append({
-            "knowledge_point_id": kp.id,
-            "name": kp.name,
-            "chapter": kp.chapter,
-            "relevance": round(relevance, 4),
-            "source": source,
-        })
+        created.append(
+            {
+                "knowledge_point_id": kp.id,
+                "name": kp.name,
+                "chapter": kp.chapter,
+                "relevance": round(relevance, 4),
+                "source": source,
+            }
+        )
 
     # —— 第 0 步：错题所属章节 —— #
     chapter = None
@@ -254,9 +322,10 @@ def auto_link_error(
         try:
             from services import search_service
 
-            scoped = chapter is not None
             results = search_service.hybrid_search(
-                db, query, limit=max(top_k * 3, 12),
+                db,
+                query,
+                limit=max(top_k * 3, 12),
                 subject=subject if subject and subject != "其他" else None,
             )
             for r in results:
@@ -266,9 +335,7 @@ def auto_link_error(
                 if rtype == "knowledge_point":
                     encoded = r.get("chunk_id")
                     kp_id = abs(int(encoded)) - 100000 if encoded is not None else None
-                    kp = db.query(KnowledgePoint).filter(
-                        KnowledgePoint.id == kp_id
-                    ).first() if kp_id else None
+                    kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == kp_id).first() if kp_id else None
                 elif rtype == "chunk":
                     kp = _point_for_chunk(db, r.get("chunk_id"), r.get("document_id"), subject)
                 else:
@@ -289,18 +356,14 @@ def auto_link_error(
             # 检索失败不致命，保留已建立的名称/关键词直击关联
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     if commit:
         db.commit()
     return created
 
 
-def _point_for_chunk(
-    db: Session, chunk_id: int | None, doc_id: int | None, subject: str
-) -> KnowledgePoint | None:
+def _point_for_chunk(db: Session, chunk_id: int | None, doc_id: int | None, subject: str) -> KnowledgePoint | None:
     """由知识分块反查知识点。"""
     doc = None
     if doc_id:
@@ -313,9 +376,7 @@ def _point_for_chunk(
             kc = db.query(KnowledgeChunk).filter(KnowledgeChunk.id == chunk_id).first()
             chunk_text = kc.text or "" if kc else ""
 
-        candidates = db.query(KnowledgePoint).filter(
-            KnowledgePoint.document_id == doc.id
-        ).all()
+        candidates = db.query(KnowledgePoint).filter(KnowledgePoint.document_id == doc.id).all()
         if chunk_text and candidates:
             for kp in sorted(candidates, key=lambda k: -len(k.name or "")):
                 if kp.name and kp.name in chunk_text:
@@ -350,10 +411,14 @@ def link_manually(
     if not kp:
         raise LookupError("知识点不存在")
 
-    exists = db.query(ErrorKnowledgeLink).filter(
-        ErrorKnowledgeLink.error_id == error_id,
-        ErrorKnowledgeLink.knowledge_point_id == knowledge_point_id,
-    ).first()
+    exists = (
+        db.query(ErrorKnowledgeLink)
+        .filter(
+            ErrorKnowledgeLink.error_id == error_id,
+            ErrorKnowledgeLink.knowledge_point_id == knowledge_point_id,
+        )
+        .first()
+    )
     if exists:
         return {"id": exists.id, "message": "关联已存在"}
 
@@ -397,9 +462,7 @@ def mastery_state_condition(state: str):
 
     not_grad = func.coalesce(ErrorRecord.status, "active") != kp_mastery.STATE_MASTERED_MARK
     reviewed = func.coalesce(ErrorRecord.review_count, 0) > 0
-    high_acc = (
-        func.coalesce(ErrorRecord.accuracy, 0) * 100 >= kp_mastery.MASTERED_THRESHOLD
-    )
+    high_acc = func.coalesce(ErrorRecord.accuracy, 0) * 100 >= kp_mastery.MASTERED_THRESHOLD
     if state == kp_mastery.STATE_MASTERED:
         return or_(ErrorRecord.status == kp_mastery.STATE_MASTERED_MARK, and_(reviewed, high_acc))
     if state == kp_mastery.STATE_UNLEARNED:
@@ -409,9 +472,7 @@ def mastery_state_condition(state: str):
     return None
 
 
-def error_stats(
-    db: Session, *, subject: str | None = None, user_id: int | None = None
-) -> dict[str, Any]:
+def error_stats(db: Session, *, subject: str | None = None, user_id: int | None = None) -> dict[str, Any]:
     """**错题统计的唯一口径**（错题本 / 错题复盘 / 仪表盘共用同一实现）。
 
     修复背景：此前"错题数 / 今日待复习"至少有三套算法在跑 ——
@@ -452,11 +513,7 @@ def error_stats(
         _cnt(ErrorRecord.status == "archived"),
         # 到期 = 在练 且 已排期 且 next_review ≤ 现在（无排期的脏数据不计入，
         # 口径同 ReviewScheduler.get_due_errors / review.py:132）
-        _cnt(
-            (ErrorRecord.status == "active")
-            & ErrorRecord.next_review.isnot(None)
-            & (ErrorRecord.next_review <= now)
-        ),
+        _cnt((ErrorRecord.status == "active") & ErrorRecord.next_review.isnot(None) & (ErrorRecord.next_review <= now)),
         _cnt(mastery_state_condition(kp_mastery.STATE_UNLEARNED)),
         _cnt(mastery_state_condition(kp_mastery.STATE_WEAK)),
         _cnt(mastery_state_condition(kp_mastery.STATE_MASTERED)),
@@ -531,7 +588,7 @@ def knowledge_points_of_error(db: Session, error_id: int) -> list[dict[str, Any]
             "state": state,
             "state_label": kp_mastery.STATE_LABELS.get(state, state),
             "question_types": (kp.question_types if kp else None)
-                              or taxonomy.question_types_of(kp.subject if kp else None),
+            or taxonomy.question_types_of(kp.subject if kp else None),
         }
 
     # —— 1. 题目实际关联（question_knowledge_links）—— 权威 —— #
@@ -547,17 +604,19 @@ def knowledge_points_of_error(db: Session, error_id: int) -> list[dict[str, Any]
             if kp is None or kp.id in seen:
                 continue
             seen.add(kp.id)
-            out.append({
-                "link_id": None,  # question_link 无 error_knowledge_links 行，不可在此解除
-                "knowledge_point_id": kp.id,
-                "relevance": round(float(qkl.weight or 1.0), 4),
-                "source": "question_link",
-                "role": qkl.role,
-                "verified": bool(qkl.is_verified),
-                "chunk_id": None,
-                "document_id": None,
-                **_kp_dict(kp),
-            })
+            out.append(
+                {
+                    "link_id": None,  # question_link 无 error_knowledge_links 行，不可在此解除
+                    "knowledge_point_id": kp.id,
+                    "relevance": round(float(qkl.weight or 1.0), 4),
+                    "source": "question_link",
+                    "role": qkl.role,
+                    "verified": bool(qkl.is_verified),
+                    "chunk_id": None,
+                    "document_id": None,
+                    **_kp_dict(kp),
+                }
+            )
 
     # —— 2. 错题启发式/手动挂接（error_knowledge_links）—— 补充 —— #
     links = (
@@ -574,21 +633,31 @@ def knowledge_points_of_error(db: Session, error_id: int) -> list[dict[str, Any]
             continue
         if kp is not None:
             seen.add(kp.id)
-        out.append({
-            "link_id": lk.id,
-            "knowledge_point_id": lk.knowledge_point_id,
-            "relevance": lk.relevance,
-            "source": lk.source,
-            "role": None,
-            "verified": False,
-            "chunk_id": lk.chunk_id,
-            "document_id": lk.document_id,
-            **(_kp_dict(kp) if kp is not None else {
-                "name": None, "subject": None, "chapter": None,
-                "mastery": None, "state": None, "state_label": None,
-                "question_types": None,
-            }),
-        })
+        out.append(
+            {
+                "link_id": lk.id,
+                "knowledge_point_id": lk.knowledge_point_id,
+                "relevance": lk.relevance,
+                "source": lk.source,
+                "role": None,
+                "verified": False,
+                "chunk_id": lk.chunk_id,
+                "document_id": lk.document_id,
+                **(
+                    _kp_dict(kp)
+                    if kp is not None
+                    else {
+                        "name": None,
+                        "subject": None,
+                        "chapter": None,
+                        "mastery": None,
+                        "state": None,
+                        "state_label": None,
+                        "question_types": None,
+                    }
+                ),
+            }
+        )
     return out
 
 
@@ -600,9 +669,11 @@ def related_errors(
     only_active: bool = True,
 ) -> list[dict[str, Any]]:
     """某知识点下的所有错题（错题本按考点聚类）。"""
-    q = db.query(ErrorRecord).join(
-        ErrorKnowledgeLink, ErrorKnowledgeLink.error_id == ErrorRecord.id
-    ).filter(ErrorKnowledgeLink.knowledge_point_id == knowledge_point_id)
+    q = (
+        db.query(ErrorRecord)
+        .join(ErrorKnowledgeLink, ErrorKnowledgeLink.error_id == ErrorRecord.id)
+        .filter(ErrorKnowledgeLink.knowledge_point_id == knowledge_point_id)
+    )
     if only_active:
         q = q.filter(ErrorRecord.status == "active")
     rows = q.order_by(ErrorRecord.created_at.desc()).limit(limit).all()
@@ -658,17 +729,19 @@ def weak_knowledge_points(
     out = []
     for r in rows:
         score = (r.error_count or 0) * 2 + (r.exam_frequency or 0) - int(r.mastery or 0) / 20
-        out.append({
-            "knowledge_point_id": r.id,
-            "name": r.name,
-            "subject": r.subject,
-            "chapter": r.chapter,
-            "mastery": int(r.mastery or 0),
-            "exam_frequency": r.exam_frequency or 0,
-            "question_types": r.question_types or taxonomy.question_types_of(r.subject),
-            "error_count": r.error_count,
-            "weak_score": round(score, 2),
-        })
+        out.append(
+            {
+                "knowledge_point_id": r.id,
+                "name": r.name,
+                "subject": r.subject,
+                "chapter": r.chapter,
+                "mastery": int(r.mastery or 0),
+                "exam_frequency": r.exam_frequency or 0,
+                "question_types": r.question_types or taxonomy.question_types_of(r.subject),
+                "error_count": r.error_count,
+                "weak_score": round(score, 2),
+            }
+        )
     out.sort(key=lambda x: -x["weak_score"])
     return out[:limit]
 
@@ -676,7 +749,12 @@ def weak_knowledge_points(
 #: 薄弱考点进响应体的字段（界面要显示的那几个）。
 #: weak_score 是加权和、exam_frequency/question_types 是组卷线索，都不是给用户读的数字。
 WEAK_POINT_VIEW_KEYS = (
-    "knowledge_point_id", "name", "subject", "chapter", "mastery", "error_count",
+    "knowledge_point_id",
+    "name",
+    "subject",
+    "chapter",
+    "mastery",
+    "error_count",
 )
 
 
@@ -698,26 +776,42 @@ def weak_points_view(
     ]
 
 
-def link_stats(db: Session) -> dict[str, Any]:
-    """联动覆盖率统计：还有多少错题没挂上知识点。"""
-    total_errors = db.query(func.count(ErrorRecord.id)).scalar() or 0
-    linked_errors = (
-        db.query(func.count(func.distinct(ErrorKnowledgeLink.error_id))).scalar() or 0
+def link_stats(db: Session, *, user_id: int | None = None) -> dict[str, Any]:
+    """联动覆盖率统计：还有多少错题没挂上知识点。
+
+    用户口径（user_id 传入时）只统计本人错题及其关联；EKL 的冗余
+    user_id 存量可能为 NULL，归属一律经 error_records join 判定。
+    """
+    err_q = db.query(func.count(ErrorRecord.id))
+    if user_id is not None:
+        err_q = err_q.filter(ErrorRecord.user_id == user_id)
+        link_base = (
+            db.query(ErrorKnowledgeLink)
+            .join(ErrorRecord, ErrorRecord.id == ErrorKnowledgeLink.error_id)
+            .filter(ErrorRecord.user_id == user_id)
+        )
+        linked_errors = link_base.with_entities(func.count(func.distinct(ErrorKnowledgeLink.error_id))).scalar() or 0
+        total_links = link_base.with_entities(func.count(ErrorKnowledgeLink.id)).scalar() or 0
+        manual = (
+            link_base.filter(ErrorKnowledgeLink.source == "manual")
+            .with_entities(func.count(ErrorKnowledgeLink.id))
+            .scalar()
+            or 0
+        )
+    else:
+        linked_errors = db.query(func.count(func.distinct(ErrorKnowledgeLink.error_id))).scalar() or 0
+        total_links = db.query(func.count(ErrorKnowledgeLink.id)).scalar() or 0
+        manual = db.query(func.count(ErrorKnowledgeLink.id)).filter(ErrorKnowledgeLink.source == "manual").scalar() or 0
+    total_errors = err_q.scalar() or 0
+    # 没有任何错题挂靠的知识点 = 关联缺口（用户口径下对照本人的挂靠集合）
+    linked_kp_q = db.query(ErrorKnowledgeLink.knowledge_point_id).filter(
+        ErrorKnowledgeLink.knowledge_point_id.isnot(None)
     )
-    total_links = db.query(func.count(ErrorKnowledgeLink.id)).scalar() or 0
-    manual = db.query(func.count(ErrorKnowledgeLink.id)).filter(
-        ErrorKnowledgeLink.source == "manual"
-    ).scalar() or 0
-    # 没有任何错题挂靠的知识点 = 关联缺口
-    orphan_points = (
-        db.query(func.count(KnowledgePoint.id))
-        .filter(~KnowledgePoint.id.in_(
-            db.query(ErrorKnowledgeLink.knowledge_point_id).filter(
-                ErrorKnowledgeLink.knowledge_point_id.isnot(None)
-            )
-        ))
-        .scalar() or 0
-    )
+    if user_id is not None:
+        linked_kp_q = linked_kp_q.join(ErrorRecord, ErrorRecord.id == ErrorKnowledgeLink.error_id).filter(
+            ErrorRecord.user_id == user_id
+        )
+    orphan_points = db.query(func.count(KnowledgePoint.id)).filter(~KnowledgePoint.id.in_(linked_kp_q)).scalar() or 0
     return {
         "total_errors": total_errors,
         "linked_errors": linked_errors,
