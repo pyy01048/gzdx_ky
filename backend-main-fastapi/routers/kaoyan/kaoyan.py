@@ -267,20 +267,37 @@ def list_schools(
 
     # V16 A/B 区筛选：B 区十省固定映射（国家线分区口径），纯派生不动库
     _REGION_B = ("内蒙古", "广西", "海南", "贵州", "云南", "西藏", "甘肃", "青海", "宁夏", "新疆")
+    from services.kaoyan.school_governance import GEO_REGIONS
+
     q = db.query(KaoyanSchool)
     if level:
-        q = q.filter(KaoyanSchool.level == level)
+        # C 批次3 #21：双一流为嵌套标签（含 985/211），不再与层级互斥并列
+        if level == "双一流" and hasattr(KaoyanSchool, "is_double_first_class"):
+            q = q.filter(KaoyanSchool.is_double_first_class.is_(True))
+        else:
+            q = q.filter(KaoyanSchool.level == level)
     if province:
         q = q.filter(KaoyanSchool.province == province)
-    # M3-1：A/B 区与院校类型（新增列，服务端筛选；列不存在时静默跳过以保持向后兼容）
-    if region and hasattr(KaoyanSchool, "region"):
-        q = q.filter(KaoyanSchool.region == region)
+    # C 批次3 #20：地区双口径——A/B 走 exam_region，地理七大区走 geo_region；
+    # 旧库未加列时回退省份派生，保持向后兼容
+    if region:
+        rv = region.strip()
+        if rv in ("A", "B"):
+            rv += "区"
+        if rv in ("A区", "B区"):
+            if hasattr(KaoyanSchool, "exam_region"):
+                q = q.filter(KaoyanSchool.exam_region == rv)
+            elif rv == "B区":
+                q = q.filter(KaoyanSchool.province.in_(_REGION_B))
+            else:
+                q = q.filter(~KaoyanSchool.province.in_(_REGION_B))
+        elif rv in GEO_REGIONS:
+            if hasattr(KaoyanSchool, "geo_region"):
+                q = q.filter(KaoyanSchool.geo_region == rv)
+            else:
+                q = q.filter(KaoyanSchool.province.in_(GEO_REGIONS[rv]))
     if type and hasattr(KaoyanSchool, "type"):
         q = q.filter(KaoyanSchool.type == type)
-    if region == "B":
-        q = q.filter(KaoyanSchool.province.in_(_REGION_B))
-    elif region == "A":
-        q = q.filter(~KaoyanSchool.province.in_(_REGION_B))
     if keyword:
         alias_ids = [s.id for s in match_aliases(db, keyword)]
         if alias_ids:
@@ -310,6 +327,10 @@ def list_schools(
             # M3-1：新增列（getattr 兼容旧库未加列的情况）
             "region": getattr(s, "region", None),
             "type": getattr(s, "type", None),
+            # C 批次3：地区双口径 + 双一流嵌套标签
+            "exam_region": getattr(s, "exam_region", None),
+            "geo_region": getattr(s, "geo_region", None),
+            "is_double_first_class": bool(getattr(s, "is_double_first_class", False)),
             "logo_url": s.logo_url,
             "tags": s.tags,
             "cover_url": getattr(s, "cover_url", None),
@@ -483,6 +504,9 @@ def get_school(school_id: int, db: Session = Depends(get_db)):
         "level": s.level,
         "province": s.province,
         "city": s.city,
+        "exam_region": getattr(s, "exam_region", None),
+        "geo_region": getattr(s, "geo_region", None),
+        "is_double_first_class": bool(getattr(s, "is_double_first_class", False)),
         "logo_url": s.logo_url,
         "intro": s.intro,
         "cover_url": getattr(s, "cover_url", None),

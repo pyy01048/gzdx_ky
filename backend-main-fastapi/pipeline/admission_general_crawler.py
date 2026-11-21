@@ -17,6 +17,7 @@
 
 合规：仅处理公开公示名单；1.5-2.5s 随机延迟；KAOYAN_AUTO_COLLECT 环境开关。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -100,12 +101,14 @@ def _parse_subpages(db, html: str, base: str, nid: int, max_subs: int = 10) -> t
                 frag = mm.group(1)
                 break
 
-    subs, done = [], []
+    _subs, done = [], []
     for m in re.finditer(r'<a\b[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', frag, re.S | re.I):
         href, label = m.group(1), re.sub(r"<[^>]+>", "", m.group(2)).strip()
         if _SUBPAGE_NO.search(label.lower()) or not re.search(r"\.(htm|html|shtml|aspx)", href, re.I):
             continue
-        if re.search(r"(index|list|more|nav|menu|top|footer|login|/page\.)", href, re.I) and not _SUBPAGE_TITLE.search(label):
+        if re.search(r"(index|list|more|nav|menu|top|footer|login|/page\.)", href, re.I) and not _SUBPAGE_TITLE.search(
+            label
+        ):
             continue
         if href.startswith("//"):
             href = "https:" + href
@@ -158,16 +161,20 @@ def _parse_subpages(db, html: str, base: str, nid: int, max_subs: int = 10) -> t
 def _upsert(db, sid: int, year: int, src: str, ntype: str, data: dict):
     st = data.get("totals") or []
     is_admit = ntype in ("录取", "调剂")
-    row = db.query(KaoyanAdmission).filter(
-        KaoyanAdmission.school_id == sid, KaoyanAdmission.year == year,
-        KaoyanAdmission.data_source == src).first()
+    row = (
+        db.query(KaoyanAdmission)
+        .filter(KaoyanAdmission.school_id == sid, KaoyanAdmission.year == year, KaoyanAdmission.data_source == src)
+        .first()
+    )
     if row is None:
         row = KaoyanAdmission(
-            school_id=sid, year=year,
+            school_id=sid,
+            year=year,
             retest_count=data["students"] if ntype == "复试" else None,
             admit_count=data["students"] if is_admit else None,
             admit_avg_score=round(statistics.mean(st), 1) if st else None,
-            data_source=src)
+            data_source=src,
+        )
         db.add(row)
         db.flush()
     else:
@@ -187,49 +194,74 @@ def _insert_details(db, nid: int, sid: int, year: int, admission_id: int, rows: 
         n = (r.get("name") or "").strip()
         if not n:
             continue
-        db.execute(text(
-            "INSERT INTO kaoyan_admission_details "
-            "(admission_id, school_id, year, exam_no, name, major_name, "
-            " score_initial, score_retest, score_total, data_source) "
-            "VALUES (:admission_id, :school_id, :year, :exam_no, :name, :major_name, "
-            " :score_initial, :score_retest, :score_total, :data_source) "
-            "ON CONFLICT (data_source) DO NOTHING"
-        ), {
-            "admission_id": admission_id,
-            "school_id": sid,
-            "year": year,
-            "exam_no": (r.get("exam_no") or "")[:40] or None,
-            "name": n[:60],
-            "major_name": (r.get("major") or "")[:120] or None,
-            "score_initial": r.get("initial"),
-            "score_retest": r.get("retest"),
-            "score_total": r.get("total"),
-            "data_source": f"notice:{nid}:d{idx}",
-        })
+        db.execute(
+            text(
+                "INSERT INTO kaoyan_admission_details "
+                "(admission_id, school_id, year, exam_no, name, major_name, "
+                " score_initial, score_retest, score_total, data_source) "
+                "VALUES (:admission_id, :school_id, :year, :exam_no, :name, :major_name, "
+                " :score_initial, :score_retest, :score_total, :data_source) "
+                "ON CONFLICT (data_source) DO NOTHING"
+            ),
+            {
+                "admission_id": admission_id,
+                "school_id": sid,
+                "year": year,
+                "exam_no": (r.get("exam_no") or "")[:40] or None,
+                "name": n[:60],
+                "major_name": (r.get("major") or "")[:120] or None,
+                "score_initial": r.get("initial"),
+                "score_retest": r.get("retest"),
+                "score_total": r.get("total"),
+                "data_source": f"notice:{nid}:d{idx}",
+            },
+        )
         inserted += 1
     return inserted
 
 
-def run(limit: int = 40, schools: list[str] | None = None, days: int = 0,
-        redo: bool = False, dry_run: bool = False, max_per_school: int = 3) -> dict:
+def run(
+    limit: int = 40,
+    schools: list[str] | None = None,
+    days: int = 0,
+    redo: bool = False,
+    dry_run: bool = False,
+    max_per_school: int = 3,
+) -> dict:
     db = SessionLocal()
-    rep = {"cand": 0, "skipped_done": 0, "fetched": 0, "got_data": 0,
-           "inserted": 0, "details": 0, "empty": 0, "err": 0,
-           "problems": [], "schools": {}}
+    rep = {
+        "cand": 0,
+        "skipped_done": 0,
+        "fetched": 0,
+        "got_data": 0,
+        "inserted": 0,
+        "details": 0,
+        "empty": 0,
+        "err": 0,
+        "problems": [],
+        "schools": {},
+    }
     try:
         params = {"pat": TITLE_OK.pattern, "patno": TITLE_NO.pattern, "lim": limit}
-        where = "url IS NOT NULL AND url <> '' AND title ~ :pat AND title !~ :patno"
+        # C 批次3：治理出列的公告（噪声/重复/待复核）不再进录取采集候选
+        where = (
+            "url IS NOT NULL AND url <> '' AND title ~ :pat AND title !~ :patno "
+            "AND COALESCE(review_status, 'ok') = 'ok'"
+        )
         if days:
             where += " AND publish_date >= :since"
             params["since"] = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
         if schools:
             where += " AND school_name = ANY(:schools)"
             params["schools"] = schools
-        rows = db.execute(text(
-            "SELECT id, school_id, school_name, notice_type, title, url, publish_date "
-            f"FROM kaoyan_notices WHERE {where} "
-            "ORDER BY school_id, publish_date DESC NULLS LAST LIMIT :lim"
-        ), params).fetchall()
+        rows = db.execute(
+            text(
+                "SELECT id, school_id, school_name, notice_type, title, url, publish_date "
+                f"FROM kaoyan_notices WHERE {where} "
+                "ORDER BY school_id, publish_date DESC NULLS LAST LIMIT :lim"
+            ),
+            params,
+        ).fetchall()
         rep["cand"] = len(rows)
         print(f"[候选] {len(rows)} 条（质量门后；每校至多 {max_per_school} 条名单类通知）")
 
@@ -244,9 +276,15 @@ def run(limit: int = 40, schools: list[str] | None = None, days: int = 0,
             try:
                 year = int((pdate or "")[:4]) if pdate else int(datetime.now(timezone.utc).year)
                 src = f"notice:{nid}"
-                exist = db.query(KaoyanAdmission.id).filter(
-                    KaoyanAdmission.school_id == sid, KaoyanAdmission.year == year,
-                    KaoyanAdmission.data_source == src).first()
+                exist = (
+                    db.query(KaoyanAdmission.id)
+                    .filter(
+                        KaoyanAdmission.school_id == sid,
+                        KaoyanAdmission.year == year,
+                        KaoyanAdmission.data_source == src,
+                    )
+                    .first()
+                )
                 if exist and not redo:
                     rep["skipped_done"] += 1
                     continue
@@ -279,8 +317,11 @@ def run(limit: int = 40, schools: list[str] | None = None, days: int = 0,
                         prob["sub_pages"] = len(sub_pages)
                 if not data:
                     rep["empty"] += 1
-                    prob["issue"] = ("扫描件PDF需专用OCR补跑" if ocr_pending else
-                                     "页面无名单（附件为空/表格无姓名列/文本层PDF解析失败）")
+                    prob["issue"] = (
+                        "扫描件PDF需专用OCR补跑"
+                        if ocr_pending
+                        else "页面无名单（附件为空/表格无姓名列/文本层PDF解析失败）"
+                    )
                     rep["problems"].append(prob)
                     polite()
                     continue
@@ -296,17 +337,21 @@ def run(limit: int = 40, schools: list[str] | None = None, days: int = 0,
                     rep["inserted"] += 1
                     rep["details"] += n_detail
                 st = data.get("totals") or []
-                prob["out"] = {"students": students,
-                               "avg": round(statistics.mean(st), 1) if st else None,
-                               "details": (len(data.get("rows") or []) if data.get("rows") else 0)}
+                prob["out"] = {
+                    "students": students,
+                    "avg": round(statistics.mean(st), 1) if st else None,
+                    "details": (len(data.get("rows") or []) if data.get("rows") else 0),
+                }
                 sc = rep["schools"].setdefault(sname, {"admit": 0, "retest": 0, "students": 0})
                 sc["students"] += students
                 if ntype in ("录取", "调剂"):
                     sc["admit"] += 1
                 else:
                     sc["retest"] += 1
-                print(f"[OK] {sname} {ntype} {year} {students}人 "
-                      f"avg={round(statistics.mean(st),1) if st else '-'} ← {title[:30]}")
+                print(
+                    f"[OK] {sname} {ntype} {year} {students}人 "
+                    f"avg={round(statistics.mean(st), 1) if st else '-'} ← {title[:30]}"
+                )
                 polite()
             except Exception as exc:  # noqa: BLE001
                 db.rollback()
@@ -322,8 +367,10 @@ def run(limit: int = 40, schools: list[str] | None = None, days: int = 0,
         with open(rpath, "w", encoding="utf-8") as f:
             json.dump(rep, f, ensure_ascii=False, indent=2)
         print("\n== 汇总 ==")
-        print(f"候选 {rep['cand']} | 已入库 {rep['inserted']}（明细 {rep['details']}）| "
-              f"空 {rep['empty']} | 错误 {rep['err']} | 学校 {len(rep['schools'])}")
+        print(
+            f"候选 {rep['cand']} | 已入库 {rep['inserted']}（明细 {rep['details']}）| "
+            f"空 {rep['empty']} | 错误 {rep['err']} | 学校 {len(rep['schools'])}"
+        )
         print(f"问题清单：{rpath}")
         if rep["problems"]:
             for p in rep["problems"][:15]:

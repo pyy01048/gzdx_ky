@@ -937,8 +937,8 @@ export const taxonomyApi = {
     request(`/taxonomy/subjects/${encodeURIComponent(subject)}`, { method: 'PUT', body }),
   removeSubject: (subject) =>
     request(`/taxonomy/subjects/${encodeURIComponent(subject)}`, { method: 'DELETE' }),
-  tree: (subject, includeExtension = true) =>
-    request('/taxonomy/tree', { params: { subject, include_extension: includeExtension } }),
+  tree: (subject, includeExtension = true, includeEmpty = false) =>
+    request('/taxonomy/tree', { params: { subject, include_extension: includeExtension, include_empty: includeEmpty } }),
   knowledgePoints: (params) => request('/taxonomy/knowledge-points', { params }),
   knowledgePoint: (id) => request(`/taxonomy/knowledge-points/${id}`),
   createKnowledgePoint: (body) => request('/taxonomy/knowledge-points', { method: 'POST', body }),

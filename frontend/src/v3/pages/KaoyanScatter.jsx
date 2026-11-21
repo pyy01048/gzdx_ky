@@ -13,7 +13,7 @@ import '../styles/kaoyan-aux-v3.css'
 /* Level palette                                                              */
 /* -------------------------------------------------------------------------- */
 
-const LEVEL_ORDER = ['985', '211', '双一流', '双非', '未分类']
+const LEVEL_ORDER = ['985', '211', '双非', '未分类'] // C批次3：双一流改嵌套标签，不再作互斥层级
 
 const LEVEL_META = {
   985: { color: 'var(--v3-tertiary)', soft: 'var(--v3-tertiary-container)' },

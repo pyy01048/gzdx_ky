@@ -57,8 +57,8 @@ const SORTS = [
 ]
 
 const LEVEL_UNCLASSIFIED = '未分类'
-const LEVELS = ['985', '211', '双一流', '双非', LEVEL_UNCLASSIFIED]
-const REGIONS = ['A区', 'B区']
+const LEVELS = ['985', '211', '双一流', '双非', LEVEL_UNCLASSIFIED] // 双一流=嵌套标签筛选（含985/211），非互斥层级
+const REGIONS = ['A区', 'B区', '华北', '东北', '华东', '华中', '华南', '西南', '西北'] // 考研分区+地理大区双口径
 const SCHOOL_TYPES = ['公办', '科研院所', '军队院校']
 const LEGACY_SEEDED_IDS = new Set(['kaoyan27', 'cet'])
 
@@ -365,6 +365,7 @@ function SchoolCard({
           <Link to={`/kaoyan/schools/${s.id}`} className="kyv3-school-name" title={s.name}>{s.name}</Link>
           <div className="kyv3-school-badges">
             <Badge tone={levelTone(normLevel(s.level))}>{normLevel(s.level)}</Badge>
+            {s.is_double_first_class ? <Badge tone="success">双一流</Badge> : null}
             {s.region ? <Badge>{s.region}</Badge> : null}
             {s.type ? <Badge>{s.type}</Badge> : null}
             {s.has0854 ? <Badge tone="primary">0854</Badge> : null}
@@ -728,9 +729,9 @@ export default function KaoyanSchools() {
   }, [rows, t])
 
   const levelPie = useMemo(() => {
-    const agg = { '985': 0, '211': 0, '双一流': 0, '双非': 0, [LEVEL_UNCLASSIFIED]: 0 }
-    rows.forEach((r) => { agg[normLevel(r.level)]++ })
-    const palette = ['#D96570', '#4285F4', '#9B72CB', '#F9AB00', '#8A93A3']
+    const agg = { '985': 0, '211': 0, '双非': 0, [LEVEL_UNCLASSIFIED]: 0 }
+    rows.forEach((r) => { const k = normLevel(r.level); agg[k] = (agg[k] || 0) + 1 })
+    const palette = ['#D96570', '#4285F4', '#F9AB00', '#8A93A3']
     return donut(t, Object.entries(agg).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value })), palette)
   }, [rows, t])
 
@@ -958,6 +959,7 @@ export default function KaoyanSchools() {
                   <Link to={`/kaoyan/schools/${s.id || 0}`} className="kyv3-hot-name" title={s.name}>{s.name}</Link>
                   <div className="kyv3-hot-meta">
                     <Badge tone={levelTone(normLevel(s.level))}>{normLevel(s.level)}</Badge>
+            {s.is_double_first_class ? <Badge tone="success">双一流</Badge> : null}
                     <span>热度 {s.heat != null ? Math.round(s.heat) : '—'}</span>
                   </div>
                 </div>
@@ -1004,6 +1006,7 @@ export default function KaoyanSchools() {
               <Chip active={draft.level === ''} onClick={() => quickApply({ level: '' })}>全部</Chip>
               {LEVELS.map((l) => <Chip key={l} active={draft.level === l} onClick={() => quickApply({ level: l })}>{l}</Chip>)}
             </div>
+            <span className="v3-caption">双一流为嵌套标签（含 985/211）：{rows.filter((r) => r.is_double_first_class).length} 所；地区含考研分区与地理大区双口径</span>
           </div>
           <div className="kyv3-filter-line">
             <span className="kyv3-filter-label">类型</span>

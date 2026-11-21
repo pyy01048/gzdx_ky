@@ -338,13 +338,15 @@ async def delete_subject(subject: str, db: Session = Depends(get_db)):
 async def structure_tree(
     subject: Optional[str] = None,
     include_extension: bool = Query(True, description="是否包含拓展科目"),
+    include_empty: bool = Query(False, description="C批次3 #13：是否显示空章节（默认隐藏，计数透出）"),
     db: Session = Depends(get_db),
     user=Depends(optional_user),
 ):
     """三级结构树：科目 → 章节 → 知识点（含题型与掌握度三态）。
 
-    以**大纲为标准骨架**，再把数据库里已有知识点挂上去，
-    这样"还没录入资料"的章节也会显示为空白节点，一眼看出进度缺口。
+    以**大纲为标准骨架**，再把数据库里已有知识点挂上去。
+    C 批次3（#13）：空章节默认隐藏（158/1046 空节点不再撑残缺树），
+    每科目透出 ``empty_chapter_count``；``include_empty=true`` 恢复旧视图。
 
     掌握度三态（未学/薄弱/已掌握）口径见 ``services/kp_mastery.py``：
     未学知识点不计入薄弱统计。
@@ -393,9 +395,14 @@ async def structure_tree(
                 uncategorized.append(kp)
 
         chapters = []
+        empty_n = 0
         # 先按大纲章序列出
         for ch_name in taxonomy.chapters_of(s):
             items = chapter_map.pop(ch_name, [])
+            if not items:
+                empty_n += 1
+                if not include_empty:
+                    continue
             chapters.append(_chapter_node(ch_name, items, s, learned))
         # 再列出大纲外的章（实际资料里的自定义章）
         for ch_name in sorted(chapter_map.keys()):
@@ -412,6 +419,7 @@ async def structure_tree(
                 "subject": s,
                 "is_core": taxonomy.is_core(s),
                 "knowledge_point_count": total,
+                "empty_chapter_count": empty_n,
                 "mastered_count": counts["mastered"],
                 "weak_count": counts["weak"],
                 "unlearned_count": counts["unlearned"],

@@ -1212,7 +1212,19 @@ class KaoyanSchool(Base):
     province = Column(String(50), nullable=True, index=True, comment="省份")
     city = Column(String(50), nullable=True, comment="城市")
     # M3-1：大区（教育部国家线分区 A区/B区）+ 院校类型（公办/科研院所/军队院校）
-    region = Column(String(30), nullable=True, index=True, comment="大区：A区/B区")
+    region = Column(
+        String(30), nullable=True, index=True, comment="大区：A区/B区（历史混用列，C批次3 起由 exam_region 归一）"
+    )
+    # C 批次3（124 迁移）：地区双口径拆分 + 双一流嵌套标签
+    exam_region = Column(String(10), nullable=True, index=True, comment="考研分区：A区/B区（国家线口径，按省份派生）")
+    geo_region = Column(String(10), nullable=True, index=True, comment="地理大区：华北/东北/华东/华中/华南/西南/西北")
+    is_double_first_class = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment="双一流嵌套标签（985/211 全含 + 非211双一流；与 level 正交）",
+    )
     type = Column(String(30), nullable=True, index=True, comment="院校类型：公办/科研院所/军队院校")
     logo_url = Column(String(500), nullable=True, comment="校徽URL")
     cover_url = Column(String(500), nullable=True, comment="院校封面图URL（校门/校园实景，自托管 /media/images 路径）")

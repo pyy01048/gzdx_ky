@@ -496,6 +496,11 @@ export default function KbMap() {
   const { user, isAdmin } = useAuth()
   const [subjects, setSubjects] = useState([])
   const [tree, setTree] = useState([])
+  const [showEmpty, setShowEmpty] = useState(false) // C批次3 #13：空章节默认隐藏
+  const emptyTotal = useMemo(
+    () => (tree || []).reduce((n, s) => n + (s.empty_chapter_count || 0), 0),
+    [tree],
+  )
   const [progress, setProgress] = useState(null)
   const [due, setDue] = useState([])
   const [coverage, setCoverage] = useState(null)
@@ -577,7 +582,7 @@ export default function KbMap() {
     try {
       const [sj, t, p, d, c, q] = await Promise.all([
         taxonomyApi.subjects(),
-        taxonomyApi.tree(),
+        taxonomyApi.tree(undefined, true, showEmpty),
         user ? reviewApi.progress() : Promise.resolve(null),
         user ? reviewApi.due({ limit: 30 }) : Promise.resolve(null),
         taxonomyApi.coverage(),
@@ -631,7 +636,7 @@ export default function KbMap() {
       setErrMsg(e?.message || '未知错误')
       setStatus('error')
     }
-  }, [openDetail, closeDetail, user, isAdmin])
+  }, [openDetail, closeDetail, user, isAdmin, showEmpty])
 
   useEffect(() => { loadAll() }, [loadAll])
 
@@ -642,7 +647,7 @@ export default function KbMap() {
     setQuery('')
     setTreeLoading(true)
     try {
-      const t = await taxonomyApi.tree(name || undefined)
+      const t = await taxonomyApi.tree(name || undefined, true, showEmpty)
       const tNodes = t?.tree || []
       setTree(tNodes)
       const first = tNodes.find((s) => s.knowledge_point_count > 0)
@@ -661,7 +666,7 @@ export default function KbMap() {
     } finally {
       setTreeLoading(false)
     }
-  }, [activeSubject, openDetail, closeDetail])
+  }, [activeSubject, openDetail, closeDetail, showEmpty])
 
   const selectChapter = useCallback((subject, title, kpList) => {
     setActiveChapter({ subject, title })
@@ -1171,6 +1176,9 @@ export default function KbMap() {
                 <h2>章节</h2>
               </div>
               <Badge tone="outline">{chapterGroups.length} 科</Badge>
+              <Chip active={showEmpty} onClick={() => setShowEmpty((v) => !v)}>
+                {showEmpty ? '隐藏空章节' : `空章节 ${emptyTotal}`}
+              </Chip>
             </div>
             <div className="v3-kb-column__scroll">
               {treeLoading ? (
