@@ -38,7 +38,19 @@ BEGIN
     END LOOP;
 END $$;
 
-ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_role;
-ALTER TABLE users ADD  CONSTRAINT ck_users_role CHECK (role IN ('admin', 'user'));
+-- 幂等纪律：只在约束**不存在**时补建初始口径。
+-- 历史缺陷（2026-11-21）：原先无条件 DROP+ADD，把 116 放开后的
+-- ('admin','doc_admin','user') 在重放时悄悄收窄回 ('admin','user')——
+-- 测试库复用 / 生产补跑场景下建 doc_admin 用户直接 CheckViolation 500。
+-- 约束的演进只能由后续编号脚本（116）负责，本脚本不得回退它。
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'ck_users_role' AND conrelid = 'users'::regclass
+    ) THEN
+        ALTER TABLE users ADD CONSTRAINT ck_users_role CHECK (role IN ('admin', 'user'));
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS ix_users_role_active ON users (role, is_active);

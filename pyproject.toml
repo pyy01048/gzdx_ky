@@ -2,7 +2,7 @@
 target-version = "py313"
 line-length = 120
 # 先宽后紧（docs/完善方案/04 §3.1）：一次性几千条告警会淹没人，存量按目录分批清零
-extend-exclude = ["_archive", "training", "tools/ocr/DeepSeek-OCR"]
+extend-exclude = ["_archive", "training", "tools/ocr/DeepSeek-OCR", "backend-main-fastapi/scripts/data/ECDICT-master"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "I", "UP"]   # 错误/flake8/警告/bugbug/import排序/升级建议
@@ -19,6 +19,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
 "scripts/*" = ["E402"]                     # 脚本常见 sys.path 前置
+"backend-main-fastapi/main.py" = ["E402"]  # load_dotenv 必须先于模块级 import
 
 [tool.ruff.format]
 quote-style = "double"

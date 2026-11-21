@@ -483,7 +483,7 @@ export default function KnowledgeBaseImport() {
 
     const [kbR, docsR, quizR] = await Promise.allSettled([
       kbApi.health(),
-      documentsApi.list(),
+      documentsApi.listAll(),
       quizApi.stats(),
     ])
     if (!mountedRef.current || seq !== seqRef.current) {
@@ -909,7 +909,7 @@ export default function KnowledgeBaseImport() {
           <CardHead
             icon={<HardDrive size={17} />}
             title="知识库体检"
-            sub={health?.checked_at ? `最近体检 ${fmtDateTime(health.checked_at)}` : '来自 /api/kb/health'}
+            sub={health?.checked_at ? `最近体检 ${fmtDateTime(health.checked_at)}` : '尚未体检，导入后自动检查'}
             actions={health ? (
               <Badge tone={health.healthy ? 'success' : 'warning'}>
                 {health.healthy ? '通过' : `${issues.length} 项问题`}

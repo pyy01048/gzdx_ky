@@ -37,6 +37,8 @@ class WordDeckOut(BaseModel):
     created_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 class WordCreate(BaseModel):
     deck_id: Optional[int] = None
     word: str = Field(..., min_length=1)
@@ -106,6 +108,7 @@ class WordOut(BaseModel):
             return list(v.values())
         if isinstance(v, str):
             import json as _json
+
             try:
                 parsed = _json.loads(v)
                 return parsed if isinstance(parsed, list) else []
@@ -222,9 +225,7 @@ def _load_word_roots(db) -> dict:
     from sqlalchemy import text
 
     try:
-        rows = db.execute(
-            text("SELECT morpheme, meaning, meaning_cn, example_words FROM word_roots")
-        ).fetchall()
+        rows = db.execute(text("SELECT morpheme, meaning, meaning_cn, example_words FROM word_roots")).fetchall()
     except Exception:  # noqa: BLE001 - 表不存在（SQLite 回退库）时静默降级
         return {}
     by_example_word: dict = {}
@@ -233,7 +234,7 @@ def _load_word_roots(db) -> dict:
             "morpheme": morpheme or "",
             "meaning_cn": (meaning_cn or meaning or "").strip(),
         }
-        for ew in (example_words or []):
+        for ew in example_words or []:
             key = str(ew).strip().lower()
             if key and key not in by_example_word:
                 by_example_word[key] = entry
@@ -289,21 +290,13 @@ def _ensure_personal_wordbook(db: Session, user: User) -> None:
     if db.query(WordDeck.id).filter(WordDeck.user_id == uid).first():
         return
     # 内置模板词库：挂在 user_id=1（模板所有者）名下
-    templates = (
-        db.query(WordDeck)
-        .filter(WordDeck.user_id == 1)
-        .order_by(WordDeck.id)
-        .all()
-    )
+    templates = db.query(WordDeck).filter(WordDeck.user_id == 1).order_by(WordDeck.id).all()
     if not templates:
         return
     from sqlalchemy import text
+
     for template in templates:
-        tpl_words = (
-            db.query(Word)
-            .filter(Word.deck_id == template.id, Word.user_id == template.user_id)
-            .count()
-        )
+        tpl_words = db.query(Word).filter(Word.deck_id == template.id, Word.user_id == template.user_id).count()
         if not tpl_words:
             continue
         deck = WordDeck(
@@ -325,8 +318,7 @@ def _ensure_personal_wordbook(db: Session, user: User) -> None:
                 "tag, 'not_mastered', 2.5, 0, 0, 0, NULL, NULL, '[]'::jsonb, now(), now() "
                 "FROM words WHERE user_id = :tpl_uid AND deck_id = :tpl_deck_id"
             ),
-            {"uid": uid, "deck_id": deck.id,
-             "tpl_uid": template.user_id, "tpl_deck_id": template.id},
+            {"uid": uid, "deck_id": deck.id, "tpl_uid": template.user_id, "tpl_deck_id": template.id},
         )
         deck.word_count = tpl_words
     db.commit()
@@ -336,9 +328,9 @@ def _ensure_personal_wordbook(db: Session, user: User) -> None:
 def list_decks(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """获取词库分类（B4：本人词库 + 内置公共词书 user_id NULL）。"""
     _ensure_personal_wordbook(db, user)  # 新用户首访自动分配内置词库副本
-    decks = db.query(WordDeck).filter(
-        or_(scoped(WordDeck, user), WordDeck.user_id.is_(None))
-    ).order_by(WordDeck.id).all()
+    decks = (
+        db.query(WordDeck).filter(or_(scoped(WordDeck, user), WordDeck.user_id.is_(None))).order_by(WordDeck.id).all()
+    )
     # 实时统计每个词库的单词数（B4：只统计本人单词）
     for d in decks:
         d.word_count = db.query(Word).filter(Word.deck_id == d.id, scoped(Word, user)).count()
@@ -372,7 +364,7 @@ def delete_deck(deck_id: int, db: Session = Depends(get_db), user: User = Depend
 # --------------------------------------------------------------------------- #
 # 单词 CRUD
 # --------------------------------------------------------------------------- #
-@router.get("", dependencies=[Depends(require_admin)])
+@router.get("")
 def list_words(
     deck_id: Optional[int] = None,
     status: Optional[str] = None,
@@ -429,10 +421,9 @@ def word_stats(db: Session = Depends(get_db), user: User = Depends(current_user)
     # V12 修复：新词（status='new'，从未学习）不计入"今日待复习"。
     # 旧逻辑把 due_date IS NULL 的新词也算作今日到期 → 全站复习调度显示
     # "4568/4569 今日待复习"，学习数据失真。复习队列只包含已学过的词。
-    due_today = db.query(Word).filter(
-        _scope,
-        Word.due_date <= today
-    ).filter(Word.status.in_(["learning", "reviewing"])).count()
+    due_today = (
+        db.query(Word).filter(_scope, Word.due_date <= today).filter(Word.status.in_(["learning", "reviewing"])).count()
+    )
     return {
         "total": total,
         "new": new_count,
@@ -452,10 +443,14 @@ def due_words(
     """获取今日待复习单词（含新词；B4：只看本人）。"""
     today = local_today()
     # V12 修复：due 队列排除新词（new）——新词走"学习"流程而非"复习"队列
-    words = db.query(Word).filter(
-        scoped(Word, user),
-        Word.due_date <= today
-    ).filter(Word.status.in_(["learning", "reviewing"])).order_by(Word.status, Word.id).limit(limit).all()
+    words = (
+        db.query(Word)
+        .filter(scoped(Word, user), Word.due_date <= today)
+        .filter(Word.status.in_(["learning", "reviewing"]))
+        .order_by(Word.status, Word.id)
+        .limit(limit)
+        .all()
+    )
     # P1 增强：例句/词根合并（与列表接口同一序列化层）
     examples = _load_word_examples(db, [w.id for w in words])
     root_by_word = _load_word_roots(db)
@@ -532,6 +527,7 @@ def export_words_pdf(
         truncated=truncated,
     )
     from urllib.parse import quote
+
     filename = f"单词本_{local_today().isoformat()}.pdf"
     return Response(
         content=pdf_bytes,
@@ -563,12 +559,7 @@ def create_word(data: WordCreate, db: Session = Depends(get_db), user: User = De
     避免重复入库。``source_label`` 若传入且 ``tag`` 为空，则写入 ``tag`` 列。
     """
     # —— P0-1 查重（仅针对当前用户）——
-    existing = (
-        db.query(Word)
-        .filter(Word.word == data.word.strip(), scoped(Word, user))
-        .order_by(Word.id.asc())
-        .first()
-    )
+    existing = db.query(Word).filter(Word.word == data.word.strip(), scoped(Word, user)).order_by(Word.id.asc()).first()
     if existing:
         raise HTTPException(
             status_code=409,
@@ -773,6 +764,7 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
     - "apple 苹果；苹果树"
     """
     import re
+
     lines = data.text.strip().split("\n")
     imported = 0
     skipped = 0
@@ -780,9 +772,7 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
     today = local_today()
 
     # 已存在的单词集合（去重，B4：只查本人单词）
-    existing_words = {
-        w.word for w in db.query(Word.word).filter(scoped(Word, user)).all()
-    }
+    existing_words = {w.word for w in db.query(Word.word).filter(scoped(Word, user)).all()}
 
     for idx, line in enumerate(lines, 1):
         line = line.strip()
@@ -792,19 +782,19 @@ def import_words_from_text(data: TextImportRequest, db: Session = Depends(get_db
         try:
             # 解析格式：单词 [音标] [词性] 释义
             # 匹配音标：/.../ 或 [...]
-            phonetic_match = re.search(r'[/\[]([^/\]]+)[/\]]', line)
+            phonetic_match = re.search(r"[/\[]([^/\]]+)[/\]]", line)
             phonetic = phonetic_match.group(1) if phonetic_match else None
 
             # 移除音标部分
-            remaining = re.sub(r'[/\[][^/\]]+[/\]]', '', line).strip()
+            remaining = re.sub(r"[/\[][^/\]]+[/\]]", "", line).strip()
 
             # 匹配词性：n. v. adj. adv. prep. conj. pron. num. art. int. 等
-            pos_match = re.match(r'^([a-z]+\.)\s+', remaining, re.IGNORECASE)
+            pos_match = re.match(r"^([a-z]+\.)\s+", remaining, re.IGNORECASE)
             pos = pos_match.group(1) if pos_match else None
 
             # 移除词性部分
             if pos:
-                remaining = remaining[pos_match.end():].strip()
+                remaining = remaining[pos_match.end() :].strip()
 
             # 分割单词和释义
             parts = remaining.split(None, 1)
@@ -883,10 +873,11 @@ async def import_words_from_excel(
     支持列：单词、音标、词性、释义、词根、例句、例句翻译、标签
     """
     import io
+
     try:
         import openpyxl
     except ImportError:
-        raise HTTPException(status_code=500, detail="请先安装openpyxl: pip install openpyxl")
+        raise HTTPException(status_code=500, detail="请先安装openpyxl: pip install openpyxl") from None
 
     wb = openpyxl.load_workbook(io.BytesIO(file), read_only=True)
     ws = wb.active
@@ -899,7 +890,6 @@ async def import_words_from_excel(
     # 列映射
     col_map = {}
     for i, h in enumerate(headers):
-        h_lower = h.lower()
         if h in ("单词", "word", "英文"):
             col_map["word"] = i
         elif h in ("音标", "phonetic", "发音"):
@@ -925,9 +915,7 @@ async def import_words_from_excel(
     skipped = 0
     errors = []
     today = local_today()
-    existing_words = {
-        w.word for w in db.query(Word.word).filter(scoped(Word, user)).all()
-    }
+    existing_words = {w.word for w in db.query(Word.word).filter(scoped(Word, user)).all()}
 
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
         try:
@@ -946,12 +934,18 @@ async def import_words_from_excel(
                 user_id=owner_id(user),  # B4：归属当前用户
                 deck_id=deck_id,
                 word=word[:100],
-                phonetic=str(row[col_map["phonetic"]]).strip()[:100] if "phonetic" in col_map and row[col_map["phonetic"]] else None,
+                phonetic=str(row[col_map["phonetic"]]).strip()[:100]
+                if "phonetic" in col_map and row[col_map["phonetic"]]
+                else None,
                 pos=str(row[col_map["pos"]]).strip()[:50] if "pos" in col_map and row[col_map["pos"]] else None,
                 meaning=meaning[:2000],
                 root=str(row[col_map["root"]]).strip()[:300] if "root" in col_map and row[col_map["root"]] else None,
-                example=str(row[col_map["example"]]).strip() if "example" in col_map and row[col_map["example"]] else None,
-                example_cn=str(row[col_map["example_cn"]]).strip() if "example_cn" in col_map and row[col_map["example_cn"]] else None,
+                example=str(row[col_map["example"]]).strip()
+                if "example" in col_map and row[col_map["example"]]
+                else None,
+                example_cn=str(row[col_map["example_cn"]]).strip()
+                if "example_cn" in col_map and row[col_map["example_cn"]]
+                else None,
                 tag=str(row[col_map["tag"]]).strip()[:50] if "tag" in col_map and row[col_map["tag"]] else None,
                 status="not_mastered",  # DB 枚举无 'new'，未学即 not_mastered
                 due_date=today,

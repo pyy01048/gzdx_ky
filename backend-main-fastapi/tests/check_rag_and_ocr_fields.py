@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """验证 RAG 检索（jieba 分词生效后）与 OCR 标记字段。"""
+
 import json
 import sys
 import urllib.request
@@ -45,7 +46,8 @@ print("2) 文档列表字段（含扫描件标记）")
 print("=" * 74)
 st, d = call("GET", "/api/documents?page=1&page_size=3")
 if st == 200:
-    # 契约：GET /api/documents 直接返回 list
+    # 契约（2026-11-21 起）：GET /api/documents 返回分页信封 {items,total,page,page_size}；
+    # 兼容旧裸 list 写法仅为防御，正常路径走 items。
     items = d if isinstance(d, list) else (d.get("items") or [])
     print(f"  [{st}] documents 返回 {len(items)} 条（类型 {type(d).__name__}）")
     if items:

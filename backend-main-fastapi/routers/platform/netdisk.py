@@ -1,6 +1,5 @@
 """网盘路由。"""
 
-
 import mimetypes
 import os
 import re
@@ -16,7 +15,7 @@ from services.netdisk_service import NetdiskAuthError, NetdiskError, NetdiskServ
 from services.smart_ingest import gate_for_write
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
-from utils.secret_codec import scrub_extra, seal_extra, unseal_extra
+from utils.secret_codec import SecretDecodeError, scrub_extra, seal_extra, unseal_extra
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
 
 router = APIRouter(prefix="/api/netdisk", tags=["netdisk"])
@@ -58,27 +57,23 @@ def _netdisk_http_error(e: Exception) -> HTTPException:
     if isinstance(e, NetdiskAuthError):
         return HTTPException(
             status_code=409,
-            detail={"message": e.errmsg, "errno": e.errno,
-                    "code": "NETDISK_AUTH_EXPIRED", "action": "reauthorize"},
+            detail={"message": e.errmsg, "errno": e.errno, "code": "NETDISK_AUTH_EXPIRED", "action": "reauthorize"},
         )
     if isinstance(e, NetdiskError):
         errno = getattr(e, "errno", None)
         if errno in _AUTH_ERRNOS:
             return HTTPException(
                 status_code=409,
-                detail={"message": e.errmsg, "errno": errno,
-                        "code": "NETDISK_AUTH_EXPIRED", "action": "reauthorize"},
+                detail={"message": e.errmsg, "errno": errno, "code": "NETDISK_AUTH_EXPIRED", "action": "reauthorize"},
             )
         if errno in _NOT_FOUND_ERRNOS:
             return HTTPException(
                 status_code=404,
-                detail={"message": e.errmsg, "errno": errno,
-                        "request_id": getattr(e, "request_id", "")},
+                detail={"message": e.errmsg, "errno": errno, "request_id": getattr(e, "request_id", "")},
             )
         return HTTPException(
             status_code=502,
-            detail={"message": e.errmsg, "errno": errno,
-                    "request_id": getattr(e, "request_id", "")},
+            detail={"message": e.errmsg, "errno": errno, "request_id": getattr(e, "request_id", "")},
         )
     return HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
@@ -107,7 +102,7 @@ async def refresh_token(db: Session = Depends(get_db)):
     try:
         return await service.refresh_access_token()
     except Exception as e:
-        raise _netdisk_http_error(e)
+        raise _netdisk_http_error(e) from e
 
 
 @router.post("/callback")
@@ -118,7 +113,7 @@ async def handle_callback(code: str, redirect_uri: str = "oob", db: Session = De
         result = await service.handle_callback(code, redirect_uri)
         return result
     except Exception as e:
-        raise _netdisk_http_error(e)
+        raise _netdisk_http_error(e) from e
 
 
 @router.get("/search")
@@ -139,7 +134,7 @@ async def search_netdisk(
     try:
         data = await service.search_files(keyword, dir_path=dir_path, page=page)
     except Exception as e:
-        raise _netdisk_http_error(e)
+        raise _netdisk_http_error(e) from e
     items = data.get("list") or []
     return {
         "keyword": keyword,
@@ -167,11 +162,9 @@ async def recursive_files(
     """
     service = NetdiskService(db)
     try:
-        data = await service.list_all(
-            path, max_items=max_items, max_depth=max_depth, deadline=deadline
-        )
+        data = await service.list_all(path, max_items=max_items, max_depth=max_depth, deadline=deadline)
     except Exception as e:
-        raise _netdisk_http_error(e)
+        raise _netdisk_http_error(e) from e
     items = data.get("list") or []
     return {
         "path": path,
@@ -190,7 +183,7 @@ async def netdisk_quota(db: Session = Depends(get_db)):
     try:
         return await NetdiskService(db).get_quota()
     except Exception as e:
-        raise _netdisk_http_error(e)
+        raise _netdisk_http_error(e) from e
 
 
 def _decorate_netdisk_item(item: dict, service: NetdiskService) -> dict:
@@ -260,13 +253,11 @@ async def list_files(
     try:
         if authorized:
             api_result = await service.get_file_list(path, page, page_size)
-            api_files = [
-                _strip_remote_secrets(it) for it in api_result.get("list", [])
-            ]
+            api_files = [_strip_remote_secrets(it) for it in api_result.get("list", [])]
     except NetdiskAuthError as e:
         # 授权失效必须显式 401：前端据此回到平台选择页要求重新授权，
         # 而不是显示一份来路不明的本地缓存目录。
-        raise _netdisk_http_error(e)
+        raise _netdisk_http_error(e) from e
     except Exception as e:  # noqa: BLE001
         # 网络抖动等非授权错误：保留本地缓存，但把失败原因显式带回前端
         api_error = f"{type(e).__name__}: {e}"
@@ -345,9 +336,7 @@ async def sync_files(
         path = service._get_config().get("sync_dir") or "/"
 
     try:
-        result = await service.list_all(
-            path, max_depth=max_depth, max_items=max_items, deadline=deadline
-        )
+        result = await service.list_all(path, max_depth=max_depth, max_items=max_items, deadline=deadline)
         files = result.get("list", [])
         synced = 0
         for f in files:
@@ -369,11 +358,7 @@ async def sync_files(
             synced += 1
 
         # 更新同步时间
-        config = (
-            db.query(PlatformConfig)
-            .filter(PlatformConfig.platform_name == "baidu_netdisk")
-            .first()
-        )
+        config = db.query(PlatformConfig).filter(PlatformConfig.platform_name == "baidu_netdisk").first()
         if config:
             config.last_sync = utcnow()  # naive UTC，与 DB 列对齐（P0-4）
 
@@ -382,7 +367,7 @@ async def sync_files(
     except Exception as e:
         # 授权失效 → 409 + action=reauthorize；资源不存在 → 404；其余上游错误 → 502。
         # 不再笼统 500：未授权时前端需要拿到可识别的 reauthorize 信号。
-        raise _netdisk_http_error(e)
+        raise _netdisk_http_error(e) from e
 
 
 @router.get("/preview/{file_id}")
@@ -412,21 +397,22 @@ async def _proxy_stream(file: NetdiskFile, disposition: str, db: Session, reques
         # 而不是响应头已发出、流到一半才炸给浏览器一个残缺文件。
         info = await service.get_download_url(file.fs_id)
     except (NetdiskError, NetdiskAuthError) as e:
-        raise _netdisk_http_error(e)
+        raise _netdisk_http_error(e) from e
 
     name = file.file_name or info.get("filename") or f"netdisk_{file.fs_id}"
     size = int(info.get("size") or file.size or 0)
     if size and size > MAX_DOWNLOAD_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"文件 {size / 1048576:.0f}MB 超过代理上限 "
-                   f"{MAX_DOWNLOAD_BYTES // 1048576}MB，请先入库再读本地原文")
+            detail=f"文件 {size / 1048576:.0f}MB 超过代理上限 {MAX_DOWNLOAD_BYTES // 1048576}MB，请先入库再读本地原文",
+        )
 
     media = mimetypes.guess_type(name)[0] or "application/octet-stream"
     ascii_fallback = re.sub(r"[^A-Za-z0-9._ -]", "_", name).strip() or f"netdisk_{file.fs_id}"
     headers = {
-        "Content-Disposition": (f"{disposition}; filename=\"{ascii_fallback}\"; "
-                                f"filename*=UTF-8''{quote(name, safe='')}"),
+        "Content-Disposition": (
+            f"{disposition}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
+        ),
         "Cache-Control": "no-cache",
         # 声明支持 Range：视频播放器 seek / 图片分段加载都靠它。
         # 上游（百度 dlink）支持 Range 时透传 206，忽略时按 200 全量返回。
@@ -443,12 +429,10 @@ async def _proxy_stream(file: NetdiskFile, disposition: str, db: Session, reques
     resp, _client = await stream_cm.__aenter__()
     if resp.status_code == 403:
         await stream_cm.__aexit__(None, None, None)
-        raise _netdisk_http_error(
-            NetdiskError(403, "下载被拒绝（403）：请确认请求带 User-Agent: pan.baidu.com"))
+        raise _netdisk_http_error(NetdiskError(403, "下载被拒绝（403）：请确认请求带 User-Agent: pan.baidu.com"))
     if resp.status_code >= 400:
         await stream_cm.__aexit__(None, None, None)
-        raise _netdisk_http_error(
-            NetdiskError(resp.status_code, f"上游返回 HTTP {resp.status_code}"))
+        raise _netdisk_http_error(NetdiskError(resp.status_code, f"上游返回 HTTP {resp.status_code}"))
 
     status_code = 200
     if range_header and resp.status_code == 206:
@@ -478,8 +462,9 @@ def _check_disposition(disposition: str) -> str:
 
 
 @router.get("/files/{file_id}/content")
-async def stream_netdisk_content(file_id: int, request: Request, disposition: str = "inline",
-                                 db: Session = Depends(get_db)):
+async def stream_netdisk_content(
+    file_id: int, request: Request, disposition: str = "inline", db: Session = Depends(get_db)
+):
     """按本地记录 ID 取网盘原文字节流（支持 Range，供视频播放器 seek）。"""
     file = db.query(NetdiskFile).filter(NetdiskFile.id == file_id).first()
     if not file:
@@ -491,8 +476,9 @@ async def stream_netdisk_content(file_id: int, request: Request, disposition: st
 
 
 @router.get("/content")
-async def stream_netdisk_content_by_fsid(fs_id: str, request: Request, disposition: str = "inline",
-                                         db: Session = Depends(get_db)):
+async def stream_netdisk_content_by_fsid(
+    fs_id: str, request: Request, disposition: str = "inline", db: Session = Depends(get_db)
+):
     """按百度 fs_id 取流 —— 前端网盘目录页只持有 fs_id，没有本地记录 ID。
 
     没有这条的话 Pan.jsx 只能继续 `window.open(dlink)`，而 dlink 缺
@@ -511,11 +497,7 @@ async def logout_netdisk(db: Session = Depends(get_db)):
 
     前端「退出授权」按钮调用。只清授权态不清配置，用户下次可直接重新授权。
     """
-    row = (
-        db.query(PlatformConfig)
-        .filter(PlatformConfig.platform_name == "baidu_netdisk")
-        .first()
-    )
+    row = db.query(PlatformConfig).filter(PlatformConfig.platform_name == "baidu_netdisk").first()
     if row:
         row.token = ""
         extra = dict(row.extra or {})
@@ -541,17 +523,12 @@ async def quark_web_view(db: Session = Depends(get_db)):
 
     安全：只允许 http/https 协议，拒绝 javascript: 等，防止 iframe 注入。
     """
-    cfg = (
-        db.query(PlatformConfig)
-        .filter(PlatformConfig.platform_name == "quark_netdisk")
-        .first()
-    )
+    cfg = db.query(PlatformConfig).filter(PlatformConfig.platform_name == "quark_netdisk").first()
     extra = (cfg.extra or {}) if cfg else {}
     configured = bool((extra.get("web_view_url") or "").strip())
     url = (extra.get("web_view_url") or "").strip() or QUARK_DEFAULT_WEB_VIEW
     if not url.lower().startswith(("http://", "https://")):
-        raise HTTPException(status_code=400,
-                            detail="web_view_url 必须以 http:// 或 https:// 开头")
+        raise HTTPException(status_code=400, detail="web_view_url 必须以 http:// 或 https:// 开头")
     return {
         "url": url,
         "configured": configured,
@@ -631,7 +608,7 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
         return {"file_name": file.file_name, "success": False, "message": "缺少网盘 ID，无法下载"}
 
     save_name = file.file_name or f"netdisk_{file.fs_id}"
-    save_name = re.sub(r'[\\/:*?"<>|]', '_', save_name)
+    save_name = re.sub(r'[\\/:*?"<>|]', "_", save_name)
 
     # 已入库则跳过，避免重复。**只按 file_path 认，绝不按 file_name 认**：
     # ① #27 的入库改名会把 file_name 改成「第 1 章 逻辑代数基础」这类正文标题，
@@ -642,16 +619,22 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
     existing = db.query(Document).filter(Document.file_path == save_path).first()
     if existing and existing.index_status == "indexed" and existing.content:
         return {
-            "file_name": save_name, "success": True, "skipped": True,
-            "document_id": existing.id, "chunk_count": 0,
+            "file_name": save_name,
+            "success": True,
+            "skipped": True,
+            "document_id": existing.id,
+            "chunk_count": 0,
             "message": "已入库，跳过",
         }
 
     # 下载前先判类型：不支持的类型不必浪费带宽
     file_type = DocumentParser.file_type(save_name)
     if file_type == "other":
-        return {"file_name": save_name, "success": False,
-                "message": "不支持的文件类型（仅 PDF/DOC/DOCX/PPT/PPTX/TXT/MD）"}
+        return {
+            "file_name": save_name,
+            "success": False,
+            "message": "不支持的文件类型（仅 PDF/DOC/DOCX/PPT/PPTX/TXT/MD）",
+        }
 
     service = NetdiskService(db)
     try:
@@ -690,8 +673,11 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
         doc.index_status = "failed"
         doc.parse_progress = 1.0
         db.commit()
-        return {"file_name": save_name, "success": False,
-                "message": "质量闸门拒绝入库：" + "；".join(verdict["reasons"])}
+        return {
+            "file_name": save_name,
+            "success": False,
+            "message": "质量闸门拒绝入库：" + "；".join(verdict["reasons"]),
+        }
 
     doc.content = content_text
     doc.parse_progress = 0.6
@@ -895,11 +881,7 @@ async def update_platform_config(platform: str, body: dict, db: Session = Depend
     if platform not in {"baidu", "quark"}:
         raise HTTPException(status_code=404, detail="仅支持百度网盘和夸克网盘")
     name = _PLATFORM_MAP[platform]
-    cfg = (
-        db.query(PlatformConfig)
-        .filter(PlatformConfig.platform_name == name)
-        .first()
-    )
+    cfg = db.query(PlatformConfig).filter(PlatformConfig.platform_name == name).first()
     if not cfg:
         # 不存在则新建
         cfg = PlatformConfig(platform_name=name)
@@ -912,7 +894,11 @@ async def update_platform_config(platform: str, body: dict, db: Session = Depend
     readonly_fields.add("has_refresh_token")
 
     plain_fields = {"sync_frequency"}
-    extra = unseal_extra(cfg.extra)
+    try:
+        extra = unseal_extra(cfg.extra)
+    except SecretDecodeError:
+        # 旧密文读不出时按空 extra 重建：管理员本次提交的就是新凭据
+        extra = {}
 
     for key, value in body.items():
         if key in _SECRET_COLUMNS:
@@ -951,11 +937,7 @@ async def test_platform_connection(platform: str, db: Session = Depends(get_db))
     if platform not in {"baidu", "quark"}:
         raise HTTPException(status_code=404, detail="仅支持百度网盘和夸克网盘")
     name = _PLATFORM_MAP[platform]
-    cfg = (
-        db.query(PlatformConfig)
-        .filter(PlatformConfig.platform_name == name)
-        .first()
-    )
+    cfg = db.query(PlatformConfig).filter(PlatformConfig.platform_name == name).first()
     if not cfg:
         raise HTTPException(status_code=404, detail=f"平台 {platform} 配置不存在，请先保存配置")
 
@@ -984,8 +966,7 @@ async def test_platform_connection(platform: str, db: Session = Depends(get_db))
         # 夸克没有官方开放 API，"连接测试"只校验嵌入地址是否合法可填。
         url = (extra.get("web_view_url") or "").strip() or QUARK_DEFAULT_WEB_VIEW
         if not url.lower().startswith(("http://", "https://")):
-            return {"connected": False,
-                    "message": "Web 视图地址必须以 http:// 或 https:// 开头"}
+            return {"connected": False, "message": "Web 视图地址必须以 http:// 或 https:// 开头"}
         return {
             "connected": True,
             "mode": "web_view",
@@ -1004,10 +985,16 @@ async def test_platform_connection(platform: str, db: Session = Depends(get_db))
                 )
             if resp.status_code == 200:
                 version = resp.json().get("result", "unknown")
-                return {"connected": True, "message": f"AnkiConnect 连接成功（版本 {version}），请确保 Anki 桌面端正在运行"}
+                return {
+                    "connected": True,
+                    "message": f"AnkiConnect 连接成功（版本 {version}），请确保 Anki 桌面端正在运行",
+                }
             return {"connected": False, "message": "AnkiConnect 响应异常"}
         except Exception as e:
-            return {"connected": False, "message": f"AnkiConnect 不可用：{str(e)}。请确保 Anki 桌面端已启动并安装 AnkiConnect 插件"}
+            return {
+                "connected": False,
+                "message": f"AnkiConnect 不可用：{str(e)}。请确保 Anki 桌面端已启动并安装 AnkiConnect 插件",
+            }
 
     # ---- B站 ---- #
     elif platform == "bilibili":
@@ -1051,6 +1038,7 @@ async def test_platform_connection(platform: str, db: Session = Depends(get_db))
         if not import_dir:
             return {"connected": False, "message": "请先设置思维导图导入目录"}
         import os
+
         if not os.path.exists(import_dir):
             return {"connected": False, "message": f"导入目录不存在：{import_dir}"}
         return {"connected": True, "message": f"XMind 配置已就绪，导入目录有效：{import_dir}"}

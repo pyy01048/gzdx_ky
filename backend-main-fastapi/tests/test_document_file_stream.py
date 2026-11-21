@@ -11,6 +11,7 @@
 
 只用 conftest 临时库 + pytest 临时目录（红线：绝不碰 D:\\平台\\database\\kaoyan.db）。
 """
+
 from __future__ import annotations
 
 import os
@@ -48,8 +49,9 @@ def _doc(file_name, file_path, **kw):
 
     db = SessionLocal()
     try:
-        doc = Document(file_name=file_name, file_path=file_path, file_type="pdf",
-                       size=len(BODY), index_status="indexed", **kw)
+        doc = Document(
+            file_name=file_name, file_path=file_path, file_type="pdf", size=len(BODY), index_status="indexed", **kw
+        )
         db.add(doc)
         db.commit()
         db.refresh(doc)
@@ -111,8 +113,7 @@ def test_suffix_range_and_unsatisfiable_range(client, local_root):
         r = client.get(f"/api/documents/{did}/raw", headers={"Range": "bytes=-4"})
         assert r.status_code == 206, r.text
         assert r.content == BODY[-4:]
-        assert r.headers["content-range"] == \
-            f"bytes {len(BODY) - 4}-{len(BODY) - 1}/{len(BODY)}"
+        assert r.headers["content-range"] == f"bytes {len(BODY) - 4}-{len(BODY) - 1}/{len(BODY)}"
 
         r2 = client.get(f"/api/documents/{did}/raw", headers={"Range": "bytes=99999-"})
         assert r2.status_code == 416, r2.text
@@ -201,7 +202,8 @@ def test_list_marks_file_availability_per_doc(client, local_root):
     ok = _doc("在盘上的.pdf", _touch(local_root, "在盘上的.pdf"))
     gone = _doc("没了.pdf", os.path.join(local_root, "没了.pdf"))
     try:
-        rows = {d["id"]: d for d in client.get("/api/documents").json()}
+        # 2026-11-21 起 /api/documents 返回分页信封 {items,total,page,page_size}
+        rows = {d["id"]: d for d in client.get("/api/documents", params={"page_size": 100}).json()["items"]}
         assert rows[ok]["has_local_file"] is True
         assert rows[ok]["local_file_note"] is None
         assert rows[gone]["has_local_file"] is False
@@ -253,7 +255,7 @@ class _FakeUpstreamResp:
     async def aiter_bytes(self, chunk_size=1 << 20):  # noqa: ARG002
         # 故意用 7 字节小块：大块会掩盖「漏拼 / 重复拼接」的 bug
         for i in range(0, len(self._body), 7):
-            yield self._body[i:i + 7]
+            yield self._body[i : i + 7]
 
 
 class _FakeOpenDownload:
@@ -286,20 +288,23 @@ def fake_pan(monkeypatch):
     async def fake_url(self, fs_id):  # noqa: ARG001
         if state["error"]:
             raise state["error"]
-        return {"download_url": "https://pan.baidu.com/disk/x", "filename": "x.pdf",
-                "size": state["size"], "md5": ""}
+        return {"download_url": "https://pan.baidu.com/disk/x", "filename": "x.pdf", "size": state["size"], "md5": ""}
 
     def fake_open(self, fs_id, *, range_header=None):  # noqa: ARG001
         if state["error"]:
             raise state["error"]
         if range_header:
             start, end = _parse_range(range_header, len(BODY))
-            return _FakeOpenDownload(_FakeUpstreamResp(
-                BODY[start:end + 1],
-                status_code=206,
-                headers={"content-length": str(end - start + 1),
-                         "content-range": f"bytes {start}-{end}/{len(BODY)}"},
-            ))
+            return _FakeOpenDownload(
+                _FakeUpstreamResp(
+                    BODY[start : end + 1],
+                    status_code=206,
+                    headers={
+                        "content-length": str(end - start + 1),
+                        "content-range": f"bytes {start}-{end}/{len(BODY)}",
+                    },
+                )
+            )
         return _FakeOpenDownload(_FakeUpstreamResp(BODY))
 
     monkeypatch.setattr(NetdiskService, "get_download_url", fake_url)
@@ -333,14 +338,12 @@ def test_netdisk_content_attachment_and_size_guard(client, fake_pan, monkeypatch
         # 非 404 走统一错误体：字符串 detail 落在 message 字段（utils/exceptions.py）
         assert "超过代理上限" in big.json()["message"]
 
-        monkeypatch.setattr(nd, "MAX_DOWNLOAD_BYTES", 10 ** 9)
-        ok = client.get(f"/api/netdisk/files/{fid}/content",
-                        params={"disposition": "attachment"})
+        monkeypatch.setattr(nd, "MAX_DOWNLOAD_BYTES", 10**9)
+        ok = client.get(f"/api/netdisk/files/{fid}/content", params={"disposition": "attachment"})
         assert ok.status_code == 200
         assert ok.headers["content-disposition"].startswith("attachment;")
 
-        bad = client.get(f"/api/netdisk/files/{fid}/content",
-                         params={"disposition": "evil\r\nX: 1"})
+        bad = client.get(f"/api/netdisk/files/{fid}/content", params={"disposition": "evil\r\nX: 1"})
         assert bad.status_code == 400
     finally:
         _cleanup(fid)
@@ -400,8 +403,7 @@ def test_netdisk_content_passes_through_range_206(client, fake_pan):
     """
     fid = _netdisk_row(file_name="能拖进度条的课.mp4", fs_id="10009", size=len(BODY))
     try:
-        r = client.get(f"/api/netdisk/files/{fid}/content",
-                       headers={"Range": "bytes=5-9"})
+        r = client.get(f"/api/netdisk/files/{fid}/content", headers={"Range": "bytes=5-9"})
         assert r.status_code == 206, r.text
         assert r.content == BODY[5:10]
         assert r.headers["content-range"] == f"bytes 5-9/{len(BODY)}"
@@ -415,12 +417,10 @@ def test_netdisk_content_by_fsid_creates_missing_row(client, fake_pan, monkeypat
     from services.netdisk_service import NetdiskService
 
     async def fake_info(self, fs_id):  # noqa: ARG001
-        return {"filename": "目录里新见的.pdf", "path": "/考研/目录里新见的.pdf",
-                "size": len(BODY)}
+        return {"filename": "目录里新见的.pdf", "path": "/考研/目录里新见的.pdf", "size": len(BODY)}
 
     monkeypatch.setattr(NetdiskService, "get_file_info", fake_info)
-    r = client.get("/api/netdisk/content",
-                   params={"fs_id": "20002", "disposition": "attachment"})
+    r = client.get("/api/netdisk/content", params={"fs_id": "20002", "disposition": "attachment"})
     assert r.status_code == 200, r.text
     assert r.headers["content-disposition"].startswith("attachment;")
     created = _netdisk_id_by_fs("20002")
@@ -435,8 +435,7 @@ def test_netdisk_content_by_fsid_rejects_junk_and_bad_disposition(client, fake_p
 
     fid = _netdisk_row(file_name="按fsid取.pdf", fs_id="20003", size=len(BODY))
     try:
-        d = client.get("/api/netdisk/content",
-                       params={"fs_id": "20003", "disposition": "evil\r\nX: 1"})
+        d = client.get("/api/netdisk/content", params={"fs_id": "20003", "disposition": "evil\r\nX: 1"})
         assert d.status_code == 400
     finally:
         _cleanup(fid)

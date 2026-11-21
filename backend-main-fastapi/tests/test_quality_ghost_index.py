@@ -9,6 +9,7 @@
 
 只用 conftest 的临时库（红线：绝不碰 D:\\平台\\database\\kaoyan.db）。
 """
+
 from __future__ import annotations
 
 from sqlalchemy import text
@@ -17,7 +18,7 @@ from sqlalchemy import text
 def test_ghost_index_counts_indexed_docs_without_chunks(db_schema):  # noqa: ARG001
     from database import SessionLocal
     from models import Document, KnowledgeChunk
-    from routers.quality import _ghost_index
+    from routers.study.quality import _ghost_index
 
     db = SessionLocal()
     ids = []
@@ -25,26 +26,25 @@ def test_ghost_index_counts_indexed_docs_without_chunks(db_schema):  # noqa: ARG
     # 所以这里断言的是**增量**而不是绝对值 —— 全局计数会把跨用例污染当成指标。
     base = _ghost_index(db)["indexed_without_chunks"]
     try:
-        ghost = Document(file_name="ghost.txt", subject="政治", index_status="indexed",
-                         content="考研政治真题" * 60)
+        ghost = Document(file_name="ghost.txt", subject="政治", index_status="indexed", content="考研政治真题" * 60)
         real = Document(file_name="real.txt", subject="政治", index_status="indexed")
         pending = Document(file_name="p.txt", subject="政治", index_status="pending")
         db.add_all([ghost, real, pending])
         db.flush()
         ids = [ghost.id, real.id, pending.id]
-        db.add(KnowledgeChunk(document_id=real.id, doc_name="real.txt", chunk_id=0,
-                              subject="政治", text="可检索的分块"))
+        db.add(
+            KnowledgeChunk(document_id=real.id, doc_name="real.txt", chunk_id=0, subject="政治", text="可检索的分块")
+        )
         # 孤儿块：document_id 为 NULL，绝不能把 NOT IN 的结果清成 0
-        db.add(KnowledgeChunk(document_id=None, doc_name="orphan.txt", chunk_id=0,
-                              subject="政治", text="没有归属的块"))
+        db.add(KnowledgeChunk(document_id=None, doc_name="orphan.txt", chunk_id=0, subject="政治", text="没有归属的块"))
         db.commit()
 
-        assert _ghost_index(db)["indexed_without_chunks"] == base + 1, \
-            "该只多数出 indexed 且零分块的那一篇"
+        assert _ghost_index(db)["indexed_without_chunks"] == base + 1, "该只多数出 indexed 且零分块的那一篇"
 
         # 补一块就该归零：指标跟着库里事实走，不是跟着状态字段走
-        db.add(KnowledgeChunk(document_id=ghost.id, doc_name="ghost.txt", chunk_id=0,
-                              subject="政治", text="补上的分块"))
+        db.add(
+            KnowledgeChunk(document_id=ghost.id, doc_name="ghost.txt", chunk_id=0, subject="政治", text="补上的分块")
+        )
         db.commit()
         assert _ghost_index(db)["indexed_without_chunks"] == base
     finally:

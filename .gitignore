@@ -106,3 +106,22 @@ frontend/_audit_ui.mjs
 
 # 第三方参考仓库下载（data_sources，仅供调研不入库）
 data_sources/
+
+# 构建期版本标识（deploy/push_update.py 打包前由 scripts/gen_version.py 生成）
+backend-main-fastapi/_version.py
+
+# 本地临时校验（脚本/虚拟环境/中间产物）
+.temp/
+.venv-check/
+# 孤儿科目映射草稿（正式数据见 scripts/data/subject_catalog.py）
+frontend/.temp
+# 公网 live 审计可再生截图（hub_live_audit.mjs 输出；精选证据入 acceptance/shots/）
+frontend/scripts/shots/
+
+# 外部并入的原始数据资产（题库建设 506MB / 08工学数据包 2GB / 工学院校评价库 1.7MB）
+# 体积大且为原始交付件，不入 git；学科评估库经 scripts/import_school_eval_pg.py 入 PG。
+data-assets/
+
+# QA 测试试卷导出产物与临时勘察脚本（2026-11-21 治理）
+backend-main-fastapi/routers/data/lectures/试卷_*_QA*.html
+backend-main-fastapi/scripts/_tmp_*

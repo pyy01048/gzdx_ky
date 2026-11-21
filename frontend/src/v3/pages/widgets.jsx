@@ -111,9 +111,9 @@ export function FocusTile({ todayMinutes = 0, targetMinutes = null, subjects = [
       <div className="v3-focus__meta">
         <div className="v3-row" style={{ justifyContent: 'space-between' }}>
           <span className="v3-caption">今日专注</span>
-          <strong style={{ fontSize: 15 }}>{todayMinutes} 分钟</strong>
+          <strong style={{ fontSize: 16 }}>{todayMinutes} 分钟</strong>
         </div>
-        {pct != null ? <Progress value={pct} gradient /> : null}
+        {pct != null ? <Progress value={pct} /> : null}
         <span className="v3-caption">
           {pct == null ? '未设置每日时长目标' : `目标 ${targetMinutes} 分钟 · ${pct}%`}
         </span>
@@ -127,7 +127,7 @@ export function FocusTile({ todayMinutes = 0, targetMinutes = null, subjects = [
       ) : null}
       <Select value={subject} onChange={(e) => pickSubject(e.target.value)} options={subjectOptions} aria-label="专注科目" />
       {!session ? (
-        <Button variant="gradient" block icon={<Play size={16} />} onClick={start}>开始专注</Button>
+        <Button variant="filled" data-cta="primary" block icon={<Play size={16} />} onClick={start}>开始专注</Button>
       ) : (
         <div className="v3-row" style={{ gap: 8 }}>
           {running ? (

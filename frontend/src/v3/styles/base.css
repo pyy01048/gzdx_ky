@@ -116,14 +116,56 @@ hr {
   margin: var(--v3-s-6) 0;
 }
 
+/* FE_REVIEW P0-5：焦点环必须是实色 3px（46% 透明混合在浅底上几乎不可见） */
 :focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--v3-outline-focus) 46%, transparent);
+  outline: 3px solid var(--v3-focus);
   outline-offset: 2px;
   border-radius: var(--v3-r-xs);
 }
 
 .v3-root :focus:not(:focus-visible) {
   outline: none;
+}
+
+/* 主操作按钮：实色 action 紫（FE_REVIEW P0-2，渐变按钮全站禁用）。
+   Dialog/Toast 走 portal 挂在 .hub 外，所以这条规则必须全局生效。 */
+.v3-btn[data-cta="primary"] {
+  background: var(--v3-action);
+  color: var(--v3-focus-on-action);
+  border-color: transparent;
+  box-shadow: none;
+}
+.v3-btn[data-cta="primary"]:hover {
+  background: var(--v3-action-hover);
+}
+[data-theme="dark"] .v3-btn[data-cta="primary"] {
+  color: #0E0B26;
+}
+
+/* 跳转链接（P0-5）：平时藏在视口上方，键盘聚焦时滑入。
+   hash 路由下点击由 JS preventDefault 处理，不改路由。 */
+.v3-skip-link {
+  position: fixed;
+  top: -64px;
+  left: var(--v3-sp-4);
+  z-index: calc(var(--v3-z-toast) + 10);
+  padding: 10px 18px;
+  border-radius: var(--v3-r-sm);
+  background: var(--v3-action);
+  color: var(--v3-focus-on-action);
+  font-size: var(--v3-fs-14);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--v3-shadow-2);
+  transition: top var(--v3-dur-2) var(--v3-ease-standard);
+}
+.v3-skip-link:focus-visible {
+  top: var(--v3-sp-3);
+  outline: 3px solid var(--v3-focus);
+  outline-offset: 2px;
+}
+[data-theme="dark"] .v3-skip-link {
+  color: #0E0B26;
 }
 
 /* ---------- Layout utilities ---------- */

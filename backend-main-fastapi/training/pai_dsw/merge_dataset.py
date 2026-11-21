@@ -57,7 +57,7 @@ def answer_is_copy(question: str, answer: str, *, n: int | None = None) -> bool:
         n = max(6, min(16, len(q) // 3))
     if len(a) < n:
         return False
-    grams = [a[i:i + n] for i in range(len(a) - n + 1)]
+    grams = [a[i : i + n] for i in range(len(a) - n + 1)]
     return bool(grams) and sum(1 for g in grams if g in q) / len(grams) > 0.5
 
 
@@ -85,10 +85,13 @@ def load(paths: list[str]) -> list[dict]:
                     continue
                 # 系统提示必须存在：训练与推理 system 不一致会明显掉点
                 if msgs[0].get("role") != "system" or not msgs[0].get("content"):
-                    it["messages"] = [{"role": "system", "content":
-                                       "你是一位考研辅导老师，负责计算机与电子信息类"
-                                       "（834 电子技术基础）以及数学二、英语二、政治的答疑。"}
-                                      ] + msgs
+                    it["messages"] = [
+                        {
+                            "role": "system",
+                            "content": "你是一位考研辅导老师，负责计算机与电子信息类"
+                            "（834 电子技术基础）以及数学二、英语二、政治的答疑。",
+                        }
+                    ] + msgs
                 items.append(it)
                 n += 1
         print(f"  {path.name:<24} {n:>6} 条")
@@ -100,8 +103,9 @@ def main() -> int:
     ap.add_argument("inputs", nargs="+", help="一个或多个 jsonl 路径")
     ap.add_argument("--out-dir", default="/mnt/workspace/train_data_v4")
     ap.add_argument("--val-ratio", type=float, default=0.1)
-    ap.add_argument("--max-source-share", type=float, default=0.0,
-                    help="单一来源占比上限（0=不限）；建议 0.45 防止某类数据灌顶")
+    ap.add_argument(
+        "--max-source-share", type=float, default=0.0, help="单一来源占比上限（0=不限）；建议 0.45 防止某类数据灌顶"
+    )
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -148,22 +152,21 @@ def main() -> int:
         for src, group in by_src.items():
             group.sort(key=lambda x: len(x["messages"][2]["content"]), reverse=True)
             final.extend(group[:cap])
-        print(f"来源配比压制（上限 {args.max_source_share:.0%}）："
-              f"{len(kept)} → {len(final)} 条")
+        print(f"来源配比压制（上限 {args.max_source_share:.0%}）：{len(kept)} → {len(final)} 条")
         kept = final
 
     # —— 分布报告 ——
     print("\n按来源:")
     for k, v in Counter(it.get("source", "unknown") for it in kept).most_common():
-        print(f"   {k:<16} {v:>6}  {v/len(kept):.0%}")
+        print(f"   {k:<16} {v:>6}  {v / len(kept):.0%}")
     print("按科目:")
     for k, v in Counter(it.get("subject", "?") for it in kept).most_common(10):
         print(f"   {k:<16} {v:>6}")
 
     ql = [len(it["messages"][1]["content"]) for it in kept]
     al = [len(it["messages"][2]["content"]) for it in kept]
-    print(f"\n提问长度 均值 {sum(ql)/len(ql):.0f} 最长 {max(ql)}")
-    print(f"回答长度 均值 {sum(al)/len(al):.0f} 最长 {max(al)}")
+    print(f"\n提问长度 均值 {sum(ql) / len(ql):.0f} 最长 {max(ql)}")
+    print(f"回答长度 均值 {sum(al) / len(al):.0f} 最长 {max(al)}")
 
     # —— 划分写出 ——
     rng = random.Random(args.seed)
@@ -181,8 +184,7 @@ def main() -> int:
         print(f"[✓] {p}  {len(data)} 条")
 
     print(f"\n最终数据集: {out}（train {len(train)} + val {len(val)}）")
-    print("下一步：python3 train_dsw.py --data-dir "
-          f"{out} --output-dir /mnt/workspace/lora_out")
+    print(f"下一步：python3 train_dsw.py --data-dir {out} --output-dir /mnt/workspace/lora_out")
     return 0
 
 

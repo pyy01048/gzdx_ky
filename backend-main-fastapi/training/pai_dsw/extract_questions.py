@@ -64,9 +64,7 @@ for _s in (sys.stdout, sys.stderr):
 # --------------------------------------------------------------------------- #
 
 #: 题号：1. / 1、/ 1．/ (1) / 1）
-_Q_STEM = re.compile(
-    r"^\s*(?:第?\s*(\d{1,3})\s*[题小]?\s*[.、．)）:：]|[（(]\s*(\d{1,3})\s*[)）])\s*(.+)$"
-)
+_Q_STEM = re.compile(r"^\s*(?:第?\s*(\d{1,3})\s*[题小]?\s*[.、．)）:：]|[（(]\s*(\d{1,3})\s*[)）])\s*(.+)$")
 #: 选项：A. / A、/ A）/ （A）
 _OPT = re.compile(r"^\s*[（(]?([A-HＡ-Ｈ])\s*[)）.、．:：]\s*(.+?)\s*$")
 #: 答案标注：答案：B / 【答案】B / 正确答案: ABC / 参考答案：B
@@ -77,12 +75,25 @@ _ANS = re.compile(
 _JUDGE = re.compile(r"[（(]\s*(对|错|正确|错误|√|×)\s*[)）]\s*$")
 
 #: 出现这些词的行是解析/说明，不是题干
-_JUNK_MARK = ("答案解析", "【解析】", "解析:", "解析：", "分析:", "解:", "解答",
-              "因为", "故选", "综上", "本章小结", "知识点", "考点", "【答案】")
+_JUNK_MARK = (
+    "答案解析",
+    "【解析】",
+    "解析:",
+    "解析：",
+    "分析:",
+    "解:",
+    "解答",
+    "因为",
+    "故选",
+    "综上",
+    "本章小结",
+    "知识点",
+    "考点",
+    "【答案】",
+)
 
 #: 引用图示的信号 —— 命中这些的题目几乎一定配图，优先给它们渲染原页
-_FIGURE_HINT = ("如图", "下图", "上图", "图所示", "图中的", "电路图", "波形",
-                "框图", "示意图", "右图", "左图", "见图")
+_FIGURE_HINT = ("如图", "下图", "上图", "图所示", "图中的", "电路图", "波形", "框图", "示意图", "右图", "左图", "见图")
 
 _SUBJECT_HINTS = [
     ("数字电子技术", ("数电", "数字电子", "逻辑电路", "触发器", "门电路")),
@@ -139,8 +150,7 @@ def parse_page(text: str, page_no: int, doc: str) -> list[dict]:
             # "1. 如图所示"里的 "1." 已被捕获；"第1题"这类也捕获
             if len(body) < 6 or looks_like_junk(body):
                 continue
-            cur = {"no": num, "content": body, "options": {},
-                   "answer": "", "page": page_no, "doc": doc}
+            cur = {"no": num, "content": body, "options": {}, "answer": "", "page": page_no, "doc": doc}
             continue
 
         if cur is None:
@@ -270,8 +280,10 @@ def guess_type(q: dict) -> str:
 # 原页渲染（题目配图）
 # --------------------------------------------------------------------------- #
 
-def render_page_images(src_pdf: str, pages: list[int], img_dir: Path,
-                       stem: str, cap: int, scale: float = 1.6) -> dict[int, str]:
+
+def render_page_images(
+    src_pdf: str, pages: list[int], img_dir: Path, stem: str, cap: int, scale: float = 1.6
+) -> dict[int, str]:
     """把指定页渲染成 PNG，返回 {页码: 相对路径}。
 
     只渲染**抽到题目的页**，且每篇封顶 cap 张——79GB 语料全渲染会把磁盘写爆，
@@ -283,6 +295,7 @@ def render_page_images(src_pdf: str, pages: list[int], img_dir: Path,
         return out
     try:
         import pypdfium2 as pdfium
+
         pdf = pdfium.PdfDocument(src_pdf)
         try:
             for p in pages:
@@ -293,8 +306,7 @@ def render_page_images(src_pdf: str, pages: list[int], img_dir: Path,
                     name = f"{stem}_p{p:04d}.png"
                     dest = img_dir / name
                     if not dest.exists():
-                        page.render(scale=scale).to_pil().convert("RGB").save(
-                            dest, "PNG", optimize=True)
+                        page.render(scale=scale).to_pil().convert("RGB").save(dest, "PNG", optimize=True)
                     out[p] = f"question_images/{name}"
                 except Exception:  # noqa: BLE001
                     continue
@@ -314,6 +326,7 @@ def render_page_images(src_pdf: str, pages: list[int], img_dir: Path,
 # 主流程
 # --------------------------------------------------------------------------- #
 
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="题目抽取（含原页配图）")
     ap.add_argument("--ocr-dir", default="/mnt/workspace/ocr_out")
@@ -321,11 +334,11 @@ def main() -> int:
     ap.add_argument("--img-dir", default="/mnt/workspace/question_images")
     ap.add_argument("--max-docs", type=int, default=0, help="最多处理多少篇（0=不限）")
     ap.add_argument("--max-images-per-doc", type=int, default=40)
-    ap.add_argument("--min-grade", choices=["A", "B", "C"], default="C",
-                    help="低于此等级不入库（C 级也要，答案留给本地补）")
+    ap.add_argument(
+        "--min-grade", choices=["A", "B", "C"], default="C", help="低于此等级不入库（C 级也要，答案留给本地补）"
+    )
     ap.add_argument("--no-images", action="store_true", help="不渲染配图（只抽文字）")
-    ap.add_argument("--limit-per-page", type=int, default=12,
-                    help="单页最多抽几道题，防目录页把整页编号当题号")
+    ap.add_argument("--limit-per-page", type=int, default=12, help="单页最多抽几道题，防目录页把整页编号当题号")
     args = ap.parse_args()
 
     print("=" * 70)
@@ -338,7 +351,7 @@ def main() -> int:
 
     files = sorted(ocr_dir.glob("*.json"))
     if args.max_docs:
-        files = files[:args.max_docs]
+        files = files[: args.max_docs]
     print(f"待处理 OCR 产物: {len(files)} 篇")
 
     out_dir = Path(args.out_dir)
@@ -373,7 +386,7 @@ def main() -> int:
             if not ptxt:
                 continue
             blocks = parse_page(ptxt, pi, src)
-            for b in blocks[:args.limit_per_page]:
+            for b in blocks[: args.limit_per_page]:
                 doc_blocks.append(b)
 
         if not doc_blocks:
@@ -384,8 +397,7 @@ def main() -> int:
         img_map: dict[int, str] = {}
         if not args.no_images:
             need = sorted({b["page"] for b in doc_blocks})
-            img_map = render_page_images(src, need, img_dir, stem,
-                                        args.max_images_per_doc)
+            img_map = render_page_images(src, need, img_dir, stem, args.max_images_per_doc)
 
         for b in doc_blocks:
             g = grade_question(b)
@@ -397,35 +409,47 @@ def main() -> int:
             qtype = guess_type(b)
             image = img_map.get(b["page"], "")
             has_fig = any(h in content for h in _FIGURE_HINT) or bool(image)
-            rows.append({
-                "doc": src, "doc_stem": stem, "page": b["page"],
-                "subject": subject, "chapter": "",
-                "question_no": b["no"], "question_type": qtype,
-                "content": content,
-                "options": opts,
-                # 答案列只存纯字母 key；选项文字单独放 answer_text（展示用）
-                "answer": answer_key(b),
-                "answer_text": answer_text(b),
-                "grade": g,
-                "has_figure": has_fig,
-                "image": image,
-                "source": f"cloud_extract:{Path(src).name}",
-            })
+            rows.append(
+                {
+                    "doc": src,
+                    "doc_stem": stem,
+                    "page": b["page"],
+                    "subject": subject,
+                    "chapter": "",
+                    "question_no": b["no"],
+                    "question_type": qtype,
+                    "content": content,
+                    "options": opts,
+                    # 答案列只存纯字母 key；选项文字单独放 answer_text（展示用）
+                    "answer": answer_key(b),
+                    "answer_text": answer_text(b),
+                    "grade": g,
+                    "has_figure": has_fig,
+                    "image": image,
+                    "source": f"cloud_extract:{Path(src).name}",
+                }
+            )
             # 视觉训练集：只收"有图"的题（纯文字题对视觉模型没训练价值）
             if has_fig and image:
-                vl_rows.append({
-                    "image": image,
-                    "question": content,
-                    "options": opts,
-                    "answer": answer_key(b),
-                    "doc": src, "page": b["page"],
-                })
+                vl_rows.append(
+                    {
+                        "image": image,
+                        "question": content,
+                        "options": opts,
+                        "answer": answer_key(b),
+                        "doc": src,
+                        "page": b["page"],
+                    }
+                )
 
         if i % 20 == 0 or i == len(files):
-            print(f"  [{i}/{len(files)}] 累计题目 {len(rows)}（A{stats['grade_A']} "
-                  f"B{stats['grade_B']} C{stats['grade_C']}）| "
-                  f"配图 {len(img_map) and sum(1 for v in img_map.values())} | "
-                  f"用时 {(time.time()-t0)/60:.1f} 分钟", flush=True)
+            print(
+                f"  [{i}/{len(files)}] 累计题目 {len(rows)}（A{stats['grade_A']} "
+                f"B{stats['grade_B']} C{stats['grade_C']}）| "
+                f"配图 {len(img_map) and sum(1 for v in img_map.values())} | "
+                f"用时 {(time.time() - t0) / 60:.1f} 分钟",
+                flush=True,
+            )
 
     # —— 写出 ——
     jl = out_dir / "quiz_questions.jsonl"
@@ -439,13 +463,39 @@ def main() -> int:
         # options 列输出 JSON（与 jsonl 同一份契约文本 [{key,text}]），
         # 幂等于本地入库脚本 json.loads 后的期望结构；answer 列为纯字母 key，
         # 选项文字在 answer_text 列，供 Excel 人工核对。
-        w.writerow(["subject", "chapter", "question_type", "content", "options",
-                    "answer", "answer_text", "grade", "doc", "page", "image", "source"])
+        w.writerow(
+            [
+                "subject",
+                "chapter",
+                "question_type",
+                "content",
+                "options",
+                "answer",
+                "answer_text",
+                "grade",
+                "doc",
+                "page",
+                "image",
+                "source",
+            ]
+        )
         for r in rows:
-            w.writerow([r["subject"], r["chapter"], r["question_type"], r["content"],
-                        json.dumps(r["options"], ensure_ascii=False),
-                        r["answer"], r["answer_text"], r["grade"],
-                        r["doc"], r["page"], r["image"], r["source"]])
+            w.writerow(
+                [
+                    r["subject"],
+                    r["chapter"],
+                    r["question_type"],
+                    r["content"],
+                    json.dumps(r["options"], ensure_ascii=False),
+                    r["answer"],
+                    r["answer_text"],
+                    r["grade"],
+                    r["doc"],
+                    r["page"],
+                    r["image"],
+                    r["source"],
+                ]
+            )
 
     vlp = out_dir / "vl_dataset.jsonl"
     with open(vlp, "w", encoding="utf-8") as f:
@@ -454,10 +504,11 @@ def main() -> int:
 
     with_image = sum(1 for r in rows if r["image"])
     print("\n" + "=" * 70)
-    print(f"题目总数 {len(rows)}：A {stats['grade_A']} / B {stats['grade_B']} / "
-          f"C {stats['grade_C']}（JUNK {stats['grade_JUNK']} 已丢弃）")
-    print(f"带配图 {with_image} 张 | 视觉训练样本 {len(vl_rows)} 条 | "
-          f"图片文件 {len(list(img_dir.glob('*.png')))} 张")
+    print(
+        f"题目总数 {len(rows)}：A {stats['grade_A']} / B {stats['grade_B']} / "
+        f"C {stats['grade_C']}（JUNK {stats['grade_JUNK']} 已丢弃）"
+    )
+    print(f"带配图 {with_image} 张 | 视觉训练样本 {len(vl_rows)} 条 | 图片文件 {len(list(img_dir.glob('*.png')))} 张")
     print(f"科目分布: {dict(Counter(r['subject'] for r in rows).most_common(8))}")
     print(f"\n产物:")
     print(f"  {jl}")

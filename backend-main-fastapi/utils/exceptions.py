@@ -4,6 +4,7 @@
 - 统一错误响应格式
 - 业务错误码定义
 """
+
 from typing import Any, Optional
 
 from fastapi import Request, status
@@ -54,17 +55,21 @@ class ErrorCode:
 
 class BusinessException(Exception):
     """业务异常基类"""
+
     def __init__(
         self,
         code: str = ErrorCode.UNKNOWN_ERROR,
         message: str = "未知错误",
         detail: Optional[Any] = None,
         status_code: int = status.HTTP_400_BAD_REQUEST,
+        headers: Optional[dict] = None,
     ):
         self.code = code
         self.message = message
         self.detail = detail
         self.status_code = status_code
+        # 额外响应头（如 429 的 Retry-After，V3.12 评审 C1 整改）
+        self.headers = headers
         super().__init__(message)
 
 
@@ -73,6 +78,7 @@ def create_error_response(
     message: str,
     detail: Optional[Any] = None,
     status_code: int = status.HTTP_400_BAD_REQUEST,
+    headers: Optional[dict] = None,
 ) -> JSONResponse:
     """创建统一错误响应"""
     body = {
@@ -81,7 +87,7 @@ def create_error_response(
     }
     if detail is not None:
         body["detail"] = detail
-    return JSONResponse(status_code=status_code, content=body)
+    return JSONResponse(status_code=status_code, content=body, headers=headers)
 
 
 #: HTTP 状态码 -> 业务错误码。
@@ -135,12 +141,28 @@ def http_error_response(
 # 数据库驱动/ORM 的原始报错（含 SQL、表名、列名、连接信息、traceback），
 # 必须脱敏后再回前端——否则等于把库结构免费送给任何能调接口的人。
 _SQL_LEAK_MARKERS = (
-    "psycopg", "asyncpg", "sqlalchemy", "DETAIL:", "relation ",
-    "violates", "duplicate key", "foreign key constraint", "unique constraint",
-    "Traceback", "IntegrityError", "ProgrammingError", "OperationalError",
-    "UndefinedTable", "UndefinedColumn", "could not connect",
-    "connection refused", "FATAL:", "SSL error", "server closed",
-    "deadlock detected", "operator does not exist",
+    "psycopg",
+    "asyncpg",
+    "sqlalchemy",
+    "DETAIL:",
+    "relation ",
+    "violates",
+    "duplicate key",
+    "foreign key constraint",
+    "unique constraint",
+    "Traceback",
+    "IntegrityError",
+    "ProgrammingError",
+    "OperationalError",
+    "UndefinedTable",
+    "UndefinedColumn",
+    "could not connect",
+    "connection refused",
+    "FATAL:",
+    "SSL error",
+    "server closed",
+    "deadlock detected",
+    "operator does not exist",
 )
 
 
@@ -172,12 +194,14 @@ def register_exception_handlers(app):
     async def business_exception_handler(request: Request, exc: BusinessException):
         """业务异常处理"""
         from utils.logger import error as log_error
+
         log_error(f"业务异常 [{exc.code}]: {exc.message} | path={request.url.path}")
         return create_error_response(
             code=exc.code,
             message=exc.message,
             detail=exc.detail,
             status_code=exc.status_code,
+            headers=getattr(exc, "headers", None),
         )
 
     # 写前备份不可用 → 503。写点直接调 services.kb_service.ensure_write_backup()
@@ -188,6 +212,7 @@ def register_exception_handlers(app):
     @app.exception_handler(WriteBackupBlocked)
     async def write_backup_blocked_handler(request: Request, exc: WriteBackupBlocked):
         from utils.logger import error as log_error
+
         log_error(f"写前备份闸门 [{exc.__class__.__name__}]: {exc} | path={request.url.path}")
         return create_error_response(
             code=ErrorCode.SERVICE_UNAVAILABLE,
@@ -206,6 +231,7 @@ def register_exception_handlers(app):
     @app.exception_handler(PhysicalDeleteBlocked)
     async def physical_delete_blocked_handler(request: Request, exc: PhysicalDeleteBlocked):
         from utils.logger import warning as log_warning
+
         log_warning(f"物理删除被拦截 [{exc.__class__.__name__}]: {exc} | path={request.url.path}")
         return create_error_response(
             code=ErrorCode.FORBIDDEN,
@@ -229,12 +255,11 @@ def register_exception_handlers(app):
         safe_detail, redacted = sanitize_error_detail(exc.detail)
         if redacted:
             from utils.logger import warning as log_warning
-            log_warning(
-                f"已脱敏对外错误详情 [HTTP {exc.status_code}]: {exc.detail} "
-                f"| path={request.url.path}"
-            )
+
+            log_warning(f"已脱敏对外错误详情 [HTTP {exc.status_code}]: {exc.detail} | path={request.url.path}")
         if exc.status_code >= 500:
             from utils.logger import error as log_error
+
             log_error(f"HTTP异常 [{exc.status_code}]: {exc.detail} | path={request.url.path}")
         return http_error_response(exc.status_code, safe_detail)
 
@@ -247,6 +272,7 @@ def register_exception_handlers(app):
     @app.exception_handler(SQLAlchemyError)
     async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
         from utils.logger import exception as log_exception
+
         log_exception(f"数据库异常 | path={request.url.path} | method={request.method}")
         return create_error_response(
             code=ErrorCode.UNKNOWN_ERROR,
@@ -259,31 +285,37 @@ def register_exception_handlers(app):
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         """请求参数校验异常处理"""
         from utils.logger import warning as log_warning
+
         errors = []
         for err in exc.errors():
-            errors.append({
-                "field": ".".join(str(loc) for loc in err.get("loc", []) if loc != "body"),
-                "message": err.get("msg", ""),
-                "type": err.get("type", ""),
-            })
+            errors.append(
+                {
+                    "field": ".".join(str(loc) for loc in err.get("loc", []) if loc != "body"),
+                    "message": err.get("msg", ""),
+                    "type": err.get("type", ""),
+                }
+            )
 
         log_warning(f"参数校验失败: {errors} | path={request.url.path}")
         return create_error_response(
             code=ErrorCode.INVALID_PARAMETER,
             message="请求参数校验失败",
             detail={"errors": errors},
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            # 用字面量 422 而非常量：starlette 1.10 把 HTTP_422_UNPROCESSABLE_ENTITY
+            # 标记为废弃（改名 HTTP_422_UNPROCESSABLE_CONTENT），而服务器侧仍是
+            # starlette 0.46（无新常量）。两者数值相同，写 422 可跨版本兼容。
+            status_code=422,
         )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
         """未处理异常兜底"""
         from utils.logger import exception as log_exception
+
         # 记类型：只看「未处理异常」这四个字定位不到根因（排查软删除 500 时踩过）。
         # 堆栈只进服务端日志，不回前端。
         log_exception(
-            f"未处理异常 | path={request.url.path} | method={request.method} "
-            f"| type={type(exc).__name__}: {exc}"
+            f"未处理异常 | path={request.url.path} | method={request.method} | type={type(exc).__name__}: {exc}"
         )
         return create_error_response(
             code=ErrorCode.UNKNOWN_ERROR,

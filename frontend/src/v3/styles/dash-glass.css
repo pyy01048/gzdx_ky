@@ -56,3 +56,31 @@
 @media (prefers-reduced-motion: reduce) {
   .v3-dash-hero::before { animation: none; }
 }
+
+/* ── 第四态：部分模块不可用（完善方案 13 §3.4） ───────────────────────── */
+.v3-dash-partial {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(217, 139, 31, 0.12);
+  border: 1px solid rgba(217, 139, 31, 0.28);
+  color: var(--v3-warning, #b26a00);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.v3-dash-partial > svg { flex: none; }
+.v3-dash-partial > span { flex: 1; min-width: 0; }
+.v3-dash-partial__action {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.v3-dash-partial__action:hover { background: rgba(217, 139, 31, 0.16); }

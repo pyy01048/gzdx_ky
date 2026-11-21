@@ -331,11 +331,26 @@ function SchoolCard({
 }) {
   const yzLink = `https://yz.chsi.com.cn/sch/search.do?q=${encodeURIComponent(s.name || '')}`
   const cov = covMap && covMap[s.id]
+  /* 自托管图片也可能 404（回填未覆盖/文件被清）：裂图时退回无封面/首字头像 */
+  const [coverOk, setCoverOk] = useState(true)
+  const [logoOk, setLogoOk] = useState(true)
   return (
     <article className={cx('kyv3-school', highlight && 'is-hl')}>
+      {s.cover_url && coverOk ? (
+        <div className="kyv3-school-cover">
+          <img
+            src={s.cover_url}
+            alt={`${s.name || '院校'} 校园实景`}
+            loading="lazy"
+            onError={() => setCoverOk(false)}
+          />
+        </div>
+      ) : null}
       <div className="kyv3-school-top">
         <div className="kyv3-logo">
-          {s.logo_url ? <img src={s.logo_url} alt="" loading="lazy" /> : (s.name || '?').slice(0, 1)}
+          {s.logo_url && logoOk
+            ? <img src={s.logo_url} alt="" loading="lazy" onError={() => setLogoOk(false)} />
+            : (s.name || '?').slice(0, 1)}
         </div>
         <div className="kyv3-school-title-wrap">
           <Link to={`/kaoyan/schools/${s.id}`} className="kyv3-school-name" title={s.name}>{s.name}</Link>
@@ -1130,7 +1145,7 @@ export default function KaoyanSchools() {
           <CardHead
             icon={<BarChart3 size={17} />}
             title="数据分析"
-            sub="实时取自 /api/kaoyan/analysis/dashboard 与院校聚合字段"
+            sub="汇总招生、录取与院校库的实时聚合数据"
           />
           <Button variant="text" size="sm" onClick={() => setShowAnalysis((v) => !v)} aria-expanded={showAnalysis}>
             {showAnalysis ? '收起数据看板' : '展开数据看板'}

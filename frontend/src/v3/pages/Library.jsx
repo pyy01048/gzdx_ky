@@ -7,7 +7,7 @@ import {
   Segmented, Skeleton, Tile, toastErr, toastOk,
 } from '../ui'
 import {
-  AlertCircle, CheckCircle2, ChevronDown, ChevronRight, FileText, Folder, FolderOpen,
+  AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, FileText, Folder, FolderOpen,
   Layers, RefreshCw, Upload,
 } from '../icons'
 import { useAuth } from '../../auth/AuthContext'
@@ -41,6 +41,10 @@ const CT_TONE = {
   试题: 'warning',
   单词: 'success',
 }
+
+/* V3.12 分页整改：后端强制分页（上限 100/页），文库按 50/页浏览。
+   chip 计数改用后端 facets（GROUP BY 紧凑计数组），不再拉全量列表数一遍。 */
+const PAGE_SIZE = 50
 
 /* 资料层级（doc_type）→ 中文 */
 const DOC_TYPE_LABEL = {
@@ -113,7 +117,12 @@ export default function Library() {
   const [subjectOptions, setSubjectOptions] = useState([])
 
   const [items, setItems] = useState([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [facet, setFacet] = useState([])
+  /* 后端 facets 计数组（{subject,content_type,count,parsed_count}[]）；
+     null = 旧形态响应（测试 mock / 兼容数组），回退到本地 countBy */
+  const [facetGroups, setFacetGroups] = useState(null)
   const [status, setStatus] = useState('loading') // loading | ok | error
   const [loading, setLoading] = useState(false)
   const [errMsg, setErrMsg] = useState('')
@@ -151,22 +160,25 @@ export default function Library() {
     const seq = ++listSeq.current
     setLoading(true)
     try {
-      const data = await documentsApi.list(buildParams(stage, subject, contentType))
+      const data = await documentsApi.list({ ...buildParams(stage, subject, contentType), page, page_size: PAGE_SIZE })
       if (seq !== listSeq.current) return false
-      setItems(normalizeList(data))
+      const list = normalizeList(data)
+      setItems(list)
+      setTotal(Number(data?.total) || list.length)
       setStatus('ok')
       setErrMsg('')
       return true
     } catch (e) {
       if (seq !== listSeq.current) return false
       setItems([])
+      setTotal(0)
       setErrMsg(e?.message || '未知错误')
       setStatus('error')
       return false
     } finally {
       if (seq === listSeq.current) setLoading(false)
     }
-  }, [stage, subject, contentType])
+  }, [stage, subject, contentType, page])
 
   useEffect(() => { loadList() }, [loadList])
 
@@ -177,24 +189,57 @@ export default function Library() {
     else toastErr('刷新失败，请检查后端服务后重试')
   }
 
-  /* 计数请求（facet）：只在阶段变化时重拉 */
+  /* 计数请求（facet）：只在阶段变化时重拉。
+     新后端：page_size=1 只取一行，计数全部来自 facets.groups（DB 侧 GROUP BY）；
+     旧形态（数组/mock）：回退到全量列表本地计数。 */
   useEffect(() => {
     let alive = true
-    documentsApi.list({ subject_source: 'ima', stage })
-      .then((d) => { if (alive) setFacet(normalizeList(d)) })
-      .catch(() => { if (alive) setFacet([]) })
+    documentsApi.list({ subject_source: 'ima', stage, page: 1, page_size: 1 })
+      .then((d) => {
+        if (!alive) return
+        if (Array.isArray(d?.facets?.groups)) {
+          setFacetGroups(d.facets.groups)
+          setFacet([])
+        } else {
+          setFacetGroups(null)
+          setFacet(normalizeList(d))
+        }
+      })
+      .catch(() => { if (alive) { setFacetGroups(null); setFacet([]) } })
     return () => { alive = false }
   }, [stage])
 
-  /* 交叉计数：选了科目按科目统计性质，反之亦然 */
-  const subjectCounts = useMemo(
-    () => countBy(facet.filter((d) => !contentType || d.content_type === contentType), 'subject'),
-    [facet, contentType],
+  /* 本阶段总条数：facets 计数组求和；旧形态用 facet 列表长度 */
+  const stageTotal = useMemo(
+    () => (facetGroups ? facetGroups.reduce((n, g) => n + (Number(g.count) || 0), 0) : facet.length),
+    [facetGroups, facet],
   )
-  const ctCounts = useMemo(
-    () => countBy(facet.filter((d) => !subject || d.subject === subject), 'content_type'),
-    [facet, subject],
-  )
+
+  /* 交叉计数：选了科目按科目统计性质，反之亦然（口径与旧 countBy 一致） */
+  const subjectCounts = useMemo(() => {
+    if (facetGroups) {
+      const m = {}
+      for (const g of facetGroups) {
+        if (contentType && g.content_type !== contentType) continue
+        const k = g.subject || ''
+        m[k] = (m[k] || 0) + (Number(g.count) || 0)
+      }
+      return m
+    }
+    return countBy(facet.filter((d) => !contentType || d.content_type === contentType), 'subject')
+  }, [facetGroups, facet, contentType])
+  const ctCounts = useMemo(() => {
+    if (facetGroups) {
+      const m = {}
+      for (const g of facetGroups) {
+        if (subject && g.subject !== subject) continue
+        const k = g.content_type || ''
+        m[k] = (m[k] || 0) + (Number(g.count) || 0)
+      }
+      return m
+    }
+    return countBy(facet.filter((d) => !subject || d.subject === subject), 'content_type')
+  }, [facetGroups, facet, subject])
 
   /* 科目 chip：以科目 API 为骨架，按本阶段实际计数收窄；数据里多出的补在末尾 */
   const subjectChips = useMemo(() => {
@@ -206,16 +251,30 @@ export default function Library() {
     return [...base, ...extra]
   }, [subjectOptions, subjectCounts])
 
-  const parsedCount = useMemo(() => facet.filter(isParsed).length, [facet])
+  const parsedCount = useMemo(
+    () => (facetGroups
+      ? facetGroups.reduce((n, g) => n + (Number(g.parsed_count) || 0), 0)
+      : facet.filter(isParsed).length),
+    [facetGroups, facet],
+  )
+
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const closePreview = () => {
     openIdRef.current = null
     setOpenId(null)
     setPreview({ id: null, state: 'idle', text: '', note: '' })
   }
-  const pickSubject = (v) => { closePreview(); setSubject(v) }
-  const pickContentType = (v) => { closePreview(); setContentType(v) }
-  const pickStage = (v) => { closePreview(); setStage(v) }
+  /* 换筛选 = 换结果集：页码回到 1，避免落在空页 */
+  const pickSubject = (v) => { closePreview(); setPage(1); setSubject(v) }
+  const pickContentType = (v) => { closePreview(); setPage(1); setContentType(v) }
+  const pickStage = (v) => { closePreview(); setPage(1); setStage(v) }
+  const gotoPage = (p) => {
+    const next = Math.min(Math.max(1, p), pageCount)
+    if (next === page) return
+    closePreview()
+    setPage(next)
+  }
 
   /* 点击文件名：就地展开正文预览（GET /documents/{id}/content） */
   const togglePreview = async (doc) => {
@@ -345,14 +404,14 @@ export default function Library() {
         <StatTile
           icon={<Folder size={15} />}
           label="本阶段资料"
-          value={facet.length}
+          value={stageTotal}
           unit="条"
           hint={`${stage} · 含全部科目与性质`}
         />
         <StatTile
           icon={<FileText size={15} />}
           label="当前结果"
-          value={items.length}
+          value={total}
           unit="条"
           hint={`${subjectLabel} · ${ctLabel}`}
         />
@@ -382,7 +441,7 @@ export default function Library() {
             onChange={pickStage}
           />
           <div className="lb3-filter-summary">
-            <Badge tone={loading ? 'outline' : 'primary'}>{loading ? '同步中' : `共 ${items.length} 条`}</Badge>
+            <Badge tone={loading ? 'outline' : 'primary'}>{loading ? '同步中' : `共 ${total} 条`}</Badge>
             <span>
               {stage} / {subjectLabel} / {ctLabel}
               {loading ? ' · 加载中…' : ''}
@@ -395,7 +454,7 @@ export default function Library() {
           <div className="lb3-chips">
             <Chip active={subject === ''} onClick={() => pickSubject('')}>
               全部科目
-              {facet.length > 0 ? <span className="lb3-chip-count">{facet.length}</span> : null}
+              {stageTotal > 0 ? <span className="lb3-chip-count">{stageTotal}</span> : null}
             </Chip>
             {subjectChips.map((name) => {
               const n = subjectCounts[name] || 0
@@ -437,9 +496,9 @@ export default function Library() {
         <CardHead
           icon={<Layers size={17} />}
           title="资料清单"
-          sub={items.length === 0
+          sub={total === 0
             ? '当前筛选组合下没有资料'
-            : `${items.length} 条资料 · 点击文件名可展开正文预览`}
+            : `共 ${total} 条资料 · 第 ${page}/${pageCount} 页 · 点击文件名可展开正文预览`}
           actions={<Badge tone="outline">IMA 来源</Badge>}
         />
 
@@ -447,7 +506,7 @@ export default function Library() {
           <Empty
             icon={<Folder size={26} />}
             title={`「${stage} · ${subjectLabel} · ${ctLabel}」下暂无资料`}
-            text={facet.length === 0
+            text={stageTotal === 0
               ? (isAdmin
                 ? '当前阶段还没有 IMA 导入记录，可先在「文档知识库」导入资料。'
                 : '当前阶段还没有资料，导入由管理员在「文档知识库」统一维护。')
@@ -538,6 +597,28 @@ export default function Library() {
             })}
           </div>
         )}
+
+        {pageCount > 1 ? (
+          <div className="lb3-pager">
+            <Button
+              variant="tonal"
+              icon={<ChevronLeft size={15} />}
+              disabled={loading || page <= 1}
+              onClick={() => gotoPage(page - 1)}
+            >
+              上一页
+            </Button>
+            <span className="lb3-pager__info">第 {page} / {pageCount} 页 · 共 {total} 条</span>
+            <Button
+              variant="tonal"
+              icon={<ChevronRight size={15} />}
+              disabled={loading || page >= pageCount}
+              onClick={() => gotoPage(page + 1)}
+            >
+              下一页
+            </Button>
+          </div>
+        ) : null}
       </Card>
     </div>
   )

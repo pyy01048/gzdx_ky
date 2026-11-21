@@ -165,13 +165,15 @@ class ServerWatchdog(threading.Thread):
     def _fire(self, reason: str) -> None:
         if self.triggered:
             return
-        self.triggered = True
         self.reason = reason
         _log(f"{reason} → 请求 uvicorn 优雅退出，交由守护进程重启")
+        # 先置位 should_exit 再置 triggered：测试/守护进程以 triggered 判定"已触发"，
+        # 若顺序反过来，判定方可能在 should_exit 赋值前就看到 triggered（实测竞态）。
         try:
             self._server.should_exit = True
         except Exception as e:  # noqa: BLE001
             _log(f"置位 should_exit 失败: {type(e).__name__}: {e}")
+        self.triggered = True
 
 
 def run_with_watchdog(
@@ -212,10 +214,7 @@ def run_with_watchdog(
         watchdog.stop()
 
     if watchdog.triggered:
-        _log(
-            f"已退出：{watchdog.reason}。"
-            f"退出码={EXIT_WATCHDOG}（守护进程会按退避策略重启）"
-        )
+        _log(f"已退出：{watchdog.reason}。退出码={EXIT_WATCHDOG}（守护进程会按退避策略重启）")
         return EXIT_WATCHDOG
     return 0
 

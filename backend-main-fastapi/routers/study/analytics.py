@@ -44,6 +44,7 @@ def _optional_user_id(request: Request, db: Session):
 # 请求模型
 # ---------------------------------------------------------------------------
 
+
 class ErrorAnalyzeRequest(BaseModel):
     error_id: int = Field(..., description="错题记录ID")
 
@@ -71,6 +72,7 @@ class EssayGradeRequest(BaseModel):
 # 路由
 # ---------------------------------------------------------------------------
 
+
 @router.post("/errors/{error_id}/analyze")
 async def analyze_error(error_id: int, db: Session = Depends(get_db)):
     """AI分析单道错题，生成错误原因、详细解析、知识点链接和变式题建议。"""
@@ -79,9 +81,9 @@ async def analyze_error(error_id: int, db: Session = Depends(get_db)):
         result = await service.analyze_error(error_id)
         return result
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"错题分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"错题分析失败: {str(e)}") from e
 
 
 @router.get("/weak-points")
@@ -100,13 +102,13 @@ async def get_weak_points(
         result = service.diagnose_weak_points(subject=subject, limit=limit)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"考点诊断失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"考点诊断失败: {str(e)}") from e
 
 
 @router.get("/traces")
 async def get_learning_traces(
     request: Request,
-    days: int = 30,
+    days: int = Query(30, ge=1, le=365),
     db: Session = Depends(get_db),
 ):
     """获取最近N天的学习轨迹数据，包含每日学习统计、连续学习天数、周汇总。
@@ -114,8 +116,6 @@ async def get_learning_traces(
     额外附带 ``study_events`` 行为流水汇总（真实耗时 / 答题事件 / 连续天数），
     与业务表台账互为补充：台账回答"完成了多少"，埋点回答"实际学了多久"。
     """
-    if days < 1 or days > 365:
-        raise HTTPException(status_code=400, detail="days 参数范围应为 1-365")
     service = LearningAnalyticsService(db)
     try:
         result = service.get_learning_traces(days=days)
@@ -123,7 +123,7 @@ async def get_learning_traces(
         result["study_events"] = learning_summary(db, user_id=uid, days=days)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"学习轨迹查询失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"学习轨迹查询失败: {str(e)}") from e
 
 
 @router.get("/study-summary")
@@ -142,7 +142,7 @@ async def get_study_summary(
         uid = _optional_user_id(request, db) if request is not None else None
         return learning_summary(db, user_id=uid, days=days or None)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"学习数据汇总失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"学习数据汇总失败: {str(e)}") from e
 
 
 @router.post("/report")
@@ -158,7 +158,7 @@ async def generate_study_report(
         result = await service.generate_study_report(report_type=request.report_type)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"学习报告生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"学习报告生成失败: {str(e)}") from e
 
 
 @router.post("/grade-essay")
@@ -178,7 +178,7 @@ async def grade_essay(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"作文评分失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"作文评分失败: {str(e)}") from e
 
 
 @router.get("/overview")
@@ -215,4 +215,4 @@ async def get_analytics_overview(request: Request, db: Session = Depends(get_db)
             "study_summary": events,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"概览查询失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"概览查询失败: {str(e)}") from e

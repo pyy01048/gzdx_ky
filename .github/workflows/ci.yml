@@ -6,10 +6,19 @@ on:
   pull_request:
     branches: [main, master]
 
+# 门禁原则（完善方案 06）：
+#   1. 依赖装失败即红——禁止 `|| true` 吞错（历史 P0：CI 假绿）
+#   2. 每个 job 显式声明运行时 + job 级超时
+#   3. 前端必须 build（构建破坏在 CI 暴露），产物 artifact 化
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: 后端 pytest（真 PG 测试库）
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: backend-main-fastapi
@@ -29,7 +38,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # conftest 会把 PG_DATABASE 改写到 kaoyan_test 并自动建库
       PGDATABASE_TEST_HINT: kaoyan_test
       PG_HOST: 127.0.0.1
       PG_PORT: "5432"
@@ -44,33 +52,27 @@ jobs:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: backend-main-fastapi/requirements*.txt
-      - name: 安装依赖
+      - name: 安装依赖（失败即红，绝不吞）
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt 2>/dev/null || true
-          pip install pytest pytest-timeout httpx
+          pip install -r requirements.txt -r requirements-dev.txt
       - name: 体检（project_healthcheck）
         run: python scripts/project_healthcheck.py
-      - name: 依赖漏洞扫描（pip-audit，0 high/critical 才绿）
-        run: pip-audit -r requirements.txt --strict
-      - name: 单测（pytest）
-        # --continue-on-collection 不需要；失败即红。现有已知漂移用例修复后再收紧
-        run: python -m pytest tests -q --timeout=300
-
-  gitleaks:
-    name: 密钥扫描（gitleaks）
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: 单测 + 覆盖率
+        # 覆盖率暂不设 fail-under：先把数字跑出来定基线，再按 ratchet 只升不降（06 文档 §3.3）
+        run: python -m pytest tests -q --timeout=300 --cov=. --cov-report=xml --cov-report=term:skip-covered
+      - name: 上传覆盖率
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: backend-coverage
+          path: backend-main-fastapi/coverage.xml
+          if-no-files-found: warn
 
   frontend:
-    name: 前端 vitest
+    name: 前端 vitest + lint + build
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend
@@ -81,9 +83,88 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # design_guard 是 Python 脚本：显式声明运行时，不再依赖 runner 镜像的 python 别名
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - name: 安装依赖
         run: npm ci
       - name: 设计门禁（design_guard）
         run: python ../backend-main-fastapi/scripts/design_guard.py
       - name: 单测（vitest）
         run: npm test
+      - name: Lint（eslint，0 error 门禁）
+        run: npm run lint
+      - name: 构建（vite build → backend static）
+        run: npm run build
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-dist
+          path: backend-main-fastapi/static
+          if-no-files-found: error
+
+  lint:
+    name: 后端静态检查（ruff，增量门禁）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      # 存量 888 条告警按目录分批清零（04 文档），此处只对"本次变更的 py"做硬门禁，
+      # 保证新代码 0 error；存量治理进度用全仓统计（非阻断）跟踪。
+      - name: 变更文件 ruff check
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+          fi
+          if [ -z "$BASE" ]; then echo "无基线提交，跳过（首次推送）"; exit 0; fi
+          FILES=$(git diff --name-only --diff-filter=ACM "$BASE" HEAD -- 'backend-main-fastapi/**/*.py')
+          if [ -z "$FILES" ]; then echo "本次无 py 变更"; exit 0; fi
+          echo "检查：$FILES"
+          ruff check $FILES --output-format=github
+          # 格式门禁只对**新增文件**生效：存量 888 条告警/未格式化文件按目录分批治理
+          # （04 文档"先宽后紧"），避免一次改动几千行纯格式 diff 淹没真实变更。
+          ADDED=$(git diff --name-only --diff-filter=A "$BASE" HEAD -- 'backend-main-fastapi/**/*.py')
+          if [ -n "$ADDED" ]; then
+            echo "格式检查（新增文件）：$ADDED"
+            ruff format --check $ADDED
+          fi
+      - name: 存量告警分布（非阻断，留档跟踪）
+        run: ruff check backend-main-fastapi --statistics || true
+
+  security:
+    name: 密钥扫描 + 依赖漏洞
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pip-audit
+      - name: pip-audit（0 已知漏洞才绿）
+        run: pip-audit -r backend-main-fastapi/requirements.txt --strict
+
+  docs:
+    name: 文档链接检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: 仓库内相对链接校验（不联网）
+        run: python backend-main-fastapi/scripts/diagnostics/check_doc_links.py

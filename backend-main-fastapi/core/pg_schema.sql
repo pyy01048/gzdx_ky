@@ -195,6 +195,25 @@
 \echo '== 追加：三层可审计记忆表（115） =='
 \ir sql/115_memory_traces.sql
 
+-- 08 工学题库四分类筛选主键 + 来源留痕列（真题/练习题/习题/考研题）。
+-- 依赖 040_questions.sql 建出的 quiz_questions 与 000 的枚举体系，故排在序列末尾。
+\echo '== 追加：quiz_questions 四分类筛选列（117） =='
+\ir sql/117_quiz_category_columns.sql
+
+-- 邮箱注册/找回密码/RBAC/认证审计（《用户管理界面.md》邮箱版）。
+-- 此前仅在服务器单文件执行过，未接权威 schema（2026-11-21 补接，幂等）。
+\echo '== 追加：users 邮箱认证与 RBAC 审计（116） =='
+\ir sql/116_users_email_auth.sql
+
+-- 用户管理列表过滤查询索引（116 的配套查询路径）。
+\echo '== 追加：users 查询索引（118） =='
+\ir sql/118_users_query_indexes.sql
+
+-- 08 工学学科评估与院校主档（data-assets/工学院校评价库 并入，2026-11-21）：
+-- 教育部第四轮学科评估 + 第二轮双一流，MySQL 交付转写为 PG 权威 schema。
+\echo '== 追加：ky_* 工学学科评估四表（119） =='
+\ir sql/119_school_engineering_eval.sql
+
 -- --------------------------------------------------------------------------- #
 -- 建库自检：下列查询应全部有结果，任一项为空说明对应分片未生效
 -- --------------------------------------------------------------------------- #
@@ -203,7 +222,7 @@ SELECT COUNT(*) AS table_count
   FROM information_schema.tables
  WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
 
-\echo '== 自检 2/4：枚举类型数量（应为 28） =='
+\echo '== 自检 2/4：枚举类型数量（应为 29） =='
 SELECT COUNT(*) AS enum_count
   FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
  WHERE n.nspname = 'public' AND t.typtype = 'e';

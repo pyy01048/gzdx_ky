@@ -104,7 +104,9 @@ function refreshSession() {
 }
 
 // 精确路径：这些接口的 401 是业务语义（登录失败/刷新失败），不是 session 过期信号
-const NO_REFRESH_PATHS = ['/auth/login', '/auth/refresh', '/auth/logout', '/auth/status']
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/refresh', '/auth/logout', '/auth/status',
+  '/auth/register', '/auth/resend-verification', '/auth/verify-email',
+  '/auth/forgot-password', '/auth/reset-password', '/auth/reset-password/inspect', '/auth/delete-cancel']
 // 前缀路径：整域的 401 都可能来自第三方资源状态（如网盘授权失效），
 // 绝不能触发全局 session 修复把用户踢下线（2026-10-18 登录后卡死事故）
 const NO_REFRESH_PREFIXES = ['/netdisk/']
@@ -715,7 +717,25 @@ export const flashcardsApi = {
 
 /* ---------------- Documents 文档知识库 ---------------- */
 export const documentsApi = {
+  // 单页清单：后端强制分页（默认 20，上限 100），返回 {items,total,page,page_size,facets}
   list: (params) => request('/documents', { params }),
+  // 管理页全量清单：按 100/页循环取齐（V3.12 分页整改后管理端聚合用）。
+  // 每页已裁剪正文字段，仅管理员页面调用；访客文库用单页 list + facets。
+  listAll: async (params = {}) => {
+    const pageSize = 100
+    let page = 1
+    let items = []
+    let total = 0
+    // 安全上限 100 页（1 万篇）：防御异常 total 导致死循环
+    for (; page <= 100; page += 1) {
+      const d = await request('/documents', { params: { ...params, page, page_size: pageSize } })
+      const batch = Array.isArray(d) ? d : (d?.items || [])
+      items = items.concat(batch)
+      total = Array.isArray(d) ? items.length : (Number(d?.total) || items.length)
+      if (batch.length < pageSize || items.length >= total) break
+    }
+    return { items, total, page, page_size: pageSize }
+  },
   subjects: () => request('/documents/subjects'),
   upload: (formData) => request('/documents/upload', { method: 'POST', formData }),
   parse: (id) => request(`/documents/${id}/parse`, { method: 'POST' }),
@@ -982,6 +1002,18 @@ export const authApi = {
   me: () => request('/auth/me'),
   changePassword: (oldPassword, newPassword) =>
     request('/auth/change-password', { method: 'POST', body: { old_password: oldPassword, new_password: newPassword } }),
+  /* 邮箱注册 / 验证 / 找回密码（《用户管理界面.md》邮箱版） */
+  register: (email, password, displayName) =>
+    request('/auth/register', { method: 'POST', body: { email, password, display_name: displayName || undefined } }),
+  resendVerification: (email) => request('/auth/resend-verification', { method: 'POST', body: { email } }),
+  verifyEmail: (token) => request('/auth/verify-email', { method: 'POST', body: { token } }),
+  forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: { email } }),
+  inspectReset: (token) => request('/auth/reset-password/inspect', { method: 'POST', body: token ? { token } : {} }),
+  resetPassword: (newPassword, token) =>
+    request('/auth/reset-password', { method: 'POST', body: { new_password: newPassword, token: token || undefined } }),
+  requestDeletion: () => request('/auth/delete-request', { method: 'POST' }),
+  cancelDeletion: (username, password) =>
+    request('/auth/delete-cancel', { method: 'POST', body: { username, password } }),
 }
 
 /* ---------------- 用户管理（仅管理员） ---------------- */
@@ -989,10 +1021,13 @@ export const adminUsersApi = {
   list: (params) => request('/admin/users', { params }),
   create: (body) => request('/admin/users', { method: 'POST', body }),
   update: (id, body) => request(`/admin/users/${id}`, { method: 'PATCH', body }),
-  resetPassword: (id) => request(`/admin/users/${id}/reset-password`, { method: 'POST' }),
+  detail: (id) => request(`/admin/users/${id}`),
+  resetPassword: (id, mode = 'temp') => request(`/admin/users/${id}/reset-password`, { method: 'POST', body: { mode } }),
   /* 软删除（2026-10-19 补：原先无删除端点，DELETE 返回 405）——写 deleted_at，可恢复 */
   remove: (id) => request(`/admin/users/${id}`, { method: 'DELETE' }),
   restore: (id) => request(`/admin/users/${id}/restore`, { method: 'POST' }),
+  roles: () => request('/admin/users/roles'),
+  authEvents: (params) => request('/admin/users/auth-events', { params }),
 }
 
 

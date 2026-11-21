@@ -414,7 +414,7 @@ export default function QuizHome({
           {treeErr && (
             <Alert tone="danger">
               <div className="v3-quiz-inline">
-                <span><strong>知识点树加载失败：</strong>无法读取 /api/taxonomy/tree。</span>
+                <span><strong>知识点树加载失败：</strong>网络或服务暂不可用，请重试。</span>
                 <Button size="sm" variant="text" onClick={() => loadTree(active?.subject)}>重试</Button>
               </div>
             </Alert>
@@ -563,7 +563,7 @@ export default function QuizHome({
       {statsErr && (
         <Alert tone="danger">
           <div className="v3-quiz-inline">
-            <span><strong>统计数据加载失败</strong>：无法读取 /api/quiz/stats，请确认后端已启动。</span>
+            <span><strong>统计数据加载失败</strong>：请确认后端服务已启动后重试。</span>
             <Button size="sm" variant="text" onClick={loadStats}>重试</Button>
           </div>
         </Alert>

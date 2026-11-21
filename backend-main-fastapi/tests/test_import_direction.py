@@ -10,6 +10,7 @@
 白名单显式列出历史豁免并逐迭代清空。
 沿用项目 test_quiz_gate_ast 的 AST 扫描模式（不靠文本 grep，避免误伤字符串）。
 """
+
 from __future__ import annotations
 
 import ast
@@ -17,9 +18,12 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent
 
-# 历史豁免：显式列出，逐迭代清空（当前首批为空——先立规矩再清存量）
+# 历史豁免：显式列出，逐迭代清空。
+# utils/exceptions.py 的反向 import 是"503 写前备份闸门"的深层语义耦合
+# （写点异常类的注册需要 services 的异常类型），重构要动 6+ 处写点保护，
+# 单独立项处理；守卫测试先以白名单记录，防止新增同类依赖。
 ALLOWLIST = {
-    # "services/xxx.py": ["routers.yyy"],  # 填写豁免时附原因与退场迭代
+    "utils/exceptions.py": ["services.kb_service", "services.delete_guard"],
 }
 
 

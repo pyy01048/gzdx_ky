@@ -72,6 +72,8 @@ vi.mock('../api/client', async (importOriginal) => ({
   request: vi.fn().mockResolvedValue({}),
   documentsApi: {
     list: vi.fn().mockResolvedValue(docsPayload),
+    // Documents.jsx 2026-11-21 起走分页聚合 listAll（服务端强制分页后的全量循环）
+    listAll: vi.fn().mockImplementation(async () => ({ items: docsPayload, total: docsPayload.length, page: 1, page_size: 100 })),
     subjects: vi.fn().mockResolvedValue(subjectsPayload),
     remove: vi.fn(),
     parse: vi.fn(),

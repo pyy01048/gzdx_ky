@@ -18,12 +18,14 @@ router = APIRouter(prefix="/api/admin/schools", tags=["admin-schools"], dependen
 
 # --- Pydantic Schemas ---
 
+
 class SchoolCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     level: Optional[str] = None
     province: Optional[str] = None
     city: Optional[str] = None
     logo_url: Optional[str] = None
+    cover_url: Optional[str] = None
     intro: Optional[str] = None
     tags: list = []
     official_url: Optional[str] = None
@@ -37,6 +39,7 @@ class SchoolUpdate(BaseModel):
     province: Optional[str] = None
     city: Optional[str] = None
     logo_url: Optional[str] = None
+    cover_url: Optional[str] = None
     intro: Optional[str] = None
     tags: Optional[list] = None
     official_url: Optional[str] = None
@@ -81,6 +84,7 @@ class MajorUpdate(BaseModel):
 
 # --- Helper Functions ---
 
+
 def _get_client_ip(request: Request) -> str:
     """获取客户端IP地址"""
     forwarded = request.headers.get("X-Forwarded-For")
@@ -96,6 +100,7 @@ def _soft_delete_filter(query, model):
 
 # --- School CRUD ---
 
+
 @router.get("")
 async def list_schools(
     db: Session = Depends(get_db),
@@ -110,7 +115,7 @@ async def list_schools(
     q = db.query(KaoyanSchool)
 
     if not include_disabled:
-        q = q.filter(KaoyanSchool.enabled == True)
+        q = q.filter(KaoyanSchool.enabled.is_(True))
 
     q = _soft_delete_filter(q, KaoyanSchool)
 
@@ -141,7 +146,7 @@ async def list_schools(
                 "created_at": s.created_at.isoformat() if s.created_at else None,
             }
             for s in items
-        ]
+        ],
     }
 
 
@@ -181,6 +186,7 @@ async def get_school(school_id: int, db: Session = Depends(get_db)):
         "province": school.province,
         "city": school.city,
         "logo_url": school.logo_url,
+        "cover_url": getattr(school, "cover_url", None),
         "intro": school.intro,
         "tags": school.tags,
         "official_url": school.official_url,
@@ -228,6 +234,7 @@ async def delete_school(
         raise HTTPException(status_code=404, detail="院校不存在")
 
     from datetime import datetime, timezone
+
     school.deleted_at = datetime.now(timezone.utc)
     school.enabled = False
     db.commit()
@@ -254,6 +261,7 @@ async def toggle_school_enabled(
 
 # --- College CRUD ---
 
+
 @router.get("/{school_id}/colleges")
 async def list_colleges(
     school_id: int,
@@ -264,7 +272,7 @@ async def list_colleges(
     q = db.query(KaoyanCollege).filter(KaoyanCollege.school_id == school_id)
 
     if not include_disabled:
-        q = q.filter(KaoyanCollege.enabled == True)
+        q = q.filter(KaoyanCollege.enabled.is_(True))
 
     q = _soft_delete_filter(q, KaoyanCollege)
 
@@ -280,7 +288,7 @@ async def list_colleges(
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }
             for c in colleges
-        ]
+        ],
     }
 
 
@@ -338,6 +346,7 @@ async def delete_college(
         raise HTTPException(status_code=404, detail="学院不存在")
 
     from datetime import datetime, timezone
+
     college.deleted_at = datetime.now(timezone.utc)
     college.enabled = False
     db.commit()
@@ -346,6 +355,7 @@ async def delete_college(
 
 
 # --- Major CRUD ---
+
 
 @router.get("/majors")
 async def list_majors(
@@ -363,7 +373,7 @@ async def list_majors(
         q = q.filter(KaoyanMajor.college_id == college_id)
 
     if not include_disabled:
-        q = q.filter(KaoyanMajor.enabled == True)
+        q = q.filter(KaoyanMajor.enabled.is_(True))
 
     q = _soft_delete_filter(q, KaoyanMajor)
 
@@ -383,7 +393,7 @@ async def list_majors(
                 "created_at": m.created_at.isoformat() if m.created_at else None,
             }
             for m in majors
-        ]
+        ],
     }
 
 
@@ -441,6 +451,7 @@ async def delete_major(
         raise HTTPException(status_code=404, detail="专业不存在")
 
     from datetime import datetime, timezone
+
     major.deleted_at = datetime.now(timezone.utc)
     major.enabled = False
     db.commit()
@@ -449,6 +460,7 @@ async def delete_major(
 
 
 # --- Audit Logs ---
+
 
 @router.get("/audit-logs")
 async def list_audit_logs(
@@ -493,5 +505,5 @@ async def list_audit_logs(
                 "created_at": log.created_at.isoformat() if log.created_at else None,
             }
             for log in logs
-        ]
+        ],
     }

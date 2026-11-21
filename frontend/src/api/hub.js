@@ -284,31 +284,46 @@ export function normalizeHeatmap(summary) {
  * 把「今日引导建议 + 到期总量 + 薄弱点 + 任务 + 单词 + 专注」合成一条航线。
  *
  * 优先级不是拍脑袋：到期复习（有欠账）> 薄弱点（有错题）> 今日待办 >
- * 单词/卡片到期 > 今天还没开始专注 > 今天还没刷题。`urgency` 只决定顺序，
- * `done` 由真实数据推导，绝不在前端伪造完成状态。
+ * 单词/卡片到期 > 今天还没开始专注 > 今天还没刷题。`urgency` 只决定顺序。
+ *
+ * 完成口径（FE_REVIEW P0-3）：**分子只统计今天真实发生的完成动作**。
+ *  - 「没有欠账」≠「已完成」：队列空且今天没有产出 → `empty`（中性待办，
+ *    不计入进度分母），绝不伪造 done；
+ *  - 队列空但今天有真实产出（复习过/背过词/清过卡片/任务全清）→ done；
+ *  - 专注/刷题以「今天是否达到目标（未设目标则 ≥1）」判定。
+ * 每一步带 `state`（done/doing/warning/todo），供页面映射 5 状态色。
  */
-export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestions } = {}) {
+export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestions, review, targets } = {}) {
   const sug = arr(suggestions)
   const byIcon = (icon) => sug.find((s) => s.icon === icon)
   const focusMinutes = toNum(today?.focus_minutes)
   const answered = toNum(today?.questions_done)
+  const wordsDoneToday = toNum(today?.words_done)
+  const cardsDoneToday = toNum(today?.cards_done)
+  const reviewsToday = toNum(review?.todayReviews)
   const weakPoints = arr(weakness?.points)
   const pendingTasks = toNum(tasks?.pending)
+  const totalTasks = toNum(tasks?.total)
   const wordCount = toNum(due?.newWords) + toNum(words?.due_today ?? due?.breakdown?.words)
+  const cardCount = toNum(due?.breakdown?.cards)
+  const plannerCount = toNum(due?.planner)
+  const focusTarget = toNum(targets?.focus)
+  const quizTarget = toNum(targets?.questions)
 
   const items = [
     {
       id: 'review',
       order: 1,
       label: '到期复习',
-      hint: byIcon('review')?.hint || (due?.planner ? '先清掉今天到期的复习队列' : '暂无到期复习，保持节奏'),
-      count: toNum(due?.planner),
+      hint: byIcon('review')?.hint || (plannerCount ? '先清掉今天到期的复习队列' : reviewsToday ? '今天到期的复习已清完' : '暂无到期复习，保持节奏'),
+      count: plannerCount,
       unit: '条',
       to: '/quiz?tab=review',
       tone: 'violet',
       icon: 'review',
-      done: toNum(due?.planner) === 0,
-      urgency: toNum(due?.planner) > 0 ? 100 : 10,
+      done: plannerCount === 0 && reviewsToday > 0,
+      empty: plannerCount === 0 && reviewsToday === 0,
+      urgency: plannerCount > 0 ? 100 : 10,
     },
     {
       id: 'weak',
@@ -320,20 +335,23 @@ export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestio
       to: '/quiz?mode=weak',
       tone: 'rose',
       icon: 'target',
-      done: weakPoints.length === 0,
+      /* 薄弱点没有「今日已练」的可靠信号：清零只代表没有欠账，不代表完成 */
+      done: false,
+      empty: weakPoints.length === 0,
       urgency: weakPoints.length ? 80 : 8,
     },
     {
       id: 'tasks',
       order: 3,
       label: '今日待办',
-      hint: byIcon('todo')?.hint || (pendingTasks ? '按计划推进今天的任务' : '还没有安排今日任务'),
+      hint: byIcon('todo')?.hint || (pendingTasks ? '按计划推进今天的任务' : totalTasks ? '今日任务已全部完成' : '还没有安排今日任务'),
       count: pendingTasks,
       unit: '项',
       to: '/tasks',
       tone: 'amber',
       icon: 'todo',
-      done: pendingTasks === 0,
+      done: totalTasks > 0 && pendingTasks === 0,
+      empty: totalTasks === 0,
       urgency: pendingTasks ? 70 : 7,
     },
     {
@@ -346,21 +364,23 @@ export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestio
       to: '/words',
       tone: 'green',
       icon: 'word',
-      done: wordCount === 0,
+      done: wordCount === 0 && wordsDoneToday > 0,
+      empty: wordCount === 0 && wordsDoneToday === 0,
       urgency: wordCount ? 65 : 6,
     },
     {
       id: 'cards',
       order: 5,
       label: '记忆卡片',
-      hint: toNum(due?.breakdown?.cards) ? '间隔复习到期，先清卡片' : '暂无到期卡片',
-      count: toNum(due?.breakdown?.cards),
+      hint: cardCount ? '间隔复习到期，先清卡片' : cardsDoneToday ? '到期卡片已清完' : '暂无到期卡片',
+      count: cardCount,
       unit: '张',
       to: '/cards',
       tone: 'blue',
       icon: 'card',
-      done: toNum(due?.breakdown?.cards) === 0,
-      urgency: toNum(due?.breakdown?.cards) ? 60 : 5,
+      done: cardCount === 0 && cardsDoneToday > 0,
+      empty: cardCount === 0 && cardsDoneToday === 0,
+      urgency: cardCount ? 60 : 5,
     },
     {
       id: 'focus',
@@ -372,7 +392,8 @@ export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestio
       to: '/planner',
       tone: 'indigo',
       icon: 'focus',
-      done: focusMinutes > 0,
+      done: focusMinutes >= (focusTarget || 1),
+      empty: false,
       urgency: focusMinutes > 0 ? 4 : 55,
     },
     {
@@ -385,19 +406,31 @@ export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestio
       to: '/quiz',
       tone: 'cyan',
       icon: 'brain',
-      done: answered > 0,
+      done: answered >= (quizTarget || 1),
+      empty: false,
       urgency: answered > 0 ? 3 : 45,
     },
   ]
 
   const ordered = [...items].sort((a, b) => b.urgency - a.urgency || a.order - b.order)
+  const activeId = ordered.find((i) => !i.done && !i.empty)?.id || null
+  ordered.forEach((i) => {
+    if (i.done) i.state = 'done'
+    else if (i.id === activeId) i.state = 'doing'
+    else if (!i.empty && (i.id === 'review' || i.id === 'weak') && i.count > 0) i.state = 'warning'
+    else i.state = 'todo'
+  })
+  const countable = ordered.filter((i) => !i.empty)
   const doneCount = ordered.filter((i) => i.done).length
+  const remainingCount = countable.filter((i) => !i.done).length
   return {
     items: ordered,
-    activeId: ordered.find((i) => !i.done)?.id || null,
+    activeId,
     doneCount,
     total: ordered.length,
-    progress: Math.round((doneCount / Math.max(ordered.length, 1)) * 100),
+    countableTotal: countable.length,
+    remainingCount,
+    progress: countable.length ? Math.round((doneCount / countable.length) * 100) : 0,
   }
 }
 
@@ -501,6 +534,8 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
     words: wordsModel,
     today,
     suggestions: insight?.suggestions,
+    review: reviewModel,
+    targets: goal.dailyTargets,
   })
 
   const goalLine = [goal.university || countdown.university, goal.major || countdown.major].filter(Boolean).join(' · ')
@@ -556,6 +591,10 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
     },
     kpiCards,
     due,
+    /* 页面唯一主数字（P0-2）：「今天该做 N 项」= 今日累计到期口径；
+       「其中 N 项现在可做」= review_queue 口径。两者切点不同，分开呈现。 */
+    todayTodoCount: due.schedulerToday,
+    nowAvailableCount: due.nowTotal,
     tasks,
     weakness,
     words: wordsModel,

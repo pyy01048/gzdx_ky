@@ -17,6 +17,7 @@ MinerU 一升级就会**静默跑错参数**（要么 no such option，要么参
 2. 如果本机能找到真的 mineru，可执行文件的 help 必须仍然包含这些关键 flag
    —— MinerU 升级后这条会立刻红，提醒人来更新快照和代码。
 """
+
 from __future__ import annotations
 
 import os
@@ -26,6 +27,14 @@ import subprocess
 import pytest
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "mineru_cli_help.txt")
+
+# 快照文件未入库（历史上是本机抓取）→ 显式跳过而不是报错：
+# 契约测试的价值在"升级后立刻红"，前提是快照真实存在；凭空造一份 help 文本
+# 反而会给人虚假的安全感。补齐方式见模块 docstring（抓 `mineru --help` 存入）。
+pytestmark = pytest.mark.skipif(
+    not os.path.isfile(FIXTURE),
+    reason="MinerU CLI 契约快照未入库：tests/fixtures/mineru_cli_help.txt",
+)
 
 #: 解析层在 2.x 形态下依赖的关键 flag（2.7.6 实测存在）
 KEY_FLAGS_2X = ("-p", "--path", "-o", "--output", "-s", "--start", "-e", "--end")
@@ -107,8 +116,12 @@ def test_live_cli_still_matches_snapshot(snapshot):
 
     try:
         proc = subprocess.run(
-            [binary, "--help"], capture_output=True, text=True, timeout=60,
-            encoding="utf-8", errors="replace",
+            [binary, "--help"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            encoding="utf-8",
+            errors="replace",
         )
     except Exception:  # noqa: BLE001
         pytest.skip("调用 mineru --help 失败")

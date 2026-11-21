@@ -12,6 +12,7 @@ main.py 只做一件事：``for r in iter_routers(): app.include_router(r)``。
 - kaoyan    : 院校 / 资讯 / 院校采集管理
 - platform  : 网盘 / 系统设置 / 备份 / 管理后台
 """
+
 from __future__ import annotations
 
 from typing import Iterable, List, Tuple
@@ -74,6 +75,7 @@ DOMAIN_ROUTERS: dict[str, List[Tuple[str, List[str]]]] = {
     "kaoyan": [
         ("kaoyan", ["router"]),
         ("kaoyan_ext", ["router"]),
+        ("school_eval", ["router"]),
         ("notices", ["router"]),
         ("notice_alert", ["router"]),
         ("admin_schools", ["router"]),

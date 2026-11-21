@@ -10,6 +10,7 @@ content/options/answer/analysis）。题目为 AI 生成的章节标准习题，
 写库前备份 quiz_questions 为 JSONL，单事务、失败回滚，ON CONFLICT (external_id) DO NOTHING。
 字段映射遵循 11 文档质量门：validation_status 由 081 触发器写入 pass。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,9 +24,9 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts._conn import dsn  # 口令来自 .env / PG_PASSWORD
-
 import psycopg
+
+from scripts._conn import dsn  # 口令来自 .env / PG_PASSWORD
 
 DATA_DIR = Path(r"D:\研途\题库建设\08工学")
 EXT_PREFIX = "08eng"
@@ -49,14 +50,27 @@ SUBJECT_PREFIX = {
     "电力系统分析": "ps",
     "过程控制": "pc",
     "高电压技术": "hv",
+    "电路分析": "ca",
+    "测控电路": "mc_circuit",
+    "激光原理": "laser",
+    "电子技术基础": "eb",
+    "光学与工程光学": "oe",
+    "光学": "optics",
+    "软件工程": "se",
+    "Python程序设计": "python",
+    "C/C++语言": "ccpp",
+    "生物医学工程": "bme",
 }
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("import_08_engineering")
 
 stats = {
-    "parsed": 0, "valid": 0, "invalid": 0,
-    "duplicate": 0, "inserted": 0,
+    "parsed": 0,
+    "valid": 0,
+    "invalid": 0,
+    "duplicate": 0,
+    "inserted": 0,
     "skipped_invalid": 0,
 }
 by_subject = Counter()
@@ -112,13 +126,21 @@ def validate_question(rec: dict) -> tuple[bool, str]:
     if not clean_text(rec.get("analysis", "")):
         return False, "missing_analysis"
     rec["_content"] = content
-    rec["_options"] = [{"key": k, "text": t} for k, t in zip(keys, texts)]
+    rec["_options"] = [{"key": k, "text": t} for k, t in zip(keys, texts, strict=False)]
     rec["_answer"] = answer
     return True, "ok"
 
 
-def make_record(subject: str, subject_id: int, chapter: str, content: str,
-                options: list, answer: str, analysis: str, external_id: str) -> dict:
+def make_record(
+    subject: str,
+    subject_id: int,
+    chapter: str,
+    content: str,
+    options: list,
+    answer: str,
+    analysis: str,
+    external_id: str,
+) -> dict:
     source_label = f"自建标准题库·{subject}（08工学章节习题）"
     return {
         "content": content,
@@ -171,8 +193,7 @@ def backup_quiz_questions(conn, stamp: str) -> Path:
                 if not rows:
                     break
                 for row in rows:
-                    f.write(json.dumps(dict(zip(cols, row)), ensure_ascii=False,
-                                        default=str) + "\n")
+                    f.write(json.dumps(dict(zip(cols, row, strict=False)), ensure_ascii=False, default=str) + "\n")
     return path
 
 
@@ -253,16 +274,18 @@ def load_files() -> list:
             ok, reason = validate_question(item)
             if not ok:
                 stats["skipped_invalid"] += 1
-                invalid_cache.append({"file": stem, "idx": idx, "reason": reason,
-                                      "content": item.get("content", "")[:40]})
+                invalid_cache.append(
+                    {"file": stem, "idx": idx, "reason": reason, "content": item.get("content", "")[:40]}
+                )
                 continue
             stats["valid"] += 1
             subject = clean_text(item.get("subject", ""))
             prefix = SUBJECT_PREFIX.get(subject)
             if prefix is None:
                 stats["skipped_invalid"] += 1
-                invalid_cache.append({"file": stem, "idx": idx, "reason": "unknown_subject",
-                                      "content": item.get("content", "")[:40]})
+                invalid_cache.append(
+                    {"file": stem, "idx": idx, "reason": "unknown_subject", "content": item.get("content", "")[:40]}
+                )
                 continue
             external_id = f"{EXT_PREFIX}_{prefix}_{Path(fp).stem.split('_')[-1]}_{idx:03d}"
             rec = make_record(
@@ -299,8 +322,7 @@ def main() -> int:
     args = parser.parse_args()
 
     records = load_files()
-    log.info("解析 %d 题，校验通过 %d 题，无效 %d 题",
-             stats["parsed"], stats["valid"], stats["skipped_invalid"])
+    log.info("解析 %d 题，校验通过 %d 题，无效 %d 题", stats["parsed"], stats["valid"], stats["skipped_invalid"])
 
     conn = psycopg.connect(dsn(), connect_timeout=10)
     try:
@@ -324,7 +346,7 @@ def main() -> int:
         backup = backup_quiz_questions(conn, stamp)
         log.info("已备份 quiz_questions -> %s", backup)
         inserted = write_records(conn, records)
-        print(f"\n===== 导入完成 =====")
+        print("\n===== 导入完成 =====")
         print(f"备份: {backup}")
         print(f"成功插入: {inserted} 题")
     finally:

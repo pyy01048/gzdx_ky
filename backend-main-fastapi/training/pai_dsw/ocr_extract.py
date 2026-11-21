@@ -53,14 +53,31 @@ IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 DOC_EXT = {".pdf"}
 #: 明显不是学习资料的扩展名，直接排除（省掉无谓的目录遍历）
 SKIP_EXT = {
-    ".mp4", ".avi", ".mkv", ".mov", ".flv", ".wmv", ".zip", ".rar", ".7z",
-    ".exe", ".dll", ".mp3", ".wav", ".flac", ".m4a", ".iso", ".db", ".sqlite",
+    ".mp4",
+    ".avi",
+    ".mkv",
+    ".mov",
+    ".flv",
+    ".wmv",
+    ".zip",
+    ".rar",
+    ".7z",
+    ".exe",
+    ".dll",
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".m4a",
+    ".iso",
+    ".db",
+    ".sqlite",
 }
 
 
 # --------------------------------------------------------------------------- #
 # 依赖检查：缺什么给什么，不要让脚本跑到一半才炸
 # --------------------------------------------------------------------------- #
+
 
 def check_deps() -> tuple[bool, list[str]]:
     missing = []
@@ -89,9 +106,7 @@ _ENGINE = None
 _TEXT_LAYER_MIN = 30
 
 #: 答案区标题信号。正文页仍受 --max-pages 限制，命中后的答案区一直处理到文末。
-_ANSWER_PAGE_RE = re.compile(
-    r"(?:参考答案|标准答案|习题答案|试题答案|答案(?:与|及)?解析|答案索引)"
-)
+_ANSWER_PAGE_RE = re.compile(r"(?:参考答案|标准答案|习题答案|试题答案|答案(?:与|及)?解析|答案索引)")
 
 #: OCR 页块坐标保留的小数位，避免 JSON 产生冗长浮点数。
 _BBOX_DIGITS = 2
@@ -102,6 +117,7 @@ def _get_engine():
     global _ENGINE
     if _ENGINE is None:
         from rapidocr_onnxruntime import RapidOCR
+
         _ENGINE = RapidOCR()
     return _ENGINE
 
@@ -190,11 +206,13 @@ def _extract_pdf_page(pdf, page_index: int, mode: str, render_scale: float = 2.0
                 "page_no": page_index + 1,
                 "width": round(width, _BBOX_DIGITS),
                 "height": round(height, _BBOX_DIGITS),
-                "blocks": [{
-                    "type": "text",
-                    "bbox": [0.0, 0.0, round(width, _BBOX_DIGITS), round(height, _BBOX_DIGITS)],
-                    "text": layer_text,
-                }],
+                "blocks": [
+                    {
+                        "type": "text",
+                        "bbox": [0.0, 0.0, round(width, _BBOX_DIGITS), round(height, _BBOX_DIGITS)],
+                        "text": layer_text,
+                    }
+                ],
                 "text": layer_text,
                 "ocr_used": False,
                 "has_page_image": False,
@@ -208,11 +226,13 @@ def _extract_pdf_page(pdf, page_index: int, mode: str, render_scale: float = 2.0
         if mode == "text":
             blocks = [full_page_image]
             if layer_text:
-                blocks.append({
-                    "type": "text",
-                    "bbox": [0.0, 0.0, round(width, _BBOX_DIGITS), round(height, _BBOX_DIGITS)],
-                    "text": layer_text,
-                })
+                blocks.append(
+                    {
+                        "type": "text",
+                        "bbox": [0.0, 0.0, round(width, _BBOX_DIGITS), round(height, _BBOX_DIGITS)],
+                        "text": layer_text,
+                    }
+                )
             return {
                 "page_no": page_index + 1,
                 "width": round(width, _BBOX_DIGITS),
@@ -327,8 +347,11 @@ def extract_one(path: Path, max_pages: int, min_chars: int, mode: str = "auto") 
                 rec["truncated"] = len(page_records) < total_pages
                 scanned_pages = sum(1 for p in page_records.values() if p["ocr_used"])
                 rec["kind"] = (
-                    "scanned" if page_records and scanned_pages >= len(page_records) * 0.8
-                    else "hybrid" if scanned_pages else "digital"
+                    "scanned"
+                    if page_records and scanned_pages >= len(page_records) * 0.8
+                    else "hybrid"
+                    if scanned_pages
+                    else "digital"
                 )
                 rec["scanned_pages"] = scanned_pages
             finally:
@@ -337,16 +360,11 @@ def extract_one(path: Path, max_pages: int, min_chars: int, mode: str = "auto") 
         ordered_pages = [page_records[i] for i in sorted(page_records)]
         rec["pages"] = len(ordered_pages)
         rec["ocr_used"] = any(p["ocr_used"] for p in ordered_pages)
-        rec["visual_only_pages"] = sum(
-            1 for p in ordered_pages if p["has_page_image"] and not p["text"].strip()
-        )
+        rec["visual_only_pages"] = sum(1 for p in ordered_pages if p["has_page_image"] and not p["text"].strip())
         visual_pages = sum(1 for p in ordered_pages if p["has_page_image"])
 
         # 新契约：页尺寸 + 行级 OCR bbox；内部辅助字段不泄漏到 JSON。
-        rec["pages"] = [
-            {k: p[k] for k in ("page_no", "width", "height", "blocks")}
-            for p in ordered_pages
-        ]
+        rec["pages"] = [{k: p[k] for k in ("page_no", "width", "height", "blocks")} for p in ordered_pages]
         rec["processed_pages"] = len(ordered_pages)
 
         # 兼容旧下游：pages_text 下标仍等于原 PDF 页码 - 1；若书末答案越过
@@ -362,9 +380,7 @@ def extract_one(path: Path, max_pages: int, min_chars: int, mode: str = "auto") 
         rec["chars"] = sum(len(p["text"]) for p in ordered_pages)
         if rec["chars"] < min_chars:
             if visual_pages:
-                rec["warnings"].append(
-                    f"few_chars_but_visual({rec['chars']}<{min_chars},visual_pages={visual_pages})"
-                )
+                rec["warnings"].append(f"few_chars_but_visual({rec['chars']}<{min_chars},visual_pages={visual_pages})")
             else:
                 rec["err"] = f"too_few_chars({rec['chars']}<{min_chars})"
     except Exception as e:  # noqa: BLE001
@@ -377,6 +393,7 @@ def extract_one(path: Path, max_pages: int, min_chars: int, mode: str = "auto") 
 # --------------------------------------------------------------------------- #
 # 主流程
 # --------------------------------------------------------------------------- #
+
 
 def scan_files(src_dir: Path, limit: int | None) -> list[Path]:
     files = []
@@ -396,23 +413,21 @@ def scan_files(src_dir: Path, limit: int | None) -> list[Path]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="DSW 批量 OCR 抽取（可断点续跑）")
-    ap.add_argument("--src-dir", default="/mnt/data/考研资料数据集",
-                    help="资料目录（OSS 挂载点下）")
-    ap.add_argument("--out-dir", default="/mnt/workspace/ocr_out",
-                    help="产物目录：每文件一个 json")
-    ap.add_argument("--workers", type=int, default=8,
-                    help="并行进程数（OCR 是 CPU 密集，12-16 通常比 GPU 更划算）")
-    ap.add_argument("--max-pages", type=int, default=300,
-                    help="正文页数封顶；答案区命中后不封顶（0=全文）")
+    ap.add_argument("--src-dir", default="/mnt/data/考研资料数据集", help="资料目录（OSS 挂载点下）")
+    ap.add_argument("--out-dir", default="/mnt/workspace/ocr_out", help="产物目录：每文件一个 json")
+    ap.add_argument("--workers", type=int, default=8, help="并行进程数（OCR 是 CPU 密集，12-16 通常比 GPU 更划算）")
+    ap.add_argument("--max-pages", type=int, default=300, help="正文页数封顶；答案区命中后不封顶（0=全文）")
     ap.add_argument("--max-files", type=int, default=0, help="最多处理多少文件（0=不限）")
-    ap.add_argument("--time-budget-min", type=int, default=240,
-                    help="时间预算（分钟），到点优雅收尾，下轮续跑")
-    ap.add_argument("--min-chars", type=int, default=200,
-                    help="纯文本产物低于此字数视为失败；含图页仅告警、不丢弃")
-    ap.add_argument("--mode", choices=["auto", "text", "ocr"], default="auto",
-                    help="auto=文字层优先、扫描页才 OCR（推荐，快两个量级）；"
-                         "text=只取文字层（纯数字版 PDF，抽样对比用）；"
-                         "ocr=全部逐页 OCR（最慢，文字层质量差时兜底）")
+    ap.add_argument("--time-budget-min", type=int, default=240, help="时间预算（分钟），到点优雅收尾，下轮续跑")
+    ap.add_argument("--min-chars", type=int, default=200, help="纯文本产物低于此字数视为失败；含图页仅告警、不丢弃")
+    ap.add_argument(
+        "--mode",
+        choices=["auto", "text", "ocr"],
+        default="auto",
+        help="auto=文字层优先、扫描页才 OCR（推荐，快两个量级）；"
+        "text=只取文字层（纯数字版 PDF，抽样对比用）；"
+        "ocr=全部逐页 OCR（最慢，文字层质量差时兜底）",
+    )
     ap.add_argument("--dry-run", action="store_true", help="只列清单不干活")
     args = ap.parse_args()
 
@@ -421,8 +436,7 @@ def main() -> int:
     print("=" * 70)
     print(f"源目录: {args.src_dir}")
     print(f"产物:   {args.out_dir}")
-    print(f"并行:   {args.workers} | 页数封顶: {args.max_pages} | "
-          f"时间预算: {args.time_budget_min} 分钟")
+    print(f"并行:   {args.workers} | 页数封顶: {args.max_pages} | 时间预算: {args.time_budget_min} 分钟")
 
     ok_deps, missing = check_deps()
     if not ok_deps:
@@ -441,8 +455,7 @@ def main() -> int:
     all_files = scan_files(src_dir, args.max_files or None)
     # 断点续跑：已产出 json 的直接剔除
     todo = [p for p in all_files if not (out_dir / (p.stem + ".json")).exists()]
-    print(f"\n共发现 {len(all_files)} 个可处理文件，"
-          f"已完成 {len(all_files) - len(todo)}，本轮待处理 {len(todo)}")
+    print(f"\n共发现 {len(all_files)} 个可处理文件，已完成 {len(all_files) - len(todo)}，本轮待处理 {len(todo)}")
 
     if args.dry_run:
         for p in todo[:30]:
@@ -462,12 +475,12 @@ def main() -> int:
     kinds: dict[str, int] = {}
     fail_reasons: dict[str, int] = {}
 
-    ctx = mp.get_context("spawn")   # OCR 引擎不能跨 fork 继承
+    ctx = mp.get_context("spawn")  # OCR 引擎不能跨 fork 继承
     with ctx.Pool(processes=args.workers) as pool:
         done = 0
         for rec in pool.imap_unordered(
-                _worker, ((p, args.max_pages, args.min_chars, args.mode) for p in todo),
-                chunksize=1):
+            _worker, ((p, args.max_pages, args.min_chars, args.mode) for p in todo), chunksize=1
+        ):
             done += 1
             dest = out_dir / (Path(rec["src"]).stem + ".json")
             try:
@@ -491,20 +504,26 @@ def main() -> int:
             if done % 20 == 0 or done == len(todo):
                 rate = done / max(1e-6, elapsed / 60)
                 eta = (len(todo) - done) / max(1e-6, rate) if rate else 0
-                print(f"  [{done}/{len(todo)}] 成功 {stats['ok']} 失败 {stats['fail']} "
-                      f"累计 {stats['chars']/10000:.1f}万字 "
-                      f"| {rate:.1f} 文件/分 | 已用 {elapsed/60:.0f} 分钟 | 预计剩余 {eta:.0f} 分钟",
-                      flush=True)
+                print(
+                    f"  [{done}/{len(todo)}] 成功 {stats['ok']} 失败 {stats['fail']} "
+                    f"累计 {stats['chars'] / 10000:.1f}万字 "
+                    f"| {rate:.1f} 文件/分 | 已用 {elapsed / 60:.0f} 分钟 | 预计剩余 {eta:.0f} 分钟",
+                    flush=True,
+                )
 
             if time.time() > deadline:
-                print(f"\n! 已达时间预算（{args.time_budget_min} 分钟），"
-                      f"优雅收尾。剩余 {len(todo) - done} 个文件下次续跑。")
+                print(
+                    f"\n! 已达时间预算（{args.time_budget_min} 分钟），"
+                    f"优雅收尾。剩余 {len(todo) - done} 个文件下次续跑。"
+                )
                 pool.terminate()
                 break
 
     print("\n" + "=" * 70)
-    print(f"完成 {done}/{len(todo)}：成功 {stats['ok']}，失败 {stats['fail']}，"
-          f"抽出 {stats['chars']/10000:.1f} 万字 / {stats['pages']} 页")
+    print(
+        f"完成 {done}/{len(todo)}：成功 {stats['ok']}，失败 {stats['fail']}，"
+        f"抽出 {stats['chars'] / 10000:.1f} 万字 / {stats['pages']} 页"
+    )
     if kinds:
         print("PDF 类型分布（digital=数字版最快 / hybrid=部分扫描 / scanned=纯扫描）:")
         for k, v in sorted(kinds.items(), key=lambda kv: -kv[1]):

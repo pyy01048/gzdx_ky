@@ -112,7 +112,9 @@ afterEach(() => { cleanup(); localStorage.clear() })
 /* ========================================================================= */
 async function renderResult() {
   const Quiz = (await import('../v3/pages/Quiz')).default
-  const utils = render(<MemoryRouter initialEntries={['/quiz']}><Quiz /></MemoryRouter>)
+  // toast 队列由全局 ToastHost 渲染（应用壳挂载）；这里补挂才能断言提示文案
+  const { ToastHost } = await import('../v3/ui')
+  const utils = render(<MemoryRouter initialEntries={['/quiz']}><Quiz /><ToastHost /></MemoryRouter>)
   // 等待所有异步 useEffect（科目加载 / sourceCounts 探测）settle，DOM 稳定后再点击
   await act(async () => { await new Promise((r) => setTimeout(r, 300)) })
   const startBtn = screen.getByRole('button', { name: /整科练习/ })

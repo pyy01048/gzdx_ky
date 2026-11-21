@@ -6,6 +6,7 @@
   2. 届数与初试日必须自洽：初试日在上一年 12 月，所以 届数 = 初试年 + 1；
   3. 仪表盘倒计时、复习里程碑、届数设置三个出口必须给同一个答案。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -27,9 +28,7 @@ def test_2027_exam_date_is_official_dec_19_2026():
 
 @pytest.mark.parametrize(
     "year,expected",
-    [(2025, datetime.date(2024, 12, 21)),
-     (2026, datetime.date(2025, 12, 20)),
-     (2027, datetime.date(2026, 12, 19))],
+    [(2025, datetime.date(2024, 12, 21)), (2026, datetime.date(2025, 12, 20)), (2027, datetime.date(2026, 12, 19))],
 )
 def test_known_years_match_official(year, expected):
     d, official = ec.resolve_exam_date(year)
@@ -151,7 +150,7 @@ def test_default_exam_year_is_next_upcoming_exam():
 # --------------------------------------------------------------------------- #
 def test_all_three_outputs_agree_for_2027_cohort():
     """仪表盘 / 复习计划 / 届数设置三个出口对 2027 届必须给同一个初试日。"""
-    from routers import plan as plan_router
+    from routers.study import plan as plan_router
 
     canonical = ec.resolve_exam_date(2027)[0]
     assert plan_router._exam_date(2027) == canonical

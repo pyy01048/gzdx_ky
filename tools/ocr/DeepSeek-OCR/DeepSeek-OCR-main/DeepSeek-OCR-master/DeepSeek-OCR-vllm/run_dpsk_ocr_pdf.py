@@ -327,4 +327,3 @@ if __name__ == "__main__":
 
 
     pil_to_pdf_img2pdf(draw_images, pdf_out_path)
-

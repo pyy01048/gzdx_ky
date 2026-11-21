@@ -244,6 +244,26 @@ export default function Dashboard() {
   const sections = DASH_SECTIONS
   const hiddenSections = new Set(layout.dashHidden)
 
+  // 第四态「partial」（完善方案 13 §3.4）：单次聚合里某些模块缺失，或刷新失败但仍有上次数据。
+  // 不能再用"字段级降级 + 整页装作正常"糊过去——顶部黄条明示 + 可重试。
+  const moduleLabels = {
+    countdown: '倒计时',
+    kpi: '学习数据',
+    module_progress: '模块进度',
+    today_tasks: '今日任务',
+    review_queue: '复习队列',
+    heatmap: '热力图',
+    trend: '趋势',
+  }
+  const failedModules = useMemo(() => {
+    if (!live) return []
+    return Object.entries(moduleLabels)
+      .filter(([key]) => live[key] == null)
+      .map(([, label]) => label)
+  }, [live])
+  const isStale = status === 'error' && !!live
+  const isPartial = !!live && (failedModules.length > 0 || isStale)
+
   return (
     <div className="v3-dash v3-stack" style={{ gap: 20 }}>
       <header className="v3-page-head">
@@ -290,6 +310,19 @@ export default function Dashboard() {
             ))}
           </div>
         </section>
+      ) : null}
+
+      {isPartial ? (
+        <div className="v3-dash-partial" role="status">
+          <Warning size={16} />
+          <span>
+            {isStale
+              ? '实时刷新失败，以下为上次成功加载的结果'
+              : `以下模块数据暂不可用：${failedModules.join('、')}`}
+            ，其余内容正常展示。
+          </span>
+          <button type="button" className="v3-dash-partial__action" onClick={refresh}>重试</button>
+        </div>
       ) : null}
 
       {status === 'loading' ? (

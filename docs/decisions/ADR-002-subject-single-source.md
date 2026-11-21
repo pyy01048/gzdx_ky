@@ -90,7 +90,18 @@ code='0854', name='电子信息(专硕)',   category='工学'
 - `subject_aliases` 允许一个别名命中多行，解析时必须带 `is_primary` 过滤，否则会随机取到非预期科目。
 - 存量 `subject_config` 里混入的学科门类数据在拆分时需要人工判定归属，无法全自动。
 
+## Phase 2（2026-11-20 立项，进行中）
+
+目标：兼容层退场，消除永久债。
+
+1. `orm_aliases.py` 中每个 synonym 就是一条待办；每迭代挑 1–2 个域，把业务代码旧属性名
+   批量改为 canonical 名（grep/ruff 辅助），改完删除对应 synonym。
+2. 全部删完后移除 `main.py` 的 `orm_aliases.install()` 与 `database.get_db()` 的懒初始化兜底。
+3. `subject` 兼容列移除（依赖 `subject_id` 单源）。
+4. 进度记入本节；表结构快照测试（拆分前后 diff 为空）作为守卫。
+
 ## Related ADRs
 
 - ADR-001: 数据库底座从 SQLite 迁移到 PostgreSQL 17
 - ADR-003: 题目标准 schema 与校验门
+- ADR-004: 真题单一真相源

@@ -13,6 +13,7 @@
 库里可能留有其它测试种下的行，所以断言只针对本用例自己插入的 ``school_name``，
 并在用例结束时删掉自己插的行。
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -68,9 +69,7 @@ def notice_row(db):
     try:
         yield {"day": day, "moment": moment}
     finally:
-        wrap_conn(db.connection().connection).execute(
-            "DELETE FROM kaoyan_notices WHERE url = ?", (URL,)
-        )
+        wrap_conn(db.connection().connection).execute("DELETE FROM kaoyan_notices WHERE url = ?", (URL,))
         db.commit()
 
 
@@ -101,7 +100,7 @@ def test_notice_list_returns_fetched_at_with_z(db, client, notice_row):
 
 def test_updates_endpoint_buckets_fetched_at_by_beijing_day(db, notice_row):
     """「今日更新」按北京日归日：北京 00:30 的采集记在今天，不是 UTC 的前一天。"""
-    from routers.kaoyan import notice_updates
+    from routers.kaoyan.kaoyan import notice_updates
 
     data = notice_updates(days=1, db=db)
     mine = [s for s in data["schools"] if s["school_name"] == SCHOOL]

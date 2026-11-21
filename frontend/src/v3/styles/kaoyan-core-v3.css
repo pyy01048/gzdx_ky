@@ -502,6 +502,40 @@
   animation: kyv3-hl 1.15s var(--v3-ease-standard) 2;
 }
 
+/* 院校封面条：自托管校门/校园实景。负 margin 出血到卡片边缘，
+   无封面时整块不渲染（空态即交付，不留灰占位）。 */
+.kyv3-school-cover {
+  position: relative;
+  margin: -17px -17px 0;
+  height: 132px;
+  overflow: hidden;
+  border-radius: calc(var(--v3-r-lg) - 1px) calc(var(--v3-r-lg) - 1px) 0 0;
+  border-bottom: 1px solid var(--v3-outline);
+  background: var(--v3-surface-2);
+}
+
+.kyv3-school-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* 校门照多为近方形：裁切偏上保留门楣匾额，避免切掉牌匾只留门洞 */
+  object-position: center 30%;
+  transition: transform 700ms var(--v3-ease-emphasized);
+}
+
+.kyv3-school:hover .kyv3-school-cover img {
+  transform: scale(1.045);
+}
+
+.kyv3-school-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 62%, color-mix(in srgb, var(--v3-surface) 42%, transparent));
+}
+
 .kyv3-school-top {
   display: flex;
   align-items: flex-start;
@@ -977,6 +1011,40 @@
     radial-gradient(120% 180% at 100% -20%, color-mix(in srgb, var(--v3-gemini-2) 16%, transparent), transparent 55%),
     radial-gradient(100% 160% at 0% 120%, color-mix(in srgb, var(--v3-gemini-1) 11%, transparent), transparent 55%),
     var(--v3-surface);
+}
+
+/* 详情页 hero 背景：校园实景铺底 + 表面色 scrim 保证文字对比度。
+   内容层 z-index 1 压在图上；无封面时回落到原有双色 radial。 */
+.kyv3-hero-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.kyv3-hero-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 38%;
+}
+
+.kyv3-hero-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--v3-surface) 68%, transparent),
+    color-mix(in srgb, var(--v3-surface) 88%, transparent) 58%,
+    var(--v3-surface)
+  );
+}
+
+.kyv3-hero-card.has-cover .kyv3-hero-top,
+.kyv3-hero-card.has-cover .kyv3-hero-stats {
+  position: relative;
+  z-index: 1;
 }
 
 .kyv3-hero-top {
@@ -2134,6 +2202,7 @@
   .kyv3-list-tools { width: 100%; }
   .kyv3-list-tools .v3-seg { max-width: 100%; }
   .kyv3-school { padding: 14px; }
+  .kyv3-school-cover { margin: -14px -14px 0; height: 108px; }
   .kyv3-school-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .kyv3-school-stat b { font-size: var(--v3-fs-13); }
   .kyv3-school-stat span { font-size: 9px; }
@@ -2170,3 +2239,23 @@
     animation: none;
   }
 }
+
+/* --------------------------------------------------------------------------
+   工学学科评估（KaoyanSchoolEval · 119 分片）
+   -------------------------------------------------------------------------- */
+.kyv3-rank-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--v3-primary);
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kyv3-rank-name:hover { text-decoration: underline; }
+.kyv3-rank-row { border-radius: 8px; }
+.kyv3-rank-row:hover { background: var(--v3-surface-2, rgba(127, 127, 127, 0.06)); }

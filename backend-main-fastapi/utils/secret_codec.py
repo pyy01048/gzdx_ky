@@ -96,7 +96,7 @@ def _decode_raw_key(raw: str) -> bytes:
             return key
     raise ValueError(
         f"{SECRET_ENV_VAR} 必须是 base64 或 hex 编码的 32 字节密钥"
-        "（生成：python -c \"import secrets;print(secrets.token_hex(32))\"）"
+        '（生成：python -c "import secrets;print(secrets.token_hex(32))"）'
     )
 
 
@@ -139,7 +139,9 @@ def _load_or_create_key_file() -> bytes:
     logging.getLogger(__name__).warning(
         "%s 未配置 %s，已在 %s 生成随机密钥（0600）。多实例部署请把这一份"
         "收进环境变量，否则各实例密钥不同、互相解不开对方的行。",
-        __name__, SECRET_ENV_VAR, path,
+        __name__,
+        SECRET_ENV_VAR,
+        path,
     )
     return key
 
@@ -176,7 +178,7 @@ def unseal(value: Optional[str]) -> Optional[str]:
     if not is_sealed(value):
         return value
     try:
-        blob = base64.b64decode(value[len(PREFIX):], validate=False)
+        blob = base64.b64decode(value[len(PREFIX) :], validate=False)
     except (binascii.Error, ValueError) as exc:
         raise SecretDecodeError(f"{value[:16]}… 前缀完整但载荷不是合法 base64") from exc
     if len(blob) <= _NONCE_BYTES:
@@ -220,6 +222,9 @@ def scrub_extra(extra: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # ORM 列类型：写入即加密，读出即解密
 # --------------------------------------------------------------------------- #
+_DEGRADE_WARNED = False
+
+
 class EncryptedText(TypeDecorator):
     """透明加解密的文本列。
 
@@ -241,4 +246,19 @@ class EncryptedText(TypeDecorator):
         return seal(value) if isinstance(value, str) else value
 
     def process_result_value(self, value: Any, dialect: Any) -> Any:
-        return unseal(value) if isinstance(value, str) else value
+        if not isinstance(value, str):
+            return value
+        try:
+            return unseal(value)
+        except SecretDecodeError:
+            # 密文与当前密钥不匹配（换钥 / 旧环境迁库）：列层降级读 None，
+            # 不让 ORM hydration 把整条链路抛成 500；业务侧把 None 当「未配置」
+            # 引导重填。写回路径均为 exclude_unset / 显式赋值，不会因降级读
+            # 而把 None 覆写回密文列。每进程只告警一次，避免刷屏。
+            global _DEGRADE_WARNED
+            if not _DEGRADE_WARNED:
+                _DEGRADE_WARNED = True
+                logging.getLogger(__name__).warning(
+                    "EncryptedText 密文无法用当前密钥解密，读取降级为 None（请在配置页重新保存相应凭据）"
+                )
+            return None

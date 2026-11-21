@@ -1172,3 +1172,96 @@
     transition: none;
   }
 }
+
+/* ---- 用户管理 v2（邮箱版《用户管理界面.md》§5.2） ---- */
+.v3-admin-tabs { margin-bottom: 16px; }
+.v3-admin-daterange { display: inline-flex; align-items: center; gap: 6px; }
+.v3-admin-daterange span { font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+.v3-admin-daterange input { min-width: 130px; }
+.v3-admin-pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--v3-line, rgba(0,0,0,.06)); }
+.v3-admin-pager__meta { margin-right: auto; font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+.v3-admin-email-cell { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.v3-admin-email { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--v3-fs-13); }
+.v3-admin-event-detail { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--v3-text-3); font-size: var(--v3-fs-12); }
+/* 重置方式单选卡片 */
+.v3-admin-reset-modes { display: flex; flex-direction: column; gap: 10px; }
+.v3-admin-reset-modes label { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--v3-line, rgba(0,0,0,.1)); border-radius: 12px; cursor: pointer; transition: border-color .15s, background .15s; }
+.v3-admin-reset-modes label.is-on { border-color: var(--v3-primary, #007aff); background: var(--v3-primary-soft, rgba(0,122,255,.06)); }
+.v3-admin-reset-modes label:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+.v3-admin-reset-modes input { margin-top: 3px; accent-color: var(--v3-primary, #007aff); }
+.v3-admin-reset-modes b { display: flex; align-items: center; gap: 6px; font-size: var(--v3-fs-13); }
+.v3-admin-reset-modes em { display: block; margin-top: 3px; font-style: normal; font-size: var(--v3-fs-12); color: var(--v3-text-3); line-height: 1.55; }
+/* 用户详情 */
+.v3-admin-detail { display: flex; flex-direction: column; gap: 14px; }
+.v3-admin-detail__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.v3-admin-detail__grid > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.v3-admin-detail__grid > div.is-wide { grid-column: 1 / -1; }
+.v3-admin-detail__grid em { font-style: normal; font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+.v3-admin-detail__grid b { font-size: var(--v3-fs-13); font-weight: 600; word-break: break-all; }
+.v3-admin-detail__events-title { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: var(--v3-fs-13); }
+.v3-admin-detail__empty { margin: 0; font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+.v3-admin-detail__events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow: auto; }
+.v3-admin-detail__events li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--v3-fill-2, rgba(120,120,128,.06)); }
+.v3-admin-detail__ev-name { font-size: var(--v3-fs-13); font-weight: 600; }
+.v3-admin-detail__ev-meta { font-size: var(--v3-fs-12); color: var(--v3-text-3); word-break: break-all; }
+/* 角色卡片 */
+.v3-admin-role-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.v3-admin-role-card { padding: 16px; border: 1px solid var(--v3-line, rgba(0,0,0,.08)); border-radius: 14px; display: flex; flex-direction: column; gap: 8px; }
+.v3-admin-role-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.v3-admin-role-card__head b { font-size: 15px; }
+.v3-admin-role-card__head code { font-size: var(--v3-fs-12); color: var(--v3-text-3); background: var(--v3-fill-2, rgba(120,120,128,.08)); padding: 2px 8px; border-radius: 999px; }
+.v3-admin-role-card p { margin: 0; font-size: var(--v3-fs-12); color: var(--v3-text-2); line-height: 1.6; }
+.v3-admin-role-card__perms { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ── 2026-11-20 polish：筛选工具栏单行化 ─────────────────────────────
+   .v3-select 默认 width:100%，在 flex-wrap 工具栏里会把每个下拉挤成独占一行；
+   这里给工具栏内的控件固定紧凑尺寸，搜索框弹性伸缩。 */
+.v3-admin-toolbar > .v3-select {
+  width: auto;
+  flex: 0 0 150px;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+.v3-admin-toolbar .v3-input {
+  min-height: 38px;
+  padding: 8px 12px;
+}
+.v3-admin-toolbar__grow {
+  flex: 1 1 220px;
+  max-width: 340px;
+}
+.v3-admin-daterange .v3-input {
+  width: 150px;
+}
+/* 累计登录次数单独成行，不再紧贴在时间戳后面 */
+.v3-admin-table td > .v3-admin-user-sub {
+  display: block;
+  margin-top: 2px;
+}
+/* 工具栏压缩 padding 不能吃掉搜索图标预留的左内边距（components.css 同特异性、先加载） */
+.v3-admin-toolbar .v3-input-group .v3-input {
+  padding-left: 42px;
+}
+@media (max-width: 920px) {
+  .v3-admin-toolbar__grow {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .v3-admin-toolbar > .v3-select {
+    flex: 1 1 100%;
+  }
+  .v3-admin-daterange {
+    flex: 1 1 100%;
+  }
+  .v3-admin-daterange .v3-input {
+    flex: 1 1 0;
+    width: auto;
+  }
+}
+/* 操作列保底宽度：窄列下四个按钮排成 2×2，而不是竖排四行把整行撑到 170px */
+.v3-admin-user-actions {
+  min-width: 168px;
+}
+.v3-admin-table td {
+  vertical-align: middle;
+}

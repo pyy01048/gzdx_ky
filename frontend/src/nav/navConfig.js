@@ -1,6 +1,6 @@
 /* 全站唯一导航源：顶栏下拉 / 移动端抽屉 / 面包屑 / 相关功能 / Ctrl+K 命令面板 / 设置页界面自定义
    全部从这里派生。新增页面只改这一处。 */
-import { Home, Folder, Book, FileText, Target, Map as MapIcon } from '../components/Icon'
+import { Home, Folder, Book, FileText, Target } from '../components/Icon'
 
 export const MODULES = [
   {
@@ -16,7 +16,7 @@ export const MODULES = [
   },
   {
     key: 'learn', title: '学习', icon: Folder, items: [
-      { to: '/library', label: '学习文库', desc: 'IMA 资料 · 初试/复试 · 知识/试题/单词', kw: ['library', '文库', '资料', 'wenku', 'ima'] },
+      { to: '/library', label: '学习文库', desc: 'IMA 资料 · 初试/复试 · 知识/试题/单词', public: true, kw: ['library', '文库', '资料', 'wenku', 'ima'] },
       { to: '/documents', label: '文档知识库', desc: '资料与知识图谱', kw: ['document', '文档', '资料', 'wendang', 'file'] },
       { to: '/textbooks', label: '教材目录', desc: '教材章节目录', public: true, kw: ['textbook', '教材', 'jiaocai', '目录'] },
       { to: '/pan', label: '网盘联动', desc: '云盘与同步', kw: ['pan', '网盘', '云盘', 'wangpan', 'cloud'] },
@@ -29,7 +29,7 @@ export const MODULES = [
       { to: '/exam', label: '真题中心', desc: '按年份/卷种做真题与整卷模考', public: true, kw: ['exam', '真题', 'zhenti', '模考', 'paper'] },
       { to: '/cards', label: '记忆卡片', desc: 'Anki 式间隔复习', kw: ['card', '卡片', 'kapian', 'flash'] },
       { to: '/words', label: '单词记忆', desc: '单词背诵与发音', kw: ['word', '单词', 'danci', 'vocab'] },
-      { to: '/codebank', label: '复试代码题库', desc: 'LeetCode 式复试上机题库', kw: ['code', '代码', '复试', 'codebank', 'fushi', 'oj'] },
+      { to: '/codebank', label: '复试代码题库', desc: 'LeetCode 式复试上机题库', public: true, kw: ['code', '代码', '复试', 'codebank', 'fushi', 'oj'] },
     ],
   },
   {
@@ -51,7 +51,8 @@ export const MODULES = [
          不再占用学生端导航；收集/导入/抓取源属管理工具，后续归入 /admin。 */
       { to: '/kaoyan', label: '院校库', exact: true, desc: '全国院校 · 专业 · 通知', public: true, kw: ['kaoyan', '择校', 'zexiao', '院校', 'yuanxiao', 'schools'] },
       { to: '/kaoyan/notices', label: '通知中心', desc: '简章/复试/报名/初试 · 改考雷达', public: true, kw: ['notice', '通知', '公告', '简章', 'tongzhi', 'gonggao'] },
-      { to: '/kaoyan/plan', label: '考研规划', desc: '18 节点关键日程与阶段规划', kw: ['plan', '规划', '日程', '时间节点', 'guihua'] },
+      { to: '/kaoyan/plan', label: '考研规划', desc: '18 节点关键日程与阶段规划', public: true, kw: ['plan', '规划', '日程', '时间节点', 'guihua'] },
+      { to: '/kaoyan/school-eval', label: '学科评估', desc: '教育部第四轮学科评估 · 双一流 · 按学科选校', public: true, kw: ['eval', '评估', '学科', '双一流', 'pinggu', 'xueke', 'rank', '排名'] },
     ],
   },
 ]
@@ -83,11 +84,14 @@ export const ADMIN_LEGACY_REDIRECTS = NAV_ADMIN.map((e) => [e.legacy, e.to])
 
 export const NAV_MODULES = MODULES
 
+/* 移动端底部 Tab：与桌面侧栏分组用同一套词（P1-1：全平台 ≤5 个相同导航词）。
+   落点取各分组的首个核心页；完整导航仍可从顶栏抽屉进入。 */
 export const MOBILE_TABS = [
   { to: '/', label: '今日', icon: Home },
-  { to: '/knowledge', label: '知识', icon: MapIcon },
-  { to: '/quiz', label: '刷题', icon: Book },
+  { to: '/knowledge', label: '学习', icon: Folder },
+  { to: '/quiz', label: '练习', icon: Book },
   { to: '/error-review', label: '复盘', icon: FileText },
+  { to: '/kaoyan', label: '择校', icon: Target },
 ]
 
 /* 命令面板与面包屑用的扁平清单（分组顺序 = 顶栏顺序，其后通用入口、管理页） */
@@ -102,6 +106,7 @@ export const entriesFor = (isAdmin) => (isAdmin ? ALL_ENTRIES : ALL_ENTRIES.filt
 
 const CRUMB_BY_PATH = new Map(ALL_ENTRIES.filter((e) => !e.to.includes('?')).map((e) => [e.to, e.label]))
 CRUMB_BY_PATH.set(ADMIN_ROOT, '管理后台')
+CRUMB_BY_PATH.set('/admin/caliber', '数据口径与接口体检')
 /* 择校子页面不在顶栏导航里，补上面包屑名称，避免一律回落到「页面」 */
 CRUMB_BY_PATH.set('/kaoyan/schools', '院校库')
 CRUMB_BY_PATH.set('/kaoyan/compare', '院校对比')
@@ -111,6 +116,7 @@ CRUMB_BY_PATH.set('/kaoyan/scatter', '招生人数分布')
 CRUMB_BY_PATH.set('/kaoyan/recommend', '智能择校推荐')
 CRUMB_BY_PATH.set('/kaoyan/growth', '成长体系')
 CRUMB_BY_PATH.set('/kaoyan/assistant', '择校 AI 助手')
+CRUMB_BY_PATH.set('/kaoyan/school-eval', '工学学科评估')
 /* 面包屑父级：管理端页面挂在「管理后台」下 */
 export function crumbParent(path) {
   return path !== ADMIN_ROOT && isAdminPath(path) ? { to: ADMIN_ROOT, label: '管理后台' } : null

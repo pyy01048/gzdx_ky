@@ -16,4 +16,3 @@ export const MUTATION_EVENT = 'kaoyan:mutation'
  * 压到用户停顿 ~2.5s 后只刷一次，而不是每个动作 4 条请求。
  */
 export const MUTATION_REFRESH_DELAY = 2500
-

@@ -28,16 +28,31 @@ ENUM_CATALOG: dict[str, tuple[str, ...]] = {
     # 题型。取值以实测数据为准：essay/single/calc/fill/judge/draw 有数据，
     # 旧文档里的 multiple 当前 0 行但保留兼容位，proof/other 为扩展位。
     "question_type": (
-        "single", "multiple", "judge", "fill", "calc",
-        "essay", "draw", "proof", "other",
+        "single",
+        "multiple",
+        "judge",
+        "fill",
+        "calc",
+        "essay",
+        "draw",
+        "proof",
+        "other",
     ),
     # 作答类型：客观题（可自动判分）/ 主观题（需人工或 LLM 评分）
     "answer_type": ("objective", "subjective"),
     # 来源性质（正交独立列，取代旧的 "知识库:" / "真题:" 字符串前缀归类）
     "source_kind": (
-        "past_exam", "textbook", "chapter_exercise",
-        "mock_exam", "ai_generated", "user_created", "external_import",
+        "past_exam",
+        "textbook",
+        "chapter_exercise",
+        "mock_exam",
+        "ai_generated",
+        "user_created",
+        "external_import",
     ),
+    # 题目主分类（筛选主键）：真题 / 练习题 / 习题 / 考研题。
+    # 与 source_kind 正交：真题侧重"历次真实试卷原题"，考研题侧重"面向考研的科目体系"。
+    "question_category": ("真题", "练习题", "习题", "考研题"),
     # 备考阶段（tasks.stage 口径）：基础 / 强化 / 冲刺 / 复试
     "prep_stage": ("basic", "intensive", "sprint", "retest"),
     # 考试阶段（documents.stage 口径）：初试 / 复试
@@ -50,8 +65,20 @@ ENUM_CATALOG: dict[str, tuple[str, ...]] = {
     "doc_type": ("raw", "note", "index"),
     # 原始文件格式（11 种混存 → 归一为 canonical_content 的 Markdown 中间态）
     "doc_format": (
-        "pdf", "txt", "doc", "docx", "md", "image", "pptx", "ppt",
-        "xlsx", "html", "json", "jpg", "png", "other",
+        "pdf",
+        "txt",
+        "doc",
+        "docx",
+        "md",
+        "image",
+        "pptx",
+        "ppt",
+        "xlsx",
+        "html",
+        "json",
+        "jpg",
+        "png",
+        "other",
     ),
     # 结构化程度：已按章节解析 / 扁平文本 / 扫描件 OCR
     "structure_level": ("structured", "flat", "ocr"),
@@ -89,7 +116,15 @@ ENUM_CATALOG: dict[str, tuple[str, ...]] = {
     "vector_engine": ("bge", "openai", "unknown"),
     # 分块 L3 语义类型
     "l3_content_type": (
-        "定义", "定理", "理论陈述", "例题", "习题", "证明", "公式", "实验步骤", "其他",
+        "定义",
+        "定理",
+        "理论陈述",
+        "例题",
+        "习题",
+        "证明",
+        "公式",
+        "实验步骤",
+        "其他",
     ),
     # 题目校验门结果：未校验 / 通过 / 有告警 / 不通过
     "question_validation_status": ("pending", "pass", "warn", "fail"),
@@ -131,8 +166,9 @@ def render_enum_ddl() -> str:
     lines = []
     for name, values in ENUM_CATALOG.items():
         literal = ", ".join("'" + v.replace("'", "''") + "'" for v in values)
-        lines.append(f"DO $$ BEGIN CREATE TYPE {name} AS ENUM ({literal}); "
-                     f"EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+        lines.append(
+            f"DO $$ BEGIN CREATE TYPE {name} AS ENUM ({literal}); EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
+        )
     return "\n".join(lines)
 
 
@@ -145,8 +181,8 @@ class _DialectVariant(TypeDecorator):
     impl = Text
     cache_ok = True
 
-    _pg_type = None      # 子类填入 PG 下使用的类型实例
-    _fallback = None     # 子类填入非 PG 下使用的类型实例
+    _pg_type = None  # 子类填入 PG 下使用的类型实例
+    _fallback = None  # 子类填入非 PG 下使用的类型实例
 
     def load_dialect_impl(self, dialect):
         target = self._pg_type if dialect.name == "postgresql" else self._fallback
@@ -213,9 +249,9 @@ class Float32Vector(_DialectVariant):
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
-        if isinstance(value, (bytes, bytearray)):
+        if isinstance(value, bytes | bytearray):
             return bytes(value)
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list | tuple):
             import numpy as np
 
             return np.asarray(value, dtype="<f4").tobytes()
@@ -224,7 +260,7 @@ class Float32Vector(_DialectVariant):
     def process_result_value(self, value, dialect):
         if value is None:
             return None
-        if isinstance(value, (bytes, bytearray, memoryview)):
+        if isinstance(value, bytes | bytearray | memoryview):
             return bytes(value)
         if isinstance(value, list):
             import numpy as np
@@ -253,8 +289,7 @@ class MarkdownText(TypeDecorator):
         if not text:
             return None
         kept = [
-            line for line in text.split("\n")
-            if not any(line.strip().startswith(p) for p in self._WATERMARK_PREFIXES)
+            line for line in text.split("\n") if not any(line.strip().startswith(p) for p in self._WATERMARK_PREFIXES)
         ]
         result = "\n".join(kept).strip()
         return result or None

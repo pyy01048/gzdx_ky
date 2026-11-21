@@ -90,6 +90,7 @@ def _existing_tables(conn) -> set:
         # 兜底：SQLAlchemy 层探测（不依赖任何一方的目录表）
         try:
             from sqlalchemy import inspect as _sa_inspect
+
             return set(_sa_inspect(conn).get_table_names())
         except Exception:  # noqa: BLE001
             return set()
@@ -124,14 +125,9 @@ def _probe_vector_store(conn, existing: set) -> dict:
             "detail": "向量表未创建（首次检索/入库时自动建立）",
         }
     rows = _count(conn, VEC_TABLE)
-    with_emb = int(
-        conn.execute(text(f'SELECT COUNT(*) FROM "{VEC_TABLE}" WHERE embedding IS NOT NULL'))
-        .fetchone()[0]
-    )
+    with_emb = int(conn.execute(text(f'SELECT COUNT(*) FROM "{VEC_TABLE}" WHERE embedding IS NOT NULL')).fetchone()[0])
     dims = [
-        r[0]
-        for r in conn.execute(text(f'SELECT DISTINCT dim FROM "{VEC_TABLE}" WHERE dim IS NOT NULL'))
-        .fetchall()
+        r[0] for r in conn.execute(text(f'SELECT DISTINCT dim FROM "{VEC_TABLE}" WHERE dim IS NOT NULL')).fetchall()
     ]
     if rows == 0:
         status = "empty"
@@ -167,14 +163,8 @@ def _probe_vector_store_pg(conn, existing: set) -> dict:
             "detail": "向量表未创建（应由 core/sql/020 分片建立）",
         }
     rows = _count(conn, table)
-    with_emb = int(conn.execute(text(
-        f'SELECT COUNT(*) FROM "{table}" WHERE embedding_f32 IS NOT NULL'
-    )).fetchone()[0])
-    dims = [
-        r[0] for r in conn.execute(text(
-            f'SELECT DISTINCT dim FROM "{table}" WHERE dim IS NOT NULL'
-        )).fetchall()
-    ]
+    with_emb = int(conn.execute(text(f'SELECT COUNT(*) FROM "{table}" WHERE embedding_f32 IS NOT NULL')).fetchone()[0])
+    dims = [r[0] for r in conn.execute(text(f'SELECT DISTINCT dim FROM "{table}" WHERE dim IS NOT NULL')).fetchall()]
     if rows == 0:
         status = "empty"
     elif with_emb == rows:
@@ -200,9 +190,11 @@ def _probe_fts(conn, existing: set, chunk_rows: int) -> dict:
     """
     if _is_pg_conn(conn):
         try:
-            rows = int(conn.execute(text(
-                'SELECT COUNT(*) FROM "knowledge_chunks" WHERE search_vector IS NOT NULL'
-            )).fetchone()[0])
+            rows = int(
+                conn.execute(
+                    text('SELECT COUNT(*) FROM "knowledge_chunks" WHERE search_vector IS NOT NULL')
+                ).fetchone()[0]
+            )
             pending = max(0, chunk_rows - rows)
             return {
                 "table": "knowledge_chunks.search_vector",
@@ -212,9 +204,7 @@ def _probe_fts(conn, existing: set, chunk_rows: int) -> dict:
             }
         except Exception as exc:  # noqa: BLE001
             # 不静默：探测异常会让健康面板给出错误结论（说"未建立"实则已建立）
-            logging.getLogger(__name__).warning(
-                "FTS 探测（PG 分支）失败，回退 SQLite 口径: %s", str(exc)[:160]
-            )
+            logging.getLogger(__name__).warning("FTS 探测（PG 分支）失败，回退 SQLite 口径: %s", str(exc)[:160])
 
     if FTS_TABLE not in existing:
         return {
@@ -273,6 +263,14 @@ def kb_health_snapshot() -> dict:
             snapshot["vector_store"] = _probe_vector_store(conn, existing)
             snapshot["fts5"] = _probe_fts(conn, existing, chunk_rows)
             snapshot["tables"] = _probe_tables(conn, existing)
+            # 题库健康（完善方案 11 §3.5）：warn 题/重复组/真题覆盖率，只降不升
+            try:
+                from services.quiz_health import quiz_health_snapshot
+
+                snapshot["quiz"] = quiz_health_snapshot(conn)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("题库健康探测失败: %s", e)
+                snapshot["quiz"] = {"status": "unknown", "error": str(e)}
     except Exception as e:  # noqa: BLE001
         logger.warning("KB 健康探测失败: %s", e)
         snapshot["status"] = "degraded"

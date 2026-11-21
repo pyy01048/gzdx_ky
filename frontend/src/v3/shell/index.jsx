@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import useStore from '../../store/useStore'
 import { useAuth } from '../../auth/AuthContext'
 import { useResolvedTheme } from '../../components/UI'
-import { examDaysLeft, resolveExamDate } from '../../utils/exam'
 import { chatCompletion, defaultProvider, hasAiConfigured } from '../../utils/api'
 import { taxonomyApi } from '../../api/client'
 import {
@@ -18,7 +17,7 @@ import {
   School, Search, Send, Settings, Sparkles, Star, Sun, Target, Type, User, Wand, X, Zap,
 } from '../icons'
 import {
-  Avatar, Badge, Button, Dialog, IconButton, Kbd, MenuItem, Select, Segmented, Sheet, ToastHost, cx, toast,
+  Avatar, Badge, Button, IconButton, Kbd, MenuItem, Select, ToastHost, cx,
 } from '../ui'
 
 /* -------------------------------------------------------------------------- */
@@ -94,6 +93,7 @@ function NavItem({ item, active, onNavigate, collapsed }) {
       className={cx('v3-nav-item', active && 'is-active', isAI && 'v3-nav-item--ai')}
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
+      aria-label={collapsed ? item.label : undefined}
       aria-current={active ? 'page' : undefined}
     >
       <span className="v3-nav-item__icon" data-idle={active ? 'breathe' : undefined}>
@@ -122,6 +122,34 @@ function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
 
   const isActive = (to) => (to === '/' ? location.pathname === '/' : location.pathname === to || location.pathname.startsWith(`${to}/`))
 
+  /* P1-1：分组可折叠，默认只展开当前所在分组；分组标题始终渲染（可点击展开）。
+     收起为 76px 导轨时不折叠分组 —— 图标 + 短标签必须全部可见（R1）。
+     768–1023 断点由 CSS 强制成导轨，这里同步感知，保证分组在该档始终展开。 */
+  const [rail, setRail] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px) and (max-width: 1023px)').matches
+  ))
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px) and (max-width: 1023px)')
+    const fn = (e) => setRail(e.matches)
+    mq.addEventListener('change', fn)
+    return () => mq.removeEventListener('change', fn)
+  }, [])
+  const groupOfPath = useCallback((path) => {
+    const hit = groups.find((g) => g.items.some((it) => (it.to === '/' ? path === '/' : path === it.to || path.startsWith(`${it.to}/`))))
+    return hit?.key || null
+  }, [groups])
+  const [openKeys, setOpenKeys] = useState(() => new Set())
+  useEffect(() => {
+    const key = groupOfPath(location.pathname)
+    if (key) setOpenKeys((prev) => (prev.has(key) ? prev : new Set([...prev, key])))
+  }, [location.pathname, groupOfPath])
+  const toggleGroup = (key) => setOpenKeys((prev) => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
+
   const onLogout = async () => {
     await logout()
     navigate('/login', { replace: true })
@@ -141,20 +169,32 @@ function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
       </Link>
 
       <nav className="v3-nav">
-        {groups.map((group) => (
-          <div key={group.key} className="v3-nav-group">
-            <div className="v3-nav-group__label">{group.title}</div>
-            {group.items.map((item) => (
-              <NavItem
-                key={item.to}
-                item={item}
-                active={isActive(item.to)}
-                collapsed={collapsed}
-                onNavigate={() => setMobileOpen(false)}
-              />
-            ))}
-          </div>
-        ))}
+        {groups.map((group) => {
+          const open = collapsed || rail || openKeys.has(group.key)
+          return (
+            <div key={group.key} className="v3-nav-group" data-open={open}>
+              <button
+                type="button"
+                className="v3-nav-group__label"
+                aria-expanded={open}
+                onClick={() => toggleGroup(group.key)}
+              >
+                <span>{group.title}</span>
+                <ChevronRight size={12} className="v3-nav-group__chev" aria-hidden="true" />
+              </button>
+              {/* 条目始终渲染，显隐交给 CSS（data-open）：导轨断点才能强制全量可见 */}
+              {group.items.map((item) => (
+                <NavItem
+                  key={item.to}
+                  item={item}
+                  active={isActive(item.to)}
+                  collapsed={collapsed}
+                  onNavigate={() => setMobileOpen(false)}
+                />
+              ))}
+            </div>
+          )
+        })}
       </nav>
 
       <div className="v3-sidebar__footer">
@@ -246,42 +286,11 @@ function GlobalSubjectSwitcher() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Module switcher（全局板块快速切换）                                         */
-/* -------------------------------------------------------------------------- */
-function ModuleSwitcher() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const groups = MODULES.filter((m) => m.items.length)
-  const current = groups.find((g) =>
-    g.items.some((it) => location.pathname === it.to || location.pathname.startsWith(`${it.to}/`))
-  )?.key || ''
-
-  return (
-    <div className="v3-module-switcher" title="快速切换板块">
-      <Segmented
-        className="v3-module-switcher__seg"
-        ariaLabel="切换板块"
-        value={current}
-        options={groups.map((g) => ({ value: g.key, label: g.title }))}
-        onChange={(key) => {
-          const g = groups.find((x) => x.key === key)
-          if (g?.items?.[0]) navigate(g.items[0].to)
-        }}
-      />
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
 /* Top bar                                                                    */
 /* -------------------------------------------------------------------------- */
-function useCountdown() {
-  const countdown = useStore((s) => s.countdown)
-  const settingDate = useStore((s) => s.settings?.examDate)
-  const effective = settingDate || countdown?.exam_date
-  return examDaysLeft(resolveExamDate(effective, null))
-}
-
+/* P1-8 事实唯一：考研倒计时只在「今日中枢」出现一次，顶栏不再重复展示。
+   P2-3 顶栏 ≤5 个控件：学科选择 / 搜索 / 通知 / 主题 / 账号；
+   板块切换与侧栏分组重复，移除（命令面板 ⌘K 仍可直达任何页面）。 */
 function TopBar({ collapsed, onOpenMobile, onOpenCommand }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -289,7 +298,6 @@ function TopBar({ collapsed, onOpenMobile, onOpenCommand }) {
   const themePref = useStore((s) => s.settings?.theme || 'light')
   const updateSettings = useStore((s) => s.updateSettings)
   const resolved = useResolvedTheme(themePref)
-  const days = useCountdown()
   const [menuOpen, setMenuOpen] = useState(false)
   const avatarRef = useRef(null)
   const displayName = user?.display_name || user?.username || '同学'
@@ -298,7 +306,7 @@ function TopBar({ collapsed, onOpenMobile, onOpenCommand }) {
 
   return (
     <header className="v3-topbar" data-collapsed={collapsed}>
-      <IconButton className="v3-show-mobile" label="打开导航" icon={<Menu size={20} />} onClick={onOpenMobile} />
+      <IconButton className="v3-topbar__mobile-only" label="打开导航" icon={<Menu size={20} />} onClick={onOpenMobile} />
 
       <div className="v3-topbar__crumbs">
         <Link to="/" aria-label="首页">硕途</Link>
@@ -306,9 +314,8 @@ function TopBar({ collapsed, onOpenMobile, onOpenCommand }) {
         <strong>{crumbName(location.pathname)}</strong>
       </div>
 
-      {/* 全局学科选择 + 板块快速切换（2026-10-24 全新展示） */}
+      {/* 全局学科选择器（P2-1：独立于面包屑，不混在 crumbs 里） */}
       <GlobalSubjectSwitcher />
-      <ModuleSwitcher />
 
       <button type="button" className="v3-search v3-topbar__search" onClick={onOpenCommand}>
         <Search size={17} />
@@ -317,11 +324,9 @@ function TopBar({ collapsed, onOpenMobile, onOpenCommand }) {
       </button>
 
       <div className="v3-topbar__actions">
-        <div className="v3-countdown" title="距离初试">
-          <Clock size={15} />
-          {days == null ? <Link to="/settings">设置初试日期</Link> : <><strong>{Math.max(0, days)}</strong> 天</>}
-        </div>
-        <IconButton label="通知中心" icon={<Bell size={19} />} onClick={() => navigate('/kaoyan/notices')} />
+        {/* P2-2：窄屏搜索入口（桌面搜索条隐藏时仍可达 ⌘K 命令面板） */}
+        <IconButton className="v3-topbar__mobile-only" label="搜索页面与功能" icon={<Search size={19} />} onClick={onOpenCommand} />
+        <IconButton className="v3-topbar__bell" label="通知中心" icon={<Bell size={19} />} onClick={() => navigate('/kaoyan/notices')} />
         <IconButton
           label={resolved === 'dark' ? '切换到浅色' : '切换到深色'}
           icon={resolved === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
@@ -617,31 +622,25 @@ function AiOrb() {
 /* -------------------------------------------------------------------------- */
 /* Mobile navigation                                                          */
 /* -------------------------------------------------------------------------- */
-function MobileNav({ onOpenMore }) {
+/* P1-1：底部 Tab 与桌面侧栏分组同一套词（今日/学习/练习/复盘/择校），
+   清单来自 navConfig.MOBILE_TABS 单一导航源；完整导航走顶栏抽屉。 */
+function MobileNav() {
   const location = useLocation()
-  const tabs = [
-    { to: '/', label: '今日', icon: Home },
-    { to: '/knowledge', label: '知识', icon: Map },
-    { to: '/quiz', label: '刷题', icon: Target },
-    { to: '/error-review', label: '复盘', icon: Activity },
-  ]
   return (
     <nav className="v3-mobile-nav" aria-label="移动端导航">
       <div className="v3-mobile-nav__inner">
-        {tabs.map((t) => {
-          const active = t.to === '/' ? location.pathname === '/' : location.pathname.startsWith(t.to)
-          const Icon = t.icon
+        {MOBILE_TABS.map((t) => {
+          const active = t.to === '/'
+            ? location.pathname === '/' || location.pathname === '/hub'
+            : location.pathname === t.to || location.pathname.startsWith(`${t.to}/`)
+          const Icon = navIcon(t.to)
           return (
-            <Link key={t.to} to={t.to} className={cx('v3-mobile-nav__item', active && 'is-active')}>
+            <Link key={t.to} to={t.to} className={cx('v3-mobile-nav__item', active && 'is-active')} aria-current={active ? 'page' : undefined}>
               <Icon size={20} data-active={active || undefined} />
               <span>{t.label}</span>
             </Link>
           )
         })}
-        <button type="button" className="v3-mobile-nav__item" onClick={onOpenMore}>
-          <Menu size={20} />
-          <span>更多</span>
-        </button>
       </div>
     </nav>
   )
@@ -660,7 +659,6 @@ export default function AppShell({ children }) {
     try { return localStorage.getItem('v3.sidebar.collapsed') === '1' } catch { return false }
   })
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
 
   useEffect(() => {
@@ -669,7 +667,6 @@ export default function AppShell({ children }) {
 
   useEffect(() => {
     setMobileOpen(false)
-    setMoreOpen(false)
     window.scrollTo({ top: 0, behavior: 'auto' })
     /* P1 页面标题：每个路由设置 document.title，tab 可区分 */
     const name = crumbName(location.pathname)
@@ -691,14 +688,20 @@ export default function AppShell({ children }) {
 
   const openCommand = useCallback(() => setCommandOpen(true), [])
 
-  const moreEntries = useMemo(() => [
-    ...MODULES.flatMap((m) => m.items.map((it) => ({ ...it, group: m.title }))),
-    ...NAV_OTHER.map((it) => ({ ...it, group: '通用' })),
-  ].filter((e, i, arr) => arr.findIndex((x) => x.to === e.to) === i), [])
+  /* 跳转链接（P0-5）：hash 路由下原生 #anchor 会改路由，
+     必须 preventDefault 后手动 focus 主内容区。 */
+  const skipToMain = (e) => {
+    e.preventDefault()
+    const el = document.getElementById('hub-main')
+    if (!el) return
+    el.focus({ preventScroll: true })
+    el.scrollIntoView({ block: 'start' })
+  }
 
   return (
     <ShellCtx.Provider value={{ openCommand }}>
       <div className="v3-root">
+        <a href="#hub-main" className="v3-skip-link" onClick={skipToMain}>跳到主要内容</a>
         <div className="v3-shell">
           <Sidebar
             collapsed={collapsed}
@@ -709,40 +712,15 @@ export default function AppShell({ children }) {
           {mobileOpen ? <div className="v3-mobile-mask" onClick={() => setMobileOpen(false)} /> : null}
           <div className="v3-main" data-collapsed={collapsed}>
             <TopBar collapsed={collapsed} onOpenMobile={() => setMobileOpen(true)} onOpenCommand={openCommand} />
-            <main className="v3-main__inner">
+            <main id="hub-main" className="v3-main__inner" tabIndex={-1}>
               <div className="v3-page" key={location.pathname}>{children}</div>
             </main>
           </div>
-          <MobileNav onOpenMore={() => setMoreOpen(true)} />
+          <MobileNav />
           {user ? <AiOrb /> : null}
         </div>
 
         <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
-        <Sheet open={moreOpen} title="全部功能" onClose={() => setMoreOpen(false)}>
-          <div className="v3-stack" style={{ gap: 18 }}>
-            {Object.entries(moreEntries.reduce((acc, e) => {
-              ;(acc[e.group] = acc[e.group] || []).push(e)
-              return acc
-            }, {})).map(([group, items]) => (
-              <div key={group}>
-                <div className="v3-nav-group__label" style={{ padding: '0 4px 8px' }}>{group}</div>
-                <div className="v3-grid v3-grid-2" style={{ gap: 8 }}>
-                  {items.map((it) => {
-                    const Icon = navIcon(it.to)
-                    return (
-                      <Link key={it.to} to={it.to} className="v3-list-item" style={{ border: '1px solid var(--v3-outline)' }} onClick={() => setMoreOpen(false)}>
-                        <Icon size={18} />
-                        <span className="v3-list-item__main">
-                          <span className="v3-list-item__title">{it.label}</span>
-                        </span>
-                      </Link>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Sheet>
         <ToastHost />
       </div>
     </ShellCtx.Provider>
@@ -757,7 +735,6 @@ export function AdminLayout({ children }) {
   return (
     <div className="v3-stack" style={{ gap: 20 }}>
       <div>
-        <div className="v3-eyebrow" style={{ marginBottom: 8 }}>ADMIN CONSOLE</div>
         <h1 className="v3-h1">管理后台</h1>
         <p className="v3-body" style={{ marginTop: 6 }}>数据、题库、院校采集与模型训练的统一工作台。</p>
       </div>
@@ -772,6 +749,14 @@ export function AdminLayout({ children }) {
             </Link>
           )
         })}
+        {/* 口径体检：今日中枢迁出的调试/对账页，仅管理员可见（/admin/caliber） */}
+        <Link
+          to="/admin/caliber"
+          className={cx('v3-admin-nav__item', location.pathname === '/admin/caliber' && 'is-active')}
+        >
+          <Gauge size={15} />
+          数据口径
+        </Link>
       </nav>
       <div>{children}</div>
     </div>

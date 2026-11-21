@@ -7,6 +7,7 @@
 响应键名改成 camelCase），已删除：前端从不发这个头，而"同一套接口两套键名"会让
 接口文档和前端类型各写一份。字段命名约定见 utils/response.py —— 一律 snake_case。
 """
+
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.middleware.gzip import GZipResponder
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -37,21 +38,61 @@ _GZIP_EXCLUDED_MEDIA_PREFIXES = ("text/event-stream",)
 
 
 class _ApiGZipResponder(GZipResponder):
-    """带准入判断的 GZipResponder：不压缩的响应原样透传（借父类分支实现）。"""
+    """带准入判断的 GZipResponder：不压缩的响应原样透传。
+
+    必须同时适配两代 starlette（本机实测 0.27.0， requirements 漂移后也出现过 1.10）：
+
+    * **starlette <= 0.45**：入口是 ``send_with_gzip``。只覆写
+      ``send_with_compression`` 的话准入逻辑是**死代码**——父类照旧压缩
+      PDF/206 流式响应并 ``del headers["Content-Length"]``，实测
+      ``/api/documents/{id}/raw`` 的 content-length 消失、Range/预览错位。
+      这一代没有 ``content_type_is_excluded`` 状态位，透传靠
+      ``content_encoding_set=True``（父类 body 分支据此原样转发，不动任何头）。
+    * **starlette >= 0.46（含 1.10）**：``send_with_gzip`` 被
+      ``send_with_compression`` 取代，且 1.10 改为**先缓存 start 消息、等 body
+      到达才决定压缩**（小响应直接发原文；被排除的媒体类型在 start 阶段立即发出）。
+      因此"先调 super() 再改写 ``content_type_is_excluded``"是**错的**：父类已经
+      把 start 消息缓存下来，事后置位不会再补发 start，客户端只收到 body ——
+      实测 ``/api/words/export-pdf``、``/api/errors/export-pdf`` 直接无响应
+      （ASGI ``http.response.start`` 缺失，httpx 报 ``status_code is None``）。
+
+    现行做法：**在 start 消息到达时自己判定**（两代共用 :meth:`_force_passthrough`），
+    不需要压缩的响应按各自一代的状态位约定透传（不动 Content-Length /
+    不动 Content-Encoding）。需要压缩的响应仍交给父类处理。
+    """
+
+    @staticmethod
+    def _force_passthrough(message: Message) -> bool:
+        """准入判定：SSE / 非文本类 / 206 分段一律不压缩。"""
+        headers = Headers(raw=message["headers"])
+        media = headers.get("content-type", "").partition(";")[0].strip().lower()
+        return (
+            message["status"] == 206
+            or media.startswith(_GZIP_EXCLUDED_MEDIA_PREFIXES)
+            or not media.startswith(_GZIP_MEDIA_PREFIXES)
+        )
 
     async def send_with_gzip(self, message: Message) -> None:
-        if message["type"] == "http.response.start":
-            media = Headers(raw=message["headers"]).get("content-type", "")
-            excluded = media.startswith(_GZIP_EXCLUDED_MEDIA_PREFIXES)
-            compressible = media.startswith(_GZIP_MEDIA_PREFIXES)
-            if excluded or not compressible or message["status"] == 206:
-                # 立即放行起始消息，并置位 content_encoding_set 借用父类的
-                # "已设置 Content-Encoding" 透传分支，后续 body 原样转发。
-                self.started = True
-                self.content_encoding_set = True
-                await self.send(message)
-                return
+        """starlette <= 0.45 入口（本机 0.27 实际走这条）。"""
+        if message["type"] == "http.response.start" and self._force_passthrough(message):
+            self.initial_message = message
+            # 0.27 父类：content_encoding_set=True → start/body 原样转发，
+            # Content-Length / Content-Range 一个字节都不动。
+            self.content_encoding_set = True
+            return
         await super().send_with_gzip(message)
+
+    async def send_with_compression(self, message: Message) -> None:
+        """starlette >= 0.46 入口（1.10 的 start 消息是缓存式的，必须立即转发）。"""
+        if message["type"] == "http.response.start" and self._force_passthrough(message):
+            # 与父类 start 分支保持同样的状态位，只是立刻把 start 发出去
+            self.initial_message = message
+            self.content_encoding_set = "content-encoding" in Headers(raw=message["headers"])
+            self.partial_response = message["status"] == 206
+            self.content_type_is_excluded = True
+            await self.send(message)
+            return
+        await super().send_with_compression(message)
 
 
 class GZipApiMiddleware:
@@ -69,9 +110,7 @@ class GZipApiMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and "gzip" in Headers(scope=scope).get("accept-encoding", ""):
-            responder = _ApiGZipResponder(
-                self.app, self.minimum_size, compresslevel=self.compresslevel
-            )
+            responder = _ApiGZipResponder(self.app, self.minimum_size, compresslevel=self.compresslevel)
             await responder(scope, receive, send)
             return
         await self.app(scope, receive, send)
@@ -108,12 +147,10 @@ class StaticCacheControlMiddleware:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(raw=message["headers"])
                 if is_hashed_asset and message["status"] == 200:
-                    headers.setdefault(
-                        "Cache-Control", "public, max-age=31536000, immutable"
-                    )
-                elif not headers.get("cache-control") and Headers(
-                    raw=message["headers"]
-                ).get("content-type", "").startswith("text/html"):
+                    headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+                elif not headers.get("cache-control") and Headers(raw=message["headers"]).get(
+                    "content-type", ""
+                ).startswith("text/html"):
                     headers.setdefault("Cache-Control", "no-cache")
             await send(message)
 

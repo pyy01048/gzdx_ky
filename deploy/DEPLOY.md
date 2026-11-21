@@ -102,16 +102,20 @@ curl -s  http://100.72.33.1/api/health   # 应返回后端健康 JSON
 - [ ] 降级链演练：关掉家中电脑，OCR/精排/答疑/向量仍可用
 - [ ] 完成后取消 `nginx-kaoyan.conf` 公网块注释并 `nginx -t && systemctl reload nginx`
 
-## 10. 备份 / 回滚
-- 备份：每日 `pg_dump -Fc kaoyan` 加密后同步异地；**同时备份 `/etc/kaoyan/backend.env` 与两个密钥**（否则网盘/AI 凭据不可解）；每月做一次隔离环境 restore 演练。
-- 回滚-应用：按 git sha 保留最近 2 版发布目录，`systemctl` 的 `ExecStart` 指回旧版并 `restart kaoyan`。
-- 回滚-前端：保留上一份 `static.prev`，Nginx `root` 一键切回。
-- 回滚-库：破坏性变更走「扩列→双写→回填→切读→删列」，发布前自动 pg_dump，回滚先恢复快照再回退应用。
+## 10. 备份 / 回滚（2026-11-20 更新，完善方案 09）
+- 备份：`deploy/backup.sh`（cron `0 3 * * *`）→ pg_dump 加密 + 本地滚动 7 份 + rclone 异地滚动 30 份 + healthchecks 心跳。**同时备份 `/etc/kaoyan/backend.env` 与密钥**（否则网盘/AI 凭据不可解）；密钥用密码管理器/纸质离线保存，**绝不与密文同存储**。恢复演练见 `docs/guides/backup-restore-drill.md`（每季度）。
+- 回滚-应用：部署前自动 `backups/pre-<ts>.tar.gz`；服务器上 `tar xzf backups/pre-<ts>.tar.gz` 后 `systemctl restart kaoyan`。
+- 回滚-前端：`push_update.py` 解包前自动把当前 `static` 重命名为 `static.prev`（此前该目录从不生成，回滚链断裂）；`bash deploy/rollback.sh frontend` 可一键换回并保留新版本为 prev。
+- 回滚-库：破坏性变更走「扩列→双写→回填→切读→删列」，发布前自动 pg_dump；`rollback.sh db` 给出停机恢复命令。
+- 版本可追溯：打包前 `scripts/gen_version.py` 生成 `_version.py`；`GET /api/health` 返回 `git_sha` / `built_at`；部署包名 `kaoyan-deploy-<ts>-<sha>.tar.gz`，本地只保留最近 5 份（`deploy/artifacts/`）。
+- 迁移：部署脚本统一执行 `python scripts/execute_core_sql.py --all-pending`（账本 `schema_migrations`，不再手工插播 SQL）。首次对存量库请先 `--status` 确认；账本为空时自动 baseline 只登记不执行。
+- SSH：部署默认用户 `deploy`（最小 sudo），主机指纹固定校验（`SSH_HOST_POLICY=pin`）；首次核对指纹时临时用 `SSH_HOST_POLICY=auto`。
 
 ## 11. 运维要点
-- 监控：外部拨测 `https://域名/api/health`；systemd 存活；内存(<85% 告警)、磁盘(>80%)、swap、证书到期、备份成败；三个算力节点在线灯。
-- 日志：journald `SystemMaxUse=200M` + logrotate；关注 5xx/降级/采集失败/AI 失败率。
-- 安全基线：主机仅密钥登录、非 root 跑服务（www-data）、及时补丁；CORS 收紧；旁路三端口仅 tailnet/127.0.0.1 + Token。
+- 监控四件套（全免费）：UptimeRobot/Uptime Kuma 拨测 `/api/health`（关键字 `"status":"ok"`）、healthchecks.io 备份心跳、`deploy/watchdog.sh`（磁盘≥85%/服务/家庭节点）、证书到期监控（TLS 方案）。
+- 日志：`deploy/logrotate-kaoyan.conf` 装到 `/etc/logrotate.d/kaoyan`；journald `SystemMaxUse=200M`；关注 5xx/降级/AI 失败率。
+- 安全基线：`APP_ENV=production` 必填（关闭 /docs、/openapi.json）；公网入口必须 TLS（方案 A 域名证书 / B 只走 Tailscale / C IP 证书）；CSP 先 Report-Only 一周再转强制；JWT cookie 生产默认 `Secure`（过渡期 `COOKIE_SECURE=0` 显式关闭）；旁路三端口仅 tailnet/127.0.0.1 + Token。
+- 月度：系统补丁、fail2ban 状态、ufw 规则复核；每季度：gitleaks 全仓、外部端口自查、恢复演练。
 
 ---
 
@@ -273,3 +277,24 @@ heredoc 防 shell `$` 展开，规避 `$240000$` 被 bash 当位置参数展开�
 （且判题引擎本身未挂载，include 后 submit 仍会因引擎缺失失败）。
 
 **回归**：全量 pytest 994 passed / 3 skipped / 1 xfailed，0 failure；healthcheck 27/27。
+
+## 附录 G. 2026-11-21 真实 SMTP 发信上线（邮箱注册/找回密码投递到收件箱）
+
+此前未配 SMTP，注册/找回邮件走 outbox 降级（写 `data/outbox/*.eml` + 日志，不外发）。
+现已接通真实发信，邮件投递到用户收件箱。
+
+- **主力发信**：QQ 邮箱 `smtp.qq.com:465`（SSL）。凭据写在 `/etc/kaoyan/backend.env`
+  （`SMTP_HOST/SMTP_PORT/SMTP_SSL/SMTP_USER/SMTP_PASSWORD/MAIL_FROM`，chmod 600）。
+  授权码是邮箱「设置→账户→开启 SMTP」生成的 16 位码，**不是邮箱登录密码**，不入仓库、不落手册。
+- **备用发信**：163 邮箱 `smtp.163.com:465`（凭据由用户保管，未写入服务器）。QQ 失效时一键切换。
+- **一键配置脚本**：`/opt/kaoyan/setup_smtp.sh`（源 `deploy/setup_smtp.sh`）。
+  `bash setup_smtp.sh <qq|163|gmail|brevo|custom> <email> <authcode> [test_to]`
+  自动：备份 env → 写 SMTP 配置 → 发真实测试邮件验证 → 重启 kaoyan。
+- **端口实测**：服务器对外 465/587/25 全通（华为云未封 25），QQ/163/Gmail/Brevo 均可达。
+- **代码零改动**：`services/email_service.py` 本就支持 SMTP_SSL/STARTTLS，纯 env 驱动；
+  `smtp_configured()` 为 True 时走 `_send_smtp`，否则 outbox。链接域名取 `APP_URL`（已设公网 IP）。
+- **端到端验证**：测试邮件 QQ 接受（TEST_SEND_OK）；真实注册 outbox 文件数始终 0（证明走 SMTP 非降级）、
+  账号正确建为 unverified + 签发验证 token；自检账号已清理。
+- **跨部署存活**：`push_update.py` 不触碰 `/etc/kaoyan/backend.env`，SMTP 配置后续部署不丢失。
+- ⚠️ 明文 HTTP 过渡期（附录 C）：邮件内的验证/重置链接是 `http://60.204.223.140/...`，
+  token 经 URL 传输；上 TLS 后链接自动随 `APP_URL` 升级 https。

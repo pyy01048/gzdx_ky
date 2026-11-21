@@ -12,6 +12,7 @@ utils/access_policy.enforce_access 的约定：
 
 本模块临时弹出 conftest 的鉴权旁路，让真实策略跑；结束恢复，不影响其他模块。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -74,3 +75,93 @@ def test_guest_paper_attempts_rejected():
     # 卷索引可公开；作答历史/报告是个人数据
     assert client.get("/api/papers/attempts/history").status_code == 401
     assert client.get("/api/papers/attempts/1/report").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# 2026-11-20 访客扩容：学习文库 / 复试代码题库 / 考研规划（只读）
+# ---------------------------------------------------------------------------
+
+
+def test_guest_can_read_library_documents():
+    # 学习文库只依赖这三个共享读口（语料无 user_id，不含个人数据）
+    assert client.get("/api/documents").status_code == 200
+    assert client.get("/api/documents/subjects").status_code == 200
+
+
+def test_guest_document_content_readable_but_raw_denied():
+    from database import SessionLocal
+    from models import Document
+
+    s = SessionLocal()
+    doc = Document(file_name="guest-preview-test.txt", content="访客可见的共享资料正文", subject="政治")
+    s.add(doc)
+    s.commit()
+    doc_id = doc.id
+    s.close()
+    try:
+        r = client.get(f"/api/documents/{doc_id}/content")
+        assert r.status_code == 200 and "访客可见" in r.json()["content"]
+        # 原文字节流/下载不在访客白名单：只看不下载
+        assert client.get(f"/api/documents/{doc_id}/raw").status_code == 401
+        assert client.get(f"/api/documents/{doc_id}/download").status_code == 401
+    finally:
+        s = SessionLocal()
+        d = s.get(Document, doc_id)
+        if d:
+            s.delete(d)
+            s.commit()
+        s.close()
+
+
+def test_guest_documents_writes_rejected():
+    assert client.delete("/api/documents/1").status_code == 401
+
+
+def test_guest_codebank_readonly():
+    for p in (
+        "/api/codebank/subjects",
+        "/api/codebank/questions",
+        "/api/codebank/panorama",
+        "/api/codebank/exam-strategy",
+    ):
+        assert client.get(p).status_code == 200, p
+    # 添加科目是管理写操作：访客 401（登录用户非管理员则 403，另有策略测试覆盖）
+    assert client.post("/api/codebank/subjects", json={"name": "访客写入应被拒"}).status_code == 401
+
+
+def test_guest_plan_calendar_without_goal_leak():
+    """访客可看公共招生日历与阶段规划，但 goal 必须为空。
+
+    先种一个真实用户的 Goal 作探针：scoped(Goal, None) 恒真，
+    若 plan.py 未对 user=None 显式短路，这里会读出探针用户的私人目标。
+    """
+    from database import SessionLocal
+    from models import Goal, User
+
+    s = SessionLocal()
+    u = User(username="guest_leak_probe", password_hash="x", role="user")
+    s.add(u)
+    s.flush()
+    g = Goal(user_id=u.id, university="泄露探针大学", total_score_target=400)
+    s.add(g)
+    s.commit()
+    uid, gid = u.id, g.id
+    s.close()
+    try:
+        r = client.get("/api/plan/roadmap")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["goal"] == {}, "访客 roadmap 泄露了他人 Goal"
+        assert body.get("stages") and body.get("milestones")
+        assert client.get("/api/plan/milestones").status_code == 200
+    finally:
+        s = SessionLocal()
+        s.query(Goal).filter(Goal.id == gid).delete()
+        s.query(User).filter(User.id == uid).delete()
+        s.commit()
+        s.close()
+
+
+def test_guest_plan_generate_rejected():
+    # 生成节点是写操作，仍要登录
+    assert client.post("/api/plan/generate").status_code == 401

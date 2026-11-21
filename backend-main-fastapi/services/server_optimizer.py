@@ -8,6 +8,7 @@ V3.0 后端服务优化模块
 说明：响应压缩由部署层的 nginx gzip 负责（gzip_types 含
 application/json 等），应用层不再做假压缩头。
 """
+
 import asyncio
 import logging
 import os
@@ -34,8 +35,7 @@ def _load_slow_threshold_ms() -> int:
         value = int(raw)
     except ValueError:
         logger.warning(
-            f"SLOW_REQUEST_THRESHOLD_MS={raw!r} 不是合法整数，"
-            f"回退默认值 {DEFAULT_SLOW_REQUEST_THRESHOLD_MS}"
+            f"SLOW_REQUEST_THRESHOLD_MS={raw!r} 不是合法整数，回退默认值 {DEFAULT_SLOW_REQUEST_THRESHOLD_MS}"
         )
         return DEFAULT_SLOW_REQUEST_THRESHOLD_MS
     return value if value > 0 else DEFAULT_SLOW_REQUEST_THRESHOLD_MS
@@ -64,18 +64,17 @@ class RequestTimer:
         response = await call_next(request)
         elapsed = (time.time() - start_time) * 1000
 
-        response.headers["X-Process-Time"] = f"{elapsed:.2f}ms"
-
         if elapsed > self.threshold_ms:
-            self.slow_requests.append({
-                "path": request.url.path,
-                "method": request.method,
-                "elapsed_ms": elapsed,
-                "timestamp": time.time(),
-            })
+            self.slow_requests.append(
+                {
+                    "path": request.url.path,
+                    "method": request.method,
+                    "elapsed_ms": elapsed,
+                    "timestamp": time.time(),
+                }
+            )
             logger.warning(
-                f"慢请求: {request.method} {request.url.path} - {elapsed:.1f}ms "
-                f"(阈值 {self.threshold_ms}ms)"
+                f"慢请求: {request.method} {request.url.path} - {elapsed:.1f}ms (阈值 {self.threshold_ms}ms)"
             )
         else:
             logger.debug(f"请求耗时: {request.method} {request.url.path} - {elapsed:.1f}ms")
@@ -221,7 +220,9 @@ def rate_limit(max_calls: int = 30, period: int = 60):
                     content={"detail": "请求过于频繁，请稍后再试"},
                 )
             return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -247,7 +248,9 @@ def cache_response(ttl: int = 60):
                 oldest_key = min(cache.keys(), key=lambda k: cache[k][1])
                 del cache[oldest_key]
             return result
+
         return wrapper
+
     return decorator
 
 
@@ -295,6 +298,7 @@ perf_monitor = PerformanceMonitor()
 async def health_check_endpoint():
     """健康检查端点。"""
     from database import check_database_health
+
     return {
         "status": "ok",
         "version": "3.0.0",

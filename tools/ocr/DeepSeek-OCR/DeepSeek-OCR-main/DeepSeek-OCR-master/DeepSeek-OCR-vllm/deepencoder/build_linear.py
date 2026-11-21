@@ -170,5 +170,3 @@ class MlpProjector(nn.Module):
             fwd = 0
 
         return fwd * 3
-
-

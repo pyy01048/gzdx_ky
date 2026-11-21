@@ -373,7 +373,7 @@ export default function Documents() {
     const seq = ++listSeq.current
     setLoading(true)
     try {
-      const d = await documentsApi.list({ subject: subject === 'all' ? undefined : subject })
+      const d = await documentsApi.listAll({ subject: subject === 'all' ? undefined : subject })
       if (seq !== listSeq.current) return
       const list = listItems(d)
       if (!list) throw new Error('文档列表响应格式无法识别')

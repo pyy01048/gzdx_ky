@@ -1,70 +1,119 @@
 # -*- coding: utf-8 -*-
-"""README 数据口径核对：把过时的宣传数字换成库里的真实计数。
+"""README 数据口径：从库里出数（完善方案 12 §3.2）。
 
-审计发现 README 仍写「9,171 道题 / 4,569 词」，与库中真实规模差 20~30 倍
-（迁移 PG 后只导入了子集）。本脚本打印可直接粘进 README 的数字。
+两种用法：
 
-用法::
+    python scripts/diagnostics/readme_counts.py                 # 打印计数，供人工核对
+    python scripts/diagnostics/readme_counts.py --write-readme  # 写进 README 的 COUNTS 自动块
 
-    python scripts/diagnostics/readme_counts.py
+README 中必须有下面这对标记（脚本只替换块内内容，不会碰其它文字）::
+
+    <!-- COUNTS:BEGIN ... -->
+    <!-- COUNTS:END -->
+
+项目铁律：README/面板/报告的数字**只允许**从这里出数，禁止手填（历次口径漂移的根因）。
 """
+
 from __future__ import annotations
 
+import argparse
+import datetime
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+BASE = Path(__file__).resolve().parents[2]
+REPO = BASE.parent
+README = REPO / "README.md"
+
+sys.path.insert(0, str(BASE))
 
 from sqlalchemy import text  # noqa: E402
+
+BEGIN = "<!-- COUNTS:BEGIN"
+END = "<!-- COUNTS:END -->"
+
+#: 指标 → (表名, where 条件, 中文标签)
+METRICS = [
+    ("quiz_questions", "is_available IS TRUE", "可用题目"),
+    ("quiz_questions", "is_past_exam IS TRUE", "其中真题"),
+    ("words", "1=1", "单词"),
+    ("knowledge_chunks", "1=1", "知识分块"),
+    ("knowledge_points", "1=1", "知识点"),
+    ("documents", "1=1", "文档"),
+    ("kaoyan_schools", "1=1", "院校"),
+    ("kaoyan_majors", "1=1", "专业"),
+    ("kaoyan_scorelines", "1=1", "分数线行"),
+    ("papers", "1=1", "试卷"),
+]
 
 
 def _count(db, table: str, where: str = "1=1") -> int | None:
     try:
         return int(db.execute(text(f"select count(*) from {table} where {where}")).scalar())
-    except Exception:  # noqa: BLE001 表不存在 → None
+    except Exception:  # noqa: BLE001 表不存在 → None（诚实标注，不静默当 0）
         return None
 
 
-def main() -> int:
+def collect() -> dict:
     from database import SessionLocal
 
     db = SessionLocal()
     try:
         tables = {
             r[0]
-            for r in db.execute(
-                text("select table_name from information_schema.tables where table_schema='public'")
-            )
+            for r in db.execute(text("select table_name from information_schema.tables where table_schema='public'"))
         }
-        print("== 核心计数 ==")
-        # 题目表真实名为 quiz_questions（历史名 questions 在 PG 迁移后不存在）
-        qtable = next(
-            (t for t in ("questions", "quiz_questions") if t in tables), None
-        )
-        questions = _count(db, qtable) if qtable else None
-        print(f"questions(table={qtable}) = {questions}")
-        for col, label in (("origin_document_id", "真题文档归属"), ("year", "有年份"), ("answer", "有答案")):
-            if questions is not None and col in {
-                c[0]
-                for c in db.execute(
-                    text(
-                        "select column_name from information_schema.columns"
-                        "  where table_name=:t and table_schema='public'"
-                    ),
-                    {"t": qtable},
-                )
-            }:
-                n = _count(db, qtable, f"{col} is not null")
-                print(f"  其中{label} = {n}")
-        for name in ("words", "wordbook", "vocabulary", "word_cards"):
-            if name in tables:
-                print(f"{name} = {_count(db, name)}")
-        print("== 相关表清单（含 'word' / 'question'）==")
-        for t in sorted(tables):
-            if "word" in t or "question" in t:
-                print(f"  {t} = {_count(db, t)}")
+        out = {}
+        for table, where, label in METRICS:
+            out[label] = _count(db, table, where) if table in tables else None
+        return out
     finally:
         db.close()
+
+
+def render_block(counts: dict) -> str:
+    today = datetime.date.today().isoformat()
+    lines = [
+        f"{BEGIN}（自动生成，勿手改；刷新：python backend-main-fastapi/scripts/diagnostics/readme_counts.py --write-readme）-->",
+        "",
+        "| 指标 | 数值 | 口径日期 |",
+        "|---|---|---|",
+    ]
+    for _, _, label in METRICS:
+        value = counts.get(label)
+        shown = "—（表不存在）" if value is None else f"{value:,}"
+        lines.append(f"| {label} | {shown} | {today} |")
+    lines += ["", END]
+    return "\n".join(lines)
+
+
+def write_readme(counts: dict) -> bool:
+    if not README.exists():
+        print(f"[x] 找不到 {README}")
+        return False
+    content = README.read_text(encoding="utf-8")
+    start = content.find(BEGIN)
+    end = content.find(END)
+    if start == -1 or end == -1 or end < start:
+        print("[x] README 缺少 COUNTS 标记块（<!-- COUNTS:BEGIN --> … <!-- COUNTS:END -->）")
+        return False
+    new = content[:start] + render_block(counts) + content[end + len(END) :]
+    README.write_text(new, encoding="utf-8", newline="\n")
+    print(f"[✓] 已刷新 {README} 的数据实况块")
+    return True
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--write-readme", action="store_true")
+    args = ap.parse_args()
+
+    counts = collect()
+    print("== 核心计数 ==")
+    for _, _, label in METRICS:
+        print(f"{label:<10} = {counts.get(label)}")
+    if args.write_readme:
+        return 0 if write_readme(counts) else 1
     return 0
 
 

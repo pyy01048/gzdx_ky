@@ -86,9 +86,9 @@ describe('侧栏消费「界面自定义」偏好', () => {
 
   it('隐藏分组后侧栏不再渲染该分组', async () => {
     await renderShell()
-    expect(screen.getByText('择校', { selector: '.v3-nav-group__label' })).toBeInTheDocument()
+    expect(screen.getByText('择校', { selector: '.v3-nav-group__label span' })).toBeInTheDocument()
     act(() => { toggleHidden('navHidden', 'school') })
-    expect(screen.queryByText('择校', { selector: '.v3-nav-group__label' })).toBeNull()
+    expect(screen.queryByText('择校', { selector: '.v3-nav-group__label span' })).toBeNull()
     expect(screen.queryByText('院校库')).toBeNull()
   })
 

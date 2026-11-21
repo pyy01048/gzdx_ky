@@ -382,6 +382,174 @@
 .v3-wiggle { animation: v3-icon-wiggle 600ms var(--v3-ease-standard) both; }
 .v3-shake { animation: v3-shake 420ms var(--v3-ease-standard) both; }
 
+/* ---------- Scroll reveal ---------- */
+.v3-reveal {
+  opacity: 0;
+  transform: translate3d(0, 16px, 0);
+  transition:
+    opacity var(--v3-dur-4) var(--v3-ease-standard),
+    transform var(--v3-dur-4) var(--v3-ease-emphasized);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.v3-reveal.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- Pointer spotlight（纯绘制：径向高光跟随指针，不产生溢出） ---------- */
+.v3-spotlight {
+  position: relative;
+}
+
+.v3-spotlight::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    var(--spot-r, 260px) circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--v3-primary) 9%, transparent),
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity var(--v3-dur-2) var(--v3-ease-standard);
+  pointer-events: none;
+}
+
+@media (pointer: fine) {
+  .v3-spotlight:hover::after {
+    opacity: 1;
+  }
+}
+
+/* ---------- 3D tilt（transform-only；变量由 usePointerFx 写入） ---------- */
+.v3-tilt {
+  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform var(--v3-dur-3) var(--v3-ease-spring);
+  transform-style: preserve-3d;
+}
+
+/* ---------- Magnetic button ---------- */
+.v3-magnetic {
+  transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0);
+  transition: transform var(--v3-dur-3) var(--v3-ease-spring);
+}
+
+/* ---------- Border beam（沿卡片边框巡游的高光；@property 不支持时退化为静态弧） ---------- */
+@property --v3-beam-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.v3-beam {
+  position: relative;
+}
+
+.v3-beam::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--v3-beam-angle),
+    transparent 0 68%,
+    var(--v3-gemini-1) 82%,
+    var(--v3-gemini-2) 90%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: v3-beam-spin 6s linear infinite;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+@keyframes v3-beam-spin {
+  to { --v3-beam-angle: 360deg; }
+}
+
+/* ---------- Typewriter（ghost 占位防回流，live 层绝对定位覆盖） ---------- */
+.v3-typewriter {
+  position: relative;
+  display: inline-block;
+}
+
+.v3-typewriter__ghost {
+  visibility: hidden;
+}
+
+.v3-typewriter__live {
+  position: absolute;
+  inset: 0;
+}
+
+.v3-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  animation: v3-caret-blink 1s steps(1) infinite;
+}
+
+@keyframes v3-caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ---------- Marquee ---------- */
+.v3-marquee {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.v3-marquee__track {
+  display: flex;
+  width: max-content;
+  animation: v3-marquee-scroll var(--marquee-dur, 30s) linear infinite;
+}
+
+.v3-marquee:hover .v3-marquee__track {
+  animation-play-state: paused;
+}
+
+.v3-marquee__group {
+  display: flex;
+  align-items: center;
+  gap: var(--v3-s-5, 20px);
+  padding-right: var(--v3-s-5, 20px);
+}
+
+@keyframes v3-marquee-scroll {
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+/* ---------- Parallax（装饰层） ---------- */
+.v3-parallax {
+  transform: translate3d(0, var(--par-y, 0px), 0);
+  will-change: transform;
+}
+
+/* ---------- Reading progress（scrollytelling 最小形态） ---------- */
+.v3-read-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--v3-gemini-gradient);
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  z-index: 80;
+  pointer-events: none;
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -394,6 +562,35 @@
   }
 
   .v3-icon[data-idle] {
+    animation: none !important;
+  }
+
+  .v3-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .v3-beam::after {
+    animation: none !important;
+    opacity: 0.4;
+  }
+
+  .v3-marquee {
+    overflow-x: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .v3-marquee__track {
+    animation: none !important;
+  }
+
+  .v3-parallax {
+    transform: none !important;
+  }
+
+  .v3-caret {
     animation: none !important;
   }
 }

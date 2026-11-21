@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { request } from '../../api/client'
+import { useAuth } from '../../auth/AuthContext'
 import {
   AnimatedNumber, Badge, Button, Card, CardHead, Chip, Dialog, Empty, Field, IconButton,
   Input, PageHeader, Skeleton, Tabs, Tile, toastErr, toastOk,
@@ -70,6 +72,13 @@ function StatTile({ icon, label, value, unit, hint }) {
 }
 
 export default function CodeBank() {
+  /* 访客只读（2026-11-20）：题库浏览免登录；「添加科目」是管理写操作，
+     访客一律换成登录引导，避免点了才吃 401 被踢去登录页。 */
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isGuest = !user
+  const goLogin = () => navigate('/login', { state: { from: location } })
   const [tab, setTab] = useState('panorama') // panorama | list | strategy
   const [subjects, setSubjects] = useState([])
   const [subject, setSubject] = useState('')
@@ -261,9 +270,13 @@ export default function CodeBank() {
             onClick={refresh}
             disabled={loading}
           />
-          <Button variant="gradient" icon={<Plus size={16} />} onClick={() => setShowAdd(true)}>
-            添加科目
-          </Button>
+          {isGuest ? (
+            <Button variant="tonal" onClick={goLogin}>登录</Button>
+          ) : (
+            <Button variant="gradient" icon={<Plus size={16} />} onClick={() => setShowAdd(true)}>
+              添加科目
+            </Button>
+          )}
         </>
       )}
     />
@@ -321,10 +334,12 @@ export default function CodeBank() {
               <span className="cb3-chip-n">{s.question_count ?? 0}</span>
             </Chip>
           ))}
-          <Chip className="cb3-chip-add" onClick={() => setShowAdd(true)} title="添加科目模块">
-            <Plus size={13} />
-            添加科目
-          </Chip>
+          {isGuest ? null : (
+            <Chip className="cb3-chip-add" onClick={() => setShowAdd(true)} title="添加科目模块">
+              <Plus size={13} />
+              添加科目
+            </Chip>
+          )}
         </div>
       </Card>
 
@@ -398,7 +413,9 @@ export default function CodeBank() {
               icon={<Map size={26} />}
               title="还没有知识点数据"
               text="先添加科目并录入题目，系统会按标签自动汇总成知识点全景。"
-              action={<Button variant="gradient" icon={<Plus size={16} />} onClick={() => setShowAdd(true)}>添加科目</Button>}
+              action={isGuest
+                ? <Button variant="tonal" onClick={goLogin}>登录后管理题库</Button>
+                : <Button variant="gradient" icon={<Plus size={16} />} onClick={() => setShowAdd(true)}>添加科目</Button>}
             />
           ) : (
             <div className="cb3-pano-grid">
@@ -508,7 +525,9 @@ export default function CodeBank() {
                 : '添加科目后即可开始整理复试题；题目录入后这里会自动按考点与考频汇总。'}
               action={hasFilters
                 ? <Button variant="tonal" onClick={clearFilters}>清空筛选</Button>
-                : <Button variant="gradient" icon={<Plus size={16} />} onClick={() => setShowAdd(true)}>添加科目</Button>}
+                : isGuest
+                  ? <Button variant="tonal" onClick={goLogin}>登录后管理题库</Button>
+                  : <Button variant="gradient" icon={<Plus size={16} />} onClick={() => setShowAdd(true)}>添加科目</Button>}
             />
           ) : (
             <div className="cb3-table-wrap">

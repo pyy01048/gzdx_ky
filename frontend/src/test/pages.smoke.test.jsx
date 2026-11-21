@@ -829,6 +829,8 @@ describe('页面健壮性总守卫', () => {
     ['Dashboard', '../v3/pages/Dashboard', '/'],
     /* 今日中枢只消费聚合端点；核心接口全挂时显示可重试错误页，不白屏 */
     ['Hub', '../v3/pages/Hub', '/hub'],
+    /* 数据口径页与 Hub 同源（fetchHubOverview）：离线时错误态可重试，不白屏 */
+    ['Caliber', '../v3/pages/Caliber', '/admin/caliber'],
     ['Tasks', '../v3/pages/Tasks', '/tasks'],
     ['KbMap', '../v3/pages/KbMap', '/knowledge'],
     ['KnowledgeArticle', '../v3/pages/KnowledgeArticle', '/knowledge/1'],
@@ -850,6 +852,7 @@ describe('页面健壮性总守卫', () => {
     ['Planner', '../v3/pages/Planner', '/planner'],
     ['KaoyanGuide', '../v3/pages/KaoyanGuide', '/kaoyan/guide'],
     ['KaoyanSchools', '../v3/pages/KaoyanSchools', '/kaoyan/schools'],
+    ['KaoyanSchoolEval', '../v3/pages/KaoyanSchoolEval', '/kaoyan/school-eval'],
     ['NoticeCenter', '../v3/pages/NoticeCenter', '/kaoyan/notices'],
     ['KaoyanSchoolDetail', '../v3/pages/KaoyanSchoolDetail', '/kaoyan/schools/1'],
     ['KaoyanCompare', '../v3/pages/KaoyanCompare', '/kaoyan/compare'],
@@ -874,6 +877,9 @@ describe('页面健壮性总守卫', () => {
     ['KnowledgeBaseImport', '../v3/pages/KnowledgeBaseImport', '/admin/kb-import'],
     ['ModelTraining', '../v3/pages/ModelTraining', '/admin/model'],
     ['Login', '../v3/pages/Login', '/login'],
+    /* 邮箱验证 / 重置密码：无 token 查询参数时应渲染「链接无效」态而非白屏 */
+    ['VerifyEmail', '../v3/pages/VerifyEmail', '/verify-email'],
+    ['ResetPassword', '../v3/pages/ResetPassword', '/reset-password'],
     /* 无身份时它会正确地跳回登录页（DOM 为空不是白屏），所以 null 场景以「须改密」身份进入 */
     ['ForceChangePassword', '../v3/pages/ForceChangePassword', '/force-change-password', { me: { id: 1, username: 'u', role: 'user', must_change_password: true } }],
     ['Forbidden', '../v3/pages/Forbidden', '/403'],

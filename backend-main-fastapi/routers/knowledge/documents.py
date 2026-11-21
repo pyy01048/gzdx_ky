@@ -20,7 +20,7 @@ from services.quiz_content_gate import gate_log_summary
 from services.smart_ingest import gate_for_write
 from sqlalchemy.orm import Session
 from utils.exceptions import http_error_response
-from utils.security import require_admin
+from utils.security import require_admin, require_verified_email
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -36,10 +36,10 @@ def _safe_filename(filename: str) -> str:
     # 只保留文件名部分，去掉路径
     name = Path(filename).name
     # 替换危险字符
-    name = re.sub(r'[\\/:*?"<>|]', '_', name)
+    name = re.sub(r'[\\/:*?"<>|]', "_", name)
     # 防止空文件名
-    if not name or name == '.':
-        name = 'unknown'
+    if not name or name == ".":
+        name = "unknown"
     return name
 
 
@@ -53,7 +53,7 @@ def _safe_filename(filename: str) -> str:
 #: 测试通过 monkeypatch 本常量换成临时目录。
 #: KB 根走 resolve_kb_root() 而不是自行拼 ``../knowledge_base``：入库写哪儿，
 #: 预览白名单就得允许哪儿，否则把知识库放到别的盘后文件能入库却读不出来。
-from services.kb_service import resolve_kb_root
+from services.kb_service import resolve_kb_root  # noqa: E402  刻意与下方白名单常量同段
 
 LOCAL_FILE_ROOTS = [os.path.realpath(BASE_DIR)]
 _KB_ROOT = os.path.realpath(resolve_kb_root())
@@ -69,8 +69,7 @@ def _media_type(path: str) -> str:
 
 
 def _inside_roots(abspath: str) -> bool:
-    return any(abspath == root or abspath.startswith(root + os.sep)
-               for root in LOCAL_FILE_ROOTS)
+    return any(abspath == root or abspath.startswith(root + os.sep) for root in LOCAL_FILE_ROOTS)
 
 
 def _resolve_local_file(doc: Document, *, strict: bool = False):
@@ -102,8 +101,7 @@ def _resolve_local_file(doc: Document, *, strict: bool = False):
 def _content_disposition(name: str, doc_id: int, disposition: str) -> str:
     """RFC 5987：中文名走 filename*，filename 只放 ASCII 兜底。"""
     fallback = re.sub(r"[^A-Za-z0-9._ -]", "_", name).strip() or f"document_{doc_id}"
-    return (f"{disposition}; filename=\"{fallback}\"; "
-            f"filename*=UTF-8''{quote(name, safe='')}")
+    return f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
 
 
 def _parse_range(header: str, size: int):
@@ -168,12 +166,12 @@ def _file_response(doc: Document, request: Request, disposition: str):
     }
     if status_code == 206:
         headers["Content-Range"] = f"bytes {start}-{start + length - 1}/{size}"
-    return StreamingResponse(_iter_file(path, start, length),
-                             status_code=status_code,
-                             media_type=_media_type(path), headers=headers)
+    return StreamingResponse(
+        _iter_file(path, start, length), status_code=status_code, media_type=_media_type(path), headers=headers
+    )
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[Depends(require_verified_email)])
 async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """上传文档。"""
     file_name = _safe_filename(file.filename or "unknown")
@@ -189,7 +187,7 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
 
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"文件过大，最大支持 {MAX_FILE_SIZE // (1024*1024)}MB")
+        raise HTTPException(status_code=413, detail=f"文件过大，最大支持 {MAX_FILE_SIZE // (1024 * 1024)}MB")
 
     save_path = os.path.join(UPLOAD_DIR, file_name)
     with open(save_path, "wb") as f:
@@ -211,7 +209,14 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
 
 @router.get("")
 # 参数按依赖顺序（无默认值的必须在前）；新增参数一律给默认值。
-async def list_documents(
+# V3.12 评审 B-04/B-09 整改：
+#   1) 同步 def —— 原 async def + 同步 ORM 把事件循环占死（storage.py 同款事故）；
+#   2) 强制分页 —— page/page_size（默认 20，上限 100），不再一次吐 2666 行；
+#   3) 字段裁剪 —— defer(content)，正文长度/摘要在 DB 侧按页计算，
+#      不再把全部文档的完整正文拉进 Python 内存（原实现是 2.79MB/8.66s 的内存炸弹）；
+#   4) facets —— 科目×性质的 GROUP BY 计数（含已解析数），前端 chip 计数
+#      不再依赖「拉全量再数一遍」。
+def list_documents(
     subject: str = None,
     doc_type: str = None,
     ocr_only: bool = False,
@@ -219,6 +224,8 @@ async def list_documents(
     content_type: str = None,
     subject_source: str = None,
     include_junk: bool = False,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
     """文档列表（可按学科 / 资料层级 / 是否扫描件 / 备考阶段 / 内容性质 / 来源过滤）。
@@ -230,7 +237,14 @@ async def list_documents(
 
     ``include_junk=False``（默认）：过滤违禁/废弃文档（红线 3，非 0854 学科），
     传 True 可专门查看这批待清理文档（治理/审计用）。
+
+    返回信封 ``{items, total, page, page_size, facets}``；facets.groups 为
+    ``{subject, content_type, count, parsed_count}`` 的紧凑计数组，供前端
+    交叉统计 chip 条数（口径与旧「全量列表 + countBy」一致）。
     """
+    from sqlalchemy import case, func, or_
+    from sqlalchemy.orm import defer
+
     q = db.query(Document)
     if not include_junk:
         q = q.filter(Document.is_junk.isnot(True))
@@ -252,45 +266,115 @@ async def list_documents(
         q = q.filter(Document.content_type == content_type)
     if subject_source:
         q = q.filter(Document.subject_source == subject_source)
-    docs = q.order_by(Document.created_at.desc()).all()
-    # 一次性聚合每个文档的分块数，避免 N+1 查询
-    from sqlalchemy import func
-    chunk_counts = dict(
-        db.query(KnowledgeChunk.document_id, func.count(KnowledgeChunk.id))
-        .filter(KnowledgeChunk.document_id.in_([d.id for d in docs]))
-        .group_by(KnowledgeChunk.document_id).all()
-    ) if docs else {}
+
+    total = q.count()
+
+    # facet 计数：与列表同一套过滤条件，GROUP BY 一次算完。
+    # 「已解析」口径 = 有正文（content 非 NULL，NULL 判断不触发 TOAST 解压）
+    # 或有分块（EXISTS 走 document_id 索引），与前端 isParsed 语义一致。
+    chunk_exists = db.query(KnowledgeChunk.id).filter(KnowledgeChunk.document_id == Document.id).exists()
+    parsed_expr = or_(Document.content.isnot(None), chunk_exists)
+    groups = (
+        q.with_entities(
+            Document.subject,
+            Document.content_type,
+            func.count(Document.id),
+            func.sum(case((parsed_expr, 1), else_=0)),
+        )
+        .group_by(Document.subject, Document.content_type)
+        .all()
+    )
+
+    # 分页取行：defer(content) 保证完整正文不进 Python 内存；
+    # created_at 加 id 双排序，翻页顺序稳定（同一秒入库的文档不会跳行）。
+    docs = (
+        q.order_by(Document.created_at.desc(), Document.id.desc())
+        .options(defer(Document.content))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    ids = [d.id for d in docs]
+
+    # 正文长度/摘要只对当页 ≤100 行在 DB 侧计算（length/substr），
+    # 不再为 len() 和 [:200] 把全部正文加载进内存。
+    content_meta: dict = {}
+    if ids:
+        for did, clen, summary in (
+            db.query(
+                Document.id,
+                func.length(Document.content),
+                func.substr(Document.content, 1, 200),
+            )
+            .filter(Document.id.in_(ids))
+            .all()
+        ):
+            content_meta[did] = (int(clen or 0), summary or "")
+
+    # 一次性聚合当页文档的分块数，避免 N+1 查询
+    chunk_counts = (
+        dict(
+            db.query(KnowledgeChunk.document_id, func.count(KnowledgeChunk.id))
+            .filter(KnowledgeChunk.document_id.in_(ids))
+            .group_by(KnowledgeChunk.document_id)
+            .all()
+        )
+        if ids
+        else {}
+    )
     result = []
     for d in docs:
         local_path, local_note = _resolve_local_file(d)
-        result.append({
-            "id": d.id,
-            "file_name": d.file_name,
-            "file_type": d.file_type,
-            "size": d.size,
-            "index_status": d.index_status,
-            "knowledge_point_count": d.knowledge_point_count,
-            "parse_progress": d.parse_progress,
-            "subject": d.subject,
-            # 文档组织三层结构 + 扫描件标记（前端据此筛选与降权）
-            "doc_type": d.doc_type,
-            "structure_level": d.structure_level,
-            "ocr_used": bool(d.ocr_used),
-            # IMA 导入相关：备考阶段 / 内容性质 / 来源 / IMA 目录（前端据此分栏展示）
-            "stage": d.stage,
-            "content_type": d.content_type,
-            "subject_source": d.subject_source,
-            "folder_path": d.folder_path,
-            "ima_media_id": d.ima_media_id,
-            # 原文可不可读在前端就要知道：置灰按钮 + 说明原因，比点了报 404 好
-            "has_local_file": local_path is not None,
-            "local_file_note": local_note,
-            "summary": (d.content or "")[:200],
-            "content_length": len(d.content or ""),
-            "chunk_count": chunk_counts.get(d.id, 0),
-            "created_at": d.created_at.isoformat() if d.created_at else None,
-        })
-    return result
+        clen, summary = content_meta.get(d.id, (0, ""))
+        result.append(
+            {
+                "id": d.id,
+                "file_name": d.file_name,
+                "file_type": d.file_type,
+                "size": d.size,
+                "index_status": d.index_status,
+                "knowledge_point_count": d.knowledge_point_count,
+                "parse_progress": d.parse_progress,
+                "subject": d.subject,
+                # 文档组织三层结构 + 扫描件标记（前端据此筛选与降权）
+                "doc_type": d.doc_type,
+                "structure_level": d.structure_level,
+                "ocr_used": bool(d.ocr_used),
+                # IMA 导入相关：备考阶段 / 内容性质 / 来源 / IMA 目录（前端据此分栏展示）
+                "stage": d.stage,
+                "content_type": d.content_type,
+                "subject_source": d.subject_source,
+                "folder_path": d.folder_path,
+                "ima_media_id": d.ima_media_id,
+                # 原文可不可读在前端就要知道：置灰按钮 + 说明原因，比点了报 404 好
+                "has_local_file": local_path is not None,
+                "local_file_note": local_note,
+                "summary": summary,
+                "content_length": clen,
+                "chunk_count": chunk_counts.get(d.id, 0),
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+        )
+    return {
+        "items": result,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        # 数据归属显式标注（V3.12 评审 B-08）：这是全站共享库，不是个人数据。
+        # 前端/契约测试可据此区分全局域与个人域（/api/tasks 等）。
+        "scope": "global",
+        "facets": {
+            "groups": [
+                {
+                    "subject": s or "",
+                    "content_type": ct or "",
+                    "count": int(n or 0),
+                    "parsed_count": int(p or 0),
+                }
+                for s, ct, n, p in groups
+            ],
+        },
+    }
 
 
 @router.get("/subjects")
@@ -311,23 +395,23 @@ async def list_subjects(db: Session = Depends(get_db)):
     # 文档侧原值分组计数：组内各原值互斥（一篇文档只有一个 subject 写法），
     # 所以「折叠后的合并文档数」就是逐原值求和，不会重复计数。
     from sqlalchemy import func
-    doc_counts = dict(
-        db.query(Document.subject, func.count(Document.id))
-        .group_by(Document.subject).all()
-    )
+
+    doc_counts = dict(db.query(Document.subject, func.count(Document.id)).group_by(Document.subject).all())
     subjects = []
     for s in data:
         group = subject_vocab.doc_subject_group(s["subject"])
-        subjects.append({
-            "name": s["subject"],
-            "document_count": s["document_count"],
-            "chunk_count": s["chunk_count"],
-            # 只增字段：老前端忽略即可。aliases 是折进本行的文档侧写法，alias_of 说明
-            # 本行自己只是某个规范名的别名；merged_document_count 才是选这科能拿到的篇数。
-            "aliases": [g for g in group if g != s["subject"]],
-            "alias_of": subject_vocab.alias_parent(s["subject"]),
-            "merged_document_count": sum(int(doc_counts.get(g, 0) or 0) for g in group),
-        })
+        subjects.append(
+            {
+                "name": s["subject"],
+                "document_count": s["document_count"],
+                "chunk_count": s["chunk_count"],
+                # 只增字段：老前端忽略即可。aliases 是折进本行的文档侧写法，alias_of 说明
+                # 本行自己只是某个规范名的别名；merged_document_count 才是选这科能拿到的篇数。
+                "aliases": [g for g in group if g != s["subject"]],
+                "alias_of": subject_vocab.alias_parent(s["subject"]),
+                "merged_document_count": sum(int(doc_counts.get(g, 0) or 0) for g in group),
+            }
+        )
     # 兼容旧排序：文档数降序（字典项 document_count=0 自然沉底）
     subjects.sort(key=lambda it: (-it["document_count"], it["name"]))
 
@@ -343,7 +427,7 @@ async def list_subjects(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/{doc_id}/parse")
+@router.post("/{doc_id}/parse", dependencies=[Depends(require_admin)])
 async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     """解析文档（本地 DocumentParser：PDF/DOCX/PPTX/TXT，扫描版 PDF 走 OCR）。"""
     from services.ai_service import AIService
@@ -369,7 +453,7 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
         except Exception as e:
             doc.index_status = "failed"
             db.commit()
-            raise HTTPException(status_code=500, detail=f"文档解析失败：{str(e)}")
+            raise HTTPException(status_code=500, detail=f"文档解析失败：{str(e)}") from e
         if not content_text or not content_text.strip():
             content_text = f"[{doc.file_type} 文件，未能提取到文本内容] 文件名：{doc.file_name}"
     else:
@@ -379,6 +463,7 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     # 与存量清洗脚本 scripts/clean_document_watermarks.py 同源（services.extraction_noise），
     # 在**质量闸门之前**做，避免水印文本干扰空正文/乱码判定。
     from services.kb_service import preclean_watermarks
+
     content_text, _wm_dropped, _wm_mixed = preclean_watermarks(content_text)
 
     # 质量闸门：空正文/占位提示/乱码/二进制残留/同文重复一律拒绝。
@@ -388,8 +473,7 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     if not verdict["ok"]:
         doc.index_status = "failed"
         db.commit()
-        raise HTTPException(status_code=422,
-                            detail="质量闸门拒绝入库：" + "；".join(verdict["reasons"]))
+        raise HTTPException(status_code=422, detail="质量闸门拒绝入库：" + "；".join(verdict["reasons"]))
 
     doc.content = content_text
     doc.parse_progress = 0.5
@@ -400,6 +484,7 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     # —— 知识库闭环（P0-1）：文本 -> 分块 -> knowledge_chunks + FTS —— #
     # 这一步让上传的文档真正进入 RAG 知识库，可被 AI 检索引用。
     from services.kb_service import detect_doc_meta, has_searchable_chunks, ingest_document
+
     chunk_count = 0
     try:
         chunk_count = ingest_document(db, doc, replace=True)
@@ -420,18 +505,21 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     knowledge_point_count = 0
     try:
         ai = AIService(db)
-        result = await ai.chat([
-            {
-                "role": "system",
-                "content": "你是一位知识提取专家。请从文档中提取关键知识点，"
-                "以 JSON 数组格式返回，每个元素包含 name（名称）和 description（描述）。",
-            },
-            {"role": "user", "content": f"请分析以下文档内容并提取知识点：\n\n{content_text[:8000]}"},
-        ])
+        result = await ai.chat(
+            [
+                {
+                    "role": "system",
+                    "content": "你是一位知识提取专家。请从文档中提取关键知识点，"
+                    "以 JSON 数组格式返回，每个元素包含 name（名称）和 description（描述）。",
+                },
+                {"role": "user", "content": f"请分析以下文档内容并提取知识点：\n\n{content_text[:8000]}"},
+            ]
+        )
         doc.parse_progress = 0.9
 
         # 尝试解析知识点
         import json
+
         try:
             # 尝试从 AI 回复中提取 JSON
             text = result["content"]
@@ -476,8 +564,9 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
         "message": (
             f"扫描版文档已 OCR 识别，生成 {chunk_count} 个知识分块并入库"
             if meta.get("ocr_used") and chunk_count
-            else (f"文档解析完成，已生成 {chunk_count} 个知识分块并入库" if chunk_count
-                  else "文档解析完成（分块未生成）")
+            else (
+                f"文档解析完成，已生成 {chunk_count} 个知识分块并入库" if chunk_count else "文档解析完成（分块未生成）"
+            )
         ),
     }
 
@@ -489,9 +578,7 @@ async def get_knowledge_points(doc_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="文档不存在")
 
-    kps = db.query(KnowledgePoint).filter(
-        KnowledgePoint.document_id == doc_id
-    ).all()
+    kps = db.query(KnowledgePoint).filter(KnowledgePoint.document_id == doc_id).all()
     return [
         {
             "id": kp.id,
@@ -513,9 +600,9 @@ async def get_document_chunks(doc_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="文档不存在")
 
-    chunks = db.query(KnowledgeChunk).filter(
-        KnowledgeChunk.document_id == doc_id
-    ).order_by(KnowledgeChunk.chunk_id).all()
+    chunks = (
+        db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).order_by(KnowledgeChunk.chunk_id).all()
+    )
     return {
         "document_id": doc.id,
         "file_name": doc.file_name,
@@ -534,7 +621,7 @@ async def get_document_chunks(doc_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/{doc_id}/generate-quiz")
+@router.post("/{doc_id}/generate-quiz", dependencies=[Depends(require_admin)])
 async def generate_quiz(doc_id: int, db: Session = Depends(get_db)):
     """从文档生成题目。"""
     from models import QuizQuestion
@@ -550,17 +637,20 @@ async def generate_quiz(doc_id: int, db: Session = Depends(get_db)):
 
     ai = AIService(db)
     try:
-        result = await ai.chat([
-            {
-                "role": "system",
-                "content": "你是一位考研出题专家。请根据文档内容生成 5 道选择题，"
-                "以 JSON 数组格式返回，每个元素包含 content（题干）、options（选项数组）、"
-                "answer（正确答案字母）、analysis（解析）。",
-            },
-            {"role": "user", "content": f"请根据以下内容生成题目：\n\n{content[:5000]}"},
-        ])
+        result = await ai.chat(
+            [
+                {
+                    "role": "system",
+                    "content": "你是一位考研出题专家。请根据文档内容生成 5 道选择题，"
+                    "以 JSON 数组格式返回，每个元素包含 content（题干）、options（选项数组）、"
+                    "answer（正确答案字母）、analysis（解析）。",
+                },
+                {"role": "user", "content": f"请根据以下内容生成题目：\n\n{content[:5000]}"},
+            ]
+        )
 
         import json
+
         # ===== 入库前内容闸门（docx/16 §1.5-H）=====
         # 原先这条路径把模型返回的 JSON 直接 db.add，不过 quiz_content_gate，
         # 也不填 subject，是「题目格式没有统一标准」的两个源头之一。
@@ -608,19 +698,21 @@ async def generate_quiz(doc_id: int, db: Session = Depends(get_db)):
         questions_created = 0
         if candidates:
             for stem, opts, q in candidates:
-                db.add(QuizQuestion(
-                    content=stem[:5000],
-                    options=opts,
-                    answer=(q.get("answer") or "")[:500],
-                    analysis=(q.get("analysis") or "")[:2000],
-                    subject=(doc.subject or "其他")[:50],
-                    knowledge_point="",
-                    difficulty=3,
-                    source=src,
-                    question_type="single",
-                    ai_generated=True,
-                    verified=False,
-                ))
+                db.add(
+                    QuizQuestion(
+                        content=stem[:5000],
+                        options=opts,
+                        answer=(q.get("answer") or "")[:500],
+                        analysis=(q.get("analysis") or "")[:2000],
+                        subject=(doc.subject or "其他")[:50],
+                        knowledge_point="",
+                        difficulty=3,
+                        source=src,
+                        question_type="single",
+                        ai_generated=True,
+                        verified=False,
+                    )
+                )
             try:
                 db.commit()
                 questions_created = len(candidates)
@@ -641,13 +733,13 @@ async def generate_quiz(doc_id: int, db: Session = Depends(get_db)):
             ),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"题目生成失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"题目生成失败：{str(e)}") from e
 
 
 # --------------------------------------------------------------------------- #
 # 文档删除
 # --------------------------------------------------------------------------- #
-@router.delete("/{doc_id}")
+@router.delete("/{doc_id}", dependencies=[Depends(require_admin)])
 async def delete_document(doc_id: int, db: Session = Depends(get_db)):
     """删除文档（同时删除文件、分块、知识点）。"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
@@ -722,7 +814,7 @@ async def download_document_raw(doc_id: int, request: Request, db: Session = Dep
 # --------------------------------------------------------------------------- #
 # 图片 OCR 识别（单独的图片上传识别）
 # --------------------------------------------------------------------------- #
-@router.post("/ocr")
+@router.post("/ocr", dependencies=[Depends(require_admin)])
 async def ocr_image(file: UploadFile = File(...)):
     """上传图片进行 OCR 识别（支持 png/jpg/bmp 等）。"""
     from services.ocr_service import OCRService
@@ -734,6 +826,7 @@ async def ocr_image(file: UploadFile = File(...)):
 
     # 保存临时文件
     import tempfile
+
     content = await file.read()
     tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
     tmp.write(content)
@@ -753,7 +846,7 @@ async def ocr_image(file: UploadFile = File(...)):
             "message": "OCR 识别完成" if text.strip() else "未识别到文字",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OCR 识别失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"OCR 识别失败：{str(e)}") from e
     finally:
         try:
             os.remove(tmp.name)
@@ -802,9 +895,14 @@ async def parse_all_documents(db: Session = Depends(get_db)):
                 doc.index_status = "failed"
                 doc.parse_progress = 1.0
                 db.commit()
-                results.append({"id": doc.id, "file_name": doc.file_name,
-                                "status": "rejected",
-                                "error": "；".join(verdict["reasons"])})
+                results.append(
+                    {
+                        "id": doc.id,
+                        "file_name": doc.file_name,
+                        "status": "rejected",
+                        "error": "；".join(verdict["reasons"]),
+                    }
+                )
                 continue
 
             doc.content = content_text
@@ -827,8 +925,14 @@ async def parse_all_documents(db: Session = Depends(get_db)):
             db.commit()
             if indexed:
                 parsed_count += 1
-            results.append({"id": doc.id, "file_name": doc.file_name, "chunks": chunk_count,
-                            "status": "success" if indexed else "no_chunks"})
+            results.append(
+                {
+                    "id": doc.id,
+                    "file_name": doc.file_name,
+                    "chunks": chunk_count,
+                    "status": "success" if indexed else "no_chunks",
+                }
+            )
         except Exception as e:
             doc.index_status = "failed"
             db.commit()
@@ -841,14 +945,14 @@ async def parse_all_documents(db: Session = Depends(get_db)):
         "total": len(pending_docs),
         "results": results,
         "message": f"批量解析完成，成功 {parsed_count}/{len(pending_docs)}"
-                   + (f"，质量闸门拒绝 {rejected} 篇" if rejected else ""),
+        + (f"，质量闸门拒绝 {rejected} 篇" if rejected else ""),
     }
 
 
 # --------------------------------------------------------------------------- #
 # 文档智能分析（V2.0 新增：长文本识别 + 自动分类知识点/题目/真题）
 # --------------------------------------------------------------------------- #
-@router.post("/{doc_id}/analyze")
+@router.post("/{doc_id}/analyze", dependencies=[Depends(require_admin)])
 async def analyze_document(
     doc_id: int,
     extract_kp: bool = True,
@@ -873,7 +977,9 @@ async def analyze_document(
 
     ai = AIService(db)
     result = await do_analyze(
-        db, doc, ai,
+        db,
+        doc,
+        ai,
         extract_kp=extract_kp,
         extract_questions=extract_questions,
         rebuild_chunks=rebuild_chunks,
@@ -886,7 +992,7 @@ async def analyze_document(
     }
 
 
-@router.post("/{doc_id}/extract-knowledge-points")
+@router.post("/{doc_id}/extract-knowledge-points", dependencies=[Depends(require_admin)])
 async def extract_knowledge_points(doc_id: int, db: Session = Depends(get_db)):
     """仅提取文档中的知识点并入库。"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
@@ -910,7 +1016,7 @@ async def extract_knowledge_points(doc_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/{doc_id}/extract-questions")
+@router.post("/{doc_id}/extract-questions", dependencies=[Depends(require_admin)])
 async def extract_questions(doc_id: int, db: Session = Depends(get_db)):
     """仅识别文档中的题目/真题并分类入库。"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
@@ -939,7 +1045,10 @@ async def extract_questions(doc_id: int, db: Session = Depends(get_db)):
         "extracted": len(questions),
         "by_type": type_count,
         "by_source": source_count,
-        "questions": [{"id": q.id, "type": q.question_type, "source": q.source, "content": q.content[:100]} for q in questions[:20]],
+        "questions": [
+            {"id": q.id, "type": q.question_type, "source": q.source, "content": q.content[:100]}
+            for q in questions[:20]
+        ],
         "message": f"识别了 {len(questions)} 道题目（真题/模拟题/课后习题已自动分类）",
     }
 
@@ -962,7 +1071,9 @@ async def batch_analyze(payload: dict, db: Session = Depends(get_db)):
 
     ai = AIService(db)
     results = await batch_analyze_documents(
-        db, doc_ids, ai,
+        db,
+        doc_ids,
+        ai,
         extract_kp=extract_kp,
         extract_questions=extract_questions,
     )
@@ -981,7 +1092,7 @@ async def batch_analyze(payload: dict, db: Session = Depends(get_db)):
 # --------------------------------------------------------------------------- #
 # V3.0 题目预览与人工编辑（先预览，确认后入库）
 # --------------------------------------------------------------------------- #
-@router.post("/{doc_id}/preview-questions")
+@router.post("/{doc_id}/preview-questions", dependencies=[Depends(require_admin)])
 async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
     """预览文档中的题目（AI识别但不入库，供人工编辑）。"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
@@ -1004,6 +1115,7 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
     # 全局 25s 截止：配合 TimeoutGuardMiddleware（写请求 60s）保证接口必返，
     # 超时后剩余分块不再处理（预览为 best-effort，全量识别走 kb-import/scan）。
     import time
+
     _deadline = time.monotonic() + 25
     for chunk in chunks:
         if time.monotonic() > _deadline:
@@ -1012,11 +1124,14 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
             # AI 识别带超时保护：云端 Key 未配置或本地模型不可用时，单块 6s 即降级，
             # 避免整接口 504（V9 收尾修复：AI 不可用不再挂起）。
             import asyncio
+
             result = await asyncio.wait_for(
-                ai.chat([
-                    {"role": "system", "content": "你是题库建设专家，只返回JSON。"},
-                    {"role": "user", "content": QUESTION_EXTRACT_PROMPT.format(content=chunk["text"][:6000])}
-                ]),
+                ai.chat(
+                    [
+                        {"role": "system", "content": "你是题库建设专家，只返回JSON。"},
+                        {"role": "user", "content": QUESTION_EXTRACT_PROMPT.format(content=chunk["text"][:6000])},
+                    ]
+                ),
                 timeout=2,
             )
             text = result.get("content", "")
@@ -1038,16 +1153,31 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
                 options = q_data.get("options") or []
                 if not isinstance(options, list):
                     options = []
-                metadata_prefixes = ["答案", "答：", "参考答案", "解析", "分析", "详解",
-                                     "科目", "学科", "分类", "知识点", "考点", "章节",
-                                     "难度", "来源", "题型", "正确答案"]
+                metadata_prefixes = [
+                    "答案",
+                    "答：",
+                    "参考答案",
+                    "解析",
+                    "分析",
+                    "详解",
+                    "科目",
+                    "学科",
+                    "分类",
+                    "知识点",
+                    "考点",
+                    "章节",
+                    "难度",
+                    "来源",
+                    "题型",
+                    "正确答案",
+                ]
                 cleaned_options = []
                 for opt in options:
                     opt_str = str(opt).strip()
                     if not opt_str or any(opt_str.startswith(p) for p in metadata_prefixes):
                         continue
                     # 统一剥离选项自带字母前缀（A. / B、 / C: 等），避免与前端自动编号重复
-                    opt_str = re.sub(r'^[A-F][\.、:：]\s*', '', opt_str)
+                    opt_str = re.sub(r"^[A-F][\.、:：]\s*", "", opt_str)
                     cleaned_options.append(opt_str)
                 if len(cleaned_options) > 6:
                     cleaned_options = cleaned_options[:4]
@@ -1056,29 +1186,30 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
                 answer = (q_data.get("answer") or "").strip()
                 q_type = (q_data.get("question_type") or "single").lower()
                 if q_type in ("single", "multiple") and cleaned_options:
-                    import re
-                    answer_match = re.search(r'[A-E]', answer.upper())
+                    answer_match = re.search(r"[A-E]", answer.upper())
                     answer = answer_match.group() if answer_match else "A"
 
-                preview_questions.append({
-                    "content": content[:5000],
-                    "options": cleaned_options,
-                    "answer": answer[:500],
-                    "analysis": (q_data.get("analysis") or "")[:2000],
-                    "question_type": q_type[:50],
-                    "difficulty": min(5, max(1, int(q_data.get("difficulty", 3)))),
-                    "source": (q_data.get("source") or f"文档提取：{doc.file_name}")[:200],
-                    "subject": (doc.subject or "其他")[:50],
-                    "chapter": (chunk.get("heading") or "")[:200],
-                    "selected": True,  # 默认选中，用户可取消
-                })
+                preview_questions.append(
+                    {
+                        "content": content[:5000],
+                        "options": cleaned_options,
+                        "answer": answer[:500],
+                        "analysis": (q_data.get("analysis") or "")[:2000],
+                        "question_type": q_type[:50],
+                        "difficulty": min(5, max(1, int(q_data.get("difficulty", 3)))),
+                        "source": (q_data.get("source") or f"文档提取：{doc.file_name}")[:200],
+                        "subject": (doc.subject or "其他")[:50],
+                        "chapter": (chunk.get("heading") or "")[:200],
+                        "selected": True,  # 默认选中，用户可取消
+                    }
+                )
                 existing_contents.add(content_key)
         except Exception:
             # AI 不可用/超时降级：本地正则引擎识别（纯本地、无 AI 依赖，保证接口可用）
             try:
                 from services.qbank_builder import extract_questions as _regex_extract
-                for _q in _regex_extract(chunk["text"][:6000],
-                                         source_hint=doc.file_name or ""):
+
+                for _q in _regex_extract(chunk["text"][:6000], source_hint=doc.file_name or ""):
                     _content = (_q.get("content") or "").strip()
                     if not _content or len(_content) < 10:
                         continue
@@ -1089,25 +1220,25 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
                     if not isinstance(_opts, list):
                         _opts = []
                     _qt = (_q.get("question_type") or "single").lower()
-                    preview_questions.append({
-                        "content": _content[:5000],
-                        "options": [str(o).strip()[:120] for o in _opts if str(o).strip()][:6],
-                        "answer": ((_q.get("answer") or "").strip())[:500],
-                        "analysis": (_q.get("analysis") or "")[:2000],
-                        "question_type": _qt[:50],
-                        "difficulty": min(5, max(1, int(_q.get("difficulty", 3) or 3))),
-                        "source": f"文档提取：{doc.file_name}",
-                        "subject": (doc.subject or "其他")[:50],
-                        "chapter": (chunk.get("heading") or "")[:200],
-                        "selected": True,
-                    })
+                    preview_questions.append(
+                        {
+                            "content": _content[:5000],
+                            "options": [str(o).strip()[:120] for o in _opts if str(o).strip()][:6],
+                            "answer": ((_q.get("answer") or "").strip())[:500],
+                            "analysis": (_q.get("analysis") or "")[:2000],
+                            "question_type": _qt[:50],
+                            "difficulty": min(5, max(1, int(_q.get("difficulty", 3) or 3))),
+                            "source": f"文档提取：{doc.file_name}",
+                            "subject": (doc.subject or "其他")[:50],
+                            "chapter": (chunk.get("heading") or "")[:200],
+                            "selected": True,
+                        }
+                    )
                     existing_contents.add(_ck)
             except Exception as _exc:  # noqa: BLE001
                 # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
                 # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-                logging.getLogger(__name__).warning(
-                    '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-                )
+                logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
             continue
 
     return {
@@ -1119,7 +1250,7 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/{doc_id}/confirm-questions")
+@router.post("/{doc_id}/confirm-questions", dependencies=[Depends(require_admin)])
 async def confirm_questions(doc_id: int, payload: dict, db: Session = Depends(get_db)):
     """确认入库用户编辑后的题目。"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
@@ -1134,19 +1265,16 @@ async def confirm_questions(doc_id: int, payload: dict, db: Session = Depends(ge
 
     # ===== 去重 =====
     # 旧逻辑只用题干前 100 字，且**只在source 含当前文档名的行里**比对
-    #（existing_contents 的来源）。同一道题承载在另一篇文档里时匹配不到 →
+    # （existing_contents 的来源）。同一道题承载在另一篇文档里时匹配不到 →
     # 同一题入库两次，是跨来源重复的根因。
     # 现在叠加一层**跨来源指纹判重**（services/quiz_dedupe），命中即合并溯源、
     # 不再插入；原来源内判重保留为快速路径。开关：QUIZ_DEDUPE_CROSS_SOURCE（默认开）。
     existing_contents = {
-        (q.content or "")[:100] for q in db.query(QuizQuestion).filter(
-            QuizQuestion.source.like(f"%{doc.file_name}%")
-        ).all()
+        (q.content or "")[:100]
+        for q in db.query(QuizQuestion).filter(QuizQuestion.source.like(f"%{doc.file_name}%")).all()
     }
     _cross_dedupe = _quiz_dedupe.dedupe_enabled()
-    _dd_index = (
-        _quiz_dedupe.build_index_from_db(db) if _cross_dedupe else None
-    )
+    _dd_index = _quiz_dedupe.build_index_from_db(db) if _cross_dedupe else None
     _dd_stats = _quiz_dedupe.DedupeStats()
 
     imported = 0
@@ -1195,7 +1323,10 @@ async def confirm_questions(doc_id: int, payload: dict, db: Session = Depends(ge
         # ===== 跨来源判重（入库前最后一道闸）=====
         # 命中则不插入：把本源合并进已有题的溯源，并补齐缺失字段。
         _decision = _quiz_dedupe.decide_insert(
-            db, content, _src, _dd_index,
+            db,
+            content,
+            _src,
+            _dd_index,
             answer=q_data.get("answer"),
             analysis=q_data.get("analysis"),
             options=q_data.get("options"),
@@ -1220,15 +1351,14 @@ async def confirm_questions(doc_id: int, payload: dict, db: Session = Depends(ge
         "merged_cross_source": merged_dup,
         "cross_source_dedupe": _cross_dedupe,
         "dedupe_stats": _dd_stats.as_dict(),
-        "message": f"确认入库：成功 {imported} 道，跳过 {skipped} 道，"
-                   f"跨来源合并 {merged_dup} 道",
+        "message": f"确认入库：成功 {imported} 道，跳过 {skipped} 道，跨来源合并 {merged_dup} 道",
     }
 
 
 # --------------------------------------------------------------------------- #
 # chunk 三层标签（docx/14 阶段 A：三路融合打标 + 聚合 + 人工修正回流）
 # --------------------------------------------------------------------------- #
-@router.post("/{doc_id}/classify-chunks")
+@router.post("/{doc_id}/classify-chunks", dependencies=[Depends(require_admin)])
 async def classify_doc_chunks(
     doc_id: int,
     use_llm: bool = True,
@@ -1245,21 +1375,19 @@ async def classify_doc_chunks(
 
     chunk_classifier.ensure_chunk_label_columns(db)
     if not background:
-        return chunk_classifier.classify_document(
-            db, doc_id, use_llm=use_llm, only_unlabeled=only_unlabeled)
+        return chunk_classifier.classify_document(db, doc_id, use_llm=use_llm, only_unlabeled=only_unlabeled)
 
     def _run():
         from database import SessionLocal
+
         s = SessionLocal()
         try:
-            chunk_classifier.classify_document(
-                s, doc_id, use_llm=use_llm, only_unlabeled=only_unlabeled)
+            chunk_classifier.classify_document(s, doc_id, use_llm=use_llm, only_unlabeled=only_unlabeled)
         finally:
             s.close()
 
     background_tasks.add_task(_run)
-    return {"doc_id": doc_id, "started": True,
-            "message": "已提交后台打标，完成后用 classify-summary 查看"}
+    return {"doc_id": doc_id, "started": True, "message": "已提交后台打标，完成后用 classify-summary 查看"}
 
 
 @router.get("/{doc_id}/classify-summary")
@@ -1272,8 +1400,12 @@ async def classify_summary(doc_id: int, db: Session = Depends(get_db)):
     if doc is None:
         raise HTTPException(status_code=404, detail="文档不存在")
     rows = (
-        db.query(KnowledgeChunk.subject, KnowledgeChunk.l3_content_type,
-                 func.count(KnowledgeChunk.id), func.avg(KnowledgeChunk.classify_confidence))
+        db.query(
+            KnowledgeChunk.subject,
+            KnowledgeChunk.l3_content_type,
+            func.count(KnowledgeChunk.id),
+            func.avg(KnowledgeChunk.classify_confidence),
+        )
         .filter(KnowledgeChunk.document_id == doc_id)
         .group_by(KnowledgeChunk.subject, KnowledgeChunk.l3_content_type)
         .all()
@@ -1281,13 +1413,15 @@ async def classify_summary(doc_id: int, db: Session = Depends(get_db)):
     total = sum(r[2] for r in rows) or 1
     subject_shares: dict = {}
     l3_dist: dict = {}
-    for subj, l3, cnt, conf in rows:
+    for subj, l3, cnt, _conf in rows:
         subject_shares[subj or "未标"] = round(subject_shares.get(subj or "未标", 0) + cnt / total, 4)
         l3_dist[l3 or "未标"] = l3_dist.get(l3 or "未标", 0) + cnt
     return {
         "doc_id": doc_id,
         "doc_subject": doc.subject,
-        "total_chunks": len([r for r in db.query(KnowledgeChunk.id).filter(KnowledgeChunk.document_id == doc_id).all()]),
+        "total_chunks": len(
+            [r for r in db.query(KnowledgeChunk.id).filter(KnowledgeChunk.document_id == doc_id).all()]
+        ),
         "subject_shares": subject_shares,
         "l3_distribution": l3_dist,
         "mixed": bool(subject_shares) and max(subject_shares.values()) < 0.85,
@@ -1295,7 +1429,7 @@ async def classify_summary(doc_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/chunks/{chunk_id}/label")
+@router.post("/chunks/{chunk_id}/label", dependencies=[Depends(require_admin)])
 async def fix_chunk_label(chunk_id: int, payload: dict, db: Session = Depends(get_db)):
     """人工修正 chunk 标签；修正样本自动回流 annotation_samples（docx/14 评估闭环）。"""
     from models import AnnotationSample
@@ -1317,20 +1451,30 @@ async def fix_chunk_label(chunk_id: int, payload: dict, db: Session = Depends(ge
     if "l2_chapter" in payload:
         chunk.l2_chapter = str(payload["l2_chapter"] or "")[:200]
     chunk.classify_source = "manual"
-    db.add(AnnotationSample(
-        chunk_id=chunk_id, chunk_text=chunk.text or "",
-        label_l1=chunk.subject, label_l2=chunk.l2_chapter,
-        label_l3=chunk.l3_content_type,
-        annotate_user=str(payload.get("user", "admin")), source="manual_fix",
-    ))
+    db.add(
+        AnnotationSample(
+            chunk_id=chunk_id,
+            chunk_text=chunk.text or "",
+            label_l1=chunk.subject,
+            label_l2=chunk.l2_chapter,
+            label_l3=chunk.l3_content_type,
+            annotate_user=str(payload.get("user", "admin")),
+            source="manual_fix",
+        )
+    )
     db.commit()
     # 人工修正同样要落进检索镜像：学科过滤读的是 fts/vec 的 subject 拷贝，
     # 不同步就出现"标签已改、检索照旧"（口径见 docx/14 §9.10）。
     from services.chunk_classifier import sync_mirror_subjects
+
     mirror = sync_mirror_subjects(db, [chunk_id])
-    return {"chunk_id": chunk_id, "subject": chunk.subject,
-            "l3_content_type": chunk.l3_content_type,
-            "mirror_synced": mirror, "message": "已修正并回流标注集"}
+    return {
+        "chunk_id": chunk_id,
+        "subject": chunk.subject,
+        "l3_content_type": chunk.l3_content_type,
+        "mirror_synced": mirror,
+        "message": "已修正并回流标注集",
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -1397,7 +1541,7 @@ async def export_document(doc_id: int, fmt: str = "md", db: Session = Depends(ge
     return StreamingResponse(BytesIO(result["data"]), media_type=result["media_type"], headers=headers)
 
 
-@router.post("/{doc_id}/archive")
+@router.post("/{doc_id}/archive", dependencies=[Depends(require_admin)])
 async def archive_document_file(doc_id: int, db: Session = Depends(get_db)):
     """归档该文档的源文件到 knowledge_base/_archive/（默认归档而非删除）。
 
@@ -1414,10 +1558,13 @@ async def archive_document_file(doc_id: int, db: Session = Depends(get_db)):
     if result["archived"]:
         doc.file_path = result["new_path"]
         db.commit()
-        return {"id": doc_id, "archived": True, "new_path": result["new_path"],
-                "message": "源文件已归档到 knowledge_base/_archive/"}
-    return {"id": doc_id, "archived": False, "reason": result["reason"],
-            "message": f"未归档：{result['reason']}"}
+        return {
+            "id": doc_id,
+            "archived": True,
+            "new_path": result["new_path"],
+            "message": "源文件已归档到 knowledge_base/_archive/",
+        }
+    return {"id": doc_id, "archived": False, "reason": result["reason"], "message": f"未归档：{result['reason']}"}
 
 
 @router.post("/bulk", dependencies=[Depends(require_admin)])
@@ -1464,15 +1611,20 @@ async def bulk_documents(payload: dict, db: Session = Depends(get_db)):
         for d in docs:
             d.subject = subject
         db.commit()
-        return {"action": action, "subject": subject, "updated": len(docs),
-                "missing": missing, "message": f"已将 {len(docs)} 篇文档科目改为「{subject}」"}
+        return {
+            "action": action,
+            "subject": subject,
+            "updated": len(docs),
+            "missing": missing,
+            "message": f"已将 {len(docs)} 篇文档科目改为「{subject}」",
+        }
 
     if action == "purge":
         # 物理删除闸门：knowledge_chunks 的 DELETE 不可逆，必须显式放行
         try:
             require_physical_delete_enabled("knowledge_chunks")
         except PhysicalDeleteBlocked as e:
-            raise HTTPException(status_code=403, detail=str(e))
+            raise HTTPException(status_code=403, detail=str(e)) from e
         ensure_write_backup()
         removed = 0
         for d in docs:
@@ -1486,8 +1638,12 @@ async def bulk_documents(payload: dict, db: Session = Depends(get_db)):
             db.delete(d)
             removed += 1
         db.commit()
-        return {"action": action, "purged": removed, "missing": missing,
-                "message": f"已物理删除 {removed} 篇文档及其分块/知识点"}
+        return {
+            "action": action,
+            "purged": removed,
+            "missing": missing,
+            "message": f"已物理删除 {removed} 篇文档及其分块/知识点",
+        }
 
     # archive / mark_delete 都只移动源文件，不物理删除
     ensure_write_backup()
@@ -1566,6 +1722,7 @@ async def scan_root(payload: dict | None = None, db: Session = Depends(get_db)):
 #       （services/kb_pipeline._find_storage_roots），不再只扫 data/storage。
 # --------------------------------------------------------------------------- #
 
+
 @router.get("/broken-links")
 async def list_broken_links(db: Session = Depends(get_db)):
     """**纯只读**：列出断链文档（登记了绝对路径但原件读不到）+ 能否找回。
@@ -1615,13 +1772,15 @@ async def list_broken_links(db: Session = Depends(get_db)):
         hits = _index_hits(d.file_name or "", idx)
         if hits:
             recoverable += 1
-        items.append({
-            "doc_id": d.id,
-            "file_name": d.file_name,
-            "file_path": d.file_path,
-            "reason": reason,
-            "candidates": hits[:5],
-        })
+        items.append(
+            {
+                "doc_id": d.id,
+                "file_name": d.file_name,
+                "file_path": d.file_path,
+                "reason": reason,
+                "candidates": hits[:5],
+            }
+        )
     return {
         "total": len(docs),
         "broken": len(items),
@@ -1658,7 +1817,5 @@ async def repair_document_file_paths(dry_run: bool = True, db: Session = Depends
     ensure_write_backup()
     stats = repair_file_paths(db, commit=True)
     stats["dry_run"] = False
-    stats["message"] = (
-        f"修复完成：找回 {stats['repaired']} 篇，无法找回 {stats['not_found']} 篇"
-    )
+    stats["message"] = f"修复完成：找回 {stats['repaired']} 篇，无法找回 {stats['not_found']} 篇"
     return stats

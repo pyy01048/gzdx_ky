@@ -4,7 +4,7 @@
 import os
 
 from database import get_db
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from schemas import AnalysisRequest, LectureRequest
 from services import analysis_engine
 from sqlalchemy.orm import Session
@@ -116,7 +116,7 @@ def ocr_layout_cut(body: dict, db: Session = Depends(get_db)):
 
 # ---------------- T7：学习者画像 ---------------- #
 @router.get("/profile")
-def learner_profile(days: int = 30, db: Session = Depends(get_db)):
+def learner_profile(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
     """学习者画像聚合（总览/科目掌握度/薄弱知识点/复习队列/趋势/建议）。
 
     数据全部来自真实行为表（answer_records/error_records/exam_sessions/tasks），

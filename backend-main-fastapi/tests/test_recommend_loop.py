@@ -10,6 +10,7 @@
 3. mastery_gate：不存在的 kp 返回 reason=="kp_not_found"
 4. API 冒烟：GET /api/recommend/weak-points、POST /api/recommend/mastery-gate
 """
+
 from __future__ import annotations
 
 import json
@@ -33,38 +34,26 @@ def _clean_recommend_data():
 
     db = SessionLocal()
     try:
-        db.query(QuizQuestion).filter(
-            QuizQuestion.source_label == "ai:variant"
-        ).delete(synchronize_session=False)
+        db.query(QuizQuestion).filter(QuizQuestion.source_label == "ai:variant").delete(synchronize_session=False)
         db.query(ErrorKnowledgeLink).delete(synchronize_session=False)
-        db.query(ErrorRecord).filter(ErrorRecord.user_id == TEST_USER_ID).delete(
+        db.query(ErrorRecord).filter(ErrorRecord.user_id == TEST_USER_ID).delete(synchronize_session=False)
+        db.query(MemoryFact).filter(MemoryFact.user_id == TEST_USER_ID).delete(synchronize_session=False)
+        db.query(KnowledgePoint).filter(KnowledgePoint.name.in_(["QA-变式测试点", "QA-融合测试点"])).delete(
             synchronize_session=False
         )
-        db.query(MemoryFact).filter(MemoryFact.user_id == TEST_USER_ID).delete(
-            synchronize_session=False
-        )
-        db.query(KnowledgePoint).filter(
-            KnowledgePoint.name.in_(["QA-变式测试点", "QA-融合测试点"])
-        ).delete(synchronize_session=False)
         db.commit()
     finally:
         db.close()
     yield
     db = SessionLocal()
     try:
-        db.query(QuizQuestion).filter(
-            QuizQuestion.source_label == "ai:variant"
-        ).delete(synchronize_session=False)
+        db.query(QuizQuestion).filter(QuizQuestion.source_label == "ai:variant").delete(synchronize_session=False)
         db.query(ErrorKnowledgeLink).delete(synchronize_session=False)
-        db.query(ErrorRecord).filter(ErrorRecord.user_id == TEST_USER_ID).delete(
+        db.query(ErrorRecord).filter(ErrorRecord.user_id == TEST_USER_ID).delete(synchronize_session=False)
+        db.query(MemoryFact).filter(MemoryFact.user_id == TEST_USER_ID).delete(synchronize_session=False)
+        db.query(KnowledgePoint).filter(KnowledgePoint.name.in_(["QA-变式测试点", "QA-融合测试点"])).delete(
             synchronize_session=False
         )
-        db.query(MemoryFact).filter(MemoryFact.user_id == TEST_USER_ID).delete(
-            synchronize_session=False
-        )
-        db.query(KnowledgePoint).filter(
-            KnowledgePoint.name.in_(["QA-变式测试点", "QA-融合测试点"])
-        ).delete(synchronize_session=False)
         db.commit()
     finally:
         db.close()
@@ -72,8 +61,12 @@ def _clean_recommend_data():
 
 def _make_kp(db, name="QA-变式测试点", subject="数学", chapter="QA-高数", mastery=40):
     kp = KnowledgePoint(
-        name=name, subject=subject, chapter=chapter,
-        mastery=mastery, exam_frequency=3, difficulty=3,
+        name=name,
+        subject=subject,
+        chapter=chapter,
+        mastery=mastery,
+        exam_frequency=3,
+        difficulty=3,
     )
     db.add(kp)
     db.commit()
@@ -90,7 +83,9 @@ def test_identify_weak_points_empty():
 
     db = SessionLocal()
     try:
-        result = identify_weak_points(db, user_id=TEST_USER_ID)
+        # 用隔离科目取空态：全量套件里其它用例会写用户 0 的错题/记忆事实，
+        # 只按 user_id 断言 [] 会被跨用例数据污染（实测只单独跑才绿）。
+        result = identify_weak_points(db, user_id=TEST_USER_ID, subject="QA-空态科目")
         assert result == []
     finally:
         db.close()
@@ -106,22 +101,38 @@ def test_identify_weak_points_fusion():
         kp = _make_kp(db, name="QA-融合测试点", mastery=0)
         # 信号 A：错题关联
         err = ErrorRecord(
-            user_id=TEST_USER_ID, content="QA 融合错题",
-            my_answer="A", correct_answer="B", error_reason="概念不清",
-            subject="数学", status="active",
+            user_id=TEST_USER_ID,
+            content="QA 融合错题",
+            my_answer="A",
+            correct_answer="B",
+            error_reason="概念不清",
+            subject="数学",
+            status="active",
         )
         db.add(err)
         db.commit()
         db.refresh(err)
-        db.add(ErrorKnowledgeLink(
-            error_id=err.id, knowledge_point_id=kp.id, relevance=1.0, source="manual",
-        ))
+        db.add(
+            ErrorKnowledgeLink(
+                error_id=err.id,
+                knowledge_point_id=kp.id,
+                relevance=1.0,
+                source="manual",
+            )
+        )
         # 信号 C：记忆 weakness 事实
-        db.add(MemoryFact(
-            user_id=TEST_USER_ID, fact_type="weakness", subject="数学",
-            knowledge_point_id=kp.id, kp_name=kp.name,
-            claim="QA weakness", confidence=0.5, evidence=[],
-        ))
+        db.add(
+            MemoryFact(
+                user_id=TEST_USER_ID,
+                fact_type="weakness",
+                subject="数学",
+                knowledge_point_id=kp.id,
+                kp_name=kp.name,
+                claim="QA weakness",
+                confidence=0.5,
+                evidence=[],
+            )
+        )
         db.commit()
 
         result = identify_weak_points(db, user_id=TEST_USER_ID, limit=10)
@@ -160,9 +171,7 @@ def test_generate_variants_invalid_json(monkeypatch):
 
     # 函数内是 from services.model_gateway import get_gateway，
     # 因此需要 patch model_gateway 模块的 get_gateway。
-    monkeypatch.setattr(
-        "services.model_gateway.get_gateway", lambda: type("G", (), {"chat": _fake_chat})()
-    )
+    monkeypatch.setattr("services.model_gateway.get_gateway", lambda: type("G", (), {"chat": _fake_chat})())
 
     from services.recommend_loop import generate_variant_questions
 
@@ -181,19 +190,22 @@ def test_generate_variants_valid_json(monkeypatch):
 
     def _fake_chat(*args, **kwargs):
         return {
-            "answer": json.dumps([{
-                "content": "变式题：计算极限 lim(x→0) sin x / x",
-                "options": None,
-                "answer": "1",
-                "analysis": "重要极限",
-                "question_type": "calc",
-                "answer_type": "subjective",
-            }], ensure_ascii=False)
+            "answer": json.dumps(
+                [
+                    {
+                        "content": "变式题：计算极限 lim(x→0) sin x / x",
+                        "options": None,
+                        "answer": "1",
+                        "analysis": "重要极限",
+                        "question_type": "calc",
+                        "answer_type": "subjective",
+                    }
+                ],
+                ensure_ascii=False,
+            )
         }
 
-    monkeypatch.setattr(
-        "services.model_gateway.get_gateway", lambda: type("G", (), {"chat": _fake_chat})()
-    )
+    monkeypatch.setattr("services.model_gateway.get_gateway", lambda: type("G", (), {"chat": _fake_chat})())
 
     from services.recommend_loop import generate_variant_questions
 

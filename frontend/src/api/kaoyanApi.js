@@ -160,4 +160,9 @@ export const kaoyanApi = {
   toggleCrawlTarget: (payload) => request('/kaoyan/crawl-targets/toggle', { method: 'POST', body: payload }),
   bulkCrawlTargets: (payload) => request('/kaoyan/crawl-targets/bulk', { method: 'POST', body: payload }),
   resetCrawlTargets: () => request('/kaoyan/crawl-targets/reset', { method: 'POST', body: { confirm: true } }),
+  // 工学学科评估（教育部第四轮 + 双一流，119 分片；访客可读）
+  evalSchools: (params) => request('/kaoyan/school-eval/schools', { params }),
+  evalSchoolDetail: (id) => request(`/kaoyan/school-eval/schools/${id}`),
+  evalDisciplines: () => request('/kaoyan/school-eval/disciplines'),
+  evalDisciplineRank: (code) => request(`/kaoyan/school-eval/disciplines/${code}/rank`),
 }

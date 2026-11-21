@@ -4,15 +4,15 @@
  * 为什么单独做这一页，而不是把仪表盘再加长：
  *  - 仪表盘回答「我整体怎么样」，是**统计快照**；
  *  - 中枢回答「我现在先做什么」，是**行动聚合**。
- * 两者数据同源（/dashboard/summary + /insight/today + /words/stats + /review/stats），
- * 但信息组织方式不同：这里把到期、薄弱点、任务、单词、专注、刷题合成一条
- * 动态航线，顺序由真实数据计算，不是写死的卡片堆。
+ * 两者数据同源（api/hub.js 统一出口），但信息组织方式不同：这里把到期、
+ * 薄弱点、任务、单词、专注、刷题合成一条动态航线，顺序由真实数据计算。
  *
- * 页面能力：
- *  - 动态聚合：api/hub.js 一个出口，带缓存 / 部分失败降级 / 口径对账；
- *  - 交互：航线跳转、KPI 下钻、任务乐观完成、专注计时、趋势切换、布局拖拽；
- *  - 动效：极光、分级入场、数字滚动、图表绘制、悬停追光；
- *  - 响应式 / 无障碍：移动端单列、键盘可操作、prefers-reduced-motion 降级。
+ * 页面契约（FE_REVIEW / UX_REVIEW）：
+ *  - 唯一主数字：「今天该做 N 项」（data-main-figure），其余数字一律降级；
+ *  - 真实进度：分子只统计今天真实完成的动作，空队列 ≠ 已完成；
+ *  - 四态：骨架（aria-busy）/ 降级横幅 / 空态（原因 + 唯一 CTA）/ 错误页（role=alert）；
+ *  - 调试口径（接口路径 / 耗时 / 字段名）只出现在管理端 /admin/caliber，本页不暴露；
+ *  - 无障碍：H1 唯一、面板 H2、卡片内 span[role=heading]、实心焦点环、reduced-motion 降级。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -27,18 +27,20 @@ import {
   AnimatedNumber, Button, Chip, Dialog, Empty, IconButton, Progress, Ring, Segmented,
   Skeleton, Switch, cx, toast, toastErr, toastOk,
 } from '../ui'
+import { useMagnetic, usePointerFx, useReducedMotion } from '../motion'
 import {
-  Activity, AlertTriangle, ArrowRight, ArrowUpRight, Book, Brain, Calendar, Check,
-  CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Clock, Flame, Gauge, Info, Layers,
-  ListChecks, RefreshCw, RotateCcw, SlidersHorizontal, Sparkles, Target, Timer, TrendingDown,
-  TrendingUp, Trophy, Zap,
+  Activity, AlertTriangle, ArrowRight, ArrowUpRight, Book, Brain, Check,
+  CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Flame, Gauge, Info, Layers,
+  ListChecks, RefreshCw, RotateCcw, SlidersHorizontal, Target, Timer, TrendingDown,
+  TrendingUp, Zap,
 } from '../icons'
 import '../styles/pages.css'
 import '../styles/hub-v3.css'
 
 const LAYOUT_KEY = 'hub_layout_v1'
 
-/* 可聚合区块。id 是布局持久化的稳定键，新增区块会被自动追加到末尾。 */
+/* 可聚合区块。id 是布局持久化的稳定键，新增区块会被自动追加到末尾。
+   「数据口径」已迁往管理端 /admin/caliber（P0-1），不再占用首页栅格。 */
 const BLOCKS = [
   { id: 'trend', label: '14 天趋势', span: 8 },
   { id: 'focus', label: '专注计时', span: 4 },
@@ -46,7 +48,6 @@ const BLOCKS = [
   { id: 'weak', label: '薄弱点', span: 4 },
   { id: 'tasks', label: '今日任务', span: 6 },
   { id: 'modules', label: '模块进度', span: 6 },
-  { id: 'caliber', label: '数据口径', span: 12 },
 ]
 const BLOCK_IDS = BLOCKS.map((b) => b.id)
 const BLOCK_BY_ID = Object.fromEntries(BLOCKS.map((b) => [b.id, b]))
@@ -111,6 +112,11 @@ function agoLabel(ts) {
   return `${Math.floor(h / 24)} 天前同步`
 }
 
+function clockLabel(ts) {
+  const d = new Date(ts)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 const first = (v) => (Array.isArray(v) ? v[0] : '')
 
 /* -------------------------------------------------------------------------- */
@@ -159,14 +165,14 @@ function Delta({ value, unit = '', pp = false }) {
   )
 }
 
-function PanelHead({ title, sub, icon, actions }) {
+function PanelHead({ title, sub, icon, actions, titleId }) {
   return (
     <div className="hub-panel__head">
       <div className="hub-panel__heading">
-        <span className="hub-panel__title">
+        <h2 className="hub-panel__title" id={titleId}>
           {icon}
           {title}
-        </span>
+        </h2>
         {sub ? <span className="hub-panel__sub">{sub}</span> : null}
       </div>
       {actions ? <div className="hub-panel__actions">{actions}</div> : null}
@@ -178,33 +184,34 @@ function PanelHead({ title, sub, icon, actions }) {
 function HubSkeleton() {
   return (
     <div className="hub hub--skeleton" aria-busy="true" aria-label="聚合数据加载中">
-      <section className="hub-hero hub-glass">
+      <section className="hub-hero">
         <div className="hub-hero__main">
-          <Skeleton width={160} height={12} />
-          <Skeleton width="58%" height={40} style={{ marginTop: 18 }} />
-          <Skeleton width="38%" height={14} style={{ marginTop: 12 }} />
-          <div className="hub-hero__actions" style={{ marginTop: 22 }}>
-            <Skeleton width={148} height={42} radius={999} />
-            <Skeleton width={118} height={42} radius={999} />
+          <Skeleton width={200} height={13} />
+          <Skeleton width="46%" height={26} style={{ marginTop: 14 }} />
+          <Skeleton width={190} height={44} style={{ marginTop: 16 }} />
+          <Skeleton width="62%" height={14} style={{ marginTop: 12 }} />
+          <div className="hub-hero__actions" style={{ marginTop: 20 }}>
+            <Skeleton width={148} height={44} radius={999} />
+            <Skeleton width={118} height={44} radius={999} />
           </div>
         </div>
         <div className="hub-hero__aside">
-          <Skeleton width={132} height={132} radius={999} />
+          <Skeleton width={120} height={120} radius={999} />
         </div>
       </section>
-      <section className="hub-onboard hub-glass">
-        <div className="hub-onboard__main">
-          <Skeleton width={150} height={18} />
-          <Skeleton width="82%" height={14} style={{ marginTop: 10 }} />
-          <Skeleton width="64%" height={14} style={{ marginTop: 8 }} />
+      <section className="hub-journey hub-panel">
+        <Skeleton width={150} height={18} />
+        <div className="hub-steps" style={{ marginTop: 16 }}>
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} width="100%" height={108} radius={12} />
+          ))}
         </div>
-        <Skeleton width={96} height={40} radius={999} />
       </section>
       <div className="hub-kpis">
         {[0, 1, 2, 3].map((i) => (
-          <div className="hub-kpi hub-glass" key={i}>
-            <Skeleton width="48%" height={12} />
-            <Skeleton width="62%" height={34} style={{ marginTop: 14 }} />
+          <div className="hub-kpi" key={i}>
+            <Skeleton width="48%" height={13} />
+            <Skeleton width="62%" height={28} style={{ marginTop: 14 }} />
             <Skeleton width="78%" height={12} style={{ marginTop: 12 }} />
           </div>
         ))}
@@ -228,7 +235,7 @@ function HubSkeleton() {
 /* -------------------------------------------------------------------------- */
 export default function Hub() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
 
   const [layout, setLayout] = useState(readLayout)
   const [data, setData] = useState(() => peekHubCache())
@@ -241,6 +248,9 @@ export default function Hub() {
   const [customOpen, setCustomOpen] = useState(false)
   const [dragId, setDragId] = useState(null)
   const [, setTick] = useState(0)
+  const reduced = useReducedMotion()
+  const ctaMag = useMagnetic(4)
+  const stepFx = usePointerFx({ spotlight: true, disabled: reduced })
 
   const aliveRef = useRef(true)
   const dataRef = useRef(data)
@@ -264,17 +274,19 @@ export default function Hub() {
     if (!silent) setRefreshing(true)
     try {
       const next = await fetchHubOverview({ force })
-      if (!aliveRef.current) return
+      if (!aliveRef.current) return false
       setData(next)
       setStatus('ok')
       setError(null)
       setSyncedAt(Date.now())
       lastLoadRef.current = Date.now()
+      return true
     } catch (e) {
-      if (!aliveRef.current) return
+      if (!aliveRef.current) return false
       setError(e)
       setStatus(dataRef.current ? 'ok' : 'error')
-      if (!silent) toastErr(e?.message || '聚合数据加载失败')
+      if (!silent) toastErr('同步失败 · 点击刷新重试')
+      return false
     } finally {
       if (aliveRef.current) setRefreshing(false)
     }
@@ -319,9 +331,10 @@ export default function Hub() {
     }
   }, [load])
 
+  /* P0-6 反馈闭环：刷新 → loading → 「已同步 HH:MM」，失败由 load 弹可重试提示 */
   const refresh = useCallback(async () => {
-    await load({ force: true })
-    if (aliveRef.current) toastOk('今日中枢已刷新')
+    const ok = await load({ force: true })
+    if (aliveRef.current && ok) toastOk(`已同步 ${clockLabel(Date.now())}`)
   }, [load])
 
   const persist = useCallback((next) => {
@@ -440,12 +453,12 @@ export default function Hub() {
     if (status === 'error') {
       return (
         <div className="hub hub--error">
-          <section className="hub-error hub-glass">
-            <span className="hub-error__icon"><AlertTriangle size={30} /></span>
+          <section className="hub-error" role="alert">
+            <span className="hub-error__icon" aria-hidden="true"><AlertTriangle size={30} /></span>
             <h1 className="hub-error__title">聚合数据暂时取不到</h1>
-            <p className="hub-error__text">{String(error?.message || '后端不可达或会话已过期')}</p>
+            <p className="hub-error__text">{String(error?.message || '网络不稳定或登录已过期，请重试')}</p>
             <div className="hub-row">
-              <Button variant="gradient" icon={<RefreshCw size={16} />} onClick={refresh}>重试</Button>
+              <Button variant="filled" data-cta="primary" icon={<RefreshCw size={16} />} onClick={refresh}>重试</Button>
               <Button variant="tonal" onClick={() => navigate('/')}>先看旧版仪表盘</Button>
             </div>
           </section>
@@ -459,8 +472,13 @@ export default function Hub() {
   const steps = q.items
   const countdown = data.countdown
   const today = data.today
-  const rate = today.correct_rate == null ? null : Math.round(today.correct_rate)
   const providerName = user?.display_name || user?.username || '同学'
+
+  /* 唯一主数字（P0-2）：今日累计到期口径；「现在可做」是另一口径，放在副文案 */
+  const todayTodo = data.todayTodoCount ?? data.due?.schedulerToday ?? 0
+  const nowAvailable = data.nowAvailableCount !== undefined ? data.nowAvailableCount : data.due?.nowTotal
+  const countableTotal = q.countableTotal ?? q.total
+  const remainingCount = q.remainingCount ?? Math.max(0, q.total - q.doneCount)
 
   /* 备考进程环：以「今年 1 月 1 日 → 初试日」为一条完整时间轴 */
   const ringPct = (() => {
@@ -489,50 +507,53 @@ export default function Hub() {
   const heatFocus = sum(heatDays.map((d) => d.focus))
   const heatActive = heatDays.filter((d) => d.focus > 0 || d.questions > 0 || d.words > 0).length
 
-  const sourceOk = data.sources.filter((s) => s.ok).length
-  const sourceTotal = data.sources.length
+  const blockStatus = {
+    trend: trendHasData ? 'ready' : 'empty',
+    focus: 'ready',
+    heat: heatActive > 0 ? 'ready' : 'empty',
+    weak: data.weakness.points.length ? 'ready' : 'empty',
+    tasks: data.tasks.items.length ? 'ready' : 'empty',
+    modules: data.modules.length ? 'ready' : 'empty',
+  }
 
   return (
     <div className="hub">
-      {/* 极光背景：只做视觉，不拦截事件 */}
-      <div className="hub-aurora" aria-hidden="true">
-        <span className="hub-aurora__blob hub-aurora__blob--a" />
-        <span className="hub-aurora__blob hub-aurora__blob--b" />
-        <span className="hub-aurora__blob hub-aurora__blob--c" />
-        <span className="hub-aurora__grid" />
-      </div>
-
-      <header className="hub-hero hub-glass">
-        <span className="hub-hero__sheen" aria-hidden="true" />
+      <header className="hub-hero">
         <div className="hub-hero__main">
-          <div className="hub-eyebrow">
-            <Sparkles size={14} />
-            <span>今日中枢</span>
+          <p className="hub-eyebrow">
+            <span>{data.dateLabel}</span>
             <span className="hub-eyebrow__dot" aria-hidden="true">·</span>
-            <span>动态聚合 {sourceOk}/{sourceTotal} 个数据源</span>
-            <span className={cx('hub-live', status === 'stale' && 'is-stale')} aria-label="数据状态">
+            <span>{data.goalLine || '还没有设置目标院校'}</span>
+            <span className={cx('hub-live', status === 'stale' && 'is-stale')} aria-label="数据同步状态">
               <i aria-hidden="true" />
-              {refreshing ? '刷新中' : agoLabel(syncedAt)}
+              {refreshing ? '同步中' : agoLabel(syncedAt)}
+            </span>
+          </p>
+
+          <h1 className="hub-hero__title">{greeting()}，{providerName}</h1>
+
+          {/* 全页唯一 36px 主数字：今天该做 N 项 */}
+          <div className="hub-mainfig">
+            <span className="hub-mainfig__label">今天该做</span>
+            <span className="hub-mainfig__line">
+              <span className="hub-mainfig__num" data-main-figure="today-todo">
+                <AnimatedNumber value={todayTodo} format={fmt} />
+              </span>
+              <span className="hub-mainfig__unit">项</span>
+            </span>
+            <span className="hub-mainfig__sub">
+              {nowAvailable == null ? '「现在可做」数量暂不可用' : `其中 ${fmt(nowAvailable)} 项现在可做`}
+              {remainingCount > 0 ? ` · 航线还剩 ${fmt(remainingCount)} 件` : ' · 航线欠账已清'}
             </span>
           </div>
 
-          <h1 className="hub-hero__title">
-            {greeting()}，{providerName}
-          </h1>
-          <p className="hub-hero__sub">
-            {data.dateLabel}
-            {data.goalLine ? ` · ${data.goalLine}` : ' · 还没有设置目标院校'}
-          </p>
-
           <div className="hub-hero__chips">
             {countdown.phaseLabel ? <Chip as="span" active>{countdown.phaseLabel}</Chip> : null}
-            <Chip as="span" icon={<Flame size={14} />}>连续 {data.streak.current} 天</Chip>
-            <Chip as="span" icon={<Clock size={14} />}>今日专注 {today.focus_minutes || 0} 分钟</Chip>
             {data.degraded ? <Chip as="span" icon={<AlertTriangle size={14} />}>部分数据降级</Chip> : null}
           </div>
 
           <div className="hub-hero__actions">
-            <Button variant="gradient" icon={<Zap size={16} />} onClick={scrollToJourney}>
+            <Button {...ctaMag} variant="filled" data-cta="primary" icon={<Zap size={16} />} onClick={scrollToJourney}>
               开始今日航线
             </Button>
             <Button variant="tonal" icon={<SlidersHorizontal size={16} />} onClick={() => setCustomOpen(true)}>
@@ -548,12 +569,12 @@ export default function Hub() {
           </div>
         </div>
 
-        <div className="hub-hero__aside">
-          <div className="hub-countdown">
-            <Ring value={ringPct} size={132} stroke={9} gradient>
+        <aside className="hub-hero__aside" aria-label="考研倒计时">
+          <div className="hub-countdown v3-beam">
+            <Ring value={ringPct} size={120} stroke={8} gradient={false}>
               <div className="hub-countdown__inside">
                 <span className="hub-countdown__days">
-                  {countdown.days == null ? '—' : <AnimatedNumber value={countdown.days} />}
+                  {countdown.days == null ? '—' : <AnimatedNumber value={countdown.days} format={fmt} />}
                 </span>
                 <span className="hub-countdown__unit">天</span>
               </div>
@@ -566,22 +587,7 @@ export default function Hub() {
               </span>
             </div>
           </div>
-
-          <div className="hub-hero__stats">
-            <div>
-              <span>今日答题</span>
-              <b>{today.questions_done || 0}<small>道</small></b>
-            </div>
-            <div>
-              <span>正确率</span>
-              <b>{rate == null ? '—' : rate}<small>{rate == null ? '' : '%'}</small></b>
-            </div>
-            <div>
-              <span>今日新词</span>
-              <b>{data.words.new}<small>词</small></b>
-            </div>
-          </div>
-        </div>
+        </aside>
       </header>
 
       {data.degraded ? (
@@ -603,36 +609,40 @@ export default function Hub() {
       ) : null}
 
       {/* ── 今日航线：页面聚合的行动层 ─────────────────────────────── */}
-      <section id="hub-journey" className="hub-journey hub-panel hub-glass" aria-labelledby="hub-journey-title">
+      <section id="hub-journey" className="hub-journey hub-panel" aria-labelledby="hub-journey-title">
         <div className="hub-panel__head">
           <div className="hub-panel__heading">
-            <span className="hub-panel__title" id="hub-journey-title"><Zap size={18} /> 今日航线</span>
+            <h2 className="hub-panel__title" id="hub-journey-title"><Zap size={18} /> 今日航线</h2>
             <span className="hub-panel__sub">
-              按真实到期量与薄弱点动态排序 · 已完成 {q.doneCount}/{q.total}
+              按真实到期量与薄弱点动态排序 · 已完成 {q.doneCount}/{countableTotal} · 还剩 {fmt(remainingCount)} 件
             </span>
           </div>
-          <div className="hub-journey__progress">
-            <Progress value={q.progress} gradient />
+          <div className="hub-journey__progress" data-figure="progress">
+            <Progress value={q.progress} />
             <span>{q.progress}%</span>
           </div>
         </div>
+        {/* 进度口径只在这里解释一次（R3），不再用 Toast 重复播报 */}
+        <p className="hub-journey__caliber">进度只统计今天真实完成的动作；队列清空但今天没有产出，不会计入完成。</p>
 
         <div className="hub-steps">
           {steps.map((step, i) => {
             const Icon = QUEUE_ICON[step.icon] || Zap
             const active = q.activeId === step.id
+            const state = step.state || (step.done ? 'done' : active ? 'doing' : 'todo')
             return (
               <button
                 key={step.id}
                 type="button"
-                className={cx('hub-step', `hub-toned--${step.tone}`, step.done && 'is-done', active && 'is-active')}
+                {...stepFx}
+                className={cx('hub-step', 'v3-spotlight', `hub-toned--${step.tone}`, step.done && 'is-done', active && 'is-active')}
+                data-state={state}
                 onClick={() => navigate(step.to)}
                 style={{ '--i': i }}
-                aria-label={`${step.label}：${step.hint}${step.done ? '（已完成）' : ''}`}
+                aria-label={`${step.label}：${step.hint}${step.done ? '（已完成）' : step.empty ? '（暂无欠账）' : ''}`}
               >
-                <span className="hub-step__index" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
-                <span className="hub-step__icon"><Icon size={19} /></span>
-                <span className="hub-step__label">{step.label}</span>
+                <span className="hub-step__icon" aria-hidden="true"><Icon size={19} /></span>
+                <span className="hub-step__label" role="heading" aria-level={3}>{step.label}</span>
                 <span className="hub-step__count">
                   {step.done ? <Check size={13} /> : null}
                   {fmt(step.count)}<small>{step.unit}</small>
@@ -647,12 +657,16 @@ export default function Hub() {
 
         <div className="hub-journey__foot">
           <span><Gauge size={14} /> 排序规则：到期欠账 → 薄弱点 → 任务 → 单词/卡片 → 专注 → 刷题</span>
-          <Link to="/planner" className="hub-link">打开完整计划 <ArrowRight size={14} /></Link>
+          <span className="hub-journey__links">
+            {isAdmin ? <Link to="/admin/caliber" className="hub-link">数据口径说明</Link> : null}
+            <Link to="/planner" className="hub-link">打开完整计划 <ArrowRight size={14} /></Link>
+          </span>
         </div>
       </section>
 
       {/* ── KPI：从聚合模型里取，不各打接口 ──────────────────────────── */}
       <section className="hub-kpis" aria-label="今日关键指标">
+        <h2 className="v3-sr-only">今日关键指标</h2>
         {metrics.map((card, i) => {
           const Icon = KPI_ICON[card.icon] || Activity
           const color = {
@@ -665,17 +679,17 @@ export default function Hub() {
             <button
               key={card.id}
               type="button"
-              className={cx('hub-kpi', 'hub-glass', `hub-toned--${card.tone}`)}
+              className={cx('hub-kpi', `hub-toned--${card.tone}`)}
               style={{ '--i': i }}
               onClick={() => navigate(card.to)}
               aria-label={`${card.label} ${card.value == null ? '暂无数据' : `${card.value}${card.unit}`}，点击查看`}
             >
               <span className="hub-kpi__top">
-                <span className="hub-kpi__label"><Icon size={15} /> {card.label}</span>
+                <span className="hub-kpi__label" role="heading" aria-level={3}><Icon size={15} /> {card.label}</span>
                 <ArrowUpRight size={16} className="hub-kpi__arrow" />
               </span>
               <span className="hub-kpi__value">
-                {card.value == null ? <span className="hub-kpi__na">—</span> : <AnimatedNumber value={card.value} />}
+                {card.value == null ? <span className="hub-kpi__na">—</span> : <AnimatedNumber value={card.value} format={fmt} />}
                 {card.value == null ? null : <small>{card.unit}</small>}
               </span>
               <span className="hub-kpi__meta">
@@ -698,9 +712,10 @@ export default function Hub() {
             <section
               key={id}
               className={cx(
-                'hub-block', 'hub-panel', 'hub-glass', `hub-span-${block.span}`,
+                'hub-block', 'hub-panel', `hub-span-${block.span}`,
                 dragId === id && 'is-dragging',
               )}
+              data-status={blockStatus[id] || 'ready'}
               draggable
               onDragStart={(e) => onDragStart(e, id)}
               onDragOver={(e) => onDragOver(e, id)}
@@ -714,7 +729,8 @@ export default function Hub() {
                 <>
                   <PanelHead
                     title="14 天趋势"
-                    sub="数据来自 dashboard/summary · trend"
+                    titleId="hub-block-trend"
+                    sub="与仪表盘同一份数据"
                     icon={<Activity size={17} />}
                     actions={(
                       <Segmented
@@ -730,18 +746,26 @@ export default function Hub() {
                     <span>{trendUnit || metricDef.unit}</span>
                     <em>{metric === 'accuracy' ? '近 14 天平均' : `近 14 天累计 · ${metricDef.label}`}</em>
                   </div>
-                  <div className="hub-chart">
-                    {metric === 'accuracy'
-                      ? <MiniLineChart data={trendValues.map((v) => ({ value: v }))} height={148} color="var(--v3-secondary)" />
-                      : <MiniBarChart data={trendValues.map((v) => ({ value: v }))} height={148} color={metric === 'focus' ? 'var(--v3-primary)' : 'var(--v3-info)'} />}
-                  </div>
-                  <div className="hub-chart__axis" aria-hidden="true">
-                    <span>{first(trendSeries)?.date?.slice(5) || ''}</span>
-                    <span>{trendSeries.at(-1)?.date?.slice(5) || ''}</span>
-                  </div>
-                  {!trendHasData ? (
-                    <p className="hub-hint-line">最近 14 天还没有{metricDef.label}记录，完成一次学习后这里会动起来。</p>
-                  ) : null}
+                  {trendHasData ? (
+                    <>
+                      <div className="hub-chart">
+                        {metric === 'accuracy'
+                          ? <MiniLineChart data={trendValues.map((v) => ({ value: v }))} height={148} color="var(--v3-secondary)" />
+                          : <MiniBarChart data={trendValues.map((v) => ({ value: v }))} height={148} color={metric === 'focus' ? 'var(--v3-primary)' : 'var(--v3-info)'} />}
+                      </div>
+                      <div className="hub-chart__axis" aria-hidden="true">
+                        <span>{first(trendSeries)?.date?.slice(5) || ''}</span>
+                        <span>{trendSeries.at(-1)?.date?.slice(5) || ''}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <Empty
+                      icon={<Activity size={24} />}
+                      title={`最近 14 天还没有${metricDef.label}记录`}
+                      text="完成一次学习后，这条曲线会自动长出来。"
+                      action={<Button variant="tonal" onClick={() => navigate('/planner')}>记录一次专注</Button>}
+                    />
+                  )}
                 </>
               ) : null}
 
@@ -749,7 +773,8 @@ export default function Hub() {
                 <>
                   <PanelHead
                     title="专注计时"
-                    sub="真实写入 study_sessions，同步刷新 KPI"
+                    titleId="hub-block-focus"
+                    sub="计时结束点「记录」才会计入今日专注"
                     icon={<Timer size={17} />}
                   />
                   <div className="hub-focus">
@@ -770,18 +795,30 @@ export default function Hub() {
                 <>
                   <PanelHead
                     title="学习热力"
+                    titleId="hub-block-heat"
                     sub={`近 12 周 · 活跃 ${heatActive} 天 · 累计 ${fmt(heatFocus)} 分钟`}
                     icon={<Flame size={17} />}
                     actions={<span className="hub-legend"><i />少<span /><i />多</span>}
                   />
-                  <div className="hub-heat">
-                    <HeatMap data={heatDays.map((d) => ({ date: d.date, value: d.focus }))} color="var(--v3-primary)" />
-                  </div>
-                  <div className="hub-heat__meta">
-                    <span><b>{heatActive}</b> 天有学习痕迹</span>
-                    <span><b>{fmt(heatFocus)}</b> 分钟专注</span>
-                    <Link to="/timeline" className="hub-link">看学习轨迹 <ArrowRight size={14} /></Link>
-                  </div>
+                  {heatActive > 0 ? (
+                    <>
+                      <div className="hub-heat">
+                        <HeatMap data={heatDays.map((d) => ({ date: d.date, value: d.focus }))} color="var(--v3-primary)" />
+                      </div>
+                      <div className="hub-heat__meta">
+                        <span><b>{heatActive}</b> 天有学习痕迹</span>
+                        <span><b>{fmt(heatFocus)}</b> 分钟专注</span>
+                        <Link to="/timeline" className="hub-link">看学习轨迹 <ArrowRight size={14} /></Link>
+                      </div>
+                    </>
+                  ) : (
+                    <Empty
+                      icon={<Flame size={24} />}
+                      title="近 12 周还没有学习痕迹"
+                      text="任何一次专注、答题或背词都会点亮这里的一个格子。"
+                      action={<Button variant="tonal" onClick={() => navigate('/words')}>去背单词</Button>}
+                    />
+                  )}
                 </>
               ) : null}
 
@@ -789,6 +826,7 @@ export default function Hub() {
                 <>
                   <PanelHead
                     title="薄弱点"
+                    titleId="hub-block-weak"
                     sub={data.weakness.has ? `${data.weakness.points.length} 个高频错点` : '暂无薄弱点'}
                     icon={<Target size={17} />}
                     actions={<Link to="/error-review" className="hub-link">去复盘 <ArrowRight size={14} /></Link>}
@@ -824,7 +862,12 @@ export default function Hub() {
                       ) : null}
                     </div>
                   ) : (
-                    <Empty icon={<CheckCircle2 size={24} />} title="暂无薄弱点" text="继续按航线推进，错题会在这里自动聚合并按掌握度排序。" />
+                    <Empty
+                      icon={<CheckCircle2 size={24} />}
+                      title="暂无薄弱点"
+                      text="继续按航线推进，错题会在这里自动聚合并按掌握度排序。"
+                      action={<Button variant="tonal" onClick={() => navigate('/quiz')}>去刷题</Button>}
+                    />
                   )}
                 </>
               ) : null}
@@ -833,6 +876,7 @@ export default function Hub() {
                 <>
                   <PanelHead
                     title="今日任务"
+                    titleId="hub-block-tasks"
                     sub={data.tasks.total ? `已完成 ${data.tasks.done}/${data.tasks.total}` : '还没有安排今天的任务'}
                     icon={<ListChecks size={17} />}
                     actions={<Link to="/tasks" className="hub-link">全部任务 <ArrowRight size={14} /></Link>}
@@ -886,7 +930,8 @@ export default function Hub() {
                 <>
                   <PanelHead
                     title="模块进度"
-                    sub="同一份 module_progress，不按科目拆数据源"
+                    titleId="hub-block-modules"
+                    sub="各模块今日完成度，同一份数据"
                     icon={<Layers size={17} />}
                     actions={<Link to="/insights" className="hub-link">看统计 <ArrowRight size={14} /></Link>}
                   />
@@ -902,13 +947,13 @@ export default function Hub() {
                             onClick={() => navigate(MODULE_ROUTE[m.key] || '/insights')}
                             title={m.note || m.label}
                           >
-                            <Ring value={pct} size={52} stroke={6} gradient={m.percent != null}>
+                            <Ring value={pct} size={52} stroke={6} gradient={false}>
                               <span className="hub-mod__pct">{m.percent == null ? '—' : `${Math.round(pct)}%`}</span>
                             </Ring>
                             <span className="hub-mod__label">{m.label}</span>
                             <span className="hub-mod__value">
                               {m.status === 'not_tracked'
-                                ? '未接入'
+                                ? '未接入排程'
                                 : m.target
                                   ? `${m.done ?? 0}/${m.target} ${m.unit}`
                                   : `${m.done ?? 0} ${m.unit}`}
@@ -918,52 +963,12 @@ export default function Hub() {
                       })}
                     </div>
                   ) : (
-                    <Empty title="暂无模块数据" text="完成一次专注、背词或刷题后，这里会显示各模块进度。" />
+                    <Empty
+                      title="暂无模块数据"
+                      text="完成一次专注、背词或刷题后，这里会显示各模块进度。"
+                      action={<Button variant="tonal" onClick={() => navigate('/planner')}>开始一次专注</Button>}
+                    />
                   )}
-                </>
-              ) : null}
-
-              {id === 'caliber' ? (
-                <>
-                  <PanelHead
-                    title="数据口径与接口体检"
-                    sub={`本页所有数字只来自 ${sourceTotal} 个聚合端点 · 派生指标由 api/hub.js 统一计算`}
-                    icon={<Gauge size={17} />}
-                    actions={(
-                      <Button variant="tonal" icon={<RefreshCw size={15} className={refreshing ? 'hub-spin' : ''} />} onClick={refresh} disabled={refreshing}>
-                        刷新
-                      </Button>
-                    )}
-                  />
-                  <div className="hub-caliber">
-                    <div className="hub-caliber__table">
-                      {data.caliber.map((row) => (
-                        <div className="hub-caliber__row" key={row.label}>
-                          <span className="hub-caliber__label">{row.label}</span>
-                          <strong className="hub-caliber__value">
-                            {row.value == null ? '—' : fmt(row.value)}<small>{row.unit}</small>
-                          </strong>
-                          <code className="hub-caliber__source">{row.source}</code>
-                          <span className="hub-caliber__note">{row.note}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="hub-sources">
-                      {data.sources.map((s) => (
-                        <div key={s.key} className={cx('hub-source', s.ok ? 'is-ok' : 'is-fail')}>
-                          <span className="hub-source__dot" aria-hidden="true" />
-                          <span className="hub-source__name">{s.label}</span>
-                          <code>{s.path}</code>
-                          <span className="hub-source__ms">{s.ok ? `${s.ms} ms` : '失败'}</span>
-                          {!s.ok && s.error ? <span className="hub-source__err" title={s.error}>{s.error}</span> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <p className="hub-hint-line">
-                    三个「到期」不是同一个队列：今日累计看未来负荷（截至 24:00），现在可做看复习调度，
-                    艾宾浩斯来自复盘计划。分开标注是为了避免把 200 条计划复习误当成 200 道错题。
-                  </p>
                 </>
               ) : null}
             </section>
@@ -972,7 +977,7 @@ export default function Hub() {
       </div>
 
       <footer className="hub-foot">
-        <span><Info size={14} /> 聚合入口：<code>fetchHubOverview()</code> · 后端提供 <code>/api/hub/overview</code> 后只需替换数据层</span>
+        <span><Info size={14} /> 数据自动同步，写操作后即时更新</span>
         <span>{agoLabel(syncedAt)}</span>
       </footer>
 
@@ -985,7 +990,7 @@ export default function Hub() {
         footer={(
           <>
             <Button variant="tonal" icon={<RotateCcw size={15} />} onClick={resetLayout}>恢复默认</Button>
-            <Button variant="gradient" onClick={() => setCustomOpen(false)}>完成</Button>
+            <Button variant="filled" data-cta="primary" onClick={() => setCustomOpen(false)}>完成</Button>
           </>
         )}
       >

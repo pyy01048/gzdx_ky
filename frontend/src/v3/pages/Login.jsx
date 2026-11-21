@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { authApi } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { BrandMark } from '../shell'
-import { Button, Field, Input } from '../ui'
-import { Eye, EyeOff, Sparkles, ArrowRight, ChevronLeft, BookOpen, Map, Target, Bot } from '../icons'
+import { Button, Field, Input, cx } from '../ui'
+import { ScrambleText, Typewriter, useMagnetic, usePointerFx, useParallax, useReducedMotion } from '../motion'
+import { Eye, EyeOff, Sparkles, ArrowRight, ChevronLeft, BookOpen, Map, Target, Bot, Mail, KeyRound, CheckCircle2 } from '../icons'
 import '../styles/pages.css'
 import { crumbName } from '../../nav/navConfig'
 
@@ -14,15 +16,74 @@ const FEATURES = [
   { icon: Bot, title: '知识库', text: '资料入库、全文检索、AI 问答。' },
 ]
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+/* 密码强度：8–128 位 + 大小写/数字/特殊字符至少 3 类（与后端 validate_strong_password 同口径） */
+export function passwordCategories(pwd) {
+  let n = 0
+  if (/[a-z]/.test(pwd)) n += 1
+  if (/[A-Z]/.test(pwd)) n += 1
+  if (/\d/.test(pwd)) n += 1
+  if (/[^A-Za-z0-9]/.test(pwd)) n += 1
+  return n
+}
+
+export function PasswordStrength({ value }) {
+  const cats = passwordCategories(value || '')
+  const okLen = (value || '').length >= 8
+  const level = !value ? 0 : Math.min(cats + (okLen ? 1 : 0), 4)
+  const labels = ['', '弱', '一般', '较强', '强']
+  const tones = ['', 'danger', 'warning', 'primary', 'success']
+  if (!value) return null
+  return (
+    <div className="v3-pwd-meter" aria-live="polite">
+      <div className="v3-pwd-meter__bars">
+        {[1, 2, 3, 4].map((i) => (
+          <i key={i} className={i <= level ? `is-on is-${tones[level]}` : ''} />
+        ))}
+      </div>
+      <span className={`v3-pwd-meter__label is-${tones[level] || 'muted'}`}>
+        {okLen && cats >= 3 ? `强度：${labels[level]}` : '需 8 位以上，含大小写/数字/特殊字符中至少 3 类'}
+      </span>
+    </div>
+  )
+}
+
+function SentPanel({ icon: Icon, title, text, email, onResend, resendBusy, cooldown, onBack }) {
+  return (
+    <div className="v3-login__sent">
+      <span className="v3-login__sent-icon"><Icon size={26} /></span>
+      <h2>{title}</h2>
+      <p>{text}</p>
+      {email ? <p className="v3-login__sent-mail"><Mail size={14} /> {email}</p> : null}
+      <div className="v3-login__sent-actions">
+        {onResend ? (
+          <Button variant="outline" block loading={resendBusy} disabled={cooldown > 0} onClick={onResend}>
+            {cooldown > 0 ? `重新发送（${cooldown}s）` : '没收到？重新发送'}
+          </Button>
+        ) : null}
+        <Button variant="text" block onClick={onBack}>返回登录</Button>
+      </div>
+      <p className="v3-login__sent-tip">收不到邮件？请检查垃圾箱；本机部署未配置 SMTP 时，邮件在服务器 data/outbox/ 目录。</p>
+    </div>
+  )
+}
+
 export default function Login() {
   const { status, login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [mode, setMode] = useState('login') // login | register | forgot | sent-verify | sent-reset
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [regPwd, setRegPwd] = useState('')
   const [showPwd, setShowPwd] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [cooldown, setCooldown] = useState(0)
 
   const from = location.state?.from?.pathname || '/'
   const fromName = location.state?.from?.crumb || crumbName(from)
@@ -35,13 +96,28 @@ export default function Login() {
     return () => { document.title = '硕途 · 考研学习平台' }
   }, [from, fromName])
 
+  useEffect(() => {
+    if (cooldown <= 0) return undefined
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [cooldown])
+
+  const regPwdOk = useMemo(() => regPwd.length >= 8 && passwordCategories(regPwd) >= 3, [regPwd])
+
+  const reduced = useReducedMotion()
+  const mag = useMagnetic(4)
+  const panelFx = usePointerFx({ spotlight: true, disabled: reduced })
+  const auroraRef = useParallax(0.1, 30)
+
   if (status === 'ready') return <Navigate to={from} replace />
   if (status === 'must-change') return <Navigate to="/force-change-password" replace />
 
-  const submit = async (e) => {
+  const switchMode = (m) => { setMode(m); setError(''); setNotice('') }
+
+  const submitLogin = async (e) => {
     e.preventDefault()
     if (!username.trim() || !password) {
-      setError('请输入用户名和密码')
+      setError('请输入用户名/邮箱和密码')
       return
     }
     setBusy(true)
@@ -56,9 +132,58 @@ export default function Login() {
     }
   }
 
+  const submitRegister = async (e) => {
+    e.preventDefault()
+    const mail = email.trim().toLowerCase()
+    if (!EMAIL_RE.test(mail)) { setError('请输入正确的邮箱地址'); return }
+    if (!regPwdOk) { setError('密码需 8 位以上，且包含大小写字母、数字、特殊字符中的至少 3 类'); return }
+    setBusy(true)
+    setError('')
+    try {
+      const r = await authApi.register(mail, regPwd, nickname.trim())
+      setNotice(r?.message || '')
+      setMode('sent-verify')
+      setCooldown(60)
+    } catch (err) {
+      setError(err?.message || '注册失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitForgot = async (e) => {
+    e.preventDefault()
+    const mail = email.trim().toLowerCase()
+    if (!EMAIL_RE.test(mail)) { setError('请输入正确的邮箱地址'); return }
+    setBusy(true)
+    setError('')
+    try {
+      const r = await authApi.forgotPassword(mail)
+      setNotice(r?.message || '')
+      setMode('sent-reset')
+    } catch (err) {
+      setError(err?.message || '请求失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const resendVerification = async () => {
+    setBusy(true)
+    try {
+      await authApi.resendVerification(email.trim().toLowerCase())
+      setCooldown(60)
+      setNotice('如果该邮箱可用，验证邮件已发送，请查收（记得看看垃圾箱）。')
+    } catch (err) {
+      setError(err?.message || '发送失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="v3-login">
-      <div className="v3-login__aurora" aria-hidden="true">
+      <div className="v3-login__aurora v3-parallax" ref={auroraRef} aria-hidden="true">
         <i className="a1" /><i className="a2" /><i className="a3" />
       </div>
 
@@ -75,12 +200,12 @@ export default function Login() {
           <div className="v3-login__eyebrow"><Sparkles size={14} /> 从择校到冲刺，同一张地图</div>
           <h1 className="v3-login__title">
             把考研的每一步，<br />
-            <span className="v3-gradient-text">放在同一张地图上。</span>
+            <span className="v3-gradient-text"><ScrambleText text="放在同一张地图上。" duration={800} /></span>
           </h1>
           <p className="v3-login__lead">
-            院校数据、真题练习、AI 规划与个人知识库，一个账号打通备考全过程。
+            <Typewriter text="院校数据、真题练习、AI 规划与个人知识库，一个账号打通备考全过程。" speed={28} startDelay={900} />
           </p>
-          <ul className="v3-login__features">
+          <ul className="v3-login__features v3-stagger">
             {FEATURES.map(({ icon: Icon, title, text }) => (
               <li key={title}>
                 <span className="v3-login__feature-icon"><Icon size={17} /></span>
@@ -91,8 +216,8 @@ export default function Login() {
           <div className="v3-login__note"><BookOpen size={14} /> 完全免费 · 无会员 · 无付费墙</div>
         </section>
 
-        <section className="v3-login__panel">
-          {from && from !== '/' && from !== '/login' ? (
+        <section className={cx('v3-login__panel', 'v3-spotlight')} {...panelFx}>
+          {from && from !== '/' && from !== '/login' && mode === 'login' ? (
             <div className="v3-login__hint">
               <BookOpen size={15} />
               <span>访问「{fromName}」需要登录，登录后自动回到原页面。</span>
@@ -101,50 +226,170 @@ export default function Login() {
               </button>
             </div>
           ) : null}
-          <div className="v3-login__panel-head">
-            <h2>欢迎回来</h2>
-            <p>登录后继续今天的备考。</p>
-          </div>
-          <form className="v3-login__form" onSubmit={submit} noValidate>
-            <Field label="用户名" htmlFor="v3-username">
-              <Input
-                id="v3-username"
-                autoComplete="username"
-                autoFocus
-                placeholder="请输入用户名"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-            </Field>
-            <Field label="密码" htmlFor="v3-password">
-              <div className="v3-login__pwd">
-                <Input
-                  id="v3-password"
-                  type={showPwd ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="请输入密码"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="v3-login__eye"
-                  aria-label={showPwd ? '隐藏密码' : '显示密码'}
-                  onClick={() => setShowPwd((v) => !v)}
-                >
-                  {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
+
+          {mode === 'sent-verify' ? (
+            <SentPanel
+              icon={Mail} title="验证邮件已发送" email={email}
+              text={notice || '如果该邮箱可用，验证邮件已发送。点击邮件中的链接完成验证（24 小时内有效）。'}
+              onResend={resendVerification} resendBusy={busy} cooldown={cooldown}
+              onBack={() => switchMode('login')}
+            />
+          ) : null}
+
+          {mode === 'sent-reset' ? (
+            <SentPanel
+              icon={KeyRound} title="重置邮件已发送" email={email}
+              text={notice || '如果该邮箱已注册且已验证，重置邮件已发送。链接 60 分钟内有效，仅可使用一次。'}
+              onBack={() => switchMode('login')}
+            />
+          ) : null}
+
+          {mode === 'login' || mode === 'register' || mode === 'forgot' ? (
+            <>
+              <div className="v3-login__tabs" role="tablist" aria-label="登录或注册">
+                <button type="button" role="tab" aria-selected={mode === 'login'}
+                  className={mode === 'login' ? 'is-active' : ''} onClick={() => switchMode('login')}>
+                  登录
+                </button>
+                <button type="button" role="tab" aria-selected={mode === 'register'}
+                  className={mode === 'register' ? 'is-active' : ''} onClick={() => switchMode('register')}>
+                  邮箱注册
                 </button>
               </div>
-            </Field>
-            {error ? <div className="v3-alert v3-alert--danger" role="alert">{error}</div> : null}
-            <Button type="submit" size="lg" variant="gradient" block loading={busy} trailingIcon={<ArrowRight size={17} />}>
-              {busy ? '登录中…' : '登录'}
-            </Button>
-          </form>
-          <div className="v3-login__foot">
-            <span>忘记密码请联系管理员重置</span>
-            <Link to="/">返回首页</Link>
-          </div>
+
+              {mode === 'login' ? (
+                <>
+                  <div className="v3-login__panel-head">
+                    <h2>欢迎回来</h2>
+                    <p>登录后继续今天的备考。</p>
+                  </div>
+                  <form className="v3-login__form" onSubmit={submitLogin} noValidate>
+                    <Field label="用户名 / 邮箱" htmlFor="v3-username">
+                      <Input
+                        id="v3-username"
+                        autoComplete="username"
+                        autoFocus
+                        placeholder="请输入用户名或邮箱"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                      />
+                    </Field>
+                    <Field label="密码" htmlFor="v3-password">
+                      <div className="v3-login__pwd">
+                        <Input
+                          id="v3-password"
+                          type={showPwd ? 'text' : 'password'}
+                          autoComplete="current-password"
+                          placeholder="请输入密码"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="v3-login__eye"
+                          aria-label={showPwd ? '隐藏密码' : '显示密码'}
+                          onClick={() => setShowPwd((v) => !v)}
+                        >
+                          {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
+                        </button>
+                      </div>
+                    </Field>
+                    {error ? <div className="v3-alert v3-alert--danger" role="alert">{error}</div> : null}
+                    <Button {...mag} type="submit" size="lg" variant="gradient" block loading={busy} trailingIcon={<ArrowRight size={17} />}>
+                      {busy ? '登录中…' : '登录'}
+                    </Button>
+                  </form>
+                  <div className="v3-login__foot">
+                    <button type="button" className="v3-login__linkbtn" onClick={() => switchMode('forgot')}>
+                      忘记密码？
+                    </button>
+                    <Link to="/">返回首页</Link>
+                  </div>
+                </>
+              ) : null}
+
+              {mode === 'register' ? (
+                <>
+                  <div className="v3-login__panel-head">
+                    <h2>创建账号</h2>
+                    <p>用邮箱注册，验证后即可上传资料与找回密码。</p>
+                  </div>
+                  <form className="v3-login__form" onSubmit={submitRegister} noValidate>
+                    <Field label="邮箱" htmlFor="v3-reg-email">
+                      <Input
+                        id="v3-reg-email" type="email" autoComplete="email" autoFocus
+                        placeholder="you@example.com"
+                        value={email} onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </Field>
+                    <Field label="昵称（可选）" htmlFor="v3-reg-nick">
+                      <Input
+                        id="v3-reg-nick" autoComplete="nickname" maxLength={64}
+                        placeholder="仅用于站内展示"
+                        value={nickname} onChange={(e) => setNickname(e.target.value)}
+                      />
+                    </Field>
+                    <Field label="密码" htmlFor="v3-reg-pwd">
+                      <div className="v3-login__pwd">
+                        <Input
+                          id="v3-reg-pwd"
+                          type={showPwd ? 'text' : 'password'}
+                          autoComplete="new-password"
+                          placeholder="8 位以上，至少 3 类字符"
+                          value={regPwd} onChange={(e) => setRegPwd(e.target.value)}
+                        />
+                        <button type="button" className="v3-login__eye"
+                          aria-label={showPwd ? '隐藏密码' : '显示密码'}
+                          onClick={() => setShowPwd((v) => !v)}>
+                          {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
+                        </button>
+                      </div>
+                      <PasswordStrength value={regPwd} />
+                    </Field>
+                    {error ? <div className="v3-alert v3-alert--danger" role="alert">{error}</div> : null}
+                    <Button {...mag} type="submit" size="lg" variant="gradient" block loading={busy}
+                      disabled={!regPwdOk} trailingIcon={<ArrowRight size={17} />}>
+                      {busy ? '提交中…' : '注册并发送验证邮件'}
+                    </Button>
+                  </form>
+                  <div className="v3-login__foot">
+                    <span>已有账号？</span>
+                    <button type="button" className="v3-login__linkbtn" onClick={() => switchMode('login')}>直接登录</button>
+                  </div>
+                </>
+              ) : null}
+
+              {mode === 'forgot' ? (
+                <>
+                  <div className="v3-login__panel-head">
+                    <h2>找回密码</h2>
+                    <p>输入注册邮箱，我们会发送一封重置邮件（60 分钟内有效）。</p>
+                  </div>
+                  <form className="v3-login__form" onSubmit={submitForgot} noValidate>
+                    <Field label="注册邮箱" htmlFor="v3-forgot-email">
+                      <Input
+                        id="v3-forgot-email" type="email" autoComplete="email" autoFocus
+                        placeholder="you@example.com"
+                        value={email} onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </Field>
+                    {error ? <div className="v3-alert v3-alert--danger" role="alert">{error}</div> : null}
+                    <Button {...mag} type="submit" size="lg" variant="gradient" block loading={busy} trailingIcon={<Mail size={17} />}>
+                      {busy ? '发送中…' : '发送重置邮件'}
+                    </Button>
+                  </form>
+                  <div className="v3-login__foot">
+                    <button type="button" className="v3-login__linkbtn" onClick={() => switchMode('login')}>
+                      <ChevronLeft size={13} /> 想起密码了？返回登录
+                    </button>
+                  </div>
+                  <p className="v3-login__sent-tip">
+                    <CheckCircle2 size={13} /> 出于安全考虑，无论邮箱是否注册，页面提示都一致；只有已验证邮箱的账号才会收到重置邮件。
+                  </p>
+                </>
+              ) : null}
+            </>
+          ) : null}
         </section>
       </main>
 

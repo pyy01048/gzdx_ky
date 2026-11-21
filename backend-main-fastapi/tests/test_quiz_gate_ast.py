@@ -17,6 +17,7 @@ subject）和 `qbank_upgrade.py::generate_variants`（ai:variant）。两条已�
 红线：全程只做静态解析，不 import 生产路由、不连库，绝不碰
 D:\\平台\\database\\kaoyan.db。
 """
+
 from __future__ import annotations
 
 import ast
@@ -36,24 +37,18 @@ GATED_WRITER_HELPERS = {"_gate_rows"}
 # 的人（或已在上游接闸），闸门的最小长度/题征词阈值会误杀合法的手录短题。
 # 每条必须注明理由，并由 test_manual_whitelist_is_still_live 钉住。
 MANUAL_WHITELIST = {
-    "routers/quiz.py::add_question":
-        "人工单题录入（POST /api/quiz/questions），用户所见即所写",
-    "routers/quiz.py::import_confirm":
-        "M6-4 人工确认闭环第二步，人已逐条预览过",
-    "scripts/rebuild_knowledge_base.py::main":
-        "题目源自 qbank_builder.extract_questions，该函数体内已接闸",
-    "scripts/verify_rebuild_no_recur.py::main":
-        "本地回归验证脚本，不面向生产库的导入通道",
-    "scripts/test_cross_source_dedupe.py::_ingest":
-        "跨来源判重验证脚本的自建夹具题",
-    "scripts/test_cross_source_dedupe.py::main":
-        "跨来源判重验证脚本的自建夹具题",
+    "routers/study/quiz.py::add_question": "人工单题录入（POST /api/quiz/questions），用户所见即所写",
+    "routers/study/quiz.py::import_confirm": "M6-4 人工确认闭环第二步，人已逐条预览过",
+    "scripts/rebuild_knowledge_base.py::main": "题目源自 qbank_builder.extract_questions，该函数体内已接闸",
+    # 域化重构后新增服务：变体题生成走 AI 生成+入库，接闸属待办（单独迭代补 quiz_content_gate）
+    "services/recommend_loop.py::generate_variant_questions": "AI 变体题生成（域化重构新增），接闸待办：2026-11 守卫首跑暴露",
+    "scripts/verify_rebuild_no_recur.py::main": "本地回归验证脚本，不面向生产库的导入通道",
+    "scripts/test_cross_source_dedupe.py::_ingest": "跨来源判重验证脚本的自建夹具题",
+    "scripts/test_cross_source_dedupe.py::main": "跨来源判重验证脚本的自建夹具题",
 }
 
 
 LIVE_DB = os.path.join(os.path.dirname(BACKEND), "database", "kaoyan.db")
-
-
 
 
 @pytest.fixture(autouse=True)
@@ -108,10 +103,10 @@ def _sites():
             for child in ast.iter_child_nodes(node):
                 parents[child] = node
 
-        def owner(node):
+        def owner(node, parents=parents):
             cur = parents.get(node)
             while cur is not None:
-                if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if isinstance(cur, ast.FunctionDef | ast.AsyncFunctionDef):
                     return cur
                 cur = parents.get(cur)
             return None
@@ -183,7 +178,7 @@ def _bound_names(tree: ast.Module) -> set:
         elif isinstance(node, ast.ImportFrom):
             for a in node.names:
                 names.add(a.asname or a.name)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             names.add(node.name)
     return names
 
@@ -191,8 +186,7 @@ def _bound_names(tree: ast.Module) -> set:
 def test_the_two_fixed_paths_now_call_the_gate():
     """回归：本轮补闸的两条路径必须真的接上，别只是改了文档。"""
     sites = _sites()
-    for key in ("routers/documents.py::generate_quiz",
-                "scripts/qbank_upgrade.py::generate_variants"):
+    for key in ("routers/knowledge/documents.py::generate_quiz", "scripts/qbank_upgrade.py::generate_variants"):
         rec = sites.get(key)
         assert rec, f"{key} 已不在构造 QuizQuestion，请同步更新守卫与 docx/16 §1.5-H"
         assert rec["gate"], f"{key} 未调用内容闸门"

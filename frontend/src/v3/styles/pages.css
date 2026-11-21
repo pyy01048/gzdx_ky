@@ -1023,3 +1023,38 @@ button.v3-dash-link {
   .v3-tb-detail__meta { grid-template-columns: 1fr; }
   .v3-tb-detail__meta > div.is-wide { grid-column: auto; }
 }
+
+/* ---- 邮箱注册 / 找回密码（Login 多模式 + 独立验证/重置页） ---- */
+.v3-login__tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 18px; border-radius: 12px; background: var(--v3-fill-2, rgba(120,120,128,.08)); }
+.v3-login__tabs button { flex: 1; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; font-size: var(--v3-fs-13); font-weight: 600; color: var(--v3-text-2); cursor: pointer; transition: background .15s, color .15s; }
+.v3-login__tabs button.is-active { background: var(--v3-bg-card, #fff); color: var(--v3-text-1); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.v3-login__linkbtn { display: inline-flex; align-items: center; gap: 3px; border: 0; background: none; padding: 0; color: var(--v3-primary); font-size: var(--v3-fs-12); font-weight: 600; cursor: pointer; }
+.v3-login__linkbtn:hover { text-decoration: underline; }
+.v3-login__sent { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 12px 4px; }
+.v3-login__sent-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 18px; color: var(--v3-primary); background: var(--v3-primary-soft, rgba(0,122,255,.1)); }
+.v3-login__sent h2 { margin: 4px 0 0; font-size: 20px; letter-spacing: -.02em; }
+.v3-login__sent p { margin: 0; font-size: var(--v3-fs-13); color: var(--v3-text-2); line-height: 1.6; }
+.v3-login__sent-mail { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--v3-text-1); }
+.v3-login__sent-actions { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.v3-login__sent-tip { font-size: var(--v3-fs-12); color: var(--v3-text-3); line-height: 1.6; margin: 10px 0 0; display: flex; gap: 6px; align-items: flex-start; text-align: left; }
+.v3-pwd-meter { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.v3-pwd-meter__bars { display: flex; gap: 4px; }
+.v3-pwd-meter__bars i { width: 26px; height: 4px; border-radius: 2px; background: var(--v3-fill-2, rgba(120,120,128,.16)); }
+.v3-pwd-meter__bars i.is-on.is-danger { background: var(--v3-danger, #ff3b30); }
+.v3-pwd-meter__bars i.is-on.is-warning { background: var(--v3-warning, #ff9500); }
+.v3-pwd-meter__bars i.is-on.is-primary { background: var(--v3-primary, #007aff); }
+.v3-pwd-meter__bars i.is-on.is-success { background: var(--v3-success, #34c759); }
+.v3-pwd-meter__label { font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+.v3-pwd-meter__label.is-danger { color: var(--v3-danger, #ff3b30); }
+.v3-pwd-meter__label.is-warning { color: var(--v3-warning, #ff9500); }
+.v3-pwd-meter__label.is-success { color: var(--v3-success, #34c759); }
+/* 独立验证/重置页（邮件链接落地） */
+.v3-auth-landing { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--v3-bg, #f5f5f7); }
+.v3-auth-landing__card { width: min(440px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 32px 28px; border-radius: 20px; background: var(--v3-bg-card, #fff); box-shadow: 0 8px 40px rgba(0,0,0,.08); text-align: center; }
+.v3-auth-landing__card h1 { margin: 0; font-size: 21px; letter-spacing: -.02em; }
+.v3-auth-landing__card p { margin: 0; font-size: var(--v3-fs-13); color: var(--v3-text-2); line-height: 1.65; }
+.v3-auth-landing__icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto; border-radius: 18px; }
+.v3-auth-landing__icon.is-ok { color: var(--v3-success, #34c759); background: rgba(52,199,89,.12); }
+.v3-auth-landing__icon.is-bad { color: var(--v3-danger, #ff3b30); background: rgba(255,59,48,.1); }
+.v3-auth-landing__icon.is-wait { color: var(--v3-primary, #007aff); background: rgba(0,122,255,.1); }
+.v3-auth-landing__form { display: flex; flex-direction: column; gap: 12px; text-align: left; margin-top: 6px; }

@@ -30,6 +30,7 @@
 ----
     D:/Anaconda/python.exe -m pytest tests/test_api_contract.py -v
 """
+
 from __future__ import annotations
 
 import os
@@ -50,25 +51,25 @@ DEFAULT_TIME_BUDGET = 5.0
 #: 已知重接口的单独耗时上限（秒）。这些接口会读磁盘 / 探测硬件 / 调本地
 #: 模型服务，天然比纯 DB 查询慢，但仍必须有上限以防"卡死"。
 SLOW_ROUTE_BUDGETS = {
-    "/api/ai/models/catalog": 15.0,      # 扫模型注册表 + 磁盘探测
-    "/api/ai/models/hardware": 15.0,     # CPU/GPU/内存探测
-    "/api/ai/local/status": 20.0,        # 探测本地 Ollama（网络往返）
-    "/api/ai/local/models": 20.0,        # 同上
-    "/api/kb/ingest/status": 25.0,         # 扫 inbox 目录 + OCR 链真探测（rapidocr 冷初始化 ONNX 引擎实测 7s，满载 17s+；router 单例已起后台预热线程，稳态为热路径）
-    "/api/kb/health": 15.0,              # 扫知识库目录 + 计数
-    "/api/storage": 15.0,                # 目录体积统计
-    "/api/access-info": 15.0,            # 探测局域网网卡
+    "/api/ai/models/catalog": 15.0,  # 扫模型注册表 + 磁盘探测
+    "/api/ai/models/hardware": 15.0,  # CPU/GPU/内存探测
+    "/api/ai/local/status": 20.0,  # 探测本地 Ollama（网络往返）
+    "/api/ai/local/models": 20.0,  # 同上
+    "/api/kb/ingest/status": 25.0,  # 扫 inbox 目录 + OCR 链真探测（rapidocr 冷初始化 ONNX 引擎实测 7s，满载 17s+；router 单例已起后台预热线程，稳态为热路径）
+    "/api/kb/health": 15.0,  # 扫知识库目录 + 计数
+    "/api/storage": 15.0,  # 目录体积统计
+    "/api/access-info": 15.0,  # 探测局域网网卡
     "/api/admin/system/compute-nodes": 15.0,  # 并行探测 3 个外部算力节点（OCR/reranker/Ollama，Tailscale 往返；满载机器上会超 5s 默认预算）
-    "/api/goals/strategy": 90.0,         # 无考研目标时回落 AI 生成（网络往返，实测可达 70s+）
+    "/api/goals/strategy": 90.0,  # 无考研目标时回落 AI 生成（网络往返，实测可达 70s+）
     "/api/backup": 15.0,
 }
 
 #: 有副作用 / 会跑长任务 / 会改磁盘的 GET 接口，契约测试**不碰**。
 #: 用精确路径而非子串匹配，避免误杀 /api/kb/health 这类只读接口。
 SKIP_PATHS = {
-    "/api/storage/scan",            # 递归全盘扫描（阻塞事件循环）
-    "/api/backup",                  # 读取/生成备份文件
-    "/api/kb/heal/status",          # 知识库修复任务状态（heal 家族）
+    "/api/storage/scan",  # 递归全盘扫描（阻塞事件循环）
+    "/api/backup",  # 读取/生成备份文件
+    "/api/kb/heal/status",  # 知识库修复任务状态（heal 家族）
     "/api/imports/scan/{task_id}",  # 导入扫描任务
 }
 
@@ -77,11 +78,11 @@ SKIP_PATHS = {
 #: md/txt/pdf 字节，而不是 JSON，故在此显式登记并写明理由。
 NON_JSON_GET_PATHS = {
     "/api/documents/{doc_id}/export",  # 学习文库导出统一快照（md/txt/pdf 字节流）
-    "/api/errors/export",              # 错题 CSV 导出（带 BOM，Excel 直开）
-    "/api/errors/export-pdf",           # 错题本 PDF 导出（对标「不背单词」纸质导出）
-    "/api/words/export-pdf",             # 单词本 PDF 导出（对标「不背单词」纸质导出）
-    "/api/quiz/export",                # 题目 CSV 导出
-    "/api/stats/export",               # 学习统计 CSV 导出
+    "/api/errors/export",  # 错题 CSV 导出（带 BOM，Excel 直开）
+    "/api/errors/export-pdf",  # 错题本 PDF 导出（对标「不背单词」纸质导出）
+    "/api/words/export-pdf",  # 单词本 PDF 导出（对标「不背单词」纸质导出）
+    "/api/quiz/export",  # 题目 CSV 导出
+    "/api/stats/export",  # 学习统计 CSV 导出
 }
 
 #: 允许的 4xx 容差白名单：路径 -> (允许的状态码集合, 理由)
@@ -97,10 +98,8 @@ ALLOWED_4XX = {
     "/api/planner/daily/range": ({422}, "缺必填查询参数 start"),
     "/api/planner/month": ({422}, "缺必填查询参数 year"),
     "/api/planner/week": ({422}, "缺必填查询参数 week_start"),
-
     # ---- 400：业务前置条件未满足（正常业务分支）----
     "/api/ai/models/recommend": ({400}, "至少需提供 subject 或 task 之一"),
-
     # ---- 409：外部服务未授权（测试环境无网盘 OAuth token）----
     # 注意：这里**故意用 409 而非 401**。若返回 401，全局鉴权拦截会把它当成
     # "登录过期"触发 refresh→再 401→auth:required→把用户踢回登录页（症状：
@@ -110,28 +109,63 @@ ALLOWED_4XX = {
     # 而复活上面的登录页 bug。
     "/api/netdisk/recursive-files": ({409}, "百度网盘未授权（测试环境无 token）"),
     "/api/netdisk/quota": ({409}, "百度网盘未授权（测试环境无 token）"),
-    "/api/netdisk/files": ({409}, "百度网盘未授权（测试环境无 token）：显式 409 + action=reauthorize，前端据此回到平台选择页"),
-
+    "/api/netdisk/files": (
+        {409},
+        "百度网盘未授权（测试环境无 token）：显式 409 + action=reauthorize，前端据此回到平台选择页",
+    ),
     # ---- 404：外部资源 id 在测试库中不存在（非源码缺陷）----
     "/api/kaoyan/schools/{school_id}": ({404}, "测试库无院校数据"),
-    "/api/kaoyan/schools/{school_id}/enrollment-plan": ({404}, "M3-4 新端点：院校不存在时 404（测试库无院校数据），与 /schools/{school_id} 行为一致"),
-    "/api/notice-alert/notices/{notice_id}": ({404}, "M-notice-alert 新端点：公告不存在时 404（测试库无 kaoyan_notices 数据），资源型路由取不到 id 属预期，与 /kaoyan/schools/{school_id} 行为一致"),
-    "/api/quiz/questions/{question_id}": ({404}, "M2-5 新端点：题目不存在时 404（测试库无题目数据），与同路径 PUT/DELETE 行为一致"),
-    "/api/kaoyan/schools/{school_id}": ({404}, "测试库无院校数据"),
+    "/api/kaoyan/school-eval/schools/{school_id}": (
+        {404},
+        "119 学科评估：数据由 import_school_eval_pg.py 导入，测试库 ky_school 为空 → 占位 id 404 属预期（哨兵数据回归见 test_school_eval.py）",
+    ),
+    "/api/kaoyan/school-eval/disciplines/{code}/rank": (
+        {404},
+        "119 学科评估：测试库 ky_discipline 为空，占位 code=1 非法学科代码 → 404 属预期（哨兵数据回归见 test_school_eval.py）",
+    ),
+    "/api/kaoyan/schools/{school_id}/enrollment-plan": (
+        {404},
+        "M3-4 新端点：院校不存在时 404（测试库无院校数据），与 /schools/{school_id} 行为一致",
+    ),
+    "/api/notice-alert/notices/{notice_id}": (
+        {404},
+        "M-notice-alert 新端点：公告不存在时 404（测试库无 kaoyan_notices 数据），资源型路由取不到 id 属预期，与 /kaoyan/schools/{school_id} 行为一致",
+    ),
+    "/api/quiz/questions/{question_id}": (
+        {404},
+        "M2-5 新端点：题目不存在时 404（测试库无题目数据），与同路径 PUT/DELETE 行为一致",
+    ),
     "/api/kaoyan/analysis/score-detail/{school_id}": ({404}, "测试库无院校数据（V10 分数全景）"),
     "/api/codebank/questions/{qid}": ({404}, "测试库题库数据顺序依赖（V15，单独文件跑有数据）"),
     "/api/netdisk/files/{file_id}": ({404}, "测试库无网盘文件"),
     "/api/netdisk/preview/{file_id}": ({404}, "测试库无网盘文件"),
-    "/api/netdisk/files/{file_id}/content": ({404}, "#26 新增：网盘原文服务端代理流，测试库无该行 → 404，与 /files/{file_id} 行为一致"),
-    "/api/documents/{doc_id}/raw": ({404}, "#26 新增：原文字节流。sample_data 的 doc id=1 是 IMA 式媒体号（本地从来没有该文件）→ 404 带人话原因，正是这条端点该有的行为；有真文件时 200 由 tests/test_document_file_stream.py 锁"),
+    "/api/netdisk/files/{file_id}/content": (
+        {404},
+        "#26 新增：网盘原文服务端代理流，测试库无该行 → 404，与 /files/{file_id} 行为一致",
+    ),
+    "/api/documents/{doc_id}/raw": (
+        {404},
+        "#26 新增：原文字节流。sample_data 的 doc id=1 是 IMA 式媒体号（本地从来没有该文件）→ 404 带人话原因，正是这条端点该有的行为；有真文件时 200 由 tests/test_document_file_stream.py 锁",
+    ),
     "/api/documents/{doc_id}/download": ({404}, "#26 新增：同上，下载分支"),
     "/api/netdisk/platform-config/{platform}": ({404}, "测试库无该平台配置"),
     "/api/ai/build-embeddings/status/{task_id}": ({404}, "内存态任务表为空，任务不存在"),
-    "/api/textbooks/{textbook_id}": ({404}, "S1 教材目录：生产库 26 本参考数据，测试库该表为空 → 资源型路由取不到 id 属预期，与 /kaoyan/schools/{school_id} 行为一致"),
+    "/api/textbooks/{textbook_id}": (
+        {404},
+        "S1 教材目录：生产库 26 本参考数据，测试库该表为空 → 资源型路由取不到 id 属预期，与 /kaoyan/schools/{school_id} 行为一致",
+    ),
     "/api/textbooks/school/{school_id}": ({404}, "S1：测试库无院校-教材关联数据，同 /textbooks/{textbook_id} 口径"),
     "/api/favorites/check": ({422}, "S7 新端点：item_type / item_id 为必填查询参数，巡检不带参 → 422 属正常入参校验"),
-    "/api/quality/eval-runs/{run_id}": ({404}, "评测任务不存在时 404：conftest 强制重定向到临时空库，eval_runs 无数据；已核实真库 eval_runs 有 id=1~5、路由定义于 routers/quality.py:47 且已在 main.py:240 注册，属测试库预期空态而非源码缺陷"),
-
+    "/api/quality/eval-runs/{run_id}": (
+        {404},
+        "评测任务不存在时 404：conftest 强制重定向到临时空库，eval_runs 无数据；已核实真库 eval_runs 有 id=1~5、路由定义于 routers/quality.py:47 且已在 main.py:240 注册，属测试库预期空态而非源码缺陷",
+    ),
+    "/api/admin/users/{user_id}": (
+        {404},
+        '测试库用户被 auth fixture 清空（断言"没有用户"），资源型路由取不到 id 属预期',
+    ),
+    "/api/memory/traces/{trace_id}": ({404}, "测试库无记忆轨迹，资源型路由取不到 id 属预期"),
+    "/api/auth/reset-link": ({422}, "重置链接校验：token 为必填查询参数，巡检不带参 → 422 属正常入参校验"),
     # ---- 新路由（papers / code_oj / admin_schools / admin_netdisk）巡检登记 ----
     # 422：必填查询参数，巡检不带参属正常入参校验
     "/api/papers/filters/years": ({422}, "缺必填查询参数 subject（routers/papers.py 年份筛选按科目取）"),
@@ -142,8 +176,14 @@ ALLOWED_4XX = {
     # 404：资源型路由，测试库对应表为空（数据无关规则：不往库里种假数据）
     "/api/papers/attempts/{attempt_id}/report": ({404}, "测试库无 paper_attempts 数据，作答记录不存在 → 404"),
     "/api/admin/schools/{school_id}": ({404}, "测试库无院校数据，与 /kaoyan/schools/{school_id} 行为一致"),
-    "/api/exam/sessions/{session_id}": ({404}, "测试库无 exam_sessions 数据（模考会话由用户创建），会话不存在 → 404，与 /papers/attempts/{attempt_id}/report 同口径"),
-    "/api/exam/sessions/{session_id}/report": ({404}, "P0-3 考后报告：测试库无 exam_sessions 数据，会话不存在 → 404，与 /api/exam/sessions/{session_id} 同口径；空作答时返回 200 空报告结构由 exam_report 单测覆盖"),
+    "/api/exam/sessions/{session_id}": (
+        {404},
+        "测试库无 exam_sessions 数据（模考会话由用户创建），会话不存在 → 404，与 /papers/attempts/{attempt_id}/report 同口径",
+    ),
+    "/api/exam/sessions/{session_id}/report": (
+        {404},
+        "P0-3 考后报告：测试库无 exam_sessions 数据，会话不存在 → 404，与 /api/exam/sessions/{session_id} 同口径；空作答时返回 200 空报告结构由 exam_report 单测覆盖",
+    ),
 }
 
 #: 路径变量名 -> sample_data 里真实存在的 id 字段。
@@ -179,6 +219,7 @@ KNOWN_SOURCE_BUGS: dict = {}
 # --------------------------------------------------------------------------- #
 # 辅助函数
 # --------------------------------------------------------------------------- #
+
 
 def _resolve_path(template: str, op: dict, ids: dict) -> str:
     """把 openapi 路径模板里的 ``{var}`` 替换为真实存在的 id。"""
@@ -232,6 +273,7 @@ def _describe(template: str, url: str, status, elapsed: float, body: str) -> str
 # 夹具
 # --------------------------------------------------------------------------- #
 
+
 @pytest.fixture(scope="module")
 def route_ids(sample_data):  # noqa: ARG001 - 触发数据种子
     """路径变量替换用的真实 id 集合。"""
@@ -247,6 +289,7 @@ def get_cases(app_module, route_ids):  # noqa: ARG001
 # --------------------------------------------------------------------------- #
 # 测试 1：全部 GET 路由逐条巡检
 # --------------------------------------------------------------------------- #
+
 
 def test_all_get_routes_contract(client, get_cases):  # noqa: ARG001
     """遍历所有 GET 路由：不许 5xx，4xx 必须在白名单，耗时不超预算。
@@ -269,9 +312,15 @@ def test_all_get_routes_contract(client, get_cases):  # noqa: ARG001
             resp = client.get(url)
         except Exception as exc:  # noqa: BLE001 - 客户端层异常也算失败
             elapsed = time.perf_counter() - start
-            failures.append(_describe(
-                template, url, f"客户端异常 {type(exc).__name__}", elapsed, str(exc),
-            ))
+            failures.append(
+                _describe(
+                    template,
+                    url,
+                    f"客户端异常 {type(exc).__name__}",
+                    elapsed,
+                    str(exc),
+                )
+            )
             continue
         elapsed = time.perf_counter() - start
         checked += 1
@@ -286,36 +335,51 @@ def test_all_get_routes_contract(client, get_cases):  # noqa: ARG001
         if resp.status_code >= 400:
             allowed = ALLOWED_4XX.get(template)
             if allowed is None:
-                failures.append(_describe(
-                    template, url, resp.status_code, elapsed,
-                    body + "\n  >> 该 4xx 不在 ALLOWED_4XX 白名单中（新增容差需写明理由）",
-                ))
+                failures.append(
+                    _describe(
+                        template,
+                        url,
+                        resp.status_code,
+                        elapsed,
+                        body + "\n  >> 该 4xx 不在 ALLOWED_4XX 白名单中（新增容差需写明理由）",
+                    )
+                )
             elif resp.status_code not in allowed[0]:
-                failures.append(_describe(
-                    template, url, resp.status_code, elapsed,
-                    body + f"\n  >> 白名单仅允许 {sorted(allowed[0])}，理由：{allowed[1]}",
-                ))
+                failures.append(
+                    _describe(
+                        template,
+                        url,
+                        resp.status_code,
+                        elapsed,
+                        body + f"\n  >> 白名单仅允许 {sorted(allowed[0])}，理由：{allowed[1]}",
+                    )
+                )
             continue
 
         # --- 断言 3：响应时间在预算内 ---
         if elapsed > budget:
-            failures.append(_describe(
-                template, url, resp.status_code, elapsed,
-                body + f"\n  >> 耗时 {elapsed * 1000:.1f}ms 超过预算 {budget * 1000:.0f}ms",
-            ))
+            failures.append(
+                _describe(
+                    template,
+                    url,
+                    resp.status_code,
+                    elapsed,
+                    body + f"\n  >> 耗时 {elapsed * 1000:.1f}ms 超过预算 {budget * 1000:.0f}ms",
+                )
+            )
 
     assert checked > 0, "没有收集到任何 GET 路由，契约测试形同虚设"
     if failures:
         detail = "\n".join(failures)
         raise AssertionError(
-            f"GET 路由巡检失败：{len(failures)}/{checked} 个接口不合规"
-            f"（跳过 {skipped} 个副作用接口）\n{detail}"
+            f"GET 路由巡检失败：{len(failures)}/{checked} 个接口不合规（跳过 {skipped} 个副作用接口）\n{detail}"
         )
 
 
 # --------------------------------------------------------------------------- #
 # 测试 2：覆盖率守卫 —— 确保没有新 GET 路由被静默漏掉
 # --------------------------------------------------------------------------- #
+
 
 def test_no_get_route_is_silently_unguarded(app_module, get_cases):
     """守卫：每个 GET 路由都必须被某条用例覆盖（巡检 / 已知Bug / 副作用排除）。
@@ -328,8 +392,7 @@ def test_no_get_route_is_silently_unguarded(app_module, get_cases):
     accounted = covered | set(SKIP_PATHS) | set(KNOWN_SOURCE_BUGS)
     leaked = all_get - accounted
     assert not leaked, (
-        f"以下 GET 路由未被任何用例覆盖（既不在巡检集合，也不在 "
-        f"SKIP_PATHS / KNOWN_SOURCE_BUGS 中）：{sorted(leaked)}"
+        f"以下 GET 路由未被任何用例覆盖（既不在巡检集合，也不在 SKIP_PATHS / KNOWN_SOURCE_BUGS 中）：{sorted(leaked)}"
     )
     # 反向：排除规则里不该有已不存在的路由（避免死规则掩盖新问题）
     stale = (set(SKIP_PATHS) | set(KNOWN_SOURCE_BUGS)) - all_get
@@ -358,12 +421,8 @@ def test_critical_post_routes_are_registered(app_module):
     """
     spec = app_module.openapi()
     paths = spec["paths"]
-    missing = [p for p in CRITICAL_POST_ROUTES
-               if p not in paths or "post" not in paths[p]]
-    assert not missing, (
-        "以下前端在调的 POST 接口未在路由表里（多半是装饰器漏写/被注释吞掉）："
-        f"{missing}"
-    )
+    missing = [p for p in CRITICAL_POST_ROUTES if p not in paths or "post" not in paths[p]]
+    assert not missing, f"以下前端在调的 POST 接口未在路由表里（多半是装饰器漏写/被注释吞掉）：{missing}"
 
 
 def test_no_router_decorator_swallowed_by_comment(_routers_dir):
@@ -384,9 +443,7 @@ def test_no_router_decorator_swallowed_by_comment(_routers_dir):
                     s = line.strip()
                     if s.startswith("#") and "@router." in s:
                         offenders.append(f"{path}:{lineno}: {s[:90]}")
-    assert not offenders, (
-        "装饰器被并进注释行，路由不会注册：\n  " + "\n  ".join(offenders)
-    )
+    assert not offenders, "装饰器被并进注释行，路由不会注册：\n  " + "\n  ".join(offenders)
 
 
 @pytest.fixture(scope="module")
@@ -398,23 +455,21 @@ def _routers_dir():
 
 def test_skip_paths_actually_have_side_effects():
     """守卫：SKIP_PATHS 必须小而明确。超过 12 条说明排除面过宽，检测力下降。"""
-    assert len(SKIP_PATHS) <= 12, (
-        f"SKIP_PATHS 有 {len(SKIP_PATHS)} 条，排除面过宽会掩盖真实缺陷：{sorted(SKIP_PATHS)}"
-    )
+    assert len(SKIP_PATHS) <= 12, f"SKIP_PATHS 有 {len(SKIP_PATHS)} 条，排除面过宽会掩盖真实缺陷：{sorted(SKIP_PATHS)}"
 
 
 def test_allowed_4xx_entries_have_reasons():
     """守卫：白名单每条都必须写理由，否则会变成垃圾桶。"""
     for path, (codes, reason) in ALLOWED_4XX.items():
         assert path.startswith("/api/"), f"白名单路径应以 /api 开头：{path}"
-        assert codes and all(400 <= c < 500 for c in codes), \
-            f"白名单只允许 4xx，{path} 写了 {codes}"
+        assert codes and all(400 <= c < 500 for c in codes), f"白名单只允许 4xx，{path} 写了 {codes}"
         assert reason and len(reason) >= 4, f"白名单条目缺理由：{path}"
 
 
 # --------------------------------------------------------------------------- #
 # 测试 3：响应体必须是合法 JSON（防止返回 HTML 错误页 / 被中间件打坏）
 # --------------------------------------------------------------------------- #
+
 
 def test_get_routes_return_json(client, get_cases):  # noqa: ARG001
     """所有巡检通过的 GET 接口必须返回可解析的 JSON。
@@ -437,9 +492,7 @@ def test_get_routes_return_json(client, get_cases):  # noqa: ARG001
         if resp.status_code == 204:
             continue
         if "json" not in ctype.lower():
-            bad.append(
-                f"  {template} -> content-type={ctype!r} 非 JSON，body前120字={resp.text[:120]!r}"
-            )
+            bad.append(f"  {template} -> content-type={ctype!r} 非 JSON，body前120字={resp.text[:120]!r}")
             continue
         try:
             resp.json()
@@ -452,6 +505,7 @@ def test_get_routes_return_json(client, get_cases):  # noqa: ARG001
 # --------------------------------------------------------------------------- #
 # 测试 4：真实库防污染守卫
 # --------------------------------------------------------------------------- #
+
 
 def test_real_database_not_polluted(client, real_db_mtime_guard):  # noqa: ARG001
     """确保整个测试会话没有写过一次真实库。
@@ -471,23 +525,16 @@ def test_real_database_not_polluted(client, real_db_mtime_guard):  # noqa: ARG00
     # 1) 绝不指向生产 PG 库（最高优先级红线）
     if url.startswith("postgresql"):
         db_name = url.rsplit("/", 1)[-1].split("?")[0]
-        assert db_name != _c.PROD_PG_DB, (
-            f"测试引擎竟指向生产 PG 库 {db_name!r}（{url}），可能污染真实数据！"
-        )
-        assert db_name == _c.TEST_PG_DB, (
-            f"测试 PG 引擎指向 {db_name!r}，期望专用测试库 {_c.TEST_PG_DB!r}"
-        )
+        assert db_name != _c.PROD_PG_DB, f"测试引擎竟指向生产 PG 库 {db_name!r}（{url}），可能污染真实数据！"
+        assert db_name == _c.TEST_PG_DB, f"测试 PG 引擎指向 {db_name!r}，期望专用测试库 {_c.TEST_PG_DB!r}"
     else:
         # 2) SQLite 分支必须落在临时目录内
-        assert "kaoyan_qa_testdb_" in url, (
-            f"测试引擎竟指向 {url}，可能污染真实数据！"
-        )
+        assert "kaoyan_qa_testdb_" in url, f"测试引擎竟指向 {url}，可能污染真实数据！"
     # 3) 真实 SQLite 库 mtime 未变（若文件存在）
     if real_db_mtime_guard is not None and os.path.exists(_c.REAL_DB_PATH):
         now_mtime = os.stat(_c.REAL_DB_PATH).st_mtime_ns
         assert now_mtime == real_db_mtime_guard, (
-            f"真实库 {_c.REAL_DB_PATH} 的 mtime 变了："
-            f"{real_db_mtime_guard} -> {now_mtime}，测试污染了用户数据！"
+            f"真实库 {_c.REAL_DB_PATH} 的 mtime 变了：{real_db_mtime_guard} -> {now_mtime}，测试污染了用户数据！"
         )
 
 
@@ -495,23 +542,27 @@ def test_real_database_not_polluted(client, real_db_mtime_guard):  # noqa: ARG00
 # 测试 5：核心只读接口必须 200（针对已知 5xx 缺陷的定点回归）
 # --------------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("path", [
-    "/api/health",
-    "/api/dashboard",
-    "/api/tasks",
-    "/api/goals",
-    "/api/quiz/questions",
-    "/api/errors",
-    "/api/exam/blueprints",     # 曾因裸 SQL 字符串 → 500（exam.py:95）
-    "/api/gate/stats",           # 曾因裸 SQL 字符串 → 500（gate.py:65-72）
-    "/api/ai/providers",
-    "/api/documents",
-    "/api/papers",
-    "/api/words",
-    "/api/taxonomy/tree",
-    "/api/review/progress",
-    "/api/planner/ebbinghaus",
-])
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/health",
+        "/api/dashboard",
+        "/api/tasks",
+        "/api/goals",
+        "/api/quiz/questions",
+        "/api/errors",
+        "/api/exam/blueprints",  # 曾因裸 SQL 字符串 → 500（exam.py:95）
+        "/api/gate/stats",  # 曾因裸 SQL 字符串 → 500（gate.py:65-72）
+        "/api/ai/providers",
+        "/api/documents",
+        "/api/papers",
+        "/api/words",
+        "/api/taxonomy/tree",
+        "/api/review/progress",
+        "/api/planner/ebbinghaus",
+    ],
+)
 def test_critical_get_route_ok(client, path):
     """核心只读接口必须 200 —— 这些是前端首屏依赖的，坏了页面直接白屏。"""
     start = time.perf_counter()
@@ -524,6 +575,7 @@ def test_critical_get_route_ok(client, path):
 # 测试 6：已知源码 Bug 的定点跟踪
 # --------------------------------------------------------------------------- #
 
+
 def test_no_known_bugs_outstanding():
     """守卫：已知 Bug 清单必须及时清空。
 
@@ -534,9 +586,7 @@ def test_no_known_bugs_outstanding():
 
     若将来这条失败，说明有人登记了新 Bug 但一直没销账。
     """
-    assert not KNOWN_SOURCE_BUGS, (
-        f"以下已知 Bug 尚未销账，请确认是否已修复并移除：{sorted(KNOWN_SOURCE_BUGS)}"
-    )
+    assert not KNOWN_SOURCE_BUGS, f"以下已知 Bug 尚未销账，请确认是否已修复并移除：{sorted(KNOWN_SOURCE_BUGS)}"
 
 
 def test_known_source_bug_guard_is_functional(client, app_module, route_ids):
@@ -545,7 +595,7 @@ def test_known_source_bug_guard_is_functional(client, app_module, route_ids):
     目的：防止"因为清单空了所以哨兵形同虚设"—— 万一将来又登记了新 Bug，
     这条确保那条哨兵真的会跑、真的会失败。
     """
-    sentinel = "/api/review/stats"   # 曾是 500 的真实缺陷点
+    sentinel = "/api/review/stats"  # 曾是 500 的真实缺陷点
     spec = app_module.openapi()
     assert sentinel in spec["paths"], "哨兵自测用的路径不存在，测试本身失效"
 
@@ -553,9 +603,7 @@ def test_known_source_bug_guard_is_functional(client, app_module, route_ids):
     resp = client.get(url)
     # 该接口已修复 → 现在是 2xx。若哪天回归成 500，本断言会失败，
     # 同时 test_regression_p0.TestReviewStats 也会红，形成双重保险。
-    assert resp.status_code == 200, (
-        _describe(sentinel, url, resp.status_code, 0.0, resp.text)
-    )
+    assert resp.status_code == 200, _describe(sentinel, url, resp.status_code, 0.0, resp.text)
 
 
 def _resolve_bug_url(template: str, spec: dict, ids: dict) -> str:
@@ -583,7 +631,5 @@ def test_known_source_bug_fixed(client, app_module, route_ids, template):  # noq
     desc = KNOWN_SOURCE_BUGS[template]
 
     if resp.status_code >= 500:
-        pytest.xfail(
-            _describe(template, url, resp.status_code, elapsed, resp.text) + f"\n  >> 缺陷：{desc}"
-        )
+        pytest.xfail(_describe(template, url, resp.status_code, elapsed, resp.text) + f"\n  >> 缺陷：{desc}")
     assert resp.status_code < 500

@@ -1,0 +1,8 @@
+{
+  "name": "kaoyan-engineering-guard",
+  "displayName": "考研平台工程守卫",
+  "version": "0.1.0",
+  "description": "硕途考研平台（FastAPI + React）已实测验证的工程约束守卫：迁移账本、测试库隔离、接口形状对照、空态交付与验证纪律。",
+  "author": { "name": "研途项目会话沉淀" },
+  "keywords": ["qoder-plugin", "kaoyan", "fastapi", "react", "verification"]
+}

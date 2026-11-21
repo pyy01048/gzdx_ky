@@ -14,6 +14,7 @@
 
 红线：只用 conftest 的临时库，绝不碰 D:\\平台\\database\\kaoyan.db。
 """
+
 from __future__ import annotations
 
 import ast
@@ -41,9 +42,16 @@ def vocab_docs(db_schema):  # noqa: ARG001 - 只需要建好表
         # doc_type 是 ENUM('raw','note','index')，写 'txt' 在 PG 下直接
         # InvalidTextRepresentation（conftest.py:374 已记过这个坑）。
         # file_type 才是扩展名，两者不要混。
-        d = Document(file_name=fname, file_path=fname, file_type="txt", size=10,
-                     subject=subject, doc_type="raw", index_status="pending",
-                     content="考研复习讲义正文")
+        d = Document(
+            file_name=fname,
+            file_path=fname,
+            file_type="txt",
+            size=10,
+            subject=subject,
+            doc_type="raw",
+            index_status="pending",
+            content="考研复习讲义正文",
+        )
         db.add(d)
         db.flush()
         ids[key] = d.id
@@ -68,8 +76,7 @@ def test_group_expands_canonical_but_not_the_reverse():
 
     group = set(doc_subject_group("数学"))
     assert group == {"数学", "公共课-数学"}, "选规范名要连别名一起命中"
-    assert set(doc_subject_group("公共课-数学")) == {"公共课-数学"}, \
-        "选别名只查那批别名文档，不能反过来吞掉规范名"
+    assert set(doc_subject_group("公共课-数学")) == {"公共课-数学"}, "选别名只查那批别名文档，不能反过来吞掉规范名"
 
 
 def test_combined_label_expands_to_both_sides():
@@ -99,17 +106,16 @@ def test_not_aliased_labels_have_measured_reasons():
 # 2. 接口层：折叠是加法
 # --------------------------------------------------------------------------- #
 def test_documents_filter_returns_alias_docs(client, vocab_docs):
-    r = client.get("/api/documents", params={"subject": "数学"})
+    r = client.get("/api/documents", params={"subject": "数学", "page_size": 100})
     assert r.status_code == 200
-    ids = {d["id"] for d in r.json()}
-    assert vocab_docs["std"] in ids and vocab_docs["alias"] in ids, \
-        "选「数学」必须同时给出标着「公共课-数学」的那篇"
+    ids = {d["id"] for d in r.json()["items"]}
+    assert vocab_docs["std"] in ids and vocab_docs["alias"] in ids, "选「数学」必须同时给出标着「公共课-数学」的那篇"
     assert vocab_docs["combined"] not in ids and vocab_docs["unknown"] not in ids
 
 
 def test_documents_filter_on_alias_is_narrow(client, vocab_docs):
-    r = client.get("/api/documents", params={"subject": "公共课-数学"})
-    ids = {d["id"] for d in r.json()}
+    r = client.get("/api/documents", params={"subject": "公共课-数学", "page_size": 100})
+    ids = {d["id"] for d in r.json()["items"]}
     assert vocab_docs["alias"] in ids
     assert vocab_docs["std"] not in ids, "别名查询反向吞掉规范名就是重复计数"
 
@@ -139,8 +145,9 @@ def test_merged_count_does_not_double_count(client, vocab_docs):
     「数学 + 公共课-数学」的合并数必须等于两者原值数相加，不多算一次。"""
     r = client.get("/api/documents/subjects")
     rows = {s["name"]: s for s in r.json()["subjects"]}
-    assert rows["数学"]["merged_document_count"] == \
-        rows["数学"]["document_count"] + rows["公共课-数学"]["document_count"]
+    assert (
+        rows["数学"]["merged_document_count"] == rows["数学"]["document_count"] + rows["公共课-数学"]["document_count"]
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -153,14 +160,17 @@ def test_alignment_rows_classify_each_case(db_schema, vocab_docs):  # noqa: ARG0
 
     db = SessionLocal()
     try:
-        aliased = (db.query(Document).filter(Document.id == vocab_docs["alias"]).first())
+        aliased = db.query(Document).filter(Document.id == vocab_docs["alias"]).first()
         aliased.index_status = "indexed"
-        db.add(KnowledgeChunk(document_id=aliased.id, doc_name=aliased.file_name,
-                              chunk_id=0, subject="数学", text="可检索的分块"))
+        db.add(
+            KnowledgeChunk(
+                document_id=aliased.id, doc_name=aliased.file_name, chunk_id=0, subject="数学", text="可检索的分块"
+            )
+        )
         db.commit()
 
         rows = {r["subject"]: r for r in sv.alignment_rows(db)}
-        for key, label, kind in [
+        for _key, label, kind in [
             ("alias", "公共课-数学", "alias_folded"),
             ("combined", "数模电", "combined_expanded"),
             ("unknown", "QA-未登记写法", "unknown_mapping"),
@@ -179,8 +189,7 @@ def test_alignment_rows_classify_each_case(db_schema, vocab_docs):  # noqa: ARG0
         assert rows["公共课-数学"]["documents_with_chunks"] == 1
         assert rows["公共课-数学"]["own_chunks"] == 1
     finally:
-        db.execute(text("DELETE FROM knowledge_chunks WHERE document_id=:i"),
-                   {"i": vocab_docs["alias"]})
+        db.execute(text("DELETE FROM knowledge_chunks WHERE document_id=:i"), {"i": vocab_docs["alias"]})
         db.commit()
         db.close()
 
@@ -194,8 +203,8 @@ def test_summary_never_counts_unfoldable_as_foldable(db_schema, vocab_docs):  # 
         s = sv.summary(db)
         kinds = {r["kind"] for r in s["rows"]}
         assert s["foldable_documents"] == sum(
-            r["documents"] for r in s["rows"]
-            if r["kind"] in ("alias_folded", "combined_expanded"))
+            r["documents"] for r in s["rows"] if r["kind"] in ("alias_folded", "combined_expanded")
+        )
         assert "unknown_mapping" in kinds
         assert s["unaligned_documents"] >= s["foldable_documents"]
         assert "documents.subject 未改动" in s["note"]
@@ -206,31 +215,37 @@ def test_summary_never_counts_unfoldable_as_foldable(db_schema, vocab_docs):  # 
 # --------------------------------------------------------------------------- #
 # 4. 只读性 + 红线
 # --------------------------------------------------------------------------- #
-_WRITE_METHODS = {"add", "add_all", "commit", "rollback", "flush", "delete",
-                  "update", "execute", "bulk_save_objects", "bulk_insert_mappings"}
+_WRITE_METHODS = {
+    "add",
+    "add_all",
+    "commit",
+    "rollback",
+    "flush",
+    "delete",
+    "update",
+    "execute",
+    "bulk_save_objects",
+    "bulk_insert_mappings",
+}
 
 
 def test_subject_vocab_is_read_only():
     """这一层的全部价值就在于「不改库」：出现任何写调用，人批前提就没了。"""
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "services", "subject_vocab.py")
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services", "subject_vocab.py")
     tree = ast.parse(open(path, encoding="utf-8-sig").read(), filename=path)
-    bad = sorted({n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)
-                  and n.attr in _WRITE_METHODS})
+    bad = sorted({n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr in _WRITE_METHODS})
     assert not bad, f"subject_vocab 出现写库调用：{bad}"
 
 
 def test_major_coverage_does_not_use_folding():
     """择校可靠度（#29）：公共课折叠进覆盖判定等于给学校刷语料覆盖。"""
     backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    src = open(os.path.join(backend, "services", "major_coverage.py"),
-               encoding="utf-8-sig").read()
+    src = open(os.path.join(backend, "services", "major_coverage.py"), encoding="utf-8-sig").read()
     assert "subject_vocab" not in src
 
 
 def test_subject_registry_is_not_touched_by_folding():
     """注册器被 4 个 /subjects 端点共用，折叠只加在 documents 路由的响应里。"""
     backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    src = open(os.path.join(backend, "services", "subject_registry.py"),
-               encoding="utf-8-sig").read()
+    src = open(os.path.join(backend, "services", "subject_registry.py"), encoding="utf-8-sig").read()
     assert "subject_vocab" not in src

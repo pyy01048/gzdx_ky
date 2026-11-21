@@ -845,7 +845,8 @@ button.v3-chip:hover {
 }
 
 .v3-empty__title {
-  font-size: var(--v3-fs-15, 15px);
+  margin: 0;
+  font-size: var(--v3-fs-16);
   font-weight: 650;
   color: var(--v3-text);
 }
@@ -1172,6 +1173,25 @@ button.v3-chip:hover {
 .v3-toast--warn { border-color: color-mix(in srgb, var(--v3-warning) 40%, var(--v3-outline)); }
 
 .v3-toast__icon { flex: none; display: grid; place-items: center; }
+.v3-toast__msg { flex: 1; min-width: 0; }
+
+/* 关闭按钮：命中区 44×44（FE_REVIEW 触控标准），负边距抵消胶囊内边距，
+   视觉上仍是紧凑的小叉，不撑高 Toast */
+.v3-toast__close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: -12px -12px -12px -4px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--v3-text-3);
+  cursor: pointer;
+  transition: background var(--v3-dur-2), color var(--v3-dur-2);
+}
+.v3-toast__close:hover { background: var(--v3-surface-1); color: var(--v3-text); }
 
 /* Alert */
 .v3-alert {

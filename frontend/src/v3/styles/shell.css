@@ -18,10 +18,9 @@
   display: flex;
   flex-direction: column;
   padding: 14px 12px 16px;
-  background: color-mix(in srgb, var(--v3-surface) 82%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--v3-outline) 72%, transparent);
-  backdrop-filter: blur(22px) saturate(1.25);
-  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  /* FE_REVIEW 阶段2：实体表面，不再整栏毛玻璃 */
+  background: var(--v3-surface);
+  border-right: 1px solid var(--v3-outline);
   transition: width var(--v3-dur-3) var(--v3-ease-emphasized), transform var(--v3-dur-3) var(--v3-ease-emphasized);
 }
 
@@ -96,6 +95,13 @@
   opacity: 0;
   pointer-events: none;
 }
+/* 收起时分组按钮整体不可聚焦（图标导航仍完整可用） */
+.v3-sidebar[data-collapsed="true"] .v3-nav-group__label {
+  visibility: hidden;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+}
 
 .v3-sidebar[data-collapsed="true"] .v3-brand {
   justify-content: center;
@@ -118,16 +124,34 @@
   gap: 2px;
 }
 
+/* 分组标题是可点击的折叠按钮（P1-1）：标题始终可见，条目显隐由 data-open 驱动 */
 .v3-nav-group__label {
-  padding: 0 14px 6px;
-  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 14px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--v3-fs-12);
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
   color: var(--v3-text-3);
-  text-transform: uppercase;
+  text-align: left;
   white-space: nowrap;
-  transition: opacity var(--v3-dur-2) var(--v3-ease-standard);
+  transition: opacity var(--v3-dur-2) var(--v3-ease-standard), color var(--v3-dur-2);
 }
+.v3-nav-group__label:hover { color: var(--v3-text-2); }
+.v3-nav-group__chev {
+  flex: none;
+  transition: transform var(--v3-dur-2) var(--v3-ease-standard);
+}
+.v3-nav-group[data-open="true"] .v3-nav-group__chev { transform: rotate(90deg); }
+.v3-nav-group[data-open="false"] .v3-nav-item { display: none; }
 
 .v3-nav-item {
   position: relative;
@@ -334,10 +358,8 @@
   align-items: center;
   gap: 14px;
   padding: 0 var(--v3-gutter);
-  background: color-mix(in srgb, var(--v3-bg) 72%, transparent);
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  border-bottom: 1px solid color-mix(in srgb, var(--v3-outline) 60%, transparent);
+  background: var(--v3-bg);
+  border-bottom: 1px solid var(--v3-outline);
   transition: left var(--v3-dur-3) var(--v3-ease-emphasized);
 }
 
@@ -350,6 +372,9 @@
   align-items: center;
   gap: 7px;
   min-width: 0;
+  /* 面包屑是定位信息，宁可让搜索框收缩也不能被压成逐字竖排 */
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: var(--v3-fs-13);
   color: var(--v3-text-3);
 }
@@ -364,9 +389,13 @@
 }
 
 .v3-topbar__search {
-  flex: 1;
+  flex: 1 1 120px;
+  min-width: 0;
   max-width: 300px;
   margin-left: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* ---------- 全局学科选择器（2026-10-24 全新展示） ---------- */
@@ -433,6 +462,12 @@
   margin-left: 4px;
 }
 
+/* 抽屉断点（<768）专属控件：汉堡 + 搜索图标。
+   不复用 .v3-show-mobile（860px），否则 768–860 会出现一个点了没反应的汉堡。 */
+.v3-topbar__mobile-only {
+  display: none;
+}
+
 /* ---------- Mobile nav ---------- */
 .v3-mobile-nav {
   display: none;
@@ -441,14 +476,12 @@
   right: 12px;
   bottom: 12px;
   z-index: var(--v3-z-topbar);
-  height: 62px;
+  height: 64px;
   padding: 6px 8px;
   border-radius: var(--v3-r-2xl);
-  background: color-mix(in srgb, var(--v3-surface) 86%, transparent);
+  background: var(--v3-surface);
   border: 1px solid var(--v3-outline);
   box-shadow: var(--v3-shadow-3);
-  backdrop-filter: blur(22px) saturate(1.2);
-  -webkit-backdrop-filter: blur(22px) saturate(1.2);
 }
 
 .v3-mobile-nav__inner {
@@ -469,8 +502,9 @@
   border-radius: var(--v3-r-lg);
   background: transparent;
   color: var(--v3-text-3);
-  font-size: 10px;
+  font-size: var(--v3-fs-12);
   font-weight: 600;
+  text-decoration: none;
 }
 
 .v3-mobile-nav__item.is-active {
@@ -867,7 +901,93 @@
   }
 }
 
-@media (max-width: 920px) {
+/* 中等宽度：顶栏放下面包屑+学科+搜索+操作后已无余量，
+   板块切换交给侧栏/底部导航，避免把面包屑挤成竖排 */
+@media (max-width: 1200px) {
+  .v3-module-switcher {
+    display: none;
+  }
+}
+
+/* ── 768–1023：76px 图标导轨（不是抽屉）─────────────────────────────────
+   R1：图标 + 12px 短标签全部可见，分组强制展开；底部导航不出现。 */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .v3-sidebar,
+  .v3-sidebar[data-collapsed="true"] {
+    width: var(--v3-sidebar-collapsed);
+    padding: 14px 8px 16px;
+    transform: none;
+  }
+
+  .v3-main,
+  .v3-main[data-collapsed="true"] {
+    margin-left: var(--v3-sidebar-collapsed);
+  }
+
+  .v3-topbar,
+  .v3-topbar[data-collapsed="true"] {
+    left: var(--v3-sidebar-collapsed);
+  }
+
+  .v3-sidebar .v3-brand { justify-content: center; padding: 0; }
+  .v3-sidebar .v3-brand__word { display: none; }
+
+  /* 分组标题：12px 可见短标签，居中，无折叠箭头 */
+  .v3-sidebar .v3-nav-group__label,
+  .v3-sidebar[data-collapsed="true"] .v3-nav-group__label {
+    visibility: visible;
+    height: auto;
+    padding: 2px 0 4px;
+    overflow: visible;
+    opacity: 1;
+    pointer-events: auto;
+    justify-content: center;
+    font-size: var(--v3-fs-12);
+    letter-spacing: 0.02em;
+  }
+  .v3-sidebar .v3-nav-group__chev { display: none; }
+  /* 导轨里所有条目强制可见（折叠态由 CSS 解除） */
+  .v3-nav-group[data-open="false"] .v3-nav-item { display: flex; }
+
+  /* 条目：图标在上、12px 短标签在下的竖排小格 */
+  .v3-sidebar .v3-nav-item,
+  .v3-sidebar[data-collapsed="true"] .v3-nav-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    height: auto;
+    min-height: 56px;
+    padding: 7px 2px;
+    border-radius: var(--v3-r-sm);
+  }
+  .v3-sidebar .v3-nav-item__text,
+  .v3-sidebar[data-collapsed="true"] .v3-nav-item__text {
+    display: block;
+    flex: none;
+    max-width: 64px;
+    opacity: 1;
+    font-size: var(--v3-fs-12);
+    line-height: 1.2;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .v3-sidebar .v3-nav-item__badge,
+  .v3-sidebar[data-collapsed="true"] .v3-nav-item__badge { display: none; }
+  .v3-sidebar .v3-nav-item.is-active::before { display: none; }
+
+  .v3-sidebar .v3-user-card { justify-content: center; padding: 8px 0; }
+  .v3-sidebar .v3-user-card__meta { display: none; }
+  .v3-sidebar .v3-sidebar__collapse { justify-content: center; }
+  .v3-sidebar .v3-sidebar__collapse-label { display: none; }
+
+  .v3-topbar__search { max-width: 180px; }
+  .v3-mobile-nav { display: none; }
+}
+
+/* ── <768：抽屉 + 底部导航 ─────────────────────────────────────────────── */
+@media (max-width: 767px) {
   .v3-sidebar {
     transform: translateX(-100%);
     width: 280px !important;
@@ -913,6 +1033,16 @@
     display: none;
   }
 
+  .v3-topbar__mobile-only {
+    display: inline-grid;
+  }
+
+  /* 触控目标 ≥44px（评审 P2）：顶栏图标按钮在移动端整体放大 */
+  .v3-topbar .v3-iconbtn {
+    width: 44px;
+    height: 44px;
+  }
+
   .v3-subject-switcher__select {
     max-width: 108px;
   }
@@ -951,5 +1081,16 @@
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     animation: v3-fade-in var(--v3-dur-2) var(--v3-ease-standard) both;
+  }
+}
+
+/* ── <480：顶栏只留 汉堡 / 面包屑 / 搜索 / 主题 / 头像，375px 不溢出 ────── */
+@media (max-width: 479px) {
+  .v3-topbar {
+    gap: 4px;
+  }
+  .v3-subject-switcher,
+  .v3-topbar__bell {
+    display: none;
   }
 }

@@ -4,6 +4,7 @@
 不靠每个 router 自己记得加 ``Depends``。管理端接口按路径分类集中在这里，
 改分类只改这一张表。
 """
+
 from __future__ import annotations
 
 import os
@@ -16,33 +17,60 @@ from sqlalchemy.orm import Session
 from utils.exceptions import BusinessException, ErrorCode
 from utils.security import ROLE_ADMIN, current_user
 
-PUBLIC_PATHS = frozenset({
-    "/api/health",
-    "/api/auth/status",
-    "/api/auth/login",
-    "/api/auth/refresh",
-    "/api/auth/logout",
-})
+PUBLIC_PATHS = frozenset(
+    {
+        "/api/health",
+        "/api/auth/status",
+        "/api/auth/login",
+        "/api/auth/refresh",
+        "/api/auth/logout",
+        # 邮箱注册 / 验证 / 找回密码（《用户管理界面.md》，未登录场景）
+        "/api/auth/register",
+        "/api/auth/resend-verification",
+        "/api/auth/verify-email",
+        "/api/auth/forgot-password",
+        "/api/auth/reset-link",
+        "/api/auth/reset-password",
+        "/api/auth/reset-password/inspect",
+        "/api/auth/delete-cancel",
+    }
+)
 
 # 访客（未登录）可读的共享数据前缀：只放行 GET/HEAD，写操作仍然一律要求登录。
 # 选择口径：纯「公共参考数据」（院校/通知/教材/知识树/真题卷索引），
 # 不含任何个人学习记录（任务/单词/卡片/错题/收藏/计划全部仍需登录）。
 # 注意：不得与 ADMIN_PREFIXES 重叠 —— 管理端读接口不给访客。
 GUEST_READ_PREFIXES: Tuple[str, ...] = (
-    "/api/kaoyan",      # 院校库/通知/分数线/散点图等共享择校数据
-    "/api/taxonomy",    # 科目与知识点树（知识图谱只读）
-    "/api/textbooks",   # 教材目录
-    "/api/papers",      # 真题卷索引（作答/保存仍需登录）
+    "/api/kaoyan",  # 院校库/通知/分数线/散点图等共享择校数据
+    "/api/taxonomy",  # 科目与知识点树（知识图谱只读）
+    "/api/textbooks",  # 教材目录
+    "/api/papers",  # 真题卷索引（作答/保存仍需登录）
+    # 2026-11-20 访客扩容：以下两组 GET 全部是共享数据、路由内部零 current_user 依赖
+    "/api/codebank",  # 复试代码题库：科目/题目/全景/考频策略（写接口本就 require_admin）
+    "/api/plan",  # 考研规划：18 节点公共招生日历 + 阶段规划；路由已改 optional_user，
+    #               访客 goal 恒为空（plan.py 对 user=None 显式短路，防 scoped(None) 恒真泄露）
 )
 # /api/quiz 与 /api/notices 已移出白名单（2026-10-21 体检）：这两组 GET 内部
 # 全部 Depends(current_user)（个人题目状态/未读星标），白名单只会制造
 # 「声明开放、实际 401」的死配置。访客可读的公共通知走 /api/kaoyan/notices。
 # 例外：真题索引页 /exam 的两个纯元数据端点不依赖 current_user、也不含个人
 # 状态，按精确路径放行；/api/quiz/subjects 带个人错题数，仍不给访客。
-GUEST_READ_ENDPOINTS = frozenset({
-    "/api/quiz/papers-index",
-    "/api/quiz/years",
-})
+GUEST_READ_ENDPOINTS = frozenset(
+    {
+        "/api/quiz/papers-index",
+        "/api/quiz/years",
+        # 2026-11-20 访客扩容：学习文库（/library）只依赖这三个读口。
+        # documents 是共享语料（无 user_id 字段）；列表/科目聚合/解析正文均无个人数据。
+        # 刻意不给整段 /api/documents 前缀：raw/download/snapshot/export 等
+        # 原文与维护类读取仍留给登录用户，访客只看不下载。
+        "/api/documents",
+        "/api/documents/subjects",
+    }
+)
+
+# 动态路径的访客只读例外（精确正则，避免前缀放行过宽）：
+# 文库阅读页 GET /api/documents/{id}/content —— 仅解析后的文本预览。
+GUEST_READ_PATTERNS: Tuple[re.Pattern, ...] = (re.compile(r"^/api/documents/\d+/content/?$"),)
 
 # 访客白名单内的例外：管理工具性质的读取也不给访客
 GUEST_READ_DENY_PREFIXES: Tuple[str, ...] = (
@@ -60,9 +88,12 @@ def is_guest_readable(method: str, path: str) -> bool:
         return False
     if path.rstrip("/") in GUEST_READ_ENDPOINTS:
         return True
+    if any(rx.match(path) for rx in GUEST_READ_PATTERNS):
+        return True
     if not any(path == p or path.startswith(p + "/") for p in GUEST_READ_PREFIXES):
         return False
     return not any(path.startswith(p) for p in GUEST_READ_DENY_PREFIXES)
+
 
 # 任何方法都只给管理员
 ADMIN_PREFIXES: Tuple[str, ...] = (

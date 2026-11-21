@@ -131,9 +131,12 @@ describe('Hub 今日聚合中枢', () => {
     expect(document.querySelector('.v3-focus')).not.toBeNull()
     expect(screen.getAllByText('极限').length).toBeGreaterThan(0)
     expect(screen.getByText('高数第一章')).toBeInTheDocument()
-    expect(screen.getByText('数据口径与接口体检')).toBeInTheDocument()
-    expect(screen.getAllByText('今日累计到期').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('艾宾浩斯到期').length).toBeGreaterThan(0)
+    /* 评审 R1：调试口径面板迁出中枢，只在 /admin/caliber 保留 */
+    expect(screen.queryByText('数据口径与接口体检')).toBeNull()
+    expect(screen.queryByText('今日累计到期')).toBeNull()
+    expect(screen.queryByText('艾宾浩斯到期')).toBeNull()
+    /* 评审 R3：唯一主数字 */
+    expect(document.querySelectorAll('[data-main-figure="today-todo"]')).toHaveLength(1)
   })
 
   it('StrictMode 双挂载下仍能完成首屏加载（回归：aliveRef 未复位会卡骨架屏）', async () => {
@@ -197,13 +200,13 @@ describe('Hub 今日聚合中枢', () => {
   it('聚合布局可隐藏区块，并写入按账号隔离的 localStorage', async () => {
     renderHub()
     await screen.findByText('今日航线')
-    expect(document.querySelectorAll('.hub-block')).toHaveLength(7)
+    expect(document.querySelectorAll('.hub-block')).toHaveLength(6)
 
     fireEvent.click(screen.getByRole('button', { name: /聚合布局/ }))
     const sw = await screen.findByRole('switch', { name: '显示14 天趋势' })
     fireEvent.click(sw)
 
-    await waitFor(() => expect(document.querySelectorAll('.hub-block')).toHaveLength(6))
+    await waitFor(() => expect(document.querySelectorAll('.hub-block')).toHaveLength(5))
     /* 弹窗里仍保留该区块的名字（用于重新打开），所以只在主栅格里断言不存在 */
     const blockTitles = [...document.querySelectorAll('.hub-block .hub-panel__title')].map((el) => el.textContent)
     expect(blockTitles.some((t) => t.includes('14 天趋势'))).toBe(false)

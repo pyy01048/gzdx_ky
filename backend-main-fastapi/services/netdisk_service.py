@@ -31,6 +31,7 @@ _ENCRYPTION_KEY = os.getenv("NETDISK_ENCRYPTION_KEY", "").strip()
 if not _ENCRYPTION_KEY:
     # 开发环境fallback：生成一个固定密钥（生产环境务必配置真实密钥）
     import base64
+
     # Fernet要求32字节的URL-safe base64编码密钥
     # b"dev-key-32-bytes-not-for-prod!!!" 正好32字节
     _ENCRYPTION_KEY = base64.urlsafe_b64encode(b"dev-key-32-bytes-not-for-prod!!!").decode()
@@ -50,6 +51,7 @@ def _decrypt_token(encrypted: bytes) -> str:
 
 
 # --- Third Party Accounts ---
+
 
 def create_account(
     db: Session,
@@ -134,7 +136,7 @@ def list_user_accounts(db: Session, user_id: int) -> list[ThirdPartyAccount]:
         db.query(ThirdPartyAccount)
         .filter(
             ThirdPartyAccount.user_id == user_id,
-            ThirdPartyAccount.is_active == True,
+            ThirdPartyAccount.is_active.is_(True),
         )
         .order_by(ThirdPartyAccount.created_at.desc())
         .all()
@@ -154,6 +156,7 @@ def deactivate_account(db: Session, account_id: int) -> bool:
 
 
 # --- File Cache ---
+
 
 def get_cached_file_list(db: Session, uk_account_fs: str) -> Optional[list]:
     """获取缓存的文件列表（未过期）"""
@@ -178,9 +181,7 @@ def set_cached_file_list(
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
 
     # 先删除旧缓存
-    db.query(NetdiskFileCache).filter(
-        NetdiskFileCache.uk_account_fs == uk_account_fs
-    ).delete()
+    db.query(NetdiskFileCache).filter(NetdiskFileCache.uk_account_fs == uk_account_fs).delete()
 
     cache = NetdiskFileCache(
         uk_account_fs=uk_account_fs,
@@ -195,16 +196,13 @@ def set_cached_file_list(
 
 def cleanup_expired_cache(db: Session) -> int:
     """清理过期缓存"""
-    count = (
-        db.query(NetdiskFileCache)
-        .filter(NetdiskFileCache.expires_at < datetime.now(timezone.utc))
-        .delete()
-    )
+    count = db.query(NetdiskFileCache).filter(NetdiskFileCache.expires_at < datetime.now(timezone.utc)).delete()
     db.commit()
     return count
 
 
 # --- Preview Sessions ---
+
 
 def get_preview_session(db: Session, user_id: int, file_id: str) -> Optional[PreviewSession]:
     """获取预览会话"""
@@ -254,16 +252,13 @@ def create_or_update_preview_session(
 
 def cleanup_expired_sessions(db: Session) -> int:
     """清理过期会话"""
-    count = (
-        db.query(PreviewSession)
-        .filter(PreviewSession.session_expires_at < datetime.now(timezone.utc))
-        .delete()
-    )
+    count = db.query(PreviewSession).filter(PreviewSession.session_expires_at < datetime.now(timezone.utc)).delete()
     db.commit()
     return count
 
 
 # --- Operation Logs ---
+
 
 def log_operation(
     db: Session,
@@ -339,7 +334,7 @@ from typing import Any, Dict, Iterator  # noqa: E402
 
 import httpx  # noqa: E402
 from models import PlatformConfig  # noqa: E402
-from utils.secret_codec import seal_extra, unseal_extra  # noqa: E402
+from utils.secret_codec import SecretDecodeError, seal_extra, unseal_extra  # noqa: E402
 from utils.timeutil import to_naive_utc, utcnow  # noqa: E402  统一 naive UTC 时间规范（P0-4）
 
 # 从 .env 加载网盘凭证（避免密钥硬编码）
@@ -412,11 +407,7 @@ class NetdiskService:
     # 配置读写
     # ------------------------------------------------------------------ #
     def _config_row(self) -> Optional[PlatformConfig]:
-        return (
-            self.db.query(PlatformConfig)
-            .filter(PlatformConfig.platform_name == "baidu_netdisk")
-            .first()
-        )
+        return self.db.query(PlatformConfig).filter(PlatformConfig.platform_name == "baidu_netdisk").first()
 
     def _get_config(self) -> Dict[str, Any]:
         """从数据库读取网盘配置，缺失项回退到 .env。
@@ -426,15 +417,25 @@ class NetdiskService:
         """
         extra: Dict[str, Any] = {}
         row = self._config_row()
+        app_key = secret_key = token = ""
         if row:
-            extra = unseal_extra(row.extra)
+            # 密文与当前密钥不匹配（换钥 / 旧环境迁库）不能整链路 500：
+            # 降级为「未配置 / 未授权」，/files 走从未授权的 200 空态，配置页可重填重授权。
+            try:
+                extra = unseal_extra(row.extra)
+                app_key = row.app_key or ""
+                secret_key = row.secret_key or ""
+                token = row.token or ""
+            except SecretDecodeError:
+                logger.warning("网盘凭据密文无法用当前密钥解密，降级为未配置（请在配置页重新保存 / 重新授权）")
+                extra, app_key, secret_key, token = {}, "", "", ""
         return {
-            "app_key": (row.app_key if row and row.app_key else self.DEFAULT_APP_KEY),
-            "secret_key": (row.secret_key if row and row.secret_key else self.DEFAULT_SECRET_KEY),
+            "app_key": app_key or self.DEFAULT_APP_KEY,
+            "secret_key": secret_key or self.DEFAULT_SECRET_KEY,
             "app_id": extra.get("app_id") or self.DEFAULT_APP_ID,
-            "access_token": (row.token if row else "") or "",
+            "access_token": token,
             "refresh_token": extra.get("refresh_token", "") or "",
-            "expires_at": extra.get("expires_at"),          # ISO 字符串
+            "expires_at": extra.get("expires_at"),  # ISO 字符串
             "device_id": extra.get("device_id", "") or "",
             "scope": extra.get("scope", "basic,netdisk"),
             # 同步根目录：库里 extra.sync_dir 配过 "/考研资料"，之前漏了这一项，
@@ -467,7 +468,7 @@ class NetdiskService:
 
     def _save_token(self, data: Dict[str, Any]) -> None:
         """保存 OAuth 返回的 token，并**记录过期时间**。"""
-        expires_in = int(data.get("expires_in") or 2592000)   # 百度默认 30 天
+        expires_in = int(data.get("expires_in") or 2592000)  # 百度默认 30 天
         # naive UTC：写入配置的是 ISO 字符串，比较侧也用 naive，保持同语义
         expires_at = (utcnow() + timedelta(seconds=expires_in)).isoformat()
         self._save_config(
@@ -622,8 +623,8 @@ class NetdiskService:
     def _parse_json(resp: httpx.Response) -> Dict[str, Any]:
         try:
             data = resp.json()
-        except Exception:
-            raise NetdiskError(-1, f"响应不是合法 JSON（HTTP {resp.status_code}）")
+        except Exception as e:
+            raise NetdiskError(-1, f"响应不是合法 JSON（HTTP {resp.status_code}）") from e
         if not isinstance(data, dict):
             raise NetdiskError(-1, "响应格式异常")
         return data
@@ -645,9 +646,7 @@ class NetdiskService:
     # ------------------------------------------------------------------ #
     # 文件操作
     # ------------------------------------------------------------------ #
-    async def get_file_list(
-        self, path: str = "/", page: int = 1, num: int = 100
-    ) -> Dict[str, Any]:
+    async def get_file_list(self, path: str = "/", page: int = 1, num: int = 100) -> Dict[str, Any]:
         """获取目录下的文件列表（单层）。"""
         token = await self._ensure_token()
         url = f"{self.PAN_BASE}/rest/2.0/xpan/file"
@@ -707,12 +706,15 @@ class NetdiskService:
             token = await self._ensure_token()
             url = f"{self.PAN_BASE}/rest/2.0/xpan/file"
             params = {
-                "method": "list", "access_token": token, "dir": path,
-                "order": "name", "start": start, "limit": 200, "web": 1,
+                "method": "list",
+                "access_token": token,
+                "dir": path,
+                "order": "name",
+                "start": start,
+                "limit": 200,
+                "web": 1,
             }
-            async with httpx.AsyncClient(
-                timeout=20.0, headers={"User-Agent": self.PAN_USER_AGENT}
-            ) as client:
+            async with httpx.AsyncClient(timeout=20.0, headers={"User-Agent": self.PAN_USER_AGENT}) as client:
                 resp = await client.get(url, params=params)
                 data = self._check_errno(self._parse_json(resp))
 
@@ -748,10 +750,7 @@ class NetdiskService:
         if reason:
             result["reason"] = reason
         if truncated:
-            result["hint"] = (
-                "资料太多未能一次列完。建议改用「关键词搜索」精确找文件，"
-                "或指定更具体的子目录。"
-            )
+            result["hint"] = "资料太多未能一次列完。建议改用「关键词搜索」精确找文件，或指定更具体的子目录。"
         return result
 
     async def search_files(self, keyword: str, *, dir_path: str = "/", page: int = 1) -> Dict[str, Any]:
@@ -863,8 +862,7 @@ class NetdiskService:
                     if max_bytes and written > max_bytes:
                         raise NetdiskError(
                             -1,
-                            f"文件超过大小上限（已下载 {written / 1048576:.1f}MB > "
-                            f"{max_bytes / 1048576:.1f}MB）",
+                            f"文件超过大小上限（已下载 {written / 1048576:.1f}MB > {max_bytes / 1048576:.1f}MB）",
                         )
                     fh.write(chunk)
             os.replace(tmp_path, dest_path)
@@ -906,11 +904,24 @@ class NetdiskService:
     }
 
     EXT_CATEGORY = {
-        ".mp4": "视频", ".avi": "视频", ".mkv": "视频", ".mov": "视频", ".flv": "视频",
-        ".pdf": "PDF资料", ".doc": "文档", ".docx": "文档", ".txt": "文档", ".md": "文档",
-        ".ppt": "课件", ".pptx": "课件",
-        ".mp3": "音频", ".wav": "音频", ".flac": "音频",
-        ".zip": "压缩包", ".rar": "压缩包", ".7z": "压缩包",
+        ".mp4": "视频",
+        ".avi": "视频",
+        ".mkv": "视频",
+        ".mov": "视频",
+        ".flv": "视频",
+        ".pdf": "PDF资料",
+        ".doc": "文档",
+        ".docx": "文档",
+        ".txt": "文档",
+        ".md": "文档",
+        ".ppt": "课件",
+        ".pptx": "课件",
+        ".mp3": "音频",
+        ".wav": "音频",
+        ".flac": "音频",
+        ".zip": "压缩包",
+        ".rar": "压缩包",
+        ".7z": "压缩包",
     }
 
     def auto_classify(self, filename: str) -> str:
@@ -939,7 +950,9 @@ class NetdiskService:
             "ok": False,
         }
         if not cfg["app_key"] or not cfg["secret_key"]:
-            result["message"] = "缺少 AppKey / SecretKey，请在 backend-main-fastapi/.env 配置 BAIDU_NETDISK_APP_KEY / SECRET_KEY"
+            result["message"] = (
+                "缺少 AppKey / SecretKey，请在 backend-main-fastapi/.env 配置 BAIDU_NETDISK_APP_KEY / SECRET_KEY"
+            )
             return result
         if not cfg["access_token"]:
             result["message"] = "凭证已配置，但尚未授权。请点击「授权」完成 OAuth。"
@@ -980,6 +993,6 @@ class NetdiskService:
             "used": used,
             "free": max(0, total - used),
             "used_ratio": round(used / total, 4) if total else 0,
-            "total_gb": round(total / 1024 ** 3, 2),
-            "used_gb": round(used / 1024 ** 3, 2),
+            "total_gb": round(total / 1024**3, 2),
+            "used_gb": round(used / 1024**3, 2),
         }

@@ -12,6 +12,7 @@
 
 只用 conftest 的隔离测试库（红线：绝不碰生产库）。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -82,7 +83,8 @@ def test_scan_root_refuses_and_never_archives(client, monkeypatch):
 
     calls: list = []
     monkeypatch.setattr(
-        kb_service, "scan_root_and_archive",
+        kb_service,
+        "scan_root_and_archive",
         lambda db, **kw: calls.append(kw) or {"moved": 0},
     )
     _fail_backup(monkeypatch)
@@ -108,9 +110,15 @@ def test_bulk_purge_refuses_without_backup(client, monkeypatch):
     monkeypatch.setenv("KAOYAN_ALLOW_PHYSICAL_DELETE", "1")
     db = SessionLocal()
     try:
-        d = Document(file_name="GATE-purge.txt", file_path="GATE-purge.txt",
-                     file_type="txt", size=10, subject="数学", doc_type="raw",
-                     index_status="pending")
+        d = Document(
+            file_name="GATE-purge.txt",
+            file_path="GATE-purge.txt",
+            file_type="txt",
+            size=10,
+            subject="数学",
+            doc_type="raw",
+            index_status="pending",
+        )
         db.add(d)
         db.commit()
         doc_id = d.id
@@ -118,14 +126,12 @@ def test_bulk_purge_refuses_without_backup(client, monkeypatch):
         db.close()
 
     _fail_backup(monkeypatch)
-    r = client.post("/api/documents/bulk",
-                    json={"action": "purge", "doc_ids": [doc_id]})
+    r = client.post("/api/documents/bulk", json={"action": "purge", "doc_ids": [doc_id]})
     assert r.status_code == 503, r.text
 
     db = SessionLocal()
     try:
-        assert db.query(Document).filter(Document.id == doc_id).first() is not None, \
-            "被拦截却已经把文档删了"
+        assert db.query(Document).filter(Document.id == doc_id).first() is not None, "被拦截却已经把文档删了"
         db.query(Document).filter(Document.id == doc_id).delete()
         db.commit()
     finally:
@@ -156,7 +162,7 @@ def test_gate_is_registered_and_wired_at_every_write_site(client, app_module):
 
     gated = 0
     for fn in ast.walk(ast.parse(inspect.getsource(docs))):
-        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         for call in ast.walk(fn):
             if isinstance(call, ast.Call) and getattr(call.func, "id", "") == "ensure_write_backup":
@@ -164,8 +170,10 @@ def test_gate_is_registered_and_wired_at_every_write_site(client, app_module):
     assert gated >= 6, f"备份闸门覆盖的写点数降到 {gated}（原 6 处：archive/bulk×3/scan-root/repair）"
 
     # 批量入库路径同样要有回滚点：网盘全量入库、知识库候选题确认入库
-    for mod_name, endpoint in (("routers.platform.netdisk", "ingest_all_netdisk"),
-                               ("routers.kb_import", "confirm")):
+    for mod_name, endpoint in (
+        ("routers.platform.netdisk", "ingest_all_netdisk"),
+        ("routers.knowledge.kb_import", "confirm"),
+    ):
         mod = __import__(mod_name, fromlist=["*"])
         fn = getattr(mod, endpoint)
         body = inspect.getsource(fn)

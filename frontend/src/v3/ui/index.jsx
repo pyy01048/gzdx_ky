@@ -398,9 +398,9 @@ export function Skeleton({ width = '100%', height = 14, radius, className = '', 
 export function Empty({ icon, title, text, action, className = '' }) {
   return (
     <div className={cx('v3-empty', className)}>
-      <div className="v3-empty__orb">{icon || <Sparkles size={26} />}</div>
-      {title ? <div className="v3-empty__title">{title}</div> : null}
-      {text ? <div className="v3-empty__text">{text}</div> : null}
+      <div className="v3-empty__orb" aria-hidden="true">{icon || <Sparkles size={26} />}</div>
+      {title ? <h3 className="v3-empty__title">{title}</h3> : null}
+      {text ? <p className="v3-empty__text">{text}</p> : null}
       {action}
     </div>
   )
@@ -420,14 +420,18 @@ export function LoadingState({ text = '加载中…' }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Toast                                                                      */
+/* Toast + LiveRegion                                                         */
 /* -------------------------------------------------------------------------- */
+/* R3：播报只走一条通道 —— 常驻 LiveRegion（polite / assertive 各一个，
+   aria-atomic 整句播报）。可视 Toast 本身不再带 role=status，避免双重朗读。 */
 const toastSubs = new Set()
+const liveSubs = new Set()
 let toastSeq = 0
 
-function emitToast(message, { type = '', duration = 2400 } = {}) {
+function emitToast(message, { type = '', duration = 3000 } = {}) {
   const item = { id: ++toastSeq, message, type }
   toastSubs.forEach((fn) => fn(item))
+  liveSubs.forEach((fn) => fn({ message, assertive: type === 'err' }))
   if (duration > 0) {
     window.setTimeout(() => {
       toastSubs.forEach((fn) => fn({ id: item.id, dismiss: true }))
@@ -436,11 +440,11 @@ function emitToast(message, { type = '', duration = 2400 } = {}) {
   return item.id
 }
 
-export function toast(message, duration = 2400, type = '') {
+export function toast(message, duration = 3000, type = '') {
   return emitToast(message, { type, duration })
 }
 
-export function toastOk(message, duration = 2000) {
+export function toastOk(message, duration = 3000) {
   return emitToast(message, { type: 'ok', duration })
 }
 
@@ -452,6 +456,11 @@ export function toastWarn(message, duration = 3000) {
   return emitToast(message, { type: 'warn', duration })
 }
 
+/** 只播报、不弹可视 Toast（用于进度/状态类一次性说明）。 */
+export function announce(message, { assertive = false } = {}) {
+  liveSubs.forEach((fn) => fn({ message, assertive }))
+}
+
 const TOAST_ICON = {
   ok: <CheckCircle2 size={18} />,
   err: <AlertCircle size={18} />,
@@ -461,6 +470,8 @@ const TOAST_ICON = {
 
 export function ToastHost() {
   const [items, setItems] = useState([])
+  const [polite, setPolite] = useState('')
+  const [assertive, setAssertive] = useState('')
   useEffect(() => {
     const fn = (item) => {
       setItems((prev) => {
@@ -468,16 +479,36 @@ export function ToastHost() {
         return [...prev.slice(-3), item]
       })
     }
+    const live = ({ message, assertive: isAssertive }) => {
+      /* 先清空再写入：相同文案连续播报时也能被读屏器感知 */
+      if (isAssertive) {
+        setAssertive('')
+        window.setTimeout(() => setAssertive(message), 30)
+      } else {
+        setPolite('')
+        window.setTimeout(() => setPolite(message), 30)
+      }
+    }
     toastSubs.add(fn)
-    return () => toastSubs.delete(fn)
+    liveSubs.add(live)
+    return () => {
+      toastSubs.delete(fn)
+      liveSubs.delete(live)
+    }
   }, [])
-  if (!items.length) return null
+  const dismiss = (id) => setItems((prev) => prev.filter((x) => x.id !== id))
   return createPortal(
     <div className="v3-toast-host v3-portal">
+      {/* 常驻 live region：没有 Toast 时也存在于 DOM 中 */}
+      <div className="v3-sr-only" role="status" aria-live="polite" aria-atomic="true">{polite}</div>
+      <div className="v3-sr-only" role="alert" aria-live="assertive" aria-atomic="true">{assertive}</div>
       {items.map((item) => (
-        <div key={item.id} className={cx('v3-toast', item.type && `v3-toast--${item.type}`)} role="status">
-          {item.type ? <span className="v3-toast__icon">{TOAST_ICON[item.type] || TOAST_ICON.info}</span> : null}
-          <span>{item.message}</span>
+        <div key={item.id} className={cx('v3-toast', item.type && `v3-toast--${item.type}`)}>
+          {item.type ? <span className="v3-toast__icon" aria-hidden="true">{TOAST_ICON[item.type] || TOAST_ICON.info}</span> : null}
+          <span className="v3-toast__msg">{item.message}</span>
+          <button type="button" className="v3-toast__close" aria-label="关闭通知" onClick={() => dismiss(item.id)}>
+            <X size={14} />
+          </button>
         </div>
       ))}
     </div>,

@@ -197,7 +197,11 @@ describe('buildHubModel', () => {
     const model = buildHubModel({})
     expect(model.countdown.days).toBeNull()
     expect(model.queue.items).toHaveLength(7)
-    expect(model.queue.doneCount).toBe(5) // 卡片/待办/单词/复习/薄弱点均无欠账
+    /* 评审 R4：空队列 ≠ 已完成。没有任何真实完成记录时 doneCount 必须是 0 */
+    expect(model.queue.doneCount).toBe(0)
+    expect(model.queue.progress).toBe(0)
+    expect(model.queue.items.find((i) => i.id === 'review').empty).toBe(true)
+    expect(model.queue.items.find((i) => i.id === 'review').done).toBe(false)
   })
 })
 
@@ -217,7 +221,7 @@ describe('deriveFocusQueue', () => {
     expect(q.items.find((i) => i.id === 'review').count).toBe(200)
   })
 
-  it('欠账清空后自动把「专注」推到当前步骤', () => {
+  it('欠账清空但无完成记录：推进到「专注」，但不清零的步骤不算完成', () => {
     const q = deriveFocusQueue({
       ...base,
       due: { planner: 0, newWords: 0, breakdown: { errors: 0, cards: 0, tasks: 0, words: 0 } },
@@ -225,9 +229,35 @@ describe('deriveFocusQueue', () => {
       weakness: { points: [] },
     })
     expect(q.activeId).toBe('focus')
-    expect(q.items.find((i) => i.id === 'review').done).toBe(true)
-    expect(q.items.find((i) => i.id === 'weak').done).toBe(true)
-    expect(q.progress).toBeGreaterThan(50)
+    /* 复习/单词/卡片没有「今日已做」信号 → empty 而非 done */
+    expect(q.items.find((i) => i.id === 'review').done).toBe(false)
+    expect(q.items.find((i) => i.id === 'review').empty).toBe(true)
+    expect(q.items.find((i) => i.id === 'weak').done).toBe(false)
+    expect(q.items.find((i) => i.id === 'weak').empty).toBe(true)
+    expect(q.doneCount).toBe(0)
+    expect(q.progress).toBe(0)
+  })
+
+  it('有真实完成记录时步骤才置 done，progress 按真实完成数计', () => {
+    const q = deriveFocusQueue({
+      ...base,
+      due: { planner: 0, newWords: 0, breakdown: { errors: 0, cards: 0, tasks: 0, words: 0 } },
+      tasks: { pending: 0, total: 3 },
+      weakness: { points: [] },
+      today: { focus_minutes: 25, questions_done: 10, words_done: 20 },
+      review: { todayReviews: 12 },
+      targets: { focus: 120, questions: 30 },
+    })
+    const by = (id) => q.items.find((i) => i.id === id)
+    expect(by('review').done).toBe(true)   // 今天真复习了 12 条
+    expect(by('tasks').done).toBe(true)    // 3 项任务全完成
+    expect(by('words').done).toBe(true)    // 今天真背了 20 词
+    expect(by('weak').done).toBe(false)    // 薄弱点无可靠完成信号
+    expect(by('focus').done).toBe(false)   // 25 < 目标 120
+    expect(q.doneCount).toBe(3)
+    expect(q.countableTotal).toBe(5)       // 薄弱点/卡片空态不计入分母
+    expect(q.progress).toBe(60)
+    expect(q.activeId).toBe('focus')
   })
 })
 

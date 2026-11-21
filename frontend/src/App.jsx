@@ -36,6 +36,7 @@ const ModelTraining = lazy(() => import('./v3/pages/ModelTraining'))
 const Planner = lazy(() => import('./v3/pages/Planner'))
 const KaoyanGuide = lazy(() => import('./v3/pages/KaoyanGuide'))
 const KaoyanSchools = lazy(() => import('./v3/pages/KaoyanSchools'))
+const KaoyanSchoolEval = lazy(() => import('./v3/pages/KaoyanSchoolEval'))
 const NoticeCenter = lazy(() => import('./v3/pages/NoticeCenter'))
 const KaoyanSchoolDetail = lazy(() => import('./v3/pages/KaoyanSchoolDetail'))
 const KaoyanCompare = lazy(() => import('./v3/pages/KaoyanCompare'))
@@ -55,6 +56,8 @@ const Favorites = lazy(() => import('./v3/pages/Favorites'))
 const LearningTimeline = lazy(() => import('./v3/pages/LearningTimeline'))
 // 数据中心：逐域接口体检（数据页为什么是空的，在这里能直接看到）
 const DataCenter = lazy(() => import('./v3/pages/DataCenter'))
+// 数据口径与接口体检：今日中枢的调试/对账信息迁出首页后的唯一落点（仅管理员）
+const Caliber = lazy(() => import('./v3/pages/Caliber'))
 // 院校采集源：选择哪些院校参与采集 / 数据源目录（管理工作台入口）
 const KaoyanCrawlSources = lazy(() => import('./v3/pages/KaoyanCrawlSources'))
 // 真题中心：独立索引页（按年份/套卷），点入后复用 Quiz 的深链练习
@@ -63,6 +66,8 @@ const ExamCenter = lazy(() => import('./v3/pages/ExamCenter'))
 const ExamMock = lazy(() => import('./v3/pages/ExamMock'))
 const Login = lazy(() => import('./v3/pages/Login'))
 const ForceChangePassword = lazy(() => import('./v3/pages/ForceChangePassword'))
+const VerifyEmail = lazy(() => import('./v3/pages/VerifyEmail'))
+const ResetPassword = lazy(() => import('./v3/pages/ResetPassword'))
 const Forbidden = lazy(() => import('./v3/pages/Forbidden'))
 // Glass Lab：毛玻璃交互式页面（后端零依赖的纯前端动效演示页）
 const GlassLab = lazy(() => import('./v3/pages/GlassLab'))
@@ -150,6 +155,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/force-change-password" element={<ForceChangePassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           {/* ── 公开壳（2026-10-19 访客模式）：未登录可浏览共享数据 ──
               院校库/通知/教材/知识图谱/真题索引对访客只读开放（后端 access_policy 白名单），
               顶栏右上角提供「登录」；个人数据页仍在下方 <RequireAuth> 壳内，
@@ -161,6 +168,10 @@ export default function App() {
             <Route path="/data-quality" element={<Navigate to="/admin/quality" replace />} />
             <Route path="/" element={<GuestHome />} />
             <Route path="/textbooks" element={<Textbooks />} />
+            {/* 2026-11-20 访客扩容：学习文库 / 复试代码题库只读开放（后端白名单同步）。
+                文库只依赖 documents 列表/科目/正文三个共享读口；代码题库 GET 全为共享数据。 */}
+            <Route path="/library" element={<Library />} />
+            <Route path="/codebank" element={<CodeBank />} />
             <Route path="/knowledge" element={<KbMap />} />
             <Route path="/knowledge/:id" element={<KnowledgeArticle />} />
             <Route path="/exam" element={<ExamCenter />} />
@@ -175,8 +186,11 @@ export default function App() {
               <Route path="map" element={<KaoyanMap />} />
               <Route path="scatter" element={<KaoyanScatter />} />
               <Route path="recommend" element={<KaoyanRecommend />} />
-              {/* 个人数据：规划/成长/择校 AI 问答仍需登录 */}
-              <Route path="plan" element={<RequireAuth><PlanPage /></RequireAuth>} />
+              {/* 工学学科评估：共享招生数据，访客可读（119 分片） */}
+              <Route path="school-eval" element={<KaoyanSchoolEval />} />
+              {/* 个人数据：成长/择校 AI 问答仍需登录；规划页已对访客只读开放
+                  （公共招生日历 + 阶段规划，后端 optional_user，访客 goal 为空） */}
+              <Route path="plan" element={<PlanPage />} />
               <Route path="growth" element={<RequireAuth><GrowthPage /></RequireAuth>} />
               <Route path="assistant" element={<RequireAuth><KaoyanAssistant /></RequireAuth>} />
             </Route>
@@ -195,10 +209,9 @@ export default function App() {
           {/* 教材目录 / 知识图谱（含阅读页）：已迁公开壳，访客可浏览 */}
           <Route path="/panorama" element={<Navigate to="/knowledge" replace />} />
           <Route path="/kbmap" element={<Navigate to="/knowledge" replace />} />
+          {/* 学习文库 / 复试代码题库：已迁公开壳（2026-11-20 访客扩容），访客可只读浏览 */}
           {/* 学习统计：科目正确率 / 近7天趋势 / 错题标签 / 学习时长（聚合自 /api/stats/overview） */}
           <Route path="/insights" element={<Insights />} />
-          {/* 学习文库：IMA 知识库资料按 初试/复试 + 科目 + 知识/试题/单词 浏览 */}
-          <Route path="/library" element={<Library />} />
           <Route path="/quiz" element={<Quiz />} />
           {/* 模考中心：独立于 /exam 真题索引，个人模考数据放在登录壳内 */}
           <Route path="/exam-mock" element={<ExamMock />} />
@@ -231,12 +244,11 @@ export default function App() {
           <Route path="/words" element={<Words />} />
           <Route path="/cards" element={<Cards />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/codebank" element={<CodeBank />} />
           {/* S7：收藏夹与学习轨迹 */}
           <Route path="/favorites" element={<Favorites />} />
           <Route path="/timeline" element={<LearningTimeline />} />
-          {/* 择校模块（/kaoyan）路由已整体迁至公开壳：访客可浏览院校库/通知/分析，
-              plan/growth/assistant 三个个人页在公开壳内单独包 RequireAuth */}
+          {/* 择校模块（/kaoyan）路由已整体迁至公开壳：访客可浏览院校库/通知/分析/规划，
+              growth/assistant 两个个人页在公开壳内单独包 RequireAuth */}
           {/* 管理后台：一切 CRUD / 采集 / 训练 / 体检归口 /admin，非管理员手输 URL 落 403 页 */}
           <Route path="/admin" element={<RequireAdmin><AdminShell /></RequireAdmin>}>
             <Route index element={<Navigate to="overview" replace />} />
@@ -252,6 +264,8 @@ export default function App() {
             <Route path="crawl-sources" element={<KaoyanCrawlSources />} />
             <Route path="kb-import" element={<KnowledgeBaseImport />} />
             <Route path="model" element={<ModelTraining />} />
+            {/* 今日中枢的口径对账 + 接口体检（P0-1：调试信息不进首页） */}
+            <Route path="caliber" element={<Caliber />} />
             <Route path="*" element={<Navigate to="overview" replace />} />
           </Route>
           {ADMIN_LEGACY_REDIRECTS.map(([from, to]) => (

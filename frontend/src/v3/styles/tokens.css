@@ -21,7 +21,8 @@
   /* ---------- Text ---------- */
   --v3-text: #1F2023;
   --v3-text-2: #474B55;
-  --v3-text-3: #6E7480;
+  /* FE_REVIEW P0-6：#6E7480 在浅底上对比不足，加深一档 */
+  --v3-text-3: #5A6270;
   --v3-text-inverse: #FFFFFF;
   --v3-text-on-primary: #FFFFFF;
 
@@ -29,6 +30,18 @@
   --v3-outline: #E1E6EF;
   --v3-outline-strong: #C8D0DD;
   --v3-outline-focus: #1A73E8;
+
+  /* ---------- Action & focus (FE_REVIEW 阶段1：主操作专用紫，焦点环专用蓝) ---------- */
+  --v3-action: #6D5AE6;
+  --v3-action-hover: #5B48D6;
+  --v3-focus: #1A73E8;
+  --v3-focus-on-action: #FFFFFF;
+
+  /* ---------- Data states (7 色调 → 5 数据态，步骤/KPI 按态着色) ---------- */
+  --v3-state-todo: #6B7280;
+  --v3-state-doing: #1A73E8;
+  --v3-state-done: #1E8E5A;
+  --v3-state-blocked: #C2413B;
 
   /* ---------- Brand & semantic ---------- */
   --v3-primary: #1A73E8;
@@ -46,7 +59,7 @@
   --v3-success: #188038;
   --v3-success-container: #DFF3E4;
   --v3-on-success-container: #0B4A1E;
-  --v3-warning: #B26A00;
+  --v3-warning: #925C00;
   --v3-warning-container: #FFF0D4;
   --v3-on-warning-container: #6B3F00;
   --v3-danger: #C5221F;
@@ -101,6 +114,8 @@
   --v3-fs-24: 24px;
   --v3-fs-28: 28px;
   --v3-fs-32: 32px;
+  /* FE_REVIEW 阶段1：hub 字阶 12/13/14/16/20/24/28/36，36 全页仅主数字一处 */
+  --v3-fs-36: 36px;
   --v3-fs-40: 40px;
   --v3-fs-48: 48px;
   --v3-fs-56: 56px;
@@ -124,6 +139,14 @@
   --v3-s-12: 48px;
   --v3-s-16: 64px;
   --v3-s-20: 80px;
+
+  /* FE_REVIEW 阶段1：6 档间距别名（4/8/12/16/24/32），hub 布局统一走这套 */
+  --v3-sp-1: 4px;
+  --v3-sp-2: 8px;
+  --v3-sp-3: 12px;
+  --v3-sp-4: 16px;
+  --v3-sp-5: 24px;
+  --v3-sp-6: 32px;
 
   /* ---------- Layout ---------- */
   --v3-sidebar-w: 248px;
@@ -163,9 +186,10 @@
   --v3-bg: #0B0D11;
   --v3-bg-alt: #0F1218;
   --v3-surface: #12151C;
-  --v3-surface-1: #181C25;
-  --v3-surface-2: #1F2430;
-  --v3-surface-3: #272D3B;
+  /* FE_REVIEW 阶段2：暗色表面拉开层级（bg #0B0D11 → surface #12151C → 1 #191D26 → 2 #222833） */
+  --v3-surface-1: #191D26;
+  --v3-surface-2: #222833;
+  --v3-surface-3: #2A3140;
   --v3-surface-inverse: #E9EDF4;
   --v3-surface-glass: rgba(18, 21, 28, 0.72);
   --v3-scrim: rgba(0, 0, 0, 0.55);
@@ -179,6 +203,16 @@
   --v3-outline: #262C38;
   --v3-outline-strong: #39414F;
   --v3-outline-focus: #A8C7FA;
+
+  /* Action & focus / data states（暗色） */
+  --v3-action: #8B7BF0;
+  --v3-action-hover: #A294F6;
+  --v3-focus: #8FB6FF;
+  --v3-focus-on-action: #FFFFFF;
+  --v3-state-todo: #9AA3B2;
+  --v3-state-doing: #6FA8FF;
+  --v3-state-done: #4CC38A;
+  --v3-state-blocked: #F08078;
 
   --v3-primary: #A8C7FA;
   --v3-primary-hover: #C2D7FC;
@@ -195,7 +229,7 @@
   --v3-success: #81C995;
   --v3-success-container: #0E3A1C;
   --v3-on-success-container: #C6F6D5;
-  --v3-warning: #FDD663;
+  --v3-warning: #D9A24B;
   --v3-warning-container: #4A3200;
   --v3-on-warning-container: #FFE7A8;
   --v3-danger: #F28B82;

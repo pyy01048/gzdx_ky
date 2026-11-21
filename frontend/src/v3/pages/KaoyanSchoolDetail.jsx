@@ -247,6 +247,8 @@ export default function KaoyanSchoolDetail() {
   const navigate = useNavigate()
   const { isAdmin } = useAuth()
   const [school, setSchool] = useState(null)
+  const [coverOk, setCoverOk] = useState(true)
+  const [logoOk, setLogoOk] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [majors, setMajors] = useState([])
@@ -759,11 +761,16 @@ export default function KaoyanSchoolDetail() {
     <div className="kyv3-page">
       <Link to="/kaoyan/schools" className="kyv3-back"><ChevronLeft size={14} /> 返回院校库</Link>
 
-      <Card className="kyv3-hero-card">
+      <Card className={cx('kyv3-hero-card', school.cover_url && coverOk && 'has-cover')}>
+        {school.cover_url && coverOk ? (
+          <div className="kyv3-hero-cover" aria-hidden="true">
+            <img src={school.cover_url} alt="" onError={() => setCoverOk(false)} />
+          </div>
+        ) : null}
         <div className="kyv3-hero-top">
           <div className="kyv3-hero-logo">
-            {school.logo_url
-              ? <img src={school.logo_url} alt="" />
+            {school.logo_url && logoOk
+              ? <img src={school.logo_url} alt="" onError={() => setLogoOk(false)} />
               : (school.name || '校')[0]}
           </div>
           <div className="kyv3-hero-main">

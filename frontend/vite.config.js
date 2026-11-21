@@ -49,9 +49,19 @@ export default defineConfig(({ command }) => ({
     chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'state-vendor': ['zustand'],
+        // 重库分包（完善方案 07 §3.2）：按 npm 包判断，避免"只是改个 chunk 名"
+        // —— echarts/pdfjs/katex/mammoth 只会在引用它们的懒加载路由里被拉取。
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router-dom|scheduler)[\\/]/.test(id)) {
+            return 'react-vendor'
+          }
+          if (/[\\/]node_modules[\\/]zustand[\\/]/.test(id)) return 'state-vendor'
+          if (/[\\/]node_modules[\\/](echarts|zrender)[\\/]/.test(id)) return 'charts-vendor'
+          if (/[\\/]node_modules[\\/]pdfjs-dist[\\/]/.test(id)) return 'pdf-vendor'
+          if (/[\\/]node_modules[\\/]mammoth[\\/]/.test(id)) return 'doc-vendor'
+          if (/[\\/]node_modules[\\/]katex[\\/]/.test(id)) return 'math-vendor'
+          return undefined
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',

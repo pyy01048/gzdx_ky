@@ -697,7 +697,7 @@ export default function ModelTraining() {
         <CardHead
           icon={<Gauge size={17} />}
           title="当前任务明细"
-          sub="直接映射 /api/model-training/training/status 返回字段"
+          sub="与训练服务实时同步的任务状态"
           actions={<Badge tone="outline">实时</Badge>}
         />
         {loading && !status ? (

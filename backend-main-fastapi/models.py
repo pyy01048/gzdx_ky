@@ -39,7 +39,7 @@ class NullSafeJSON(TypeDecorator):
     ``validate_question_row()`` 对 options 调 ``jsonb_array_length``，
     遇到标量直接抛 "cannot get array length of a scalar"，
     任何 options=None 的 ORM 插入必炸（潜藏 bug，前端一直传 [] 才没暴露）。
-    
+
     2026-10-17 修正：改用 postgresql.JSONB 作为 impl，与 SQL schema (040_questions.sql)
     和 quiz_query 中的 jsonb_typeof/jsonb_array_length 等函数保持一致。
     本类型在绑定时短路 None → SQL NULL，与库里既有 NULL 语义一致。
@@ -62,14 +62,15 @@ class NullSafeJSON(TypeDecorator):
             # JSON **字符串标量**，触发器 jsonb_array_length 立刻报
             # "cannot get array length of a scalar"（实测 12 例）。
             # 这里就地解析，既兼容旧调用方，也避免脏结构落库。
-            if isinstance(value, (str, bytes)):
+            if isinstance(value, str | bytes):
                 import json as _json
+
                 parsed = None
                 try:
                     parsed = _json.loads(value)
                 except Exception:  # noqa: BLE001 - 非 JSON 文本，走下面的规整
                     parsed = None
-                if isinstance(parsed, (list, dict)):
+                if isinstance(parsed, list | dict):
                     value = parsed
                 else:
                     # 纯文本选项（如 "A、甲 B、乙"）也必须落成**正典结构**，
@@ -94,9 +95,7 @@ class NullSafeJSON(TypeDecorator):
             if isinstance(value, dict) and value:
                 try:
                     value = [
-                        {"key": str(k).strip().upper()[:1], "text": str(v)}
-                        for k, v in value.items()
-                        if str(v).strip()
+                        {"key": str(k).strip().upper()[:1], "text": str(v)} for k, v in value.items() if str(v).strip()
                     ]
                 except Exception:  # noqa: BLE001 - 规整失败按原样交给 impl
                     pass
@@ -107,11 +106,7 @@ class NullSafeJSON(TypeDecorator):
             # 触发场景：知识库候选题抽取（/api/kb-import/confirm）返回的就是
             # 字符串数组，导致该端点 500（实测 1 例）。
             # 同样收敛到 content_sanitizer.normalize_options，不另写一套。
-            if (
-                isinstance(value, (list, tuple))
-                and value
-                and all(isinstance(x, str) for x in value)
-            ):
+            if isinstance(value, list | tuple) and value and all(isinstance(x, str) for x in value):
                 try:
                     from services.content_sanitizer import normalize_options
 
@@ -172,8 +167,9 @@ class Goal(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     # B4 行级隔离：归属用户。NULL=迁移前存量（回填后归主账号）/ 未接线写入。
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     exam_date = Column(Date, nullable=True, comment="考试日期")
     total_score_target = Column(Integer, nullable=True, comment="总分目标")
     politics_target = Column(Integer, nullable=True, comment="政治目标分")
@@ -212,14 +208,17 @@ class ReviewSchedule(Base):
     - algorithm=fsrs 时以 stability / difficulty / state 为准
     - algorithm=sm2 时继续读 ease_factor / interval_days
     """
+
     __tablename__ = "review_schedules"
 
     id = Column(Integer, primary_key=True, index=True)
     # B4 行级隔离：同一道错题/卡片/单词，不同用户各自有独立的调度行。
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
-    item_type = Column(String(30), nullable=False, index=True,
-                       comment="复习对象：word/flashcard/error_record/knowledge_point")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
+    item_type = Column(
+        String(30), nullable=False, index=True, comment="复习对象：word/flashcard/error_record/knowledge_point"
+    )
     item_id = Column(Integer, nullable=False, index=True)
     algorithm = Column(String(30), nullable=False, default="sm2", server_default="sm2")
     ease_factor = Column(Float, nullable=False, default=2.5, server_default="2.5")
@@ -230,8 +229,7 @@ class ReviewSchedule(Base):
     stability = Column(Float, nullable=True, comment="FSRS 稳定度（天）")
     difficulty = Column(Float, nullable=True, comment="FSRS 难度 1-10")
     retrievability = Column(Float, nullable=True, comment="本次复习时的可提取概率")
-    state = Column(SmallInteger, nullable=True, default=0, server_default="0",
-                   comment="0新 1学习 2复习 3重学")
+    state = Column(SmallInteger, nullable=True, default=0, server_default="0", comment="0新 1学习 2复习 3重学")
     last_reviewed_at = Column(DateTime, nullable=True)
     next_review_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=_utcnow)
@@ -247,8 +245,9 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     title = Column(String(300), nullable=False, comment="任务标题")
     subject = Column(String(50), nullable=True, comment="科目：政治/英语/数学/专业课")
     task_type = Column(String(50), nullable=True, comment="类型：学习/复习/刷题/背诵/模拟")
@@ -282,7 +281,9 @@ class QuizQuestion(Base):
     knowledge_point = Column(String(200), nullable=True, comment="知识点")
     difficulty = Column(Integer, default=3, comment="难度 1-5")
     source_label = Column(String(200), nullable=True, comment="来源：真题/模拟/自建/ai:variant")
-    question_type = Column(PgEnumAware("question_type", 50), default="single", comment="题型：single/multiple/judge/essay")
+    question_type = Column(
+        PgEnumAware("question_type", 50), default="single", comment="题型：single/multiple/judge/essay"
+    )
     # —— 题库流水线升级（2026-10）：AI 生成标注 + 变式题分组 —— #
     ai_generated = Column(Boolean, default=False, comment="答案解析是否为 AI 生成")
     verified = Column(Boolean, default=False, comment="AI 生成答案是否经过人工/多角色校验确认")
@@ -294,6 +295,25 @@ class QuizQuestion(Base):
     source_paper = Column(String(200), nullable=True, comment="来源试卷名")
     source_page = Column(Integer, nullable=True, comment="来源页码")
     question_no = Column(Integer, nullable=True, comment="题号（试卷内序号）")
+    # —— 四分类筛选主键 + 来源留痕（2026-11，08 工学题库建设）——
+    # question_category 是用户侧筛选主键（真题/练习题/习题/考研题），
+    # 与 source_kind 正交，避免把"试卷原题"与"考研科目体系"两套口径混在一个字段里。
+    question_category = Column(
+        PgEnumAware("question_category", 20),
+        nullable=False,
+        default="习题",
+        comment="题目主分类：真题/练习题/习题/考研题",
+    )
+    exam_type = Column(
+        String(50), nullable=True, index=True, comment="考试类型：考研/期末/期中/竞赛/资格认证/教材课后/模拟/平时"
+    )
+    source_platform = Column(
+        String(100),
+        nullable=True,
+        index=True,
+        comment="来源平台：国家高等教育智慧教育平台/中科UMajor/MIT OCW/考试资料网/GitHub 等",
+    )
+    source_url = Column(Text, nullable=True, comment="来源链接")
     # —— 跨来源去重溯源（2026-11）——
     # 同一道题可能被多份文档承载（公共课跨考题最典型）。入库时判重命中不会丢弃，
     # 而是把新来源并入本字段（JSON 数组），供前端展示"这题也出现在 X 文档"。
@@ -311,7 +331,11 @@ class QuizQuestion(Base):
     # —— M6-3：复试维度标记（2026-11）—— #
     # is_retest=1 表示复试题（复试面试/笔试），默认 0=初试。用于复试题库分区与过滤。
     is_retest = Column(Boolean, default=False, index=True, comment="是否复试题（0 初试 / 1 复试）")
-    answer_source = Column(PgEnumAware("answer_source", 20), nullable=True, comment="答案来源：bank/source_extract/llm_generated/user_confirmed")
+    answer_source = Column(
+        PgEnumAware("answer_source", 20),
+        nullable=True,
+        comment="答案来源：bank/source_extract/llm_generated/user_confirmed",
+    )
     answer_confidence = Column(Float, nullable=True, comment="答案置信度 0-1（<0.8 不参与自动判分）")
     # —— 识别图缺失标记（2026-10 数据治理）—— #
     # 题干引用了图/表（“如图/图1.2.12/真值表…”），但本库无任何题目图片存储 → 该题的图必然缺失。
@@ -335,15 +359,17 @@ class QuestionKnowledgeLink(Base):
     __tablename__ = "question_knowledge_links"
 
     id = Column(Integer, primary_key=True, index=True)
-    question_id = Column(Integer, ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=False, index=True, comment="题目 ID")
-    knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=False, index=True, comment="知识点 ID")
+    question_id = Column(
+        Integer, ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=False, index=True, comment="题目 ID"
+    )
+    knowledge_point_id = Column(
+        Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=False, index=True, comment="知识点 ID"
+    )
     role = Column(String(20), default="primary", comment="角色：primary/secondary")
     weight = Column(Float, default=1.0, comment="关联权重")
     is_verified = Column(Boolean, default=False, comment="是否人工校验")
     created_at = Column(DateTime, default=_utcnow)
-    __table_args__ = (
-        UniqueConstraint("question_id", "knowledge_point_id", name="uq_qkl_q_kp"),
-    )
+    __table_args__ = (UniqueConstraint("question_id", "knowledge_point_id", name="uq_qkl_q_kp"),)
 
 
 # --------------------------------------------------------------------------- #
@@ -355,8 +381,9 @@ class AnswerRecord(Base):
     __tablename__ = "answer_records"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     question_id = Column(Integer, ForeignKey("quiz_questions.id"), nullable=True, index=True)
     my_answer = Column(Text, nullable=True, comment="我的答案")
     correct_answer = Column(Text, nullable=True, comment="正确答案")
@@ -373,8 +400,9 @@ class ErrorRecord(Base):
     __tablename__ = "error_records"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     question_id = Column(Integer, ForeignKey("quiz_questions.id"), nullable=True)
     content = Column(Text, nullable=True, comment="错题内容（可脱离题目独立存在）")
     my_answer = Column(Text, nullable=True, comment="我的答案")
@@ -394,8 +422,9 @@ class ErrorRecord(Base):
     next_review = Column(DateTime, nullable=True, comment="下次复习时间")
     status = Column(String(50), default="active", comment="状态：active/graduated")
     # —— SM-2 调度状态（DB 已有列，ORM 补齐以便调度器读写一致）—— #
-    mastery_level = Column(PgEnumAware("mastery_level", 50), nullable=False,
-                           server_default="not_mastered", comment="掌握档位")
+    mastery_level = Column(
+        PgEnumAware("mastery_level", 50), nullable=False, server_default="not_mastered", comment="掌握档位"
+    )
     ease_factor = Column(Float, nullable=False, server_default="2.5", comment="SM-2 难度因子")
     interval_days = Column(Integer, nullable=False, server_default="0", comment="当前间隔（天）")
     repetitions = Column(Integer, nullable=False, server_default="0", comment="连续通过次数")
@@ -423,8 +452,9 @@ class StudySession(Base):
     __tablename__ = "study_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     date = Column(Date, nullable=False, index=True, comment="学习日期")
     duration = Column(Integer, nullable=True, comment="时长（分钟）")
     subject = Column(String(50), nullable=True, comment="科目")
@@ -457,11 +487,13 @@ class StudySession(Base):
 
 class DailyPlan(Base):
     """日计划表：四科目任务 + 时间轴 + 评分总结。"""
+
     __tablename__ = "daily_plans"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     # B4：唯一键 date → (user_id,date)，SQL 108 同步重建
     date = Column(Date, nullable=False, index=True, comment="日期")
     days_to_exam = Column(Integer, nullable=True, comment="距离考研天数")
@@ -474,18 +506,18 @@ class DailyPlan(Base):
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "date", name="uq_daily_plan_user"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_daily_plan_user"),)
 
 
 class WeekPlan(Base):
     """周计划表：四科目周任务 + 每日完成记录。"""
+
     __tablename__ = "week_plans"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     week_start = Column(Date, nullable=False, index=True, comment="周一日期")
     month_plan_id = Column(Integer, ForeignKey("month_plans.id"), nullable=True)
     tasks = Column(JSON, nullable=True, comment="四科目周任务 JSON")
@@ -496,11 +528,13 @@ class WeekPlan(Base):
 
 class MonthPlan(Base):
     """月计划表：四科目月目标。"""
+
     __tablename__ = "month_plans"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     year = Column(Integer, nullable=False, index=True)
     month = Column(Integer, nullable=False, index=True)
     tasks = Column(JSON, nullable=True, comment="四科目月任务 JSON")
@@ -517,11 +551,13 @@ class EbbinghausItem(Base):
       review_times 保存实际复习时间点数组；同时尽量回填九列（前 N 个点按列名映射，
       不足 9 个的列置 NULL），保证旧代码不崩。
     """
+
     __tablename__ = "ebbinghaus_items"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     seq = Column(Integer, nullable=True, comment="序号")
     learn_date = Column(DateTime, nullable=False, index=True, comment="学习时间")
     content = Column(Text, nullable=False, comment="学习内容")
@@ -535,19 +571,25 @@ class EbbinghausItem(Base):
     review_7d = Column(DateTime, nullable=True)
     review_15d = Column(DateTime, nullable=True)
     review_1m = Column(DateTime, nullable=True)
-    cycle_config = Column(NullSafeJSON, nullable=True, comment="自定义周期定义 [{\"key\":\"1d\",\"label\":\"1天\",\"offset_days\":1}]")
-    review_times = Column(NullSafeJSON, nullable=True, comment="实际复习时间点 [{\"key\":\"1d\",\"label\":\"1天\",\"time\":\"iso\",\"done\":false}]")
+    cycle_config = Column(
+        NullSafeJSON, nullable=True, comment='自定义周期定义 [{"key":"1d","label":"1天","offset_days":1}]'
+    )
+    review_times = Column(
+        NullSafeJSON, nullable=True, comment='实际复习时间点 [{"key":"1d","label":"1天","time":"iso","done":false}]'
+    )
     mastered = Column(Boolean, default=False, comment="是否已掌握")
     created_at = Column(DateTime, default=_utcnow)
 
 
 class EarlyBirdRecord(Base):
     """早起打卡记录。"""
+
     __tablename__ = "early_bird_records"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     day_num = Column(Integer, nullable=True, comment="天数（1-120）")
     # B4：唯一键 date → (user_id,date)，SQL 108 同步重建
     date = Column(Date, nullable=False, index=True, comment="日期")
@@ -556,18 +598,18 @@ class EarlyBirdRecord(Base):
     note = Column(String(200), nullable=True, comment="备注")
     created_at = Column(DateTime, default=_utcnow)
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "date", name="uq_early_bird_user"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_early_bird_user"),)
 
 
 class PhasePlan(Base):
     """阶段复习表（如40天专业课复习）。"""
+
     __tablename__ = "phase_plans"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     name = Column(String(100), nullable=False, comment="阶段名称")
     start_date = Column(Date, nullable=False, comment="开始日期")
     end_date = Column(Date, nullable=True, comment="结束日期")
@@ -653,14 +695,20 @@ class KnowledgePoint(Base):
     parent_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=True, comment="父知识点 ID")
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=True, index=True, comment="来源文档 ID")
     # —— 溯源与留痕（2026-10 入库时知识点抽取，见 services/kp_extract.py）——
-    source_chunk_id = Column(Integer, ForeignKey("knowledge_chunks.id"), nullable=True,
-                             index=True, comment="来源知识分块 ID（可反查原文片段）")
-    source_chunk_index = Column(Integer, nullable=True,
-                                comment="来源分块在本篇文档内的序号")
-    extract_source = Column(PgEnumAware("extract_source", 32), nullable=True,
-                            comment="抽取来源：smart_ingest / batch / manual")
-    subject_source = Column(String(20), nullable=True,
-                            comment="学科判定来源：model / keyword / model_over_keyword / fallback")
+    source_chunk_id = Column(
+        Integer,
+        ForeignKey("knowledge_chunks.id"),
+        nullable=True,
+        index=True,
+        comment="来源知识分块 ID（可反查原文片段）",
+    )
+    source_chunk_index = Column(Integer, nullable=True, comment="来源分块在本篇文档内的序号")
+    extract_source = Column(
+        PgEnumAware("extract_source", 32), nullable=True, comment="抽取来源：smart_ingest / batch / manual"
+    )
+    subject_source = Column(
+        String(20), nullable=True, comment="学科判定来源：model / keyword / model_over_keyword / fallback"
+    )
     mastery = Column(Integer, default=0, comment="掌握度 0-100")
     exam_frequency = Column(Integer, default=0, comment="考频 1-5")
     description = Column(Text, nullable=True, comment="描述")
@@ -699,7 +747,9 @@ class KnowledgePointRelation(Base):
     source_kp_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=False, index=True)
     target_kp_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=False, index=True)
     relation_type = Column(PgEnumAware("relation_type", 20), nullable=False, comment="prerequisite/parallel/contains")
-    source = Column(String(100), nullable=True, comment="生成来源：syllabus_order/chapter_hierarchy/chapter_cooccurrence/manual")
+    source = Column(
+        String(100), nullable=True, comment="生成来源：syllabus_order/chapter_hierarchy/chapter_cooccurrence/manual"
+    )
     created_at = Column(DateTime, default=_utcnow)
 
     source_kp = relationship("KnowledgePoint", foreign_keys=[source_kp_id], backref="out_relations")
@@ -720,21 +770,24 @@ class ErrorKnowledgeLink(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     # B4：冗余归属用户（跟随 error_id 的主人），便于直接过滤不必联表
-    user_id = Column(BigInteger, nullable=True, index=True,
-                     comment="归属用户 ID（冗余，随 error_records）")
+    user_id = Column(BigInteger, nullable=True, index=True, comment="归属用户 ID（冗余，随 error_records）")
     # ondelete 与权威 DDL core/sql/050_learning.sql 保持一致：ORM create_all 若先于
     # pg_schema.sql 建表，缺 CASCADE 会让删除知识点/错题时撞 FK（测试库曾因此中毒）。
     error_id = Column(Integer, ForeignKey("error_records.id", ondelete="CASCADE"), nullable=False, index=True)
-    knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=True, index=True)
-    chunk_id = Column(Integer, ForeignKey("knowledge_chunks.id", ondelete="CASCADE"), nullable=True, comment="命中的知识分块")
-    document_id = Column(Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, comment="命中分块所属文档")
+    knowledge_point_id = Column(
+        Integer, ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    chunk_id = Column(
+        Integer, ForeignKey("knowledge_chunks.id", ondelete="CASCADE"), nullable=True, comment="命中的知识分块"
+    )
+    document_id = Column(
+        Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, comment="命中分块所属文档"
+    )
     relevance = Column(Float, default=0, comment="关联度 0-1（检索得分）")
     source = Column(String(20), default="auto", comment="来源：auto 自动检索 / manual 手动指定")
     created_at = Column(DateTime, default=_utcnow)
 
-    __table_args__ = (
-        Index("ix_ekl_error_kp", "error_id", "knowledge_point_id"),
-    )
+    __table_args__ = (Index("ix_ekl_error_kp", "error_id", "knowledge_point_id"),)
 
 
 # --------------------------------------------------------------------------- #
@@ -749,13 +802,16 @@ class ReviewRecord(Base):
     __tablename__ = "review_records"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     item_type = Column(String(20), nullable=False, index=True, comment="对象类型：knowledge/error/flashcard/word")
     item_id = Column(Integer, nullable=False, index=True, comment="对象 ID")
     subject = Column(String(50), nullable=True, index=True, comment="科目")
     chapter = Column(String(200), nullable=True, comment="章节（冗余，便于按章节统计）")
-    result = Column(PgEnumAware("review_result", 20), nullable=True, comment="复习结果：forgotten 忘了 / fuzzy 模糊 / mastered 掌握")
+    result = Column(
+        PgEnumAware("review_result", 20), nullable=True, comment="复习结果：forgotten 忘了 / fuzzy 模糊 / mastered 掌握"
+    )
     grade = Column(Integer, default=0, comment="评分 0-5")
     mastery_before = Column(Integer, default=0, comment="复习前掌握度")
     mastery_after = Column(Integer, default=0, comment="复习后掌握度")
@@ -765,10 +821,7 @@ class ReviewRecord(Base):
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=_utcnow, index=True)
 
-    __table_args__ = (
-        Index("ix_review_item", "item_type", "item_id"),
-    )
-
+    __table_args__ = (Index("ix_review_item", "item_type", "item_id"),)
 
 
 # --------------------------------------------------------------------------- #
@@ -778,8 +831,9 @@ class Flashcard(Base):
     __tablename__ = "flashcards"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     front = Column(Text, nullable=False, comment="正面")
     back = Column(Text, nullable=False, comment="背面")
     knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=True)
@@ -795,8 +849,11 @@ class Flashcard(Base):
     #   InvalidTextRepresentation: invalid input value for enum mastery_level: "new"
     # （SQLite 无类型约束所以不暴露）。生产库现存数据都是合法值，
     # 说明该默认值从未真正落库，属侥幸未爆的定时炸弹。
-    mastery = Column(PgEnumAware("mastery_level", 20), default="not_mastered",
-                     comment="掌握状态（mastery_level ENUM）：not_mastered/learning/reviewing/mastered")
+    mastery = Column(
+        PgEnumAware("mastery_level", 20),
+        default="not_mastered",
+        comment="掌握状态（mastery_level ENUM）：not_mastered/learning/reviewing/mastered",
+    )
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -815,10 +872,17 @@ class Document(Base):
     # DB 正典：NOT NULL DEFAULT 'other'::doc_format。ORM 之前写 nullable=True
     # 且无 Python 侧默认，显式传 None 时会把 NULL 发到库，直接违反 NOT NULL
     # （实测 47 例 NotNullViolation）。此处与 DB 对齐。
-    source_format = Column(PgEnumAware("doc_format", 50), nullable=False,
-                           default="other", server_default="other", comment="类型：pdf/docx/txt")
+    source_format = Column(
+        PgEnumAware("doc_format", 50),
+        nullable=False,
+        default="other",
+        server_default="other",
+        comment="类型：pdf/docx/txt",
+    )
     size = Column(Integer, nullable=True, comment="大小（字节）")
-    index_status = Column(PgEnumAware("index_status", 50), default="pending", comment="索引状态：pending/indexing/indexed/failed")
+    index_status = Column(
+        PgEnumAware("index_status", 50), default="pending", comment="索引状态：pending/indexing/indexed/failed"
+    )
     knowledge_point_count = Column(Integer, default=0, server_default="0", comment="提取知识点数量")
     # 此前只有 core.models.documents.Document 映射了 chunk_count，业务实际用的是本类，
     # 于是 smart_ingest 的赋值落在 Python 属性上、从未落库（705/705 恒为 0）。
@@ -829,12 +893,26 @@ class Document(Base):
     content = Column(Text, nullable=True, comment="解析后文本内容")
     subject = Column(String(50), nullable=True, index=True, comment="学科分类")
     # —— 结构化文档组织：# 原始层 / 加工层 / 索引层 —— #
-    doc_type = Column(PgEnumAware("doc_type", 20), nullable=True, index=True, comment="资料层级：raw 原始教材真题 / note 加工笔记错题 / index 索引考点清单")
-    structure_level = Column(PgEnumAware("structure_level", 20), nullable=True, comment="结构化程度：structured 已按章节解析 / flat 扁平文本 / ocr 扫描件")
+    doc_type = Column(
+        PgEnumAware("doc_type", 20),
+        nullable=True,
+        index=True,
+        comment="资料层级：raw 原始教材真题 / note 加工笔记错题 / index 索引考点清单",
+    )
+    structure_level = Column(
+        PgEnumAware("structure_level", 20),
+        nullable=True,
+        comment="结构化程度：structured 已按章节解析 / flat 扁平文本 / ocr 扫描件",
+    )
     ocr_used = Column(Boolean, default=False, comment="是否经 OCR 识别（扫描版真题）")
     # —— V11 模块5：内容语义分层（与 doc_type 加工层级正交）—— #
     # textbook 教材知识点 / example 典型例题 / exam 历年真题 / method 解题方法
-    content_category = Column(PgEnumAware("content_category", 20), nullable=True, index=True, comment="内容语义分类：textbook 教材 / example 例题 / exam 真题 / method 方法")
+    content_category = Column(
+        PgEnumAware("content_category", 20),
+        nullable=True,
+        index=True,
+        comment="内容语义分类：textbook 教材 / example 例题 / exam 真题 / method 方法",
+    )
     # —— IMA 知识库导入：阶段 / 内容性质 / 溯源 —— #
     # 三个维度彼此正交，且都**不复用 doc_type**（doc_type 是加工层级 raw/note/index），
     # 避免两套语义挤在同一列破坏既有筛选。
@@ -848,8 +926,9 @@ class Document(Base):
     # —— 违禁/废弃标记（2026-10-15，分片 096_documents_junk_flag.sql）—— #
     # 红线 3：内容仅限 0854 学科；非相关（法硕/西医/管综/教育…）标 True，
     # 查询侧统一过滤 `is_junk IS NOT TRUE`，不物理删除。
-    is_junk = Column(Boolean, nullable=False, default=False, index=True,
-                     server_default="false", comment="违禁/废弃文档标记")
+    is_junk = Column(
+        Boolean, nullable=False, default=False, index=True, server_default="false", comment="违禁/废弃文档标记"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -870,11 +949,18 @@ class KnowledgeChunk(Base):
     summary = Column(Text, nullable=True, comment="分块摘要")
     # —— chunk 级三层标签（docx/14 方案，幂等 ALTER 见 chunk_classifier） —— #
     l2_chapter = Column(String(200), nullable=True, comment="L2 章节/模块，如：连续时间系统的时域分析")
-    l3_content_type = Column(PgEnumAware("l3_content_type", 30), nullable=True, index=True,
-                             comment="L3 内容语义类型：定义/定理/理论陈述/例题/习题/证明/公式/实验步骤/其他")
+    l3_content_type = Column(
+        PgEnumAware("l3_content_type", 30),
+        nullable=True,
+        index=True,
+        comment="L3 内容语义类型：定义/定理/理论陈述/例题/习题/证明/公式/实验步骤/其他",
+    )
     classify_confidence = Column(Float, nullable=True, comment="三路融合置信度 0~1")
-    classify_source = Column(PgEnumAware("classify_source", 30), nullable=True,
-                             comment="判定来源留痕：vector/keyword/fusion/llm/no_bge/fallback")
+    classify_source = Column(
+        PgEnumAware("classify_source", 30),
+        nullable=True,
+        comment="判定来源留痕：vector/keyword/fusion/llm/no_bge/fallback",
+    )
     created_at = Column(DateTime, default=_utcnow)
 
     document = relationship("Document", backref="knowledge_chunks")
@@ -890,6 +976,7 @@ class SubjectPrototype(Base):
     哈希向量做相似度=噪声。质心分类对引擎一致性极其敏感，所以这里用
     (subject, engine) 联合主键把口径锁死（docx/14 第一节问题 6）。
     """
+
     __tablename__ = "subject_prototypes"
 
     subject = Column(String(50), primary_key=True, comment="学科（taxonomy 归一后的叶子科）")
@@ -905,6 +992,7 @@ class SubjectPrototype(Base):
 # --------------------------------------------------------------------------- #
 class AnnotationSample(Base):
     """人工标注/修正的分类样本。eval 集 + 未来小模型训练集共用。"""
+
     __tablename__ = "annotation_samples"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -914,8 +1002,7 @@ class AnnotationSample(Base):
     label_l2 = Column(String(200), nullable=True, comment="人工章节标签")
     label_l3 = Column(PgEnumAware("l3_content_type", 30), nullable=True, comment="人工内容类型标签")
     annotate_user = Column(String(50), nullable=True, comment="标注人")
-    source = Column(String(20), default="manual_fix",
-                    comment="来源：eval_seed=评估集抽样 / manual_fix=线上人工修正")
+    source = Column(String(20), default="manual_fix", comment="来源：eval_seed=评估集抽样 / manual_fix=线上人工修正")
     created_at = Column(DateTime, default=_utcnow)
 
 
@@ -928,17 +1015,24 @@ class EvalRun(Base):
     metrics 原样存脚本的 report dict，不改结构；primary_metric 单独拉一列，
     前端画趋势不必解析 JSON。
     """
+
     __tablename__ = "eval_runs"
 
     id = Column(Integer, primary_key=True, index=True)
-    kind = Column(String(24), nullable=False, index=True,
-                  comment="qa=答疑模型评测 / recognition=识别策略评测 / corpus_probe=语料体检")
+    kind = Column(
+        String(24),
+        nullable=False,
+        index=True,
+        comment="qa=答疑模型评测 / recognition=识别策略评测 / corpus_probe=语料体检",
+    )
     arm = Column(String(120), nullable=True, comment="被测对象：模型名列表或策略名")
-    dataset_fingerprint = Column(String(64), nullable=True, index=True,
-                                 comment="数据集指纹 sha1（训练集内容+样本数+holdout 口径）")
+    dataset_fingerprint = Column(
+        String(64), nullable=True, index=True, comment="数据集指纹 sha1（训练集内容+样本数+holdout 口径）"
+    )
     n_samples = Column(Integer, nullable=True, comment="评测样本数")
-    primary_metric = Column(Float, nullable=True,
-                            comment="主指标：qa=held-out 准确率, recognition=学科池精确率, corpus_probe=域内可检索率")
+    primary_metric = Column(
+        Float, nullable=True, comment="主指标：qa=held-out 准确率, recognition=学科池精确率, corpus_probe=域内可检索率"
+    )
     metrics = Column(JSON, nullable=True, comment="脚本 report 原文 JSON")
     report_path = Column(String(300), nullable=True, comment="导出的 markdown/JSON 报告路径")
     notes = Column(Text, nullable=True, comment="口径说明、否决结论等")
@@ -984,8 +1078,9 @@ class StudyStats(Base):
     __tablename__ = "study_stats"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     date = Column(Date, nullable=False, index=True, comment="日期")
     total_duration = Column(Integer, default=0, comment="总时长（分钟）")
     subject_durations = Column(JSON, nullable=True, comment="各科时长 JSON")
@@ -995,18 +1090,19 @@ class StudyStats(Base):
     created_at = Column(DateTime, default=_utcnow)
 
 
-
 # --------------------------------------------------------------------------- #
 # 单词词库
 # --------------------------------------------------------------------------- #
 class WordDeck(Base):
     """词库分类（如：考研核心词、高频词、熟词僻义等）。"""
+
     __tablename__ = "word_decks"
 
     id = Column(Integer, primary_key=True, index=True)
     # B4：NULL=内置公共词书（人人可见）；非 NULL=用户自建词库
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID；NULL=内置公共词书")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID；NULL=内置公共词书"
+    )
     name = Column(String(200), nullable=False, comment="词库名称")
     description = Column(String(500), nullable=True, comment="词库描述")
     source = Column(String(100), nullable=True, comment="来源：词汇闪过/红宝书/自建等")
@@ -1020,13 +1116,15 @@ class WordDeck(Base):
 
 class Word(Base):
     """单词条目（含释义、音标、词根、例句、SM-2调度状态）。"""
+
     __tablename__ = "words"
 
     id = Column(Integer, primary_key=True, index=True)
     # B4：NULL=内置公共词书的词条（内容共用）；个人 SM-2 进度隔离在 review_schedules。
     # 非 NULL=用户自建词库导入的词条（内容本身即个人数据）。
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID；NULL=公共词书词条")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID；NULL=公共词书词条"
+    )
     deck_id = Column(Integer, ForeignKey("word_decks.id"), nullable=True, index=True)
     word = Column(String(100), nullable=False, index=True, comment="单词")
     phonetic = Column(String(100), nullable=True, comment="音标")
@@ -1038,8 +1136,11 @@ class Word(Base):
     tag = Column(String(50), nullable=True, comment="标签：高频/中频/低频等")
     # SM-2 间隔重复调度
     # 同Flashcard.mastery：默认值必须是 mastery_level 的合法标签，"new" 会让PG 报错
-    status = Column(PgEnumAware("mastery_level", 20), default="not_mastered",
-                    comment="状态（mastery_level ENUM）：not_mastered/learning/reviewing/mastered")
+    status = Column(
+        PgEnumAware("mastery_level", 20),
+        default="not_mastered",
+        comment="状态（mastery_level ENUM）：not_mastered/learning/reviewing/mastered",
+    )
     ease_factor = Column(Float, default=2.5, comment="难度系数 EF")
     interval_days = Column(Integer, default=0, comment="复习间隔（天）")
     # 兼容别名：旧路由/前端一直读写 word.interval（DB 列实际叫 interval_days）
@@ -1053,9 +1154,7 @@ class Word(Base):
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
-    __table_args__ = (
-        Index("ix_words_word_deck", "word", "deck_id"),
-    )
+    __table_args__ = (Index("ix_words_word_deck", "word", "deck_id"),)
 
 
 # --------------------------------------------------------------------------- #
@@ -1095,9 +1194,7 @@ class PaperQuestion(Base):
     difficulty = Column(Integer, default=3, comment="难度")
     score = Column(Integer, default=5, comment="本题分值")
 
-    __table_args__ = (
-        Index("ix_paper_questions_paper_seq", "paper_id", "seq"),
-    )
+    __table_args__ = (Index("ix_paper_questions_paper_seq", "paper_id", "seq"),)
 
 
 # --------------------------------------------------------------------------- #
@@ -1105,20 +1202,29 @@ class PaperQuestion(Base):
 # --------------------------------------------------------------------------- #
 class KaoyanSchool(Base):
     """择校数据中心·院校主表"""
+
     __tablename__ = "kaoyan_schools"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False, index=True, comment="院校名称")
-    level = Column(String(50), nullable=True, index=True, comment="层级：985/211/双一流/双非；空=未分类（非985/211/双一流）")
+    level = Column(
+        String(50), nullable=True, index=True, comment="层级：985/211/双一流/双非；空=未分类（非985/211/双一流）"
+    )
     province = Column(String(50), nullable=True, index=True, comment="省份")
     city = Column(String(50), nullable=True, comment="城市")
     # M3-1：大区（教育部国家线分区 A区/B区）+ 院校类型（公办/科研院所/军队院校）
     region = Column(String(30), nullable=True, index=True, comment="大区：A区/B区")
     type = Column(String(30), nullable=True, index=True, comment="院校类型：公办/科研院所/军队院校")
     logo_url = Column(String(500), nullable=True, comment="校徽URL")
+    cover_url = Column(String(500), nullable=True, comment="院校封面图URL（校门/校园实景，自托管 /media/images 路径）")
     intro = Column(Text, nullable=True, comment="院校简介")
     tags = Column(JSON, nullable=True, comment="标签JSON")
     official_url = Column(String(500), nullable=True, comment="研究生院官网")
-    data_source = Column(String(50), nullable=True, index=True, comment="来源标记：yz.chsi.com.cn / school_official / seed_txkyer / unverified")
+    data_source = Column(
+        String(50),
+        nullable=True,
+        index=True,
+        comment="来源标记：yz.chsi.com.cn / school_official / seed_txkyer / unverified",
+    )
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     colleges = relationship("KaoyanCollege", backref="school", cascade="all, delete-orphan")
@@ -1132,6 +1238,7 @@ class KaoyanCrawlTarget(Base):
       - enabled=False = 用户明确排除，采集任务跳过
       - enabled=True  = 用户明确保留（用于审计/后续优先级）
     """
+
     __tablename__ = "kaoyan_crawl_targets"
     id = Column(Integer, primary_key=True, index=True)
     school_id = Column(Integer, ForeignKey("kaoyan_schools.id"), nullable=False, unique=True, index=True)
@@ -1145,6 +1252,7 @@ class KaoyanCrawlTarget(Base):
 
 class KaoyanCollege(Base):
     """择校数据中心·学院"""
+
     __tablename__ = "kaoyan_colleges"
     id = Column(Integer, primary_key=True, index=True)
     school_id = Column(Integer, ForeignKey("kaoyan_schools.id"), nullable=False, index=True)
@@ -1155,6 +1263,7 @@ class KaoyanCollege(Base):
 
 class KaoyanMajor(Base):
     """择校数据中心·专业方向"""
+
     __tablename__ = "kaoyan_majors"
     id = Column(Integer, primary_key=True, index=True)
     school_id = Column(Integer, ForeignKey("kaoyan_schools.id"), nullable=False, index=True)
@@ -1166,13 +1275,15 @@ class KaoyanMajor(Base):
     exam_subjects = Column(JSON, nullable=True, comment="考试科目JSON")
     reference_books = Column(JSON, nullable=True, comment="参考书目JSON")
     # DB 正典：NOT NULL DEFAULT 'unknown'::degree_type（对齐同上，修 30 例 NotNullViolation）
-    degree_type = Column(PgEnumAware("degree_type", 20), nullable=False,
-                         default="unknown", server_default="unknown", comment="学硕/专硕")
+    degree_type = Column(
+        PgEnumAware("degree_type", 20), nullable=False, default="unknown", server_default="unknown", comment="学硕/专硕"
+    )
     created_at = Column(DateTime, default=_utcnow)
 
 
 class KaoyanAdmission(Base):
     """择校数据中心·年度招生数据"""
+
     __tablename__ = "kaoyan_admissions"
     id = Column(Integer, primary_key=True, index=True)
     school_id = Column(Integer, ForeignKey("kaoyan_schools.id"), nullable=False, index=True)
@@ -1199,6 +1310,7 @@ class KaoyanAdmissionDetail(Base):
     由 pipeline/admission_batch_ocr.py 写入（DeepSeek-OCR 扫描件兜底）。
     data_source 唯一：`<聚合行 data_source>:d<序号>`，断点续跑幂等。
     """
+
     __tablename__ = "kaoyan_admission_details"
     id = Column(Integer, primary_key=True, index=True)
     admission_id = Column(Integer, ForeignKey("kaoyan_admissions.id"), nullable=True, index=True)
@@ -1221,6 +1333,7 @@ class KaoyanAdmissionDetail(Base):
 
 class KaoyanScoreLine(Base):
     """择校数据中心·年度分数线"""
+
     __tablename__ = "kaoyan_scorelines"
     id = Column(Integer, primary_key=True, index=True)
     school_id = Column(Integer, ForeignKey("kaoyan_schools.id"), nullable=False, index=True)
@@ -1234,7 +1347,12 @@ class KaoyanScoreLine(Base):
     national_line = Column(Integer, nullable=True, comment="国家线")
     retest_line = Column(Integer, nullable=True, comment="校复试线")
     line_type = Column(String(20), nullable=True, comment="类型")
-    source = Column(String(50), nullable=True, index=True, comment="来源标记：yz.chsi.com.cn / school_official / csv_sample / txkyer.cn / unverified")
+    source = Column(
+        String(50),
+        nullable=True,
+        index=True,
+        comment="来源标记：yz.chsi.com.cn / school_official / csv_sample / txkyer.cn / unverified",
+    )
     major_code = Column(String(20), nullable=True, comment="专业代码（kaoyan.cn 逐专业分数线口径）")
     major_name = Column(String(120), nullable=True)
     depart_name = Column(String(120), nullable=True, comment="招生院系")
@@ -1252,6 +1370,7 @@ class KaoyanScoreLine(Base):
 
 class KaoyanSubject(Base):
     """择校数据中心·学科分类"""
+
     __tablename__ = "kaoyan_subjects"
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String(20), nullable=False, unique=True, index=True, comment="学科代码")
@@ -1273,8 +1392,9 @@ class StudyEvent(Base):
     __tablename__ = "study_events"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True,
-                     comment="归属用户 ID（个人数据隔离）")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
     event_type = Column(String(50), nullable=False, index=True, comment="事件类型：answer/submit/review/study 等")
     subject = Column(String(50), nullable=True, index=True, comment="科目")
     chapter_id = Column(Integer, nullable=True, comment="章节 ID")
@@ -1301,15 +1421,20 @@ class MemoryTrace(Base):
     __tablename__ = "memory_traces"
 
     id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True,
-                     comment="归属用户 ID")
-    trace_type = Column(PgEnumAware("memory_trace_type", 20), nullable=False, default="qa",
-                        comment="qa/tutoring/grading/study/document/feedback")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True, comment="归属用户 ID"
+    )
+    trace_type = Column(
+        PgEnumAware("memory_trace_type", 20),
+        nullable=False,
+        default="qa",
+        comment="qa/tutoring/grading/study/document/feedback",
+    )
     subject = Column(String(50), nullable=True, comment="科目")
-    question_id = Column(BigInteger, ForeignKey("quiz_questions.id", ondelete="SET NULL"), nullable=True,
-                         comment="题目 ID")
-    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True,
-                         comment="文档 ID")
+    question_id = Column(
+        BigInteger, ForeignKey("quiz_questions.id", ondelete="SET NULL"), nullable=True, comment="题目 ID"
+    )
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, comment="文档 ID")
     session_id = Column(BigInteger, nullable=True, comment="AI 对话/模考会话 ID（逻辑关联）")
     title = Column(String(200), nullable=False, comment="人类可读摘要")
     payload = Column(RawJSON, nullable=False, default=dict, comment="原始上下文快照 JSON")
@@ -1329,13 +1454,14 @@ class MemoryFact(Base):
     __tablename__ = "memory_facts"
 
     id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True,
-                     comment="归属用户 ID")
-    fact_type = Column(String(50), nullable=False, default="weakness",
-                       comment="weakness/strength/preference/progress")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True, comment="归属用户 ID"
+    )
+    fact_type = Column(String(50), nullable=False, default="weakness", comment="weakness/strength/preference/progress")
     subject = Column(String(50), nullable=True, comment="科目")
-    knowledge_point_id = Column(BigInteger, ForeignKey("knowledge_points.id", ondelete="SET NULL"),
-                              nullable=True, comment="知识点 ID")
+    knowledge_point_id = Column(
+        BigInteger, ForeignKey("knowledge_points.id", ondelete="SET NULL"), nullable=True, comment="知识点 ID"
+    )
     kp_name = Column(String(100), nullable=True, comment="知识点名称快照")
     claim = Column(Text, nullable=False, comment="事实陈述")
     confidence = Column(Float, default=0.5, comment="0~1 置信度")
@@ -1360,10 +1486,10 @@ class MemorySynthesis(Base):
     __tablename__ = "memory_synthesis"
 
     id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True,
-                     comment="归属用户 ID")
-    synth_type = Column(String(50), nullable=False, default="profile",
-                        comment="profile/weakness_map/study_plan")
+    user_id = Column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True, comment="归属用户 ID"
+    )
+    synth_type = Column(String(50), nullable=False, default="profile", comment="profile/weakness_map/study_plan")
     title = Column(String(200), nullable=False, comment="综合结论标题")
     summary = Column(Text, nullable=False, comment="综合结论")
     detail = Column(RawJSON, nullable=False, default=dict, comment="结构化明细")
@@ -1375,9 +1501,7 @@ class MemorySynthesis(Base):
     original_summary = Column(Text, nullable=True, comment="原始结论快照")
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
-    __table_args__ = (
-        Index("ix_memory_synthesis_user", "user_id", "updated_at"),
-    )
+    __table_args__ = (Index("ix_memory_synthesis_user", "user_id", "updated_at"),)
 
 
 # --------------------------------------------------------------------------- #
@@ -1391,7 +1515,11 @@ class Milestone(Base):
     id = Column(Integer, primary_key=True, index=True)
     year = Column(Integer, nullable=False, index=True, comment="考研年份（如 2027）")
     name = Column(String(100), nullable=False, comment="节点名称（如 预报名/初试）")
-    category = Column(String(50), nullable=False, comment="类型：招生/大纲/报名/确认/命题/准考证/初试/阅卷/查分/院校线/国家线/复试/调剂/体检/政审/录取")
+    category = Column(
+        String(50),
+        nullable=False,
+        comment="类型：招生/大纲/报名/确认/命题/准考证/初试/阅卷/查分/院校线/国家线/复试/调剂/体检/政审/录取",
+    )
     start_date = Column(Date, nullable=True, comment="起始日期")
     end_date = Column(Date, nullable=True, comment="结束日期")
     importance = Column(Integer, default=2, comment="重要度 1-5")
@@ -1399,9 +1527,7 @@ class Milestone(Base):
     pitfalls = Column(Text, nullable=True, comment="不这么做会吃亏")
     is_active = Column(Boolean, default=True, comment="是否启用")
     created_at = Column(DateTime, default=_utcnow)
-    __table_args__ = (
-        UniqueConstraint("year", "name", name="uq_milestone_year_name"),
-    )
+    __table_args__ = (UniqueConstraint("year", "name", name="uq_milestone_year_name"),)
 
 
 # --------------------------------------------------------------------------- #
@@ -1418,9 +1544,7 @@ class KaoyanCollectionRun(Base):
     detail = Column(JSON, nullable=True, comment="附加明细 JSON")
     status = Column(String(20), default="success", comment="success / failed / partial")
     created_at = Column(DateTime, default=_utcnow)
-    __table_args__ = (
-        Index("ix_kaoyan_cr_source_time", "source", "created_at"),
-    )
+    __table_args__ = (Index("ix_kaoyan_cr_source_time", "source", "created_at"),)
 
 
 class SchoolAlias(Base):
@@ -1469,7 +1593,6 @@ class SubjectConfig(Base):
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
-
 # --------------------------------------------------------------------------- #
 # 用户与角色（doc 11 F11-01）
 # --------------------------------------------------------------------------- #
@@ -1489,6 +1612,16 @@ class User(Base):
     # 软删除时间戳：非空=已删除（列表隐藏/登录拒绝/用户名仍占用）。清空即恢复。
     # 用户不能物理删除的原因见 core/sql/107 头注释（关联学习数据不可逆丢失）。
     deleted_at = Column(DateTime, nullable=True, comment="软删除时间戳（NULL=正常）")
+    # ---- 邮箱版用户管理（core/sql/116，《用户管理界面.md》） ----
+    email = Column(String(255), nullable=True, comment="登录邮箱（lower 部分唯一索引）")
+    email_verified_at = Column(DateTime, nullable=True, comment="邮箱验证时间（NULL=未验证）")
+    # 状态机：unverified|active|disabled|pending_deletion|deleted（ck_users_status）
+    status = Column(String(20), nullable=False, default="active", comment="账号状态机")
+    disabled_reason = Column(Text, nullable=True, comment="禁用原因（登录时提示）")
+    disabled_at = Column(DateTime, nullable=True)
+    deletion_requested_at = Column(DateTime, nullable=True, comment="注销申请时间（7 天冷静期）")
+    last_login_ip = Column(String(64), nullable=True)
+    login_count = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -1496,6 +1629,85 @@ class User(Base):
         Index("ix_users_role_active", "role", "is_active"),
         Index("ix_users_live", "id", postgresql_where=text("deleted_at IS NULL")),
     )
+
+
+class EmailToken(Base):
+    """邮箱验证 / 密码重置 token：只存 SHA-256 哈希，不存明文（116）。
+
+    重置 token 的 pwd_fingerprint 绑定签发时的密码哈希指纹：
+    用户一旦改密，旧重置链接立即失效（无需维护已用 token 黑名单）。
+    """
+
+    __tablename__ = "email_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String(16), nullable=False, comment="verify | reset")
+    token_hash = Column(String(64), nullable=False, index=True)
+    pwd_fingerprint = Column(String(64), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+    request_ip = Column(String(64), nullable=True)
+
+
+class Role(Base):
+    """RBAC 角色（116）：admin / doc_admin / user。"""
+
+    __tablename__ = "roles"
+
+    role = Column(String(16), primary_key=True)
+    label = Column(String(64), nullable=False)
+    description = Column(Text, nullable=True)
+
+
+class RolePermission(Base):
+    """角色→操作级权限映射（116，存表不硬编码）。"""
+
+    __tablename__ = "role_permission"
+
+    role = Column(String(16), ForeignKey("roles.role", ondelete="CASCADE"), primary_key=True)
+    permission = Column(String(64), primary_key=True)
+
+
+class AuthEvent(Base):
+    """认证与账号状态变更审计（116）：只读，管理端不提供修改/删除端点。"""
+
+    __tablename__ = "auth_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_type = Column(String(64), nullable=False, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    email = Column(String(255), nullable=True)
+    actor_id = Column(Integer, nullable=True)
+    success = Column(Boolean, nullable=False, default=True)
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(255), nullable=True)
+    detail = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class AuthSession(Base):
+    """服务端会话登记（120，V3.12 评审 C5/C6 整改：refresh 轮换 + 登出即吊销）。
+
+    一次登录 = 一行会话：access/refresh token 都带 sid（本表主键），
+    refresh 另带一次性 jti（refresh_jti 列，每次刷新轮换）。
+      * 登出 → revoked_at 置位 → 该会话的 access/refresh 立即 401（其他设备不受影响）；
+      * 旧 jti 重放（被盗刷新）→ 整行吊销 + token_version 自增（全家族失效）；
+      * 改密/禁用/注销仍走 token_version 自增，所有会话一并失效（既有机制不变）。
+    """
+
+    __tablename__ = "auth_sessions"
+
+    id = Column(String(36), primary_key=True, comment="会话 ID（uuid4 hex），token 的 sid 声明")
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    refresh_jti = Column(String(36), nullable=False, unique=True, comment="当前有效 refresh token 的 jti（一次性）")
+    created_at = Column(DateTime, default=_utcnow)
+    last_used_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    expires_at = Column(DateTime, nullable=False, comment="会话过期时间（= refresh 有效期）")
+    revoked_at = Column(DateTime, nullable=True)
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(300), nullable=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -1512,8 +1724,9 @@ class DocumentPage(Base):
     __tablename__ = "document_pages"
 
     id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False,
-                         index=True, comment="来源文档 ID")
+    document_id = Column(
+        Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True, comment="来源文档 ID"
+    )
     page_no = Column(Integer, nullable=False, comment="物理页码（1 基）")
     width = Column(Float, nullable=True, comment="页宽（渲染像素）")
     height = Column(Float, nullable=True, comment="页高（渲染像素）")
@@ -1536,12 +1749,17 @@ class DocumentBlock(Base):
     __tablename__ = "document_blocks"
 
     id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False,
-                         index=True, comment="来源文档 ID")
+    document_id = Column(
+        Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True, comment="来源文档 ID"
+    )
     page_no = Column(Integer, nullable=False, comment="物理页码（1 基）")
     block_id = Column(String(64), nullable=True, comment="解析引擎给出的块 ID")
-    block_type = Column(String(32), nullable=True, index=True,
-                        comment="块类型：text/title/table/figure/formula/list/header/footer/page_no/unknown")
+    block_type = Column(
+        String(32),
+        nullable=True,
+        index=True,
+        comment="块类型：text/title/table/figure/formula/list/header/footer/page_no/unknown",
+    )
     bbox = Column(RawJSON, nullable=True, comment="bbox JSON：[x0,y0,x1,y1]")
     text = Column(Text, nullable=True, comment="块文本")
     latex = Column(Text, nullable=True, comment="块内公式 LaTeX")
@@ -1554,9 +1772,7 @@ class DocumentBlock(Base):
     extra = Column(RawJSON, nullable=True, comment="块级附加信息 JSON（质检标记等）")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
-    __table_args__ = (
-        Index("ix_document_blocks_doc_page", "document_id", "page_no"),
-    )
+    __table_args__ = (Index("ix_document_blocks_doc_page", "document_id", "page_no"),)
 
 
 class QuestionImage(Base):
@@ -1570,10 +1786,16 @@ class QuestionImage(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     # 题目入库前先落图（题目还没写进 quiz_questions），故允许为空，入库后回填。
-    question_id = Column(Integer, ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=True,
-                         index=True, comment="题目 ID（题目入库后回填）")
-    document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=True,
-                         index=True, comment="来源文档 ID")
+    question_id = Column(
+        Integer,
+        ForeignKey("quiz_questions.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="题目 ID（题目入库后回填）",
+    )
+    document_id = Column(
+        Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=True, index=True, comment="来源文档 ID"
+    )
     page_no = Column(Integer, nullable=True, comment="物理页码（1 基）")
     image_path = Column(String(1000), nullable=True, comment="图片相对路径")
     image_hash = Column(String(64), nullable=True, index=True, comment="图片内容 sha256")
@@ -1583,8 +1805,9 @@ class QuestionImage(Base):
     caption = Column(String(1000), nullable=True, comment="图注文本")
     width = Column(Integer, nullable=True, comment="图宽（像素）")
     height = Column(Integer, nullable=True, comment="图高（像素）")
-    is_primary = Column(Boolean, nullable=False, default=False, server_default="false",
-                        comment="是否主图（同一题中面积最大者）")
+    is_primary = Column(
+        Boolean, nullable=False, default=False, server_default="false", comment="是否主图（同一题中面积最大者）"
+    )
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
@@ -1595,12 +1818,14 @@ class CrawlJob(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     source_key = Column(String(64), nullable=False, index=True, comment="来源键（站点/栏目标识）")
-    school_id = Column(Integer, ForeignKey("kaoyan_schools.id", ondelete="SET NULL"), nullable=True,
-                       index=True, comment="关联院校 ID")
+    school_id = Column(
+        Integer, ForeignKey("kaoyan_schools.id", ondelete="SET NULL"), nullable=True, index=True, comment="关联院校 ID"
+    )
     url = Column(String(1024), nullable=True, comment="任务 URL")
     job_type = Column(String(32), nullable=True, comment="任务类型：list/detail/schedule")
-    status = Column(String(16), nullable=False, default="pending", index=True,
-                    comment="状态：pending/running/done/failed")
+    status = Column(
+        String(16), nullable=False, default="pending", index=True, comment="状态：pending/running/done/failed"
+    )
     attempts = Column(Integer, nullable=False, default=0, server_default="0", comment="已尝试次数")
     next_run_at = Column(DateTime(timezone=True), nullable=True, index=True, comment="下次执行时间")
     last_error = Column(Text, nullable=True, comment="最近一次错误")
@@ -1614,8 +1839,9 @@ class CrawlPage(Base):
     __tablename__ = "crawl_pages"
 
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, ForeignKey("crawl_jobs.id", ondelete="SET NULL"), nullable=True,
-                    index=True, comment="来源任务 ID")
+    job_id = Column(
+        Integer, ForeignKey("crawl_jobs.id", ondelete="SET NULL"), nullable=True, index=True, comment="来源任务 ID"
+    )
     url = Column(String(1024), nullable=True, comment="原始 URL")
     canonical_url = Column(String(1024), nullable=True, unique=True, index=True, comment="规范化 URL（去重用）")
     title = Column(String(512), nullable=True, comment="页面标题")
@@ -1633,8 +1859,9 @@ class CrawlDeadLetter(Base):
     __tablename__ = "crawl_dead_letters"
 
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, ForeignKey("crawl_jobs.id", ondelete="SET NULL"), nullable=True,
-                    index=True, comment="来源任务 ID")
+    job_id = Column(
+        Integer, ForeignKey("crawl_jobs.id", ondelete="SET NULL"), nullable=True, index=True, comment="来源任务 ID"
+    )
     url = Column(String(1024), nullable=True, comment="失败 URL")
     source_key = Column(String(64), nullable=True, index=True, comment="来源键")
     error = Column(Text, nullable=True, comment="错误详情")

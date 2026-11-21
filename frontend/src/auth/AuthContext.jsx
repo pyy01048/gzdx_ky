@@ -31,7 +31,13 @@ export function AuthProvider({ children }) {
     try {
       const user = await authApi.me()
       /* 200 + 空 body 时 request() 返回 null：没有身份就是未登录，不能当 ready 放行 */
-      if (user) setUserKeys(user.id) /* B4：会话恢复时同步绑定本地隔离命名空间 */
+      if (user) {
+        setUserKeys(user.id) /* B4：会话恢复时同步绑定本地隔离命名空间 */
+        /* persist 落盘键按 uid 隔离：模块加载时 uid 未设置 → 首读为空。
+           恢复会话绑定 uid 后必须 rehydrate，否则硬刷新会丢主题/本地缓存
+           （与 login 路径同一口径）。 */
+        void useStore.persist.rehydrate()
+      }
       setState(user ? { status: statusOf(user), user, error: null } : { status: 'anon', user: null, error: null })
     } catch (e) {
       if (e?.status === 401) setState({ status: 'anon', user: null, error: null })

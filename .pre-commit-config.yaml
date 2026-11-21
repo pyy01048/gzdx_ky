@@ -25,3 +25,23 @@ repos:
         exclude: '\.(bat|cmd)$'           # .bat 必须 CRLF（make_bats.py 校验）
       - id: check-yaml
         files: '^(\.pre-commit-config\.yaml|\.gitleaks\.toml|\.github/.*\.ya?ml)$'
+
+  # 前端 lint（完善方案 07 §3.1）；eslint 已进 devDependencies，装一次 node_modules 即可。
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint（frontend/src）
+        entry: bash -c 'cd frontend && npx --no-install eslint src --max-warnings=400'
+        language: system
+        files: ^frontend/src/.*\.(js|jsx)$
+        pass_filenames: false
+
+  # 后端 ruff（完善方案 04 §3.1）：只对本次提交的 py 生效，存量分批清零。
+  # rev 与 pyproject 规则集对齐（UP045 等需要 ruff ≥0.47）
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        files: ^backend-main-fastapi/.*\.py$
+      - id: ruff-format
+        files: ^backend-main-fastapi/.*\.py$

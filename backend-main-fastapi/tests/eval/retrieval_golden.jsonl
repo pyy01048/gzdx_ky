@@ -1,0 +1,5 @@
+{"id":"r001","query":"用卡诺图化简逻辑函数的基本步骤","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"数字电子技术","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
+{"id":"r002","query":"什么是密勒效应","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"模拟电子技术","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
+{"id":"r003","query":"戴维南定理如何求等效电阻","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"电路","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
+{"id":"r004","query":"触发器与锁存器的区别","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"数字电子技术","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
+{"id":"r005","query":"运算放大器虚短虚断的适用条件","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"模拟电子技术","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}

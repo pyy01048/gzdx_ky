@@ -1,0 +1,622 @@
+{
+ "total": 88,
+ "failed": 0,
+ "results": [
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "doc-no-h-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "panel-no-clip",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "unique-main-figure",
+   "ok": true,
+   "detail": "count=1"
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "no-debug-text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "font-scale",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "no-backdrop-blur",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "no-gradient-buttons",
+   "ok": true,
+   "detail": "n=0"
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "live-regions",
+   "ok": true,
+   "detail": "{\"status\":true,\"alert\":true}"
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "touch-44px",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "light",
+   "check": "skip-link-first-tab",
+   "ok": true,
+   "detail": "v3-skip-link"
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "theme-toggle-works",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "doc-no-h-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "panel-no-clip",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "unique-main-figure",
+   "ok": true,
+   "detail": "count=1"
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "no-debug-text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "font-scale",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "no-backdrop-blur",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "no-gradient-buttons",
+   "ok": true,
+   "detail": "n=0"
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "live-regions",
+   "ok": true,
+   "detail": "{\"status\":true,\"alert\":true}"
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "touch-44px",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "theme-persists-reload",
+   "ok": true,
+   "detail": "data-theme=dark"
+  },
+  {
+   "vp": "375",
+   "theme": "dark",
+   "check": "skip-link-first-tab",
+   "ok": true,
+   "detail": "v3-skip-link"
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "doc-no-h-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "panel-no-clip",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "unique-main-figure",
+   "ok": true,
+   "detail": "count=1"
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "no-debug-text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "font-scale",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "no-backdrop-blur",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "no-gradient-buttons",
+   "ok": true,
+   "detail": "n=0"
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "live-regions",
+   "ok": true,
+   "detail": "{\"status\":true,\"alert\":true}"
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "rail-76px",
+   "ok": true,
+   "detail": "w=76"
+  },
+  {
+   "vp": "768",
+   "theme": "light",
+   "check": "rail-labels-visible",
+   "ok": true,
+   "detail": "{\"labels\":6,\"sample\":\"12px\"}"
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "theme-toggle-works",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "doc-no-h-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "panel-no-clip",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "unique-main-figure",
+   "ok": true,
+   "detail": "count=1"
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "no-debug-text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "font-scale",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "no-backdrop-blur",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "no-gradient-buttons",
+   "ok": true,
+   "detail": "n=0"
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "live-regions",
+   "ok": true,
+   "detail": "{\"status\":true,\"alert\":true}"
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "rail-76px",
+   "ok": true,
+   "detail": "w=76"
+  },
+  {
+   "vp": "768",
+   "theme": "dark",
+   "check": "rail-labels-visible",
+   "ok": true,
+   "detail": "{\"labels\":6,\"sample\":\"12px\"}"
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "doc-no-h-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "panel-no-clip",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "unique-main-figure",
+   "ok": true,
+   "detail": "count=1"
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "no-debug-text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "font-scale",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "no-backdrop-blur",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "no-gradient-buttons",
+   "ok": true,
+   "detail": "n=0"
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "live-regions",
+   "ok": true,
+   "detail": "{\"status\":true,\"alert\":true}"
+  },
+  {
+   "vp": "1440",
+   "theme": "light",
+   "check": "sidebar-248px",
+   "ok": true,
+   "detail": "w=248"
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "theme-toggle-works",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "doc-no-h-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "panel-no-clip",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "unique-main-figure",
+   "ok": true,
+   "detail": "count=1"
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "no-debug-text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "font-scale",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "no-backdrop-blur",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "no-gradient-buttons",
+   "ok": true,
+   "detail": "n=0"
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "live-regions",
+   "ok": true,
+   "detail": "{\"status\":true,\"alert\":true}"
+  },
+  {
+   "vp": "1440",
+   "theme": "dark",
+   "check": "sidebar-248px",
+   "ok": true,
+   "detail": "w=248"
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "doc-no-h-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "panel-no-clip",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "unique-main-figure",
+   "ok": true,
+   "detail": "count=1"
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "no-debug-text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "font-scale",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "no-backdrop-blur",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "no-gradient-buttons",
+   "ok": true,
+   "detail": "n=0"
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "live-regions",
+   "ok": true,
+   "detail": "{\"status\":true,\"alert\":true}"
+  },
+  {
+   "vp": "1920",
+   "theme": "light",
+   "check": "sidebar-248px",
+   "ok": true,
+   "detail": "w=248"
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "theme-toggle-works",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "doc-no-h-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "panel-no-clip",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "unique-main-figure",
+   "ok": true,
+   "detail": "count=1"
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "no-debug-text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "font-scale",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "no-backdrop-blur",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "no-gradient-buttons",
+   "ok": true,
+   "detail": "n=0"
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "live-regions",
+   "ok": true,
+   "detail": "{\"status\":true,\"alert\":true}"
+  },
+  {
+   "vp": "1920",
+   "theme": "dark",
+   "check": "sidebar-248px",
+   "ok": true,
+   "detail": "w=248"
+  },
+  {
+   "vp": "schools",
+   "theme": "light",
+   "check": "cover-renders",
+   "ok": true,
+   "detail": "{\"covers\":1,\"coversLoaded\":1,\"logos\":1,\"logosLoaded\":1,\"fallbackChar\":true,\"docOverflow\":0}"
+  },
+  {
+   "vp": "schools",
+   "theme": "light",
+   "check": "logo-renders",
+   "ok": true,
+   "detail": "{\"covers\":1,\"coversLoaded\":1,\"logos\":1,\"logosLoaded\":1,\"fallbackChar\":true,\"docOverflow\":0}"
+  },
+  {
+   "vp": "schools",
+   "theme": "light",
+   "check": "no-branding-fallback",
+   "ok": true,
+   "detail": "{\"covers\":1,\"coversLoaded\":1,\"logos\":1,\"logosLoaded\":1,\"fallbackChar\":true,\"docOverflow\":0}"
+  },
+  {
+   "vp": "schools",
+   "theme": "light",
+   "check": "schools-no-overflow",
+   "ok": true,
+   "detail": "delta=0"
+  },
+  {
+   "vp": "detail",
+   "theme": "light",
+   "check": "hero-cover-bg",
+   "ok": true,
+   "detail": "{\"cover\":true,\"logo\":true,\"hasCoverClass\":true}"
+  },
+  {
+   "vp": "detail",
+   "theme": "light",
+   "check": "hero-logo",
+   "ok": true,
+   "detail": "{\"cover\":true,\"logo\":true,\"hasCoverClass\":true}"
+  },
+  {
+   "vp": "all",
+   "theme": "-",
+   "check": "zero-pageerror",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

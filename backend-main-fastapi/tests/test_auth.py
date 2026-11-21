@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """doc 11 登录与权限：账号/会话/限流/角色/用户管理的真实链路（不走 conftest 的身份替身）。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -53,10 +54,25 @@ ADMIN_PW = "Init-Pass-001"
 NEW_PW = "Changed-Pass-002"
 
 
+_FK_COLS_CACHE: list[tuple[str, str, bool]] | None = None
+
+
 def _user_fk_columns(session):
-    """列出所有 ``<table>.<column> REFERENCES users(id)``（含 SQL-only 表）。"""
-    rows = session.execute(text("""
-        SELECT tc.table_name, kcu.column_name
+    """列出所有 ``<table>.<column> REFERENCES users(id)``（含 SQL-only 表）。
+
+    返回 (表, 列, 可空)：可空列置空即可解除引用；NOT NULL 列（如
+    email_tokens.user_id）只能删行——置空会违反非空约束。
+
+    缓存（2026-11-20）：该查询在 100+ 表 / 数千约束的测试库上要 1~3 分钟，
+    而 fixture 每个用例都会调用一次——不缓存会让整个测试套件跑几小时（实测）。
+    一个测试会话内 schema 不变，缓存安全。
+    """
+    global _FK_COLS_CACHE
+    if _FK_COLS_CACHE is not None:
+        return _FK_COLS_CACHE
+    rows = session.execute(
+        text("""
+        SELECT tc.table_name, kcu.column_name, c.is_nullable
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
           ON tc.constraint_name = kcu.constraint_name
@@ -64,18 +80,29 @@ def _user_fk_columns(session):
         JOIN information_schema.constraint_column_usage ccu
           ON ccu.constraint_name = tc.constraint_name
          AND ccu.table_schema = tc.table_schema
+        JOIN information_schema.columns c
+          ON c.table_schema = tc.table_schema
+         AND c.table_name = tc.table_name
+         AND c.column_name = kcu.column_name
         WHERE tc.constraint_type = 'FOREIGN KEY'
           AND ccu.table_name = 'users'
-    """)).all()
-    return [(t, c) for t, c in rows]
+    """)
+    ).all()
+    _FK_COLS_CACHE = [(t, c, n == "YES") for t, c, n in rows]
+    return _FK_COLS_CACHE
 
 
 def _detach_user_refs(session, fk_cols):
-    """把指向 users 的归属列置空，让 ``DELETE FROM users`` 不被外键挡住。"""
-    for table, col in fk_cols:
-        session.execute(text(
-            f'UPDATE "{table}" SET "{col}" = NULL WHERE "{col}" IS NOT NULL'
-        ))
+    """解除指向 users 的引用，让 ``DELETE FROM users`` 不被外键挡住。
+
+    可空列置 NULL（结束后挂回测试主体）；NOT NULL 列直接删行
+    （这些行本来就属于被清掉的账号，如邮箱 token）。
+    """
+    for table, col, nullable in fk_cols:
+        if nullable:
+            session.execute(text(f'UPDATE "{table}" SET "{col}" = NULL WHERE "{col}" IS NOT NULL'))
+        else:
+            session.execute(text(f'DELETE FROM "{table}" WHERE "{col}" IS NOT NULL'))
 
 
 @pytest.fixture()
@@ -90,7 +117,7 @@ def auth_app(app_module, db_schema, monkeypatch):  # noqa: ARG001
     """
     from core.models.schools import AuditLog
     from database import SessionLocal
-    from models import User
+    from models import AuthEvent, User
 
     s0 = SessionLocal()
     try:
@@ -102,6 +129,9 @@ def auth_app(app_module, db_schema, monkeypatch):  # noqa: ARG001
         s = SessionLocal()
         try:
             s.query(AuditLog).filter(AuditLog.table_name == "users").delete()
+            # auth_events.user_id 可空，_detach 只会置空不删行：跨用例/跨运行累积
+            # 会让「某事件恰好 1 条」这类计数断言失真。测试库里审计事件随账号一起清。
+            s.query(AuthEvent).delete()
             _detach_user_refs(s, fk_cols)
             s.query(User).delete()
             s.commit()
@@ -113,18 +143,23 @@ def auth_app(app_module, db_schema, monkeypatch):  # noqa: ARG001
         s = SessionLocal()
         try:
             if s.query(User).filter(User.id == TEST_USER_ID).first() is None:
-                s.add(User(
-                    id=TEST_USER_ID, username="pytest",
-                    password_hash="!disabled-test-principal",
-                    display_name="pytest", role="admin", is_active=True,
-                    must_change_password=False, token_version=0,
-                ))
+                s.add(
+                    User(
+                        id=TEST_USER_ID,
+                        username="pytest",
+                        password_hash="!disabled-test-principal",
+                        display_name="pytest",
+                        role="admin",
+                        is_active=True,
+                        must_change_password=False,
+                        token_version=0,
+                    )
+                )
                 s.flush()
-            for table, col in fk_cols:
-                s.execute(text(
-                    f'UPDATE "{table}" SET "{col}" = :uid '
-                    f'WHERE "{col}" IS NULL'
-                ), {"uid": TEST_USER_ID})
+            for table, col, nullable in fk_cols:
+                if not nullable:
+                    continue  # NOT NULL 归属列的行已在 wipe 时删除，无法挂回
+                s.execute(text(f'UPDATE "{table}" SET "{col}" = :uid WHERE "{col}" IS NULL'), {"uid": TEST_USER_ID})
             s.commit()
         finally:
             s.close()
@@ -210,9 +245,17 @@ def test_login_sets_httponly_strict_cookies_and_gates_until_password_changed(aut
     assert gated.status_code == 403 and gated.json()["code"] == "PASSWORD_CHANGE_REQUIRED"
 
 
+def _cookie_value(resp, name: str) -> str:
+    """从响应 set-cookie 里取指定 cookie 的值（V3.12 后 body 不再含 token）。"""
+    for ck in resp.headers.get_list("set-cookie"):
+        if ck.lower().startswith(f"{name}="):
+            return ck.split(";", 1)[0].split("=", 1)[1]
+    raise AssertionError(f"响应未下发 cookie {name}")
+
+
 def test_change_password_revokes_old_tokens(auth_app):
     c = TestClient(auth_app)
-    old_access = _login(c).json()["access_token"]
+    old_access = _cookie_value(_login(c), "kaoyan_access")
     weak = c.post("/api/auth/change-password", json={"old_password": ADMIN_PW, "new_password": "short"})
     assert weak.status_code == 400
     wrong = c.post("/api/auth/change-password", json={"old_password": "nope", "new_password": NEW_PW})
@@ -234,6 +277,62 @@ def test_login_rate_limit_locks_even_correct_password(auth_app):
     locked = _login(c)
     assert locked.status_code == 429 and locked.json()["code"] == "RATE_LIMITED"
     assert locked.json()["detail"]["retry_after"] > 0
+    # V3.12 评审 C1：429 必须带标准 Retry-After 头（客户端可机读退避）
+    assert int(locked.headers["Retry-After"]) > 0
+
+
+def test_login_body_carries_no_token(auth_app):
+    """V3.12 评审 B-03：会话凭据只走 httpOnly cookie，响应体不得含 token。"""
+    c = TestClient(auth_app)
+    r = _login(c)
+    assert r.status_code == 200
+    body = r.json()
+    assert "access_token" not in body and "token_type" not in body
+    assert body["user"]["username"] == "pyy"
+    assert _cookie_value(r, "kaoyan_access") and _cookie_value(r, "kaoyan_refresh")
+
+
+def test_refresh_rotation_single_use_and_replay_kills_family(auth_app):
+    """V3.12 评审 C5：refresh 一次性轮换；旧 jti 重放 → 全部会话失效。"""
+    c = TestClient(auth_app)
+    r0 = _login(c)
+    old_refresh = _cookie_value(r0, "kaoyan_refresh")
+
+    r1 = c.post("/api/auth/refresh")
+    assert r1.status_code == 200
+    assert "access_token" not in r1.json()
+    new_refresh = _cookie_value(r1, "kaoyan_refresh")
+    assert new_refresh != old_refresh
+    assert c.get("/api/auth/me").status_code == 200
+
+    # 重放旧 refresh：不仅自身 401，还要吊销整个会话家族（token_version 自增）。
+    # 用干净客户端 + 裸 Cookie 头重放：http.cookiejar 对显式 domain="testserver"
+    # （无前导点）做严格域匹配会**静默丢 cookie**，401 就成了「没带 token」的假绿。
+    replayer = TestClient(auth_app)
+    replay = replayer.post("/api/auth/refresh", headers={"Cookie": f"kaoyan_refresh={old_refresh}"})
+    assert replay.status_code == 401
+    # 必须走「重放吊销」分支而非「缺 token/过期」分支，否则家族吊销没被验证
+    assert replay.json()["message"] == "登录已失效，请重新登录"
+    assert c.post("/api/auth/refresh").status_code == 401
+    assert c.get("/api/auth/me").status_code == 401
+
+
+def test_logout_revokes_session_server_side(auth_app):
+    """V3.12 评审 C6：登出后旧 access/refresh 立即 401（不是只清 cookie）。"""
+    c = TestClient(auth_app)
+    r0 = _login(c)
+    access = _cookie_value(r0, "kaoyan_access")
+    refresh = _cookie_value(r0, "kaoyan_refresh")
+    assert c.get("/api/auth/me").status_code == 200
+
+    # 用登出前窃取的 token 重放：服务端会话已吊销 → 401。
+    # 裸 Cookie 头（cookiejar 显式 domain 会静默丢 cookie，见轮换测试注释）。
+    stolen = TestClient(auth_app)
+    # 阳性对照：登出前同一份窃取 token 必须可用，证明后面的 401 是吊销所致
+    assert stolen.get("/api/auth/me", headers={"Cookie": f"kaoyan_access={access}"}).status_code == 200
+    assert c.post("/api/auth/logout").status_code == 200
+    assert stolen.get("/api/auth/me", headers={"Cookie": f"kaoyan_access={access}"}).status_code == 401
+    assert stolen.post("/api/auth/refresh", headers={"Cookie": f"kaoyan_refresh={refresh}"}).status_code == 401
 
 
 def test_refresh_reissues_access_and_dies_after_reset(auth_app):
@@ -275,7 +374,7 @@ def test_learner_cannot_reach_admin_and_last_admin_is_protected(auth_app):
     assert admin.patch(f"/api/admin/users/{me['id']}", json={"is_active": False}).status_code == 400
 
     sid = created.json()["user"]["id"]
-    off = admin.patch(f"/api/admin/users/{sid}", json={"is_active": False})
+    off = admin.patch(f"/api/admin/users/{sid}", json={"is_active": False, "disabled_reason": "测试禁用：离线账号清理"})
     assert off.status_code == 200 and off.json()["is_active"] is False
     assert stu.get("/api/auth/me").status_code == 401
 
@@ -294,8 +393,12 @@ def test_user_admin_writes_are_audited(auth_app):
     admin.post(f"/api/admin/users/{uid}/reset-password")
     s = SessionLocal()
     try:
-        rows = s.query(AuditLog).filter(AuditLog.table_name == "users", AuditLog.record_id == uid) \
-            .order_by(AuditLog.id).all()
+        rows = (
+            s.query(AuditLog)
+            .filter(AuditLog.table_name == "users", AuditLog.record_id == uid)
+            .order_by(AuditLog.id)
+            .all()
+        )
         assert [r.action for r in rows] == ["INSERT", "UPDATE", "UPDATE"]
         assert all(r.operator_id is not None for r in rows)
         assert all("password_hash" not in (r.after_data or {}) for r in rows)
@@ -310,47 +413,50 @@ def test_every_api_route_carries_the_access_gate(app_module):
     from fastapi.routing import APIRoute
 
     missing = [
-        r.path for r in app_module.routes
-        if isinstance(r, APIRoute)
-        and not any(d.call is enforce_access for d in r.dependant.dependencies)
+        r.path
+        for r in app_module.routes
+        if isinstance(r, APIRoute) and not any(d.call is enforce_access for d in r.dependant.dependencies)
     ]
     assert missing == []
 
 
-@pytest.mark.parametrize("method,path,admin", [
-    ("GET", "/api/backup/list", True),
-    ("GET", "/api/admin/schools", True),
-    ("GET", "/api/kb/health", True),
-    ("GET", "/api/kb-import/tasks", True),
-    ("GET", "/api/netdisk/platform-config/baidu", True),
-    ("GET", "/api/taxonomy/tree", False),
-    ("POST", "/api/taxonomy/nodes", True),
-    ("PUT", "/api/settings", True),
-    ("GET", "/api/settings", False),
-    ("POST", "/api/quiz/questions", True),
-    ("PUT", "/api/quiz/questions/12", True),
-    ("POST", "/api/quiz/submit", False),
-    # 2026-10-18 安全加固（access_policy.ADMIN_ENDPOINTS §B3）：题目复核/作废改动的是
-    # **共享题库**，网盘 sync 用的是**共享凭据**并写共享文件，两者都是管理操作。
-    # 旧期望（False）是加固前的口径，这里按现行策略校正。
-    ("POST", "/api/quiz/review/12", True),
-    ("POST", "/api/quiz/batch-delete", True),
-    # 错题批量删除是**个人域**（端点内 scoped 限定本人），普通用户必须可用。
-    ("POST", "/api/errors/batch-delete", False),
-    ("DELETE", "/api/papers/7", True),
-    # 组卷写共享 papers；答案交叉校验写 answer_candidates 并改题目置信度
-    ("POST", "/api/papers/build", True),
-    ("POST", "/api/answers/check", True),
-    ("POST", "/api/answers/check-batch", True),
-    ("POST", "/api/papers/attempts/start", False),
-    ("POST", "/api/netdisk/files/9/ingest", True),
-    # 同上：同步写共享网盘缓存，属管理操作（2026-10-18 §B3）。
-    ("POST", "/api/netdisk/sync", True),
-    ("POST", "/api/ai/chat", False),
-    ("POST", "/api/ai/providers/3/test", True),
-    ("POST", "/api/kaoyan/spider/run", True),
-    ("POST", "/api/kaoyan/assistant/query", False),
-])
+@pytest.mark.parametrize(
+    "method,path,admin",
+    [
+        ("GET", "/api/backup/list", True),
+        ("GET", "/api/admin/schools", True),
+        ("GET", "/api/kb/health", True),
+        ("GET", "/api/kb-import/tasks", True),
+        ("GET", "/api/netdisk/platform-config/baidu", True),
+        ("GET", "/api/taxonomy/tree", False),
+        ("POST", "/api/taxonomy/nodes", True),
+        ("PUT", "/api/settings", True),
+        ("GET", "/api/settings", False),
+        ("POST", "/api/quiz/questions", True),
+        ("PUT", "/api/quiz/questions/12", True),
+        ("POST", "/api/quiz/submit", False),
+        # 2026-10-18 安全加固（access_policy.ADMIN_ENDPOINTS §B3）：题目复核/作废改动的是
+        # **共享题库**，网盘 sync 用的是**共享凭据**并写共享文件，两者都是管理操作。
+        # 旧期望（False）是加固前的口径，这里按现行策略校正。
+        ("POST", "/api/quiz/review/12", True),
+        ("POST", "/api/quiz/batch-delete", True),
+        # 错题批量删除是**个人域**（端点内 scoped 限定本人），普通用户必须可用。
+        ("POST", "/api/errors/batch-delete", False),
+        ("DELETE", "/api/papers/7", True),
+        # 组卷写共享 papers；答案交叉校验写 answer_candidates 并改题目置信度
+        ("POST", "/api/papers/build", True),
+        ("POST", "/api/answers/check", True),
+        ("POST", "/api/answers/check-batch", True),
+        ("POST", "/api/papers/attempts/start", False),
+        ("POST", "/api/netdisk/files/9/ingest", True),
+        # 同上：同步写共享网盘缓存，属管理操作（2026-10-18 §B3）。
+        ("POST", "/api/netdisk/sync", True),
+        ("POST", "/api/ai/chat", False),
+        ("POST", "/api/ai/providers/3/test", True),
+        ("POST", "/api/kaoyan/spider/run", True),
+        ("POST", "/api/kaoyan/assistant/query", False),
+    ],
+)
 def test_admin_classification(method, path, admin):
     assert needs_admin(method, path) is admin
 
@@ -381,8 +487,12 @@ def test_gate_enforced_end_to_end(auth_app):
     stu.post("/api/auth/change-password", json={"old_password": NEW_PW, "new_password": NEW_PW + "x"})
 
     assert stu.get("/api/settings").status_code == 200
-    for method, path in [("PUT", "/api/settings"), ("POST", "/api/quiz/questions"),
-                         ("GET", "/api/backup"), ("POST", "/api/kaoyan/spider/run")]:
+    for method, path in [
+        ("PUT", "/api/settings"),
+        ("POST", "/api/quiz/questions"),
+        ("GET", "/api/backup"),
+        ("POST", "/api/kaoyan/spider/run"),
+    ]:
         r = stu.request(method, path, json={})
         assert r.status_code == 403 and r.json()["code"] == "FORBIDDEN", (method, path, r.text)
 
@@ -392,8 +502,7 @@ def test_gate_enforced_end_to_end(auth_app):
 # --------------------------------------------------------------------------- #
 def test_soft_delete_hides_user_blocks_login_and_is_restorable(auth_app):
     admin = _bootstrap_and_change(auth_app)
-    uid = admin.post("/api/admin/users",
-                     json={"username": "todel", "password": "Todel-Pass-1"}).json()["user"]["id"]
+    uid = admin.post("/api/admin/users", json={"username": "todel", "password": "Todel-Pass-1"}).json()["user"]["id"]
 
     # 删除前可见
     assert "todel" in [u["username"] for u in admin.get("/api/admin/users").json()["items"]]
@@ -403,8 +512,7 @@ def test_soft_delete_hides_user_blocks_login_and_is_restorable(auth_app):
 
     # 默认列表隐藏，include_deleted 才带出
     assert "todel" not in [u["username"] for u in admin.get("/api/admin/users").json()["items"]]
-    assert "todel" in [u["username"] for u in
-                       admin.get("/api/admin/users?include_deleted=true").json()["items"]]
+    assert "todel" in [u["username"] for u in admin.get("/api/admin/users?include_deleted=true").json()["items"]]
 
     # 已删用户不能登录（密码正确也拒）
     c2 = TestClient(auth_app)
@@ -433,8 +541,7 @@ def test_soft_delete_refuses_self_and_double_delete(auth_app):
 def test_soft_delete_kills_existing_session_immediately(auth_app):
     """删除要立刻断掉既有会话，否则被删用户仍能用旧 token 操作。"""
     admin = _bootstrap_and_change(auth_app)
-    uid = admin.post("/api/admin/users",
-                     json={"username": "sessuser", "password": "Sess-Pass-1"}).json()["user"]["id"]
+    uid = admin.post("/api/admin/users", json={"username": "sessuser", "password": "Sess-Pass-1"}).json()["user"]["id"]
     u = TestClient(auth_app)
     assert _login(u, "sessuser", "Sess-Pass-1").status_code == 200
     assert u.get("/api/auth/me").status_code == 200
@@ -453,3 +560,46 @@ def test_deleted_username_still_reserved_until_restore(auth_app):
     assert admin.post("/api/admin/users", json={"username": "reserved"}).status_code == 409
     # 恢复后同名恢复可登录
     assert admin.post(f"/api/admin/users/{uid}/restore").status_code == 200
+
+
+def test_rbac_matrix_admin_endpoints_reject_user_and_anonymous(auth_app):
+    """V3.12 评审 C3/C4：管理端点越权矩阵（user→403，匿名→401）。"""
+    admin = _bootstrap_and_change(auth_app)
+    created = admin.post("/api/admin/users", json={"username": "rbac1", "role": "user"})
+    assert created.status_code == 201, created.text
+    temp = created.json()["temporary_password"]
+
+    stu = TestClient(auth_app)
+    assert _login(stu, "rbac1", temp).status_code == 200
+    assert stu.post("/api/auth/change-password", json={"old_password": temp, "new_password": NEW_PW}).status_code == 200
+
+    admin_only_gets = [
+        "/api/admin/users",
+        "/api/admin/users/auth-events",
+        "/api/health/detail",
+        "/api/performance",
+        "/api/storage",
+    ]
+    for path in admin_only_gets:
+        assert stu.get(path).status_code == 403, f"user 应 403: {path}"
+    anon = TestClient(auth_app)
+    for path in admin_only_gets:
+        assert anon.get(path).status_code == 401, f"匿名应 401: {path}"
+
+    # documents 写操作（V3.12 整改前 12 个写端点无鉴权，匿名可删文档）
+    assert stu.post("/api/documents/1/parse").status_code == 403
+    assert stu.request("DELETE", "/api/documents/1").status_code == 403
+    assert anon.post("/api/documents/1/parse").status_code == 401
+    assert anon.request("DELETE", "/api/documents/1").status_code == 401
+
+    # 访客可读白名单（2026-11-20 访客扩容既定决策）：文库/教材清单匿名可读
+    assert anon.get("/api/documents", params={"page_size": 1}).status_code == 200
+    assert anon.get("/api/textbooks", params={"page_size": 1}).status_code == 200
+
+    # 公共健康探针：零泄露（无 kb 表行数 / git_sha），且强制分页边界 422
+    body = anon.get("/api/health").json()
+    assert body.get("status") == "ok"
+    assert "kb" not in body and "git_sha" not in body
+    assert anon.get("/api/documents", params={"page_size": 101}).status_code == 422
+    assert anon.get("/api/documents", params={"page": 0}).status_code == 422
+    assert anon.get("/api/textbooks", params={"page_size": 201}).status_code == 422

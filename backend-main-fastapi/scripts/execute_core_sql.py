@@ -1,79 +1,160 @@
-"""执行 core/sql 单个编号 SQL（PG 线）。
+# -*- coding: utf-8 -*-
+"""core/sql 编号脚本执行器（PG 线）+ 迁移账本入口（完善方案 05 §3.1）。
 
-背景：core/sql 的编号脚本此前"靠人工按序执行"（B-auth.md B5），没有执行器。
-本脚本补一个最小执行入口：按分号切分、跳过纯注释段、逐条执行并报错定位。
+历史用法（仍兼容，单文件立即执行）::
 
-用法：
-    cd backend-main-fastapi
-    .venv/Scripts/python scripts/execute_core_sql.py core/sql/108_user_data_isolation.sql
+    python scripts/execute_core_sql.py core/sql/108_user_data_isolation.sql
 
-说明：
-    - 仅面向 DATABASE_BACKEND=postgresql（SQLite 线走 migrate.py 的 ensure_schema_columns）。
-    - 脚本本身必须幂等（IF NOT EXISTS / ON CONFLICT），可重复执行。
-    - 不含 DO $$ 块的解析：需要 PL/pgSQL 的脚本请继续人工执行（当前 108 不需要）。
+新增用法（推荐）::
+
+    python scripts/execute_core_sql.py --status        # 只读：已登记/待执行/checksum 漂移
+    python scripts/execute_core_sql.py --all-pending   # 执行所有未入账脚本
+    python scripts/execute_core_sql.py --all-pending --dry-run
+    python scripts/execute_core_sql.py --baseline      # 存量库收编：只登记不执行
+
+行为约定：
+    * 账本为空且库中已有业务表 → ``--all-pending`` 自动降级为 baseline 并明确提示
+      （存量库收编，避免在生产库重放历史脚本）。
+    * 已登记脚本 checksum 变了 → 直接中止，禁止改历史脚本。
+    * 任何数据写操作前请先备份（项目铁律，见 00 文档 §四）。
 """
+
 from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
-BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, BASE)
+BASE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE))
 
 from core.db_session import IS_POSTGRES, build_database_url  # noqa: E402
+from core.migrations import (  # noqa: E402
+    SQL_DIR,
+    ChecksumMismatch,
+    file_checksum,
+    ledger_status,
+    run_pending,
+    split_statements,
+)
 from sqlalchemy import create_engine, text  # noqa: E402
 
 
-def split_statements(sql: str) -> list[str]:
-    """按分号切分；丢弃纯注释段，保留带语句的段的前置注释行剥离。"""
-    out: list[str] = []
-    for seg in sql.split(";"):
-        lines = [
-            ln for ln in seg.splitlines()
-            if ln.strip() and not ln.strip().startswith("--")
-        ]
-        if lines:
-            out.append("\n".join(lines).strip())
-    return out
+def _engine():
+    return create_engine(build_database_url())
 
 
-def main() -> int:
-    if len(sys.argv) < 2:
-        print("用法：python scripts/execute_core_sql.py <core/sql/xxx.sql>")
+def _print_result(result, dry_run: bool) -> None:
+    tag = "（dry-run）" if dry_run else ""
+    if result.mode == "baseline":
+        print(f"[i] 存量库收编{tag}：只登记不执行 {len(result.baselined)} 个脚本")
+        for v in result.baselined:
+            print(f"    + {v}")
+        print("[!] 提示：baseline 假设这些脚本在目标库已执行过；如有疑问请核对后手工补跑。")
+        return
+    if result.applied:
+        print(f"[✓] 执行完成{tag}：{len(result.applied)} 个脚本")
+        for v in result.applied:
+            print(f"    + {v}")
+    if result.skipped:
+        print(f"[=] 已入账跳过：{len(result.skipped)} 个")
+    if not result.applied and not result.skipped:
+        print("[✓] 无待执行脚本")
+
+
+def _run_single_file(engine, path: Path) -> int:
+    """单文件直执行（兼容老用法）；文件名符合编号规则时同步记账。"""
+    stmts = split_statements(path.read_text(encoding="utf-8"))
+    if not stmts:
+        print("[!] 无可执行语句")
+        return 0
+    failed = 0
+    for i, stmt in enumerate(stmts, 1):
+        head = " ".join(stmt.split())[:72]
+        try:
+            with engine.begin() as conn:
+                from core.migrations import exec_ddl  # noqa: PLC0415
+
+                exec_ddl(conn, stmt)
+            print(f"[{i:>2}/{len(stmts)}] OK   {head}")
+        except Exception as exc:  # noqa: BLE001 —— 逐条报错并继续统计
+            failed += 1
+            print(f"[{i:>2}/{len(stmts)}] FAIL {head}\n      {exc}")
+    print(f"[{'✓' if failed == 0 else 'x'}] 完成：{len(stmts) - failed}/{len(stmts)} 成功")
+
+    # 记账（仅编号脚本）：单条失败则不登记，脚本本身幂等可重跑
+    if failed == 0 and path.parent.resolve() == SQL_DIR.resolve():
+        from core.migrations import _ensure_ledger  # noqa: PLC0415 —— 仅此处需要
+
+        with engine.begin() as conn:
+            _ensure_ledger(conn)
+            conn.execute(
+                text(
+                    "INSERT INTO schema_migrations (version, checksum, duration_ms, applied_by) "
+                    "VALUES (:v, :c, 0, 'manual:single') "
+                    "ON CONFLICT (version) DO UPDATE SET checksum = EXCLUDED.checksum, "
+                    "applied_at = now(), applied_by = EXCLUDED.applied_by"
+                ),
+                {"v": path.stem, "c": file_checksum(path)},
+            )
+        print(f"[i] 已登记账本：{path.stem}")
+    return 0 if failed == 0 else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        print(__doc__)
         return 2
     if not IS_POSTGRES:
         print("[x] 当前 DATABASE_BACKEND 不是 postgresql；SQLite 线请用 migrate.py")
         return 2
 
-    path = os.path.join(BASE, sys.argv[1]) if not os.path.isabs(sys.argv[1]) else sys.argv[1]
-    if not os.path.isfile(path):
-        print(f"[x] SQL 文件不存在：{path}")
-        return 2
+    engine = _engine()
+    dry_run = "--dry-run" in argv
 
-    with open(path, encoding="utf-8") as f:
-        stmts = split_statements(f.read())
-    if not stmts:
-        print("[!] 无可执行语句")
+    if "--status" in argv:
+        status = ledger_status(engine)
+        print(f"脚本总数 {status['total_scripts']}｜已登记 {status['applied']}")
+        if status["pending"]:
+            print("待执行：")
+            for v in status["pending"]:
+                print(f"    - {v}")
+        else:
+            print("待执行：无")
+        if status["checksum_drift"]:
+            print("[!] checksum 漂移（已登记但文件被改，结构变更请新增脚本）：")
+            for v in status["checksum_drift"]:
+                print(f"    ! {v}")
+            return 1
         return 0
 
-    engine = create_engine(build_database_url())
-    failed = 0
-    results: list[tuple[int, str, bool, str]] = []
-    # 逐语句独立事务：单条失败不影响后续语句（且每条都是幂等 DDL，重跑安全）。
-    # 之前放在单个 engine.begin() 里，一条失败会把整个事务拖进 aborted 状态。
-    for i, stmt in enumerate(stmts, 1):
-        head = " ".join(stmt.split())[:72]
+    if "--all-pending" in argv or "--baseline" in argv:
         try:
-            with engine.begin() as conn:
-                conn.execute(text(stmt))
-            results.append((i, head, True, ""))
-            print(f"[{i:>2}/{len(stmts)}] OK   {head}")
-        except Exception as exc:  # noqa: BLE001 —— 逐条报错并继续统计
-            failed += 1
-            results.append((i, head, False, str(exc)))
-            print(f"[{i:>2}/{len(stmts)}] FAIL {head}\n      {exc}")
-    print(f"[{'✓' if failed == 0 else 'x'}] 完成：{len(stmts) - failed}/{len(stmts)} 成功")
-    return 0 if failed == 0 else 1
+            result = run_pending(
+                engine,
+                applied_by="push_update" if os.environ.get("DEPLOY_TS") else "manual",
+                force_baseline="--baseline" in argv,
+                dry_run=dry_run,
+            )
+        except ChecksumMismatch as exc:
+            print(str(exc))
+            return 3
+        _print_result(result, dry_run)
+        return 0
+
+    files = [a for a in argv if not a.startswith("--")]
+    if not files:
+        print("用法：python scripts/execute_core_sql.py <sql 文件> | --all-pending | --baseline | --status")
+        return 2
+    rc = 0
+    for f in files:
+        path = Path(f) if Path(f).is_absolute() else (BASE / f)
+        if not path.is_file():
+            print(f"[x] SQL 文件不存在：{path}")
+            return 2
+        rc = max(rc, _run_single_file(engine, path))
+    return rc
 
 
 if __name__ == "__main__":

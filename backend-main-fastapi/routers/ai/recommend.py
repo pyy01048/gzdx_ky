@@ -5,6 +5,7 @@
   POST /api/recommend/variants      LLM 生成薄弱点变式题并入库
   POST /api/recommend/mastery-gate  掌握门控（连续答对判定）
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -39,10 +40,9 @@ def weak_points(
     user: User = Depends(current_user),
 ):
     """融合错题密度 / 掌握度 / 记忆事实三个信号识别薄弱知识点。"""
-    items = recommend_loop.identify_weak_points(
-        db, user_id=owner_id(user), subject=subject, limit=limit
-    )
-    return {"items": items}
+    items = recommend_loop.identify_weak_points(db, user_id=owner_id(user), subject=subject, limit=limit)
+    # 契约（test_api_conventions）：items 必须与 total 成对，前端才能做统一分页渲染
+    return {"items": items, "total": len(items)}
 
 
 @router.post("/variants")
@@ -57,9 +57,7 @@ def variants(
     不抛 500（旁路容错）。
     """
     try:
-        result = recommend_loop.generate_variant_questions(
-            db, user_id=owner_id(user), kp_id=req.kp_id, count=req.count
-        )
+        result = recommend_loop.generate_variant_questions(db, user_id=owner_id(user), kp_id=req.kp_id, count=req.count)
     except ValueError as exc:
         # 知识点不存在 → 业务性错误，仍以 200 + error 返回，不抛 500
         return {"created": 0, "error": str(exc)}
@@ -76,6 +74,8 @@ def mastery_gate(
 ):
     """掌握门控：检查薄弱知识点最近连续答对是否达到阈值。"""
     return recommend_loop.mastery_gate(
-        db, user_id=owner_id(user), kp_id=req.kp_id,
+        db,
+        user_id=owner_id(user),
+        kp_id=req.kp_id,
         consecutive_required=req.consecutive_required,
     )

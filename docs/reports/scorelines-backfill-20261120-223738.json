@@ -1,0 +1,257 @@
+{
+  "generated_at": "20261120-223738",
+  "mode": "dry-run",
+  "null_rows_scanned": 152377,
+  "planned": 10479,
+  "by_confidence": {
+    "1.0": 8678,
+    "0.95": 512,
+    "0.7": 1289
+  },
+  "skipped_unique_conflict": 19586,
+  "unmatched_distinct_names": 1677,
+  "unmatched_top": [
+    "(080900)电子科学与技术",
+    "VR技术及应用",
+    "一代电子信息技",
+    "世界中国学",
+    "世界史",
+    "世界民族与民族问题",
+    "世界经济",
+    "世界贸易组织法",
+    "东南亚学",
+    "中共党史",
+    "中共党史党建学",
+    "中兽医学",
+    "中医",
+    "中医临床基础",
+    "中医五官科学",
+    "中医亚健康学",
+    "中医人类学",
+    "中医儿科学",
+    "中医免疫学",
+    "中医养生学",
+    "中医内科学",
+    "中医医史文献",
+    "中医基础理论",
+    "中医外科学",
+    "中医妇科学",
+    "中医学",
+    "中医康复学",
+    "中医心理学",
+    "中医文化学",
+    "中医眼科学"
+  ],
+  "sample": [
+    {
+      "id": 4722,
+      "major_id": 15666,
+      "confidence": 1.0,
+      "major_name": "法学",
+      "code": "030100"
+    },
+    {
+      "id": 4723,
+      "major_id": 15667,
+      "confidence": 1.0,
+      "major_name": "马克思主义理论",
+      "code": "030500"
+    },
+    {
+      "id": 4724,
+      "major_id": 15668,
+      "confidence": 1.0,
+      "major_name": "法律（非法学）",
+      "code": "035101"
+    },
+    {
+      "id": 4725,
+      "major_id": 15669,
+      "confidence": 1.0,
+      "major_name": "法律（法学）",
+      "code": "035102"
+    },
+    {
+      "id": 4752,
+      "major_id": 15670,
+      "confidence": 1.0,
+      "major_name": "计算机技术",
+      "code": "085404"
+    },
+    {
+      "id": 4764,
+      "major_id": 15672,
+      "confidence": 0.95,
+      "major_name": "管理科学与工程",
+      "code": "087100"
+    },
+    {
+      "id": 4765,
+      "major_id": 15671,
+      "confidence": 1.0,
+      "major_name": "药学",
+      "code": "100700"
+    },
+    {
+      "id": 4766,
+      "major_id": 15673,
+      "confidence": 1.0,
+      "major_name": "会计学",
+      "code": "120201"
+    },
+    {
+      "id": 4767,
+      "major_id": 15674,
+      "confidence": 1.0,
+      "major_name": "企业管理",
+      "code": "120202"
+    },
+    {
+      "id": 4768,
+      "major_id": 15675,
+      "confidence": 1.0,
+      "major_name": "技术经济及管理",
+      "code": "120204"
+    },
+    {
+      "id": 4769,
+      "major_id": 15676,
+      "confidence": 1.0,
+      "major_name": "公共管理学",
+      "code": "120400"
+    },
+    {
+      "id": 4771,
+      "major_id": 15677,
+      "confidence": 1.0,
+      "major_name": "公共管理",
+      "code": "125200"
+    },
+    {
+      "id": 4772,
+      "major_id": 15678,
+      "confidence": 1.0,
+      "major_name": "会计",
+      "code": "125300"
+    },
+    {
+      "id": 4774,
+      "major_id": 15666,
+      "confidence": 1.0,
+      "major_name": "法学",
+      "code": "030100"
+    },
+    {
+      "id": 4775,
+      "major_id": 15667,
+      "confidence": 1.0,
+      "major_name": "马克思主义理论",
+      "code": "030500"
+    },
+    {
+      "id": 4776,
+      "major_id": 15668,
+      "confidence": 1.0,
+      "major_name": "法律（非法学）",
+      "code": "035101"
+    },
+    {
+      "id": 4777,
+      "major_id": 15669,
+      "confidence": 1.0,
+      "major_name": "法律（法学）",
+      "code": "035102"
+    },
+    {
+      "id": 4808,
+      "major_id": 15670,
+      "confidence": 1.0,
+      "major_name": "计算机技术",
+      "code": "085404"
+    },
+    {
+      "id": 4821,
+      "major_id": 15671,
+      "confidence": 1.0,
+      "major_name": "药学",
+      "code": "100700"
+    },
+    {
+      "id": 4822,
+      "major_id": 15672,
+      "confidence": 1.0,
+      "major_name": "管理科学与工程",
+      "code": "120100"
+    },
+    {
+      "id": 4823,
+      "major_id": 15673,
+      "confidence": 1.0,
+      "major_name": "会计学",
+      "code": "120201"
+    },
+    {
+      "id": 4824,
+      "major_id": 15674,
+      "confidence": 1.0,
+      "major_name": "企业管理",
+      "code": "120202"
+    },
+    {
+      "id": 4825,
+      "major_id": 15675,
+      "confidence": 1.0,
+      "major_name": "技术经济及管理",
+      "code": "120204"
+    },
+    {
+      "id": 4826,
+      "major_id": 15676,
+      "confidence": 1.0,
+      "major_name": "公共管理学",
+      "code": "120400"
+    },
+    {
+      "id": 4828,
+      "major_id": 15677,
+      "confidence": 1.0,
+      "major_name": "公共管理",
+      "code": "125200"
+    },
+    {
+      "id": 4829,
+      "major_id": 15678,
+      "confidence": 1.0,
+      "major_name": "会计",
+      "code": "125300"
+    },
+    {
+      "id": 4831,
+      "major_id": 15666,
+      "confidence": 1.0,
+      "major_name": "法学",
+      "code": "030100"
+    },
+    {
+      "id": 4832,
+      "major_id": 15667,
+      "confidence": 1.0,
+      "major_name": "马克思主义理论",
+      "code": "030500"
+    },
+    {
+      "id": 4833,
+      "major_id": 15668,
+      "confidence": 1.0,
+      "major_name": "法律（非法学）",
+      "code": "035101"
+    },
+    {
+      "id": 4834,
+      "major_id": 15669,
+      "confidence": 1.0,
+      "major_name": "法律（法学）",
+      "code": "035102"
+    }
+  ]
+}

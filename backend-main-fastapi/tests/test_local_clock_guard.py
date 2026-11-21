@@ -20,6 +20,7 @@
 该用本地墙钟**的场景在 :data:`ALLOWED_LOCAL_CLOCK` 里逐条点名并写清理由；新增一条
 必须先说明为什么不能用 UTC。
 """
+
 from __future__ import annotations
 
 import ast
@@ -44,11 +45,10 @@ BANNED_PATHS = {
 #: 允许点：``相对路径::所属函数`` -> 为什么必须是本地墙钟。
 ALLOWED_LOCAL_CLOCK = {
     # —— 文件名/目录名时间戳：只要求唯一 + 人类可读，不参与任何时间列比较 ——
-    "routers/ai.py::upload_chat_image": "落盘文件名时间戳",
     "services/analysis_engine.py::save_lecture": "导出文件名时间戳",
     "services/backup_service.py::_unique_backup_path": "备份文件名时间戳（含同秒去重）",
     "services/backup_service.py::restore_backup": "还原前快照文件名时间戳",
-    "services/backup_service.py::should_backup_today": '「今天备过没有」按备份文件名判，文件名就是本地时钟，两侧必须同源',
+    "services/backup_service.py::should_backup_today": "「今天备过没有」按备份文件名判，文件名就是本地时钟，两侧必须同源",
     "services/delete_guard.py::_build_backup_name": "删除前落盘文件名时间戳",
     "services/delete_guard.py::backup_before_delete": "同上",
     # —— 与文件系统 mtime 比年龄：mtime 本身就是操作系统本地时钟 ——
@@ -86,17 +86,13 @@ def _enclosing_calls(tree: ast.AST) -> list[tuple[str, int, str]]:
 
     def walk(node: ast.AST, func_name: str) -> None:
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
                 walk(child, child.name)
             elif isinstance(child, ast.ClassDef):
                 walk(child, f"{func_name}.{child.name}" if func_name != "<module>" else child.name)
             elif isinstance(child, ast.Call):
                 path = _dotted(child.func)
-                if (
-                    path in BANNED_PATHS
-                    and not child.args
-                    and not child.keywords
-                ):
+                if path in BANNED_PATHS and not child.args and not child.keywords:
                     found.append((func_name, child.lineno, ".".join(path)))
                 walk(child, func_name)
             else:
@@ -136,9 +132,7 @@ def test_local_clock_allowlist_is_not_stale():
     """允许点必须逐条真实存在：改名/删掉调用点后要在这里报错，而不是悄悄留着。"""
     live = {f"{rel}::{func_name}" for rel, func_name, _call in _live_entries()}
     stale = sorted(set(ALLOWED_LOCAL_CLOCK) - live)
-    assert not stale, (
-        "以下允许点在当前代码里已经不存在，请从 ALLOWED_LOCAL_CLOCK 删除：" + ", ".join(stale)
-    )
+    assert not stale, "以下允许点在当前代码里已经不存在，请从 ALLOWED_LOCAL_CLOCK 删除：" + ", ".join(stale)
 
 
 def _live_entries() -> list[tuple[str, str, str]]:

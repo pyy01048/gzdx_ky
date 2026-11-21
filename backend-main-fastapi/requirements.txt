@@ -3,17 +3,31 @@
 # python-multipart 0.0.6 → 0.0.20：修复 CVE-2024-53981（畸形 boundary CPU 空转）与 CVE-2024-24762（ReDoS）。
 # 平台已公网开放（60.204.223.140:80），/api/documents 上传等入口直接接收外部 multipart 请求，
 # 上述 DoS 攻击面真实暴露，故为 P0。升级后重点回归：上传接口、SSE 流式、pydantic 序列化。
-fastapi==0.115.14
+#
+# 2026-11-20 第二轮（starlette CVE 收口，双分支）：
+#   fastapi 0.165.0 起 requires_python >=3.11（连带 starlette>=1.6，实测 1.10.0），
+#   本机 py3.12 全量回归通过，清除 starlette 系列 CVE（PYSEC-2026-161/2280/2281/1942/1941/248/249）。
+#   服务器是 py3.10，**无法安装**该分支，故保留 0.115.14 + starlette 0.46 旧线；
+#   服务器侧 starlette CVE 需把解释器升到 >=3.11 才能解，非本仓库单方面可解决（已记入 docs）。
+fastapi>=0.165,<0.166; python_version >= "3.11"
+fastapi==0.115.14; python_version < "3.11"
 uvicorn==0.30.6
 # 2026-10-18：SQLAlchemy <2.0.31 在 Python 3.13 直接 ImportError（TypingOnly 断言），分流；服务器行为不变
 sqlalchemy==2.0.23; python_version < "3.13"
 sqlalchemy>=2.0.36,<2.1; python_version >= "3.13"
 # PostgreSQL 连接驱动（PG 16 + pgvector 迁移目标）
 psycopg[binary]==3.2.10
-# pydantic 2.9+ 与 fastapi 0.115 兼容线（安全升级后解除 <2.9 封顶）
-pydantic==2.5.2; python_version < "3.13"
-pydantic>=2.8.2,<3; python_version >= "3.13"
-python-multipart==0.0.20
+# pydantic 三分支（2026-11-20 服务器实测 + fastapi 0.165 要求）：
+#   py<3.11（服务器 3.10，fastapi 0.115 线）：锁定 2.5.2——2.9.2 在服务器 pip 源无对应
+#     pydantic-core 轮子，--no-deps 分裂安装会导致 typed_dict_schema() got 'cls' 崩溃（实测已回滚）。
+#   py>=3.11（fastapi 0.165 线）：要求 pydantic>=2.9，本机 3.12 实测 2.14.4。
+#   注意：fastapi 0.165 本身要求 py>=3.11，故 3.11/3.12 与 3.13 走同一分支。
+pydantic==2.5.2; python_version < "3.11"
+pydantic>=2.9,<3; python_version >= "3.11"
+# pypdf 7.1.1（py>=3.10，服务器与本机同一版本）：本仓库只用到 PdfReader 稳定 API；
+# 5.x 线在 2026-11 新增暴露大量解析类 CVE，7.1.1 已清零。升级后重点回归：扫描件解析、页数统计。
+pypdf==7.1.1
+python-multipart==0.0.31
 httpx>=0.27,<0.29
 # ---- 院校公告采集栈（services/crawl）----
 # 正文抽取：trafilatura 为主引擎，readability-lxml 为兜底；两者都缺时走内置抽取。
@@ -22,9 +36,9 @@ trafilatura>=2.0,<3
 readability-lxml>=0.8.1
 lxml>=4.9
 aiofiles==23.2.1
-PyJWT==2.10.1
+PyJWT==2.15.0
 # 凭据落库加密（utils/secret_codec.py：AES-256-GCM 保护 platform_configs 的网盘 token/app_key/secret_key）
-cryptography==46.0.3
+cryptography==50.0.0
 # 2026-10-18：numpy 1.26.4 无 cp313 wheel，按解释器版本分流（服务器行为不变）
 numpy==1.26.4; python_version < "3.13"
 numpy>=2.1; python_version >= "3.13"
@@ -35,12 +49,15 @@ jieba==0.42.1
 # ---- 文档解析（DocumentParser）----
 python-docx==1.1.0
 python-pptx==0.6.23
-# pypdf 4.2.0 → 5.4.0：扫描件解析入口直接吃用户上传 PDF，累积的解析死循环/资源耗尽修复（03 文档 §3.1）
-pypdf==5.4.0
-pdfplumber==0.11.0
-pypdfium2==4.30.0
-# Pillow 统一取 ≥10.4 安全修复线（03 文档 §3.1）
-Pillow>=10.4,<12
+# pypdf 已统一到 7.1.1（见文件头部）；pdfplumber 同步升到 0.11.10，
+# 因其把 pdfminer.six 钉到 20260107（旧 0.11.0 钉 20231228，后者带 4 个 CVE，且与 pypdf 7 共存时版本冲突）。
+pdfplumber==0.11.10
+pypdfium2==5.15.2
+# Pillow 双分支（13.0.0 需 py>=3.11，且与 fastembed 0.9.x 的 <14 兼容）：
+#   本机 3.12 / 未来服务器 3.11+：13.0.0（当前唯一清除 12.x 系列 CVE 的版本）；
+#   服务器 3.10：只能停 12.3.0（仍余残余 CVE，解法定是升解释器，已记入 docs）。
+Pillow==13.0.0; python_version >= "3.11"
+Pillow==12.3.0; python_version < "3.11"
 # ---- 本地 OCR（RapidOCR + ONNX Runtime）----
 # 实测可用组合（Python 3.13）：rapidocr-onnxruntime==1.2.3 + onnxruntime>=1.20
 # 旧锁定 rapidocr-onnxruntime==1.3.24 / onnxruntime==1.17.3 无 3.13 wheel，装不上。
@@ -60,10 +77,14 @@ APScheduler==3.10.4
 # Windows 必须显式装：APScheduler 用字符串时区名(如 Asia/Shanghai)时缺 tzdata 会静默不注册
 tzdata==2025.2
 # ---- 环境变量 ----
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 # ---- 本地 Embedding（bge-small-zh，数据不出网）----
-fastembed==0.8.0
+# 0.8.0 把 pillow 钉在 <13，与 Pillow 13 冲突；0.9.1 放开到 <14（py3.10 分支也允许 12.3.0）。
+fastembed==0.9.1
 # 说明：不装 ollama 客户端包——本项目经 httpx 直连 Ollama 的 OpenAI 兼容端点
 # （/v1/chat/completions）与 /api/tags，无 `import ollama`；ollama==0.4.7 会强行
 # 拉高 pydantic>=2.9 / httpx>=0.27，与锁定的 pydantic==2.5.2 + fastapi==0.104.1 冲突，
 # 故从依赖中移除（仅保留对 ollama 可执行文件的 shutil.which 探测）。
+
+# PDF 导出的运行时依赖（services/kb_service.py 的 reportlab canvas；缺失会让 /api/words/export-pdf 等 500）
+reportlab==4.2.5

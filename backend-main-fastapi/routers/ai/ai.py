@@ -1,7 +1,6 @@
 """AI 路由。"""
 
 import asyncio
-import datetime
 import json
 import logging
 import os
@@ -105,17 +104,19 @@ def _build_citations(hits: list) -> list:
     """把召回片段收敛成结构化引用（前端可直接渲染，回答末尾也会附上）。"""
     out = []
     for i, h in enumerate(hits or [], 1):
-        out.append({
-            "index": i,
-            "doc_name": h.get("doc_name") or h.get("title") or "",
-            "page_start": h.get("page_start"),
-            "page_end": h.get("page_end"),
-            "chunk_index": h.get("chunk_index"),
-            "chunk_id": h.get("chunk_id"),
-            "document_id": h.get("doc_id"),
-            "score": round(float(h.get("score") or 0), 4),
-            "snippet": (h.get("content") or "").strip()[:120],
-        })
+        out.append(
+            {
+                "index": i,
+                "doc_name": h.get("doc_name") or h.get("title") or "",
+                "page_start": h.get("page_start"),
+                "page_end": h.get("page_end"),
+                "chunk_index": h.get("chunk_index"),
+                "chunk_id": h.get("chunk_id"),
+                "document_id": h.get("doc_id"),
+                "score": round(float(h.get("score") or 0), 4),
+                "snippet": (h.get("content") or "").strip()[:120],
+            }
+        )
     return out
 
 
@@ -155,7 +156,8 @@ async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict, list
     citations = _build_citations(hits)
     logger.info(
         "[rag] query=%r hits=%d docs=%s",
-        query[:40], len(hits),
+        query[:40],
+        len(hits),
         [c.get("doc_name") for c in citations][:4],
     )
 
@@ -163,9 +165,7 @@ async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict, list
     # evaluate_gate 会走 score 回退分支），仅做 observe 打点，不改变检索本身。
     gate_meta: dict = {}
     try:
-        gate = retrieval_gate.evaluate_gate(
-            hits or [], query, is_complex=retrieval_gate.is_complex_query(query)
-        )
+        gate = retrieval_gate.evaluate_gate(hits or [], query, is_complex=retrieval_gate.is_complex_query(query))
         gate_meta = {
             "mode": retrieval_gate.RETRIEVAL_GATE_MODE,
             "decision": gate["decision"],
@@ -175,19 +175,26 @@ async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict, list
         }
         logger.info(
             "[retrieval_gate] query=%r decision=%s would_abstain=%s metrics=%s",
-            query[:30], gate_meta["decision"], gate_meta["would_abstain"], gate_meta["metrics"],
+            query[:30],
+            gate_meta["decision"],
+            gate_meta["would_abstain"],
+            gate_meta["metrics"],
         )
     except Exception as e:  # 门控异常绝不影响 RAG 回答
         logger.warning("retrieval_gate 判定失败，跳过门控: %s", e)
-        gate_meta = {"mode": retrieval_gate.RETRIEVAL_GATE_MODE, "decision": "error",
-                     "reason_codes": [], "metrics": {}, "would_abstain": False}
+        gate_meta = {
+            "mode": retrieval_gate.RETRIEVAL_GATE_MODE,
+            "decision": "error",
+            "reason_codes": [],
+            "metrics": {},
+            "would_abstain": False,
+        }
 
     if not hits:
         return "", gate_meta, citations
 
     # enforce 模式 + 应拒答 → 返回拒答话术，不让模型基于不足依据硬编（§5.3）
-    if (retrieval_gate.RETRIEVAL_GATE_MODE == "enforce"
-            and gate_meta.get("decision") == "abstain"):
+    if retrieval_gate.RETRIEVAL_GATE_MODE == "enforce" and gate_meta.get("decision") == "abstain":
         return retrieval_gate.build_abstain_message(query), gate_meta, citations
 
     blocks = []
@@ -195,19 +202,32 @@ async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict, list
         # 引用标签直接带「文档名 + 页码/段号」，模型照抄即可，避免只给"片段1"
         # 而用户不知道出处。
         loc = _citation_location(citations[i - 1])
-        blocks.append(
-            f"[片段{i}｜《{h['title'] or '未命名文档'}》｜{loc}]\n{h['content']}"
-        )
+        blocks.append(f"[片段{i}｜《{h['title'] or '未命名文档'}》｜{loc}]\n{h['content']}")
     context = "\n\n".join(blocks)
     return (
-        "以下是来自用户本地知识库（考研资料文档/知识点）的检索片段，请优先参考这些"
-        "内容回答，并结合你的专业知识补充。若片段与问题无关可忽略。\n\n"
-        f"{context}\n\n"
-        "若用户询问的是题目作答/答疑类问题，请遵守：\n"
-        "1. 只针对题目作答，选择题给出选项字母与内容，主观题给出结论与分步推导；\n"
-        "2. 严禁编造答案，条件不足时明确标注“存疑”并说明需补充的信息；\n"
-        "3. 引用检索片段时，在相应句子末尾标注 [片段i]；不要编造片段之外的文档名或页码。"
-    ), gate_meta, citations
+        (
+            "以下是来自用户本地知识库（考研资料文档/知识点）的检索片段，请优先参考这些"
+            "内容回答，并结合你的专业知识补充。若片段与问题无关可忽略。\n\n"
+            f"{context}\n\n"
+            "若用户询问的是题目作答/答疑类问题，请遵守：\n"
+            "1. 只针对题目作答，选择题给出选项字母与内容，主观题给出结论与分步推导；\n"
+            "2. 严禁编造答案，条件不足时明确标注“存疑”并说明需补充的信息；\n"
+            "3. 引用检索片段时，在相应句子末尾标注 [片段i]；不要编造片段之外的文档名或页码。"
+        ),
+        gate_meta,
+        citations,
+    )
+
+
+def _provider_has_key(p: AIProvider) -> bool:
+    """密钥密文与当前密钥不匹配时降级为「未配置」，不让整张列表 500。"""
+    from utils.secret_codec import SecretDecodeError
+
+    try:
+        return bool(p.api_key)
+    except SecretDecodeError:
+        logger.warning("AI 服务商 %s 的密钥密文无法用当前密钥解密，降级为未配置", p.id)
+        return False
 
 
 @router.get("/providers")
@@ -225,7 +245,7 @@ async def list_providers(db: Session = Depends(get_db)):
             "is_default": p.is_default,
             "is_enabled": p.is_enabled,
             "fallback_priority": p.fallback_priority,
-            "has_api_key": bool(p.api_key),
+            "has_api_key": _provider_has_key(p),
         }
         for p in providers
     ]
@@ -254,9 +274,7 @@ async def update_provider(provider_id: int, provider: AIProviderUpdate, db: Sess
 
     # 如果设为默认，取消其他默认
     if provider.is_default:
-        db.query(AIProvider).filter(AIProvider.id != provider_id).update(
-            {AIProvider.is_default: False}
-        )
+        db.query(AIProvider).filter(AIProvider.id != provider_id).update({AIProvider.is_default: False})
 
     update_data = provider.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -286,9 +304,9 @@ async def test_provider(provider_id: int, db: Session = Depends(get_db)):
         result = await ai.test_provider(provider_id)
         return result
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ---------------- T1：AI 路由模式（设置页热切换） ---------------- #
@@ -304,11 +322,7 @@ async def get_routing(db: Session = Depends(get_db)):
     """当前 AI 路由模式与可选值说明（前端设置页渲染用）。"""
     from services import model_gateway as gw
 
-    cfg = (
-        db.query(PlatformConfig)
-        .filter(PlatformConfig.platform_name == _ROUTING_KEY)
-        .first()
-    )
+    cfg = db.query(PlatformConfig).filter(PlatformConfig.platform_name == _ROUTING_KEY).first()
     mode = None
     if cfg and cfg.extra:
         mode = (cfg.extra or {}).get("mode")
@@ -316,9 +330,7 @@ async def get_routing(db: Session = Depends(get_db)):
         mode = gw.get_routing_mode()  # 回退 env/默认（也会校验合法值）
     return {
         "mode": mode,
-        "options": [
-            {"mode": m, "label": gw.ROUTING_MODE_LABELS[m]} for m in gw.ROUTING_MODES
-        ],
+        "options": [{"mode": m, "label": gw.ROUTING_MODE_LABELS[m]} for m in gw.ROUTING_MODES],
     }
 
 
@@ -329,11 +341,7 @@ async def set_routing(req: RoutingModeRequest, db: Session = Depends(get_db)):
 
     if req.mode not in gw.ROUTING_MODES:
         raise HTTPException(400, f"非法路由模式：{req.mode}，可选 {list(gw.ROUTING_MODES)}")
-    cfg = (
-        db.query(PlatformConfig)
-        .filter(PlatformConfig.platform_name == _ROUTING_KEY)
-        .first()
-    )
+    cfg = db.query(PlatformConfig).filter(PlatformConfig.platform_name == _ROUTING_KEY).first()
     if cfg:
         cfg.extra = {"mode": req.mode}
     else:
@@ -388,6 +396,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             _last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
             try:
                 from services.qa_foundation import find_bank_answer
+
                 _bank = find_bank_answer(db, _last_user)
             except Exception as _be:
                 logger.warning("bank_answer 查询失败，继续 RAG: %s", _be)
@@ -397,11 +406,13 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                     "content": _format_bank_answer(_bank),
                     "answer_source": _bank["answer_source"],
                     "bank_answer": {
-                        "id": _bank["id"], "subject": _bank["subject"],
+                        "id": _bank["id"],
+                        "subject": _bank["subject"],
                         "question_type": _bank["question_type"],
                         "answer_source": _bank["answer_source"],
                         "answer_confidence": _bank["answer_confidence"],
-                        "year": _bank["year"], "source_label": _bank["source_label"],
+                        "year": _bank["year"],
+                        "source_label": _bank["source_label"],
                     },
                     "rag": False,
                     "bank_hit": True,
@@ -438,9 +449,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         if request.use_rag:
             result["citations"] = citations
             if citations and result.get("content"):
-                result["content"] = (
-                    result["content"].rstrip() + "\n" + _format_citation_footer(citations)
-                )
+                result["content"] = result["content"].rstrip() + "\n" + _format_citation_footer(citations)
         # observe 模式：把门控判定（would_abstain 率）透传给前端，便于灰度观测
         if gate_meta is not None:
             result["retrieval_gate"] = gate_meta
@@ -457,7 +466,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             status_code=502,
             detail=f"AI 服务暂时不可用（{code}）：{hint}。请到「设置 → AI 服务」检查配置后重试。",
             headers={"X-AI-Error-Code": code},
-        )
+        ) from e
 
 
 # ---------------- T4：电路读图图片上传 ---------------- #
@@ -481,7 +490,9 @@ async def upload_chat_image(file: UploadFile = File(...)):
         raise HTTPException(400, f"仅支持图片文件：{sorted(_IMAGE_EXT)}")
     save_dir = Path(__file__).resolve().parent.parent / "uploads" / "chat_images"
     save_dir.mkdir(parents=True, exist_ok=True)
-    dest = save_dir / f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
+    from utils.timeutil import local_now
+
+    dest = save_dir / f"{local_now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
     size = 0
     with dest.open("wb") as out:
         while chunk := await file.read(1024 * 1024):
@@ -498,6 +509,7 @@ async def upload_chat_image(file: UploadFile = File(...)):
 async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
     """V3.0 AI 智能路由对话（自动选择本地/API/RAG引擎，带失败回退）。"""
     from services.ai_router import get_ai_router
+
     ai = AIService(db)
     router = get_ai_router(db)
 
@@ -508,6 +520,7 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
         # —— 题库确定性答案优先（第三步①）：命中即直返，不走引擎状态机 ——
         try:
             from services.qa_foundation import find_bank_answer
+
             _bank = find_bank_answer(db, last_user)
         except Exception as _be:
             logger.warning("bank_answer 查询失败，继续路由引擎: %s", _be)
@@ -527,11 +540,13 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
                 "reranker_backend": "none",
                 "answer_source": _bank["answer_source"],
                 "bank_answer": {
-                    "id": _bank["id"], "subject": _bank["subject"],
+                    "id": _bank["id"],
+                    "subject": _bank["subject"],
                     "question_type": _bank["question_type"],
                     "answer_source": _bank["answer_source"],
                     "answer_confidence": _bank["answer_confidence"],
-                    "year": _bank["year"], "source_label": _bank["source_label"],
+                    "year": _bank["year"],
+                    "source_label": _bank["source_label"],
                 },
             }
 
@@ -546,9 +561,7 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
         # T4 电路读图：图片路径注入上下文（ai_router._extract_image_path 按正则识别
         # Windows 绝对路径后触发 circuit_analysis 分支，无需改动状态机本身）
         if request.image_path:
-            context = (context or []) + [
-                {"role": "user", "content": f"[图片] {request.image_path}"}
-            ]
+            context = (context or []) + [{"role": "user", "content": f"[图片] {request.image_path}"}]
 
         result = await router.chat_with_router(
             question=last_user,
@@ -580,7 +593,7 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
             status_code=502,
             detail=f"AI 服务暂时不可用（{code}）：{hint}。请到「设置 → AI 服务」检查配置后重试。",
             headers={"X-AI-Error-Code": code},
-        )
+        ) from e
 
 
 @router.post("/chat/stream")
@@ -665,9 +678,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 async def rag_search(request: RAGSearchRequest, db: Session = Depends(get_db)):
     """本地知识库检索（RAG 调试/前端提示展示）。支持学科过滤。"""
     ai = AIService(db)
-    hits = ai.search_knowledge_base(
-        request.query, limit=request.limit or 6, subject=request.subject
-    )
+    hits = ai.search_knowledge_base(request.query, limit=request.limit or 6, subject=request.subject)
     return {"query": request.query, "subject": request.subject, "hits": hits, "count": len(hits)}
 
 
@@ -675,6 +686,7 @@ async def rag_search(request: RAGSearchRequest, db: Session = Depends(get_db)):
 async def search_status(db: Session = Depends(get_db)):
     """检索索引状态（FTS/向量索引统计）。"""
     from services.search_service import get_index_stats
+
     return get_index_stats(db)
 
 
@@ -682,6 +694,7 @@ async def search_status(db: Session = Depends(get_db)):
 async def rebuild_fts(db: Session = Depends(get_db)):
     """重建 FTS5 全文检索索引（删除并重新同步 5164 条分块）。"""
     from services.search_service import ensure_fts_table
+
     conn = wrap_conn(db.connection().connection)
     conn.execute("DROP TABLE IF EXISTS knowledge_chunks_fts")
     conn.commit()
@@ -718,8 +731,12 @@ async def build_embeddings(force: bool = False):
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
-    return {"success": True, "task_id": task_id, "status": "running",
-            "message": "向量索引构建已在后台启动（离线，不联网）"}
+    return {
+        "success": True,
+        "task_id": task_id,
+        "status": "running",
+        "message": "向量索引构建已在后台启动（离线，不联网）",
+    }
 
 
 @router.get("/build-embeddings/status/{task_id}")
@@ -738,7 +755,7 @@ async def explain(request: ExplainRequest, db: Session = Depends(get_db)):
         result = await ai.explain_knowledge(request.topic)
         return {"content": result, "topic": request.topic}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"知识点讲解失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"知识点讲解失败：{str(e)}") from e
 
 
 @router.post("/grade-essay")
@@ -749,7 +766,7 @@ async def grade_essay(request: EssayGradeRequest, db: Session = Depends(get_db))
         result = await ai.grade_essay(request.content, request.type)
         return {"content": result, "type": request.type}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"作文批改失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"作文批改失败：{str(e)}") from e
 
 
 @router.post("/analyze-sentence")
@@ -760,7 +777,7 @@ async def analyze_sentence(request: SentenceAnalyzeRequest, db: Session = Depend
         result = await ai.analyze_sentence(request.sentence)
         return {"content": result, "sentence": request.sentence}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"长难句分析失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"长难句分析失败：{str(e)}") from e
 
 
 @router.post("/generate-plan")
@@ -771,7 +788,7 @@ async def generate_plan(request: GeneratePlanRequest, db: Session = Depends(get_
         result = await ai.generate_plan(request.goal, request.available_time)
         return {"content": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"生成计划失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"生成计划失败：{str(e)}") from e
 
 
 @router.post("/summarize-trend")
@@ -782,7 +799,7 @@ async def summarize_trend(request: SummarizeTrendRequest, db: Session = Depends(
         result = await ai.summarize_trend(request.questions)
         return {"content": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"规律总结失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"规律总结失败：{str(e)}") from e
 
 
 # ------------------------------------------------------------------ #
@@ -812,9 +829,7 @@ async def model_catalog(db: Session = Depends(get_db)):
     except Exception as _exc:  # noqa: BLE001
         # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
         # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-        logging.getLogger(__name__).warning(
-            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-        )
+        logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     # P0-2：full_report 会再调 detect_hardware()（内含 nvidia-smi 子进程），
     # async 端点直调会阻塞事件循环 → 挪线程池。
@@ -888,20 +903,18 @@ async def local_model_status(db: Session = Depends(get_db)):
     if available:
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(f"{host}/api/tags")
                 if resp.status_code == 200:
                     models = [
-                        {"name": m.get("name"),
-                         "size_gb": round((m.get("size") or 0) / (1024 ** 3), 2)}
+                        {"name": m.get("name"), "size_gb": round((m.get("size") or 0) / (1024**3), 2)}
                         for m in resp.json().get("models", [])
                     ]
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     return {
         "available": available,
@@ -911,9 +924,8 @@ async def local_model_status(db: Session = Depends(get_db)):
         "model_count": len(models),
         "message": (
             f"本地 Ollama 服务运行中，已安装 {len(models)} 个模型"
-            if available else
-            "本地 Ollama 服务未启动。安装后执行 ollama pull qwen3.5:4b；"
-            "未启动时平台会自动回退到云端 API。"
+            if available
+            else "本地 Ollama 服务未启动。安装后执行 ollama pull qwen3.5:4b；未启动时平台会自动回退到云端 API。"
         ),
     }
 
@@ -923,18 +935,21 @@ async def local_model_list(db: Session = Depends(get_db)):
     """获取本地已安装的模型列表。"""
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get("http://127.0.0.1:11434/api/tags")
             if resp.status_code == 200:
                 data = resp.json()
                 models = []
                 for m in data.get("models", []):
-                    models.append({
-                        "name": m.get("name"),
-                        "size": m.get("size"),
-                        "size_gb": round(m.get("size", 0) / (1024**3), 2),
-                        "modified_at": m.get("modified_at"),
-                    })
+                    models.append(
+                        {
+                            "name": m.get("name"),
+                            "size": m.get("size"),
+                            "size_gb": round(m.get("size", 0) / (1024**3), 2),
+                            "modified_at": m.get("modified_at"),
+                        }
+                    )
                 return {"available": True, "models": models, "count": len(models)}
             return {"available": False, "models": [], "count": 0, "error": f"HTTP {resp.status_code}"}
     except Exception as e:
@@ -950,6 +965,7 @@ async def local_model_test(
     """测试本地模型调用。"""
     try:
         import httpx
+
         payload = {
             "model": model,
             "prompt": prompt,

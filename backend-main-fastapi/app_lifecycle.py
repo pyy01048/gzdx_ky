@@ -13,6 +13,7 @@
 print 全部替换为 logger（utils.logger 统一日志系统），服务器 journalctl 里
 格式统一（此前 30 处 print 不进日志文件、无级别、无时间戳）。
 """
+
 import os
 from contextlib import asynccontextmanager
 
@@ -38,6 +39,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:  # noqa: BLE001
         logger.warning("[启动] OCR 预热发起失败（不影响主服务）: %s", e)
     Base.metadata.create_all(bind=engine)
+    # 迁移账本（完善方案 05 §3.1）：create_all 只兜底"全新库"，结构变更一律走
+    # core/sql 编号脚本。这里补跑未入账脚本（已入账的秒过）。存量库在账本为空时
+    # 自动走 baseline（只登记不执行），避免生产库重放历史脚本。
+    # 关闭方式：SCHEMA_AUTO_MIGRATE=0。
+    if os.environ.get("SCHEMA_AUTO_MIGRATE", "1").lower() not in {"0", "false", "no"}:
+        try:
+            from core.db_session import IS_POSTGRES
+
+            if IS_POSTGRES:
+                from core.migrations import run_pending
+
+                _mig = run_pending(engine, applied_by="startup")
+                if _mig.applied:
+                    logger.info("[启动] 迁移账本：执行 %d 个脚本 %s", len(_mig.applied), _mig.applied)
+                if _mig.baselined:
+                    logger.info("[启动] 迁移账本：存量库收编登记 %d 个脚本", len(_mig.baselined))
+        except Exception as e:  # noqa: BLE001 —— 迁移失败不阻断启动，但必须告警
+            logger.error("[启动] 迁移账本执行失败（需人工处理）: %s", e)
     _init_default_config()
     # 幂等补建缺失的平台配置行（存量库升级用；已有则跳过）
     try:
@@ -50,6 +69,7 @@ async def lifespan(app: FastAPI):
         logger.warning("[启动] 平台配置补建失败（不影响主服务）: %s", e)
     try:
         from utils.security import ensure_bootstrap_admin
+
         db = SessionLocal()
         try:
             ensure_bootstrap_admin(db)
@@ -63,6 +83,7 @@ async def lifespan(app: FastAPI):
     # 因此必须显式执行 DDL，否则空库/新部署时 /api/planner/phase 必 500。
     try:
         from services.module_a_schema import ensure_module_a_schema
+
         db = SessionLocal()
         result = ensure_module_a_schema(db)
         db.close()
@@ -73,6 +94,7 @@ async def lifespan(app: FastAPI):
     # 存量表加列 —— 必须在任何 ORM 查询 knowledge_chunks 之前幂等 ALTER 补齐）。
     try:
         from services.chunk_classifier import ensure_chunk_label_columns
+
         db = SessionLocal()
         added = ensure_chunk_label_columns(db)
         db.close()
@@ -83,6 +105,7 @@ async def lifespan(app: FastAPI):
     # V3.0 数据库性能优化（创建缺失索引+WAL模式+缓存）
     try:
         from services.db_optimizer import init_database_optimization
+
         db = SessionLocal()
         result = init_database_optimization(db)
         db.close()
@@ -94,6 +117,7 @@ async def lifespan(app: FastAPI):
         import asyncio
 
         from services.server_optimizer import get_task_queue
+
         task_queue = get_task_queue()
         asyncio.create_task(task_queue.start())
         logger.info("[启动] 后台任务队列已启动")
@@ -104,6 +128,7 @@ async def lifespan(app: FastAPI):
     # 启动定时任务（复习提醒 / 网盘同步）
     try:
         from services.scheduler import start_scheduler
+
         start_scheduler()
     except Exception as e:  # noqa: BLE001
         logger.warning("[启动] 定时任务启动失败（不影响主服务）: %s", e)
@@ -111,6 +136,7 @@ async def lifespan(app: FastAPI):
     try:
         from services.backup_service import daily_backup_if_needed
         from services.scheduler import acquire_singleton_lock
+
         backup_path = daily_backup_if_needed() if acquire_singleton_lock() else None
         if backup_path:
             logger.info("[启动] 数据库自动备份完成: %s", backup_path)
@@ -149,16 +175,18 @@ def _register_ollama_providers():
                 continue
             if db.query(AIProvider).filter(AIProvider.model_name == model_name).first():
                 continue  # 已存在则跳过，保留用户配置
-            db.add(AIProvider(
-                name=name,
-                provider_type="ollama",
-                base_url="http://127.0.0.1:11434/v1",
-                api_key="ollama",
-                model_name=model_name,
-                temperature=0.7,
-                is_enabled=True,
-                fallback_priority=prio,
-            ))
+            db.add(
+                AIProvider(
+                    name=name,
+                    provider_type="ollama",
+                    base_url="http://127.0.0.1:11434/v1",
+                    api_key="ollama",
+                    model_name=model_name,
+                    temperature=0.7,
+                    is_enabled=True,
+                    fallback_priority=prio,
+                )
+            )
             added.append(model_name)
         db.commit()
         if added:
@@ -176,20 +204,19 @@ def _ensure_missing_platform_configs(db):
     只新增不更新：用户改过的 web_view_url / app_key 一律保留。
     目前只需补 quark_netdisk（2026-10 网盘重构新增）。
     """
-    existing = {
-        c.platform_name
-        for c in db.query(PlatformConfig.platform_name).all()
-    }
+    existing = {c.platform_name for c in db.query(PlatformConfig.platform_name).all()}
     if "quark_netdisk" not in existing:
-        db.add(PlatformConfig(
-            platform_name="quark_netdisk",
-            sync_enabled=False,
-            sync_frequency="daily",
-            extra={
-                "web_view_url": "https://pan.quark.cn/",
-                "embed_mode": "web_view",
-            },
-        ))
+        db.add(
+            PlatformConfig(
+                platform_name="quark_netdisk",
+                sync_enabled=False,
+                sync_frequency="daily",
+                extra={
+                    "web_view_url": "https://pan.quark.cn/",
+                    "embed_mode": "web_view",
+                },
+            )
+        )
         db.commit()
         logger.info("[初始化] 补建平台配置: quark_netdisk")
 
@@ -247,14 +274,12 @@ def _init_default_config():
 
         # ---- 快捷链接 ----
         links = [
-            CustomLink(name="中国研究生招生信息网", url="https://yz.chsi.com.cn/",
-                       category="官方", sort_order=1),
-            CustomLink(name="学信网", url="https://www.chsi.com.cn/",
-                       category="官方", sort_order=2),
-            CustomLink(name="中国教育在线考研", url="https://kaoyan.eol.cn/",
-                       category="资讯", sort_order=3),
-            CustomLink(name="B站考研", url="https://search.bilibili.com/all?keyword=考研",
-                       category="学习", sort_order=4),
+            CustomLink(name="中国研究生招生信息网", url="https://yz.chsi.com.cn/", category="官方", sort_order=1),
+            CustomLink(name="学信网", url="https://www.chsi.com.cn/", category="官方", sort_order=2),
+            CustomLink(name="中国教育在线考研", url="https://kaoyan.eol.cn/", category="资讯", sort_order=3),
+            CustomLink(
+                name="B站考研", url="https://search.bilibili.com/all?keyword=考研", category="学习", sort_order=4
+            ),
         ]
         db.add_all(links)
 

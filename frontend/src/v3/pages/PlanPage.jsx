@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
+import { useAuth } from '../../auth/AuthContext'
 import {
   AnimatedNumber, Badge, Button, Card, Empty, LoadingState, PageHeader,
   SectionHead, Select, Tile, toast, toastErr,
@@ -19,6 +21,12 @@ const STAGE_TONE = {
 const stageTone = (name) => STAGE_TONE[name] || 'other'
 
 export default function PlanPage() {
+  /* 访客只读（2026-11-20）：公共招生日历 + 阶段规划免登录可看；
+     「重新生成节点」是写操作，访客换成登录引导，登录后回到本页。 */
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isGuest = !user
   /* null = 不传年份，交给后端按 Goal 配置的届推导（_resolve_plan_year）。
      候选届数同样只认接口下发的 available_years。 */
   const [year, setYear] = useState(null)
@@ -90,9 +98,9 @@ export default function PlanPage() {
               variant="tonal"
               icon={<RefreshCw size={16} />}
               loading={regenBusy}
-              onClick={regenerate}
+              onClick={isGuest ? () => navigate('/login', { state: { from: location } }) : regenerate}
             >
-              重新生成节点
+              {isGuest ? '登录后生成我的规划' : '重新生成节点'}
             </Button>
           </div>
         ) : null}
@@ -129,7 +137,7 @@ export default function PlanPage() {
               ) : (
                 <div className="v3-plan-goal__value is-muted">未设置</div>
               )}
-              <div className="v3-plan-goal__sub">来自当前择校目标</div>
+              <div className="v3-plan-goal__sub">{isGuest ? '登录后联动你的择校目标' : '来自当前择校目标'}</div>
             </Tile>
 
             <Tile span={3} className="v3-plan-goal">
@@ -174,7 +182,9 @@ export default function PlanPage() {
                 <Empty
                   icon={<Calendar size={26} />}
                   title="暂无阶段规划"
-                  text="点击「重新生成节点」，让后端按当前目标生成新的规划。"
+                  text={isGuest
+                    ? '登录后点击「登录后生成我的规划」，按你的目标院校生成个性化节点。'
+                    : '点击「重新生成节点」，让后端按当前目标生成新的规划。'}
                 />
               </Card>
             ) : (

@@ -171,4 +171,3 @@ ssh -i ~/.ssh/dsw_key root@100.x.x.x \
 - Tailscale 是加密内网；若改用 EIP，安全组只放行你家 IP，别开 0.0.0.0/0
 - 备选方案说明：阿里云 MCP 生态只有 PAI 实例生命周期 API（创建/启停），
   **没有远程执行命令的 API**，所以 SSH 是唯一执行通道，配 MCP 替代不了
-

@@ -190,4 +190,3 @@ describe('主要数据页：接口返回 null 时不崩不白屏', () => {
     expect(container.textContent.length).toBeGreaterThan(0)
   })
 })
-

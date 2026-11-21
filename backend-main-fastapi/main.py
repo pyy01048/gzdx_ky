@@ -26,12 +26,14 @@ from utils.response import UtcZJSONResponse
 # --------------------------------------------------------------------------- #
 try:
     import orm_aliases
+
     # 注意：此处位于 `from models import ...` **之后**，全部 ORM 映射类已注册完毕，
     # 枚举类型适配才能覆盖全表。（database.get_db() 里另有一次懒初始化兜住非 FastAPI 场景。）
     _alias_done = orm_aliases.install()
     logging.getLogger(__name__).info(
         "ORM 兼容适配：%d 个模型，%d 处变更",
-        len(_alias_done), sum(len(v) for v in _alias_done.values()),
+        len(_alias_done),
+        sum(len(v) for v in _alias_done.values()),
     )
 except Exception as _exc:  # noqa: BLE001
     logging.getLogger(__name__).warning("ORM 兼容适配安装失败：%s", _exc)
@@ -44,6 +46,7 @@ except Exception as _exc:  # noqa: BLE001
 # --------------------------------------------------------------------------- #
 from fastapi import Depends as _Depends
 from utils.access_policy import enforce_access, is_production
+from utils.security import current_user, require_admin
 
 _PROD = is_production()
 
@@ -96,6 +99,7 @@ from utils.timeout_guard import TimeoutGuardMiddleware
 
 app.add_middleware(TimeoutGuardMiddleware)
 
+
 @app.middleware("http")
 async def performance_middleware(request, call_next):
     """V3.0 请求计时与性能监控中间件。"""
@@ -110,26 +114,44 @@ async def performance_middleware(request, call_next):
         perf_monitor.record_request(elapsed, success=False)
         raise e
 
+
+@app.middleware("http")
+async def sensitive_no_store(request, call_next):
+    """认证/用户管理响应禁止缓存（V3.12 评审 C8：/auth/me 无 Cache-Control）。
+
+    这些响应含会话身份与 PII（邮箱/登录 IP），不允许落进浏览器磁盘缓存
+    或共享代理缓存。no-store 比 no-cache 更严：连条件请求都不允许。
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/api/auth/") or path.startswith("/api/admin/users"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 # CORS - 默认允许本机与局域网访问（手机/平板同 WiFi 打开需要）
 # 安全提示：不要配置为 "*"，尤其是 allow_credentials=True 时
 _cors_origins = [
     o.strip()
     for o in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000"
+        "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000"
     ).split(",")
     if o.strip()
 ]
 # 局域网来源自动放行：手机通过 http://192.168.x.x:8000 访问时，
 # Origin 会是那个 IP，写死白名单会导致跨域被拦。
-_cors_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or (None if _PROD else (
-    r"^http://("
-    r"localhost|127\.0\.0\.1|"
-    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
-    r"192\.168\.\d{1,3}\.\d{1,3}|"
-    r"172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
-    r")(:\d+)?$"
-))
+_cors_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or (
+    None
+    if _PROD
+    else (
+        r"^http://("
+        r"localhost|127\.0\.0\.1|"
+        r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+        r"192\.168\.\d{1,3}\.\d{1,3}|"
+        r"172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+        r")(:\d+)?$"
+    )
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -170,6 +192,7 @@ async def api_token_auth(request, call_next):
         return http_error_response(401, "未授权：缺少或错误的 API Token")
     return await call_next(request)
 
+
 # --------------------------------------------------------------------------- #
 # 传输层优化中间件（V3.0 性能优化）
 #
@@ -205,23 +228,59 @@ for _r in iter_routers():
 # --------------------------------------------------------------------------- #
 @app.get("/api/health")
 async def health_check():
+    """公共存活探针（V3.12 评审 B-01/B-06 整改）。
+
+    旧实现在 async def 里同步跑 kb_health_snapshot()：全表 count + 向量/FTS
+    探测实测 ~10s，直接占死事件循环；2 个 worker 被监控/评审轮流探测时
+    全站 API 瘫痪（评审「后端挂起」的根因之一）。
+    现在零数据库访问、常数时间返回，只暴露 status/version（无 git_sha、
+    无表名/行数/向量维度）。重探测移到 /api/health/detail（管理员 + 线程池 + TTL 缓存）。
+    """
+    try:
+        from _version import VERSION
+    except Exception:  # noqa: BLE001
+        VERSION = "3.0.0"
+    return {"status": "ok", "version": VERSION}
+
+
+# 管理员诊断快照的进程内 TTL 缓存：多管理员/监控轮询共享，30s 最多跑一次全表 count
+_HEALTH_DETAIL_TTL = 30.0
+_health_detail_cache: dict = {"at": 0.0, "payload": None}
+
+
+@app.get("/api/health/detail", dependencies=[_Depends(require_admin)])
+def health_detail():
+    """管理员诊断：KB 健康快照 + 版本标识（V3.12 评审 B-06 整改）。
+
+    同步 def → Starlette 自动丢线程池，重 IO 绝不占事件循环（与 storage.py 同款修复）。
+    git_sha / 表行数 / 向量维度属运维信息，仅管理员可见。
+    """
+    now = time.monotonic()
+    cached = _health_detail_cache
+    if cached["payload"] is not None and now - cached["at"] < _HEALTH_DETAIL_TTL:
+        return cached["payload"]
     from services.health_service import kb_health_snapshot
 
-    # KB 健康检查面板数据源：数据库连接 / 向量库 / FTS5 / 关键表行数。
-    # kb_health_snapshot 内部对每个探测项独立降级，不会让本接口自己 500。
+    try:
+        from _version import BUILT_AT, GIT_SHA, VERSION
+    except Exception:  # noqa: BLE001
+        GIT_SHA, BUILT_AT, VERSION = "dev", None, "3.0.0"
     kb = kb_health_snapshot()
-    return {
-        # 进程在线即 ok；数据库/KB 层缺口只在 kb.status 体现为 degraded
+    payload = {
         "status": "ok" if kb.get("database", {}).get("status") == "healthy" else "degraded",
         "service": "kaoyan-backend",
-        "version": "3.0.0",
-        # 纯展示字段：带 +00:00 的 ISO8601 对前端 new Date() 更友好
+        "version": VERSION,
+        "git_sha": GIT_SHA,
+        "built_at": BUILT_AT,
         "timestamp": utcnow_aware().isoformat(),
         "kb": kb,
     }
+    cached["at"] = now
+    cached["payload"] = payload
+    return payload
 
 
-@app.get("/api/access-info")
+@app.get("/api/access-info", dependencies=[_Depends(current_user)])
 async def access_info():
     """返回本机与局域网访问地址（含手机扫码二维码）。
 
@@ -233,8 +292,8 @@ async def access_info():
     return get_access_info(auth_enabled=True)
 
 
-# V3.0 性能监控端点
-@app.get("/api/performance")
+# V3.0 性能监控端点（V3.12 评审：内部缓存/性能统计仅管理员可见）
+@app.get("/api/performance", dependencies=[_Depends(require_admin)])
 async def performance_stats():
     """获取系统性能统计信息。"""
     from services.ai_optimizer import get_ai_cache
@@ -294,8 +353,15 @@ async def spa_fallback_handler(request: FastAPIRequest, exc):
     """SPA 前端路由 fallback：非 API 路径的 404 返回 index.html，支持直接访问前端路由。"""
     path = request.url.path
     # API 路径、静态资源路径、文档路径不做 fallback
-    if path.startswith("/api") or path.startswith("/docs") or path.startswith("/redoc") or path.startswith("/openapi") or "." in path.split("/")[-1]:
+    if (
+        path.startswith("/api")
+        or path.startswith("/docs")
+        or path.startswith("/redoc")
+        or path.startswith("/openapi")
+        or "." in path.split("/")[-1]
+    ):
         from utils.exceptions import http_error_response
+
         # 路由给的 detail 是人话（如 "文档不存在: [99999999]"），此前被一律压成
         # "Not Found"：前端分不清"这条记录不存在"和"接口没注册"，用户只能看到 404。
         # 本函数原先自己拼 {"detail":..., "path":...}，导致 404 是全站唯一不合
@@ -308,6 +374,7 @@ async def spa_fallback_handler(request: FastAPIRequest, exc):
     if os.path.exists(index_path):
         return FileResponse(index_path)
     from utils.exceptions import http_error_response
+
     return http_error_response(404, {"message": "index.html not found", "path": path})
 
 

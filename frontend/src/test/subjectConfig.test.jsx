@@ -142,4 +142,3 @@ describe('useSubjectConfig', () => {
     expect(cfg.exam).toEqual(['数学', '英语', '数据结构'])
   })
 })
-

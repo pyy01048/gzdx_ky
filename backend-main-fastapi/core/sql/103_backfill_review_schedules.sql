@@ -12,7 +12,13 @@
 --   * algorithm='sm2'：历史状态来自 SM-2，FSRS 三要素留空。
 --   * item_type 与 093 / 后端保持一致：
 --       word / flashcard / error_record / knowledge_point
---   * 幂等：ON CONFLICT (item_type, item_id) DO NOTHING，可重复执行。
+--   * 幂等：NOT EXISTS 防重 + ON CONFLICT ON CONSTRAINT uq_review_schedule DO NOTHING。
+--     历史缺陷（2026-11-21）：原写法 ON CONFLICT (item_type, item_id) 在 108
+--     把唯一键重建为 (user_id, item_type, item_id) 之后不再匹配任何约束，
+--     重放整份 pg_schema 时在此抛 InvalidColumnReference，**批处理中止**，
+--     排在后面的 107/114/115/117/116/118/119 全部静默未执行（测试库复用
+--     场景下建 doc_admin 用户 CheckViolation 500 的根因）。按约束名推断
+--     冲突目标在两种唯一键口径下都成立；NOT EXISTS 保证跨用户不重复回填。
 -- =============================================================================
 
 -- --------------------------------------------------------------------------- #
@@ -31,8 +37,12 @@ SELECT
     w.last_review::timestamp,
     w.due_date::timestamp
 FROM words w
-WHERE COALESCE(w.reps, 0) > 0 OR w.last_review IS NOT NULL
-ON CONFLICT (item_type, item_id) DO NOTHING;
+WHERE (COALESCE(w.reps, 0) > 0 OR w.last_review IS NOT NULL)
+  AND NOT EXISTS (
+      SELECT 1 FROM review_schedules rs
+       WHERE rs.item_type = 'word' AND rs.item_id = w.id
+  )
+ON CONFLICT ON CONSTRAINT uq_review_schedule DO NOTHING;
 
 -- --------------------------------------------------------------------------- #
 -- 2. 背诵卡片
@@ -51,7 +61,11 @@ SELECT
     f.next_review
 FROM flashcards f
 WHERE COALESCE(f.review_count, 0) > 0
-ON CONFLICT (item_type, item_id) DO NOTHING;
+  AND NOT EXISTS (
+      SELECT 1 FROM review_schedules rs
+       WHERE rs.item_type = 'flashcard' AND rs.item_id = f.id
+  )
+ON CONFLICT ON CONSTRAINT uq_review_schedule DO NOTHING;
 
 -- --------------------------------------------------------------------------- #
 -- 3. 错题
@@ -69,8 +83,12 @@ SELECT
     e.last_review,
     e.next_review
 FROM error_records e
-WHERE COALESCE(e.review_count, 0) > 0 OR e.last_review IS NOT NULL
-ON CONFLICT (item_type, item_id) DO NOTHING;
+WHERE (COALESCE(e.review_count, 0) > 0 OR e.last_review IS NOT NULL)
+  AND NOT EXISTS (
+      SELECT 1 FROM review_schedules rs
+       WHERE rs.item_type = 'error_record' AND rs.item_id = e.id
+  )
+ON CONFLICT ON CONSTRAINT uq_review_schedule DO NOTHING;
 
 -- --------------------------------------------------------------------------- #
 -- 4. 知识点
@@ -88,8 +106,12 @@ SELECT
     kp.last_review,
     kp.next_review
 FROM knowledge_points kp
-WHERE COALESCE(kp.review_count, 0) > 0 OR kp.last_review IS NOT NULL
-ON CONFLICT (item_type, item_id) DO NOTHING;
+WHERE (COALESCE(kp.review_count, 0) > 0 OR kp.last_review IS NOT NULL)
+  AND NOT EXISTS (
+      SELECT 1 FROM review_schedules rs
+       WHERE rs.item_type = 'knowledge_point' AND rs.item_id = kp.id
+  )
+ON CONFLICT ON CONSTRAINT uq_review_schedule DO NOTHING;
 
 -- --------------------------------------------------------------------------- #
 -- 5. 清理/归一化历史错键
