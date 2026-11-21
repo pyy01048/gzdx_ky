@@ -6,6 +6,7 @@ import {
   Alert, Badge, Button, Card, CardHead, Empty, IconButton, PageHeader, Progress, Ring,
   Skeleton, Spinner, cx, toastErr, toastOk,
 } from '../ui'
+import { ReadingProgress } from '../motion'
 import {
   AlertCircle, BookOpen, Brain, CalendarClock, ChevronDown, ChevronLeft, ChevronRight,
   Clock, FileText, Lightbulb, Map, Play, Quote, RefreshCw, Sparkles, Target,
@@ -500,6 +501,7 @@ export default function KnowledgeArticle() {
 
   return (
     <div className="v3-stack v3-ka-page">
+      <ReadingProgress />
       <nav className="v3-ka-crumb" aria-label="面包屑">
         <Link to="/knowledge" className="v3-ka-crumb__link">
           <Map size={13} />

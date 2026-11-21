@@ -496,6 +496,29 @@
   box-shadow: var(--v3-shadow-2);
 }
 
+/* tilt 与原有 hover 上浮复合（ specificity 高于 .kyv3-school:hover ） */
+.kyv3-school.v3-tilt {
+  transform: perspective(900px) translate3d(0, var(--tilt-lift, 0px), 0) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+}
+
+.kyv3-school.v3-tilt:hover {
+  --tilt-lift: -2px;
+}
+
+/* 热门院校速览 ticker（真实热度排序，装饰性横滚） */
+.kyv3-hot-strip {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--v3-text-3);
+}
+
+.kyv3-hot-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .kyv3-school.is-hl {
   border-color: var(--v3-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--v3-primary) 18%, transparent), var(--v3-shadow-2);

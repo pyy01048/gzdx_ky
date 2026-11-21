@@ -32,9 +32,9 @@ from services import kp_mastery, taxonomy
 
 # 复习结果 → 质量分（对应 SM-2 的 0-5）
 RESULT_GRADE = {
-    "forgotten": 1,   # 完全忘了
-    "fuzzy": 3,       # 想起来了但模糊
-    "mastered": 5,    # 熟练掌握
+    "forgotten": 1,  # 完全忘了
+    "fuzzy": 3,  # 想起来了但模糊
+    "mastered": 5,  # 熟练掌握
 }
 
 # 复习结果 → 掌握度变化
@@ -150,15 +150,17 @@ def apply_review(
         if result == "forgotten":
             kp.lapses = (kp.lapses or 0) + 1
 
-        payload.update({
-            "name": kp.name,
-            "subject": kp.subject,
-            "chapter": kp.chapter,
-            "mastery_before": before,
-            "mastery_after": after,
-            "interval": interval,
-            "_next_review_dt": nxt,
-        })
+        payload.update(
+            {
+                "name": kp.name,
+                "subject": kp.subject,
+                "chapter": kp.chapter,
+                "mastery_before": before,
+                "mastery_after": after,
+                "interval": interval,
+                "_next_review_dt": nxt,
+            }
+        )
 
     else:  # error
         err = db.query(ErrorRecord).filter(ErrorRecord.id == item_id).first()
@@ -180,13 +182,15 @@ def apply_review(
         err.next_review = nxt
         err.accuracy = round(after / 100, 2)
 
-        payload.update({
-            "subject": err.subject,
-            "mastery_before": before,
-            "mastery_after": after,
-            "interval": interval,
-            "_next_review_dt": nxt,
-        })
+        payload.update(
+            {
+                "subject": err.subject,
+                "mastery_before": before,
+                "mastery_after": after,
+                "interval": interval,
+                "_next_review_dt": nxt,
+            }
+        )
 
     next_dt: datetime.datetime = payload.pop("_next_review_dt")
 
@@ -231,9 +235,7 @@ def apply_review(
     except Exception as _exc:  # noqa: BLE001
         # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
         # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-        logging.getLogger(__name__).warning(
-            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-        )
+        logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     # 掌握度重算（2026-10-16 修复链路缺口）：
     # mastery 是派生列，只在 knowledge_points 被 UPDATE 时才由触发器刷新。
@@ -244,11 +246,7 @@ def apply_review(
             kp_mastery.touch_mastery(db, [item_id])
         except Exception as _exc:  # noqa: BLE001
             # 不静默：刷新失败会让"掌握度不动"复现，且极难定位
-            import logging
-
-            logging.getLogger(__name__).warning(
-                "复习后掌握度重算失败 kp=%s: %s", item_id, str(_exc)[:160]
-            )
+            logging.getLogger(__name__).warning("复习后掌握度重算失败 kp=%s: %s", item_id, str(_exc)[:160])
 
     payload["review_id"] = rec.id
     payload["next_review"] = next_dt.isoformat()
@@ -297,19 +295,21 @@ def due_items(
     rows.sort(key=sort_key)
     out = []
     for kp in rows[:limit]:
-        out.append({
-            "id": kp.id,
-            "name": kp.name,
-            "subject": kp.subject,
-            "chapter": kp.chapter,
-            "question_types": kp.question_types or taxonomy.question_types_of(kp.subject),
-            "mastery": int(kp.mastery or 0),
-            "exam_frequency": kp.exam_frequency or 0,
-            "review_count": kp.review_count or 0,
-            "last_review": kp.last_review.isoformat() if kp.last_review else None,
-            "next_review": kp.next_review.isoformat() if kp.next_review else None,
-            "is_new": kp.next_review is None or (kp.review_count or 0) == 0,
-        })
+        out.append(
+            {
+                "id": kp.id,
+                "name": kp.name,
+                "subject": kp.subject,
+                "chapter": kp.chapter,
+                "question_types": kp.question_types or taxonomy.question_types_of(kp.subject),
+                "mastery": int(kp.mastery or 0),
+                "exam_frequency": kp.exam_frequency or 0,
+                "review_count": kp.review_count or 0,
+                "last_review": kp.last_review.isoformat() if kp.last_review else None,
+                "next_review": kp.next_review.isoformat() if kp.next_review else None,
+                "is_new": kp.next_review is None or (kp.review_count or 0) == 0,
+            }
+        )
     return out
 
 
@@ -336,10 +336,7 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
     new_count = total - reviewed
     # due_count 只统计"已排期且逾期"的，不把新知识点算进来 ——
     # 否则新库建成时 due_count == total，"到期"这个指标就没意义了。
-    due = sum(
-        1 for k in rows
-        if k.review_count and k.next_review is not None and k.next_review <= now
-    )
+    due = sum(1 for k in rows if k.review_count and k.next_review is not None and k.next_review <= now)
     avg = round(counts["mastery_sum"] / total, 1) if total else 0.0
     # 已学平均掌握度：未学知识点不拉低均值（它们还没开始，谈不上掌握度）
     learned_n = total - unlearned
@@ -349,10 +346,19 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
     by_subject: dict[str, dict[str, Any]] = {}
     for k in rows:
         s = taxonomy.normalize_subject(k.subject)
-        d = by_subject.setdefault(s, {
-            "subject": s, "total": 0, "mastery_sum": 0, "mastered": 0,
-            "learning": 0, "weak": 0, "unlearned": 0, "learned_mastery_sum": 0,
-        })
+        d = by_subject.setdefault(
+            s,
+            {
+                "subject": s,
+                "total": 0,
+                "mastery_sum": 0,
+                "mastered": 0,
+                "learning": 0,
+                "weak": 0,
+                "unlearned": 0,
+                "learned_mastery_sum": 0,
+            },
+        )
         mastery = int(k.mastery or 0)
         state = kp_mastery.classify_state(mastery, k.id in learned)
         d["total"] += 1
@@ -365,9 +371,9 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
             "subject": d["subject"],
             "total": d["total"],
             "avg_mastery": round(d["mastery_sum"] / d["total"], 1) if d["total"] else 0.0,
-            "learned_avg_mastery": round(
-                d["learned_mastery_sum"] / (d["total"] - d["unlearned"]), 1
-            ) if d["total"] - d["unlearned"] else 0.0,
+            "learned_avg_mastery": round(d["learned_mastery_sum"] / (d["total"] - d["unlearned"]), 1)
+            if d["total"] - d["unlearned"]
+            else 0.0,
             "mastered": d["mastered"],
             "learning": d.get("learning", 0),
             "weak": d["weak"],
@@ -383,10 +389,15 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
         if not k.chapter:
             continue
         key = f"{taxonomy.normalize_subject(k.subject)}|{k.chapter}"
-        d = by_chapter.setdefault(key, {
-            "subject": taxonomy.normalize_subject(k.subject),
-            "chapter": k.chapter, "total": 0, "mastery_sum": 0,
-        })
+        d = by_chapter.setdefault(
+            key,
+            {
+                "subject": taxonomy.normalize_subject(k.subject),
+                "chapter": k.chapter,
+                "total": 0,
+                "mastery_sum": 0,
+            },
+        )
         d["total"] += 1
         d["mastery_sum"] += int(k.mastery or 0)
     chapter_stats = [
@@ -409,9 +420,7 @@ def progress_overview(db: Session, *, subject: str | None = None) -> dict[str, A
     # 近 7 天复习量：按**北京自然日**切（含今天共 7 天），与 dashboard/growth 同源。
     # 用 now-7*24h 的滚动窗会把「昨天北京 00:30」和「今天 00:30」算成不同天数。
     week_ago = local_window_for_day(local_today() - datetime.timedelta(days=6))[0]
-    recent_reviews = db.query(func.count(ReviewRecord.id)).filter(
-        ReviewRecord.created_at >= week_ago
-    ).scalar() or 0
+    recent_reviews = db.query(func.count(ReviewRecord.id)).filter(ReviewRecord.created_at >= week_ago).scalar() or 0
 
     return {
         "total_knowledge_points": total,

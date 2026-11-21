@@ -9,6 +9,7 @@ import { resolveExamDate, examDateMD, examDaysLeft } from '../../utils/exam'
 import { examSubjectText } from '../../utils/kaoyanFields'
 import { ukey, readMigrated } from '../../utils/userKeys'
 import { chartTheme } from '../charts'
+import { Marquee, usePointerFx, useReducedMotion, useReveal } from '../motion'
 import {
   Alert, AnimatedNumber, Badge, Button, Card, CardHead, Chip, Dialog, Empty, Field,
   IconButton, Input, LoadingState, PageHeader, Segmented, Select, Skeleton, Spinner,
@@ -327,15 +328,23 @@ function CountdownStrip() {
 /* -------------------------------------------------------------------------- */
 function SchoolCard({
   s, isFav, isCmp, isOpen, majors, majorsLoading,
-  onFav, onCmp, onExpand, highlight, covMap,
+  onFav, onCmp, onExpand, highlight, covMap, idx = 0,
 }) {
   const yzLink = `https://yz.chsi.com.cn/sch/search.do?q=${encodeURIComponent(s.name || '')}`
   const cov = covMap && covMap[s.id]
   /* 自托管图片也可能 404（回填未覆盖/文件被清）：裂图时退回无封面/首字头像 */
   const [coverOk, setCoverOk] = useState(true)
   const [logoOk, setLogoOk] = useState(true)
+  const reduced = useReducedMotion()
+  const fx = usePointerFx({ spotlight: true, tilt: 2, disabled: reduced })
+  const rv = useReveal((idx % 4) * 40)
   return (
-    <article className={cx('kyv3-school', highlight && 'is-hl')}>
+    <article
+      {...fx}
+      ref={rv.ref}
+      className={cx('kyv3-school', 'v3-spotlight', 'v3-tilt', rv.className, highlight && 'is-hl')}
+      style={rv.style}
+    >
       {s.cover_url && coverOk ? (
         <div className="kyv3-school-cover">
           <img
@@ -1076,12 +1085,21 @@ export default function KaoyanSchools() {
           </Alert>
         ) : null}
 
+        {current.length >= 4 ? (
+          <Marquee className="kyv3-hot-strip" duration={36}>
+            {[...current].sort((a, b) => (b.heat || 0) - (a.heat || 0)).slice(0, 10).map((s) => (
+              <span key={s.id} className="kyv3-hot-item"><Flame size={13} /> {s.name}</span>
+            ))}
+          </Marquee>
+        ) : null}
+
         {current.length ? (
           <div className="kyv3-school-grid">
-            {current.map((s) => (
+            {current.map((s, i) => (
               <SchoolCard
                 key={s.id}
                 s={s}
+                idx={i}
                 isFav={favs.has(s.id)}
                 isCmp={cmpSet.has(s.id)}
                 isOpen={expandedId === s.id}

@@ -191,5 +191,5 @@ grep -rn "fetch('/api" frontend/src --include=*.js*  # 仅 utils/api.js 的 /api
 ## 9. 未决事项
 
 1. **B-02 TLS**：已裁定（2026-11-21 用户）——维持现状（知情 HTTP），不做 TLS/80→443/HSTS；Cookie 保持无 `Secure` 位。
-2. **G10 干净 git_sha**：用户已授权提交；实际提交仍受阻于 pre-commit ruff 存量门禁（105 errors，含 vendored ECDICT Python2 文件解析失败）。修复清单与既有暂存状态见 `handoff-cn-20261121.md` §3-§4。
+2. **G10 干净 git_sha**：P0 原子提交已完成（2026-11-21，`fd023e5`，405 文件 +30011/−14767，工作树清洁）。pre-commit ruff 存量门禁已清零（本轮待提交 130 个后端文件 check 全过、format 归一；vendored ECDICT 走 Git LFS 且被 pyproject extend-exclude 跳过，不再阻断）；全量后端 1541 passed/0 failed、eslint 0 errors/234 warnings、全部提交钩子通过。另修复 documents.py F823 真实缺陷（局部 `import re` 致选项清洗 `UnboundLocalError`）并在 conftest 中和沙箱注入代理（`NO_PROXY` 裸 IPv6 致 httpx `InvalidURL` 假红）。**剩余两步随 P1**：`gen_version.py` 重新生成 `_version.py` → 重新部署，生产 `git_sha` 方由 `26b9bdd-dirty` 转为干净 `fd023e5`。
 3. Wave 2 命名空间拆分（/api/library/* vs /api/me/*）与 API 版本化（/api/v1）：V4.0 路线图决策项，本轮不做破坏性重构。

@@ -423,9 +423,9 @@
   }
 }
 
-/* ---------- 3D tilt（transform-only；变量由 usePointerFx 写入） ---------- */
+/* ---------- 3D tilt（transform-only；变量由 usePointerFx 写入，--tilt-lift 供页面复合 hover 上浮） ---------- */
 .v3-tilt {
-  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transform: perspective(900px) translate3d(0, var(--tilt-lift, 0px), 0) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
   transition: transform var(--v3-dur-3) var(--v3-ease-spring);
   transform-style: preserve-3d;
 }

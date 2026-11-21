@@ -341,7 +341,7 @@ export default function Dashboard() {
           />
         </Tile>
       ) : (
-        <div className="v3-bento v3-dash__bento">
+        <div className="v3-bento v3-dash__bento v3-stagger">
           {visible('hero') && (
             <>
               <Tile span={8} variant="gradient" className="v3-dash-hero">
