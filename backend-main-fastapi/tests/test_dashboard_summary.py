@@ -10,6 +10,7 @@
 2. 没有事件源的模块 → ``done`` 为 **null + status=not_tracked**，不渲染成"今天 0 个"；
 3. 首屏与老端点（``/api/dashboard``、``/api/dashboard/stats``）对同一个数字必须同值。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -19,7 +20,11 @@ import pytest
 
 TZ_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
 
-PROGRESS_MODULES = {"focus", "word", "new_word", "question", "realexam", "wrongbook", "coding"}
+#: 学习模块（进「模块进度」）。W1：``coding`` 被移出这里 —— 代码上机 OJ 既没挂载、
+#: 也不是备考科目，混在学习进度里等于告诉用户"今天还欠代码题"。
+PROGRESS_MODULES = {"focus", "word", "new_word", "question", "realexam", "wrongbook"}
+#: 工具类模块：单独放 ``tool_modules``，带 ``counts_toward_study=False`` 与原因
+TOOL_MODULES = {"coding"}
 PHASES = {"base", "intensify", "warning", "sprint", "passed"}
 
 
@@ -35,9 +40,22 @@ def summary(client):
 # --------------------------------------------------------------------------- #
 def test_summary_has_every_first_screen_block(summary):
     for key in (
-        "generated_at", "timezone", "countdown", "goal", "kpi", "module_progress",
-        "today_tasks", "review_queue", "heatmap", "trend", "weakness",
-        "future_load", "errors", "data_coverage",
+        "generated_at",
+        "timezone",
+        "countdown",
+        "goal",
+        "kpi",
+        "module_progress",
+        "tool_modules",
+        "today_plan",
+        "today_tasks",
+        "review_queue",
+        "heatmap",
+        "trend",
+        "weakness",
+        "future_load",
+        "errors",
+        "data_coverage",
     ):
         assert key in summary, f"首屏契约缺块：{key}"
 
@@ -65,18 +83,59 @@ def test_daily_targets_are_null_when_unset(client, summary):
 
 
 def test_module_progress_no_invented_percent(summary):
-    """``percent`` 与 ``target`` 同生同灭：没目标就不能有百分比。"""
+    """``percent`` 与 ``target``/``done`` 同生同灭：没分母或没事件源都不能有百分比。
+
+    W1 的 target 可能来自 goals 配额 **或今日推荐量**（``target_source``），
+    两种都算"有出处"；但 ``done=None``（未接入事件源）时百分比必须是 None，
+    否则就是把"还不知道"渲染成了"完成 0%"。
+    """
     assert {m["module"] for m in summary["module_progress"]} == PROGRESS_MODULES
     for m in summary["module_progress"]:
-        if m["target"] is None:
-            assert m["percent"] is None, f"{m['module']} 没目标却给出 {m['percent']}%"
+        if m["target"] is None or m["done"] is None:
+            assert m["percent"] is None, f"{m['module']} 无分母/无事件源却给出 {m['percent']}%"
         else:
             assert m["percent"] == round(100.0 * m["done"] / m["target"])
         assert m["status"] in {"ok", "reached", "no_target", "not_tracked"}
+        if m["target"] is not None:
+            assert m["target_source"] in {"goal", "today_plan"}, m
+
+
+def test_tool_modules_are_not_study_progress(summary):
+    """代码上机等工具模块单独成块，并明说"不计入学习进度"。"""
+    assert {m["module"] for m in summary["tool_modules"]} == TOOL_MODULES
+    for m in summary["tool_modules"]:
+        assert m["counts_toward_study"] is False
+        assert m["reason"], f"{m['module']} 必须说明为什么不计入"
+
+
+def test_today_plan_is_bounded_and_traceable(summary):
+    """W1 主口径：今日推荐量 ≤ 合理上限，且远小于复习债（消除"今天该做 5700 项"）。"""
+    plan = summary["today_plan"]
+    from services import study_limits
+
+    assert plan["tracks"] and plan["source"] == "services.daily_load.today_plan"
+    caps = {
+        "new_words": study_limits.DAILY_QUOTA_LIMITS["daily_new_words"]["max"],
+        "review_words": study_limits.DAILY_QUOTA_LIMITS["daily_review_words"]["max"],
+        "questions": study_limits.DAILY_QUOTA_LIMITS["daily_questions"]["max"],
+        "cards": study_limits.TODAY_TRACK_CAPS["cards"]["max"],
+        "errors": study_limits.TODAY_TRACK_CAPS["errors"]["max"],
+        "tasks": study_limits.TODAY_TRACK_CAPS["tasks"]["max"],
+    }
+    for t in plan["tracks"]:
+        if t["key"] in caps:
+            assert t["value"] <= caps[t["key"]], t
+        assert t["basis"] in {"goal", "goal_capped", "system_default", "stock_limited"}, t
+        assert t["note"], f"{t['key']} 缺来源说明"
+    # 今日量 ≠ 复习债：today_tasks 的主数字口径必须换到 plan
+    due_total = summary["future_load"]["due_today"]["total_all"]
+    if due_total > sum(caps.values()):
+        assert plan["items_total"] < due_total, "把复习债全额当今日任务 = 制造恐慌"
+    assert plan["backlog"]["due_total"] == due_total
 
 
 def test_modules_without_event_source_report_null_not_zero(summary):
-    """"还没接入"和"今天没学"是两件事：无事件源的模块 done 必须是 null。"""
+    """ "还没接入"和"今天没学"是两件事：无事件源的模块 done 必须是 null。"""
     for m in summary["module_progress"]:
         if m["status"] == "not_tracked":
             assert m["done"] is None, f"{m['module']} 未接入却给出 0"
@@ -92,13 +151,9 @@ def test_countdown_matches_exam_calendar_authority(summary):
 
     cd = summary["countdown"]
     assert cd["phase"] in PHASES
-    assert cd["days_left"] == (
-        datetime.date.fromisoformat(cd["exam_date"]) - local_today()
-    ).days
+    assert cd["days_left"] == (datetime.date.fromisoformat(cd["exam_date"]) - local_today()).days
     # 届数与初试日自洽：届 = 初试年 + 1（初试在上一年 12 月）
-    assert cd["exam_year"] == exam_calendar.exam_year_of(
-        datetime.date.fromisoformat(cd["exam_date"])
-    )
+    assert cd["exam_year"] == exam_calendar.exam_year_of(datetime.date.fromisoformat(cd["exam_date"]))
 
 
 def test_countdown_is_not_anchored_to_a_hardcoded_date(summary):
@@ -117,9 +172,7 @@ def test_future_load_is_cumulative_and_monotonic(summary):
     assert fl["due_today"]["total"] <= fl["due_tomorrow"]["total"] <= fl["due_this_week"]["total"]
     for key in ("due_today", "due_tomorrow", "due_this_week"):
         entry = fl[key]
-        assert entry["total"] == (
-            entry["flashcards"] + entry["tasks"] + entry["errors"] + entry["words"]
-        )
+        assert entry["total"] == (entry["flashcards"] + entry["tasks"] + entry["errors"] + entry["words"])
 
 
 # --------------------------------------------------------------------------- #

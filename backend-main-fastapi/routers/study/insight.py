@@ -28,7 +28,7 @@ from models import (
     User,
 )
 from pydantic import BaseModel, Field
-from services import error_linker, kp_mastery, review_service
+from services import daily_load, error_linker, kp_mastery, review_service
 from services.dashboard_service import DashboardService
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -67,8 +67,11 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
 
     # 今日到期复习（艾宾浩斯）—— B4：只数本人队列，零数据新用户必须是 0，
     # 否则全局 KP 队列截断 200 会让新号首屏出现"200 条到期复习"的假数据。
+    # 注意：这里的 200 是**取数上限**而不是"今日任务量"；界面要显示今日量请取
+    # 下面的 today_plan / services.daily_load。
+    DUE_QUERY_LIMIT = 200
     try:
-        due_items = review_service.due_items(db, limit=200, user_id=uid)
+        due_items = review_service.due_items(db, limit=DUE_QUERY_LIMIT, user_id=uid)
         due_count = len(due_items) if isinstance(due_items, list) else 0
     except Exception:
         due_count = 0
@@ -122,20 +125,35 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
     # 建议卡片的图标用**语义 key**（前端映射到 SVG 图标），不返回 emoji。
     # 原因：emoji 在不同系统/字体下渲染差异大，且与产品图标体系风格冲突
     # （设计铁律 P0-1：禁止 emoji 作功能图标）。前端见 components/Icon.jsx。
+    #
+    # W1：「到期复习」这一张过去直接把队列长度（limit=200 截断后的到期总量）
+    # 写成 count，前端渲染成"今天有 200 条要复习"。现在 count 用**今日推荐量**
+    # （services.daily_load），并把队列真实长度放进 `due_total` + `hint` 说明差额，
+    # 让用户看得见"欠 200 条 / 今天排 30 条"两件事，而不是被前者吓到。
+    plan = daily_load.plan_by_key(daily_load.today_plan(db, user_id=uid))
+    planned_review = sum((plan.get(k) or {}).get("value") or 0 for k in ("review_words", "cards", "errors"))
     suggestions = [
         {
             "icon": "review",
             "label": "到期复习",
-            "count": due_count,
+            "count": planned_review,
+            "due_total": due_count,
             "to": "/quiz?tab=review",
-            "hint": "艾宾浩斯队列到期，先复习再学新的" if due_count else "暂无到期复习",
+            "hint": (
+                f"到期 {due_count} 条，今日按 {planned_review} 条排入，其余按每日节奏分摊"
+                if due_count > planned_review
+                else ("艾宾浩斯队列到期，先复习再学新的" if due_count else "暂无到期复习")
+            ),
+            "basis": "services.daily_load.today_plan",
         },
         {
             "icon": "todo",
             "label": "今日待办",
-            "count": task_count,
+            "count": (plan.get("tasks") or {}).get("value", task_count) or 0,
+            "due_total": task_count,
             "to": "/tasks",
             "hint": "按计划推进今天的任务" if task_count else "还没有安排今日任务",
+            "basis": "services.daily_load.today_plan",
         },
         {
             "icon": "target",
@@ -148,6 +166,7 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
             "icon": "brain",
             "label": "今日已答",
             "count": today_answered,
+            "target": (plan.get("questions") or {}).get("value"),
             "to": "/quiz",
             "hint": f"正确 {today_correct} 题" if today_answered else "今天还没开始刷题",
         },
@@ -160,6 +179,18 @@ def today_insight(db: Session = Depends(get_db), user: User = Depends(current_us
         "today_answered": today_answered,
         "today_correct": today_correct,
         "due_review_count": due_count,
+        # 命中取数上限说明"后面还有"：真实到期量 >200，界面必须说"200+"而不是当恰好 200
+        "due_review_truncated": due_count >= DUE_QUERY_LIMIT,
+        # 今日推荐量口径（可追溯：tracks 内每条带 basis / over_quota）
+        "today_plan": {
+            "items_total": sum(
+                (plan.get(k) or {}).get("value") or 0
+                for k in ("new_words", "review_words", "questions", "cards", "errors", "tasks")
+            ),
+            "planned_review": planned_review,
+            "source": "services.daily_load.today_plan",
+            "rule": "min(真实到期/可学量, 目标配额或系统建议量, 合理上限)",
+        },
     }
 
 

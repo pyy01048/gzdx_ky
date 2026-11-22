@@ -9,6 +9,7 @@
    不可能出现两个"今日到期"）；
 4. 今日到期的任务连 `done` 状态一起进清单 —— 否则进度环永远显示 0/N。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -30,26 +31,57 @@ def seeded(db_schema):  # noqa: ARG001
     now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     today = local_today()
     try:
-        db.add_all([
-            Flashcard(front=f"{tag}-f1", back="b", next_review=now - datetime.timedelta(hours=2)),
-            Flashcard(front=f"{tag}-f2", back="b", next_review=now - datetime.timedelta(minutes=5)),
-            # 未来的排程不该计入今日到期
-            Flashcard(front=f"{tag}-future", back="b",
-                      next_review=now + datetime.timedelta(days=3)),
-            ErrorRecord(content=f"{tag}-e", correct_answer="B", my_answer="A",
-                        subject="数学", status="active",
-                        next_review=now - datetime.timedelta(hours=1)),
-            # status=resolved 的错题不计入到期队列
-            ErrorRecord(content=f"{tag}-gone", correct_answer="B", my_answer="A",
-                        subject="数学", status="resolved",
-                        next_review=now - datetime.timedelta(hours=1)),
-            Task(title=f"{tag}-todo", subject="数学", task_type="学习",
-                 stage="basic", status="pending", due_date=today,
-                 next_review=now - datetime.timedelta(hours=1), priority=5),
-            Task(title=f"{tag}-done", subject="英语", task_type="刷题",
-                 stage="basic", status="done", due_date=today, priority=3),
-            Word(word=f"{tag}w1", meaning="测试", status="not_mastered", due_date=today),
-        ])
+        db.add_all(
+            [
+                Flashcard(front=f"{tag}-f1", back="b", next_review=now - datetime.timedelta(hours=2)),
+                Flashcard(front=f"{tag}-f2", back="b", next_review=now - datetime.timedelta(minutes=5)),
+                # 未来的排程不该计入今日到期
+                Flashcard(front=f"{tag}-future", back="b", next_review=now + datetime.timedelta(days=3)),
+                ErrorRecord(
+                    content=f"{tag}-e",
+                    correct_answer="B",
+                    my_answer="A",
+                    subject="数学",
+                    status="active",
+                    next_review=now - datetime.timedelta(hours=1),
+                ),
+                # status=resolved 的错题不计入到期队列
+                ErrorRecord(
+                    content=f"{tag}-gone",
+                    correct_answer="B",
+                    my_answer="A",
+                    subject="数学",
+                    status="resolved",
+                    next_review=now - datetime.timedelta(hours=1),
+                ),
+                Task(
+                    title=f"{tag}-todo",
+                    subject="数学",
+                    task_type="学习",
+                    stage="basic",
+                    status="pending",
+                    due_date=today,
+                    next_review=now - datetime.timedelta(hours=1),
+                    priority=5,
+                ),
+                Task(
+                    title=f"{tag}-done",
+                    subject="英语",
+                    task_type="刷题",
+                    stage="basic",
+                    status="done",
+                    due_date=today,
+                    priority=3,
+                    # done 任务即使带 next_review 也不该计入今日到期（已完成 ≠ 还欠着）
+                    next_review=now - datetime.timedelta(hours=1),
+                ),
+                # 已学过的词（reviewing）到期才计入"今日待复习"
+                Word(word=f"{tag}w1", meaning="测试", status="reviewing", due_date=today),
+                # W1 口径：未学新词（not_mastered）即使有 due_date 也不是"待复习"，
+                # 它走今日新词轨道；把它算进到期 = "整库当今日任务"的恐慌来源之一。
+                Word(word=f"{tag}w-new", meaning="测试新词", status="not_mastered", due_date=today),
+            ]
+        )
         db.commit()
         yield tag
     finally:
@@ -119,6 +151,11 @@ def test_scheduled_modules_count_only_due(seeded):
     assert got["wrongbook"]["due"] == due["errors"] >= 1, "resolved 错题不得计入到期"
     assert got["word"]["due"] == due["words"] >= 1
     assert got["task"]["due"] == due["tasks"] >= 1
+    # W1 去噪：到期口径只数"真的还欠着"的内容
+    assert due["words"] == 1, "未学新词（not_mastered）即使带 due_date 也不是今日待复习"
+    assert due["errors"] == 1, "resolved 错题混进到期 = 复习债虚高"
+    assert due["tasks"] == 1, "已完成任务不得继续算作今日到期待办"
+    assert due["total"] == due["words"] + due["flashcards"] + due["errors"] + due["tasks"]
     assert got["card"]["status"] == got["wrongbook"]["status"] == "pending"
 
 

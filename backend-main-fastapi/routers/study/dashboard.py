@@ -39,12 +39,15 @@ class StudySessionCreate(BaseModel):
     """
 
     duration: int = Field(
-        ..., ge=1, le=MAX_FOCUS_MINUTES_PER_SESSION,
+        ...,
+        ge=1,
+        le=MAX_FOCUS_MINUTES_PER_SESSION,
         description=f"本次专注分钟数（1…{MAX_FOCUS_MINUTES_PER_SESSION}）",
     )
     subject: Optional[str] = Field(None, max_length=50, description="备考科目，留空=不限科目")
     task_type: Literal["pomodoro", "manual", "module"] = Field(
-        "manual", description="来源：" + " / ".join(FOCUS_SOURCES),
+        "manual",
+        description="来源：" + " / ".join(FOCUS_SOURCES),
     )
     remark: Optional[str] = Field(None, max_length=200)
 
@@ -69,8 +72,7 @@ async def create_study_session(
         raise BusinessException(
             ErrorCode.INVALID_PARAMETER,
             f"今天已累计 {already} 分钟，再加 {data.duration} 分钟就超过一天的长度了",
-            detail={"date": day.isoformat(), "already_minutes": already,
-                    "limit": MAX_FOCUS_MINUTES_PER_DAY},
+            detail={"date": day.isoformat(), "already_minutes": already, "limit": MAX_FOCUS_MINUTES_PER_DAY},
             status_code=422,
         )
     session = StudySession(
@@ -96,7 +98,13 @@ async def create_study_session(
 
 @router.get("")
 async def get_dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """返回驾驶舱所有数据（业务逻辑在 DashboardService）。B4：只看本人。"""
+    """返回驾驶舱所有数据（业务逻辑在 DashboardService）。B4：只看本人。
+
+    W1：附带 ``today_plan``，与 ``/dashboard/summary`` 里的同一份函数同一口径 ——
+    旧壳页面不该只能退回去读 ``future_load``（那是复习债，不是今日任务量）。
+    """
+    from services import daily_load
+
     uid = owner_id(user)
     countdown = DashboardService.get_countdown(db, user_id=uid)
     today_tasks = DashboardService.get_today_tasks(db, user_id=uid)
@@ -107,6 +115,7 @@ async def get_dashboard(db: Session = Depends(get_db), user: User = Depends(curr
         "today_tasks": today_tasks,
         "stats": stats,
         "weakness": weakness,
+        "today_plan": daily_load.today_plan(db, user_id=uid),
     }
 
 
@@ -119,6 +128,21 @@ async def get_dashboard_summary(db: Session = Depends(get_db), user: User = Depe
     B4：目标、行为流水、待办、复习队列全部只看当前用户。
     """
     return DashboardService.get_summary(db, user_id=owner_id(user))
+
+
+@router.get("/today-plan")
+async def get_today_plan(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """今日推荐学习量**唯一出口**（W1）。
+
+    替代"把整库到期量当今日任务"的旧展示口径：
+    ``min(真实到期/可学量, 目标配额或系统建议量, 合理上限)``，
+    每条轨道带 ``basis``（谁定的）/ ``over_quota``（转入复习债的差额）与整份
+    ``backlog``，界面无需自己再拼一份"今日量"，也不可能拼出第二个答案。
+    B4：只看本人目标、词库、队列。
+    """
+    from services import daily_load
+
+    return daily_load.today_plan(db, user_id=owner_id(user))
 
 
 @router.get("/review-queue")

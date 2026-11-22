@@ -179,6 +179,27 @@
 .hub-mainfig__unit { font-size: var(--v3-fs-14); font-weight: 600; color: var(--v3-text-3); }
 .hub-mainfig__sub { font-size: var(--v3-fs-13); color: var(--v3-text-2); line-height: 1.55; }
 
+/* 今日推荐量的可追溯明细（W1）：默认收起，点开看每条轨道的量与出处。
+   用原生 details 而不是弹层，保证键盘/移动端都能开（触控目标 ≥44px 由 summary 撑）。 */
+.hub-mainfig__trace { margin-top: 6px; font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+.hub-mainfig__trace > summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 1px dashed var(--v3-border-strong);
+  color: var(--v3-text-2);
+}
+.hub-mainfig__trace > summary::-webkit-details-marker { display: none; }
+.hub-mainfig__trace > summary::after { content: '▾'; margin-left: 6px; font-size: 10px; }
+.hub-mainfig__trace[open] > summary::after { content: '▴'; }
+.hub-mainfig__trace ul { margin: 8px 0; padding-left: 0; list-style: none; display: grid; gap: 4px; }
+.hub-mainfig__trace li { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.hub-mainfig__trace li b { color: var(--v3-text); font-weight: 600; }
+.hub-mainfig__trace li em { font-style: normal; color: var(--v3-text-3); flex: 1 1 220px; }
+.hub-mainfig__rule { margin: 4px 0 0; line-height: 1.5; color: var(--v3-text-3); }
+
 .hub-hero__chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 .hub-hero__chips:empty { display: none; }
 .hub-hero__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; }

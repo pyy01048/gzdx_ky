@@ -475,9 +475,13 @@ export default function Hub() {
   const today = data.today
   const providerName = user?.display_name || user?.username || '同学'
 
-  /* 唯一主数字（P0-2）：今日累计到期口径；「现在可做」是另一口径，放在副文案 */
+  /* 唯一主数字（W1）：今日推荐量 = min(真实到期, 目标配额或系统建议量, 合理上限)。
+     副文案把「复习债」与「现在可做」分开说清 —— 把 5700 项欠账直接写成
+     "今天该做 5700 项"，正是本轮要消灭的恐慌源头。 */
   const todayTodo = data.todayTodoCount ?? data.due?.schedulerToday ?? 0
   const nowAvailable = data.nowAvailableCount !== undefined ? data.nowAvailableCount : data.due?.nowTotal
+  const reviewDebt = data.reviewDebtCount ?? data.due?.schedulerToday ?? 0
+  const plan = data.plan || null
   const countableTotal = q.countableTotal ?? q.total
   const remainingCount = q.remainingCount ?? Math.max(0, q.total - q.doneCount)
 
@@ -539,7 +543,7 @@ export default function Hub() {
 
           <h1 className="hub-hero__title">{greeting()}，{providerName}</h1>
 
-          {/* 全页唯一 36px 主数字：今天该做 N 项 */}
+          {/* 全页唯一 36px 主数字：今天该做 N 项（今日推荐量口径） */}
           <div className="hub-mainfig">
             <span className="hub-mainfig__label">今天该做</span>
             <span className="hub-mainfig__line">
@@ -549,9 +553,38 @@ export default function Hub() {
               <span className="hub-mainfig__unit">项</span>
             </span>
             <span className="hub-mainfig__sub">
-              {nowAvailable == null ? '「现在可做」数量暂不可用' : `其中 ${fmt(nowAvailable)} 项现在可做`}
+              {plan ? (
+                <>
+                  按每日节奏推荐
+                  {reviewDebt > todayTodo ? ` · 复习债 ${fmt(reviewDebt)} 项，约 ${plan.backlog.clearDays} 天摊完` : ''}
+                </>
+              ) : (
+                /* 旧版后端没有 today_plan：如实说明这是到期口径，别让用户以为是配额 */
+                '今日到期口径（后端未提供推荐量）'
+              )}
+              {nowAvailable == null ? '' : ` · ${fmt(nowAvailable)} 项现在可做`}
               {remainingCount > 0 ? ` · 航线还剩 ${fmt(remainingCount)} 件` : ' · 航线欠账已清'}
             </span>
+            {plan ? (
+              <details className="hub-mainfig__trace">
+                <summary>这个数字怎么来的</summary>
+                <ul>
+                  {plan.tracks.map((t) => (
+                    <li key={t.key}>
+                      <b>{t.label}</b> {fmt(t.value)}
+                      {t.unit}
+                      <em>{t.note}</em>
+                    </li>
+                  ))}
+                </ul>
+                <p className="hub-mainfig__rule">{plan.rule}</p>
+                {plan.subjectScope?.length ? (
+                  <p className="hub-mainfig__rule">科目范围：{plan.subjectScope.join('、')}</p>
+                ) : (
+                  <p className="hub-mainfig__rule">尚未设置备考科目，到期量按全部科目统计</p>
+                )}
+              </details>
+            ) : null}
           </div>
 
           <div className="hub-hero__chips">
@@ -992,7 +1025,7 @@ export default function Hub() {
                   <PanelHead
                     title="模块进度"
                     titleId="hub-block-modules"
-                    sub="各模块今日完成度，同一份数据"
+                    sub="分母来自你的每日目标或今日推荐量，同一份数据"
                     icon={<Layers size={17} />}
                     actions={<Link to="/insights" className="hub-link">看统计 <ArrowRight size={14} /></Link>}
                   />
@@ -1030,6 +1063,12 @@ export default function Hub() {
                       action={<Button variant="tonal" onClick={() => navigate('/planner')}>开始一次专注</Button>}
                     />
                   )}
+                  {/* W1：非备考科目模块（代码上机 OJ 等）单列并注明不计入学习进度 */}
+                  {data.toolModules?.length ? (
+                    <p className="hub-mods__foot">
+                      不计入学习进度：{data.toolModules.map((t) => `${t.label}（${t.reason}）`).join('、')}
+                    </p>
+                  ) : null}
                 </>
               ) : null}
             </section>

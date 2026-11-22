@@ -161,6 +161,64 @@ export function normalizeDue({ summary, insight, words, review } = {}) {
   }
 }
 
+/**
+ * 今日推荐量（W1 主口径）—— 页面「今天该做 N 项」只认这个。
+ *
+ * 后端 `services.daily_load.today_plan` 给的是
+ * `min(真实到期/可学量, 目标配额或系统建议量, 合理上限)`，
+ * 每条轨道带 `basis`（这个数字是谁定的）与 `overQuota`（转入复习债的差额）。
+ *
+ * 关键：后端没返回 `today_plan` 时这里给出 **null**，页面据此退回旧口径，
+ * 而不是自己编一个默认量 —— 编出来的"今日 50 词"和无数据的整库到期一样是谎。
+ */
+export function normalizeTodayPlan(summary) {
+  const p = summary?.today_plan
+  if (!p || !Array.isArray(p.tracks)) return null
+  const tracks = p.tracks.map((t) => ({
+    key: t.key,
+    label: t.label,
+    unit: t.unit,
+    value: toNum(t.value),
+    available: toNum(t.available),
+    quota: t.quota == null ? null : toNum(t.quota),
+    cap: t.cap == null ? null : toNum(t.cap),
+    countable: t.countable !== false,
+    basis: t.basis || '',
+    overQuota: toNum(t.over_quota),
+    note: t.note || '',
+  }))
+  const by = {}
+  tracks.forEach((t) => { by[t.key] = t })
+  const backlog = p.backlog || {}
+  return {
+    itemsTotal: toNum(p.items_total),
+    focusMinutes: p.focus_minutes == null ? null : toNum(p.focus_minutes),
+    tracks,
+    by,
+    /** 复习类轨道之和（不含新词/待办/刷题）：对应「到期复习」这一步 */
+    reviewTotal: ['review_words', 'cards', 'errors'].reduce((n, k) => n + (by[k]?.value || 0), 0),
+    source: p.source || 'dashboard/summary · today_plan',
+    version: p.version || '',
+    rule: p.rule || '',
+    subjectScope: Array.isArray(p.subject_scope) ? p.subject_scope : null,
+    backlog: {
+      dueTotal: toNum(backlog.due_total),
+      outsideToday: toNum(backlog.outside_today),
+      capacityPerDay: toNum(backlog.capacity_per_day),
+      clearDays: toNum(backlog.clear_days),
+      rule: backlog.rule || '',
+    },
+  }
+}
+
+/** 今日航线各步骤该显示的量：有 plan 用 plan，没有则退回旧口径（不编数）。 */
+function planBy(plan, key, fallback) {
+  const t = plan?.by?.[key]
+  return t == null ? fallback : toNum(t.value)
+}
+
+const fmtInt = (n) => Number(n || 0).toLocaleString('zh-CN')
+
 export function normalizeTasks(summary) {
   const block = summary?.today_tasks || {}
   const items = arr(block.tasks).map((t, i) => ({
@@ -227,15 +285,30 @@ export function normalizeWeakness(summary, insight) {
 }
 
 export function normalizeModules(summary) {
-  return arr(summary?.module_progress).map((m) => ({
-    key: m.module || m.key || m.label,
-    label: m.label || m.module || '模块',
+  /* W1：后端把「代码上机」这类工具模块移到 tool_modules，这里再兜一层，
+     保证即使旧版后端还把它混在 module_progress 里，学习进度也不会被非考试科目污染。 */
+  return arr(summary?.module_progress)
+    .filter((m) => m.kind !== 'tool' && m.counts_toward_study !== false && m.module !== 'coding')
+    .map((m) => ({
+      key: m.module || m.key || m.label,
+      label: m.label || m.module || '模块',
+      done: m.done == null ? null : toNum(m.done),
+      target: m.target == null ? null : toNum(m.target),
+      targetSource: m.target_source || null,
+      unit: m.unit || '',
+      percent: m.percent == null ? null : clamp(m.percent),
+      status: m.status || 'pending',
+      note: m.note || '',
+    }))
+}
+
+export function normalizeToolModules(summary) {
+  return arr(summary?.tool_modules).map((m) => ({
+    key: m.module || m.label,
+    label: m.label || m.module || '工具',
     done: m.done == null ? null : toNum(m.done),
-    target: m.target == null ? null : toNum(m.target),
     unit: m.unit || '',
-    percent: m.percent == null ? null : clamp(m.percent),
-    status: m.status || 'pending',
-    note: m.note || '',
+    reason: m.reason || m.note || '非备考科目，不计入学习进度',
   }))
 }
 
@@ -294,7 +367,7 @@ export function normalizeHeatmap(summary) {
  *  - 专注/刷题以「今天是否达到目标（未设目标则 ≥1）」判定。
  * 每一步带 `state`（done/doing/warning/todo），供页面映射 5 状态色。
  */
-export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestions, review, targets } = {}) {
+export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestions, review, targets, plan } = {}) {
   const sug = arr(suggestions)
   const byIcon = (icon) => sug.find((s) => s.icon === icon)
   const focusMinutes = toNum(today?.focus_minutes)
@@ -305,27 +378,37 @@ export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestio
   const weakPoints = arr(weakness?.points)
   const pendingTasks = toNum(tasks?.pending)
   const totalTasks = toNum(tasks?.total)
-  const wordCount = toNum(due?.newWords) + toNum(words?.due_today ?? due?.breakdown?.words)
-  const cardCount = toNum(due?.breakdown?.cards)
-  const plannerCount = toNum(due?.planner)
-  const focusTarget = toNum(targets?.focus)
-  const quizTarget = toNum(targets?.questions)
-  const newWordQuota = toNum(targets?.newWords)
+  /* W1：有今日推荐量时，步骤数字一律取推荐量（"今天该做多少"），
+     整库到期量降级成 hint 里的复习债；没有 plan 才退回旧口径。
+     旧口径把「词库未学总量」加进今日队列，正是"一天 11653 词"的来源。 */
+  const dueWords = toNum(words?.due_today ?? due?.breakdown?.words)
+  const wordCount = plan
+    ? (plan.by.new_words?.value || 0) + (plan.by.review_words?.value || 0)
+    : toNum(due?.newWords) + dueWords
+  const reviewCount = plan ? plan.reviewTotal : toNum(due?.planner)
+  const cardCount = planBy(plan, 'cards', toNum(due?.breakdown?.cards))
+  const taskCount = planBy(plan, 'tasks', pendingTasks)
+  const focusTarget = toNum(targets?.focus) || (plan?.by?.focus?.value ?? 0)
+  const quizTarget = toNum(targets?.questions) || (plan?.by?.questions?.value ?? 0)
+  const newWordQuota = toNum(targets?.newWords) || (plan?.by?.new_words?.value ?? 0)
+  const debtHint = plan?.backlog?.dueTotal
+    ? `复习债 ${fmtInt(plan.backlog.dueTotal)} 项，今日排 ${plan.itemsTotal} 项`
+    : ''
 
   const items = [
     {
       id: 'review',
       order: 1,
       label: '到期复习',
-      hint: byIcon('review')?.hint || (plannerCount ? '先清掉今天到期的复习队列' : reviewsToday ? '今天到期的复习已清完' : '暂无到期复习，保持节奏'),
-      count: plannerCount,
+      hint: byIcon('review')?.hint || (reviewCount ? '先清掉今天到期的复习队列' : reviewsToday ? '今天到期的复习已清完' : '暂无到期复习，保持节奏'),
+      count: reviewCount,
       unit: '条',
       to: '/quiz?tab=review',
       tone: 'violet',
       icon: 'review',
-      done: plannerCount === 0 && reviewsToday > 0,
-      empty: plannerCount === 0 && reviewsToday === 0,
-      urgency: plannerCount > 0 ? 100 : 10,
+      done: reviewCount === 0 && reviewsToday > 0,
+      empty: reviewCount === 0 && reviewsToday === 0,
+      urgency: reviewCount > 0 ? 100 : 10,
     },
     {
       id: 'weak',
@@ -347,24 +430,26 @@ export function deriveFocusQueue({ due, tasks, weakness, words, today, suggestio
       order: 3,
       label: '今日待办',
       hint: byIcon('todo')?.hint || (pendingTasks ? '按计划推进今天的任务' : totalTasks ? '今日任务已全部完成' : '还没有安排今日任务'),
-      count: pendingTasks,
+      count: taskCount,
       unit: '项',
       to: '/tasks',
       tone: 'amber',
       icon: 'todo',
-      done: totalTasks > 0 && pendingTasks === 0,
+      done: totalTasks > 0 && taskCount === 0,
       empty: totalTasks === 0,
-      urgency: pendingTasks ? 70 : 7,
+      urgency: taskCount ? 70 : 7,
     },
     {
       id: 'words',
       order: 4,
       label: '单词记忆',
-      /* 诚实口径（P1）：设了每日新词配额 → 分子=今日已学、分母=配额；
-         未设配额 → 退回「词库未学」总量并明确标注，不把库内未学冒充今日任务量 */
-      hint: newWordQuota
-        ? `今日已学 ${wordsDoneToday}/${newWordQuota} · 到期 ${toNum(words?.due_today ?? due?.breakdown?.words)}`
-        : `词库未学 ${toNum(due?.newWords)} · 到期 ${toNum(words?.due_today ?? due?.breakdown?.words)}`,
+      /* 诚实口径（W1）：数字是「今日推荐量 = 新词配额 + 复习配额」，
+         词库未学总量只作为复习债出现在 hint 里，不再相加冒充今日任务 */
+      hint: plan
+        ? (debtHint || `今日新词 ${plan.by.new_words?.value || 0} · 复习 ${plan.by.review_words?.value || 0}`)
+        : (newWordQuota
+          ? `今日已学 ${wordsDoneToday}/${newWordQuota} · 到期 ${dueWords}`
+          : `词库未学 ${toNum(due?.newWords)} · 到期 ${dueWords}`),
       count: wordCount,
       unit: '词',
       to: '/words',
@@ -462,6 +547,7 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
   const tasks = normalizeTasks(summary)
   const weakness = normalizeWeakness(summary, insight)
   const due = normalizeDue({ summary, insight, words, review })
+  const plan = normalizeTodayPlan(summary)
   const modules = normalizeModules(summary)
   const wordsModel = {
     total: toNum(words?.total),
@@ -489,7 +575,9 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
       value: toNum(today.focus_minutes),
       unit: '分钟',
       delta: toNum(delta.focus_minutes),
-      hint: goal.dailyTargets.focus ? `目标 ${goal.dailyTargets.focus} 分钟` : '未设置每日时长目标',
+      hint: goal.dailyTargets.focus
+        ? `目标 ${goal.dailyTargets.focus} 分钟`
+        : (plan?.focusMinutes ? `今日建议 ${plan.focusMinutes} 分钟（系统按可用时长排）` : '未设置每日时长目标'),
       to: '/planner',
       icon: 'focus',
       tone: 'indigo',
@@ -501,7 +589,11 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
       value: toNum(today.questions_done),
       unit: '道',
       delta: toNum(delta.questions_done),
-      hint: goal.dailyTargets.questions ? `目标 ${goal.dailyTargets.questions} 道` : `昨天 ${toNum(yesterday.questions_done)} 道`,
+      hint: goal.dailyTargets.questions
+        ? `目标 ${goal.dailyTargets.questions} 道`
+        : (plan?.by?.questions?.value
+          ? `今日建议 ${plan.by.questions.value} 道 · 昨天 ${toNum(yesterday.questions_done)} 道`
+          : `昨天 ${toNum(yesterday.questions_done)} 道`),
       to: '/quiz',
       icon: 'quiz',
       tone: 'cyan',
@@ -542,18 +634,30 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
     suggestions: insight?.suggestions,
     review: reviewModel,
     targets: goal.dailyTargets,
+    plan,
   })
 
   const goalLine = [goal.university || countdown.university, goal.major || countdown.major].filter(Boolean).join(' · ')
 
-  /* 口径对账表：一个指标一行，只写「谁算的、什么切点」 */
+  /* 口径对账表：一个指标一行，只写「谁算的、什么切点」。
+     W1 把「今日推荐量」放在第一行 —— 它才是页面主数字的出处；
+     到期/复习债降级为后面的对照行，明确"这不是今天该做完的量"。 */
   const caliber = [
+    {
+      label: '今日推荐量',
+      value: plan ? plan.itemsTotal : null,
+      unit: '项',
+      source: plan ? `dashboard/summary · ${plan.source}` : '后端未返回 today_plan（退回旧口径）',
+      note: plan
+        ? 'min(真实到期, 目标配额或系统建议量, 合理上限)；专注分钟不并入项数'
+        : '主数字暂时退回「今日累计到期」口径，请升级后端',
+    },
     {
       label: '今日累计到期',
       value: due.schedulerToday,
       unit: '项',
       source: 'dashboard/summary · future_load.due_today',
-      note: '截至今日 24:00，含此前欠账；今日任务清单同口径',
+      note: '截至今日 24:00 的复习债（含此前欠账），不是今天要做完的量',
     },
     {
       label: '现在可做',
@@ -567,14 +671,14 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
       value: due.planner,
       unit: '条',
       source: 'insight/today · due_review_count',
-      note: '复盘计划的独立队列，不计入卡片/错题调度',
+      note: insight?.due_review_truncated ? '命中取数上限 200，实际到期更多' : '复盘计划的独立队列，不计入卡片/错题调度',
     },
     {
       label: '词库未学',
       value: due.newWords,
       unit: '词',
       source: 'words/stats · new',
-      note: '词库内未学总量，不是今日新词配额；每日配额在目标档案单独设置',
+      note: '词库内未学总量（库存），不是今日新词配额；今日新词见上行 today_plan',
     },
   ]
 
@@ -597,10 +701,14 @@ export function buildHubModel({ summary = null, insight = null, words = null, re
     },
     kpiCards,
     due,
-    /* 页面唯一主数字（P0-2）：「今天该做 N 项」= 今日累计到期口径；
-       「其中 N 项现在可做」= review_queue 口径。两者切点不同，分开呈现。 */
-    todayTodoCount: due.schedulerToday,
+    /* 页面唯一主数字（W1）：「今天该做 N 项」= 今日推荐量（算法 + 配额 + 上限）。
+       复习债（今日累计到期）与「现在可做」降级为副文案，切点不同、语义不同，
+       绝不再拿复习债当主数字 —— 那是"今天该做 5700 项"的直接来源。 */
+    todayTodoCount: plan ? plan.itemsTotal : due.schedulerToday,
     nowAvailableCount: due.nowTotal,
+    reviewDebtCount: due.schedulerToday,
+    plan,
+    toolModules: normalizeToolModules(summary),
     tasks,
     weakness,
     words: wordsModel,

@@ -5,26 +5,56 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# 目标字段的数值闸门。study_limits 是**零依赖叶子模块**（只用 typing），
+# 在这里 import 不会形成 schemas ↔ services 的循环；它同时被
+# services.daily_load 与 routers/study/goals.py 引用，保证「上限」只有一处定义。
+from services import study_limits
+
 
 # =========================================================================== #
 # Goal
 # =========================================================================== #
 class GoalBase(BaseModel):
     exam_date: Optional[datetime.date] = None
-    total_score_target: Optional[int] = None
-    politics_target: Optional[int] = None
-    english_target: Optional[int] = None
-    math_target: Optional[int] = None
-    major_target: Optional[int] = None
+    # W1 阈值闸门（单一出处 services.study_limits）：原本这些字段一个边界都没有，
+    # 用户可以把目标总分存成 2000 分，然后被进度环、正确率分母原样读出来，
+    # 变成一个永远达不到、也从未存在过的"目标"。上限依据见 study_limits 模块头。
+    total_score_target: Optional[int] = Field(None, ge=study_limits.SCORE_MIN, le=study_limits.SCORE_TOTAL_MAX)
+    politics_target: Optional[int] = Field(
+        None, ge=study_limits.SCORE_MIN, le=study_limits.SCORE_PART_MAX["politics_target"]
+    )
+    english_target: Optional[int] = Field(
+        None, ge=study_limits.SCORE_MIN, le=study_limits.SCORE_PART_MAX["english_target"]
+    )
+    math_target: Optional[int] = Field(None, ge=study_limits.SCORE_MIN, le=study_limits.SCORE_PART_MAX["math_target"])
+    major_target: Optional[int] = Field(None, ge=study_limits.SCORE_MIN, le=study_limits.SCORE_PART_MAX["major_target"])
     university: Optional[str] = None
     major: Optional[str] = None
     remark: Optional[str] = None
     # 每日学习目标：仪表盘进度环的分母。None = 未设目标（进度环显示"未设目标"），
     # 不给默认值 —— 空库时前端不该看到凭空出现的数字。
-    daily_focus_minutes: Optional[int] = Field(None, ge=1, le=1440)
-    daily_new_words: Optional[int] = Field(None, ge=1, le=2000)
-    daily_review_words: Optional[int] = Field(None, ge=1, le=5000)
-    daily_questions: Optional[int] = Field(None, ge=1, le=2000)
+    # 上限从 study_limits 取（与「今日推荐量」的钳制值同源）：
+    # 旧边界 2000/5000 允许"每天 2000 新词"，那正是"一天 11653 词"恐慌数字的合法入口。
+    daily_focus_minutes: Optional[int] = Field(
+        None,
+        ge=study_limits.DAILY_QUOTA_LIMITS["daily_focus_minutes"]["min"],
+        le=study_limits.DAILY_QUOTA_LIMITS["daily_focus_minutes"]["max"],
+    )
+    daily_new_words: Optional[int] = Field(
+        None,
+        ge=study_limits.DAILY_QUOTA_LIMITS["daily_new_words"]["min"],
+        le=study_limits.DAILY_QUOTA_LIMITS["daily_new_words"]["max"],
+    )
+    daily_review_words: Optional[int] = Field(
+        None,
+        ge=study_limits.DAILY_QUOTA_LIMITS["daily_review_words"]["min"],
+        le=study_limits.DAILY_QUOTA_LIMITS["daily_review_words"]["max"],
+    )
+    daily_questions: Optional[int] = Field(
+        None,
+        ge=study_limits.DAILY_QUOTA_LIMITS["daily_questions"]["min"],
+        le=study_limits.DAILY_QUOTA_LIMITS["daily_questions"]["max"],
+    )
 
 
 class GoalCreate(GoalBase):
@@ -41,6 +71,8 @@ class GoalResponse(GoalBase):
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # University
 # =========================================================================== #
@@ -68,6 +100,8 @@ class UniversityResponse(UniversityBase):
     created_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # Task
 # =========================================================================== #
@@ -106,6 +140,8 @@ class TaskResponse(TaskBase):
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # QuizQuestion
 # =========================================================================== #
@@ -150,6 +186,8 @@ class QuizQuestionResponse(QuizQuestionBase):
     created_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 class QuizSubmit(BaseModel):
     question_id: int
     my_answer: str
@@ -214,6 +252,8 @@ class ErrorRecordResponse(ErrorRecordBase):
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # StudySession
 # =========================================================================== #
@@ -234,6 +274,8 @@ class StudySessionResponse(StudySessionBase):
     created_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # AIProvider
 # =========================================================================== #
@@ -271,6 +313,8 @@ class AIProviderResponse(AIProviderBase):
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # PlatformConfig
 # =========================================================================== #
@@ -306,6 +350,8 @@ class PlatformConfigResponse(PlatformConfigBase):
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # NetdiskFile
 # =========================================================================== #
@@ -330,6 +376,8 @@ class NetdiskFileResponse(NetdiskFileBase):
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # KnowledgePoint
 # =========================================================================== #
@@ -352,6 +400,8 @@ class KnowledgePointResponse(KnowledgePointBase):
     created_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # Flashcard
 # =========================================================================== #
@@ -384,6 +434,8 @@ class FlashcardResponse(FlashcardBase):
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # Document
 # =========================================================================== #
@@ -405,6 +457,8 @@ class DocumentResponse(DocumentBase):
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # CustomLink
 # =========================================================================== #
@@ -433,6 +487,8 @@ class CustomLinkResponse(CustomLinkBase):
     created_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # StudyStats
 # =========================================================================== #
@@ -450,6 +506,8 @@ class StudyStatsResponse(StudyStatsBase):
     created_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
 # =========================================================================== #
 # 通用响应
 # =========================================================================== #
@@ -470,7 +528,9 @@ class ChatRequest(BaseModel):
     use_rag: Optional[bool] = False
     use_routing: Optional[bool] = True  # 是否启用本地+API智能路由
     force_local: Optional[bool] = False  # 强制本地模式（绝不回退在线）
-    provider_override: Optional[Dict[str, Any]] = None  # 前端直传服务商配置 {base_url, api_key, model, name, provider_type, temperature}
+    provider_override: Optional[Dict[str, Any]] = (
+        None  # 前端直传服务商配置 {base_url, api_key, model, name, provider_type, temperature}
+    )
     # T4 电路读图通道：前端上传图片后回传的本地绝对路径（/api/ai/upload-image 返回）。
     # 由 /chat/router 注入上下文，Agentic 状态机识别后触发 circuit_analysis（qwen2.5vl 读图）
     image_path: Optional[str] = None

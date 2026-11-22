@@ -23,6 +23,69 @@ STRATEGY_AI_TIMEOUT = 80.0
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
 
+#: 分项目标列（顺序即"政治/英语/业务课一/业务课二"）
+_SCORE_PARTS = ("politics_target", "english_target", "math_target", "major_target")
+
+
+def _check_scores(db_goal, updates: dict) -> None:
+    """目标分数的跨字段自洽校验（W1）。
+
+    校验对象是**合并后的最终状态**：``updates`` 覆盖在 ``db_goal`` 现值之上。
+    只校验本次真正涉及分数的请求 —— 没传任何分数字段就不拦（改备注不该被分数挡下）。
+
+    三条规则（依据见 ``services/study_limits`` 模块头的满分表）：
+    1. 单字段上限（总分 ≤500、政治/英语 ≤100、业务课一 ≤200、业务课二 ≤300）
+       —— 由 Pydantic 兜住，这里再给一次**带中文说明**的机会；
+    2. 四分项都填了时，分项之和 ≤ 500（初试总分就 500 分，加起来超了必是填错）；
+    3. 总分与分项同时存在时，总分 ≥ 最大单科（总分比某一科还低是自相矛盾）。
+    """
+    from services import study_limits
+    from utils.exceptions import BusinessException, ErrorCode
+
+    parts = {}
+    for f in _SCORE_PARTS:
+        parts[f] = updates[f] if f in updates else getattr(db_goal, f, None)
+    total = updates.get("total_score_target", getattr(db_goal, "total_score_target", None))
+
+    touched = any(f in updates for f in (*_SCORE_PARTS, "total_score_target"))
+    if not touched:
+        return
+
+    # 规则 1：单字段边界（越界的友好文案，比 Pydantic 的 "Input should be ≤ 100" 更可执行）
+    for field, value in [("total_score_target", total), *parts.items()]:
+        msg = study_limits.score_limit_error(field, value)
+        if msg:
+            raise BusinessException(
+                ErrorCode.INVALID_PARAMETER,
+                msg,
+                detail=study_limits.score_limits_detail(),
+                status_code=422,
+            )
+
+    filled = [v for v in parts.values() if v is not None]
+    # 规则 2：分项之和不得超过初试总分上限
+    if len(filled) == len(_SCORE_PARTS):
+        s = sum(filled)
+        if s > study_limits.SCORE_TOTAL_MAX:
+            raise BusinessException(
+                ErrorCode.INVALID_PARAMETER,
+                f"四科目标分之和 {s} 分超过初试总分上限 {study_limits.SCORE_TOTAL_MAX} 分，请下调单科目标",
+                detail={
+                    "parts_sum": s,
+                    "total_max": study_limits.SCORE_TOTAL_MAX,
+                    **study_limits.score_limits_detail(),
+                },
+                status_code=422,
+            )
+        # 规则 3：总分与分项同时存在时必须自洽
+        if total is not None and total < max(filled):
+            raise BusinessException(
+                ErrorCode.INVALID_PARAMETER,
+                f"总分目标 {total} 分低于单科最高目标 {max(filled)} 分，两个数字互相矛盾",
+                detail={"total_score_target": total, "max_part": max(filled), **study_limits.score_limits_detail()},
+                status_code=422,
+            )
+
 
 def _school_dict(db: Session, s: KaoyanSchool) -> dict:
     """组装院校响应（保持旧 /university 接口结构，数据源迁移至 kaoyan_schools/kaoyan_scorelines）。"""
@@ -77,10 +140,19 @@ async def update_subjects(payload: dict, db: Session = Depends(get_db), user: Us
 
 @router.get("")
 async def get_goal(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """获取考研目标。"""
+    """获取考研目标（附带阈值元数据，供设置页做前端约束）。"""
+    from services import study_limits
+
     goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not goal:
-        return {"message": "尚未设置目标"}
+        return {
+            "message": "尚未设置目标",
+            "score_limits": study_limits.score_limits_detail(),
+            "daily_target_limits": {
+                k: {"min": v["min"], "max": v["max"], "suggested": v["default"], "label": v["label"], "unit": v["unit"]}
+                for k, v in study_limits.DAILY_QUOTA_LIMITS.items()
+            },
+        }
     return {
         "id": goal.id,
         "exam_date": goal.exam_date.isoformat() if goal.exam_date else None,
@@ -100,6 +172,13 @@ async def get_goal(db: Session = Depends(get_db), user: User = Depends(current_u
         "daily_review_words": goal.daily_review_words,
         "daily_questions": goal.daily_questions,
         "remark": goal.remark,
+        # 阈值元数据随目标一起返回：设置页据此设 input[max] 并写"上限依据"，
+        # 用户不会填完 2000 才被后端挡回来（前后端同一份 study_limits）。
+        "score_limits": study_limits.score_limits_detail(),
+        "daily_target_limits": {
+            k: {"min": v["min"], "max": v["max"], "suggested": v["default"], "label": v["label"], "unit": v["unit"]}
+            for k, v in study_limits.DAILY_QUOTA_LIMITS.items()
+        },
     }
 
 
@@ -163,13 +242,25 @@ async def update_exam_calendar(payload: dict, db: Session = Depends(get_db), use
     goal.exam_date = exam_date
     # 分项目标自洽性：分项之和与总分不一致时（真库实测 65+65+115+115=360 但总分填 350），
     # 不擅自改用户的分项目标，只把修正后的总分回填并明确告知，避免两个数字互相矛盾。
+    from services import study_limits
+
     parts = [goal.politics_target, goal.english_target, goal.math_target, goal.major_target]
     old_total = goal.total_score_target
     adjusted_total = None
+    total_note = None
     if all(p is not None for p in parts):
         s = sum(parts)
         if old_total != s:
-            adjusted_total = s
+            # W1：历史脏数据里存在分项之和 >500 的行（旧 PUT 无闸门）。
+            # 这种和**不能**回填成总分 —— 那等于把荒谬值继续供给全站。
+            # 改为保留原总分并明确告知冲突，让用户去目标页改单科。
+            if s > study_limits.SCORE_TOTAL_MAX:
+                total_note = (
+                    f"四科目标分之和为 {s} 分，超过初试总分上限 {study_limits.SCORE_TOTAL_MAX} 分，"
+                    "已保留原总分不覆盖；请下调单科目标后重试"
+                )
+            else:
+                adjusted_total = s
 
     if adjusted_total is not None:
         goal.total_score_target = adjusted_total
@@ -186,18 +277,28 @@ async def update_exam_calendar(payload: dict, db: Session = Depends(get_db), use
             "new": adjusted_total,
             "reason": "四科分项目标之和与原总分不一致，已按分项之和回填",
         }
+    if total_note:
+        info["total_score_conflict"] = total_note
     return info
 
 
 @router.put("")
 async def update_goal(goal: GoalUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """更新目标。"""
+    """更新目标（W1：分数与每日配额都有阈值闸门，杜绝 2000 分这类荒谬值落库）。
+
+    两层校验，缺一不可：
+    1. **单字段边界**在 ``schemas.GoalBase`` 里（Pydantic 越界即 422 错误壳）；
+    2. **跨字段自洽**在这里 —— 四分项之和、总分与单科的关系，
+       必须拿"合并库里现值后的最终状态"来判，否则只改一科就能绕过求和约束。
+       违规统一走 :class:`utils.exceptions.BusinessException`（422 + ``{code,message,detail}``）。
+    """
     db_goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not db_goal:
         db_goal = Goal(user_id=owner_id(user))  # B4：新建目标归属当前用户
         db.add(db_goal)
 
     update_data = goal.model_dump(exclude_unset=True)
+    _check_scores(db_goal, update_data)
     for key, value in update_data.items():
         setattr(db_goal, key, value)
 

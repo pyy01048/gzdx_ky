@@ -451,7 +451,18 @@ def list_words(
 
 @router.get("/stats")
 def word_stats(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """单词统计：总数、各状态数量、今日待复习（B4：只统计本人单词）。"""
+    """单词统计：库存规模 + 真实到期 + **今日推荐量**（B4：只统计本人单词）。
+
+    W1 口径标注（这里曾经是"一天 11653 词"的源头）：
+    - ``new`` 是**词库未学库存**（导入整本内置词书就是 5000+），它不是今日任务量；
+      旧前端把它和到期数相加当"今日队列"展示 → 恐慌数字。
+      现在同响应里给出 ``today_new`` / ``today_review``（来自
+      :func:`services.daily_load.today_plan`）作为"今天该学多少"的唯一答案，
+      并带 ``usage`` 说明每个数的性质，前端接哪个都不会说错话。
+    - ``due_today`` 仍是真实到期复习量（含此前欠账），即"复习债"。
+    """
+    from services import daily_load
+
     _scope = scoped(Word, user)  # B4：以下 6 处 count 全部按本人过滤
     total = db.query(Word).filter(_scope).count()
     # DB 权威枚举里没有 'new'，未学状态是 not_mastered
@@ -466,6 +477,7 @@ def word_stats(db: Session = Depends(get_db), user: User = Depends(current_user)
     due_today = (
         db.query(Word).filter(_scope, Word.due_date <= today).filter(Word.status.in_(["learning", "reviewing"])).count()
     )
+    plan = daily_load.plan_by_key(daily_load.today_plan(db, user_id=owner_id(user), day=today))
     return {
         "total": total,
         "new": new_count,
@@ -473,6 +485,17 @@ def word_stats(db: Session = Depends(get_db), user: User = Depends(current_user)
         "reviewing": reviewing_count,
         "mastered": mastered_count,
         "due_today": due_today,
+        # ↓ W1：库存 vs 今日量的性质标注
+        "usage": "total/new 是词库库存规模，due_today 是到期复习债；今日该学多少只看 today_new / today_review",
+        "today_new": (plan.get("new_words") or {}).get("value"),
+        "today_review": (plan.get("review_words") or {}).get("value"),
+        "today_basis": {
+            "new_words": (plan.get("new_words") or {}).get("basis"),
+            "review_words": (plan.get("review_words") or {}).get("basis"),
+        },
+        "new_note": f"词库内未学 {new_count} 词（库存），今日按 {(plan.get('new_words') or {}).get('value', 0)} 词排入",
+        "review_note": f"到期复习 {due_today} 词（含欠账），今日按 "
+        f"{(plan.get('review_words') or {}).get('value', 0)} 词排入",
     }
 
 
