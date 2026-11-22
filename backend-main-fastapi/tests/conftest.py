@@ -856,9 +856,24 @@ def sample_data(db_schema):  # noqa: ARG001
         db.commit()
 
         # 回读真实 id 供带路径参数的用例使用
+        #
+        # 2026-11-22：去掉"查不到就回落 1"的兜底。
+        # 原实现 ``return obj.id if obj else 1`` 会把**种子没落库**这一事实
+        # 伪装成"id=1 可用"：契约巡检拿着并不存在的 1 去打带路径参数的接口，
+        # 报出来的是 6 个 404「文档不存在」，排查方向被彻底带偏
+        # （真因是别的用例跨表误删了 documents.id=1，见
+        # tests/test_document_file_stream.py::_cleanup_docs 的注释）。
+        # 种子缺失属于**测试前置条件破损**，必须在夹具阶段就炸，且说清是哪张表。
         def _id(model):
             obj = db.query(model).first()
-            return obj.id if obj else 1
+            if obj is None:
+                raise AssertionError(
+                    f"sample_data 前置条件破损：{model.__tablename__} 表为空，"
+                    f"带路径参数的接口拿不到真实 id。"
+                    f"请检查本夹具的插入分支是否被 count()!=0 跳过，"
+                    f"或是否有用例跨表误删了种子行。"
+                )
+            return obj.id
 
         ids = {
             "task_id": _id(Task),

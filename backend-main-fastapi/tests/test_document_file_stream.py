@@ -60,17 +60,52 @@ def _doc(file_name, file_path, **kw):
         db.close()
 
 
-def _cleanup(*ids):
+def _cleanup_docs(*ids):
+    """只删本用例自己建的 ``documents`` 行。
+
+    2026-11-22 顺序污染根因修复
+    --------------------------
+    原实现是一个共用的清理函数，内部对**每个 id 同时遍历 Document 与
+    NetdiskFile 两张表**删除。这两张表各有独立自增序列，id 空间彼此无关：
+    网盘用例 ``_netdisk_row()`` 在空表上建出 ``netdisk_files.id=1``，
+    共用清理便顺手把 ``sample_data`` 播下的种子文档
+    ``documents.id=1``（qa.txt）一并删掉。
+
+    后果是**跨文件的隐式顺序依赖**：
+    ``test_regression_p0.py`` 先触发 session 级 ``sample_data``（doc_id=1），
+    本文件的网盘用例随后误删该行，``test_api_contract.py`` 的
+    ``route_ids`` 复用同一份缓存 ids 仍拿 doc_id=1 去巡检 →
+    knowledge-points / chunks / content / classify-summary / snapshot
+    共 6 个端点集体 404，报「6/247 个接口不合规」。
+    单独跑任一文件都不会复现，排查成本极高。
+
+    清理必须**按表精确限定**：谁建的行谁删，绝不跨表按 id 扫。
+    """
     from database import SessionLocal
-    from models import Document, NetdiskFile
+    from models import Document
 
     db = SessionLocal()
     try:
         for i in ids:
-            for model in (Document, NetdiskFile):
-                row = db.query(model).filter(model.id == i).first()
-                if row:
-                    db.delete(row)
+            row = db.query(Document).filter(Document.id == i).first()
+            if row:
+                db.delete(row)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _cleanup_netdisk(*ids):
+    """只删本用例自己建的 ``netdisk_files`` 行（不碰 documents）。"""
+    from database import SessionLocal
+    from models import NetdiskFile
+
+    db = SessionLocal()
+    try:
+        for i in ids:
+            row = db.query(NetdiskFile).filter(NetdiskFile.id == i).first()
+            if row:
+                db.delete(row)
         db.commit()
     finally:
         db.close()
@@ -92,7 +127,7 @@ def test_raw_streams_whole_file_and_advertises_ranges(client, local_root):
         assert cd.startswith("inline;")
         assert "filename*=UTF-8''" in cd
     finally:
-        _cleanup(did)
+        _cleanup_docs(did)
 
 
 def test_range_request_returns_206_slice(client, local_root):
@@ -104,7 +139,7 @@ def test_range_request_returns_206_slice(client, local_root):
         assert r.headers["content-range"] == f"bytes 5-9/{len(BODY)}"
         assert r.headers["content-length"] == "5"
     finally:
-        _cleanup(did)
+        _cleanup_docs(did)
 
 
 def test_suffix_range_and_unsatisfiable_range(client, local_root):
@@ -127,7 +162,7 @@ def test_suffix_range_and_unsatisfiable_range(client, local_root):
         r4 = client.get(f"/api/documents/{did}/raw", headers={"Range": "bytes=0-"})
         assert r4.status_code == 200 and r4.content == BODY
     finally:
-        _cleanup(did)
+        _cleanup_docs(did)
 
 
 def test_download_attachment_keeps_chinese_name(client, local_root):
@@ -143,7 +178,7 @@ def test_download_attachment_keeps_chinese_name(client, local_root):
         assert 'filename="' in cd
         assert r.content == BODY
     finally:
-        _cleanup(did)
+        _cleanup_docs(did)
 
 
 def test_deleted_original_gives_explainable_404(client, local_root):
@@ -153,7 +188,7 @@ def test_deleted_original_gives_explainable_404(client, local_root):
         assert r.status_code == 404
         assert "已不在磁盘" in r.json()["message"]
     finally:
-        _cleanup(did)
+        _cleanup_docs(did)
 
 
 def test_ima_media_id_is_not_mistaken_for_a_local_file(client, local_root):
@@ -165,7 +200,7 @@ def test_ima_media_id_is_not_mistaken_for_a_local_file(client, local_root):
         assert r.status_code == 404
         assert "媒体号" in r.json()["message"]
     finally:
-        _cleanup(did)
+        _cleanup_docs(did)
 
 
 def test_path_outside_allowed_root_is_refused(client, local_root):
@@ -181,7 +216,7 @@ def test_path_outside_allowed_root_is_refused(client, local_root):
             assert r.status_code == 404, r.text
             assert "越出允许目录" in r.json()["message"]
         finally:
-            _cleanup(did)
+            _cleanup_docs(did)
     finally:
         shutil.rmtree(outside, ignore_errors=True)
 
@@ -195,7 +230,7 @@ def test_dotdot_traversal_is_refused(client, local_root):
         assert r.status_code == 404
         assert "越出允许目录" in r.json()["message"]
     finally:
-        _cleanup(did)
+        _cleanup_docs(did)
 
 
 def test_list_marks_file_availability_per_doc(client, local_root):
@@ -209,7 +244,7 @@ def test_list_marks_file_availability_per_doc(client, local_root):
         assert rows[gone]["has_local_file"] is False
         assert "已不在磁盘" in rows[gone]["local_file_note"]
     finally:
-        _cleanup(ok, gone)
+        _cleanup_docs(ok, gone)
 
 
 def test_unknown_doc_id_is_404(client, local_root):  # noqa: ARG001
@@ -324,7 +359,7 @@ def test_netdisk_content_proxies_bytes_through_server(client, fake_pan):
         # 0202eee 起声明 support Range：视频 <video> 拖动进度条 / 图片分段加载都依赖它
         assert r.headers["accept-ranges"] == "bytes"
     finally:
-        _cleanup(fid)
+        _cleanup_netdisk(fid)
 
 
 def test_netdisk_content_attachment_and_size_guard(client, fake_pan, monkeypatch):
@@ -346,7 +381,7 @@ def test_netdisk_content_attachment_and_size_guard(client, fake_pan, monkeypatch
         bad = client.get(f"/api/netdisk/files/{fid}/content", params={"disposition": "evil\r\nX: 1"})
         assert bad.status_code == 400
     finally:
-        _cleanup(fid)
+        _cleanup_netdisk(fid)
 
 
 def test_netdisk_content_error_mapping(client, fake_pan):
@@ -366,7 +401,7 @@ def test_netdisk_content_error_mapping(client, fake_pan):
         assert r.json()["detail"]["action"] == "reauthorize"
         assert client.get("/api/netdisk/files/999999/content").status_code == 404
     finally:
-        _cleanup(fid, fid2)
+        _cleanup_netdisk(fid, fid2)
 
 
 # --------------------------------------------------------------------------- #
@@ -392,7 +427,7 @@ def test_netdisk_content_by_fsid_streams_existing_row(client, fake_pan):
         assert r.content == BODY
         assert r.headers["accept-ranges"] == "bytes"
     finally:
-        _cleanup(fid)
+        _cleanup_netdisk(fid)
 
 
 def test_netdisk_content_passes_through_range_206(client, fake_pan):
@@ -409,7 +444,7 @@ def test_netdisk_content_passes_through_range_206(client, fake_pan):
         assert r.headers["content-range"] == f"bytes 5-9/{len(BODY)}"
         assert r.headers["accept-ranges"] == "bytes"
     finally:
-        _cleanup(fid)
+        _cleanup_netdisk(fid)
 
 
 def test_netdisk_content_by_fsid_creates_missing_row(client, fake_pan, monkeypatch):
@@ -425,7 +460,7 @@ def test_netdisk_content_by_fsid_creates_missing_row(client, fake_pan, monkeypat
     assert r.headers["content-disposition"].startswith("attachment;")
     created = _netdisk_id_by_fs("20002")
     assert created is not None
-    _cleanup(created)
+    _cleanup_netdisk(created)
 
 
 def test_netdisk_content_by_fsid_rejects_junk_and_bad_disposition(client, fake_pan):
@@ -438,4 +473,4 @@ def test_netdisk_content_by_fsid_rejects_junk_and_bad_disposition(client, fake_p
         d = client.get("/api/netdisk/content", params={"fs_id": "20003", "disposition": "evil\r\nX: 1"})
         assert d.status_code == 400
     finally:
-        _cleanup(fid)
+        _cleanup_netdisk(fid)
