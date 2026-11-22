@@ -247,7 +247,11 @@
   border-radius: var(--v3-r-lg);
   border: 1px dashed color-mix(in srgb, var(--v3-secondary) 36%, var(--v3-outline));
   background:
-    radial-gradient(120% 160% at 100% 0%, color-mix(in srgb, var(--v3-gemini-2) 10%, transparent), transparent 58%),
+    radial-gradient(
+      120% 160% at 100% 0%,
+      color-mix(in srgb, var(--v3-gemini-2) 10%, transparent),
+      transparent 58%
+    ),
     var(--v3-surface);
 }
 
@@ -1652,10 +1656,19 @@
   background: var(--v3-surface-3);
 }
 
-.v3-quiz-dot.is-ok { background: var(--v3-success); }
-.v3-quiz-dot.is-bad { background: var(--v3-danger); }
-.v3-quiz-dot.is-todo { background: var(--v3-outline-strong); }
-.v3-quiz-dot.is-skip { background: transparent; border: 1px dashed var(--v3-text-3); }
+.v3-quiz-dot.is-ok {
+  background: var(--v3-success);
+}
+.v3-quiz-dot.is-bad {
+  background: var(--v3-danger);
+}
+.v3-quiz-dot.is-todo {
+  background: var(--v3-outline-strong);
+}
+.v3-quiz-dot.is-skip {
+  background: transparent;
+  border: 1px dashed var(--v3-text-3);
+}
 
 .v3-quiz-sheet-finish {
   width: 100%;
@@ -1778,8 +1791,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-.v3-quiz-result-stat.is-ok dd { color: var(--v3-success); }
-.v3-quiz-result-stat.is-bad dd { color: var(--v3-danger); }
+.v3-quiz-result-stat.is-ok dd {
+  color: var(--v3-success);
+}
+.v3-quiz-result-stat.is-bad dd {
+  color: var(--v3-danger);
+}
 
 .v3-quiz-result-actions {
   display: flex;
@@ -1855,7 +1872,11 @@
   border-radius: var(--v3-r-md);
   border: 1px solid color-mix(in srgb, var(--v3-secondary) 26%, var(--v3-outline));
   background:
-    radial-gradient(120% 160% at 100% 0%, color-mix(in srgb, var(--v3-gemini-2) 8%, transparent), transparent 58%),
+    radial-gradient(
+      120% 160% at 100% 0%,
+      color-mix(in srgb, var(--v3-gemini-2) 8%, transparent),
+      transparent 58%
+    ),
     var(--v3-surface-1);
 }
 
@@ -2474,7 +2495,11 @@
   border-radius: var(--v3-r-md);
   border: 1px solid color-mix(in srgb, var(--v3-gemini-2) 26%, var(--v3-outline));
   background:
-    radial-gradient(120% 160% at 100% 0%, color-mix(in srgb, var(--v3-gemini-1) 8%, transparent), transparent 58%),
+    radial-gradient(
+      120% 160% at 100% 0%,
+      color-mix(in srgb, var(--v3-gemini-1) 8%, transparent),
+      transparent 58%
+    ),
     var(--v3-surface-1);
 }
 
@@ -2707,4 +2732,266 @@
 .v3-quiz-weak-item__gate.is-na {
   color: var(--v3-text-2);
   background: color-mix(in srgb, var(--v3-surface-2) 40%, var(--v3-surface));
+}
+
+/* ---------- W4 刷题中心首页：统计细条 + 学习路径建议行 ---------- */
+
+/* 统计细条：一行读完「题库多少 / 能练多少 / 练得怎样」，
+   取代五张统计 Tile 的堆砌（零值项不再占位展示） */
+.v3-quiz-statsline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-md);
+  background: var(--v3-surface);
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-2);
+}
+
+.v3-quiz-statsline__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+}
+
+.v3-quiz-statsline__item b {
+  color: var(--v3-text);
+  font-weight: 700;
+}
+
+.v3-quiz-statsline__item.is-muted {
+  color: var(--v3-text-3);
+}
+
+.v3-quiz-statsline__item.is-danger b {
+  color: var(--v3-danger);
+}
+
+.v3-quiz-statsline__item.is-danger {
+  cursor: pointer;
+}
+
+.v3-quiz-statsline__item.is-danger:hover {
+  text-decoration: underline;
+}
+
+.v3-quiz-statsline__link {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  font: inherit;
+  color: var(--v3-primary);
+  cursor: pointer;
+}
+
+.v3-quiz-statsline__sep {
+  width: 1px;
+  height: 14px;
+  background: var(--v3-outline);
+}
+
+/* 学习路径建议行：章节树顶部唯一的"下一步"，依据写在副文案里 */
+.v3-quiz-pathnext {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 var(--v3-s-4);
+  padding: 12px 14px;
+  border: 1px solid var(--v3-primary);
+  border-radius: var(--v3-r-md);
+  background: var(--v3-primary-container, rgba(66, 133, 244, 0.08));
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow var(--v3-dur-2) var(--v3-ease-standard);
+}
+
+.v3-quiz-pathnext:hover {
+  box-shadow: var(--v3-shadow-1, 0 2px 8px rgba(0, 0, 0, 0.08));
+}
+
+.v3-quiz-pathnext__tag {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--v3-primary);
+  color: var(--v3-on-primary, #fff);
+  font-size: var(--v3-fs-11);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.v3-quiz-pathnext__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.v3-quiz-pathnext__body strong {
+  font-size: var(--v3-fs-14);
+  color: var(--v3-text);
+}
+
+.v3-quiz-pathnext__body em {
+  font-style: normal;
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-2);
+}
+
+.v3-quiz-pathnext__go {
+  flex: none;
+  color: var(--v3-primary);
+}
+
+.v3-quiz-reveal__ok {
+  color: var(--v3-success);
+  font-weight: 600;
+}
+.v3-quiz-reveal__bad {
+  color: var(--v3-danger);
+  font-weight: 600;
+}
+
+/* ---------- W4 复盘报告：答题明细（逐题答题卡） ---------- */
+.v3-quiz-sheet-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.v3-quiz-sheet-row {
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-sm);
+  background: var(--v3-surface);
+  overflow: hidden;
+}
+
+.v3-quiz-sheet-row.is-ok {
+  border-left: 3px solid var(--v3-success);
+}
+.v3-quiz-sheet-row.is-bad {
+  border-left: 3px solid var(--v3-danger);
+}
+.v3-quiz-sheet-row.is-self {
+  border-left: 3px solid var(--v3-warning);
+}
+.v3-quiz-sheet-row.is-todo {
+  border-left: 3px solid var(--v3-outline);
+}
+.v3-quiz-sheet-row.is-memo {
+  border-left: 3px solid var(--v3-secondary);
+}
+
+.v3-quiz-sheet-row__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--v3-text-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.v3-quiz-sheet-row__no {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--v3-surface-2, rgba(0, 0, 0, 0.04));
+  font-size: var(--v3-fs-11);
+  font-weight: 700;
+  color: var(--v3-text-2);
+}
+
+.v3-quiz-sheet-row__flag {
+  flex: none;
+  font-size: var(--v3-fs-11);
+  font-weight: 700;
+  color: var(--v3-text-3);
+}
+
+.v3-quiz-sheet-row__flag.is-ok {
+  color: var(--v3-success);
+}
+.v3-quiz-sheet-row__flag.is-bad {
+  color: var(--v3-danger);
+}
+
+.v3-quiz-sheet-row__q {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--v3-fs-12);
+}
+
+.v3-quiz-sheet-row__ans {
+  flex: none;
+  font-size: var(--v3-fs-11);
+  color: var(--v3-text-3);
+}
+
+.v3-quiz-sheet-row__body {
+  padding: 10px 14px 14px 44px;
+  border-top: 1px dashed var(--v3-outline);
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-2);
+}
+
+.v3-quiz-sheet-row__stem {
+  margin: 0 0 8px;
+  color: var(--v3-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.v3-quiz-sheet-row__opts {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.v3-quiz-sheet-row__analysis {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--v3-r-sm);
+  background: var(--v3-surface-2, rgba(0, 0, 0, 0.03));
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.v3-quiz-sheet-row__analysis.is-empty {
+  color: var(--v3-text-3);
+}
+
+@media (max-width: 760px) {
+  .v3-quiz-sheet-row__body {
+    padding-left: 14px;
+  }
+
+  .v3-quiz-sheet-row__ans {
+    display: none;
+  }
 }

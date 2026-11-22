@@ -2,18 +2,45 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import MathText from '../../components/MathText'
 import {
-  Alert, Button, Card, CardHead, Progress, Select, Sheet, Textarea, toast, useConfirm, useMedia,
+  Alert,
+  Button,
+  Card,
+  CardHead,
+  Progress,
+  Select,
+  Sheet,
+  Textarea,
+  toast,
+  useConfirm,
+  useMedia,
 } from '../ui'
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, Keyboard, ListChecks, MessageSquare,
-  Sparkles, Star, X,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Keyboard,
+  ListChecks,
+  MessageSquare,
+  Sparkles,
+  Star,
+  X,
 } from '../icons'
 import { quizApi, request, wordsApi } from '../../api/client'
 import { optionText } from '../../utils/optionText'
 import {
-  TYPE_LABELS, LETTERS, letterOf, addWrong, pushRec,
-  isChoiceQ, isMultiQ, isTextQuestion, isChoiceWithoutOptions,
-  isCorrectOption, stripOptLabel, dependsOnFigure, questionMark,
+  TYPE_LABELS,
+  LETTERS,
+  letterOf,
+  addWrong,
+  pushRec,
+  isChoiceQ,
+  isMultiQ,
+  isTextQuestion,
+  isChoiceWithoutOptions,
+  isCorrectOption,
+  stripOptLabel,
+  dependsOnFigure,
+  questionMark,
 } from './quizShared'
 import '../styles/quiz-v3.css'
 import '../styles/study-glass.css'
@@ -65,20 +92,31 @@ function sourceTextFor(source, q) {
 }
 
 export default function QuizPractice({
-  session, records, basis, favs, kpFilter, backendOk,
-  tutorMode, setTutorMode, submitting, setSubmitting,
-  onRecord, onToggleFav, onGoHome, onFinish,
+  session,
+  records,
+  basis,
+  favs,
+  kpFilter,
+  backendOk,
+  tutorMode,
+  setTutorMode,
+  submitting,
+  setSubmitting,
+  onRecord,
+  onToggleFav,
+  onGoHome,
+  onFinish,
 }) {
   const navigate = useNavigate()
   const isMobile = useMedia('(max-width: 1080px)')
   const mainRef = useRef(null)
   /* ---------- 练习会话（本视图独占，随挂载自然重置） ---------- */
   const [idx, setIdx] = useState(session.startIdx ?? 0)
-  const [drafts, setDrafts] = useState({})         // 选择题提交前草稿
-  const [textDraft, setTextDraft] = useState({})      // 文本题草稿
-  const [selfCheck, setSelfCheck] = useState(null)   // 文本题对照 {qid,myAns,correctAnswer,analysis}
+  const [drafts, setDrafts] = useState({}) // 选择题提交前草稿
+  const [textDraft, setTextDraft] = useState({}) // 文本题草稿
+  const [selfCheck, setSelfCheck] = useState(null) // 文本题对照 {qid,myAns,correctAnswer,analysis}
   /* AI 生成解析（复用现有 /ai/tutoring/explain，仅前端展示、不落库） */
-  const [aiAnalyses, setAiAnalyses] = useState({})   // { [qid]: {content, provider, loading, error} }
+  const [aiAnalyses, setAiAnalyses] = useState({}) // { [qid]: {content, provider, loading, error} }
   /* P0-2 AI 批改结果：{ [qid]: {score, max_score, evaluation, reference_answer, loading, error} } */
   const [aiGrades, setAiGrades] = useState({})
   /* P0-1 生词提取/导入的按钮 loading 锁（避免重复点击） */
@@ -116,7 +154,9 @@ export default function QuizPractice({
       toast('浏览模式：本题暂无标准答案，请对照教材/解析自检')
       return
     }
-    let correct = false, correctAnswer = q.answer, analysis = q.analysis
+    let correct = false,
+      correctAnswer = q.answer,
+      analysis = q.analysis
     if (backendOk && !q.id.startsWith('l')) {
       setSubmitting(true)
       try {
@@ -126,7 +166,9 @@ export default function QuizPractice({
         analysis = r.analysis ?? analysis
       } catch {
         correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
-      } finally { setSubmitting(false) }
+      } finally {
+        setSubmitting(false)
+      }
     } else {
       correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
     }
@@ -139,9 +181,12 @@ export default function QuizPractice({
       return
     }
     onRecord(q.id, { correct, selected, correctAnswer, analysis })
-    pushRec(q.id, correct)   // V10 本地作答累计（做过次数 + 最近对错）
+    pushRec(q.id, correct) // V10 本地作答累计（做过次数 + 最近对错）
     if (correct) toast('回答正确')
-    else { addWrong(q.id); toast('答错已加入错题本') }
+    else {
+      addWrong(q.id)
+      toast('答错已加入错题本')
+    }
   }
 
   const doSubmit = async () => {
@@ -154,22 +199,33 @@ export default function QuizPractice({
     if (isChoiceQ(q) && isMultiQ(q)) {
       const sel = drafts[q.id]
       const empty = sel == null || (Array.isArray(sel) && !sel.length)
-      if (empty) { toast('请至少选择一个选项'); return }
+      if (empty) {
+        toast('请至少选择一个选项')
+        return
+      }
       await gradeChoice(q, sel)
       return
     }
 
     /* ---- 文本题（填空/简答/计算/作图）：输入 → 对照 → 自评 ---- */
     const txt = (textDraft[q.id] || '').trim()
-    if (!txt) { toast('请先输入你的作答，再点「对照答案」'); return }
-    let correctAnswer = q.answer, analysis = q.analysis
+    if (!txt) {
+      toast('请先输入你的作答，再点「对照答案」')
+      return
+    }
+    let correctAnswer = q.answer,
+      analysis = q.analysis
     if (backendOk && !q.id.startsWith('l')) {
       setSubmitting(true)
       try {
         const r = await quizApi.submit({ question_id: Number(q.id), my_answer: txt })
         correctAnswer = r.correct_answer ?? correctAnswer
         analysis = r.analysis ?? analysis
-      } catch { /* 自评模式，后端不可用不影响 */ } finally { setSubmitting(false) }
+      } catch {
+        /* 自评模式，后端不可用不影响 */
+      } finally {
+        setSubmitting(false)
+      }
     }
     setSelfCheck({ qid: q.id, myAns: txt, correctAnswer, analysis })
   }
@@ -189,7 +245,10 @@ export default function QuizPractice({
     if (!q) return
     const qid = q.id
     const txt = (textDraft[qid] || '').trim()
-    if (!txt) { toast('请先输入你的作答，再点「AI 批改」'); return }
+    if (!txt) {
+      toast('请先输入你的作答，再点「AI 批改」')
+      return
+    }
     if (aiGrades[qid]?.loading) return
     setAiGrades((m) => ({ ...m, [qid]: { ...(m[qid] || {}), loading: true, error: '' } }))
     try {
@@ -241,14 +300,18 @@ export default function QuizPractice({
         example: sourceTextFor(w.source, q).slice(0, 200),
         source_label: label,
       }))
-      const preview = fresh.slice(0, 10).map((w) => `· ${w.word}（${w.source}）`).join('\n')
+      const preview = fresh
+        .slice(0, 10)
+        .map((w) => `· ${w.word}（${w.source}）`)
+        .join('\n')
       const ok = await confirm({
         title: '加入生词本',
         text: `将 ${fresh.length} 个生词加入词库？${skipped ? `（${skipped} 个已在词库，自动跳过）` : ''}`,
         confirmText: '加入',
         content: (
           <pre className="v3-quiz-word-preview">
-            {preview}{fresh.length > 10 ? `\n…等 ${fresh.length} 个` : ''}
+            {preview}
+            {fresh.length > 10 ? `\n…等 ${fresh.length} 个` : ''}
           </pre>
         ),
       })
@@ -262,48 +325,67 @@ export default function QuizPractice({
     }
   }
 
-  const go = useCallback((n) => {
-    if (!session) return
-    if (n < 0 || n >= session.questions.length) return
-    setIdx(n); setSelfCheck(null)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-    mainRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' })
-  }, [session])
+  const go = useCallback(
+    (n) => {
+      if (!session) return
+      if (n < 0 || n >= session.questions.length) return
+      setIdx(n)
+      setSelfCheck(null)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      mainRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' })
+    },
+    [session],
+  )
 
   /* “AI 生成解析”：复用项目现有 AI 讲题路由 POST /api/ai/tutoring/explain
      （angle=solution）。该路由真实存在且已在用，生成的解析**只在前端展示、不落库**，
      因此显式标注「AI 生成 · 未入库」，不做“已写回题库”的假承诺。 */
-  const generateAnalysis = useCallback(async (q) => {
-    if (!q?.id) return
-    const qid = q.id
-    setAiAnalyses((m) => ({ ...m, [qid]: { loading: true, content: '', provider: '' } }))
-    try {
-      const r = await request('/ai/tutoring/explain', {
-        method: 'POST',
-        body: { question_id: Number(qid), angle: 'solution',
-                source_kind: tutorMode === 'auto' ? undefined : tutorMode },
-      })
-      setAiAnalyses((m) => ({ ...m, [qid]: { loading: false, content: r?.content || '', provider: r?.provider || 'AI', mode: r?.mode } }))
-    } catch (e) {
-      setAiAnalyses((m) => ({ ...m, [qid]: { loading: false, content: '', provider: '', error: e?.message || 'AI 生成解析失败' } }))
-    }
-  }, [tutorMode])
+  const generateAnalysis = useCallback(
+    async (q) => {
+      if (!q?.id) return
+      const qid = q.id
+      setAiAnalyses((m) => ({ ...m, [qid]: { loading: true, content: '', provider: '' } }))
+      try {
+        const r = await request('/ai/tutoring/explain', {
+          method: 'POST',
+          body: {
+            question_id: Number(qid),
+            angle: 'solution',
+            source_kind: tutorMode === 'auto' ? undefined : tutorMode,
+          },
+        })
+        setAiAnalyses((m) => ({
+          ...m,
+          [qid]: { loading: false, content: r?.content || '', provider: r?.provider || 'AI', mode: r?.mode },
+        }))
+      } catch (e) {
+        setAiAnalyses((m) => ({
+          ...m,
+          [qid]: { loading: false, content: '', provider: '', error: e?.message || 'AI 生成解析失败' },
+        }))
+      }
+    },
+    [tutorMode],
+  )
 
   /* 「仍未理解，加入盲点池」：把 AI 讲题后仍未搞懂的知识点沉淀到盲区池，
      反哺复习队列与周会议题（POST /api/ai/tutoring/stuck）。 */
-  const markStuck = useCallback(async (q) => {
-    if (!q?.id || stuckMarked[q.id]) return
-    try {
-      await request('/ai/tutoring/stuck', {
-        method: 'POST',
-        body: { question_id: Number(q.id), note: 'AI 生成解析后仍未理解', angle: 'solution' },
-      })
-      setStuckMarked((m) => ({ ...m, [q.id]: true }))
-      toast('已加入盲点池：将进入复习队列 / 周会议题安排巩固')
-    } catch (e) {
-      toast(e?.message || '加入盲点池失败，请稍后重试')
-    }
-  }, [stuckMarked])
+  const markStuck = useCallback(
+    async (q) => {
+      if (!q?.id || stuckMarked[q.id]) return
+      try {
+        await request('/ai/tutoring/stuck', {
+          method: 'POST',
+          body: { question_id: Number(q.id), note: 'AI 生成解析后仍未理解', angle: 'solution' },
+        })
+        setStuckMarked((m) => ({ ...m, [q.id]: true }))
+        toast('已加入盲点池：将进入复习队列 / 周会议题安排巩固')
+      } catch (e) {
+        toast(e?.message || '加入盲点池失败，请稍后重试')
+      }
+    },
+    [stuckMarked],
+  )
 
   /* 键盘快捷键：A–F 选择 · Enter 提交/下一题 · ← → 切换 */
   useEffect(() => {
@@ -316,7 +398,10 @@ export default function QuizPractice({
       if (isChoiceQ(q) && !records[q.id]) {
         const k = e.key.toUpperCase()
         const i = LETTERS.indexOf(k)
-        if (i >= 0 && i < q.options.length) { toggleDraft(q.id, i); return }
+        if (i >= 0 && i < q.options.length) {
+          toggleDraft(q.id, i)
+          return
+        }
       }
       if (e.key === 'Enter') {
         // 残缺选择题（无选项不可作答）按 Enter 直接跳下一题
@@ -362,18 +447,35 @@ export default function QuizPractice({
           else if (drafts[qq.id] != null || textDraft[qq.id]) cls += ' is-draft'
           if (i === idx) cls += ' is-cur'
           return (
-            <button key={qq.id} type="button" className={cls} onClick={() => pickSheetCell(i)}
-              aria-label={`第 ${i + 1} 题${skipped ? '，无选项不可作答' : r ? (r.correct ? '，正确' : '，错误') : ''}`}>
+            <button
+              key={qq.id}
+              type="button"
+              className={cls}
+              onClick={() => pickSheetCell(i)}
+              aria-label={`第 ${i + 1} 题${skipped ? '，无选项不可作答' : r ? (r.correct ? '，正确' : '，错误') : ''}`}
+            >
               {i + 1}
             </button>
           )
         })}
       </div>
       <ul className="v3-quiz-legend">
-        <li><span className="v3-quiz-dot is-ok" />正确</li>
-        <li><span className="v3-quiz-dot is-bad" />错误</li>
-        <li><span className="v3-quiz-dot is-todo" />未做</li>
-        <li><span className="v3-quiz-dot is-skip" />无选项</li>
+        <li>
+          <span className="v3-quiz-dot is-ok" />
+          正确
+        </li>
+        <li>
+          <span className="v3-quiz-dot is-bad" />
+          错误
+        </li>
+        <li>
+          <span className="v3-quiz-dot is-todo" />
+          未做
+        </li>
+        <li>
+          <span className="v3-quiz-dot is-skip" />
+          无选项
+        </li>
       </ul>
       <Button block variant="ghost" className="v3-quiz-sheet-finish" onClick={onFinish}>
         {memorize ? '结束背题' : '交卷并查看报告'}
@@ -388,7 +490,9 @@ export default function QuizPractice({
           <Button size="sm" variant="ghost" icon={<ChevronLeft size={15} />} onClick={onGoHome}>
             返回题库
           </Button>
-          <span className="v3-quiz-practice__title" title={session.title}>{session.title}</span>
+          <span className="v3-quiz-practice__title" title={session.title}>
+            {session.title}
+          </span>
           {/* 知识点级筛选标识：明确告知用户当前按知识点精确出题 */}
           {kpFilter && (
             <span className="v3-quiz-tag" title={`知识点 ID ${kpFilter.id}`}>
@@ -400,7 +504,14 @@ export default function QuizPractice({
           {q.subject && <span className="v3-quiz-tag">{q.subject}</span>}
           {q.chapter && <span className="v3-quiz-tag">{q.chapter}</span>}
           {session.noAnswer && (
-            <span className="v3-quiz-tag" style={{ background: 'var(--v3-warning-container)', color: 'var(--v3-on-warning-container)', borderColor: 'transparent' }}>
+            <span
+              className="v3-quiz-tag"
+              style={{
+                background: 'var(--v3-warning-container)',
+                color: 'var(--v3-on-warning-container)',
+                borderColor: 'transparent',
+              }}
+            >
               浏览模式 · 暂不可判分
             </span>
           )}
@@ -429,7 +540,8 @@ export default function QuizPractice({
             {basis.subject ? ` · 科目 ${basis.subject}` : ''}
             {basis.chapter ? ` · 章节 ${basis.chapter}` : ''}
             {basis.kpName ? ` · 知识点 ${basis.kpName}` : ''}
-            {' · '}可作答 {basis.answerableCount}{basis.totalCount ? ` / 共 ${basis.totalCount}` : ''} 题
+            {' · '}可作答 {basis.answerableCount}
+            {basis.totalCount ? ` / 共 ${basis.totalCount}` : ''} 题
             {basis.dropped > 0 ? ` · 已隔离 ${basis.dropped} 道科目不符题` : ''}
             {basis.noAnswer ? ' · 已回退浏览模式（不判分）' : ''}
           </Alert>
@@ -445,31 +557,27 @@ export default function QuizPractice({
         <div className="v3-quiz-body">
           <div className="v3-quiz-progress">
             <Progress value={pct} />
-            <span className="v3-quiz-progress__num">{memorize ? `${idx + 1}` : `${answeredCount}`}/{total}</span>
+            <span className="v3-quiz-progress__num">
+              {memorize ? `${idx + 1}` : `${answeredCount}`}/{total}
+            </span>
           </div>
 
           <p className="v3-quiz-stem">
-            <span className="v3-quiz-stem__no">{idx + 1}.</span><MathText text={q.content} />
+            <span className="v3-quiz-stem__no">{idx + 1}.</span>
+            <MathText text={q.content} />
           </p>
 
           {/* 题目配图：OCR/人工录入产出的 figure_crop 或原页图 */}
           {Array.isArray(q.images) && q.images.length > 0 && (
             <div className="v3-quiz-figs">
               {q.images.map((img, i) => (
-                <img
-                  key={`${img.url}-${i}`}
-                  src={mediaSrc(img)}
-                  alt={`题目配图 ${i + 1}`}
-                  loading="lazy"
-                />
+                <img key={`${img.url}-${i}`} src={mediaSrc(img)} alt={`题目配图 ${i + 1}`} loading="lazy" />
               ))}
             </div>
           )}
 
           {/* 依赖原书插图的题目给出提示，避免用户对着「见下图」困惑 */}
-          {dependsOnFigure(q) && (
-            <p className="v3-quiz-fig-note">本题依赖原书插图，答案见原书。</p>
-          )}
+          {dependsOnFigure(q) && <p className="v3-quiz-fig-note">本题依赖原书插图，答案见原书。</p>}
 
           {/* 选择题：点选即判 */}
           {isChoiceQ(q) && (
@@ -477,11 +585,14 @@ export default function QuizPractice({
               {q.options.map((o, i) => {
                 const isAns = isCorrectOption(i, rec?.correctAnswer ?? q.answer)
                 const picked = Array.isArray(draft) ? draft.includes(i) : draft === i
-                const wasBad = revealed && !isAns && (
-                  Array.isArray(rec?.selected)
+                const wasBad =
+                  revealed &&
+                  !isAns &&
+                  (Array.isArray(rec?.selected)
                     ? rec.selected.includes(letterOf(i))
-                    : String(rec?.selected || '').toUpperCase().includes(letterOf(i))
-                )
+                    : String(rec?.selected || '')
+                        .toUpperCase()
+                        .includes(letterOf(i)))
                 let cls = 'v3-quiz-opt'
                 if (!revealed && picked) cls += ' is-sel'
                 if (revealed) {
@@ -490,15 +601,25 @@ export default function QuizPractice({
                   else cls += ' is-muted'
                 }
                 return (
-                  <button key={i} type="button" className={cls} disabled={revealed} onClick={() => toggleDraft(q.id, i)}>
+                  <button
+                    key={i}
+                    type="button"
+                    className={cls}
+                    disabled={revealed}
+                    onClick={() => toggleDraft(q.id, i)}
+                  >
                     <span className="v3-quiz-opt__letter">
-                      {revealed && isAns
-                        ? <CheckCircle2 size={16} />
-                        : revealed && wasBad
-                          ? <X size={16} />
-                          : letterOf(i)}
+                      {revealed && isAns ? (
+                        <CheckCircle2 size={16} />
+                      ) : revealed && wasBad ? (
+                        <X size={16} />
+                      ) : (
+                        letterOf(i)
+                      )}
                     </span>
-                    <span className="v3-quiz-opt__body"><MathText text={stripOptLabel(o)} /></span>
+                    <span className="v3-quiz-opt__body">
+                      <MathText text={stripOptLabel(o)} />
+                    </span>
                   </button>
                 )
               })}
@@ -529,7 +650,9 @@ export default function QuizPractice({
               />
               {!revealed && !selfCheck && (
                 <div className="v3-quiz-text-row">
-                  <Button variant="filled" disabled={submitting} onClick={doSubmit}>对照答案</Button>
+                  <Button variant="filled" disabled={submitting} onClick={doSubmit}>
+                    对照答案
+                  </Button>
                   <Button
                     variant="tonal"
                     icon={<Sparkles size={14} />}
@@ -542,34 +665,33 @@ export default function QuizPractice({
                 </div>
               )}
               {/* P0-2 AI 批改结果（未判分/未自评时也直接展示在作答区下方） */}
-              {aiGrades[q.id] && (aiGrades[q.id].loading || aiGrades[q.id].error || aiGrades[q.id].evaluation) && (
-                <div className="v3-quiz-ai v3-quiz-ai-grade">
-                  <div className="v3-quiz-ai-grade__head">
-                    <Sparkles size={14} /> AI 批改建议
-                    {aiGrades[q.id].score != null && (
-                      <span className="v3-quiz-ai-grade__score">
-                        AI 建议分：{Number(aiGrades[q.id].score)} / {aiGrades[q.id].max_score}
-                      </span>
+              {aiGrades[q.id] &&
+                (aiGrades[q.id].loading || aiGrades[q.id].error || aiGrades[q.id].evaluation) && (
+                  <div className="v3-quiz-ai v3-quiz-ai-grade">
+                    <div className="v3-quiz-ai-grade__head">
+                      <Sparkles size={14} /> AI 批改建议
+                      {aiGrades[q.id].score != null && (
+                        <span className="v3-quiz-ai-grade__score">
+                          AI 建议分：{Number(aiGrades[q.id].score)} / {aiGrades[q.id].max_score}
+                        </span>
+                      )}
+                    </div>
+                    {aiGrades[q.id].loading ? (
+                      <span>AI 批改中…</span>
+                    ) : aiGrades[q.id].error ? (
+                      <span style={{ color: 'var(--v3-danger)' }}>{aiGrades[q.id].error}</span>
+                    ) : (
+                      <>
+                        {aiGrades[q.id].score == null && (
+                          <div style={{ color: 'var(--v3-text-3)' }}>AI 暂不可用，请参考标准答案自评。</div>
+                        )}
+                        <div>{aiGrades[q.id].evaluation}</div>
+                        {/* P0-B 批改评分卡：verification 存在且非降级时展示 */}
+                        <VerificationCard verification={aiGrades[q.id].verification} />
+                      </>
                     )}
                   </div>
-                  {aiGrades[q.id].loading ? (
-                    <span>AI 批改中…</span>
-                  ) : aiGrades[q.id].error ? (
-                    <span style={{ color: 'var(--v3-danger)' }}>{aiGrades[q.id].error}</span>
-                  ) : (
-                    <>
-                      {aiGrades[q.id].score == null && (
-                        <div style={{ color: 'var(--v3-text-3)' }}>
-                          AI 暂不可用，请参考标准答案自评。
-                        </div>
-                      )}
-                      <div>{aiGrades[q.id].evaluation}</div>
-                      {/* P0-B 批改评分卡：verification 存在且非降级时展示 */}
-                      <VerificationCard verification={aiGrades[q.id].verification} />
-                    </>
-                  )}
-                </div>
-              )}
+                )}
             </div>
           )}
 
@@ -577,8 +699,16 @@ export default function QuizPractice({
           {(revealed || selfCheck) && (
             <div className={`v3-quiz-reveal ${rec ? (rec.correct ? 'is-ok' : 'is-bad') : ''}`}>
               <div className="v3-quiz-reveal__row">
-                <span>正确答案：<span className="v3-quiz-reveal__ans">{(rec?.correctAnswer ?? q.answer) || '—'}</span></span>
-                {rec && <span>{rec.correct ? '· 回答正确 已完成' : `· 你的答案 ${rec.selected || ''}，回答错误 错误`}</span>}
+                <span>
+                  正确答案：
+                  <span className="v3-quiz-reveal__ans">{(rec?.correctAnswer ?? q.answer) || '—'}</span>
+                </span>
+                {rec &&
+                  (rec.correct ? (
+                    <span className="v3-quiz-reveal__ok">· 回答正确</span>
+                  ) : (
+                    <span className="v3-quiz-reveal__bad">· 你选了 {rec.selected || '—'}，已计入错题本</span>
+                  ))}
                 {selfCheck && <span>· 你的作答：{selfCheck.myAns}</span>}
               </div>
 
@@ -592,7 +722,10 @@ export default function QuizPractice({
                 return (
                   <div className="v3-quiz-reveal__analysis">
                     {raw ? (
-                      <span>解析：<MathText text={raw} /></span>
+                      <span>
+                        解析：
+                        <MathText text={raw} />
+                      </span>
                     ) : (
                       <div>
                         <span style={{ color: 'var(--v3-text-3)' }}>解析：暂无解析</span>
@@ -629,7 +762,10 @@ export default function QuizPractice({
                       <div className="v3-quiz-ai">
                         <div className="v3-quiz-ai__meta">
                           AI 生成解析（来源 {ai.provider || 'AI'} · 未入库，仅供参考
-                          {ai.mode ? ` · 按${ai.mode === 'exam' ? '真题模式（评分视角）' : ai.mode === 'textbook' ? '教材模式（理解视角）' : '通用模式'}讲解` : ''}）
+                          {ai.mode
+                            ? ` · 按${ai.mode === 'exam' ? '真题模式（评分视角）' : ai.mode === 'textbook' ? '教材模式（理解视角）' : '通用模式'}讲解`
+                            : ''}
+                          ）
                         </div>
                         {ai.content}
                         {stuckMarked[q.id] ? (
@@ -638,8 +774,12 @@ export default function QuizPractice({
                           </div>
                         ) : (
                           <div className="v3-quiz-ai__stuck">
-                            <Button size="sm" variant="ghost" disabled={ai?.loading}
-                              onClick={() => markStuck(q)}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={ai?.loading}
+                              onClick={() => markStuck(q)}
+                            >
                               仍未理解，加入盲点池
                             </Button>
                           </div>
@@ -651,44 +791,38 @@ export default function QuizPractice({
               })()}
 
               {/* P0-2 AI 批改结果：仅作为参考展示，不覆盖自评流程 */}
-              {aiGrades[q.id] && (aiGrades[q.id].loading || aiGrades[q.id].error || aiGrades[q.id].evaluation) && (
-                <div className="v3-quiz-ai v3-quiz-ai-grade">
-                  <div className="v3-quiz-ai-grade__head">
-                    <Sparkles size={14} /> AI 批改建议
-                    {aiGrades[q.id].score != null && (
-                      <span className="v3-quiz-ai-grade__score">
-                        AI 建议分：{Number(aiGrades[q.id].score)} / {aiGrades[q.id].max_score}
-                      </span>
+              {aiGrades[q.id] &&
+                (aiGrades[q.id].loading || aiGrades[q.id].error || aiGrades[q.id].evaluation) && (
+                  <div className="v3-quiz-ai v3-quiz-ai-grade">
+                    <div className="v3-quiz-ai-grade__head">
+                      <Sparkles size={14} /> AI 批改建议
+                      {aiGrades[q.id].score != null && (
+                        <span className="v3-quiz-ai-grade__score">
+                          AI 建议分：{Number(aiGrades[q.id].score)} / {aiGrades[q.id].max_score}
+                        </span>
+                      )}
+                    </div>
+                    {aiGrades[q.id].loading ? (
+                      <span>AI 批改中…</span>
+                    ) : aiGrades[q.id].error ? (
+                      <span style={{ color: 'var(--v3-danger)' }}>{aiGrades[q.id].error}</span>
+                    ) : (
+                      <>
+                        {aiGrades[q.id].score == null && (
+                          <div style={{ color: 'var(--v3-text-3)' }}>AI 暂不可用，请参考标准答案自评。</div>
+                        )}
+                        <div>{aiGrades[q.id].evaluation}</div>
+                        {/* P0-B 批改评分卡：verification 存在且非降级时展示 */}
+                        <VerificationCard verification={aiGrades[q.id].verification} />
+                      </>
                     )}
                   </div>
-                  {aiGrades[q.id].loading ? (
-                    <span>AI 批改中…</span>
-                  ) : aiGrades[q.id].error ? (
-                    <span style={{ color: 'var(--v3-danger)' }}>{aiGrades[q.id].error}</span>
-                  ) : (
-                    <>
-                      {aiGrades[q.id].score == null && (
-                        <div style={{ color: 'var(--v3-text-3)' }}>
-                          AI 暂不可用，请参考标准答案自评。
-                        </div>
-                      )}
-                      <div>{aiGrades[q.id].evaluation}</div>
-                      {/* P0-B 批改评分卡：verification 存在且非降级时展示 */}
-                      <VerificationCard verification={aiGrades[q.id].verification} />
-                    </>
-                  )}
-                </div>
-              )}
+                )}
 
               {/* P0-1 加入生词本：仅英语题/含英文单词的题展示 */}
               {isEnglishQuestion(q) && (
                 <div className="v3-quiz-reveal__words">
-                  <Button
-                    size="sm"
-                    variant="tonal"
-                    disabled={wordLoading}
-                    onClick={addWordsToVocab}
-                  >
+                  <Button size="sm" variant="tonal" disabled={wordLoading} onClick={addWordsToVocab}>
                     {wordLoading ? '提取中…' : '加入生词本'}
                   </Button>
                   <span className="v3-quiz-keyhint">把本题出现的英文生词一键加入你的词库</span>
@@ -697,8 +831,12 @@ export default function QuizPractice({
 
               {selfCheck && (
                 <div className="v3-quiz-text-row">
-                  <Button variant="filled" onClick={() => selfGrade(true)}>已完成 我答对了</Button>
-                  <Button variant="danger" onClick={() => selfGrade(false)}>错误 我答错了</Button>
+                  <Button variant="filled" onClick={() => selfGrade(true)}>
+                    我答对了
+                  </Button>
+                  <Button variant="danger" onClick={() => selfGrade(false)}>
+                    我答错了（收入错题本）
+                  </Button>
                 </div>
               )}
             </div>
@@ -711,7 +849,12 @@ export default function QuizPractice({
         </div>
 
         <div className="v3-quiz-foot">
-          <Button variant="ghost" icon={<ChevronLeft size={15} />} onClick={() => go(idx - 1)} disabled={idx === 0}>
+          <Button
+            variant="ghost"
+            icon={<ChevronLeft size={15} />}
+            onClick={() => go(idx - 1)}
+            disabled={idx === 0}
+          >
             上一题
           </Button>
           <span className="v3-quiz-keyhint">
@@ -722,21 +865,34 @@ export default function QuizPractice({
               问 AI
             </Button>
             {!revealed && !selfCheck && isChoiceQ(q) && isMultiQ(q) && (
-              <Button variant="filled" disabled={submitting} onClick={doSubmit}>提交答案</Button>
+              <Button variant="filled" disabled={submitting} onClick={doSubmit}>
+                提交答案
+              </Button>
             )}
             {/* 残缺选择题不可作答，允许直接跳到下一题 */}
-            {isChoiceWithoutOptions(q) && (
-              idx + 1 < total ? (
-                <Button variant="filled" trailingIcon={<ChevronRight size={15} />} onClick={() => go(idx + 1)}>下一题</Button>
+            {isChoiceWithoutOptions(q) &&
+              (idx + 1 < total ? (
+                <Button
+                  variant="filled"
+                  trailingIcon={<ChevronRight size={15} />}
+                  onClick={() => go(idx + 1)}
+                >
+                  下一题
+                </Button>
               ) : (
-                <Button variant="filled" onClick={onFinish}>{memorize ? '完成背题' : '交卷并查看报告'}</Button>
-              )
-            )}
+                <Button variant="filled" onClick={onFinish}>
+                  {memorize ? '完成背题' : '交卷并查看报告'}
+                </Button>
+              ))}
             {(revealed || selfCheck) && idx + 1 < total && (
-              <Button variant="filled" trailingIcon={<ChevronRight size={15} />} onClick={() => go(idx + 1)}>下一题</Button>
+              <Button variant="filled" trailingIcon={<ChevronRight size={15} />} onClick={() => go(idx + 1)}>
+                下一题
+              </Button>
             )}
             {(revealed || selfCheck) && idx + 1 >= total && (
-              <Button variant="filled" onClick={onFinish}>{memorize ? '完成背题' : '交卷并查看报告'}</Button>
+              <Button variant="filled" onClick={onFinish}>
+                {memorize ? '完成背题' : '交卷并查看报告'}
+              </Button>
             )}
           </div>
         </div>
@@ -759,9 +915,7 @@ export default function QuizPractice({
             答题卡 {answeredCount}/{total}
           </button>
           <Sheet open={sheetOpen} title="答题卡" onClose={() => setSheetOpen(false)}>
-            <div className="v3-quiz-mobile-sheet">
-              {renderSheetContent()}
-            </div>
+            <div className="v3-quiz-mobile-sheet">{renderSheetContent()}</div>
           </Sheet>
         </>
       )}
@@ -805,7 +959,8 @@ function VerificationCard({ verification }) {
           <span className="v3-quiz-verification__title">批改评分卡</span>
           {hasScore && (
             <span className="v3-quiz-verification__score">
-              复核得分：{Number(verification.verified_score)} / {verification.max_score != null ? verification.max_score : '—'}
+              复核得分：{Number(verification.verified_score)} /{' '}
+              {verification.max_score != null ? verification.max_score : '—'}
             </span>
           )}
         </div>

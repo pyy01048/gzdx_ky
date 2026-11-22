@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import { Button, Card, CardHead, Chip, Input, PageHeader, Progress, Ring, Segmented, toast } from '../ui'
 import {
-  Button, Card, CardHead, Chip, Input, PageHeader, Progress, Ring, Segmented,
-  toast,
-} from '../ui'
-import {
-  Bot, ChevronLeft, RotateCcw, Sparkles, Target, TrendingUp,
+  Bot,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  Sparkles,
+  Target,
+  TrendingUp,
 } from '../icons'
 import { quizApi, recommendApi, request } from '../../api/client'
 import '../styles/quiz-v3.css'
@@ -26,31 +30,46 @@ const WEAK_SOURCE_LABELS = {
   ai: 'AI信号',
 }
 
-export default function QuizResult({ session, records, startedFromRef, tutorMode, setTutorMode, onBeginSession, onGoHome }) {
+export default function QuizResult({
+  session,
+  records,
+  startedFromRef,
+  tutorMode,
+  setTutorMode,
+  onBeginSession,
+  onGoHome,
+}) {
+  /* 答题明细展开（手风琴）：null = 全收起 */
+  const [sheetOpen, setSheetOpen] = useState(null)
   /* V14 场景化 AI 讲题状态 */
   const [tutor, setTutor] = useState(null)
   /* 仍未理解 → 盲点池（闭环：AI 讲题产出回流学习数据主线） */
   const [stuckMarked, setStuckMarked] = useState(false)
 
   /* P1-E 多 Agent 协作答疑状态 */
-  const [orch, setOrch] = useState(null)   // {qid, loading, answer, confidence, degraded, trace, error}
+  const [orch, setOrch] = useState(null) // {qid, loading, answer, confidence, degraded, trace, error}
   const [orchQid, setOrchQid] = useState(null)
 
   /* P0-C 薄弱点强化状态 */
-  const [weakPoints, setWeakPoints] = useState(null)   // null=加载中 | [] | [{kp_id,name,weak_score,sources}]
+  const [weakPoints, setWeakPoints] = useState(null) // null=加载中 | [] | [{kp_id,name,weak_score,sources}]
   const [weakError, setWeakError] = useState('')
   const [variantLoading, setVariantLoading] = useState({})
-  const [gateResults, setGateResults] = useState({})   // { [kp_id]: {passed, consecutive_required, ...} }
+  const [gateResults, setGateResults] = useState({}) // { [kp_id]: {passed, consecutive_required, ...} }
   const [gateLoading, setGateLoading] = useState({})
 
   const list = session.questions
   const answered = list.filter((q) => records[q.id])
-  const correct = answered.filter((q) => records[q.id].correct)
-  const wrong = answered.filter((q) => !records[q.id].correct)
-  const accuracy = answered.length ? Math.round((correct.length / answered.length) * 100) : 0
+  /* 浏览模式（无标准答案题）写入的是 selfCheckOnly 记录：没有 correct 字段，
+     不能算进错题/正确率——以前会被当成「答错」，报告口径失真。 */
+  const isSelfCheck = (r) => !!r && r.selfCheckOnly === true
+  const graded = answered.filter((q) => !isSelfCheck(records[q.id]))
+  const selfChecked = answered.length - graded.length
+  const correct = graded.filter((q) => records[q.id].correct)
+  const wrong = graded.filter((q) => !records[q.id].correct)
+  const accuracy = graded.length ? Math.round((correct.length / graded.length) * 100) : 0
 
   const byChapter = new Map()
-  answered.forEach((q) => {
+  graded.forEach((q) => {
     const k = q.chapter || q.subject || '未分组'
     const e = byChapter.get(k) || { total: 0, correct: 0 }
     e.total += 1
@@ -59,7 +78,10 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
   })
 
   const redoWrong = () => {
-    if (!wrong.length) { toast('本轮没有错题'); return }
+    if (!wrong.length) {
+      toast('本轮没有错题')
+      return
+    }
     const src = startedFromRef.current
     onBeginSession(`${session.title} · 错题重练`, wrong, src?.mode)
   }
@@ -74,12 +96,27 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
     try {
       const r = await request('/ai/tutoring/explain', {
         method: 'POST',
-        body: { question_id: qid, angle, my_answer: myAnswer || undefined,
-                source_kind: tutorMode === 'auto' ? undefined : tutorMode },
+        body: {
+          question_id: qid,
+          angle,
+          my_answer: myAnswer || undefined,
+          source_kind: tutorMode === 'auto' ? undefined : tutorMode,
+        },
       })
-      setTutor({ qid, angle, loading: false, content: r.content, provider: r.provider,
-                 mode: r.mode, source_kind: r.source_kind,
-                 similar: r.similar, history: [{ role: 'user', content: angle }, { role: 'assistant', content: r.content }] })
+      setTutor({
+        qid,
+        angle,
+        loading: false,
+        content: r.content,
+        provider: r.provider,
+        mode: r.mode,
+        source_kind: r.source_kind,
+        similar: r.similar,
+        history: [
+          { role: 'user', content: angle },
+          { role: 'assistant', content: r.content },
+        ],
+      })
     } catch (e) {
       setTutor({ qid, angle, loading: false, content: e?.message || '讲题失败', history: [] })
     }
@@ -91,13 +128,21 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
     try {
       const r = await request('/ai/tutoring/followup', {
         method: 'POST',
-        body: { question_id: tutor.qid, message, history: hist.slice(-6),
-                source_kind: tutorMode === 'auto' ? undefined : tutorMode },
+        body: {
+          question_id: tutor.qid,
+          message,
+          history: hist.slice(-6),
+          source_kind: tutorMode === 'auto' ? undefined : tutorMode,
+        },
       })
-      setTutor(t => ({ ...t, loading: false, content: r.content,
-                       mode: r.mode || t?.mode, source_kind: r.source_kind || t?.source_kind,
-                       history: [...hist, { role: 'user', content: message },
-                                { role: 'assistant', content: r.content }] }))
+      setTutor((t) => ({
+        ...t,
+        loading: false,
+        content: r.content,
+        mode: r.mode || t?.mode,
+        source_kind: r.source_kind || t?.source_kind,
+        history: [...hist, { role: 'user', content: message }, { role: 'assistant', content: r.content }],
+      }))
     } catch (e) {
       setTutor({ ...tutor, loading: false, content: e?.message || '追问失败' })
     }
@@ -127,7 +172,10 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
     try {
       const rec = records[qid]
       const myAnswer = rec?.selected || ''
-      const r = await quizApi.orchestratedTutoring({ question_id: Number(qid), my_answer: myAnswer || undefined })
+      const r = await quizApi.orchestratedTutoring({
+        question_id: Number(qid),
+        my_answer: myAnswer || undefined,
+      })
       setOrch({
         qid,
         loading: false,
@@ -138,7 +186,15 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
         error: '',
       })
     } catch (e) {
-      setOrch({ qid, loading: false, answer: '', confidence: '', degraded: false, trace: [], error: e?.message || 'AI 协作讲解失败，请稍后重试' })
+      setOrch({
+        qid,
+        loading: false,
+        answer: '',
+        confidence: '',
+        degraded: false,
+        trace: [],
+        error: e?.message || 'AI 协作讲解失败，请稍后重试',
+      })
     }
   }
 
@@ -147,7 +203,7 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
     const subject = session.questions[0]?.subject || ''
     try {
       const data = await recommendApi.weakPoints({ subject: subject || undefined, limit: 5 })
-      const items = Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : [])
+      const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []
       setWeakPoints(items)
       setWeakError('')
     } catch (e) {
@@ -193,11 +249,12 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
     }
   }
 
-  const tutorModeLabel = tutor?.mode === 'exam'
-    ? '真题模式 · 评分视角'
-    : tutor?.mode === 'textbook'
-      ? '教材模式 · 理解视角'
-      : '通用模式'
+  const tutorModeLabel =
+    tutor?.mode === 'exam'
+      ? '真题模式 · 评分视角'
+      : tutor?.mode === 'textbook'
+        ? '教材模式 · 理解视角'
+        : '通用模式'
 
   return (
     <div className="v3-quiz">
@@ -210,21 +267,56 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
       <div className="v3-quiz-result">
         <Card variant="hero" className="v3-quiz-result-hero">
           <div className="v3-quiz-result-hero__ring">
-            <Ring value={accuracy} size={164} stroke={12} gradient>
+            <Ring value={graded.length ? accuracy : 0} size={164} stroke={12} gradient>
               <span className="v3-quiz-ring-center">
-                <strong>{accuracy}<small style={{ fontSize: 'var(--v3-fs-18)' }}>%</small></strong>
-                <span>正确率</span>
+                <strong>
+                  {graded.length ? (
+                    <>
+                      {accuracy}
+                      <small style={{ fontSize: 'var(--v3-fs-18)' }}>%</small>
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </strong>
+                <span>{graded.length ? '正确率' : '样本不足（未判分）'}</span>
               </span>
             </Ring>
           </div>
           <div className="v3-quiz-result-hero__copy">
-            <h2>{accuracy >= 80 ? '发挥稳定，继续保持这个节奏。' : accuracy >= 50 ? '基础在手，错题值得再过一遍。' : '先看清错因，再重练一轮。'}</h2>
+            <h2>
+              {graded.length === 0
+                ? '本轮没有可判分的作答：浏览模式与背题不产生对错，先补全答案或在可判分科目练习。'
+                : accuracy >= 80
+                  ? '发挥稳定，继续保持这个节奏。'
+                  : accuracy >= 50
+                    ? '基础在手，错题值得再过一遍。'
+                    : '先看清错因，再重练一轮。'}
+            </h2>
             <p>{session.title} · 练习报告</p>
             <dl className="v3-quiz-result-stats">
-              <div className="v3-quiz-result-stat"><dt>题目总数</dt><dd>{list.length}</dd></div>
-              <div className="v3-quiz-result-stat"><dt>已作答</dt><dd>{answered.length}</dd></div>
-              <div className="v3-quiz-result-stat is-ok"><dt>答对</dt><dd>{correct.length}</dd></div>
-              <div className="v3-quiz-result-stat is-bad"><dt>答错</dt><dd>{wrong.length}</dd></div>
+              <div className="v3-quiz-result-stat">
+                <dt>题目总数</dt>
+                <dd>{list.length}</dd>
+              </div>
+              <div className="v3-quiz-result-stat">
+                <dt>已判分</dt>
+                <dd>{graded.length}</dd>
+              </div>
+              <div className="v3-quiz-result-stat is-ok">
+                <dt>答对</dt>
+                <dd>{correct.length}</dd>
+              </div>
+              <div className="v3-quiz-result-stat is-bad">
+                <dt>答错</dt>
+                <dd>{wrong.length}</dd>
+              </div>
+              {selfChecked > 0 && (
+                <div className="v3-quiz-result-stat">
+                  <dt>仅自评未判分</dt>
+                  <dd>{selfChecked}</dd>
+                </div>
+              )}
             </dl>
             <div className="v3-quiz-result-actions" style={{ marginTop: 16 }}>
               {wrong.length > 0 && (
@@ -232,8 +324,12 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
                   重练错题（{wrong.length}）
                 </Button>
               )}
-              <Button variant="tonal" icon={<TrendingUp size={15} />} onClick={redoAll}>再练一次</Button>
-              <Button variant="ghost" icon={<ChevronLeft size={15} />} onClick={onGoHome}>返回题库</Button>
+              <Button variant="tonal" icon={<TrendingUp size={15} />} onClick={redoAll}>
+                再练一次
+              </Button>
+              <Button variant="ghost" icon={<ChevronLeft size={15} />} onClick={onGoHome}>
+                返回题库
+              </Button>
             </div>
           </div>
         </Card>
@@ -252,13 +348,109 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
                   <div key={name} className="v3-quiz-chapter-stat">
                     <span className="v3-quiz-chapter-stat__name">{name}</span>
                     <Progress value={p} />
-                    <span className="v3-quiz-chapter-stat__num">{v.correct}/{v.total}</span>
+                    <span className="v3-quiz-chapter-stat__num">
+                      {v.correct}/{v.total}
+                    </span>
                   </div>
                 )
               })}
             </div>
           </Card>
         )}
+
+        {/* 答题明细（答题卡逐题回顾，对标粉笔模考报告）：
+            每题状态 / 我的答案 / 正确答案，展开看题干、选项与解析；
+            背题模式与浏览模式不判分，明确标注而不是伪造成错。 */}
+        <Card>
+          <CardHead
+            title="答题明细"
+            sub={
+              session.mode === 'memorize'
+                ? '背题模式：逐题回看答案与解析'
+                : `${answered.length}/${list.length} 题已判分 · 点击展开题干与解析`
+            }
+            actions={<TrendingUp size={17} style={{ color: 'var(--v3-text-3)' }} />}
+          />
+          <div className="v3-quiz-sheet-rows">
+            {list.map((q, i) => {
+              const r = records[q.id]
+              const state =
+                session.mode === 'memorize'
+                  ? 'memo'
+                  : r
+                    ? isSelfCheck(r)
+                      ? 'self'
+                      : r.correct
+                        ? 'ok'
+                        : 'bad'
+                    : 'todo'
+              const open = sheetOpen === q.id
+              return (
+                <div key={q.id} className={`v3-quiz-sheet-row is-${state}${open ? ' is-open' : ''}`}>
+                  <button
+                    type="button"
+                    className="v3-quiz-sheet-row__head"
+                    aria-expanded={open}
+                    onClick={() => setSheetOpen(open ? null : q.id)}
+                  >
+                    <span className="v3-quiz-sheet-row__no">{i + 1}</span>
+                    <span
+                      className={`v3-quiz-sheet-row__flag ${state === 'ok' ? 'is-ok' : state === 'bad' ? 'is-bad' : ''}`}
+                    >
+                      {state === 'ok'
+                        ? '正确'
+                        : state === 'bad'
+                          ? '错误'
+                          : state === 'memo'
+                            ? '背题'
+                            : state === 'self'
+                              ? '自评'
+                              : '未作答'}
+                    </span>
+                    <span className="v3-quiz-sheet-row__q" title={q.content}>
+                      {(q.content || '').slice(0, 42)}
+                      {(q.content || '').length > 42 ? '…' : ''}
+                    </span>
+                    {r && (
+                      <span className="v3-quiz-sheet-row__ans">
+                        我 {String(r.selected || '—')} / 对 {String(r.correctAnswer ?? q.answer ?? '—')}
+                      </span>
+                    )}
+                    {state === 'todo' && !r && q.answer && (
+                      <span className="v3-quiz-sheet-row__ans">对 {String(q.answer)}</span>
+                    )}
+                    {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                  </button>
+                  {open && (
+                    <div className="v3-quiz-sheet-row__body">
+                      <p className="v3-quiz-sheet-row__stem">{q.content || '（题干为空）'}</p>
+                      {Array.isArray(q.options) && q.options.length > 0 && (
+                        <ul className="v3-quiz-sheet-row__opts">
+                          {q.options.map((o, oi) => (
+                            <li key={oi}>
+                              {String.fromCharCode(65 + oi)}.{' '}
+                              {typeof o === 'string' ? o : (o?.text ?? o?.content ?? '')}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {r?.analysis || q.analysis ? (
+                        <p className="v3-quiz-sheet-row__analysis">
+                          <b>解析：</b>
+                          {r?.analysis || q.analysis}
+                        </p>
+                      ) : (
+                        <p className="v3-quiz-sheet-row__analysis is-empty">
+                          该题暂无解析，可在上方「智能 AI 讲题」生成讲解。
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Card>
 
         {/* V14 场景化 AI 讲题：错题逐条三问 + 追问弹层 + P1-E 多Agent协作讲解 */}
         {wrong.length > 0 && (
@@ -284,23 +476,39 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
               {tutor?.mode && <Chip as="span">当前按【{tutorModeLabel}】讲解</Chip>}
             </div>
             <p className="v3-quiz-note" style={{ marginBottom: 10 }}>
-              真题模式按阅卷评分视角：踩分点 / 失分步骤 / 答题规范；教材模式按概念理解视角：原理讲透 / 推导链 / 概念辨析。
+              真题模式按阅卷评分视角：踩分点 / 失分步骤 / 答题规范；教材模式按概念理解视角：原理讲透 / 推导链
+              / 概念辨析。
             </p>
 
             <div className="v3-quiz-wrong-list">
               {wrong.slice(0, 10).map((q) => (
                 <div key={q.id} className="v3-quiz-wrong">
-                  <span className="v3-quiz-wrong__text" title={q.content}>{(q.content || '').slice(0, 40)}</span>
+                  <span className="v3-quiz-wrong__text" title={q.content}>
+                    {(q.content || '').slice(0, 40)}
+                  </span>
                   <div className="v3-quiz-wrong__btns">
-                    {[['why_wrong', '为什么我错'], ['solution', '解题思路'], ['method', '举一反三']].map(([a, label]) => (
-                      <Button key={a} size="sm" variant="ghost" disabled={tutor?.loading}
-                        onClick={() => askTutor(q.id, a, records[q.id]?.selected)}>
+                    {[
+                      ['why_wrong', '为什么我错'],
+                      ['solution', '解题思路'],
+                      ['method', '举一反三'],
+                    ].map(([a, label]) => (
+                      <Button
+                        key={a}
+                        size="sm"
+                        variant="ghost"
+                        disabled={tutor?.loading}
+                        onClick={() => askTutor(q.id, a, records[q.id]?.selected)}
+                      >
                         {tutor?.qid === q.id && tutor?.loading ? '…' : label}
                       </Button>
                     ))}
                     {/* P1-E 多 Agent 协作答疑入口 */}
-                    <Button size="sm" variant="tonal" disabled={orch?.loading}
-                      onClick={() => askOrchestrated(q.id)}>
+                    <Button
+                      size="sm"
+                      variant="tonal"
+                      disabled={orch?.loading}
+                      onClick={() => askOrchestrated(q.id)}
+                    >
                       {orch?.qid === q.id && orch?.loading ? '协作讲解中…' : 'AI 协作讲解'}
                     </Button>
                   </div>
@@ -310,9 +518,7 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
 
             {tutor?.content && (
               <div className="v3-quiz-tutor">
-                <div className="v3-quiz-tutor__meta">
-                  讲答来源：{tutor.provider || 'AI'} · 可继续追问
-                </div>
+                <div className="v3-quiz-tutor__meta">讲答来源：{tutor.provider || 'AI'} · 可继续追问</div>
                 <div className="v3-quiz-tutor__content">{tutor.content}</div>
                 <div className="v3-quiz-tutor__stuck">
                   {stuckMarked ? (
@@ -320,7 +526,9 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
                       ✓ 已加入盲点池：将在复习队列 / 周会议题中安排巩固
                     </span>
                   ) : (
-                    <Button size="sm" variant="ghost" onClick={markStuck}>仍未理解，加入盲点池</Button>
+                    <Button size="sm" variant="ghost" onClick={markStuck}>
+                      仍未理解，加入盲点池
+                    </Button>
                   )}
                 </div>
                 <FollowupBox onSend={askFollowup} busy={tutor?.loading} />
@@ -331,7 +539,9 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
             {orch?.qid != null && (
               <div className="v3-quiz-orch">
                 {orch.loading ? (
-                  <div className="v3-quiz-orch__loading">多 Agent 协作讲解中，正在检索 / 求解 / 验证 / 补救…</div>
+                  <div className="v3-quiz-orch__loading">
+                    多 Agent 协作讲解中，正在检索 / 求解 / 验证 / 补救…
+                  </div>
                 ) : orch.error ? (
                   <div className="v3-quiz-orch__error">{orch.error}</div>
                 ) : (
@@ -339,7 +549,9 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
                     <div className="v3-quiz-orch__head">
                       <span>多 Agent 协作讲解</span>
                       {orch.confidence && <ConfidenceBadge confidence={orch.confidence} />}
-                      {orch.degraded && <span className="v3-quiz-orch__degraded">降级模式 · 部分 Agent 不可用</span>}
+                      {orch.degraded && (
+                        <span className="v3-quiz-orch__degraded">降级模式 · 部分 Agent 不可用</span>
+                      )}
                     </div>
                     <div className="v3-quiz-orch__answer">{orch.answer}</div>
                     {Array.isArray(orch.trace) && orch.trace.length > 0 && (
@@ -366,9 +578,7 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
           {weakPoints === null ? (
             <div className="v3-quiz-weak-loading">薄弱点分析中…</div>
           ) : weakError ? (
-            <div className="v3-quiz-weak-empty">
-              薄弱点加载失败：{weakError}（不影响本页其它功能）
-            </div>
+            <div className="v3-quiz-weak-empty">薄弱点加载失败：{weakError}（不影响本页其它功能）</div>
           ) : !weakPoints.length ? (
             <div className="v3-quiz-weak-empty">暂无薄弱知识点，继续保持。</div>
           ) : (
@@ -385,20 +595,29 @@ export default function QuizResult({ session, records, startedFromRef, tutorMode
                         <span className="v3-quiz-weak-item__score">薄弱度 {Number(kp.weak_score)}</span>
                       )}
                       <div className="v3-quiz-weak-item__sources">
-                        {Array.isArray(kp.sources) && kp.sources.map((s) => (
-                          <span key={s} className="v3-quiz-weak-item__source">
-                            {WEAK_SOURCE_LABELS[s] || s}
-                          </span>
-                        ))}
+                        {Array.isArray(kp.sources) &&
+                          kp.sources.map((s) => (
+                            <span key={s} className="v3-quiz-weak-item__source">
+                              {WEAK_SOURCE_LABELS[s] || s}
+                            </span>
+                          ))}
                       </div>
                     </div>
                     <div className="v3-quiz-weak-item__btns">
-                      <Button size="sm" variant="tonal" disabled={!!variantLoading[kpId]}
-                        onClick={() => generateVariants(kp)}>
+                      <Button
+                        size="sm"
+                        variant="tonal"
+                        disabled={!!variantLoading[kpId]}
+                        onClick={() => generateVariants(kp)}
+                      >
                         {variantLoading[kpId] ? '生成中…' : '生成变式题'}
                       </Button>
-                      <Button size="sm" variant="ghost" disabled={!!gateLoading[kpId]}
-                        onClick={() => checkMasteryGate(kp)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={!!gateLoading[kpId]}
+                        onClick={() => checkMasteryGate(kp)}
+                      >
                         {gateLoading[kpId] ? '门控检查中…' : '掌握门控'}
                       </Button>
                     </div>
@@ -439,7 +658,9 @@ function TraceItem({ stage, index }) {
       <span className="v3-quiz-orch__trace-stage">{stageName}</span>
       {status && <span className={`v3-quiz-orch__trace-status is-${status}`}>{status}</span>}
       {elapsed != null && <span className="v3-quiz-orch__trace-elapsed">{Number(elapsed)}ms</span>}
-      <span className="v3-quiz-orch__trace-data"><TraceData stage={stage} data={data} /></span>
+      <span className="v3-quiz-orch__trace-data">
+        <TraceData stage={stage} data={data} />
+      </span>
     </div>
   )
 }
@@ -454,15 +675,17 @@ function TraceData({ stage, data }) {
   }
   if (stageName === 'verify' && (data.verification || data.verified_score != null)) {
     const v = data.verification || data
-    const score = v.verified_score != null ? v.verified_score : (v.score != null ? v.score : null)
+    const score = v.verified_score != null ? v.verified_score : v.score != null ? v.score : null
     return <span>{score != null ? `验证得分 ${score}` : '验证完成'}</span>
   }
   if (stageName === 'remedy' && Array.isArray(data.suggestions)) {
     return <span>补救建议 {data.suggestions.length} 条</span>
   }
   // 通用文本摘要
-  const text = typeof data === 'string' ? data
-    : data.summary || data.answer || data.content || data.reason || data.message || ''
+  const text =
+    typeof data === 'string'
+      ? data
+      : data.summary || data.answer || data.content || data.reason || data.message || ''
   return text ? <span>{String(text).slice(0, 60)}</span> : null
 }
 
@@ -483,9 +706,20 @@ function FollowupBox({ onSend, busy }) {
         disabled={busy}
         placeholder="继续追问，如：第 2 步为什么用戴维南定理？"
         onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && !busy) { onSend(text); setText('') } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !busy) {
+            onSend(text)
+            setText('')
+          }
+        }}
       />
-      <Button size="sm" variant="filled" icon={<Bot size={15} />} disabled={busy || !text.trim()} onClick={send}>
+      <Button
+        size="sm"
+        variant="filled"
+        icon={<Bot size={15} />}
+        disabled={busy || !text.trim()}
+        onClick={send}
+      >
         追问
       </Button>
     </div>

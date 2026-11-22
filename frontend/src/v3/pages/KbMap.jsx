@@ -4,12 +4,43 @@ import { taxonomyApi, reviewApi, quizApi, qualityApi } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { chatCompletion, defaultProvider, recordUsage } from '../../utils/api'
 import {
-  Alert, AnimatedNumber, Badge, Button, Card, CardHead, Chip, Empty, IconButton, Input,
-  PageHeader, Progress, Ring, Skeleton, Spinner, Tile, cx, toastErr, toastOk,
+  Alert,
+  AnimatedNumber,
+  Badge,
+  Button,
+  Card,
+  CardHead,
+  Chip,
+  Empty,
+  IconButton,
+  Input,
+  PageHeader,
+  Progress,
+  Ring,
+  Skeleton,
+  Spinner,
+  Tile,
+  cx,
+  toastErr,
+  toastOk,
 } from '../ui'
 import {
-  AlertCircle, ArrowRight, BookOpen, Brain, CheckCircle2, ChevronRight, Clock, Database,
-  Eye, Map as MapIcon, Play, RefreshCw, Search, Sparkles, Target, X,
+  AlertCircle,
+  ArrowRight,
+  BookOpen,
+  Brain,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Database,
+  Eye,
+  Map as MapIcon,
+  Play,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Target,
+  X,
 } from '../icons'
 import '../styles/kb-v3.css'
 
@@ -127,7 +158,11 @@ function TypeTags({ types = [], max = 4 }) {
   if (list.length === 0) return null
   return (
     <span className="v3-kb-types">
-      {list.map((t) => <span className="v3-kb-type" key={t}>{typeLabel(t)}</span>)}
+      {list.map((t) => (
+        <span className="v3-kb-type" key={t}>
+          {typeLabel(t)}
+        </span>
+      ))}
     </span>
   )
 }
@@ -162,17 +197,14 @@ function SubjectGroup({ group, activeChapter, quality, onSelectChapter }) {
             ) : null}
           </div>
         </div>
-        <Badge tone={tone.badge}>
-          {tone.cls === 'new' ? '未学' : `均分 ${avg}%`}
-        </Badge>
+        <Badge tone={tone.badge}>{tone.cls === 'new' ? '未学' : `均分 ${avg}%`}</Badge>
       </div>
 
       <div className="v3-kb-chapters">
         {group.chapters.map((ch) => {
           const hasData = ch.knowledge_point_count > 0
-          const isSel = !!activeChapter
-            && activeChapter.subject === group.subject
-            && activeChapter.title === ch.title
+          const isSel =
+            !!activeChapter && activeChapter.subject === group.subject && activeChapter.title === ch.title
           const chTone = nodeTone(ch)
           return (
             <button
@@ -217,7 +249,9 @@ function PointCard({ kp, selected, path, query, onOpen, onPreview, onPractice })
         {path ? <span className="v3-kb-point__path">{path}</span> : null}
         <span className="v3-kb-point__title">
           <StateDot tone={st.cls} title={`掌握度 ${mastery}（${st.label}）`} />
-          <span className="v3-kb-point__name"><Highlighted text={kp.name} query={query} /></span>
+          <span className="v3-kb-point__name">
+            <Highlighted text={kp.name} query={query} />
+          </span>
           <span className={cx('v3-kb-point__pct', `is-${st.cls}`)}>
             {st.cls === 'new' ? '未学' : `${mastery}%`}
           </span>
@@ -229,12 +263,7 @@ function PointCard({ kp, selected, path, query, onOpen, onPreview, onPractice })
         </span>
       </button>
       <div className="v3-kb-point__actions">
-        <IconButton
-          label="在右栏查看详情"
-          size="sm"
-          icon={<Eye size={15} />}
-          onClick={onPreview}
-        />
+        <IconButton label="在右栏查看详情" size="sm" icon={<Eye size={15} />} onClick={onPreview} />
         <Button
           size="sm"
           variant="tonal"
@@ -253,8 +282,20 @@ function PointCard({ kp, selected, path, query, onOpen, onPreview, onPractice })
 /* Detail pane                                                                */
 /* -------------------------------------------------------------------------- */
 function DetailPanel({
-  selectedKpId, detail, kpQCount, aiExplain, detailReviewing, user,
-  onRetry, onPractice, onOpenArticle, onOpenError, onRunAiExplain, onToggleAi, onReview, onLogin,
+  selectedKpId,
+  detail,
+  kpQCount,
+  aiExplain,
+  detailReviewing,
+  user,
+  onRetry,
+  onPractice,
+  onOpenArticle,
+  onOpenError,
+  onRunAiExplain,
+  onToggleAi,
+  onReview,
+  onLogin,
   onGoAllQuestions,
 }) {
   if (selectedKpId == null) {
@@ -286,7 +327,11 @@ function DetailPanel({
         icon={<AlertCircle size={22} />}
         title="知识点详情加载失败"
         text={detail.error}
-        action={<Button size="sm" variant="tonal" onClick={onRetry}>重试</Button>}
+        action={
+          <Button size="sm" variant="tonal" onClick={onRetry}>
+            重试
+          </Button>
+        }
       />
     )
   }
@@ -305,7 +350,8 @@ function DetailPanel({
         <div className="v3-kb-detail__titles">
           <div className="v3-kb-detail__name">{d.name}</div>
           <div className="v3-kb-detail__path">
-            {d.subject || '未分类'}{d.chapter ? ` · ${d.chapter}` : ''}
+            {d.subject || '未分类'}
+            {d.chapter ? ` · ${d.chapter}` : ''}
           </div>
         </div>
         <Badge tone={st.badge}>{st.label}</Badge>
@@ -314,9 +360,7 @@ function DetailPanel({
       <div className="v3-kb-detail__meta">
         <div>
           <span>掌握度</span>
-          <b className={cx('v3-kb-tone', `is-${st.cls}`)}>
-            {st.cls === 'new' ? '未学' : `${mastery}%`}
-          </b>
+          <b className={cx('v3-kb-tone', `is-${st.cls}`)}>{st.cls === 'new' ? '未学' : `${mastery}%`}</b>
         </div>
         <div>
           <span>考频</span>
@@ -344,9 +388,11 @@ function DetailPanel({
         <Button
           variant="gradient"
           icon={<Play size={15} />}
-          onClick={() => (kpQCount === 0
-            ? onGoAllQuestions(d.subject)
-            : onPractice(d.subject, d.chapter, { id: d.id, name: d.name }))}
+          onClick={() =>
+            kpQCount === 0
+              ? onGoAllQuestions(d.subject)
+              : onPractice(d.subject, d.chapter, { id: d.id, name: d.name })
+          }
         >
           开始练习
         </Button>
@@ -366,7 +412,9 @@ function DetailPanel({
       {aiExplain.open ? (
         <section className="v3-kb-detail__section v3-kb-ai" aria-label="AI 精讲">
           <div className="v3-kb-detail__section-head">
-            <span><Sparkles size={14} /> AI 精讲</span>
+            <span>
+              <Sparkles size={14} /> AI 精讲
+            </span>
             {!aiExplain.loading && !aiExplain.error ? (
               <button type="button" className="v3-kb-text-btn" onClick={onToggleAi}>
                 {aiExplain.text ? '收起' : '关闭'}
@@ -387,15 +435,23 @@ function DetailPanel({
 
       {types.length > 0 ? (
         <section className="v3-kb-detail__section">
-          <div className="v3-kb-detail__section-head"><span>涉及题型</span></div>
+          <div className="v3-kb-detail__section-head">
+            <span>涉及题型</span>
+          </div>
           <div className="v3-kb-tagrow">
-            {types.map((t) => <Badge key={t} tone="outline">{typeLabel(t)}</Badge>)}
+            {types.map((t) => (
+              <Badge key={t} tone="outline">
+                {typeLabel(t)}
+              </Badge>
+            ))}
           </div>
         </section>
       ) : null}
 
       <section className="v3-kb-detail__section">
-        <div className="v3-kb-detail__section-head"><span>方法 / 要点</span></div>
+        <div className="v3-kb-detail__section-head">
+          <span>方法 / 要点</span>
+        </div>
         {d.description ? (
           <p className="v3-kb-detail__desc">{d.description}</p>
         ) : (
@@ -442,7 +498,11 @@ function DetailPanel({
                 <Button
                   size="sm"
                   variant="text"
-                  onClick={() => onOpenError(`/error-review?error_id=${e.id}&subject=${encodeURIComponent(e.subject || d.subject || '')}`)}
+                  onClick={() =>
+                    onOpenError(
+                      `/error-review?error_id=${e.id}&subject=${encodeURIComponent(e.subject || d.subject || '')}`,
+                    )
+                  }
                 >
                   去复盘
                 </Button>
@@ -480,8 +540,12 @@ function DetailPanel({
           </>
         ) : (
           <>
-            <p className="v3-kb-note">访客模式不写入复习记录。登录后可记录「会 / 模糊 / 不会」，系统会按记忆曲线重排下次复习。</p>
-            <Button size="sm" variant="tonal" onClick={onLogin}>登录后打卡</Button>
+            <p className="v3-kb-note">
+              访客模式不写入复习记录。登录后可记录「会 / 模糊 / 不会」，系统会按记忆曲线重排下次复习。
+            </p>
+            <Button size="sm" variant="tonal" onClick={onLogin}>
+              登录后打卡
+            </Button>
           </>
         )}
       </section>
@@ -497,10 +561,7 @@ export default function KbMap() {
   const [subjects, setSubjects] = useState([])
   const [tree, setTree] = useState([])
   const [showEmpty, setShowEmpty] = useState(false) // C批次3 #13：空章节默认隐藏
-  const emptyTotal = useMemo(
-    () => (tree || []).reduce((n, s) => n + (s.empty_chapter_count || 0), 0),
-    [tree],
-  )
+  const emptyTotal = useMemo(() => (tree || []).reduce((n, s) => n + (s.empty_chapter_count || 0), 0), [tree])
   const [progress, setProgress] = useState(null)
   const [due, setDue] = useState([])
   const [coverage, setCoverage] = useState(null)
@@ -533,39 +594,72 @@ export default function KbMap() {
   const selectedIdRef = useRef(null)
   const paramsRef = useRef(searchParams)
   paramsRef.current = searchParams
+  /* showEmpty 只影响结构树；用 ref 携带最新值，避免每次切换整套接口重发 */
+  const showEmptyRef = useRef(showEmpty)
+
+  /* 第二段·辅助指标：复习进度 / 今日到期 / 覆盖率 /（管理员）语料质量。
+     与地图骨架解耦，完成一个填一个；单个失败只让对应模块显示「—」，不拖整页。 */
+  const loadAux = useCallback(() => {
+    if (user) {
+      reviewApi
+        .progress()
+        .then((p) => setProgress(p))
+        .catch(() => {})
+      reviewApi
+        .due({ limit: 30 })
+        .then((d) => setDue(d?.items || []))
+        .catch(() => {})
+    } else {
+      setProgress(null)
+      setDue([])
+    }
+    taxonomyApi
+      .coverage()
+      .then((c) => setCoverage(c))
+      .catch(() => {})
+    if (isAdmin)
+      qualityApi
+        .treeOverlay()
+        .then((q) => setQuality(q))
+        .catch(() => {})
+    else setQuality(null)
+  }, [user, isAdmin])
 
   /* 打开详情：详情 + 关联题量并行拉取，各自容错，防竞态 */
-  const openDetail = useCallback(async (kp) => {
-    const id = kp?.id
-    if (id == null) return
-    selectedIdRef.current = id
-    setSelectedKpId(id)
-    resetAiExplain()
-    const seq = ++detailSeq.current
-    setDetail({ loading: true, error: '', data: null })
-    setKpQCount(null)
-    const [detRes, qRes] = await Promise.allSettled([
-      taxonomyApi.knowledgePoint(id),
-      // 访客不请求登录态接口，避免 401 触发全局登录引导
-      user ? quizApi.questions({ kp_id: id, page_size: 1 }) : Promise.resolve(null),
-    ])
-    if (seq !== detailSeq.current) return
-    if (detRes.status === 'fulfilled' && detRes.value) {
-      setDetail({ loading: false, error: '', data: detRes.value })
-    } else {
-      setDetail({
-        loading: false,
-        error: detRes.reason?.message || '知识点详情加载失败',
-        data: null,
-      })
-    }
-    // 题量查询失败时显示 '—'，绝不伪造 0（访客访问 quiz 接口会 401）
-    setKpQCount(
-      qRes.status === 'fulfilled' && qRes.value && typeof qRes.value.total === 'number'
-        ? qRes.value.total
-        : null,
-    )
-  }, [resetAiExplain, user])
+  const openDetail = useCallback(
+    async (kp) => {
+      const id = kp?.id
+      if (id == null) return
+      selectedIdRef.current = id
+      setSelectedKpId(id)
+      resetAiExplain()
+      const seq = ++detailSeq.current
+      setDetail({ loading: true, error: '', data: null })
+      setKpQCount(null)
+      const [detRes, qRes] = await Promise.allSettled([
+        taxonomyApi.knowledgePoint(id),
+        // 访客不请求登录态接口，避免 401 触发全局登录引导
+        user ? quizApi.questions({ kp_id: id, page_size: 1 }) : Promise.resolve(null),
+      ])
+      if (seq !== detailSeq.current) return
+      if (detRes.status === 'fulfilled' && detRes.value) {
+        setDetail({ loading: false, error: '', data: detRes.value })
+      } else {
+        setDetail({
+          loading: false,
+          error: detRes.reason?.message || '知识点详情加载失败',
+          data: null,
+        })
+      }
+      // 题量查询失败时显示 '—'，绝不伪造 0（访客访问 quiz 接口会 401）
+      setKpQCount(
+        qRes.status === 'fulfilled' && qRes.value && typeof qRes.value.total === 'number'
+          ? qRes.value.total
+          : null,
+      )
+    },
+    [resetAiExplain, user],
+  )
 
   const closeDetail = useCallback(() => {
     detailSeq.current += 1
@@ -579,101 +673,159 @@ export default function KbMap() {
   const loadAll = useCallback(async () => {
     setStatus('loading')
     setErrMsg('')
+    /* W4 前端减负（第一段·骨架）：地图只需要 subjects + tree 两个接口就能开画。
+       复习进度 / 到期队列 / 覆盖率 / 语料质量挪到第二段后台加载，
+       任何一个慢或失败都不再把整页吊在 loading 骨架上。
+       真正的提速瓶颈在后端 taxonomy/tree 聚合本身（大科目树一次全量序列化），
+       前端只能做到「不等它旁边的接口」——接口级缓存/增量下发已标注交主控。 */
+    let sj
+    let tNodes
     try {
-      const [sj, t, p, d, c, q] = await Promise.all([
+      const [sjRes, tRes] = await Promise.all([
         taxonomyApi.subjects(),
-        taxonomyApi.tree(undefined, true, showEmpty),
-        user ? reviewApi.progress() : Promise.resolve(null),
-        user ? reviewApi.due({ limit: 30 }) : Promise.resolve(null),
-        taxonomyApi.coverage(),
-        isAdmin ? qualityApi.treeOverlay().catch(() => null) : Promise.resolve(null),
+        taxonomyApi.tree(undefined, true, showEmptyRef.current),
       ])
-      setSubjects(normalizeSubjects(sj))
-      const tNodes = t?.tree || []
-      setTree(tNodes)
-      setProgress(p)
-      setDue(d?.items || [])
-      setCoverage(c)
-      setQuality(q)
-
-      if (!bootstrappedRef.current) {
-        bootstrappedRef.current = true
-        const sp = paramsRef.current
-        const urlSubject = (sp && sp.get('subject')) || ''
-        const urlChapter = (sp && sp.get('chapter')) || ''
-        const urlKpId = (sp && sp.get('kp_id')) || ''
-
-        setActiveSubject(urlSubject)
-
-        let chap = null
-        let kp = null
-        if (urlSubject && urlChapter) {
-          const s = tNodes.find((x) => x.subject === urlSubject)
-          const ch = s?.chapters?.find((x) => x.title === urlChapter)
-          if (ch) chap = { subject: urlSubject, title: urlChapter }
-        }
-        if (!chap) {
-          const first = tNodes.find((x) => x.knowledge_point_count > 0)
-          const firstCh = first?.chapters?.find((x) => x.knowledge_point_count > 0)
-          if (first && firstCh) chap = { subject: first.subject, title: firstCh.title }
-        }
-        setActiveChapter(chap)
-
-        if (urlKpId) {
-          kp = { id: urlKpId }
-        } else if (chap) {
-          const s = tNodes.find((x) => x.subject === chap.subject)
-          const ch = s?.chapters?.find((x) => x.title === chap.title)
-          kp = (ch?.knowledge_points || [])[0] || null
-        }
-        if (kp) openDetail(kp)
-        else closeDetail()
-      } else if (selectedIdRef.current != null) {
-        openDetail({ id: selectedIdRef.current })
-      }
-      setStatus('ok')
+      sj = sjRes
+      tNodes = tRes?.tree || []
     } catch (e) {
       setErrMsg(e?.message || '未知错误')
       setStatus('error')
+      return
     }
-  }, [openDetail, closeDetail, user, isAdmin, showEmpty])
+    setSubjects(normalizeSubjects(sj))
+    setTree(tNodes)
 
-  useEffect(() => { loadAll() }, [loadAll])
+    if (!bootstrappedRef.current) {
+      bootstrappedRef.current = true
+      const sp = paramsRef.current
+      const urlSubject = (sp && sp.get('subject')) || ''
+      const urlChapter = (sp && sp.get('chapter')) || ''
+      const urlKpId = (sp && sp.get('kp_id')) || ''
+
+      setActiveSubject(urlSubject)
+
+      let chap = null
+      let kp = null
+      if (urlSubject && urlChapter) {
+        const s = tNodes.find((x) => x.subject === urlSubject)
+        const ch = s?.chapters?.find((x) => x.title === urlChapter)
+        if (ch) chap = { subject: urlSubject, title: urlChapter }
+      }
+      if (!chap) {
+        const first = tNodes.find((x) => x.knowledge_point_count > 0)
+        const firstCh = first?.chapters?.find((x) => x.knowledge_point_count > 0)
+        if (first && firstCh) chap = { subject: first.subject, title: firstCh.title }
+      }
+      setActiveChapter(chap)
+
+      /* 只有显式深链 ?kp_id= 才在首屏预载详情（详情 = 2 个额外请求）；
+         普通进入不再默认点开第一个知识点，点开才算。 */
+      if (urlKpId) {
+        kp = { id: urlKpId }
+      } else if (chap && sp && (sp.get('chapter') || sp.get('subject'))) {
+        const s = tNodes.find((x) => x.subject === chap.subject)
+        const ch = s?.chapters?.find((x) => x.title === chap.title)
+        kp = (ch?.knowledge_points || [])[0] || null
+      }
+      if (kp) openDetail(kp)
+      else closeDetail()
+    } else if (selectedIdRef.current != null) {
+      openDetail({ id: selectedIdRef.current })
+    }
+    setStatus('ok')
+
+    /* 第二段·辅助指标（后台）：完成一个填一个，失败只降级对应模块。 */
+    loadAux()
+  }, [openDetail, closeDetail, loadAux])
+
+  useEffect(() => {
+    loadAll()
+  }, [loadAll])
+
+  /* showEmpty 切换：只重拉结构树（原实现会整套 loadAll 全量重发）。 */
+  useEffect(() => {
+    if (!bootstrappedRef.current || showEmptyRef.current === showEmpty) return undefined
+    showEmptyRef.current = showEmpty
+    let alive = true
+    setTreeLoading(true)
+    taxonomyApi
+      .tree(undefined, true, showEmpty)
+      .then((t) => {
+        if (alive) setTree(t?.tree || [])
+      })
+      .catch((e) => {
+        if (alive) toastErr('加载知识结构失败：' + (e?.message || ''))
+      })
+      .finally(() => {
+        if (alive) setTreeLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [showEmpty])
 
   /* 切换科目：只重拉该科结构树，保留全局总览与队列 */
-  const selectSubject = useCallback(async (name) => {
-    if (name === activeSubject) return
-    setActiveSubject(name)
-    setQuery('')
-    setTreeLoading(true)
-    try {
-      const t = await taxonomyApi.tree(name || undefined, true, showEmpty)
-      const tNodes = t?.tree || []
-      setTree(tNodes)
-      const first = tNodes.find((s) => s.knowledge_point_count > 0)
-      const firstCh = first?.chapters?.find((ch) => ch.knowledge_point_count > 0)
-      if (first && firstCh) {
-        setActiveChapter({ subject: first.subject, title: firstCh.title })
-        const kp = (firstCh.knowledge_points || [])[0]
-        if (kp) openDetail(kp)
-        else closeDetail()
-      } else {
-        setActiveChapter(null)
-        closeDetail()
+  const selectSubject = useCallback(
+    async (name) => {
+      if (name === activeSubject) return
+      setActiveSubject(name)
+      setQuery('')
+      setTreeLoading(true)
+      try {
+        const t = await taxonomyApi.tree(name || undefined, true, showEmpty)
+        const tNodes = t?.tree || []
+        setTree(tNodes)
+        const first = tNodes.find((s) => s.knowledge_point_count > 0)
+        const firstCh = first?.chapters?.find((ch) => ch.knowledge_point_count > 0)
+        if (first && firstCh) {
+          setActiveChapter({ subject: first.subject, title: firstCh.title })
+          const kp = (firstCh.knowledge_points || [])[0]
+          if (kp) openDetail(kp)
+          else closeDetail()
+        } else {
+          setActiveChapter(null)
+          closeDetail()
+        }
+      } catch (e) {
+        toastErr('加载知识结构失败：' + (e?.message || ''))
+      } finally {
+        setTreeLoading(false)
       }
-    } catch (e) {
-      toastErr('加载知识结构失败：' + (e?.message || ''))
-    } finally {
-      setTreeLoading(false)
-    }
-  }, [activeSubject, openDetail, closeDetail, showEmpty])
+    },
+    [activeSubject, openDetail, closeDetail, showEmpty],
+  )
 
-  const selectChapter = useCallback((subject, title, kpList) => {
-    setActiveChapter({ subject, title })
-    const kp = (kpList || [])[0]
-    if (kp) openDetail(kp)
-    else closeDetail()
-  }, [openDetail, closeDetail])
+  const selectChapter = useCallback(
+    (subject, title, kpList) => {
+      setActiveChapter({ subject, title })
+      const kp = (kpList || [])[0]
+      if (kp) openDetail(kp)
+      else closeDetail()
+    },
+    [openDetail, closeDetail],
+  )
+
+  /* 复习打卡后的刷新：打卡只改变「掌握度 / 到期队列」，不影响题库结构。
+     本地 patch 树里该知识点的掌握度（章节聚合分随下次进页/切科目自然更新），
+     再后台重拉辅助指标——不再整套 loadAll（含最慢的 tree 全量序列化）。 */
+  const patchKpInTree = useCallback((id, patch) => {
+    setTree((prev) =>
+      prev.map((s) => ({
+        ...s,
+        chapters: (s.chapters || []).map((c) => ({
+          ...c,
+          knowledge_points: (c.knowledge_points || []).map((k) =>
+            String(k.id) === String(id) ? { ...k, ...patch } : k,
+          ),
+        })),
+      })),
+    )
+  }, [])
+
+  const masteryPatchFrom = (r) => ({
+    mastery: r?.mastery_after,
+    state: (Number(r?.mastery_after) || 0) >= 70 ? 'mastered' : 'weak',
+  })
 
   const submitReview = async (kpId, result) => {
     if (!user) {
@@ -684,7 +836,8 @@ export default function KbMap() {
     try {
       const r = await reviewApi.submit({ item_type: 'knowledge', item_id: kpId, result })
       toastOk(`已记录：掌握度 ${r.mastery_before} → ${r.mastery_after}，${r.interval} 天后复习`)
-      await loadAll()
+      patchKpInTree(kpId, masteryPatchFrom(r))
+      loadAux()
     } catch (e) {
       toastErr('记录失败：' + (e?.message || ''))
     } finally {
@@ -703,7 +856,9 @@ export default function KbMap() {
     try {
       const r = await reviewApi.submit({ item_type: 'knowledge', item_id: id, result })
       toastOk(`已记录：掌握度 ${r.mastery_before} → ${r.mastery_after}，${r.interval} 天后复习`)
-      await Promise.all([openDetail({ id }), loadAll()])
+      patchKpInTree(id, masteryPatchFrom(r))
+      await openDetail({ id })
+      loadAux()
     } catch (e) {
       toastErr('记录失败：' + (e?.message || ''))
     } finally {
@@ -711,14 +866,17 @@ export default function KbMap() {
     }
   }
 
-  const goQuiz = useCallback((subject, chapter, kp) => {
-    const params = new URLSearchParams()
-    if (subject) params.set('subject', subject)
-    if (chapter) params.set('chapter', chapter)
-    if (kp?.id != null) params.set('kp_id', kp.id)
-    if (kp?.name) params.set('kp_name', kp.name)
-    navigate(`/quiz?${params.toString()}`)
-  }, [navigate])
+  const goQuiz = useCallback(
+    (subject, chapter, kp) => {
+      const params = new URLSearchParams()
+      if (subject) params.set('subject', subject)
+      if (chapter) params.set('chapter', chapter)
+      if (kp?.id != null) params.set('kp_id', kp.id)
+      if (kp?.name) params.set('kp_name', kp.name)
+      navigate(`/quiz?${params.toString()}`)
+    },
+    [navigate],
+  )
 
   const runAiExplain = async () => {
     const d = detail.data
@@ -756,7 +914,7 @@ export default function KbMap() {
   /* 科目 chips：知识点数与题量并列展示，缺失字段不补 0 */
   const chipSubjects = useMemo(() => {
     const fallbackKpCounts = new Map()
-    for (const s of (coverage?.subjects || [])) {
+    for (const s of coverage?.subjects || []) {
       fallbackKpCounts.set(s.subject, s.knowledge_points)
     }
     for (const s of tree) {
@@ -766,9 +924,12 @@ export default function KbMap() {
       return subjects.map((s) => {
         const direct = typeof s.knowledge_point_count === 'number' ? s.knowledge_point_count : null
         const fallback = fallbackKpCounts.get(s.subject)
-        const kp = direct == null
-          ? fallback
-          : (direct === 0 && typeof fallback === 'number' && fallback > 0 ? fallback : direct)
+        const kp =
+          direct == null
+            ? fallback
+            : direct === 0 && typeof fallback === 'number' && fallback > 0
+              ? fallback
+              : direct
         return { ...s, knowledge_point_count: kp }
       })
     }
@@ -783,8 +944,14 @@ export default function KbMap() {
     let hasKp = false
     let hasQ = false
     for (const s of chipSubjects) {
-      if (typeof s?.knowledge_point_count === 'number') { kp += s.knowledge_point_count; hasKp = true }
-      if (typeof s?.question_count === 'number') { q += s.question_count; hasQ = true }
+      if (typeof s?.knowledge_point_count === 'number') {
+        kp += s.knowledge_point_count
+        hasKp = true
+      }
+      if (typeof s?.question_count === 'number') {
+        q += s.question_count
+        hasQ = true
+      }
     }
     return { kp, q, hasKp, hasQ }
   }, [chipSubjects])
@@ -819,17 +986,20 @@ export default function KbMap() {
     return m
   }, [quality])
 
-  const pickQuality = useCallback((name) => {
-    if (!name) return null
-    return qualityBySubject.get(name) || qualityBySubject.get(String(name).replace(/\s+/g, '')) || null
-  }, [qualityBySubject])
+  const pickQuality = useCallback(
+    (name) => {
+      if (!name) return null
+      return qualityBySubject.get(name) || qualityBySubject.get(String(name).replace(/\s+/g, '')) || null
+    },
+    [qualityBySubject],
+  )
 
   /* 客户端搜索：数据来自已加载的 taxonomy 树，不发请求、不造字段 */
   const searchPool = useMemo(() => {
     const out = []
     for (const s of tree) {
-      for (const ch of (s.chapters || [])) {
-        for (const kp of (ch.knowledge_points || [])) {
+      for (const ch of s.chapters || []) {
+        for (const kp of ch.knowledge_points || []) {
           out.push({ ...kp, subject: s.subject, chapter: ch.title })
         }
       }
@@ -841,7 +1011,11 @@ export default function KbMap() {
     const q = query.trim().toLowerCase()
     if (!q) return []
     return searchPool
-      .filter((kp) => String(kp.name || '').toLowerCase().includes(q))
+      .filter((kp) =>
+        String(kp.name || '')
+          .toLowerCase()
+          .includes(q),
+      )
       .slice(0, 60)
   }, [searchPool, query])
 
@@ -857,24 +1031,27 @@ export default function KbMap() {
 
   const publicKpCount = chipTotals.hasKp
     ? chipTotals.kp
-    : (isNum(coverage?.totals?.knowledge_points) ? Number(coverage.totals.knowledge_points) : null)
+    : isNum(coverage?.totals?.knowledge_points)
+      ? Number(coverage.totals.knowledge_points)
+      : null
 
   const searchActive = query.trim().length > 0
   const hasAnyKp = tree.some((s) => s.knowledge_point_count > 0)
-  const overviewTone = dist && dist.total > 0 && dist.unlearned >= dist.total
-    ? STATE_TONE.unlearned
-    : masteryTone(progress ? (progress.learned_avg_mastery ?? progress.avg_mastery) : 0)
-  const avgMastery = Math.min(100, Math.max(0, Number(
-    progress ? (progress.learned_avg_mastery ?? progress.avg_mastery) : 0,
-  ) || 0))
+  const overviewTone =
+    dist && dist.total > 0 && dist.unlearned >= dist.total
+      ? STATE_TONE.unlearned
+      : masteryTone(progress ? (progress.learned_avg_mastery ?? progress.avg_mastery) : 0)
+  const avgMastery = Math.min(
+    100,
+    Math.max(0, Number(progress ? (progress.learned_avg_mastery ?? progress.avg_mastery) : 0) || 0),
+  )
 
   const scrollToDue = () => {
     document.getElementById('kb-due')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const goTextbooks = () => navigate(
-    activeSubject ? `/textbooks?subject=${encodeURIComponent(activeSubject)}` : '/textbooks',
-  )
+  const goTextbooks = () =>
+    navigate(activeSubject ? `/textbooks?subject=${encodeURIComponent(activeSubject)}` : '/textbooks')
 
   const pageActions = (
     <>
@@ -901,7 +1078,9 @@ export default function KbMap() {
         />
         <div className="v3-bento">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Tile span={3} className="v3-kb-stat" key={i}><Skeleton height={58} /></Tile>
+            <Tile span={3} className="v3-kb-stat" key={i}>
+              <Skeleton height={58} />
+            </Tile>
           ))}
           <Tile span={12} className="v3-kb-loading-card">
             <Skeleton height={34} width="28%" />
@@ -926,11 +1105,11 @@ export default function KbMap() {
             icon={<AlertCircle size={26} />}
             title="知识地图加载失败"
             text={errMsg || '请确认后端服务已启动后重试。'}
-            action={(
+            action={
               <Button variant="tonal" icon={<RefreshCw size={16} />} onClick={loadAll}>
                 重新加载
               </Button>
-            )}
+            }
           />
         </Card>
       </div>
@@ -942,9 +1121,11 @@ export default function KbMap() {
       <PageHeader
         eyebrow="KNOWLEDGE · 知识结构"
         title="知识地图"
-        sub={progress && dist
-          ? `共 ${dist.total} 个知识点 · 已掌握 ${dist.mastered} · 今日队列 ${due.length} 个 · 与「知识点全景」同一数据源`
-          : '章节 → 知识点 → 例题 / 方法 · 访客可浏览结构与教材原文'}
+        sub={
+          progress && dist
+            ? `共 ${dist.total} 个知识点 · 已掌握 ${dist.mastered} · 今日队列 ${due.length} 个 · 与「知识点全景」同一数据源`
+            : '章节 → 知识点 → 例题 / 方法 · 访客可浏览结构与教材原文'
+        }
         actions={pageActions}
       />
 
@@ -952,7 +1133,9 @@ export default function KbMap() {
         <Alert tone="info" className="v3-kb-guest">
           <div className="v3-kb-guest__inner">
             <span>访客模式：知识结构与教材原文可直接浏览；登录后可查看掌握度、复习队列并记录复习结果。</span>
-            <Button size="sm" variant="text" onClick={() => navigate('/login')}>去登录</Button>
+            <Button size="sm" variant="text" onClick={() => navigate('/login')}>
+              去登录
+            </Button>
           </div>
         </Alert>
       ) : null}
@@ -963,7 +1146,10 @@ export default function KbMap() {
             <div className="v3-kb-hero__body">
               <Ring value={avgMastery} size={148} stroke={12} gradient>
                 <div className="v3-kb-ring-center">
-                  <strong>{avgMastery}<em>%</em></strong>
+                  <strong>
+                    {avgMastery}
+                    <em>%</em>
+                  </strong>
                   <span>{overviewTone.cls === 'new' ? '尚未开始' : '已学平均掌握度'}</span>
                 </div>
               </Ring>
@@ -977,19 +1163,37 @@ export default function KbMap() {
                     : `已掌握 ${dist.mastered} 个知识点，薄弱 ${dist.weak} 个。`}
                 </h2>
                 <p>
-                  共 {dist.total} 个知识点 · 已掌握 {dist.mastered} · 薄弱 {dist.weak} · 未学 {dist.unlearned}。
-                  未学知识点不计入薄弱，也不会拉低已学平均掌握度。
+                  共 {dist.total} 个知识点 · 已掌握 {dist.mastered} · 薄弱 {dist.weak} · 未学 {dist.unlearned}
+                  。 未学知识点不计入薄弱，也不会拉低已学平均掌握度。
                 </p>
                 <div className="v3-kb-dist" role="img" aria-label="掌握度三态分布">
                   <div className="v3-kb-dist__bar">
-                    <span className="is-new" style={{ width: dist.total ? `${(dist.unlearned / dist.total) * 100}%` : '0%' }} />
-                    <span className="is-mid" style={{ width: dist.total ? `${(dist.weak / dist.total) * 100}%` : '0%' }} />
-                    <span className="is-ok" style={{ width: dist.total ? `${(dist.mastered / dist.total) * 100}%` : '0%' }} />
+                    <span
+                      className="is-new"
+                      style={{ width: dist.total ? `${(dist.unlearned / dist.total) * 100}%` : '0%' }}
+                    />
+                    <span
+                      className="is-mid"
+                      style={{ width: dist.total ? `${(dist.weak / dist.total) * 100}%` : '0%' }}
+                    />
+                    <span
+                      className="is-ok"
+                      style={{ width: dist.total ? `${(dist.mastered / dist.total) * 100}%` : '0%' }}
+                    />
                   </div>
                   <div className="v3-kb-dist__legend">
-                    <span className="is-new"><i />未学 {dist.unlearned}</span>
-                    <span className="is-mid"><i />薄弱 {dist.weak}</span>
-                    <span className="is-ok"><i />已掌握 {dist.mastered}</span>
+                    <span className="is-new">
+                      <i />
+                      未学 {dist.unlearned}
+                    </span>
+                    <span className="is-mid">
+                      <i />
+                      薄弱 {dist.weak}
+                    </span>
+                    <span className="is-ok">
+                      <i />
+                      已掌握 {dist.mastered}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -997,18 +1201,24 @@ export default function KbMap() {
           </Tile>
 
           <Tile span={4} className="v3-kb-pace">
-            <CardHead
-              icon={<Target size={17} />}
-              title="今日复习"
-              sub={`${due.length} 个知识点在队列中`}
-            />
+            <CardHead icon={<Target size={17} />} title="今日复习" sub={`${due.length} 个知识点在队列中`} />
             <div className="v3-kb-pace__value">
-              {due.length}<em>个待复习</em>
+              {due.length}
+              <em>个待复习</em>
             </div>
             <div className="v3-kb-pace__kv">
-              <div><span>已复习</span><b>{progress.reviewed_count ?? '—'}</b></div>
-              <div><span>近 7 天</span><b>{progress.reviews_last_7_days ?? '—'}</b></div>
-              <div><span>完成率</span><b>{progress.completion_rate != null ? `${progress.completion_rate}%` : '—'}</b></div>
+              <div>
+                <span>已复习</span>
+                <b>{progress.reviewed_count ?? '—'}</b>
+              </div>
+              <div>
+                <span>近 7 天</span>
+                <b>{progress.reviews_last_7_days ?? '—'}</b>
+              </div>
+              <div>
+                <span>完成率</span>
+                <b>{progress.completion_rate != null ? `${progress.completion_rate}%` : '—'}</b>
+              </div>
             </div>
             {due.length > 0 ? (
               <Button variant="gradient" block icon={<ArrowRight size={16} />} onClick={scrollToDue}>
@@ -1022,50 +1232,84 @@ export default function KbMap() {
           </Tile>
 
           <Tile span={3} className="v3-kb-stat">
-            <span className="v3-tile__label"><MapIcon size={15} /> 知识点总数</span>
-            <span className="v3-tile__value"><MetricValue value={dist.total} suffix="个" /></span>
+            <span className="v3-tile__label">
+              <MapIcon size={15} /> 知识点总数
+            </span>
+            <span className="v3-tile__value">
+              <MetricValue value={dist.total} suffix="个" />
+            </span>
             <span className="v3-tile__hint">来自教材 / 讲义的结构化抽取</span>
           </Tile>
           <Tile span={3} className="v3-kb-stat">
-            <span className="v3-tile__label"><CheckCircle2 size={15} /> 已复习</span>
-            <span className="v3-tile__value v3-kb-tone is-ok"><MetricValue value={progress.reviewed_count} suffix="个" /></span>
+            <span className="v3-tile__label">
+              <CheckCircle2 size={15} /> 已复习
+            </span>
+            <span className="v3-tile__value v3-kb-tone is-ok">
+              <MetricValue value={progress.reviewed_count} suffix="个" />
+            </span>
             <span className="v3-tile__hint">至少复习过一次的知识点</span>
           </Tile>
           <Tile span={3} className="v3-kb-stat">
-            <span className="v3-tile__label"><Clock size={15} /> 待复习</span>
-            <span className="v3-tile__value v3-kb-tone is-mid"><MetricValue value={progress.due_count} suffix="个" /></span>
+            <span className="v3-tile__label">
+              <Clock size={15} /> 待复习
+            </span>
+            <span className="v3-tile__value v3-kb-tone is-mid">
+              <MetricValue value={progress.due_count} suffix="个" />
+            </span>
             <span className="v3-tile__hint">已排期且到期（不含新知识点）</span>
           </Tile>
           <Tile span={3} className="v3-kb-stat">
-            <span className="v3-tile__label"><Sparkles size={15} /> 近 7 天复习</span>
-            <span className="v3-tile__value"><MetricValue value={progress.reviews_last_7_days} suffix="次" /></span>
+            <span className="v3-tile__label">
+              <Sparkles size={15} /> 近 7 天复习
+            </span>
+            <span className="v3-tile__value">
+              <MetricValue value={progress.reviews_last_7_days} suffix="次" />
+            </span>
             <span className="v3-tile__hint">按北京时间自然日统计</span>
           </Tile>
         </div>
       ) : (
         <div className="v3-bento">
           <Tile span={3} className="v3-kb-stat">
-            <span className="v3-tile__label"><MapIcon size={15} /> 科目</span>
-            <span className="v3-tile__value"><MetricValue value={chipSubjects.length} suffix="科" /></span>
+            <span className="v3-tile__label">
+              <MapIcon size={15} /> 科目
+            </span>
+            <span className="v3-tile__value">
+              <MetricValue value={chipSubjects.length} suffix="科" />
+            </span>
             <span className="v3-tile__hint">来自 /taxonomy/subjects</span>
           </Tile>
           <Tile span={3} className="v3-kb-stat">
-            <span className="v3-tile__label"><Brain size={15} /> 知识点</span>
-            <span className="v3-tile__value"><MetricValue value={publicKpCount} suffix="个" /></span>
+            <span className="v3-tile__label">
+              <Brain size={15} /> 知识点
+            </span>
+            <span className="v3-tile__value">
+              <MetricValue value={publicKpCount} suffix="个" />
+            </span>
             <span className="v3-tile__hint">不是题库题量，两个口径分开统计</span>
           </Tile>
           <Tile span={3} className="v3-kb-stat">
-            <span className="v3-tile__label"><BookOpen size={15} /> 大纲章节</span>
-            <span className="v3-tile__value"><MetricValue value={coverage ? coverageTotals.outline : null} suffix="章" /></span>
+            <span className="v3-tile__label">
+              <BookOpen size={15} /> 大纲章节
+            </span>
+            <span className="v3-tile__value">
+              <MetricValue value={coverage ? coverageTotals.outline : null} suffix="章" />
+            </span>
             <span className="v3-tile__hint">
               {coverage ? `已覆盖 ${coverageTotals.covered} 章` : '覆盖数据加载后显示'}
             </span>
           </Tile>
           <Tile span={3} className="v3-kb-stat">
-            <span className="v3-tile__label"><Database size={15} /> 资料</span>
-            <span className="v3-tile__value"><MetricValue value={coverage?.totals?.documents} suffix="篇" /></span>
+            <span className="v3-tile__label">
+              <Database size={15} /> 资料
+            </span>
+            <span className="v3-tile__value">
+              <MetricValue value={coverage?.totals?.documents} suffix="篇" />
+            </span>
             <span className="v3-tile__hint">
-              {isNum(coverage?.totals?.chunks) ? `${coverage.totals.chunks} 个可检索分块` : '登录后可查看复习进度'}
+              {isNum(coverage?.totals?.chunks)
+                ? `${coverage.totals.chunks} 个可检索分块`
+                : '登录后可查看复习进度'}
             </span>
           </Tile>
         </div>
@@ -1116,12 +1360,7 @@ export default function KbMap() {
               className="v3-kb-search"
             />
             {query ? (
-              <IconButton
-                label="清空搜索"
-                size="sm"
-                icon={<X size={15} />}
-                onClick={() => setQuery('')}
-              />
+              <IconButton label="清空搜索" size="sm" icon={<X size={15} />} onClick={() => setQuery('')} />
             ) : null}
           </div>
         </div>
@@ -1143,12 +1382,18 @@ export default function KbMap() {
           <Empty
             icon={<BookOpen size={26} />}
             title="暂未配置科目"
-            text={isAdmin
-              ? '请先在「科目管理」中添加考试科目与大纲章节，知识地图会自动生成三级结构。'
-              : '科目与大纲由管理员维护，配置完成后知识地图会自动生成。'}
-            action={isAdmin
-              ? <Button variant="gradient" onClick={() => navigate('/subjects')}>去科目管理</Button>
-              : null}
+            text={
+              isAdmin
+                ? '请先在「科目管理」中添加考试科目与大纲章节，知识地图会自动生成三级结构。'
+                : '科目与大纲由管理员维护，配置完成后知识地图会自动生成。'
+            }
+            action={
+              isAdmin ? (
+                <Button variant="gradient" onClick={() => navigate('/subjects')}>
+                  去科目管理
+                </Button>
+              ) : null
+            }
           />
         </Card>
       ) : !hasAnyKp && !treeLoading ? (
@@ -1156,14 +1401,26 @@ export default function KbMap() {
           <Empty
             icon={<Brain size={26} />}
             title={activeSubject ? `「${activeSubject}」暂无知识点` : '知识点库为空'}
-            text={activeSubject
-              ? `该科目${typeof activeChip?.question_count === 'number'
-                ? `题库已有 ${activeChip.question_count} 题`
-                : '题库可能有题'}，但知识点数为 0 —— 题量 ≠ 知识点数。知识点来自教材 / 讲义的结构化抽取，题库题目不会自动生成知识结构。${isAdmin ? '请到资料库上传该科资料并执行知识点抽取，完成后返回刷新。' : '资料抽取由管理员维护，完成后返回刷新即可。'}`
-              : `知识点数与题库题量是两个口径：这里统计的是从教材 / 讲义中抽取的结构化知识点。当前还没有任何知识点，${isAdmin ? '请到资料库上传资料并执行知识点抽取，完成后返回刷新。' : '资料抽取由管理员维护，完成后返回刷新即可。'}`}
-            action={isAdmin
-              ? <Button variant="gradient" icon={<BookOpen size={16} />} onClick={() => navigate('/documents')}>去资料库导入</Button>
-              : null}
+            text={
+              activeSubject
+                ? `该科目${
+                    typeof activeChip?.question_count === 'number'
+                      ? `题库已有 ${activeChip.question_count} 题`
+                      : '题库可能有题'
+                  }，但知识点数为 0 —— 题量 ≠ 知识点数。知识点来自教材 / 讲义的结构化抽取，题库题目不会自动生成知识结构。${isAdmin ? '请到资料库上传该科资料并执行知识点抽取，完成后返回刷新。' : '资料抽取由管理员维护，完成后返回刷新即可。'}`
+                : `知识点数与题库题量是两个口径：这里统计的是从教材 / 讲义中抽取的结构化知识点。当前还没有任何知识点，${isAdmin ? '请到资料库上传资料并执行知识点抽取，完成后返回刷新。' : '资料抽取由管理员维护，完成后返回刷新即可。'}`
+            }
+            action={
+              isAdmin ? (
+                <Button
+                  variant="gradient"
+                  icon={<BookOpen size={16} />}
+                  onClick={() => navigate('/documents')}
+                >
+                  去资料库导入
+                </Button>
+              ) : null
+            }
           />
         </Card>
       ) : (
@@ -1215,9 +1472,7 @@ export default function KbMap() {
               <div>
                 <span className="v3-eyebrow">{searchActive ? 'SEARCH' : 'POINTS'}</span>
                 <h2>
-                  {searchActive
-                    ? '搜索结果'
-                    : `知识点${activeChapter ? ` · ${activeChapter.title}` : ''}`}
+                  {searchActive ? '搜索结果' : `知识点${activeChapter ? ` · ${activeChapter.title}` : ''}`}
                 </h2>
               </div>
               <Badge tone="outline">
@@ -1239,7 +1494,11 @@ export default function KbMap() {
                     icon={<Search size={22} />}
                     title="没有匹配的知识点"
                     text={`没有找到名称包含「${query.trim()}」的知识点。换个关键词，或清空搜索回到章节浏览。`}
-                    action={<Button size="sm" variant="tonal" onClick={() => setQuery('')}>清空搜索</Button>}
+                    action={
+                      <Button size="sm" variant="tonal" onClick={() => setQuery('')}>
+                        清空搜索
+                      </Button>
+                    }
                   />
                 ) : (
                   <div className="v3-kb-points">
@@ -1267,12 +1526,18 @@ export default function KbMap() {
                 <Empty
                   icon={<Brain size={22} />}
                   title="该章节暂无知识点"
-                  text={isAdmin
-                    ? '请到知识库上传对应章节资料并执行知识点抽取，完成后返回刷新。'
-                    : '该章节资料尚未抽取知识点，管理员完成抽取后即可查看。'}
-                  action={isAdmin
-                    ? <Button size="sm" variant="tonal" onClick={() => navigate('/documents')}>去知识库导入</Button>
-                    : null}
+                  text={
+                    isAdmin
+                      ? '请到知识库上传对应章节资料并执行知识点抽取，完成后返回刷新。'
+                      : '该章节资料尚未抽取知识点，管理员完成抽取后即可查看。'
+                  }
+                  action={
+                    isAdmin ? (
+                      <Button size="sm" variant="tonal" onClick={() => navigate('/documents')}>
+                        去知识库导入
+                      </Button>
+                    ) : null
+                  }
                 />
               ) : (
                 <div className="v3-kb-points">
@@ -1284,7 +1549,9 @@ export default function KbMap() {
                       query={query}
                       onOpen={() => navigate(`/knowledge/${kp.id}`)}
                       onPreview={() => openDetail(kp)}
-                      onPractice={() => goQuiz(activeChapterData.subject, activeChapterData.chapter.title, kp)}
+                      onPractice={() =>
+                        goQuiz(activeChapterData.subject, activeChapterData.chapter.title, kp)
+                      }
                     />
                   ))}
                 </div>
@@ -1326,12 +1593,17 @@ export default function KbMap() {
       {hasAnyKp ? (
         <div className="v3-kb-aux">
           {user ? (
-            <Card className={cx('v3-kb-aux-card', !(progress?.weak_points?.length > 0) && 'v3-kb-aux__wide')} id="kb-due">
+            <Card
+              className={cx('v3-kb-aux-card', !(progress?.weak_points?.length > 0) && 'v3-kb-aux__wide')}
+              id="kb-due"
+            >
               <CardHead
                 icon={<Clock size={17} />}
                 title="今日复习队列"
                 sub={`${due.length} 个知识点待复习`}
-                actions={<Badge tone={due.length ? 'warning' : 'success'}>{due.length ? '待处理' : '已清空'}</Badge>}
+                actions={
+                  <Badge tone={due.length ? 'warning' : 'success'}>{due.length ? '待处理' : '已清空'}</Badge>
+                }
               />
               {due.length === 0 ? (
                 <div className="v3-kb-due-empty">
@@ -1388,11 +1660,7 @@ export default function KbMap() {
 
           {user && progress?.weak_points?.length > 0 ? (
             <Card className="v3-kb-aux-card">
-              <CardHead
-                icon={<Target size={17} />}
-                title="掌握度最低的知识点"
-                sub="按掌握度升序，优先攻克"
-              />
+              <CardHead icon={<Target size={17} />} title="掌握度最低的知识点" sub="按掌握度升序，优先攻克" />
               <div className="v3-kb-weak-list">
                 {progress.weak_points.slice(0, 10).map((k) => {
                   const tone = stateTone(k.state)
@@ -1430,36 +1698,50 @@ export default function KbMap() {
                     {(coverage.subjects || []).filter((s) => s.documents > 0).length === 0 ? (
                       <tr>
                         <td colSpan={4} className="v3-kb-table__empty">
-                          {isAdmin ? '暂无已入库资料，先去资料库导入并解析。' : '暂无已入库资料，管理员导入并解析后会显示统计。'}
+                          {isAdmin
+                            ? '暂无已入库资料，先去资料库导入并解析。'
+                            : '暂无已入库资料，管理员导入并解析后会显示统计。'}
                         </td>
                       </tr>
-                    ) : (coverage.subjects || []).filter((s) => s.documents > 0).map((s) => {
-                      const hasOutline = !!s.outline_chapters
-                      const rate = hasOutline
-                        ? Math.min(100, Math.round((s.covered_chapters / s.outline_chapters) * 100))
-                        : 0
-                      return (
-                        <tr key={s.subject}>
-                          <td data-label="科目">
-                            <span className="v3-kb-table__subject">
-                              {s.subject}
-                              {!s.is_core ? <Badge tone="outline">拓展</Badge> : null}
-                            </span>
-                          </td>
-                          <td data-label="分块">{s.chunks}</td>
-                          <td data-label="知识点">{s.knowledge_points}</td>
-                          <td data-label="章节覆盖">
-                            {hasOutline ? (
-                              <span className="v3-kb-cov">
-                                <span className="v3-kb-cov__num">{s.covered_chapters}/{s.outline_chapters}</span>
-                                <Meter value={rate} tone={rate >= 70 ? 'ok' : rate > 0 ? 'mid' : 'new'} height={4} />
-                                <em>{rate}%</em>
-                              </span>
-                            ) : '—'}
-                          </td>
-                        </tr>
-                      )
-                    })}
+                    ) : (
+                      (coverage.subjects || [])
+                        .filter((s) => s.documents > 0)
+                        .map((s) => {
+                          const hasOutline = !!s.outline_chapters
+                          const rate = hasOutline
+                            ? Math.min(100, Math.round((s.covered_chapters / s.outline_chapters) * 100))
+                            : 0
+                          return (
+                            <tr key={s.subject}>
+                              <td data-label="科目">
+                                <span className="v3-kb-table__subject">
+                                  {s.subject}
+                                  {!s.is_core ? <Badge tone="outline">拓展</Badge> : null}
+                                </span>
+                              </td>
+                              <td data-label="分块">{s.chunks}</td>
+                              <td data-label="知识点">{s.knowledge_points}</td>
+                              <td data-label="章节覆盖">
+                                {hasOutline ? (
+                                  <span className="v3-kb-cov">
+                                    <span className="v3-kb-cov__num">
+                                      {s.covered_chapters}/{s.outline_chapters}
+                                    </span>
+                                    <Meter
+                                      value={rate}
+                                      tone={rate >= 70 ? 'ok' : rate > 0 ? 'mid' : 'new'}
+                                      height={4}
+                                    />
+                                    <em>{rate}%</em>
+                                  </span>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })
+                    )}
                   </tbody>
                 </table>
               </div>
