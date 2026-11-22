@@ -5,10 +5,11 @@ import { Home, Folder, Book, FileText, Target } from '../components/Icon'
 export const MODULES = [
   {
     key: 'today', title: '今日', icon: Home, items: [
-      /* 中枢是「先做什么」的行动聚合；仪表盘是「整体怎么样」的统计快照。
-         两者共用同一批聚合端点，不产生第二套数据源。 */
-      { to: '/hub', label: '今日中枢', desc: '跨模块动态聚合 · 先做什么', kw: ['hub', '中枢', '今日', '聚合', 'jinri', 'zhongshu', 'home'] },
-      { to: '/', label: '仪表盘总览', exact: true, desc: '今日概览与考研倒计时', kw: ['dashboard', '首页', '主页', 'shouye', 'yibiaopan'] },
+      /* W2 融合（2026-11-23）：原「今日中枢(/hub)」与「仪表盘总览(/)」重复展示
+         今日专注/答题/正确率/连续打卡/热力/待复习/薄弱点，已合并为单页今日中枢。
+         / 与 /hub 指向同一页面（App.jsx GuestHome 与 /hub 路由都渲染 Hub），
+         导航只留一个入口，旧路径仍可直达。 */
+      { to: '/', label: '今日中枢', exact: true, desc: '首页 · 跨模块聚合 · 先做什么', kw: ['hub', 'dashboard', '中枢', '今日', '首页', '主页', '聚合', '仪表盘', 'jinri', 'zhongshu', 'home', 'yibiaopan'] },
       { to: '/tasks', label: '任务打卡', desc: '今日任务与打卡', kw: ['task', '任务', '待办', 'todo', 'renwu', 'daka'] },
       { to: '/planner', label: '学习计划', desc: '规划与连续打卡', kw: ['planner', '计划', '规划', 'jihua', 'plan'] },
       { to: '/profile', label: '学习画像', desc: '学习数据与薄弱点', kw: ['profile', '画像', 'huaxiang'] },
@@ -16,12 +17,13 @@ export const MODULES = [
   },
   {
     key: 'learn', title: '学习', icon: Folder, items: [
-      { to: '/library', label: '学习文库', desc: 'IMA 资料 · 初试/复试 · 知识/试题/单词', public: true, kw: ['library', '文库', '资料', 'wenku', 'ima'] },
-      { to: '/documents', label: '文档知识库', desc: '资料与知识图谱', kw: ['document', '文档', '资料', 'wendang', 'file'] },
+      /* W2 融合：学习文库 + 文档知识库并成一个「知识库」入口（两套后端不动，
+         /documents 旧路径重定向到 /library?view=documents）。 */
+      { to: '/library', label: '知识库', desc: '学习文库 · 文档知识库 · 资料与图谱', public: true, kw: ['library', 'knowledge', '文库', '知识库', '文档', '资料', 'wenku', 'ima', 'document'] },
       { to: '/textbooks', label: '教材目录', desc: '教材章节目录', public: true, kw: ['textbook', '教材', 'jiaocai', '目录'] },
       { to: '/pan', label: '网盘联动', desc: '云盘与同步', kw: ['pan', '网盘', '云盘', 'wangpan', 'cloud'] },
       { to: '/knowledge', label: '知识图谱', desc: '科目→章节→知识点纵览与掌握度', public: true, kw: ['knowledge', '知识图谱', '知识地图', '考点', 'zhishi', 'map', 'kbmap'] },
-      { to: '/tools', label: '学习工具箱', desc: '进制计算器 · 外部工具目录 · 站内直达', public: true, kw: ['tools', '工具箱', '工具', '进制', '计算器', '补码', 'gongju', 'binji', 'jisuanqi'] },
+      { to: '/tools', label: '复试工具箱', desc: '代码上机 · 进制计算器 · 外部工具目录', public: true, kw: ['tools', '工具箱', '复试', '工具', '进制', '计算器', 'codebank', 'oj', 'gongju', 'binji', 'jisuanqi'] },
     ],
   },
   {
@@ -30,7 +32,8 @@ export const MODULES = [
       { to: '/exam', label: '真题中心', desc: '按年份/卷种做真题与整卷模考', public: true, kw: ['exam', '真题', 'zhenti', '模考', 'paper'] },
       { to: '/cards', label: '记忆卡片', desc: 'Anki 式间隔复习', kw: ['card', '卡片', 'kapian', 'flash'] },
       { to: '/words', label: '单词记忆', desc: '单词背诵与发音', kw: ['word', '单词', 'danci', 'vocab'] },
-      { to: '/codebank', label: '复试代码题库', desc: 'LeetCode 式复试上机题库', public: true, kw: ['code', '代码', '复试', 'codebank', 'fushi', 'oj'] },
+      /* W2：复试代码题库(/codebank)退出「练习」导航，并入「学习 → 复试工具箱」统一入口；
+         路由保留且访客可读，旧书签不 404。 */
     ],
   },
   {
@@ -59,7 +62,8 @@ export const MODULES = [
 ]
 
 export const NAV_OTHER = [
-  { to: '/glass', label: '毛玻璃实验室', desc: '液态玻璃动效交互演示', public: true, kw: ['glass', '玻璃', '毛玻璃', '动效', 'design', 'boli'] },
+  /* W2：毛玻璃交互实验室退出「其他」导航（它是主题动效演示，不是学习功能），
+     入口改挂在 设置 → 外观与数据（外观主题/界面自定义）里；/glass 路由与页面保留可达。 */
   { to: '/assistant', label: 'AI 助手', desc: '问答与 RAG 检索', kw: ['assistant', 'ai', '助手', '问答', 'zhushou', 'chat'] },
   { to: '/settings', label: '设置', desc: '偏好、管理入口与数据管理', kw: ['setting', '设置', '偏好', '管理', 'shezhi', 'config'] },
 ]
@@ -108,6 +112,11 @@ export const entriesFor = (isAdmin) => (isAdmin ? ALL_ENTRIES : ALL_ENTRIES.filt
 const CRUMB_BY_PATH = new Map(ALL_ENTRIES.filter((e) => !e.to.includes('?')).map((e) => [e.to, e.label]))
 CRUMB_BY_PATH.set(ADMIN_ROOT, '管理后台')
 CRUMB_BY_PATH.set('/admin/caliber', '数据口径与接口体检')
+/* W2 融合后不再占用导航、但路由仍可达的页面补面包屑（旧链接直达时标题不回落） */
+CRUMB_BY_PATH.set('/hub', '今日中枢')
+CRUMB_BY_PATH.set('/glass', '毛玻璃实验室')
+CRUMB_BY_PATH.set('/codebank', '复试代码题库')
+CRUMB_BY_PATH.set('/documents', '文档知识库')
 /* 择校子页面不在顶栏导航里，补上面包屑名称，避免一律回落到「页面」 */
 CRUMB_BY_PATH.set('/kaoyan/schools', '院校库')
 CRUMB_BY_PATH.set('/kaoyan/compare', '院校对比')
@@ -139,7 +148,8 @@ export function crumbName(path) {
 export const RELATED = {
   '/tasks': ['/knowledge', '/planner', '/error-review'],
   '/knowledge': ['/documents', '/quiz', '/error-review'],
-  '/library': ['/documents', '/knowledge', '/quiz'],
+  /* W2：文档知识库已并入「知识库」页内视图，文库的相关功能不再自指 /documents */
+  '/library': ['/knowledge', '/quiz', '/textbooks'],
   '/quiz': ['/error-review', '/knowledge', '/cards'],
   '/admin/quiz-bank': ['/quiz', '/knowledge', '/error-review'],
   '/error-review': ['/notebook', '/quiz', '/knowledge'],

@@ -180,12 +180,13 @@ function renderApp(route) {
 }
 
 describe('核心路由 smoke test', () => {
-  it('首页 Dashboard 渲染不报错（含倒计时标题）', async () => {
+  it('首页（今日中枢）渲染不报错（含主数字与倒计时）', async () => {
+    /* W2 融合：/ 由「仪表盘总览」改为与 /hub 同一个「今日中枢」单页首页。
+       React.lazy 懒加载：后续每个页面在 jsdom 里要跑完 v3 依赖图 + 多次 settle，
+       5s 是旧页面的预算；这里放宽到 15s，断言的仍是真实页面文案而不是骨架。 */
     renderApp('/')
-    // React.lazy 懒加载：后续每个页面在 jsdom 里要跑完 v3 依赖图 + 多次 settle，
-    // 5s 是旧页面的预算；这里放宽到 15s，断言的仍是真实页面文案而不是骨架。
-    // 年份来自 summary.countdown.exam_year，不在前端猜。
-    expect(await screen.findByText(/2027 考研初试还有/, {}, { timeout: 15000 })).toBeInTheDocument()
+    expect(await screen.findByText('今天该做', {}, { timeout: 15000 })).toBeInTheDocument()
+    expect(await screen.findByText(/距离 .* 考研/, {}, { timeout: 15000 })).toBeInTheDocument()
   }, 20000)
 
   /* 2026-10-19 信息架构调整（navConfig.MODULES 的 school 组）：

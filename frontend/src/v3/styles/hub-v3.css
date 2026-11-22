@@ -988,3 +988,90 @@
 @media (max-width: 640px) {
   .hub-setup__list { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   W2 信息架构融合：目标与分数线 / 院校雷达 区块（自仪表盘并入，仅此一份）
+   ========================================================================== */
+.hub-countdown__verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: var(--v3-fs-12);
+  line-height: 1.5;
+  color: var(--v3-warning);
+  text-decoration: none;
+}
+.hub-countdown__verify:hover { text-decoration: underline; }
+.hub-countdown__verify > svg { flex: none; }
+
+.hub-goal__grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 16px;
+  align-items: start;
+}
+.hub-goal__cell { display: flex; flex-direction: column; gap: 2px; }
+.hub-goal__cell strong { font-size: 26px; font-weight: 700; color: var(--v3-text-1); line-height: 1.2; }
+.hub-goal__cap { font-size: var(--v3-fs-12); color: var(--v3-text-3); }
+.hub-goal__cell--school b { font-size: var(--v3-fs-14); color: var(--v3-text-1); }
+.hub-goal__cell--school em {
+  font-style: normal;
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-3);
+  line-height: 1.5;
+}
+.hub-goal__lines { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.hub-goal__bars { display: flex; gap: 12px; align-items: flex-end; }
+.hub-goal__bar {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 28px;
+}
+.hub-goal__bar b { font-size: 11px; font-weight: 600; color: var(--v3-text-2); }
+.hub-goal__bar i {
+  display: block;
+  width: 100%;
+  max-width: 34px;
+  border-radius: 7px 7px 3px 3px;
+  background: linear-gradient(180deg, var(--v3-gemini-1), var(--v3-gemini-2));
+  opacity: 0.9;
+  transform-origin: bottom;
+}
+.hub-goal__bar span { font-size: 10px; color: var(--v3-text-3); }
+
+.hub-radar { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.hub-radar__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--v3-r-sm);
+  border: 1px solid var(--hub-line);
+  background: var(--hub-well);
+  color: var(--v3-text-1);
+  text-decoration: none;
+  transition: border-color 140ms var(--v3-ease), background 140ms var(--v3-ease);
+}
+.hub-radar__row:hover { border-color: var(--v3-primary); background: var(--v3-primary-container); }
+.hub-radar__type {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--v3-primary);
+  background: var(--v3-primary-container, rgba(0, 122, 255, .12));
+}
+.hub-radar__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-radar__main b {
+  font-size: var(--v3-fs-13);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hub-radar__main small { font-size: var(--v3-fs-11); color: var(--v3-text-3); }
+.hub-radar__go { flex: none; color: var(--v3-text-3); }

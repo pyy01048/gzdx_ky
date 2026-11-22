@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import useStore from '../../store/useStore'
 import { todayStr } from '../../utils/date'
 import { adminUsersApi, aiApi, dashboardApi, goalsApi, systemApi, taxonomyApi } from '../../api/client'
@@ -7,7 +7,7 @@ import { kaoyanApi } from '../../api/kaoyanApi'
 import { PRESETS, providerPreset } from '../../utils/api'
 import { useAuth } from '../../auth/AuthContext'
 import { getStatus as getPanStatus, getStoredPan, clearPan } from '../../utils/pan'
-import { DASH_SECTIONS, moveInOrder, resetUiLayout, toggleHidden, useUiLayout } from '../../hooks/useUiLayout'
+import { moveInOrder, resetUiLayout, toggleHidden, useUiLayout } from '../../hooks/useUiLayout'
 import {
   Alert,
   AnimatedNumber,
@@ -488,7 +488,7 @@ export default function Settings() {
             <CardHead
               icon={<Target size={16} />}
               title="备考目标"
-              sub="用于仪表盘倒计时、AI 助手画像与规划建议"
+              sub="用于今日中枢倒计时与分数线、AI 助手画像与规划建议；保存后首页的「日期为系统估算」提示会自动消失"
             />
             <div className="v3-grid v3-grid-2 v3-settings-formgrid">
               <Field
@@ -778,6 +778,13 @@ export default function Settings() {
             <p className="v3-settings-smallhint">
               选择「跟随系统」后，主题将随操作系统的亮 / 暗模式实时变化。
             </p>
+            {/* W2：毛玻璃交互实验室退出主导航，入口归到这里（主题自定义）；/glass 页面本体保留 */}
+            <div className="v3-settings-rowwrap">
+              <span className="v3-settings-statusline">
+                想先看一眼液态玻璃质感在各组件上的效果？
+              </span>
+              <Link className="v3-btn v3-btn--tonal" to="/glass">打开毛玻璃交互实验室</Link>
+            </div>
           </Card>
 
           <UiCustomizeV3 />
@@ -821,7 +828,7 @@ export default function Settings() {
             />
             <p>
               通用考研复习工作台：<strong>目标院校、初试日期、备考科目全部由你在上面几栏配置</strong>，
-              应用不内置任何学校或专业方向（未配置时各页面显示空态并给出配置入口）。主要模块： 仪表盘（倒计时
+              应用不内置任何学校或专业方向（未配置时各页面显示空态并给出配置入口）。主要模块： 今日中枢（倒计时
               / 今日任务 / 复习提醒）· 任务打卡（日周月视图 / AI 规划）·
               <strong>知识地图</strong>（章节 → 知识点 → 题型三级结构 + 复习进度追踪）· 文档知识库（扫描版真题
               OCR → 分块 → RAG 检索）· 刷题中心与错题本（错题自动挂靠考点）· AI 助手（本地 Ollama / DeepSeek
@@ -1896,16 +1903,8 @@ export function UiCustomizeV3() {
           hiddenKey="otherHidden"
           orderKey=""
         />
-        <UiGroup
-          title="仪表盘区块"
-          sub="这一组只支持隐藏（版面成对排布，顺序固定）"
-          items={DASH_SECTIONS}
-          idOf={(s) => s.id}
-          labelOf={(s) => s.label}
-          layout={layout}
-          hiddenKey="dashHidden"
-          orderKey=""
-        />
+        {/* W2 融合：原「仪表盘区块」显隐组已移除 —— 仪表盘与今日中枢合并为单页首页，
+            首页区块的显隐/排序在首页自身的「聚合布局」面板里调（按账号存本机）。 */}
       </div>
     </Card>
   )

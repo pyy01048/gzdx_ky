@@ -115,6 +115,15 @@ export function normalizeGoal(goal) {
     },
     scoreTarget: g.score_targets?.total == null ? null : toNum(g.score_targets.total),
     targetsSet: !!g.targets_set,
+    /* W2 融合：原「仪表盘 · 目标与分数线」区块并入今日中枢后，
+       近年复试线与总分目标从这份唯一模型里取，页面不再另打接口。
+       recent_score_lines 后端查不到就返回空数组 —— 这里不编数。 */
+    scoreTargets: (g.score_targets && typeof g.score_targets === 'object') ? g.score_targets : null,
+    recentScoreLines: arr(g.recent_score_lines).map((l) => ({
+      year: l?.year ?? null,
+      totalLine: l?.total_line == null ? null : toNum(l.total_line),
+      scope: l?.scope || '',
+    })),
   }
 }
 

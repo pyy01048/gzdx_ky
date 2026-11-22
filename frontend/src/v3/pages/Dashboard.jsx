@@ -1,3 +1,12 @@
+/**
+ * ⚠️ 已下线（W2 信息架构融合 · 2026-11-23）
+ * 本组件不再被 App.jsx / navConfig 挂载：与「今日中枢」(/hub、/) 重复展示的
+ * 今日专注/答题/正确率/连续打卡/热力/待复习/薄弱点已合并为单页首页；
+ * 独有的「目标与分数线」「院校公告（升级为院校雷达）」「学习周报」已并入 Hub.jsx。
+ * 旧路径 / 现由 GuestHome 渲染 Hub，登录壳 /hub 直达同一页面。
+ * 文件保留仅供既有组件级单测（pages.smoke / dash.glass / dashboard.moduleRoutes）
+ * 继续回归；新代码请勿再 import 本页。
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import useStore from '../../store/useStore'

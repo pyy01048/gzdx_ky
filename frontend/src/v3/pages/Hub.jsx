@@ -1,11 +1,15 @@
 /**
- * 今日聚合中枢（/hub）
+ * 今日中枢（/ 与 /hub · 全站唯一首页）
  *
- * 为什么单独做这一页，而不是把仪表盘再加长：
- *  - 仪表盘回答「我整体怎么样」，是**统计快照**；
- *  - 中枢回答「我现在先做什么」，是**行动聚合**。
- * 两者数据同源（api/hub.js 统一出口），但信息组织方式不同：这里把到期、
- * 薄弱点、任务、单词、专注、刷题合成一条动态航线，顺序由真实数据计算。
+ * W2 信息架构融合：原「仪表盘总览」(Dashboard) 与本页重复展示了今日专注/
+ * 答题/正确率/连续打卡/学习热力/待复习/薄弱点等区块，现合并为这一页的
+ * 单一信息架构 —— 仪表盘独有的「目标与分数线」「院校公告（升级为院校雷达）」
+ * 「学习周报」作为聚合区块并入本页，统计快照与行动航线共用 api/hub.js
+ * 这一份数据模型，不再出现第二套数字。
+ *  - 本页回答「我现在先做什么」，同时保留「我整体怎么样」的统计区块；
+ *  - 热力图只保留一份（区块显隐见「聚合布局」）；
+ *  - 数据同源（api/hub.js 统一出口）：到期、薄弱点、任务、单词、专注、刷题
+ *    合成一条动态航线，顺序由真实数据计算。
  *
  * 页面契约（FE_REVIEW / UX_REVIEW）：
  *  - 唯一主数字：「今天该做 N 项」（data-main-figure），其余数字一律降级；
@@ -18,20 +22,21 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { fetchHubOverview, peekHubCache } from '../../api/hub'
-import { tasksApi } from '../../api/client'
+import { insightApi, tasksApi } from '../../api/client'
+import { kaoyanApi } from '../../api/kaoyanApi'
 import { MUTATION_EVENT, MUTATION_REFRESH_DELAY } from '../../api/mutationEvent'
 import { ukey, readMigrated } from '../../utils/userKeys'
 import { MiniBarChart, MiniLineChart, HeatMap } from '../charts'
 import { FocusTile } from './widgets'
 import {
-  AnimatedNumber, Button, Chip, Dialog, Empty, IconButton, Progress, Ring, Segmented,
+  AnimatedNumber, Badge, Button, Chip, Dialog, Empty, IconButton, Progress, Ring, Segmented,
   Skeleton, Switch, cx, toast, toastErr, toastOk,
 } from '../ui'
 import { useMagnetic, usePointerFx, useReducedMotion } from '../motion'
 import {
-  Activity, AlertTriangle, ArrowRight, ArrowUpRight, Book, Brain, Check,
-  CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Flame, Gauge, Info, Layers,
-  ListChecks, RefreshCw, RotateCcw, SlidersHorizontal, Target, Timer, TrendingDown,
+  Activity, AlertTriangle, ArrowRight, ArrowUpRight, BarChart3, Bell, Book, Brain, Check,
+  CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Flame, Gauge, Info, Layers,
+  ListChecks, RefreshCw, RotateCcw, School, SlidersHorizontal, Target, Timer, TrendingDown,
   TrendingUp, Zap,
 } from '../icons'
 import '../styles/pages.css'
@@ -40,7 +45,9 @@ import '../styles/hub-v3.css'
 const LAYOUT_KEY = 'hub_layout_v1'
 
 /* 可聚合区块。id 是布局持久化的稳定键，新增区块会被自动追加到末尾。
-   「数据口径」已迁往管理端 /admin/caliber（P0-1），不再占用首页栅格。 */
+   「数据口径」已迁往管理端 /admin/caliber（P0-1），不再占用首页栅格。
+   W2 融合：goal（目标与分数线）与 radar（院校雷达，原仪表盘「院校公告」升级）
+   自 Dashboard 并入 —— 首页只此一份，重复区块随 Dashboard 下线。 */
 const BLOCKS = [
   { id: 'trend', label: '14 天趋势', span: 8 },
   { id: 'focus', label: '专注计时', span: 4 },
@@ -48,6 +55,8 @@ const BLOCKS = [
   { id: 'weak', label: '薄弱点', span: 4 },
   { id: 'tasks', label: '今日任务', span: 6 },
   { id: 'modules', label: '模块进度', span: 6 },
+  { id: 'goal', label: '目标与分数线', span: 6 },
+  { id: 'radar', label: '院校雷达', span: 6 },
 ]
 const BLOCK_IDS = BLOCKS.map((b) => b.id)
 const BLOCK_BY_ID = Object.fromEntries(BLOCKS.map((b) => [b.id, b]))
@@ -248,6 +257,14 @@ export default function Hub() {
   const [customOpen, setCustomOpen] = useState(false)
   const [dragId, setDragId] = useState(null)
   const [, setTick] = useState(0)
+  /* W2 融合区块的独立状态：
+     radar —— 院校雷达只盯「目标院校」的公告（数据仍走公共 /kaoyan/notices/feed，
+               后端支持 school_id 过滤；院校名 → id 的解析用公共 /kaoyan/schools）；
+     report —— 学习周报（原仪表盘的周报 Dialog 原样并入，不落第二份数据源）。 */
+  const [radar, setRadar] = useState({ status: 'idle', school: '', items: [] })
+  const [reportOpen, setReportOpen] = useState(false)
+  const [report, setReport] = useState(null)
+  const [reportErr, setReportErr] = useState(null)
   const reduced = useReducedMotion()
   const ctaMag = useMagnetic(4)
   const stepFx = usePointerFx({ spotlight: true, disabled: reduced })
@@ -330,6 +347,43 @@ export default function Hub() {
       window.removeEventListener(MUTATION_EVENT, onMutation)
     }
   }, [load])
+
+  /* 院校雷达（W2 融合，替代原仪表盘「院校公告」全局流）：
+     只展示目标院校的公告。后端 feed 支持 school_id，但没有「按校名过滤」，
+     故先用公共院校列表把 goal.university 解析成 school_id；解析不到时
+     如实提示「库里没有这所院校」，不拿全网公告冒充本校公告。 */
+  const radarUniversity = data?.goal?.university || ''
+  useEffect(() => {
+    if (!radarUniversity) return undefined
+    let alive = true
+    setRadar({ status: 'loading', school: radarUniversity, items: [] })
+    kaoyanApi.schools({ keyword: radarUniversity, page_size: 10 })
+      .then((r) => {
+        const rows = Array.isArray(r?.items) ? r.items : []
+        const hit = rows.find((s) => s.name === radarUniversity)
+          || rows.find((s) => s.name && (radarUniversity.includes(s.name) || s.name.includes(radarUniversity)))
+          || null
+        if (!hit) {
+          if (alive) setRadar({ status: 'unmatched', school: radarUniversity, items: [] })
+          return undefined
+        }
+        return kaoyanApi.noticesFeed({ school_id: hit.id, page: 1, page_size: 6 }).then((f) => {
+          if (alive) setRadar({ status: 'ok', school: hit.name, items: Array.isArray(f?.items) ? f.items : [] })
+        })
+      })
+      .catch(() => {
+        if (alive) setRadar({ status: 'error', school: radarUniversity, items: [] })
+      })
+    return () => { alive = false }
+  }, [radarUniversity])
+
+  const openReport = useCallback(() => {
+    setReportOpen(true)
+    setReportErr(null)
+    if (!report) {
+      insightApi.weeklyReport().then(setReport).catch((e) => setReportErr(e?.message || '周报加载失败'))
+    }
+  }, [report])
 
   /* P0-6 反馈闭环：刷新 → loading → 「已同步 HH:MM」，失败由 load 弹可重试提示 */
   const refresh = useCallback(async () => {
@@ -460,7 +514,6 @@ export default function Hub() {
             <p className="hub-error__text">{String(error?.message || '网络不稳定或登录已过期，请重试')}</p>
             <div className="hub-row">
               <Button variant="filled" data-cta="primary" icon={<RefreshCw size={16} />} onClick={refresh}>重试</Button>
-              <Button variant="tonal" onClick={() => navigate('/')}>先看旧版仪表盘</Button>
             </div>
           </section>
         </div>
@@ -511,6 +564,11 @@ export default function Hub() {
   const heatDays = data.heatmap.days.slice(-84)
   const heatFocus = sum(heatDays.map((d) => d.focus))
   const heatActive = heatDays.filter((d) => d.focus > 0 || d.questions > 0 || d.words > 0).length
+  /* 分数线口径：后端 scope=major 才是「目标专业线」，school 时前端如实标注全校最低。
+     （|| [] 兜底：旧版聚合模型缺 recentScoreLines 字段时区块照常渲染，不崩） */
+  const goalScoreLines = data.goal.recentScoreLines || []
+  const goalSubjects = data.goal.subjects || []
+  const lineScope = goalScoreLines[0]?.scope || ''
 
   const blockStatus = {
     trend: trendHasData ? 'ready' : 'empty',
@@ -519,6 +577,8 @@ export default function Hub() {
     weak: data.weakness.points.length ? 'ready' : 'empty',
     tasks: data.tasks.items.length ? 'ready' : 'empty',
     modules: data.modules.length ? 'ready' : 'empty',
+    goal: data.goal.configured ? 'ready' : 'empty',
+    radar: radar.items.length ? 'ready' : 'empty',
   }
 
   /* 首跑引导（P1）：目标未配置且今日任务为 0 且词库为 0 —— 三个条件同时成立
@@ -596,6 +656,7 @@ export default function Hub() {
             <Button {...ctaMag} variant="filled" data-cta="primary" icon={<Zap size={16} />} onClick={scrollToJourney}>
               开始今日航线
             </Button>
+            <Button variant="tonal" icon={<BarChart3 size={16} />} onClick={openReport}>学习周报</Button>
             <Button variant="tonal" icon={<SlidersHorizontal size={16} />} onClick={() => setCustomOpen(true)}>
               聚合布局
             </Button>
@@ -622,9 +683,17 @@ export default function Hub() {
             <div className="hub-countdown__meta">
               <span className="hub-countdown__label">距离 {countdown.examYear || '目标'} 考研</span>
               <strong>{countdown.examDate || '未设置初试日期'}</strong>
-              <span className="hub-countdown__note">
-                {countdown.isDefault ? '日期为系统估算，去目标页核对' : '备考时间轴已走过 ' + Math.round(ringPct) + '%'}
-              </span>
+              {/* W2：「核对初试日期」警示只在系统仍在**估算**日期时出现（is_default）。
+                  原仪表盘用 is_official 判断 —— 未公布的届永远为 false，用户保存了
+                  自己的初试日期也照样被警示；这里改用后端 is_estimated 口径，
+                  到设置页保存真实日期后本提示自动消失。 */}
+              {countdown.isDefault ? (
+                <Link to="/settings" className="hub-countdown__verify">
+                  <AlertTriangle size={13} /> 日期为系统估算 · 去核对并保存
+                </Link>
+              ) : (
+                <span className="hub-countdown__note">备考时间轴已走过 {Math.round(ringPct)}%</span>
+              )}
             </div>
           </div>
         </aside>
@@ -1071,6 +1140,136 @@ export default function Hub() {
                   ) : null}
                 </>
               ) : null}
+
+              {id === 'goal' ? (
+                <>
+                  <PanelHead
+                    title="目标与分数线"
+                    titleId="hub-block-goal"
+                    sub={data.goalLine || '尚未设置目标院校'}
+                    icon={<School size={17} />}
+                    actions={<Link to="/kaoyan" className="hub-link">择校中心 <ArrowRight size={14} /></Link>}
+                  />
+                  {data.goal.configured ? (
+                    <>
+                      <div className="hub-goal__grid">
+                        <div className="hub-goal__cell">
+                          <span className="hub-goal__cap">目标总分</span>
+                          <strong>{data.goal.scoreTarget ?? '—'}</strong>
+                        </div>
+                        {/* 展示到**具体专业**：只有全校口径时如实说明，不含糊带过 */}
+                        <div className="hub-goal__cell hub-goal__cell--school">
+                          <span className="hub-goal__cap">目标院校 / 专业</span>
+                          <b>{data.goal.university || '未设置院校'}</b>
+                          <em>{data.goal.major || '未填写专业 · 分数线只能按全校最低口径，去设置补全后按专业对齐'}</em>
+                        </div>
+                      </div>
+                      {goalSubjects.length ? (
+                        <div className="hub-task-mods" aria-label="备考学科快捷入口">
+                          {goalSubjects.slice(0, 6).map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              className="hub-task-mods__item"
+                              onClick={() => navigate(`/quiz?subject=${encodeURIComponent(s)}`)}
+                            >
+                              <b>{s}</b>
+                              <span>去刷题</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {goalScoreLines.length ? (
+                        <div className="hub-goal__lines">
+                          <span className="hub-goal__cap">
+                            近年复试线{lineScope === 'major' ? `（${data.goal.major || '目标专业'}·专业最低）` : lineScope === 'school' ? '（全校最低）' : ''}
+                          </span>
+                          <div className="hub-goal__bars">
+                            {goalScoreLines.slice(0, 5).map((l, i) => {
+                              const max = Math.max(...goalScoreLines.map((x) => x.totalLine || 0), 1)
+                              return (
+                                <div key={`${l.year}-${i}`} className="hub-goal__bar">
+                                  <b>{l.totalLine}</b>
+                                  <i style={{ height: `${Math.max(12, ((l.totalLine || 0) / max) * 74)}px` }} />
+                                  <span>{l.year}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="hub-hint-line">库里还没有这所院校的复试线，不补造数据。</p>
+                      )}
+                    </>
+                  ) : (
+                    <Empty
+                      icon={<School size={24} />}
+                      title="还没设置目标"
+                      text="在择校中心确定院校与专业，倒计时、今日推荐量与分数线会一起对齐。"
+                      action={<Button variant="tonal" onClick={() => navigate('/kaoyan')}>去择校</Button>}
+                    />
+                  )}
+                </>
+              ) : null}
+
+              {id === 'radar' ? (
+                <>
+                  <PanelHead
+                    title="院校雷达"
+                    titleId="hub-block-radar"
+                    sub={radar.school ? `只盯 ${radar.school} 的公告` : '只盯目标院校的公告'}
+                    icon={<Bell size={17} />}
+                    actions={<Link to="/kaoyan/notices" className="hub-link">全部公告 <ArrowRight size={14} /></Link>}
+                  />
+                  {!radarUniversity ? (
+                    <Empty
+                      icon={<Bell size={24} />}
+                      title="还没有目标院校"
+                      text="设置目标后，雷达只推送这所学校的简章 / 复试 / 录取公告。"
+                      action={<Button variant="tonal" onClick={() => navigate('/kaoyan')}>去择校</Button>}
+                    />
+                  ) : radar.status === 'loading' ? (
+                    <Skeleton height={120} />
+                  ) : radar.status === 'unmatched' ? (
+                    <p className="hub-hint-line">
+                      院校库里没匹配到「{radar.school}」，无法按校过滤公告 —— 不拿全网公告冒充本校公告，可到通知中心用关键词搜索。
+                    </p>
+                  ) : radar.status === 'error' ? (
+                    <p className="hub-hint-line">公告流暂时拉不到，不影响其它区块，下次刷新会自动重试。</p>
+                  ) : radar.items.length ? (
+                    <ul className="hub-radar">
+                      {radar.items.map((n, i) => {
+                        const inner = (
+                          <>
+                            <span className="hub-radar__type">{n.notice_type || '公告'}</span>
+                            <span className="hub-radar__main">
+                              <b>{n.title}</b>
+                              {/* date_source=unknown → 如实显示「日期未知」，不伪造发布时间 */}
+                              <small>{n.publish_date || '日期未知'} · {n.source || n.school_name || ''}</small>
+                            </span>
+                            {n.url
+                              ? <ExternalLink size={14} className="hub-radar__go" aria-hidden="true" />
+                              : <ChevronRight size={14} className="hub-radar__go" aria-hidden="true" />}
+                          </>
+                        )
+                        return n.url ? (
+                          <li key={n.id || i}>
+                            <a className="hub-radar__row" href={n.url} target="_blank" rel="noopener noreferrer" title="在新标签页打开院校原文">
+                              {inner}
+                            </a>
+                          </li>
+                        ) : (
+                          <li key={n.id || i}>
+                            <Link className="hub-radar__row" to="/kaoyan/notices">{inner}</Link>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="hub-hint-line">{radar.school} 暂无已收录的公告；可在管理端采集中心触发该校公告采集。</p>
+                  )}
+                </>
+              ) : null}
             </section>
           )
         })}
@@ -1127,6 +1326,51 @@ export default function Hub() {
             )
           })}
         </div>
+      </Dialog>
+
+      {/* 学习周报（W2 融合：原仪表盘的周报 Dialog 原样并入，数据仍是 insight/weekly-report） */}
+      <Dialog open={reportOpen} title="学习周报" sub="本周与上周的真实聚合" onClose={() => setReportOpen(false)} footer={<Button onClick={() => setReportOpen(false)}>关闭</Button>}>
+        {reportErr ? <Empty icon={<AlertTriangle size={22} />} title="周报加载失败" text={reportErr} /> : !report ? <Skeleton height={160} /> : (
+          <div className="v3-stack" style={{ gap: 16 }}>
+            <div className="v3-grid-3">
+              {[
+                { label: '答题', value: report.this_week?.answered ?? 0, unit: '道' },
+                { label: '正确率', value: report.this_week?.accuracy == null ? '—' : Math.round(report.this_week.accuracy * 100), unit: report.this_week?.accuracy == null ? '' : '%' },
+                { label: '学习时长', value: report.this_week?.duration ?? 0, unit: '分钟' },
+              ].map((x) => (
+                <div key={x.label} className="v3-well" style={{ padding: 14, borderRadius: 16 }}>
+                  <span className="v3-caption">{x.label}</span>
+                  <div className="v3-h2" style={{ marginTop: 4 }}>{x.value}<span className="v3-caption"> {x.unit}</span></div>
+                </div>
+              ))}
+            </div>
+            <div className="v3-row v3-wrap" style={{ gap: 12 }}>
+              <Badge tone={report.answered_delta == null ? 'outline' : report.answered_delta >= 0 ? 'success' : 'warning'}>
+                环比 {report.answered_delta == null ? '无可比数据' : `${report.answered_delta > 0 ? '+' : ''}${report.answered_delta}%`}
+              </Badge>
+              <span className="v3-caption">
+                上周 {report.last_week?.answered ?? '—'} 题 · 正确率 {report.last_week?.accuracy == null ? '—' : `${Math.round(report.last_week.accuracy * 100)}%`}
+              </span>
+            </div>
+            <div>
+              <div className="v3-caption" style={{ marginBottom: 8 }}>每日答题</div>
+              <div className="v3-row" style={{ gap: 8, alignItems: 'flex-end', height: 90 }}>
+                {(Array.isArray(report.daily) ? report.daily : []).map((d) => {
+                  const daysArr = Array.isArray(report.daily) ? report.daily : []
+                  const max = Math.max(...daysArr.map((x) => x.answered || 0), 1)
+                  return (
+                    <div key={d.date} className="hub-goal__bar" style={{ flex: 1 }}>
+                      <b>{d.answered || 0}</b>
+                      <i style={{ height: `${Math.max(6, ((d.answered || 0) / max) * 56)}px` }} />
+                      <span>{d.date?.slice(5)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            {report.summary ? <p className="v3-body">{report.summary}</p> : null}
+          </div>
+        )}
       </Dialog>
     </div>
   )

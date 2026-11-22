@@ -549,8 +549,14 @@ export const tasksApi = {
   create: (body) => request('/tasks', { method: 'POST', body }),
   update: (id, body) => request(`/tasks/${id}`, { method: 'PUT', body }),
   remove: (id) => request(`/tasks/${id}`, { method: 'DELETE' }),
-  complete: (id) => request(`/tasks/${id}/complete`, { method: 'POST' }),
-  uncomplete: (id) => request(`/tasks/${id}/uncomplete`, { method: 'POST' }),
+  // W3：complete/uncomplete 可带 {date}（循环任务按日打卡）；不带 = 旧口径整任务完成/撤销
+  complete: (id, body) => request(`/tasks/${id}/complete`, { method: 'POST', body }),
+  uncomplete: (id, body) => request(`/tasks/${id}/uncomplete`, { method: 'POST', body }),
+  progress: (id, body) => request(`/tasks/${id}/progress`, { method: 'POST', body }),
+  calendar: (params) => request('/tasks/calendar', { params }),
+  modules: () => request('/tasks/modules'),
+  addModule: (body) => request('/tasks/modules', { method: 'POST', body }),
+  removeModule: (id) => request(`/tasks/modules/${id}`, { method: 'DELETE' }),
   reviewSchedule: () => request('/tasks/review-schedule'),
   aiGenerate: (body) => request('/tasks/ai-generate', { method: 'POST', body })
 }

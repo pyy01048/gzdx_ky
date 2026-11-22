@@ -11,14 +11,15 @@ import AppShellV3, { AdminLayout } from './v3/shell'
 import { ADMIN_LEGACY_REDIRECTS, KAOYAN_TABS } from './nav/navConfig'
 
 /* 路由级代码分割：按页面懒加载，减小首屏主包体积 */
-const Dashboard = lazy(() => import('./v3/pages/Dashboard'))
-// 今日聚合中枢：跨模块动态聚合 + 行动航线（数据层见 api/hub.js）
+/* W2 融合：今日中枢（/hub）与仪表盘总览（/）合并为单页首页 —— Hub 是唯一落点；
+   Dashboard.jsx 不再被应用挂载（保留文件仅为既有单测的组件级回归），路由与导航均已归一。 */
 const Hub = lazy(() => import('./v3/pages/Hub'))
 const Onboarding = lazy(() => import('./v3/pages/Onboarding'))
 const Tasks = lazy(() => import('./v3/pages/Tasks'))
 const KbMap = lazy(() => import('./v3/pages/KbMap'))
 const KnowledgeArticle = lazy(() => import('./v3/pages/KnowledgeArticle'))
-const Library = lazy(() => import('./v3/pages/Library'))
+/* W2 融合：学习文库 + 文档知识库合并为「知识库」统一入口（两套后端能力不动，只并 UI） */
+const KnowledgeHome = lazy(() => import('./v3/pages/KnowledgeHome'))
 const Notebook = lazy(() => import('./v3/pages/Notebook'))
 const Assistant = lazy(() => import('./v3/pages/Assistant'))
 const Pan = lazy(() => import('./v3/pages/Pan'))
@@ -31,7 +32,6 @@ const QuizBank = lazy(() => import('./v3/pages/QuizBank'))
 const LearnerProfile = lazy(() => import('./v3/pages/LearnerProfile'))
 const SubjectManager = lazy(() => import('./v3/pages/SubjectManager'))
 const UserAdmin = lazy(() => import('./v3/pages/UserAdmin'))
-const Documents = lazy(() => import('./v3/pages/Documents'))
 const KnowledgeBaseImport = lazy(() => import('./v3/pages/KnowledgeBaseImport'))
 const ModelTraining = lazy(() => import('./v3/pages/ModelTraining'))
 const Planner = lazy(() => import('./v3/pages/Planner'))
@@ -138,12 +138,13 @@ function AdminShell() {
   )
 }
 
-/* 访客落地：未登录访问 / 直达「院校库」（信息量最大的公开页）；登录用户照常看仪表盘 */
+/* 访客落地：未登录访问 / 直达「院校库」（信息量最大的公开页）；
+   登录用户直接进「今日中枢」—— W2 融合后它就是唯一首页（原仪表盘总览并入）。 */
 function GuestHome() {
   const { user, status } = useAuth()
   if (status === 'loading') return <PageFallback />
   if (!user) return <Navigate to="/kaoyan" replace />
-  return <Dashboard />
+  return <Hub />
 }
 
 export default function App() {
@@ -173,8 +174,9 @@ export default function App() {
             <Route path="/" element={<GuestHome />} />
             <Route path="/textbooks" element={<Textbooks />} />
             {/* 2026-11-20 访客扩容：学习文库 / 复试代码题库只读开放（后端白名单同步）。
-                文库只依赖 documents 列表/科目/正文三个共享读口；代码题库 GET 全为共享数据。 */}
-            <Route path="/library" element={<Library />} />
+                文库只依赖 documents 列表/科目/正文三个共享读口；代码题库 GET 全为共享数据。
+                W2 融合：/library 挂「知识库」统一入口（学习文库 + 文档知识库两视图）。 */}
+            <Route path="/library" element={<KnowledgeHome />} />
             <Route path="/codebank" element={<CodeBank />} />
             <Route path="/knowledge" element={<KbMap />} />
             <Route path="/knowledge/:id" element={<KnowledgeArticle />} />
@@ -242,7 +244,9 @@ export default function App() {
           {/* 旧入口兼容：/errors 与 /cuoti 早期用过，重定向到新页，避免历史链接失效 */}
           <Route path="/errors" element={<Navigate to="/error-review" replace />} />
           <Route path="/cuoti" element={<Navigate to="/error-review" replace />} />
-          <Route path="/documents" element={<Documents />} />
+          {/* W2 融合：文档知识库并入「知识库」统一入口（/library?view=documents），
+              旧路径保留重定向，历史书签不 404。 */}
+          <Route path="/documents" element={<Navigate to="/library?view=documents" replace />} />
           <Route path="/notebook" element={<Notebook />} />
           <Route path="/planner" element={<Planner />} />
           <Route path="/assistant" element={<Assistant />} />

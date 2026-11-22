@@ -822,9 +822,11 @@ describe('Planner 页面渲染 smoke', () => {
 // 四、健壮性守卫：后端完全不可用时页面仍能出骨架
 // ========================================================================= //
 describe('页面健壮性总守卫', () => {
-  /* App.jsx 里全部 37 个路由页面，逐个测两种最恶劣的后端形态。
+  /* App.jsx 里全部懒加载页面，逐个测两种最恶劣的后端形态。
      覆盖面就是这一节的价值：新加页面必须进这张表，否则它从未被离线场景测过
-     ——CodeBank 的 null 白屏（subjects.length 直接崩）就是漏测的真实代价。 */
+     ——CodeBank 的 null 白屏（subjects.length 直接崩）就是漏测的真实代价。
+     W2 融合：Dashboard 组件保留（离线覆盖与组件级单测继续跑），应用侧新增
+     KnowledgeHome（知识库统一入口：学习文库 + 文档知识库两视图）。 */
   const pages = [
     ['Dashboard', '../v3/pages/Dashboard', '/'],
     /* 今日中枢只消费聚合端点；核心接口全挂时显示可重试错误页，不白屏 */
@@ -835,6 +837,8 @@ describe('页面健壮性总守卫', () => {
     ['KbMap', '../v3/pages/KbMap', '/knowledge'],
     ['KnowledgeArticle', '../v3/pages/KnowledgeArticle', '/knowledge/1'],
     ['Library', '../v3/pages/Library', '/library'],
+    /* W2 融合：/library 的实际挂载页（文库 + 文档双视图容器） */
+    ['KnowledgeHome', '../v3/pages/KnowledgeHome', '/library?view=documents'],
     ['Notebook', '../v3/pages/Notebook', '/notebook'],
     ['Assistant', '../v3/pages/Assistant', '/assistant'],
     ['Pan', '../v3/pages/Pan', '/pan'],
@@ -884,6 +888,7 @@ describe('页面健壮性总守卫', () => {
     ['ForceChangePassword', '../v3/pages/ForceChangePassword', '/force-change-password', { me: { id: 1, username: 'u', role: 'user', must_change_password: true } }],
     ['Forbidden', '../v3/pages/Forbidden', '/403'],
     ['GlassLab', '../v3/pages/GlassLab', '/glass'],
+    ['Tools', '../v3/pages/Tools', '/tools'],
     ['Onboarding', '../v3/pages/Onboarding', '/onboarding'],
   ]
   const routes = new Set(pages.map(([, , r]) => r))

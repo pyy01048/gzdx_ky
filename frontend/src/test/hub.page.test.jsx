@@ -200,13 +200,14 @@ describe('Hub 今日聚合中枢', () => {
   it('聚合布局可隐藏区块，并写入按账号隔离的 localStorage', async () => {
     renderHub()
     await screen.findByText('今日航线')
-    expect(document.querySelectorAll('.hub-block')).toHaveLength(6)
+    /* W2 融合：仪表盘并入后首页默认 8 块（新增 目标与分数线 / 院校雷达） */
+    expect(document.querySelectorAll('.hub-block')).toHaveLength(8)
 
     fireEvent.click(screen.getByRole('button', { name: /聚合布局/ }))
     const sw = await screen.findByRole('switch', { name: '显示14 天趋势' })
     fireEvent.click(sw)
 
-    await waitFor(() => expect(document.querySelectorAll('.hub-block')).toHaveLength(5))
+    await waitFor(() => expect(document.querySelectorAll('.hub-block')).toHaveLength(7))
     /* 弹窗里仍保留该区块的名字（用于重新打开），所以只在主栅格里断言不存在 */
     const blockTitles = [...document.querySelectorAll('.hub-block .hub-panel__title')].map((el) => el.textContent)
     expect(blockTitles.some((t) => t.includes('14 天趋势'))).toBe(false)

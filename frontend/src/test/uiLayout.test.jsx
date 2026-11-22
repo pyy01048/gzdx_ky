@@ -123,15 +123,17 @@ describe('useUiLayout 偏好读写', () => {
 })
 
 describe('UiCustomizeV3 设置页控件', () => {
-  it('渲染三类可配置列表的真实条目名', () => {
+  it('渲染可配置列表的真实条目名', () => {
     render(<UiCustomizeV3 />)
     expect(screen.getByText('顶部导航分组')).toBeInTheDocument()
     expect(screen.getByText('导航「其他」入口')).toBeInTheDocument()
-    expect(screen.getByText('仪表盘区块')).toBeInTheDocument()
     expect(screen.getByText('今日')).toBeInTheDocument()
     expect(screen.getByText('择校')).toBeInTheDocument()
-    expect(screen.getByText('顶部倒计时横幅')).toBeInTheDocument()
     expect(screen.getByText('AI 助手')).toBeInTheDocument()
+    /* W2 融合：仪表盘与今日中枢合并为单页首页，「仪表盘区块」显隐组已从设置移除
+       （首页区块的显隐/排序改在首页「聚合布局」面板里调）。 */
+    expect(screen.queryByText('仪表盘区块')).toBeNull()
+    expect(screen.queryByText('顶部倒计时横幅')).toBeNull()
   })
 
   it('关闭导航分组开关 → 写入 navHidden', () => {

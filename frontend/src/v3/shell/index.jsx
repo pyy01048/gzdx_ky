@@ -121,7 +121,10 @@ function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
     return [...modules, ...extras, ...admin]
   }, [layout, isGuest, isAdmin])
 
-  const isActive = (to) => (to === '/' ? location.pathname === '/' : location.pathname === to || location.pathname.startsWith(`${to}/`))
+  /* W2 融合：/ 与 /hub 是同一个首页（今日中枢），任一命中都高亮「今日中枢」入口 */
+  const isActive = (to) => (to === '/'
+    ? location.pathname === '/' || location.pathname === '/hub'
+    : location.pathname === to || location.pathname.startsWith(`${to}/`))
 
   /* P1-1：分组可折叠，默认只展开当前所在分组；分组标题始终渲染（可点击展开）。
      收起为 76px 导轨时不折叠分组 —— 图标 + 短标签必须全部可见（R1）。

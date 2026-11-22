@@ -5,6 +5,9 @@
  *  B. 外部专业工具目录（4 组，按工科备考动线）：外链一律新标签页 + rel="noopener noreferrer"。
  *  C. 站内工具入口卡：直达既有真实路由（App.jsx 已核对）；未建成的标「即将上线」禁用态。
  *  D. 使用边界诚实声明。
+ *  W2 归并：页首新增「复试工具箱」分区 —— CodeBank（代码上机，原「练习」导航入口）
+ *  与进制计算器、规划中的函数图像 / 电路简单绘制合成一个复试准备入口；
+ *  未实现项保持禁用态「即将上线」。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -566,18 +569,26 @@ function ExternalToolCard({ tool }) {
 /* C · 站内工具入口（路由均已对照 App.jsx 核实）                          */
 /* ------------------------------------------------------------------ */
 const INTERNAL_TOOLS = [
-  { to: '/library', label: '学习文库', desc: 'IMA 资料 · 初试/复试文档', icon: BookOpen },
+  { to: '/library', label: '知识库', desc: '学习文库 · 文档知识库统一入口', icon: BookOpen },
   { to: '/knowledge', label: '知识图谱', desc: '科目→章节→知识点地图', icon: LayoutGrid },
   { to: '/notebook', label: '错题本', desc: '错题录入 · 间隔复习', icon: Check },
   { to: '/error-review', label: '错题复盘', desc: '错因分布 · AI 归因', icon: RotateCcw },
-  { to: '/codebank', label: '复试代码题库', desc: 'LeetCode 式上机题', icon: Hash },
   { to: '/quiz', label: '刷题中心', desc: '题库与章节强化', icon: ArrowRight },
 ]
 const PLANNED_TOOLS = [
-  { label: '函数图像生成器', desc: '考研高数函数图像速绘与变换', icon: Image },
   { label: '公式验算器', desc: '关键公式在线代入核对结果', icon: Check },
   { label: 'LaTeX 工作台', desc: '公式排版与实时预览', icon: Type },
   { label: '框图编辑器', desc: '控制系统框图/SFV 站内绘制', icon: LayoutGrid },
+]
+
+/* W2 归并：复试工具箱 —— CodeBank（代码上机）自「练习」导航移入，
+   与站内进制计算器、规划中的函数图像/电路绘制合成一个复试准备入口。
+   未实现的项保持「即将上线」禁用态，不做假功能。 */
+const FUSHI_TOOLS = [
+  { key: 'codebank', label: '代码上机题库', desc: 'LeetCode 式复试 OJ · 提交即判', to: '/codebank', icon: Hash, ready: true },
+  { key: 'radix', label: '进制计算器', desc: '任意进制互转 · 原/反/补码 —— 已内置在本页上方', href: '#tools-calc', icon: Type, ready: true },
+  { key: 'funcplot', label: '函数图像生成器', desc: '考研高数函数图像速绘与变换', icon: Image, ready: false },
+  { key: 'circuit', label: '电路简单绘制', desc: '基础电路图与连线练习', icon: LayoutGrid, ready: false },
 ]
 
 /* ------------------------------------------------------------------ */
@@ -587,15 +598,63 @@ export default function Tools() {
   return (
     <div className="v3-stack v3-tools">
       <PageHeader
-        eyebrow="TOOLS · 学习工具箱"
-        title="学习工具箱"
-        sub="站内进制计算器 · 工科备考外部工具目录 · 常用站内功能直达"
+        eyebrow="TOOLS · 工具箱"
+        title="学习工具箱 · 复试工具箱"
+        sub="复试工具箱（代码上机 / 进制 / 函数图像 / 电路）· 工科备考外部工具目录 · 常用站内功能直达"
         actions={(
           <Link className="v3-btn v3-btn--tonal" to="/library">
-            去学习文库 <ArrowRight size={15} />
+            去知识库 <ArrowRight size={15} />
           </Link>
         )}
       />
+
+      <section className="v3-tools-section" aria-labelledby="tools-fushi">
+        <div className="v3-tools-section__head" id="tools-fushi">
+          <div>
+            <h2>复试工具箱</h2>
+            <p>
+              复试准备一站进入：代码上机题库与进制计算器已可用；函数图像、电路简单绘制还在规划中，
+              上线前保持「即将上线」禁用态，不提供假功能。
+            </p>
+          </div>
+        </div>
+        <div className="v3-tools-int-grid">
+          {FUSHI_TOOLS.map((t) => {
+            const Icon = t.icon
+            const inner = (
+              <>
+                <span className="v3-tools-int__icon"><Icon size={18} /></span>
+                <span className="v3-tools-int__copy">
+                  <strong>{t.label}</strong>
+                  <em>{t.desc}</em>
+                </span>
+              </>
+            )
+            if (!t.ready) {
+              return (
+                <div key={t.key} className="v3-tools-int v3-tools-int--soon" aria-disabled="true">
+                  {inner}
+                  <Badge tone="outline">即将上线</Badge>
+                </div>
+              )
+            }
+            if (t.href) {
+              return (
+                <a key={t.key} className="v3-tools-int" href={t.href}>
+                  {inner}
+                  <ArrowRight size={16} className="v3-tools-int__go" />
+                </a>
+              )
+            }
+            return (
+              <Link key={t.to} to={t.to} className="v3-tools-int">
+                {inner}
+                <ArrowRight size={16} className="v3-tools-int__go" />
+              </Link>
+            )
+          })}
+        </div>
+      </section>
 
       <section className="v3-tools-section" aria-labelledby="tools-calc">
         <div className="v3-tools-section__head" id="tools-calc">
