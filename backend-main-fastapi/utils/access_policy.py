@@ -107,6 +107,12 @@ ADMIN_PREFIXES: Tuple[str, ...] = (
     "/api/kb/",
     "/api/performance",
     "/api/netdisk/platform-config",
+    # 2026-11-23 W6 金币激励：`/api/gamification` 其余路径是个人域（默认拒绝=要登录，
+    # 读写一律按 owner_id 行级隔离）；只有 admin 子树改的是**全体用户**的发币口径
+    # （规则单价 / 全局参数 / 商品上下架 / 人工调整账目），故在此再压一层管理员闸。
+    # routers/study/gamification.py 内部已逐个 Depends(require_admin)，这里是
+    # 纵深防御：漏写一个 Depends 不至于让普通用户改全站数值。
+    "/api/gamification/admin",
 )
 
 # 共享数据：登录可读，写需管理员

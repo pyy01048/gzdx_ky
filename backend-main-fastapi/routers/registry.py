@@ -25,6 +25,7 @@ from fastapi import APIRouter
 DOMAIN_ROUTERS: dict[str, List[Tuple[str, List[str]]]] = {
     "auth": [
         ("auth", ["router", "admin_router"]),
+        ("profile", ["router"]),
     ],
     "study": [
         ("dashboard", ["router"]),
@@ -51,6 +52,7 @@ DOMAIN_ROUTERS: dict[str, List[Tuple[str, List[str]]]] = {
         ("stats_export", ["router", "errors_router", "quiz_export_router"]),
         ("qa_tools", ["router"]),
         ("analysis", ["router"]),
+        ("gamification", ["router"]),
     ],
     "knowledge": [
         ("documents", ["router"]),
