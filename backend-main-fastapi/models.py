@@ -258,8 +258,65 @@ class Task(Base):
     next_review = Column(DateTime, nullable=True, comment="艾宾浩斯下次复习时间")
     review_count = Column(Integer, default=0, comment="已复习次数")
     completed_at = Column(DateTime, nullable=True, comment="完成时间")
+    # —— W3 任务体验重做（2026-11）：多科目 / 子科目模块 / 起止日期 / 循环 / 提醒 / 进度条 ——
+    # JSON 列一律用通用 JSON 类型（Goal.subject_codes 同款）：PG 分片 126 建的是 JSONB，
+    # 通用类型在两个方言下都能读写；SQLite（测试 create_all）同样成立。
+    subjects = Column(JSON, nullable=True, comment="多选科目 JSON 数组；subject 保留为兼容列=首元素")
+    modules = Column(JSON, nullable=True, comment="子科目模块标签 JSON 字符串数组（如 ['真题','单词']）")
+    start_date = Column(Date, nullable=True, comment="开始日期（循环锚点）")
+    end_date = Column(Date, nullable=True, comment="结束日期（循环截止；NULL=不限）")
+    recurrence = Column(
+        JSON, nullable=True, comment="循环规则 {freq,weekdays,interval,dates,until}，口径见 services/task_recurrence.py"
+    )
+    remind = Column(JSON, nullable=True, comment="提醒 {type:point|range,time,start,end}（仅存储展示，未接系统推送）")
+    show_progress = Column(Boolean, default=False, server_default=text("0"), comment="是否展示进度条")
+    progress_total = Column(Integer, nullable=True, comment="进度条分母（目标量，如 100 个单词）")
+    progress_done = Column(Integer, default=0, server_default=text("0"), comment="进度条分子（完成量）")
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class TaskCheckIn(Base):
+    """W3 循环任务的按日打卡记录：一任务一天一行。
+
+    循环任务（如「每天·英语·单词」）没有「整个任务已完成」的语义——
+    完成状态只能落在具体某一天上。非循环任务沿用 tasks.status=done 旧口径，
+    本表只在带 date 的打卡（或循环任务打卡）时写入，老数据零迁移。
+    """
+
+    __tablename__ = "task_checkins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
+    task_id = Column(
+        BigInteger, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属任务"
+    )
+    checkin_date = Column(Date, nullable=False, index=True, comment="打卡日期（本地日历日）")
+    completed_at = Column(DateTime, nullable=True, comment="打卡时刻（naive UTC）")
+
+    __table_args__ = (UniqueConstraint("task_id", "checkin_date", name="uq_task_checkins"),)
+
+
+class TaskModuleDict(Base):
+    """个人子科目模块字典（科目下自定义模块，如 英语→真题/单词/语法）。
+
+    「可增删」的最小落点：任务新建器里维护的就是这张表；
+    任务本身的 modules 数组是创建时选择的标签快照，字典删行不影响存量任务。
+    """
+
+    __tablename__ = "task_modules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True, comment="归属用户 ID（个人数据隔离）"
+    )
+    subject = Column(String(50), nullable=False, comment="所属科目")
+    name = Column(String(50), nullable=False, comment="模块名（真题/单词/语法…）")
+    created_at = Column(DateTime, default=_utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "subject", "name", name="uq_task_module_dict"),)
 
 
 # --------------------------------------------------------------------------- #

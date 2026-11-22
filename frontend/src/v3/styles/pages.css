@@ -1423,6 +1423,196 @@ button.v3-dash-link {
   color: var(--v3-text-3);
 }
 
+/* ---------- W3 任务体验重做：日期选择面板 / 多任务自适应 / 新建器 ---------- */
+.v3-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.v3-chip__kill {
+  margin-left: 6px;
+  opacity: 0.6;
+  font-weight: 700;
+  cursor: pointer;
+}
+.v3-chip__kill:hover {
+  opacity: 1;
+  color: var(--v3-danger);
+}
+.v3-datepicker-anchor {
+  position: relative;
+}
+.v3-datepicker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  width: 292px;
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--v3-surface);
+  border: 1px solid var(--v3-outline);
+  box-shadow: var(--v3-shadow-3);
+}
+.v3-datepicker__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.v3-datepicker__head b {
+  flex: 1;
+  text-align: center;
+  font-size: var(--v3-fs-13);
+}
+.v3-datepicker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.v3-datepicker__grid--head span {
+  text-align: center;
+  font-size: 10px;
+  color: var(--v3-text-3);
+  padding: 4px 0;
+}
+.v3-datepicker__cell {
+  position: relative;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-2);
+  cursor: pointer;
+  transition: background var(--v3-dur-2);
+}
+.v3-datepicker__cell:hover {
+  background: var(--v3-surface-1);
+}
+.v3-datepicker__cell.is-other {
+  opacity: 0.38;
+}
+.v3-datepicker__cell.is-today {
+  color: var(--v3-primary);
+  font-weight: 700;
+}
+.v3-datepicker__cell.is-active {
+  background: var(--v3-primary-container);
+  color: var(--v3-on-primary-container);
+  font-weight: 700;
+}
+.v3-datepicker__badge {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-style: normal;
+  font-size: 8px;
+  line-height: 1;
+  background: var(--v3-primary);
+  color: #fff;
+  border-radius: 6px;
+  padding: 1px 3px;
+}
+.v3-datepicker__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  border-top: 1px solid var(--v3-outline);
+  padding-top: 6px;
+}
+.v3-task-row__emoji {
+  margin-right: 6px;
+}
+.v3-task-row__title {
+  overflow-wrap: anywhere;
+}
+.v3-task-row__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  min-width: 0;
+}
+.v3-task-row__tags .v3-badge {
+  font-size: 10px;
+  padding: 1px 8px;
+}
+.v3-task-row__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  flex: 1 1 240px;
+  min-width: 200px;
+  max-width: 380px;
+}
+.v3-step-btn {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 8px;
+  border: 1px solid var(--v3-outline-strong, var(--v3-outline));
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--v3-text-2);
+  cursor: pointer;
+}
+.v3-step-btn:hover {
+  border-color: var(--v3-primary);
+  color: var(--v3-primary);
+}
+.v3-week__head--link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.v3-week__count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--v3-text-3);
+}
+.v3-week__body {
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.v3-week__more {
+  border: 0;
+  background: transparent;
+  color: var(--v3-primary);
+  font: inherit;
+  font-size: var(--v3-fs-11, 11px);
+  cursor: pointer;
+  text-align: left;
+  padding: 3px 6px;
+  border-radius: 8px;
+}
+.v3-week__more:hover {
+  background: var(--v3-primary-container);
+}
+.v3-cal__cell.is-active {
+  outline: 2px solid var(--v3-primary);
+  outline-offset: -2px;
+}
+.v3-cal__more {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--v3-text-3);
+  align-self: center;
+}
+
 @media (max-width: 920px) {
   .v3-week {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -26,7 +26,19 @@ function toTask(t) {
     title: t.title,
     // 科目为空就留空：补成 'major' 会让页面显示「专业课」，等于凭空给用户加了一个科目。
     subject: t.subject || '',
+    // W3：多选科目 / 子科目模块 / 起止 / 循环 / 提醒 / 进度条 / 按日打卡（后端为权威）
+    subjects: Array.isArray(t.subjects) && t.subjects.length ? t.subjects : (t.subject ? [t.subject] : []),
+    modules: t.modules || [],
     due: (t.due_date || t.due || todayStr()).slice(0, 10),
+    start: t.start_date ? String(t.start_date).slice(0, 10) : null,
+    end: t.end_date ? String(t.end_date).slice(0, 10) : null,
+    recurrence: t.recurrence || { freq: 'none' },
+    remind: t.remind || null,
+    showProgress: !!t.show_progress,
+    progressTotal: t.progress_total ?? null,
+    progressDone: t.progress_done || 0,
+    doneDates: t.checkin_dates || [],
+    isRecurring: !!t.is_recurring,
     done: t.status === 'done' || t.status === 'completed',
     ai: !!t.is_ai,
     reviewCount: t.review_count || 0
