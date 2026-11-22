@@ -1,0 +1,542 @@
+/* ============================================================
+   gamification-v3.css —— 金币激励 / 个人资料 / 激励运营（W6）
+   ------------------------------------------------------------
+   只使用 tokens.css 的既有变量（--v3-*），不新造色值，保证
+   深浅色与全站一致。文件内还包含「偏好落地」的三条全局规则
+   （reduce_motion / font_scale / compact_mode）：这三条由
+   /api/profile 的 prefs 驱动，写在 <html> 的 data-* 上，
+   由 src/v3/pages/settingsAdvanced.jsx 的 useProfilePrefs() 挂载。
+   ============================================================ */
+
+/* ---------- 偏好落地（真生效，不是存了没人读的开关） ---------- */
+html[data-reduce-motion='1'] *,
+html[data-reduce-motion='1'] *::before,
+html[data-reduce-motion='1'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+html[data-font-scale='sm'] {
+  font-size: 14px;
+}
+html[data-font-scale='lg'] {
+  font-size: 17px;
+}
+
+/* ---------- 通用 ---------- */
+.v3-gami-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.v3-gami-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.v3-gami-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.v3-gami-muted {
+  color: var(--v3-text-3);
+  font-size: 12px;
+}
+.v3-gami-num {
+  font-variant-numeric: tabular-nums;
+}
+.v3-gami-sectionhead {
+  margin-bottom: 4px;
+}
+
+/* ---------- 金币总览卡 ---------- */
+.v3-coin-hero {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1.4fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 720px) {
+  .v3-coin-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+.v3-coin-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: var(--v3-r-md);
+  background: var(--v3-gemini-gradient-soft);
+  border: 1px solid var(--v3-outline);
+}
+
+.v3-coin-balance__value {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  color: var(--v3-text);
+}
+
+.v3-coin-balance__unit {
+  font-size: 13px;
+  color: var(--v3-text-3);
+}
+
+.v3-coin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.v3-coin-stat {
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-sm);
+  padding: 10px 12px;
+  background: var(--v3-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.v3-coin-stat__label {
+  font-size: 12px;
+  color: var(--v3-text-3);
+}
+.v3-coin-stat__value {
+  font-size: 18px;
+  font-weight: 650;
+}
+.v3-coin-stat__hint {
+  font-size: 11px;
+  color: var(--v3-text-3);
+}
+
+/* ---------- 签到 ---------- */
+/* 7 行 × N 列（每列一周）：行序由「周起始日」偏好决定，
+   settingsAdvanced.jsx 在首日前垫 .v3-checkin-cell--pad 对齐 */
+.v3-checkin-strip {
+  display: grid;
+  grid-template-rows: repeat(7, minmax(34px, auto));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(48px, 1fr);
+  gap: 5px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+}
+
+.v3-checkin-cell {
+  border-radius: var(--v3-r-xs);
+  border: 1px solid var(--v3-outline);
+  background: var(--v3-surface-1);
+  min-height: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 10px;
+  color: var(--v3-text-3);
+  cursor: default;
+  padding: 3px;
+}
+
+.v3-checkin-cell--pad {
+  border: none;
+  background: transparent;
+  pointer-events: none;
+}
+
+.v3-checkin-cell__day {
+  font-weight: 600;
+  color: var(--v3-text-2);
+}
+.v3-checkin-cell--effective {
+  background: var(--v3-success-container);
+  border-color: transparent;
+}
+.v3-checkin-cell--effective .v3-checkin-cell__day {
+  color: var(--v3-on-success-container);
+}
+.v3-checkin-cell--manual {
+  background: var(--v3-primary-container);
+  border-color: transparent;
+}
+.v3-checkin-cell--manual .v3-checkin-cell__day {
+  color: var(--v3-on-primary-container);
+}
+.v3-checkin-cell--makeup {
+  background: var(--v3-secondary-container);
+  border-color: transparent;
+}
+.v3-checkin-cell--today {
+  outline: 2px solid var(--v3-outline-focus);
+  outline-offset: 1px;
+}
+.v3-checkin-cell--missed {
+  background: var(--v3-surface-2);
+}
+
+.v3-checkin-cell--button {
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.v3-checkin-cell--button:hover {
+  transform: translateY(-1px);
+}
+.v3-checkin-cell--button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ---------- 流水 ---------- */
+.v3-coin-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.v3-coin-ledger__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--v3-outline);
+}
+
+.v3-coin-ledger__row:last-child {
+  border-bottom: none;
+}
+.v3-coin-ledger__title {
+  font-size: 13px;
+  color: var(--v3-text);
+}
+.v3-coin-ledger__meta {
+  font-size: 11px;
+  color: var(--v3-text-3);
+}
+.v3-coin-ledger__coins {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.v3-coin-ledger__coins--plus {
+  color: var(--v3-success);
+}
+.v3-coin-ledger__coins--minus {
+  color: var(--v3-danger);
+}
+.v3-coin-ledger__coins--zero {
+  color: var(--v3-text-3);
+}
+
+/* ---------- 商店 ---------- */
+.v3-coin-shop {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.v3-coin-item {
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-md);
+  padding: 14px;
+  background: var(--v3-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.v3-coin-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.v3-coin-item__name {
+  font-size: 14px;
+  font-weight: 650;
+}
+.v3-coin-item__desc {
+  font-size: 12px;
+  color: var(--v3-text-3);
+  line-height: 1.5;
+}
+.v3-coin-item__cost {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--v3-action);
+}
+.v3-coin-item--owned {
+  background: var(--v3-surface-1);
+}
+
+/* ---------- 规则说明 ---------- */
+.v3-coin-rules {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.v3-coin-rules th,
+.v3-coin-rules td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--v3-outline);
+  text-align: left;
+}
+.v3-coin-rules th {
+  color: var(--v3-text-3);
+  font-weight: 600;
+  font-size: 12px;
+}
+.v3-coin-rules td {
+  color: var(--v3-text-2);
+}
+
+/* ---------- 个人资料 ---------- */
+.v3-profile-head {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.v3-profile-avatar {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 30px;
+  background: var(--v3-surface-2);
+  color: var(--v3-text);
+  overflow: hidden;
+  flex: none;
+}
+
+.v3-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.v3-profile-avatar--teal {
+  background: var(--v3-primary-container);
+  color: var(--v3-on-primary-container);
+}
+.v3-profile-avatar--indigo {
+  background: var(--v3-secondary-container);
+  color: var(--v3-on-secondary-container);
+}
+.v3-profile-avatar--amber {
+  background: var(--v3-warning-container);
+  color: var(--v3-on-warning-container);
+}
+.v3-profile-avatar--rose {
+  background: var(--v3-tertiary-container);
+  color: var(--v3-on-tertiary-container);
+}
+.v3-profile-avatar--emerald {
+  background: var(--v3-success-container);
+  color: var(--v3-on-success-container);
+}
+.v3-profile-avatar--slate {
+  background: var(--v3-surface-3);
+  color: var(--v3-text-2);
+}
+
+/* 头像框：只用渐变描边 + 外发光，不引入新色值 */
+.v3-coin-frame--flame {
+  box-shadow:
+    0 0 0 3px var(--v3-tertiary),
+    0 0 18px var(--v3-glow-pink);
+}
+.v3-coin-frame--scholar {
+  box-shadow:
+    0 0 0 3px var(--v3-primary),
+    0 0 18px var(--v3-glow-blue);
+}
+.v3-coin-frame--star {
+  box-shadow:
+    0 0 0 3px var(--v3-secondary),
+    0 0 18px var(--v3-glow-purple);
+}
+
+.v3-profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.v3-profile-meta__name {
+  font-size: 18px;
+  font-weight: 650;
+}
+.v3-profile-title {
+  font-size: 12px;
+  color: var(--v3-on-secondary-container);
+  background: var(--v3-secondary-container);
+  border-radius: 999px;
+  padding: 2px 10px;
+  width: fit-content;
+}
+
+.v3-avatar-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.v3-avatar-chip {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--v3-outline);
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  background: var(--v3-surface);
+  cursor: pointer;
+  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.v3-avatar-chip:hover {
+  border-color: var(--v3-outline-strong);
+}
+.v3-avatar-chip[aria-pressed='true'] {
+  border: 2px solid var(--v3-outline-focus);
+}
+
+.v3-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--v3-outline);
+}
+
+.v3-pref-row:last-child {
+  border-bottom: none;
+}
+.v3-pref-row__label {
+  font-size: 13px;
+  font-weight: 550;
+}
+.v3-pref-row__hint {
+  font-size: 11px;
+  color: var(--v3-text-3);
+  margin-top: 2px;
+}
+
+/* ---------- 管理台：激励运营 ---------- */
+.v3-ops-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.v3-ops-kpi {
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-sm);
+  padding: 12px;
+  background: var(--v3-surface);
+}
+
+.v3-ops-kpi__label {
+  font-size: 12px;
+  color: var(--v3-text-3);
+}
+.v3-ops-kpi__value {
+  font-size: 20px;
+  font-weight: 680;
+}
+
+.v3-ops-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 92px;
+  padding-top: 8px;
+}
+
+.v3-ops-trend__bar {
+  flex: 1 1 auto;
+  min-width: 8px;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--v3-gemini-gradient);
+  position: relative;
+}
+
+.v3-ops-trend__bar span {
+  position: absolute;
+  bottom: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--v3-text-3);
+  white-space: nowrap;
+}
+
+.v3-ops-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.v3-ops-table th,
+.v3-ops-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--v3-outline);
+  text-align: left;
+}
+.v3-ops-table th {
+  font-size: 12px;
+  color: var(--v3-text-3);
+  font-weight: 600;
+}
+.v3-ops-table input,
+.v3-ops-table select {
+  max-width: 110px;
+}
+.v3-ops-table__num {
+  width: 96px;
+}
+.v3-ops-scrolly {
+  overflow-x: auto;
+}
+
+.v3-ops-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+/* 紧凑模式：设置页与管理台的纵向留白收紧（偏好 compact_mode） */
+html[data-compact='1'] .v3-gami-stack {
+  gap: 10px;
+}
+html[data-compact='1'] .v3-coin-item {
+  padding: 10px;
+}
+html[data-compact='1'] .v3-coin-balance {
+  padding: 12px;
+}
+html[data-compact='1'] .v3-coin-balance__value {
+  font-size: 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v3-checkin-cell--button:hover {
+    transform: none;
+  }
+}

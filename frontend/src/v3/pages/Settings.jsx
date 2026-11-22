@@ -2,31 +2,79 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import useStore from '../../store/useStore'
 import { todayStr } from '../../utils/date'
-import {
-  adminUsersApi, aiApi, dashboardApi, goalsApi, systemApi, taxonomyApi,
-} from '../../api/client'
+import { adminUsersApi, aiApi, dashboardApi, goalsApi, systemApi, taxonomyApi } from '../../api/client'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { PRESETS, providerPreset } from '../../utils/api'
 import { useAuth } from '../../auth/AuthContext'
 import { getStatus as getPanStatus, getStoredPan, clearPan } from '../../utils/pan'
+import { DASH_SECTIONS, moveInOrder, resetUiLayout, toggleHidden, useUiLayout } from '../../hooks/useUiLayout'
 import {
-  DASH_SECTIONS, moveInOrder, resetUiLayout, toggleHidden, useUiLayout,
-} from '../../hooks/useUiLayout'
-import {
-  Alert, AnimatedNumber, Avatar, Badge, Button, Card, CardHead, Chip, Dialog,
-  Empty, Field, IconButton, Input, Progress, Segmented, Select, Skeleton, Switch,
-  Textarea, Tile, toast, toastErr, toastOk, toastWarn, useConfirm,
+  Alert,
+  AnimatedNumber,
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardHead,
+  Chip,
+  Dialog,
+  Empty,
+  Field,
+  IconButton,
+  Input,
+  Segmented,
+  Select,
+  Skeleton,
+  Switch,
+  Tile,
+  toast,
+  toastErr,
+  toastOk,
+  toastWarn,
+  useConfirm,
 } from '../ui'
 import {
-  Book, Brain, Calendar, CheckCircle, ChevronDown, ChevronUp, Clock, Cloud,
-  Compass, Cpu, Database, Download, ExternalLink, FileText, HardDrive, KeyRound,
-  Keyboard, Lock, LogOut, Moon, Plus, RefreshCw, Rocket, School, Search, Server,
-  Shield, SlidersHorizontal, Sparkles, Sun, Target, Trash, Upload, User, Wand,
+  Book,
+  Brain,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Cloud,
+  Compass,
+  Cpu,
+  Database,
+  Download,
+  FileText,
+  HardDrive,
+  KeyRound,
+  Keyboard,
+  Lock,
+  LogOut,
+  Moon,
+  Plus,
+  RefreshCw,
+  Rocket,
+  Search,
+  Server,
+  Shield,
+  SlidersHorizontal,
+  Sparkles,
+  Sun,
+  Target,
+  Trash,
+  Upload,
+  User,
+  Wand,
 } from '../icons'
+import { useProfile } from '../../hooks/useProfilePrefs'
+import { CoinStrip, CoinsPanel, ProfilePanel } from './settingsAdvanced'
 import '../styles/settings-v3.css'
 
 const SETTINGS_TABS = [
+  { id: 'profile', label: '个人资料', icon: <User size={15} /> },
   { id: 'overview', label: '目标与概览', icon: <Target size={15} /> },
+  { id: 'coins', label: '金币激励', icon: <Sparkles size={15} /> },
   { id: 'ai', label: 'AI 与模型', icon: <Cpu size={15} /> },
   { id: 'appearance', label: '外观与数据', icon: <Sun size={15} /> },
   { id: 'account', label: '账号与安全', icon: <Shield size={15} /> },
@@ -42,8 +90,15 @@ const SHORTCUTS = [
 ]
 
 const IRRELEVANT_SUBJECTS = [
-  '管理类联考综合', '经济类联考综合', '法律硕士专业基础', '教育学专业基础',
-  '心理学专业基础', '西医综合', '中医综合', '其他', '网络补充',
+  '管理类联考综合',
+  '经济类联考综合',
+  '法律硕士专业基础',
+  '教育学专业基础',
+  '心理学专业基础',
+  '西医综合',
+  '中医综合',
+  '其他',
+  '网络补充',
 ]
 
 const ROLE_LABEL = { admin: '管理员', user: '普通用户' }
@@ -75,7 +130,11 @@ export default function Settings() {
   const words = useStore((s) => s.words)
   const cards = useStore((s) => s.cards)
   const { isAdmin } = useAuth()
-  const allowTab = (id) => VALID_TABS.includes(id) && (isAdmin || id !== 'ai')
+  const allowTab = useCallback((id) => VALID_TABS.includes(id) && (isAdmin || id !== 'ai'), [isAdmin])
+
+  /* 个人资料与服务端偏好（W6）：一次拉取，<html data-*> 由 hook 负责挂载 */
+  const profileState = useProfile()
+  const prefs = profileState.data?.profile?.prefs || {}
 
   const [form, setForm] = useState({ ...settings, examDate: settings.examDate || '' })
   const [showReset, setShowReset] = useState(false)
@@ -91,14 +150,16 @@ export default function Settings() {
     const t = searchParams.get('tab')
     if (t && t !== tab && allowTab(t)) setTab(t)
     if (!isAdmin && tab === 'ai') setTab('overview')
-  }, [searchParams, tab, isAdmin])
+  }, [searchParams, tab, isAdmin, allowTab])
 
   const switchTab = (id) => {
     setTab(id)
     setSearchParams(id === 'overview' ? {} : { tab: id }, { replace: true })
   }
 
-  useEffect(() => { window.scrollTo({ top: 0 }) }, [tab])
+  useEffect(() => {
+    window.scrollTo({ top: 0 })
+  }, [tab])
 
   /* ---- 备考策略（学长视角增强：接通后端已有 /goals/strategy，AI 不可用时后端自动模板降级） ---- */
   const [strategy, setStrategy] = useState(null)
@@ -121,15 +182,20 @@ export default function Settings() {
   const [calSaving, setCalSaving] = useState(false)
   useEffect(() => {
     let alive = true
-    goalsApi.examCalendar()
+    goalsApi
+      .examCalendar()
       .then((d) => {
         if (!alive) return
         setCal(d)
         setCalYear(String(d.exam_year || ''))
         if (d.exam_date) setForm((f) => ({ ...f, examDate: d.exam_date }))
       })
-      .catch(() => { /* 后端不可达时保留本地设置，不阻塞页面 */ })
-    return () => { alive = false }
+      .catch(() => {
+        /* 后端不可达时保留本地设置，不阻塞页面 */
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   const applyExamYear = async (year) => {
@@ -140,7 +206,9 @@ export default function Settings() {
       setCal(d)
       setForm((f) => ({ ...f, examDate: d.exam_date }))
       updateSettings({ examDate: d.exam_date })
-      toast(`已切换到 ${d.exam_year} 届 · 初试 ${d.exam_date}${d.is_official ? '（教育部公布）' : '（预估）'}`)
+      toast(
+        `已切换到 ${d.exam_year} 届 · 初试 ${d.exam_date}${d.is_official ? '（教育部公布）' : '（预估）'}`,
+      )
       if (d.total_score_adjusted_from) {
         toast(`总分目标已按四科之和校正为 ${d.total_score_adjusted_from.new}`, 4000)
       }
@@ -159,11 +227,20 @@ export default function Settings() {
     let alive = true
     setLiveLoading(true)
     setLiveError(false)
-    dashboardApi.get()
-      .then((d) => { if (alive) setLive(d) })
-      .catch(() => { if (alive) setLiveError(true) })
-      .finally(() => { if (alive) setLiveLoading(false) })
-    return () => { alive = false }
+    dashboardApi
+      .get()
+      .then((d) => {
+        if (alive) setLive(d)
+      })
+      .catch(() => {
+        if (alive) setLiveError(true)
+      })
+      .finally(() => {
+        if (alive) setLiveLoading(false)
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   /* ---- 百度网盘 ---- */
@@ -210,7 +287,9 @@ export default function Settings() {
     }
   }
 
-  useEffect(() => { if (isAdmin) checkLocalModel() }, [isAdmin])
+  useEffect(() => {
+    if (isAdmin) checkLocalModel()
+  }, [isAdmin])
 
   const setTheme = (t) => {
     updateSettings({ theme: t })
@@ -241,7 +320,9 @@ export default function Settings() {
         /* 后端不可达时退化为手输 */
       }
     })()
-    return () => { alive = false }
+    return () => {
+      alive = false
+    }
   }, [])
 
   const saveSettings = async () => {
@@ -262,7 +343,10 @@ export default function Settings() {
   const exportData = () => {
     const data = {
       exportedAt: new Date().toISOString(),
-      settings, tasks, notebook, pan,
+      settings,
+      tasks,
+      notebook,
+      pan,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -324,10 +408,12 @@ export default function Settings() {
         <div className="v3-settings-head__aurora" aria-hidden="true" />
         <div className="v3-settings-head__inner">
           <div>
-            <div className="v3-eyebrow"><Sparkles size={13} /> 偏好与配置</div>
+            <div className="v3-eyebrow">
+              <Sparkles size={13} /> 偏好与配置
+            </div>
             <h1 className="v3-settings-title">设置</h1>
             <p className="v3-settings-sub">
-              备考目标{isAdmin ? ' · AI 引擎' : ''} · 外观与数据 · 账号安全
+              个人资料 · 备考目标 · 金币激励{isAdmin ? ' · AI 引擎' : ''} · 外观与数据 · 账号安全
             </p>
           </div>
           <div className="v3-row">
@@ -340,13 +426,26 @@ export default function Settings() {
 
       <div className="v3-settings-tabs">
         <Segmented
-          options={SETTINGS_TABS.filter((t) => isAdmin || t.id !== 'ai')
-            .map((t) => ({ value: t.id, label: t.label, icon: t.icon }))}
+          options={SETTINGS_TABS.filter((t) => isAdmin || t.id !== 'ai').map((t) => ({
+            value: t.id,
+            label: t.label,
+            icon: t.icon,
+          }))}
           value={tab}
           onChange={switchTab}
           ariaLabel="设置分区"
         />
       </div>
+
+      {tab === 'profile' && <ProfilePanel profileState={profileState} />}
+
+      {tab === 'coins' && (
+        <CoinsPanel
+          coinToast={prefs.coin_toast !== false}
+          weekStart={prefs.week_start || 'mon'}
+          calendarDays={prefs.calendar_days || 35}
+        />
+      )}
 
       {tab === 'overview' && (
         <div className="v3-stack v3-settings-panel">
@@ -362,15 +461,22 @@ export default function Settings() {
                 const Icon = t.icon
                 return (
                   <Tile key={t.label} variant="well" className={`v3-settings-stat is-${t.tone}`}>
-                    <div className="v3-tile__label"><Icon size={15} /> {t.label}</div>
+                    <div className="v3-tile__label">
+                      <Icon size={15} /> {t.label}
+                    </div>
                     <div className="v3-tile__value">
-                      {liveLoading && t.label === '今日学习' ? <Skeleton width={58} height={34} /> : <AnimatedNumber value={t.val} />}
+                      {liveLoading && t.label === '今日学习' ? (
+                        <Skeleton width={58} height={34} />
+                      ) : (
+                        <AnimatedNumber value={t.val} />
+                      )}
                     </div>
                     <div className="v3-tile__hint">{t.hint}</div>
                   </Tile>
                 )
               })}
             </div>
+            <CoinStrip />
             {liveError && (
               <Alert tone="danger" className="v3-settings-alert">
                 实时学习数据获取失败：后端未启动或网络异常。本地档案统计仍正常，启动后端后自动恢复今日时长等实时数据。
@@ -387,7 +493,11 @@ export default function Settings() {
             <div className="v3-grid v3-grid-2 v3-settings-formgrid">
               <Field
                 label="目标院校"
-                hint={schoolOptions.length ? `可从院校库 ${schoolOptions.length} 所中选择，也可手动输入` : '输入目标院校名称'}
+                hint={
+                  schoolOptions.length
+                    ? `可从院校库 ${schoolOptions.length} 所中选择，也可手动输入`
+                    : '输入目标院校名称'
+                }
               >
                 <Input
                   list="v3-settings-school-options"
@@ -397,7 +507,9 @@ export default function Settings() {
                   placeholder={schoolOptions.length ? '输入院校名称，或从候选中选择' : '输入目标院校名称'}
                 />
                 <datalist id="v3-settings-school-options">
-                  {schoolOptions.map((n) => <option key={n} value={n} />)}
+                  {schoolOptions.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
                 </datalist>
               </Field>
               <Field label="报考专业">
@@ -420,13 +532,17 @@ export default function Settings() {
                 >
                   {!calYear && <option value="">未配置</option>}
                   {(cal?.year_options || []).map((y) => (
-                    <option key={y} value={y}>{y} 届</option>
+                    <option key={y} value={y}>
+                      {y} 届
+                    </option>
                   ))}
                 </Select>
               </Field>
               <Field
                 label="初试日期"
-                hint={cal ? `${cal.source}${cal.is_official ? '' : ' · 仅供参考，以研招网公告为准'}` : undefined}
+                hint={
+                  cal ? `${cal.source}${cal.is_official ? '' : ' · 仅供参考，以研招网公告为准'}` : undefined
+                }
               >
                 <Input
                   type="date"
@@ -463,7 +579,8 @@ export default function Settings() {
             <div className="v3-settings-strategy">
               <div className="v3-settings-strategy__bar">
                 <span className="v3-caption">
-                  <Sparkles size={13} aria-hidden="true" /> 按你的目标生成备考策略（AI 不可用时自动给经验模板）
+                  <Sparkles size={13} aria-hidden="true" /> 按你的目标生成备考策略（AI
+                  不可用时自动给经验模板）
                 </span>
                 <Button variant="tonal" onClick={loadStrategy} disabled={strategyLoading}>
                   {strategyLoading ? '生成中…' : strategy ? '重新生成' : '生成备考策略'}
@@ -476,11 +593,26 @@ export default function Settings() {
                     if (!t) return null
                     if (t.startsWith('# ')) return <h4 key={i}>{t.slice(2)}</h4>
                     if (t.startsWith('## ')) return <h5 key={i}>{t.slice(3)}</h5>
-                    if (t.startsWith('> ')) return <p key={i} className="is-note">{t.slice(2)}</p>
-                    const bold = (s) => s.split(/\*\*(.+?)\*\*/g).map((seg, j) =>
-                      j % 2 === 1 ? <b key={j}>{seg}</b> : seg)
-                    if (/^[-*]\s+/.test(t)) return <p key={i} className="is-item">· {bold(t.replace(/^[-*]\s+/, ''))}</p>
-                    if (/^\d+\.\s+/.test(t)) return <p key={i} className="is-item">{bold(t)}</p>
+                    if (t.startsWith('> '))
+                      return (
+                        <p key={i} className="is-note">
+                          {t.slice(2)}
+                        </p>
+                      )
+                    const bold = (s) =>
+                      s.split(/\*\*(.+?)\*\*/g).map((seg, j) => (j % 2 === 1 ? <b key={j}>{seg}</b> : seg))
+                    if (/^[-*]\s+/.test(t))
+                      return (
+                        <p key={i} className="is-item">
+                          · {bold(t.replace(/^[-*]\s+/, ''))}
+                        </p>
+                      )
+                    if (/^\d+\.\s+/.test(t))
+                      return (
+                        <p key={i} className="is-item">
+                          {bold(t)}
+                        </p>
+                      )
                     return <p key={i}>{bold(t)}</p>
                   })}
                 </div>
@@ -500,19 +632,36 @@ export default function Settings() {
               title="本地模型（Ollama）"
               sub="离线 AI 引擎 · 数据不出网 · 简单问题本地秒回，复杂问题自动走在线 API"
               actions={
-                localModel.checking
-                  ? <Badge>检测中</Badge>
-                  : localModel.available ? <Badge tone="success">已连接</Badge> : <Badge tone="danger">未启动</Badge>
+                localModel.checking ? (
+                  <Badge>检测中</Badge>
+                ) : localModel.available ? (
+                  <Badge tone="success">已连接</Badge>
+                ) : (
+                  <Badge tone="danger">未启动</Badge>
+                )
               }
             />
             <div className="v3-settings-rowwrap">
               <span className="v3-settings-statusline">
-                服务状态：{localModel.checking ? '检测中…' : localModel.available ? '已连接' : '未启动 / 未安装'}
+                服务状态：
+                {localModel.checking ? '检测中…' : localModel.available ? '已连接' : '未启动 / 未安装'}
               </span>
-              <Button variant="outline" size="sm" icon={<RefreshCw size={14} />} onClick={checkLocalModel} disabled={localModel.checking}>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<RefreshCw size={14} />}
+                onClick={checkLocalModel}
+                disabled={localModel.checking}
+              >
                 {localModel.checking ? '检测中…' : '重新检测'}
               </Button>
-              <Button variant="tonal" size="sm" icon={<Wand size={14} />} onClick={testLocalModel} disabled={localTesting || !localModel.available}>
+              <Button
+                variant="tonal"
+                size="sm"
+                icon={<Wand size={14} />}
+                onClick={testLocalModel}
+                disabled={localTesting || !localModel.available}
+              >
                 {localTesting ? '测试中…' : '测试模型'}
               </Button>
             </div>
@@ -520,7 +669,9 @@ export default function Settings() {
               <div className="v3-settings-modelchips">
                 <span className="v3-caption">已安装模型：</span>
                 {localModel.models.map((m, i) => (
-                  <Chip key={`${m.name}-${i}`} as="span">{m.name} ({m.size_gb} GB)</Chip>
+                  <Chip key={`${m.name}-${i}`} as="span">
+                    {m.name} ({m.size_gb} GB)
+                  </Chip>
                 ))}
               </div>
             )}
@@ -528,13 +679,18 @@ export default function Settings() {
               <div className="v3-settings-testbox">
                 <Badge tone="success">测试成功</Badge>
                 <p>{localTestResult.response}</p>
-                <span>模型：{localTestResult.model} · 生成 {localTestResult.eval_count} tokens · 耗时 {localTestResult.total_duration_ms} ms</span>
+                <span>
+                  模型：{localTestResult.model} · 生成 {localTestResult.eval_count} tokens · 耗时{' '}
+                  {localTestResult.total_duration_ms} ms
+                </span>
               </div>
             )}
             {!localModel.available && !localModel.checking && (
               <div className="v3-settings-hint">
                 未检测到 Ollama 服务。请先安装 Ollama（
-                <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">下载地址</a>
+                <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">
+                  下载地址
+                </a>
                 ），然后运行 <code>ollama run qwen3.5:4b</code> 拉取轻量模型。
                 本地模型可处理定义、概念、单词等简单问题，复杂问题自动走在线 API。
               </div>
@@ -554,20 +710,30 @@ export default function Settings() {
               title="百度网盘授权"
               sub="在「网盘联动」页可扫码 / 授权后浏览同步网盘资料"
               actions={
-                panLoading ? <Badge>检测中…</Badge>
-                  : panSt.configured ? <Badge tone="success">已配置</Badge> : <Badge tone="warning">未配置</Badge>
+                panLoading ? (
+                  <Badge>检测中…</Badge>
+                ) : panSt.configured ? (
+                  <Badge tone="success">已配置</Badge>
+                ) : (
+                  <Badge tone="warning">未配置</Badge>
+                )
               }
             />
             <div className="v3-settings-rowwrap">
               <span className="v3-settings-statusline">
-                服务端凭证：{panSt.configured ? `已授权${panSt.appId ? `（AppID ${panSt.appId}）` : ''}` : '未配置'}
+                服务端凭证：
+                {panSt.configured ? `已授权${panSt.appId ? `（AppID ${panSt.appId}）` : ''}` : '未配置'}
               </span>
               {panTok ? (
                 <Button
                   variant="danger"
                   size="sm"
                   icon={<Trash size={14} />}
-                  onClick={() => { clearPan(); setPanTok(null); toastOk('已清除本机网盘授权') }}
+                  onClick={() => {
+                    clearPan()
+                    setPanTok(null)
+                    toastOk('已清除本机网盘授权')
+                  }}
                 >
                   清除授权
                 </Button>
@@ -577,8 +743,9 @@ export default function Settings() {
             </div>
             {!panSt.configured && (
               <div className="v3-settings-hint">
-                配置方法：在 <code>backend-main-fastapi/.env</code> 中填写百度开放平台个人应用凭证
-                （<code>BAIDU_NETDISK_APP_ID</code> / <code>BAIDU_NETDISK_APP_KEY</code> / <code>BAIDU_NETDISK_SECRET_KEY</code>），并重启后端。
+                配置方法：在 <code>backend-main-fastapi/.env</code> 中填写百度开放平台个人应用凭证 （
+                <code>BAIDU_NETDISK_APP_ID</code> / <code>BAIDU_NETDISK_APP_KEY</code> /{' '}
+                <code>BAIDU_NETDISK_SECRET_KEY</code>），并重启后端。
               </div>
             )}
           </Card>
@@ -590,7 +757,11 @@ export default function Settings() {
               sub="明色「纸上备考」与暗色「深夜自习」，或跟随系统自动切换"
               actions={
                 <Badge tone="primary">
-                  {settings.theme === 'dark' ? '深夜自习' : settings.theme === 'system' ? '跟随系统' : '纸上备考'}
+                  {settings.theme === 'dark'
+                    ? '深夜自习'
+                    : settings.theme === 'system'
+                      ? '跟随系统'
+                      : '纸上备考'}
                 </Badge>
               }
             />
@@ -619,10 +790,18 @@ export default function Settings() {
               sub="数据存储于本地浏览器（localStorage），可导出 JSON 备份，换设备时导入恢复"
             />
             <div className="v3-settings-rowwrap">
-              <Button variant="outline" icon={<Download size={15} />} onClick={exportData}>导出备份</Button>
-              <Button variant="outline" icon={<Upload size={15} />} onClick={() => fileRef.current?.click()}>导入备份</Button>
-              <Button variant="ghost" icon={<Keyboard size={15} />} onClick={() => setShowShortcuts(true)}>快捷键说明</Button>
-              <Button variant="danger" icon={<Trash size={15} />} onClick={() => setShowReset(true)}>重置本地缓存</Button>
+              <Button variant="outline" icon={<Download size={15} />} onClick={exportData}>
+                导出备份
+              </Button>
+              <Button variant="outline" icon={<Upload size={15} />} onClick={() => fileRef.current?.click()}>
+                导入备份
+              </Button>
+              <Button variant="ghost" icon={<Keyboard size={15} />} onClick={() => setShowShortcuts(true)}>
+                快捷键说明
+              </Button>
+              <Button variant="danger" icon={<Trash size={15} />} onClick={() => setShowReset(true)}>
+                重置本地缓存
+              </Button>
               <input
                 ref={fileRef}
                 type="file"
@@ -642,11 +821,11 @@ export default function Settings() {
             />
             <p>
               通用考研复习工作台：<strong>目标院校、初试日期、备考科目全部由你在上面几栏配置</strong>，
-              应用不内置任何学校或专业方向（未配置时各页面显示空态并给出配置入口）。主要模块：
-              仪表盘（倒计时 / 今日任务 / 复习提醒）· 任务打卡（日周月视图 / AI 规划）·
-              <strong>知识地图</strong>（章节 → 知识点 → 题型三级结构 + 复习进度追踪）·
-              文档知识库（扫描版真题 OCR → 分块 → RAG 检索）· 刷题中心与错题本（错题自动挂靠考点）·
-              AI 助手（本地 Ollama / DeepSeek 等云端 API 可切换）· 网盘联动（百度网盘授权后经后端代理取流）。
+              应用不内置任何学校或专业方向（未配置时各页面显示空态并给出配置入口）。主要模块： 仪表盘（倒计时
+              / 今日任务 / 复习提醒）· 任务打卡（日周月视图 / AI 规划）·
+              <strong>知识地图</strong>（章节 → 知识点 → 题型三级结构 + 复习进度追踪）· 文档知识库（扫描版真题
+              OCR → 分块 → RAG 检索）· 刷题中心与错题本（错题自动挂靠考点）· AI 助手（本地 Ollama / DeepSeek
+              等云端 API 可切换）· 网盘联动（百度网盘授权后经后端代理取流）。
             </p>
             <p>
               技术栈：Vite + React + Zustand + React Router + FastAPI + PostgreSQL（含 pgvector 向量检索）。
@@ -669,16 +848,21 @@ export default function Settings() {
         title="重置本地缓存"
         sub="只清空浏览器本地副本，不会删除服务器数据库"
         onClose={() => setShowReset(false)}
-        footer={(
+        footer={
           <>
-            <Button variant="text" onClick={() => setShowReset(false)}>取消</Button>
-            <Button variant="danger" onClick={doReset}>确认重置</Button>
+            <Button variant="text" onClick={() => setShowReset(false)}>
+              取消
+            </Button>
+            <Button variant="danger" onClick={doReset}>
+              确认重置
+            </Button>
           </>
-        )}
+        }
       >
         <div className="v3-stack" style={{ gap: 12 }}>
           <p className="v3-settings-dialogtext">
-            此操作只清空<strong>浏览器本地缓存</strong>里的任务、错题、网盘、卡片等副本，用于把界面恢复到初始空态。
+            此操作只清空<strong>浏览器本地缓存</strong>
+            里的任务、错题、网盘、卡片等副本，用于把界面恢复到初始空态。
           </p>
           <Alert tone="danger">
             <strong>服务器数据库不会被删除</strong>：后端在线时，下一次同步会把这些记录重新拉回来。
@@ -734,7 +918,8 @@ function SubjectSettingsV3() {
 
   const load = useCallback(() => {
     setStatus('loading')
-    goalsApi.subjects()
+    goalsApi
+      .subjects()
       .then((d) => {
         setCfg(d)
         setExam(d.exam_subjects || [])
@@ -744,7 +929,9 @@ function SubjectSettingsV3() {
       .catch(() => setStatus('error'))
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
   const toggle = (list, setList, name) => {
     setList(list.includes(name) ? list.filter((x) => x !== name) : [...list, name])
@@ -791,19 +978,32 @@ function SubjectSettingsV3() {
     }
   }
 
-  const dirty = cfg && (
-    JSON.stringify([...exam].sort()) !== JSON.stringify([...(cfg.exam_subjects || [])].sort())
-    || JSON.stringify([...support].sort()) !== JSON.stringify([...(cfg.support_subjects || [])].sort())
-  )
+  const dirty =
+    cfg &&
+    (JSON.stringify([...exam].sort()) !== JSON.stringify([...(cfg.exam_subjects || [])].sort()) ||
+      JSON.stringify([...support].sort()) !== JSON.stringify([...(cfg.support_subjects || [])].sort()))
 
   const groups = [
-    { key: 'exam', title: '考试科目', desc: '你实际要考的，计入复习进度与薄弱统计', list: exam, setList: setExam },
-    { key: 'support', title: '专业课支撑科目', desc: '可能涉及、要能查资料出题，但不计入进度', list: support, setList: setSupport },
+    {
+      key: 'exam',
+      title: '考试科目',
+      desc: '你实际要考的，计入复习进度与薄弱统计',
+      list: exam,
+      setList: setExam,
+    },
+    {
+      key: 'support',
+      title: '专业课支撑科目',
+      desc: '可能涉及、要能查资料出题，但不计入进度',
+      list: support,
+      setList: setSupport,
+    },
   ]
 
-  const namesFor = (g) => (cfg?.all_known || [])
-    .filter((name) => !IRRELEVANT_SUBJECTS.includes(name) || g.list.includes(name))
-    .filter((name) => !query.trim() || name.includes(query.trim()))
+  const namesFor = (g) =>
+    (cfg?.all_known || [])
+      .filter((name) => !IRRELEVANT_SUBJECTS.includes(name) || g.list.includes(name))
+      .filter((name) => !query.trim() || name.includes(query.trim()))
 
   const visibleFor = (g) => {
     const all = namesFor(g)
@@ -832,7 +1032,11 @@ function SubjectSettingsV3() {
           icon={<Book size={24} />}
           title="读取科目配置失败"
           text="请确认后端已启动后重试。科目口径决定进度分母、刷题筛选与 AI 分科路由。"
-          action={<Button variant="outline" icon={<RefreshCw size={14} />} onClick={load}>重试</Button>}
+          action={
+            <Button variant="outline" icon={<RefreshCw size={14} />} onClick={load}>
+              重试
+            </Button>
+          }
         />
       </Card>
     )
@@ -844,24 +1048,33 @@ function SubjectSettingsV3() {
         icon={<Book size={16} />}
         title="备考科目"
         sub="决定进度统计口径、AI 分科选模型、资料归类与出题范围 —— 改这里不用改代码"
-        actions={(
+        actions={
           <div className="v3-settings-actions">
             <Button variant="ghost" size="sm" onClick={resetDefault}>
               {exam.length || support.length ? '恢复建议科目' : '填入建议科目'}
             </Button>
-            <Button variant="ghost" size="sm" icon={<RefreshCw size={14} />} onClick={load}>重新读取</Button>
+            <Button variant="ghost" size="sm" icon={<RefreshCw size={14} />} onClick={load}>
+              重新读取
+            </Button>
             <Button size="sm" onClick={save} disabled={saving || !dirty} loading={saving}>
               {dirty ? '保存' : '已保存'}
             </Button>
           </div>
-        )}
+        }
       />
       <div className="v3-settings-hint">
-        {cfg.using_default
-          ? <>还没有配置备考科目：科目层为空，进度分母、刷题筛选与 AI 画像都不替你假设专业方向。
-            点「填入建议科目」可一键带上系统已知大纲的 {(cfg.core_defaults || []).length} 个科目，再按实际情况增减；
-            {isAdmin ? '预置池里没有的科目用下方「新增自定义科目」。' : '预置池里没有的科目请联系管理员添加。'}</>
-          : '已隐藏与多数考研方向无关的预置科目（管理类联考、医学、教育等），如需恢复请勾选对应科目后保存。'}
+        {cfg.using_default ? (
+          <>
+            还没有配置备考科目：科目层为空，进度分母、刷题筛选与 AI 画像都不替你假设专业方向。
+            点「填入建议科目」可一键带上系统已知大纲的 {(cfg.core_defaults || []).length}{' '}
+            个科目，再按实际情况增减；
+            {isAdmin
+              ? '预置池里没有的科目用下方「新增自定义科目」。'
+              : '预置池里没有的科目请联系管理员添加。'}
+          </>
+        ) : (
+          '已隐藏与多数考研方向无关的预置科目（管理类联考、医学、教育等），如需恢复请勾选对应科目后保存。'
+        )}
       </div>
 
       <Input
@@ -901,12 +1114,18 @@ function SubjectSettingsV3() {
                 )
               })}
               {!query && all.length > visible.length && (
-                <Chip className="v3-settings-expand" onClick={() => setExpanded((e) => ({ ...e, [g.key]: true }))}>
+                <Chip
+                  className="v3-settings-expand"
+                  onClick={() => setExpanded((e) => ({ ...e, [g.key]: true }))}
+                >
                   展开全部 {all.length} 个
                 </Chip>
               )}
               {!query && expanded[g.key] && (
-                <Chip className="v3-settings-expand" onClick={() => setExpanded((e) => ({ ...e, [g.key]: false }))}>
+                <Chip
+                  className="v3-settings-expand"
+                  onClick={() => setExpanded((e) => ({ ...e, [g.key]: false }))}
+                >
                   收起
                 </Chip>
               )}
@@ -922,7 +1141,9 @@ function SubjectSettingsV3() {
         <div className="v3-settings-subjectgroup">
           <div className="v3-settings-grouphead">
             <span className="v3-settings-grouptitle">新增自定义科目</span>
-            <span className="v3-settings-groupdesc">预置池里没有的科目（如另一门专业课），加进来后全站可用</span>
+            <span className="v3-settings-groupdesc">
+              预置池里没有的科目（如另一门专业课），加进来后全站可用
+            </span>
           </div>
           <div className="v3-settings-customrow">
             <Input
@@ -930,7 +1151,9 @@ function SubjectSettingsV3() {
               placeholder="输入科目名，如：信号与系统 / 自控原理 / 数据结构"
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') addCustomSubject() }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') addCustomSubject()
+              }}
             />
             <Select
               aria-label="加入的科目层"
@@ -950,7 +1173,8 @@ function SubjectSettingsV3() {
               添加
             </Button>
           </div>
-          {(exam.some((s) => !cfg.all_known.includes(s)) || support.some((s) => !cfg.all_known.includes(s))) && (
+          {(exam.some((s) => !cfg.all_known.includes(s)) ||
+            support.some((s) => !cfg.all_known.includes(s))) && (
             <div className="v3-settings-hint">
               含自定义科目：{[...exam, ...support].filter((s) => !cfg.all_known.includes(s)).join('、')}
             </div>
@@ -961,17 +1185,27 @@ function SubjectSettingsV3() {
       <div className="v3-settings-preview">
         <strong>当前口径生效后：</strong>
         <ul>
-          <li>复习进度与薄弱考点统计 <b>{exam.length}</b> 科：{exam.join('、') || '（空）'}</li>
-          <li>AI 分科选模型覆盖 <b>{exam.length + support.length}</b> 科</li>
-          <li>资料可归类到 <b>{cfg.all_known.length}</b> 个科目（含拓展）</li>
+          <li>
+            复习进度与薄弱考点统计 <b>{exam.length}</b> 科：{exam.join('、') || '（空）'}
+          </li>
+          <li>
+            AI 分科选模型覆盖 <b>{exam.length + support.length}</b> 科
+          </li>
+          <li>
+            资料可归类到 <b>{cfg.all_known.length}</b> 个科目（含拓展）
+          </li>
         </ul>
       </div>
 
       <details className="v3-settings-details">
         <summary>这两层的区别是什么？</summary>
         <ul>
-          <li><b>考试科目</b>：真正会出现在成绩单上的。知识地图进度、薄弱考点排名只算这几科。</li>
-          <li><b>支撑科目</b>：备选院校专业课或补基础用的。能录入、检索、出题、按科目选模型，但不计入复习进度。</li>
+          <li>
+            <b>考试科目</b>：真正会出现在成绩单上的。知识地图进度、薄弱考点排名只算这几科。
+          </li>
+          <li>
+            <b>支撑科目</b>：备选院校专业课或补基础用的。能录入、检索、出题、按科目选模型，但不计入复习进度。
+          </li>
           <li>两层的并集 = AI 分科路由的范围。提问时系统会自动识别科目并选对应模型。</li>
         </ul>
       </details>
@@ -989,7 +1223,11 @@ function AiServiceManagerV3() {
   const [showEdit, setShowEdit] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [draft, setDraft] = useState({
-    key: 'deepseek', name: 'DeepSeek', baseUrl: PRESETS[0].baseUrl, model: PRESETS[0].model, apiKey: '',
+    key: 'deepseek',
+    name: 'DeepSeek',
+    baseUrl: PRESETS[0].baseUrl,
+    model: PRESETS[0].model,
+    apiKey: '',
   })
   const [testBusyId, setTestBusyId] = useState(null)
   const [testResults, setTestResults] = useState({})
@@ -1005,11 +1243,19 @@ function AiServiceManagerV3() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
   const openAdd = () => {
     setEditingId(null)
-    setDraft({ key: 'deepseek', name: 'DeepSeek', baseUrl: PRESETS[0].baseUrl, model: PRESETS[0].model, apiKey: '' })
+    setDraft({
+      key: 'deepseek',
+      name: 'DeepSeek',
+      baseUrl: PRESETS[0].baseUrl,
+      model: PRESETS[0].model,
+      apiKey: '',
+    })
     setShowEdit(true)
   }
 
@@ -1118,7 +1364,11 @@ function AiServiceManagerV3() {
         icon={<Sparkles size={16} />}
         title="AI 服务管理"
         sub="服务商配置 · 一键测试 · 本地/云端路由 · 后端统一调用"
-        actions={<Button size="sm" icon={<Plus size={14} />} onClick={openAdd}>添加服务</Button>}
+        actions={
+          <Button size="sm" icon={<Plus size={14} />} onClick={openAdd}>
+            添加服务
+          </Button>
+        }
       />
 
       {routing && (
@@ -1145,12 +1395,16 @@ function AiServiceManagerV3() {
       {loadErr && (
         <Alert tone="danger" className="v3-settings-alert">
           后端服务不可达，AI 配置读取失败。请确认后端已启动。
-          <Button variant="ghost" size="sm" onClick={load}>重试</Button>
+          <Button variant="ghost" size="sm" onClick={load}>
+            重试
+          </Button>
         </Alert>
       )}
 
       {providers.length === 0 && !loadErr && (
-        <div className="v3-settings-hint">尚未配置任何云端 AI 服务。本地 Ollama 模型无需在此配置，开箱即用。</div>
+        <div className="v3-settings-hint">
+          尚未配置任何云端 AI 服务。本地 Ollama 模型无需在此配置，开箱即用。
+        </div>
       )}
 
       <div className="v3-settings-providers">
@@ -1176,21 +1430,22 @@ function AiServiceManagerV3() {
               )}
               <div className="v3-settings-provider__actions">
                 {!p.is_default && (
-                  <Button variant="ghost" size="sm" onClick={() => makeDefault(p)}>设为默认</Button>
+                  <Button variant="ghost" size="sm" onClick={() => makeDefault(p)}>
+                    设为默认
+                  </Button>
                 )}
                 <Button variant="ghost" size="sm" onClick={() => toggleProvider(p)}>
                   {p.is_enabled ? '停用' : '启用'}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>编辑</Button>
-                <Button
-                  variant="tonal"
-                  size="sm"
-                  loading={testBusyId === p.id}
-                  onClick={() => runTest(p)}
-                >
+                <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
+                  编辑
+                </Button>
+                <Button variant="tonal" size="sm" loading={testBusyId === p.id} onClick={() => runTest(p)}>
                   测试接口
                 </Button>
-                <Button variant="ghost" size="sm" className="is-danger" onClick={() => removeProvider(p)}>删除</Button>
+                <Button variant="ghost" size="sm" className="is-danger" onClick={() => removeProvider(p)}>
+                  删除
+                </Button>
               </div>
             </div>
           )
@@ -1199,8 +1454,8 @@ function AiServiceManagerV3() {
 
       <p className="v3-settings-smallhint">
         支持 DeepSeek、豆包（火山方舟）、通义千问、智谱、OpenAI 等 OpenAI 兼容接口。
-        配置保存在本机数据库并由后端统一调用（无跨域问题）；「测试接口」从服务端发起真实对话验证。
-        本地 Ollama 模型自动可用，无需在此添加。Key 不回传前端，编辑时留空即保持不变。
+        配置保存在本机数据库并由后端统一调用（无跨域问题）；「测试接口」从服务端发起真实对话验证。 本地 Ollama
+        模型自动可用，无需在此添加。Key 不回传前端，编辑时留空即保持不变。
       </p>
 
       <Dialog
@@ -1208,29 +1463,46 @@ function AiServiceManagerV3() {
         title={editingId ? '编辑 AI 服务' : '添加 AI 服务'}
         sub="云端服务经后端网关调用，API Key 只写不读"
         onClose={() => setShowEdit(false)}
-        footer={(
+        footer={
           <>
-            <Button variant="text" onClick={() => setShowEdit(false)}>取消</Button>
+            <Button variant="text" onClick={() => setShowEdit(false)}>
+              取消
+            </Button>
             <Button onClick={save}>保存</Button>
           </>
-        )}
+        }
       >
         <div className="v3-stack">
           <Field label="服务商预设">
             <Select value={draft.key} onChange={(e) => onPreset(e.target.value)}>
               {PRESETS.map((pr) => (
-                <option key={pr.key} value={pr.key}>{pr.name}{pr.vision ? '（支持视觉）' : ''}</option>
+                <option key={pr.key} value={pr.key}>
+                  {pr.name}
+                  {pr.vision ? '（支持视觉）' : ''}
+                </option>
               ))}
             </Select>
           </Field>
           <Field label="显示名称">
-            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="如：我的 DeepSeek" />
+            <Input
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              placeholder="如：我的 DeepSeek"
+            />
           </Field>
           <Field label="Base URL">
-            <Input value={draft.baseUrl} onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })} placeholder="https://api.deepseek.com" />
+            <Input
+              value={draft.baseUrl}
+              onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
+              placeholder="https://api.deepseek.com"
+            />
           </Field>
           <Field label="模型名称">
-            <Input value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value })} placeholder="deepseek-chat" />
+            <Input
+              value={draft.model}
+              onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+              placeholder="deepseek-chat"
+            />
           </Field>
           <Field label={editingId ? 'API Key（留空 = 保持原 Key 不变）' : 'API Key'}>
             <Input
@@ -1259,12 +1531,18 @@ function ModelSelectPanelV3() {
 
   const load = () => {
     setStatus('loading')
-    aiApi.modelCatalog()
-      .then((d) => { setRep(d); setStatus('ok') })
+    aiApi
+      .modelCatalog()
+      .then((d) => {
+        setRep(d)
+        setStatus('ok')
+      })
       .catch(() => setStatus('error'))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+  }, [])
 
   const copy = async (text) => {
     try {
@@ -1304,20 +1582,25 @@ function ModelSelectPanelV3() {
           icon={<HardDrive size={24} />}
           title="读取硬件与模型档案失败"
           text="请确认后端已启动后重试。模型选型会按本机显存判断能否运行本地模型。"
-          action={<Button variant="outline" icon={<RefreshCw size={14} />} onClick={load}>重试</Button>}
+          action={
+            <Button variant="outline" icon={<RefreshCw size={14} />} onClick={load}>
+              重试
+            </Button>
+          }
         />
       </Card>
     )
   }
 
   const hw = rep.hardware || {}
-  const tierLabel = {
-    cpu: '无独显（只能走云端 API）',
-    entry: '入门级显存（4-6GB）',
-    mainstream: '主流级显存（6-9GB）',
-    advanced: '进阶级显存（9-16GB）',
-    high: '高端显存（16GB+）',
-  }[rep.hardware_tier] || rep.hardware_tier
+  const tierLabel =
+    {
+      cpu: '无独显（只能走云端 API）',
+      entry: '入门级显存（4-6GB）',
+      mainstream: '主流级显存（6-9GB）',
+      advanced: '进阶级显存（9-16GB）',
+      high: '高端显存（16GB+）',
+    }[rep.hardware_tier] || rep.hardware_tier
 
   return (
     <Card>
@@ -1325,7 +1608,11 @@ function ModelSelectPanelV3() {
         icon={<HardDrive size={16} />}
         title="模型选型"
         sub="按本机显存判断能不能跑，按科目判断该用哪个 —— 不看排行榜参数量"
-        actions={<Button variant="ghost" size="sm" icon={<RefreshCw size={14} />} onClick={load}>重新探测</Button>}
+        actions={
+          <Button variant="ghost" size="sm" icon={<RefreshCw size={14} />} onClick={load}>
+            重新探测
+          </Button>
+        }
       />
 
       <div className="v3-settings-hw">
@@ -1334,9 +1621,18 @@ function ModelSelectPanelV3() {
           <span className="v3-settings-hw__tier">{tierLabel}</span>
         </div>
         <div className="v3-settings-hw__stats">
-          <div><span>显存</span><b>{hw.vram_gb || 0} GB</b></div>
-          <div><span>内存</span><b>{hw.ram_gb || '—'} GB</b></div>
-          <div><span>已装模型</span><b>{rep.installed_models?.length || 0} 个</b></div>
+          <div>
+            <span>显存</span>
+            <b>{hw.vram_gb || 0} GB</b>
+          </div>
+          <div>
+            <span>内存</span>
+            <b>{hw.ram_gb || '—'} GB</b>
+          </div>
+          <div>
+            <span>已装模型</span>
+            <b>{rep.installed_models?.length || 0} 个</b>
+          </div>
         </div>
         {!hw.cuda_available && (
           <div className="v3-settings-hw__warn">
@@ -1373,9 +1669,13 @@ function ModelSelectPanelV3() {
                     <>
                       <b>{top.name}</b>
                       <Badge tone="success">{top.fit.label}</Badge>
-                      {top.subject_score > 0 && <span className="v3-caption">强项 {top.subject_score}/5</span>}
+                      {top.subject_score > 0 && (
+                        <span className="v3-caption">强项 {top.subject_score}/5</span>
+                      )}
                     </>
-                  ) : <span className="v3-caption">暂无推荐</span>}
+                  ) : (
+                    <span className="v3-caption">暂无推荐</span>
+                  )}
                 </div>
                 {alt.length > 0 && (
                   <div className="v3-settings-subjectrow__alt">
@@ -1406,9 +1706,13 @@ function ModelSelectPanelV3() {
                 <div className="v3-settings-model__head">
                   <b>{m.name}</b>
                   <span className="v3-settings-model__family">{m.family}</span>
-                  {m.installed
-                    ? <Badge tone="success"><CheckCircle size={12} /> 已安装</Badge>
-                    : m.local ? <Badge tone="primary">{m.fit.label}</Badge> : null}
+                  {m.installed ? (
+                    <Badge tone="success">
+                      <CheckCircle size={12} /> 已安装
+                    </Badge>
+                  ) : m.local ? (
+                    <Badge tone="primary">{m.fit.label}</Badge>
+                  ) : null}
                   {!m.local && <Badge tone="outline">云端 API</Badge>}
                 </div>
                 <div className="v3-settings-model__meta">
@@ -1416,14 +1720,27 @@ function ModelSelectPanelV3() {
                   {m.local && <span>权重 ≈ {m.weights_gb}GB</span>}
                   {m.local && <span>总需求 ≈ {m.required_gb}GB</span>}
                   <span>上下文 {m.context_k}K</span>
-                  <span>中文 {'★'.repeat(m.chinese)}{'☆'.repeat(5 - m.chinese)}</span>
-                  <span>推理 {'★'.repeat(m.reasoning)}{'☆'.repeat(5 - m.reasoning)}</span>
-                  {m.local && <span>速度 {'★'.repeat(m.speed)}{'☆'.repeat(5 - m.speed)}</span>}
+                  <span>
+                    中文 {'★'.repeat(m.chinese)}
+                    {'☆'.repeat(5 - m.chinese)}
+                  </span>
+                  <span>
+                    推理 {'★'.repeat(m.reasoning)}
+                    {'☆'.repeat(5 - m.reasoning)}
+                  </span>
+                  {m.local && (
+                    <span>
+                      速度 {'★'.repeat(m.speed)}
+                      {'☆'.repeat(5 - m.speed)}
+                    </span>
+                  )}
                 </div>
                 {m.strengths_cn && Object.keys(m.strengths_cn).length > 0 && (
                   <div className="v3-settings-model__strengths">
                     {Object.entries(m.strengths_cn).map(([subj, score]) => (
-                      <Chip as="span" key={subj} title={`强项评分 ${score}/5`}>{subj} {score}</Chip>
+                      <Chip as="span" key={subj} title={`强项评分 ${score}/5`}>
+                        {subj} {score}
+                      </Chip>
                     ))}
                   </div>
                 )}
@@ -1454,7 +1771,9 @@ function ModelSelectPanelV3() {
           <li>总需求 = 权重 + KV cache + 运行时开销（估算偏保守）</li>
           <li>可用显存 = 显卡显存 − 系统预留（8GB 卡按 0.8GB 预留）</li>
           <li>需求 ≤ 可用 × 0.85 → 完美适配；≤ 可用 → 可以运行；再高 → 勉强/不足</li>
-          <li>判定依据是 <b>显存</b>，不是排行榜分数 —— 云端 700B+ 的模型在这台机器上永远「显存不足」。</li>
+          <li>
+            判定依据是 <b>显存</b>，不是排行榜分数 —— 云端 700B+ 的模型在这台机器上永远「显存不足」。
+          </li>
         </ul>
       </details>
     </Card>
@@ -1469,10 +1788,10 @@ function UiGroup({ title, sub, items, idOf, labelOf, layout, hiddenKey, orderKey
   const order = layout[orderKey] || []
   const ordered = order.length
     ? [...items].sort((a, b) => {
-      const ia = order.indexOf(idOf(a))
-      const ib = order.indexOf(idOf(b))
-      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)
-    })
+        const ia = order.indexOf(idOf(a))
+        const ib = order.indexOf(idOf(b))
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)
+      })
     : items
   const allIds = items.map(idOf)
   return (
@@ -1529,25 +1848,32 @@ export function UiCustomizeV3() {
         icon={<SlidersHorizontal size={16} />}
         title="界面自定义"
         sub="勾选显示 / 隐藏；导航分组支持上下调整顺序。偏好仅保存在本机浏览器，不影响其他设备"
-        actions={(
+        actions={
           <div className="v3-row" style={{ gap: 8 }}>
             <Button
               variant="tonal"
               size="sm"
               title="清空全局学科选择并恢复默认导航布局，界面回到全新初始状态"
-              onClick={() => { setGlobalSubject(''); resetUiLayout(); toastOk('展示内容已重置为全新默认') }}
+              onClick={() => {
+                setGlobalSubject('')
+                resetUiLayout()
+                toastOk('展示内容已重置为全新默认')
+              }}
             >
               重置展示内容
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { resetUiLayout(); toastOk('界面布局已恢复默认') }}
+              onClick={() => {
+                resetUiLayout()
+                toastOk('界面布局已恢复默认')
+              }}
             >
               恢复默认布局
             </Button>
           </div>
-        )}
+        }
       />
       <div className="v3-settings-uigroups">
         <UiGroup
@@ -1595,8 +1921,12 @@ function LanAccessCardV3() {
 
   const load = () => {
     setStatus('loading')
-    systemApi.accessInfo()
-      .then((d) => { setInfo(d); setStatus('ok') })
+    systemApi
+      .accessInfo()
+      .then((d) => {
+        setInfo(d)
+        setStatus('ok')
+      })
       .catch(() => setStatus('error'))
   }
 
@@ -1631,7 +1961,11 @@ function LanAccessCardV3() {
           icon={<Compass size={24} />}
           title="网络信息读取失败"
           text="请确认后端已启动后重试。把电脑当服务器，手机连同一 WiFi 即可访问。"
-          action={<Button variant="outline" onClick={load}>重试</Button>}
+          action={
+            <Button variant="outline" onClick={load}>
+              重试
+            </Button>
+          }
         />
       </Card>
     )
@@ -1645,25 +1979,37 @@ function LanAccessCardV3() {
         icon={<Compass size={16} />}
         title="手机 / 平板访问"
         sub="把电脑当服务器，手机连同一 WiFi 即可打开，用来整理错题、拍照 OCR"
-        actions={<Badge tone={lanReady ? 'success' : 'outline'}>{lanReady ? '局域网已开放' : '仅本机'}</Badge>}
+        actions={
+          <Badge tone={lanReady ? 'success' : 'outline'}>{lanReady ? '局域网已开放' : '仅本机'}</Badge>
+        }
       />
       <div className="v3-settings-lan">
         <div className="v3-settings-lan__info">
           <div className="v3-settings-lanrow">
             <span>本机</span>
             <code>{info.local_url}</code>
-            <Button variant="ghost" size="sm" onClick={() => copy(info.local_url)}>复制</Button>
+            <Button variant="ghost" size="sm" onClick={() => copy(info.local_url)}>
+              复制
+            </Button>
           </div>
           <div className="v3-settings-lanrow">
             <span>局域网</span>
-            {lanReady
-              ? <code className="is-strong">{info.lan_url}</code>
-              : <code className="is-muted">未开放（HOST={info.host}）</code>}
-            {lanReady && <Button variant="ghost" size="sm" onClick={() => copy(info.lan_url)}>复制</Button>}
+            {lanReady ? (
+              <code className="is-strong">{info.lan_url}</code>
+            ) : (
+              <code className="is-muted">未开放（HOST={info.host}）</code>
+            )}
+            {lanReady && (
+              <Button variant="ghost" size="sm" onClick={() => copy(info.lan_url)}>
+                复制
+              </Button>
+            )}
           </div>
           <div className="v3-settings-lanrow">
             <span>访问密码</span>
-            <Badge tone={info.auth_enabled ? 'success' : 'warning'}>{info.auth_enabled ? '已开启' : '未设置'}</Badge>
+            <Badge tone={info.auth_enabled ? 'success' : 'warning'}>
+              {info.auth_enabled ? '已开启' : '未设置'}
+            </Badge>
           </div>
           {info.all_ips && info.all_ips.length > 1 && (
             <div className="v3-settings-lanmulti">
@@ -1703,7 +2049,11 @@ function LanAccessCardV3() {
       {info.tips && info.tips.length > 0 && (
         <details className="v3-settings-details">
           <summary>连不上？点这里看排查提示（{info.tips.length} 条）</summary>
-          <ul>{info.tips.map((t, i) => <li key={i}>{t.replace(/\*\*/g, '')}</li>)}</ul>
+          <ul>
+            {info.tips.map((t, i) => (
+              <li key={i}>{t.replace(/\*\*/g, '')}</li>
+            ))}
+          </ul>
         </details>
       )}
     </Card>
@@ -1745,13 +2095,19 @@ function AccountSecurityV3() {
       <CardHead
         icon={<Shield size={16} />}
         title="账号与安全"
-        sub={user ? `当前账号：${user.display_name || user.username}（${user.role === 'admin' ? '管理员' : '普通用户'}）` : '未登录'}
-        actions={(
+        sub={
+          user
+            ? `当前账号：${user.display_name || user.username}（${user.role === 'admin' ? '管理员' : '普通用户'}）`
+            : '未登录'
+        }
+        actions={
           <div className="v3-settings-actions">
             {user && <Avatar name={user.display_name || user.username} />}
-            <Button variant="ghost" size="sm" icon={<LogOut size={14} />} onClick={() => logout()}>退出登录</Button>
+            <Button variant="ghost" size="sm" icon={<LogOut size={14} />} onClick={() => logout()}>
+              退出登录
+            </Button>
           </div>
-        )}
+        }
       />
       <form onSubmit={submit}>
         <div className="v3-grid v3-grid-2 v3-settings-formgrid">
@@ -1787,10 +2143,16 @@ function AccountSecurityV3() {
             />
           </Field>
         </div>
-        {err && <Alert tone="danger" className="v3-settings-alert">{err}</Alert>}
+        {err && (
+          <Alert tone="danger" className="v3-settings-alert">
+            {err}
+          </Alert>
+        )}
         <div className="v3-card__foot v3-settings-foot">
           <span className="v3-caption">修改成功后，其他设备上的登录会立即失效。</span>
-          <Button type="submit" loading={busy}>修改密码</Button>
+          <Button type="submit" loading={busy}>
+            修改密码
+          </Button>
         </div>
       </form>
     </Card>
@@ -1825,7 +2187,9 @@ function UserAdminV3() {
     }
   }, [showDeleted])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
   const replaceRow = (u) => setRows((rs) => rs.map((r) => (r.id === u.id ? u : r)))
 
@@ -1968,18 +2332,27 @@ function UserAdminV3() {
             minLength={8}
           />
         </Field>
-        <Button type="submit" loading={busy} icon={<Plus size={14} />}>新建用户</Button>
+        <Button type="submit" loading={busy} icon={<Plus size={14} />}>
+          新建用户
+        </Button>
       </form>
 
       {secret && (
         <Alert tone="warning" className="v3-settings-secret">
           <div>
             {secret.generated ? (
-              <>用户 <b>{secret.username}</b> 的临时密码：<code>{secret.password}</code>（只显示这一次，请立即转交）</>
+              <>
+                用户 <b>{secret.username}</b> 的临时密码：<code>{secret.password}</code>
+                （只显示这一次，请立即转交）
+              </>
             ) : (
-              <>用户 <b>{secret.username}</b> 已按你填写的初始密码创建</>
+              <>
+                用户 <b>{secret.username}</b> 已按你填写的初始密码创建
+              </>
             )}
-            <Button variant="ghost" size="sm" onClick={() => setSecret(null)}>我已记下</Button>
+            <Button variant="ghost" size="sm" onClick={() => setSecret(null)}>
+              我已记下
+            </Button>
           </div>
         </Alert>
       )}
@@ -2000,14 +2373,23 @@ function UserAdminV3() {
           icon={<User size={24} />}
           title="用户列表加载失败"
           text={loadErr}
-          action={<Button variant="outline" onClick={load}>重试</Button>}
+          action={
+            <Button variant="outline" onClick={load}>
+              重试
+            </Button>
+          }
         />
       ) : (
         <div className="v3-settings-tablewrap">
           <table className="v3-settings-table">
             <thead>
               <tr>
-                <th>用户名</th><th>显示名</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th>
+                <th>用户名</th>
+                <th>显示名</th>
+                <th>角色</th>
+                <th>状态</th>
+                <th>最近登录</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -2016,7 +2398,10 @@ function UserAdminV3() {
                 const gone = !!u.deleted_at
                 return (
                   <tr key={u.id} className={gone ? 'is-gone' : undefined}>
-                    <td>{u.username}{self ? '（我）' : ''}</td>
+                    <td>
+                      {u.username}
+                      {self ? '（我）' : ''}
+                    </td>
                     <td>{u.display_name || '—'}</td>
                     <td>
                       <Select
@@ -2025,20 +2410,30 @@ function UserAdminV3() {
                         disabled={gone}
                         onChange={(e) => patch(u, { role: e.target.value }, '角色已更新')}
                       >
-                        {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        {Object.entries(ROLE_LABEL).map(([v, l]) => (
+                          <option key={v} value={v}>
+                            {l}
+                          </option>
+                        ))}
                       </Select>
                     </td>
                     <td>
-                      {gone
-                        ? <Badge tone="danger">已删除</Badge>
-                        : <Badge tone={u.is_active ? 'success' : 'danger'}>{u.is_active ? '启用' : '已禁用'}</Badge>}
+                      {gone ? (
+                        <Badge tone="danger">已删除</Badge>
+                      ) : (
+                        <Badge tone={u.is_active ? 'success' : 'danger'}>
+                          {u.is_active ? '启用' : '已禁用'}
+                        </Badge>
+                      )}
                       {!gone && u.must_change_password && <Badge tone="warning">待改密</Badge>}
                     </td>
                     <td>{fmtDateTime(u.last_login_at)}</td>
                     <td>
                       <div className="v3-settings-rowactions">
                         {gone ? (
-                          <Button variant="ghost" size="sm" onClick={() => restore(u)}>恢复</Button>
+                          <Button variant="ghost" size="sm" onClick={() => restore(u)}>
+                            恢复
+                          </Button>
                         ) : (
                           <>
                             <Button
@@ -2049,8 +2444,18 @@ function UserAdminV3() {
                             >
                               {u.is_active ? '禁用' : '启用'}
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => reset(u)}>重置密码</Button>
-                            <Button variant="ghost" size="sm" className="is-danger" disabled={self} onClick={() => remove(u)}>删除</Button>
+                            <Button variant="ghost" size="sm" onClick={() => reset(u)}>
+                              重置密码
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="is-danger"
+                              disabled={self}
+                              onClick={() => remove(u)}
+                            >
+                              删除
+                            </Button>
                           </>
                         )}
                       </div>
@@ -2061,7 +2466,11 @@ function UserAdminV3() {
             </tbody>
           </table>
           {rows.length === 0 && (
-            <Empty icon={<User size={24} />} title="暂无用户" text="创建第一个账号，或勾选「显示已删除用户」查看可恢复账号。" />
+            <Empty
+              icon={<User size={24} />}
+              title="暂无用户"
+              text="创建第一个账号，或勾选「显示已删除用户」查看可恢复账号。"
+            />
           )}
         </div>
       )}
