@@ -609,8 +609,12 @@ describe('Dashboard 页面渲染 smoke', () => {
     expect(panel.textContent).toContain('目标 120 分钟 · 100%')
     expect(panel.textContent).not.toContain('未设置每日时长目标')
     // 科目候选只来自 summary.goal.subjects，前端不补「政治/英语」这种默认科
-    const opts = Array.from(panel.querySelector('select').options).map((o) => o.value)
-    expect(opts).toEqual(['', '数学'])
+    // W5-1：主题化下拉 —— 展开后才能读到选项面板
+    const subjectSel = panel.querySelector('.v3-xsel')
+    expect(subjectSel, '专注科目下拉未渲染').toBeTruthy()
+    act(() => { fireEvent.click(subjectSel) })
+    const opts = Array.from(document.querySelectorAll('.v3-xsel__opt')).map((o) => o.textContent.trim())
+    expect(opts).toEqual(['不限科目', '数学'])
     expect(crashes).toEqual([])
   })
 

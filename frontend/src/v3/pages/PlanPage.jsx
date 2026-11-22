@@ -3,11 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { useAuth } from '../../auth/AuthContext'
 import {
-  AnimatedNumber, Badge, Button, Card, Empty, LoadingState, PageHeader,
+  AnimatedNumber, Badge, Button, Card, Countdown, Empty, LoadingState, PageHeader,
   SectionHead, Select, Tile, toast, toastErr,
 } from '../ui'
 import {
-  AlertCircle, Calendar, CalendarClock, Clock, Flag, Flame, RefreshCw,
+  AlertCircle, Calendar, CalendarClock, Clock, Flag, RefreshCw,
   School, Target,
 } from '../icons'
 import '../styles/aux-v3.css'
@@ -153,21 +153,20 @@ export default function PlanPage() {
               </div>
             </Tile>
 
-            <Tile span={3} className={`v3-plan-goal v3-plan-countdown ${urgent ? 'is-urgent' : ''}`}>
-              <div className="v3-tile__label"><Flame size={15} />距初试</div>
-              <div className="v3-plan-countdown__value">
-                {hasDays ? (
-                  <>
-                    <AnimatedNumber value={daysNumber} />
-                    <em>天</em>
-                  </>
-                ) : (
-                  <span className="is-muted">—</span>
-                )}
-              </div>
-              <div className="v3-plan-goal__sub">
-                {urgent ? '已进入冲刺区间，注意节奏与状态' : '按当前规划节奏推进即可'}
-              </div>
+            <Tile span={3} className={`v3-plan-goal ${urgent ? 'is-urgent' : ''}`}>
+              {/* W5-2：计划页倒计时改用统一 Countdown 组件（剩余天 + 下一个节点），
+                  天数为后端 days_to_exam，日期未公布时如实标「预估」。 */}
+              <Countdown
+                variant="inline"
+                label="距初试"
+                days={hasDays ? daysNumber : null}
+                examDate={exam || ''}
+                isDefault={roadmap.exam_date_is_official === false}
+                milestones={sortedMilestones
+                  .filter((n) => Number.isFinite(Number(n.days_left)) && Number(n.days_left) >= 0)
+                  .slice(0, 2)
+                  .map((n) => ({ title: n.name, date: n.start, days: Number(n.days_left) }))}
+              />
             </Tile>
           </div>
 

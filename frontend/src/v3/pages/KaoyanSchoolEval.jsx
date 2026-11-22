@@ -248,11 +248,15 @@ function SchoolsView({ schools, onOpen }) {
           <div className="v3-row" style={{ gap: 10, flexWrap: 'wrap' }}>
             <Input icon={<Search size={15} />} placeholder="搜索校名…" value={q}
               onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 260 }} aria-label="搜索校名" />
+            {/* W5-1：筛选下拉换成全站统一的主题化 Select，并给出紧凑宽度，
+                让「搜索 + 省份 + 类型 + 排序」排成一行工具条而不是一条一个 */}
             <Select value={province} onChange={(e) => setProvince(e.target.value)} aria-label="省份"
+              style={{ width: 150 }}
               options={[{ value: '', label: '全部省份' }, ...provinces.map((p) => ({ value: p, label: p }))]} />
             <Select value={unitType} onChange={(e) => setUnitType(e.target.value)} aria-label="单位类型"
+              style={{ width: 150 }}
               options={[{ value: '', label: '全部类型' }, { value: '1', label: '高校' }, { value: '2', label: '科研院所' }, { value: '3', label: '军队院校' }]} />
-            <Select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="排序" options={SORTS} />
+            <Select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="排序" style={{ width: 150 }} options={SORTS} />
           </div>
           <div className="v3-row" style={{ gap: 8, flexWrap: 'wrap' }}>
             <Chip active={flags.is_985} onClick={() => toggle('is_985')}>985</Chip>

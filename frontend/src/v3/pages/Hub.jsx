@@ -26,11 +26,11 @@ import { insightApi, tasksApi } from '../../api/client'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { MUTATION_EVENT, MUTATION_REFRESH_DELAY } from '../../api/mutationEvent'
 import { ukey, readMigrated } from '../../utils/userKeys'
-import { MiniBarChart, MiniLineChart, HeatMap } from '../charts'
+import { MiniBarChart, MiniLineChart } from '../charts'
 import { FocusTile } from './widgets'
 import {
-  AnimatedNumber, Badge, Button, Chip, Dialog, Empty, IconButton, Progress, Ring, Segmented,
-  Skeleton, Switch, cx, toast, toastErr, toastOk,
+  AnimatedNumber, Badge, Button, Chip, Countdown, Dialog, Empty, IconButton, Progress, Ring,
+  Segmented, Skeleton, StudyHeatmap, Switch, cx, toast, toastErr, toastOk,
 } from '../ui'
 import { useMagnetic, usePointerFx, useReducedMotion } from '../motion'
 import {
@@ -671,31 +671,21 @@ export default function Hub() {
         </div>
 
         <aside className="hub-hero__aside" aria-label="考研倒计时">
-          <div className="hub-countdown v3-beam">
-            <Ring value={ringPct} size={120} stroke={8} gradient={false}>
-              <div className="hub-countdown__inside">
-                <span className="hub-countdown__days">
-                  {countdown.days == null ? '—' : <AnimatedNumber value={countdown.days} format={fmt} />}
-                </span>
-                <span className="hub-countdown__unit">天</span>
-              </div>
-            </Ring>
-            <div className="hub-countdown__meta">
-              <span className="hub-countdown__label">距离 {countdown.examYear || '目标'} 考研</span>
-              <strong>{countdown.examDate || '未设置初试日期'}</strong>
-              {/* W2：「核对初试日期」警示只在系统仍在**估算**日期时出现（is_default）。
-                  原仪表盘用 is_official 判断 —— 未公布的届永远为 false，用户保存了
-                  自己的初试日期也照样被警示；这里改用后端 is_estimated 口径，
-                  到设置页保存真实日期后本提示自动消失。 */}
-              {countdown.isDefault ? (
-                <Link to="/settings" className="hub-countdown__verify">
-                  <AlertTriangle size={13} /> 日期为系统估算 · 去核对并保存
-                </Link>
-              ) : (
-                <span className="hub-countdown__note">备考时间轴已走过 {Math.round(ringPct)}%</span>
-              )}
-            </div>
-          </div>
+          {/* W5-2：弃「环形总计倒计时」。主数字只剩剩余天，到钟读数（时:分:秒）
+              只在拿到明确初试日期时才走表；进度与「日期为系统估算」降级为说明行。
+              ringPct 的口径不变（今年 1 月 1 日 → 初试日），只是不再拿环当主视觉。 */}
+          <Countdown
+            className="hub-countdown"
+            variant="hero"
+            days={countdown.days}
+            examDate={countdown.examDate}
+            examYear={countdown.examYear}
+            phaseLabel={countdown.phaseLabel}
+            isDefault={countdown.isDefault}
+            progress={countdown.examDate ? ringPct : null}
+            showClock
+            linkAs={Link}
+          />
         </aside>
       </header>
 
@@ -955,9 +945,14 @@ export default function Hub() {
                   />
                   {heatActive > 0 ? (
                     <>
-                      <div className="hub-heat">
-                        <HeatMap data={heatDays.map((d) => ({ date: d.date, value: d.focus }))} color="var(--v3-primary)" />
-                      </div>
+                      {/* W5-3：热力图改用自适应组件 —— 格子随容器宽度算，
+                          首页与任何窄卡同一套口径；hover/tap 在下方明细行看当天。 */}
+                      <StudyHeatmap
+                        days={heatDays}
+                        weeks={12}
+                        valueOf={(d) => d.focus}
+                        detailOf={(d) => `${d.date} · 专注 ${d.focus} 分钟 · 答题 ${d.questions} 道 · 单词 ${d.words} 个`}
+                      />
                       <div className="hub-heat__meta">
                         <span><b>{heatActive}</b> 天有学习痕迹</span>
                         <span><b>{fmt(heatFocus)}</b> 分钟专注</span>

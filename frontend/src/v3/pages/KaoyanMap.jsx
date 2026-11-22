@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { toEchartsProvince } from '../../utils/province'
 import {
-  Alert, Badge, Button, Chip, Empty, IconButton, PageHeader, Skeleton, Tile,
+  Alert, Badge, Button, Chip, Empty, IconButton, PageHeader, Select, Skeleton, Tile,
 } from '../ui'
 import {
   ArrowRight, Compass, Database, Map as MapIcon, RefreshCw, School, Target,
@@ -330,17 +330,16 @@ export default function KaoyanMap() {
           </div>
           <div className="v3-ky-map-toolbar">
             {years.length > 0 ? (
-              <label className="v3-ky-map-year">
+              <div className="v3-ky-map-year">
                 <span>数据年份</span>
-                <select
-                  className="v3-select"
+                {/* W5-1：换全站统一主题化下拉（原生面板不受主题控制） */}
+                <Select
                   aria-label="选择年份"
-                  value={data.year ?? year ?? ''}
+                  value={String(data.year ?? year ?? '')}
                   onChange={(e) => { setPinnedName(null); setYear(Number(e.target.value)) }}
-                >
-                  {years.map((y) => <option key={y} value={y}>{y} 年</option>)}
-                </select>
-              </label>
+                  options={years.map((y) => ({ value: String(y), label: `${y} 年` }))}
+                />
+              </div>
             ) : (
               <Badge tone="outline">暂无年份</Badge>
             )}

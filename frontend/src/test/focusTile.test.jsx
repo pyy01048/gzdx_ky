@@ -139,10 +139,14 @@ describe('FocusTile 科目', () => {
     seedTimer(pausedAt(20, 25))
     renderTile({ subjects: ['数学', '数字电子技术'] })
 
-    const select = screen.getByLabelText('专注科目')
-    expect([...select.options].map((o) => o.value)).toEqual(['', '数学', '数字电子技术'])
+    // W5-1：科目下拉换成主题化 Select（button[role=combobox] + 展开后的 listbox）
+    const trigger = screen.getByRole('combobox', { name: '专注科目' })
+    fireEvent.click(trigger)
+    expect(screen.getAllByRole('option').map((o) => o.textContent.trim()))
+      .toEqual(['不限科目', '数学', '数字电子技术'])
 
-    fireEvent.change(select, { target: { value: '数字电子技术' } })
+    fireEvent.click(screen.getByRole('option', { name: '数字电子技术' }))
+    expect(trigger.textContent).toContain('数字电子技术')
     fireEvent.click(screen.getByRole('button', { name: /记录 20 分钟/ }))
 
     await waitFor(() => expect(apiMocks.addSession).toHaveBeenCalledTimes(1))
@@ -163,8 +167,9 @@ describe('FocusTile 科目', () => {
     seedTimer({ ...pausedAt(12, 25), subject: '结构力学' })
     renderTile({ subjects: ['数学'] })
 
-    const select = screen.getByLabelText('专注科目')
-    expect(select.value).toBe('结构力学')
-    expect(Array.from(select.options).map((o) => o.value)).toContain('结构力学')
+    const trigger = screen.getByRole('combobox', { name: '专注科目' })
+    expect(trigger.textContent).toContain('结构力学')
+    fireEvent.click(trigger)
+    expect(screen.getAllByRole('option').map((o) => o.textContent.trim())).toContain('结构力学')
   })
 })

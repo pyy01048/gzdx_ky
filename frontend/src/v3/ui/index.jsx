@@ -3,7 +3,8 @@ import React, {
 } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  AlertCircle, AlertTriangle, Bot, CheckCircle2, InfoCircle, Sparkles, X,
+  AlertCircle, AlertTriangle, Bot, Check, CheckCircle2, ChevronDown, InfoCircle, Search,
+  Sparkles, X,
 } from '../icons'
 
 /* -------------------------------------------------------------------------- */
@@ -204,8 +205,17 @@ export function Avatar({ name = '', size, className = '', src, ...props }) {
 /* Form controls                                                              */
 /* -------------------------------------------------------------------------- */
 export function Field({ label, hint, error, htmlFor, children, className = '' }) {
+  /* W5-1：label 的 for 只能代理原生表单控件。自定义下拉是 button，
+     点标题文字不会打开面板 —— 这里手动转发一次点击，保持既有的标签点按习惯。 */
+  const onLabelClick = (e) => {
+    const ctl = e.currentTarget.querySelector?.('.v3-xsel')
+    if (ctl && !ctl.contains(e.target)) {
+      e.preventDefault()
+      ctl.click()
+    }
+  }
   return (
-    <label className={cx('v3-field', className)} htmlFor={htmlFor}>
+    <label className={cx('v3-field', className)} htmlFor={htmlFor} onClick={onLabelClick}>
       {label ? <span className="v3-label">{label}</span> : null}
       {children}
       {error ? <span className="v3-field__error">{error}</span> : hint ? <span className="v3-field__hint">{hint}</span> : null}
@@ -229,7 +239,89 @@ export const Textarea = React.forwardRef(function Textarea({ className = '', ...
   return <textarea ref={ref} className={cx('v3-textarea', className)} {...props} />
 })
 
-export function Select({ options = [], className = '', children, ...props }) {
+/* -------------------------------------------------------------------------- */
+/* Select · 主题化下拉（W5-1 · 全站通病整改）                                   */
+/* -------------------------------------------------------------------------- */
+/* 原生 <select> 的展开面板由操作系统绘制，与 v3 主题（含暗色）脱节，手机端还是
+   滚轮选择器，没有 44px 触控热区可言。这里按设计系统通用的 Combobox 重做：
+   · 配色/圆角/阴影/字阶全部只取 tokens.css 变量，暗色自动跟随 [data-theme="dark"]；
+   · 移动优先：≤767px 自动切成底部 Sheet（大热区 + 可搜索），桌面用固定定位浮层，
+     放不下自动向上翻，超出一屏在面板内滚动；
+   · 键盘可达：Enter/Space/↑/↓ 打开，↑↓/Home/End 移动焦点项，Enter 选中，
+     Esc 关闭，无搜索框时支持首字母 typeahead；aria-activedescendant 单向播报；
+   · props 契约与原生保持一致（value / onChange(e.target.value) / options /
+     <option> 子元素混写），因此既有 60+ 处调用点无需改动即整体换装；
+   · 遇到无法安全解析的子元素（<optgroup>、非 option 节点）自动回落原生实现，
+     不改变行为、不吞选项。 */
+
+function selPlainText(node) {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(selPlainText).join('')
+  if (React.isValidElement(node)) return selPlainText(node.props?.children)
+  return ''
+}
+
+function toSelOption(o) {
+  if (o == null) return null
+  if (typeof o === 'string' || typeof o === 'number') return { value: String(o), label: String(o) }
+  const raw = o.value ?? o.id ?? ''
+  const label = o.label ?? o.name ?? o.text ?? String(raw)
+  return {
+    value: String(raw),
+    label: String(label),
+    disabled: !!o.disabled,
+    title: o.title || undefined,
+  }
+}
+
+/* 返回 null 表示「解析不了，请用原生 select」 */
+function parseSelOptions({ options, children }) {
+  if (Array.isArray(options) && options.length) {
+    return options.map(toSelOption).filter(Boolean)
+  }
+  if (children == null || children === false) return Array.isArray(options) ? [] : null
+  const out = []
+  let unsupported = false
+  React.Children.forEach(children, (c) => {
+    if (c == null || c === false) return
+    if (React.isValidElement(c)) {
+      if (c.type === 'option') {
+        const label = selPlainText(c.props?.children)
+        const raw = c.props?.value
+        out.push({
+          value: raw === undefined ? label : String(raw),
+          label: label || String(raw ?? ''),
+          disabled: !!c.props?.disabled,
+          title: c.props?.title || undefined,
+        })
+        return
+      }
+      unsupported = true
+      return
+    }
+    if (typeof c === 'string' || typeof c === 'number') {
+      out.push({ value: String(c), label: String(c) })
+      return
+    }
+    unsupported = true
+  })
+  if (unsupported) return null
+  return out
+}
+
+function selStep(list, from, dir) {
+  if (!list.length) return from
+  let i = from
+  for (let n = 0; n < list.length; n += 1) {
+    i = (i + dir + list.length) % list.length
+    if (!list[i].disabled) return i
+  }
+  return from
+}
+
+/* 回落实现：保持升级前的原生行为 */
+function NativeSelect({ options = [], className = '', children, ...props }) {
   return (
     <select className={cx('v3-select', className)} {...props}>
       {children || options.map((o) => {
@@ -238,6 +330,343 @@ export function Select({ options = [], className = '', children, ...props }) {
         return <option key={value} value={value}>{label}</option>
       })}
     </select>
+  )
+}
+
+export function Select(props) {
+  const parsed = parseSelOptions(props)
+  if (parsed === null) return <NativeSelect {...props} />
+  return <DropdownSelect {...props} options={parsed} />
+}
+
+function DropdownSelect({
+  options = [],
+  className = '',
+  style,
+  value,
+  defaultValue,
+  onChange,
+  disabled = false,
+  id,
+  placeholder = '请选择',
+  searchable,
+  size,
+  title,
+  name,
+  children: _children,
+  'aria-label': ariaLabel,
+  ...rest
+}) {
+  const isMobile = useMedia('(max-width: 767px)')
+  const uid = useId().replace(/:/g, '')
+  const listId = `v3-sel-list-${uid}`
+  const wrapRef = useRef(null)
+  const triggerRef = useRef(null)
+  const popRef = useRef(null)
+  const sheetRef = useRef(null)
+  const listRef = useRef(null)
+  const searchRef = useRef(null)
+  const typeRef = useRef('')
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState(0)
+  const [inner, setInner] = useState(defaultValue ?? '')
+  const [pos, setPos] = useState(null)
+
+  const controlled = value !== undefined
+  const current = String(controlled ? (value ?? '') : inner)
+  const all = options
+  const searchableNow = (searchable === undefined ? all.length > 10 : !!searchable) && all.length > 4
+  const norm = query.trim().toLowerCase()
+  const list = useMemo(
+    () => (norm
+      ? all.filter((o) => o.label.toLowerCase().includes(norm) || o.value.toLowerCase().includes(norm))
+      : all),
+    [all, norm],
+  )
+  const activeIdx = list.length ? Math.min(Math.max(0, active), list.length - 1) : 0
+  const picked = all.find((o) => o.value === current)
+  const shown = current === '' ? placeholder : (picked ? picked.label : current)
+
+  const emit = useCallback((v) => {
+    if (!controlled) setInner(v)
+    const ev = { target: { value: v }, currentTarget: { value: v } }
+    onChange?.(ev)
+  }, [controlled, onChange])
+
+  const place = useCallback(() => {
+    const el = triggerRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const w = Math.max(r.width, 176)
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8))
+    const roomBelow = window.innerHeight - r.bottom - 20
+    const roomAbove = r.top - 20
+    const flip = roomBelow < 176 && roomAbove > roomBelow
+    setPos({
+      left,
+      width: w,
+      top: flip ? undefined : r.bottom + 6,
+      bottom: flip ? Math.max(8, window.innerHeight - r.top + 6) : undefined,
+      maxH: Math.max(160, flip ? roomAbove : roomBelow),
+    })
+  }, [])
+
+  const openList = useCallback(() => {
+    if (disabled || open) return
+    const idx = all.findIndex((o) => o.value === current)
+    setActive(idx < 0 ? 0 : idx)
+    setQuery('')
+    setOpen(true)
+    if (!isMobile) {
+      triggerRef.current?.focus?.()
+      place()
+    }
+  }, [disabled, open, all, current, isMobile, place])
+
+  const closeList = useCallback((refocus = true) => {
+    setOpen(false)
+    setPos(null)
+    setQuery('')
+    if (refocus) window.setTimeout(() => triggerRef.current?.focus?.(), 0)
+  }, [])
+
+  const pick = useCallback((o) => {
+    if (!o || o.disabled) return
+    emit(o.value)
+    closeList()
+  }, [emit, closeList])
+
+  /* 打开后：搜索框抢焦点（长列表），并把当前项滚进视野 */
+  useEffect(() => {
+    if (!open) return undefined
+    if (searchableNow) {
+      const t = window.setTimeout(() => searchRef.current?.focus?.(), 30)
+      return () => window.clearTimeout(t)
+    }
+    const el = listRef.current?.querySelector('[data-active="1"]')
+    el?.scrollIntoView?.({ block: 'nearest' })
+    return undefined
+  }, [open, searchableNow, activeIdx])
+
+  /* 浮层跟随滚动/缩放重新定位（Sheet 模式不需要） */
+  useEffect(() => {
+    if (!open || isMobile) return undefined
+    const onMove = () => place()
+    window.addEventListener('scroll', onMove, true)
+    window.addEventListener('resize', onMove)
+    return () => {
+      window.removeEventListener('scroll', onMove, true)
+      window.removeEventListener('resize', onMove)
+    }
+  }, [open, isMobile, place])
+
+  /* 点外部 / Esc 关闭 */
+  useEffect(() => {
+    if (!open) return undefined
+    const onDown = (e) => {
+      if (wrapRef.current?.contains(e.target)) return
+      if (popRef.current?.contains(e.target)) return
+      if (sheetRef.current?.contains(e.target)) return
+      closeList(false)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeList()
+    }
+    document.addEventListener('pointerdown', onDown, true)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, closeList])
+
+  const navKeys = (e) => {
+    if (!open) return
+    const k = e.key
+    if (k === 'ArrowDown' || k === 'ArrowUp') {
+      e.preventDefault()
+      setActive((a) => selStep(list, Math.min(a, list.length - 1), k === 'ArrowDown' ? 1 : -1))
+      return
+    }
+    if (k === 'Home') {
+      e.preventDefault()
+      setActive(0)
+      return
+    }
+    if (k === 'End') {
+      e.preventDefault()
+      setActive(list.length - 1)
+      return
+    }
+    if (k === 'Enter' || (k === ' ' && e.target?.tagName !== 'INPUT')) {
+      if (k === 'Enter') e.preventDefault()
+      pick(list[activeIdx])
+      return
+    }
+    if (k === 'Tab') closeList(false)
+  }
+
+  /* 无搜索框时的首字母跳转（成熟下拉的标配） */
+  const typeahead = (e) => {
+    if (searchableNow) return
+    const k = e.key
+    if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Enter' || k === 'Home' || k === 'End') return
+    if (k.length !== 1 || /\s/.test(k)) return
+    e.preventDefault()
+    const buf = `${typeRef.current}${k}`
+    typeRef.current = buf
+    const needle = buf.trim().toLowerCase()
+    const hit = list.findIndex((o) => o.label.toLowerCase().startsWith(needle))
+    if (hit >= 0) {
+      /* 顺序要紧：openList 会把 active 复位到当前选中项，先开再定位 */
+      if (!open) {
+        setQuery('')
+        setOpen(true)
+        if (!isMobile) place()
+      }
+      setActive(hit)
+    }
+    window.setTimeout(() => { typeRef.current = '' }, 600)
+  }
+
+  const onTriggerKeyDown = (e) => {
+    if (disabled) return
+    if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault()
+      openList()
+      return
+    }
+    navKeys(e)
+  }
+
+  const optionsNode = (
+    <div
+      className={cx('v3-xsel__list', isMobile && 'v3-xsel__list--sheet')}
+      role="listbox"
+      id={listId}
+      ref={listRef}
+      aria-label={ariaLabel || undefined}
+    >
+      {list.length ? null : <div className="v3-xsel__empty">没有匹配项</div>}
+      {list.map((o, i) => (
+        <button
+          key={`${o.value}#${i}`}
+          type="button"
+          role="option"
+          id={`${listId}-${i}`}
+          tabIndex={-1}
+          disabled={o.disabled}
+          aria-selected={o.value === current}
+          data-active={i === activeIdx && open ? '1' : undefined}
+          title={o.title}
+          className={cx('v3-xsel__opt', o.value === current && 'is-selected', i === activeIdx && open && 'is-active')}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => pick(o)}
+        >
+          <span className="v3-xsel__opt-label">{o.label}</span>
+          {o.value === current ? <Check size={16} className="v3-xsel__check" /> : null}
+        </button>
+      ))}
+    </div>
+  )
+
+  const searchNode = searchableNow ? (
+    <div className="v3-xsel__search">
+      <Search size={15} />
+      <input
+        ref={searchRef}
+        type="search"
+        className="v3-xsel__search-input"
+        placeholder="搜索…"
+        aria-label="搜索选项"
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setActive(0) }}
+        onKeyDown={navKeys}
+      />
+    </div>
+  ) : null
+
+  return (
+    <span
+      ref={wrapRef}
+      className={cx('v3-xselw', className)}
+      style={style}
+      data-open={open || undefined}
+      data-disabled={disabled || undefined}
+      {...(name ? { 'data-name': name } : {})}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        id={id}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open && list.length ? `${listId}-${activeIdx}` : undefined}
+        aria-label={ariaLabel || undefined}
+        disabled={disabled}
+        title={title || (picked ? picked.label : undefined)}
+        className={cx('v3-select', 'v3-xsel', size && `v3-xsel--${size}`, open && 'is-open', className)}
+        onClick={() => (open ? closeList() : openList())}
+        onKeyDown={onTriggerKeyDown}
+        onKeyUp={typeahead}
+        {...rest}
+      >
+        <span className={cx('v3-xsel__text', current === '' && 'is-placeholder')}>{shown}</span>
+        <ChevronDown size={16} className={cx('v3-xsel__arrow', open && 'is-open')} />
+      </button>
+
+      {open && !isMobile && pos ? (
+        createPortal(
+          <div
+            ref={popRef}
+            className="v3-xsel__pop v3-portal"
+            style={{
+              left: pos.left,
+              top: pos.top,
+              bottom: pos.bottom,
+              width: pos.width,
+              maxHeight: pos.maxH,
+            }}
+          >
+            {searchNode}
+            {optionsNode}
+          </div>,
+          document.body,
+        )
+      ) : null}
+
+      {open && isMobile ? (
+        createPortal(
+          <div className="v3-portal">
+            <div
+              className="v3-sheet-backdrop"
+              onMouseDown={(e) => { if (e.target === e.currentTarget) closeList() }}
+            />
+            <div
+              className="v3-sheet v3-xsel__sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label={ariaLabel || placeholder}
+              ref={sheetRef}
+              tabIndex={-1}
+              onKeyDown={navKeys}
+            >
+              <div className="v3-sheet__handle" />
+              <div className="v3-xsel__sheet-head">
+                <span className="v3-dialog__title">{ariaLabel || placeholder}</span>
+                <IconButton label="关闭" size="sm" icon={<X size={18} />} onClick={() => closeList()} />
+              </div>
+              {searchNode}
+              {optionsNode}
+            </div>
+          </div>,
+          document.body,
+        )
+      ) : null}
+    </span>
   )
 }
 
@@ -937,5 +1366,258 @@ export function BotHint({ children }) {
       <Bot size={14} />
       {children}
     </span>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Countdown · 倒计时（W5-2 重做）                                             */
+/* -------------------------------------------------------------------------- */
+/* 旧的「环形总计倒计时」两处问题：环表达的是「一年走了多少」，与「还剩几天」
+   混在一个视觉单元里互相干扰；字号与配色在首页/计划页各写一套。这里改成信息
+   分层清爽的卡片：主数字只剩「剩余天」，可选秒级到分钟的到钟读数（只在明确
+   设置了初试日期时才走表），进度与里程碑降级为说明行，可整块嵌进首页 Hero、
+   计划页 Tile 或任意窄容器（variant=inline 时收成一行）。                    */
+
+const cdPad = (n) => String(Math.max(0, n)).padStart(2, '0')
+
+/* 倒计时里的「去核对/去设置」要跟随各页的导航方式：页面传 react-router 的
+   Link 就用 to（SPA 内跳转），不传则退化成普通 a[href]。 */
+function CdLink({ as: As, href, className, children }) {
+  if (!As) return <a className={className} href={href}>{children}</a>
+  return <As className={className} to={href}>{children}</As>
+}
+
+export function Countdown({
+  days = null,
+  examDate = '',
+  examYear = null,
+  label,
+  phaseLabel = '',
+  isDefault = false,
+  progress = null,
+  progressNote = '',
+  milestones = [],
+  showClock = false,
+  variant = 'card',
+  link = '/settings',
+  linkAs,
+  className = '',
+}) {
+  const [now, setNow] = useState(() => Date.now())
+  const target = useMemo(() => {
+    if (!examDate) return null
+    const t = new Date(`${examDate}T00:00:00`).getTime()
+    return Number.isFinite(t) ? t : null
+  }, [examDate])
+  const needClock = showClock && target != null && days != null && variant !== 'inline'
+  useEffect(() => {
+    if (!needClock) return undefined
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [needClock])
+
+  const diff = needClock ? Math.max(0, target - now) : 0
+  const clock = needClock
+    ? `${cdPad(Math.floor(diff / 3600000))}:${cdPad(Math.floor((diff % 3600000) / 60000))}:${cdPad(Math.floor((diff % 60000) / 1000))}`
+    : ''
+  const title = label || (examYear ? `距离 ${examYear} 考研` : '距离初试')
+  const next = (milestones || []).slice(0, 2)
+
+  return (
+    <div className={cx('v3-cdown', `v3-cdown--${variant}`, className)}>
+      <div className="v3-cdown__head">
+        <span className="v3-cdown__label">{title}</span>
+        {phaseLabel ? <span className="v3-badge v3-badge--primary">{phaseLabel}</span> : null}
+      </div>
+
+      {days == null ? (
+        <div className="v3-cdown__unset">
+          <span className="v3-cdown__unset-text">还没有初试日期</span>
+          <CdLink as={linkAs} href={link} className="v3-cdown__link">去设置目标与日期</CdLink>
+        </div>
+      ) : (
+        <div className="v3-cdown__figure">
+          <span className="v3-cdown__num">{new Intl.NumberFormat('zh-CN').format(days)}</span>
+          <span className="v3-cdown__unit">天</span>
+          {days <= 0 ? <span className="v3-cdown__zero">今天开考</span> : null}
+        </div>
+      )}
+
+      {needClock && clock ? (
+        <div className="v3-cdown__clock">
+          <span className="v3-cdown__clock-num">{clock}</span>
+          <span className="v3-cdown__clock-note">距 {examDate} 开考（按当日 00:00 计）</span>
+        </div>
+      ) : null}
+
+      {days != null ? (
+        <div className="v3-cdown__meta">
+          <span className="v3-cdown__date">{examDate || '未设置初试日期'}</span>
+          {isDefault ? (
+            <CdLink as={linkAs} href={link} className="v3-cdown__link">日期为系统估算 · 去核对</CdLink>
+          ) : null}
+        </div>
+      ) : null}
+
+      {progress != null ? (
+        <div className="v3-cdown__prog">
+          <Progress value={progress} />
+          <span className="v3-cdown__prog-note">
+            {progressNote || `备考时间轴已走过 ${Math.round(progress)}%`}
+          </span>
+        </div>
+      ) : null}
+
+      {next.length ? (
+        <ul className="v3-cdown__miles">
+          {next.map((m) => (
+            <li key={`${m.title}-${m.date || ''}`}>
+              <span className="v3-cdown__mile-title">{m.title}</span>
+              <span className="v3-cdown__mile-when">
+                {m.days == null ? (m.date || '待定') : `还剩 ${m.days} 天`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* StudyHeatmap · 自适应学习热力（W5-3）                                       */
+/* -------------------------------------------------------------------------- */
+/* 旧实现是定死 12px 单元格的 SVG，两处问题：一是被 viewBox 缩放，首页与仪表盘
+   同一个组件渲出两种大小；二是 <title> 提示在触屏上等于没有。改成按容器宽度
+   自适应排布的 DOM 网格：格子尺寸随宽度算（窄屏自动缩到能放下整周），hover
+   与 tap 都会把当天明细写在下方说明行（aria-live 同时播报），色阶用 tokens
+   主色与表面色 color-mix 得到，暗色自动跟随。                                 */
+
+const HEAT_WEEK_CN = ['一', '二', '三', '四', '五', '六', '日']
+
+export function StudyHeatmap({
+  days = [],
+  weeks = 12,
+  valueOf = (d) => d.focus,
+  detailOf = null,
+  unit = '分钟',
+  color = 'var(--v3-primary)',
+  className = '',
+}) {
+  const wrapRef = useRef(null)
+  const [boxW, setBoxW] = useState(0)
+  const [sel, setSel] = useState(null)
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect
+      if (cr) setBoxW(cr.width)
+    })
+    ro.observe(el)
+    setBoxW(el.getBoundingClientRect().width)
+    return () => ro.disconnect()
+  }, [])
+
+  const cells = useMemo(() => {
+    const src = Array.isArray(days) ? days : []
+    const sliced = weeks > 0 ? src.slice(-weeks * 7) : src
+    return sliced.map((d) => ({ day: d, value: Math.max(0, Number(valueOf(d)) || 0) }))
+  }, [days, weeks, valueOf])
+
+  /* 首列对齐真实星期：把 1 月 1 日落在周三这种偏移补成空格 */
+  const lead = useMemo(() => {
+    if (!cells.length) return 0
+    const first = cells[0].day?.date
+    if (!first) return 0
+    const dt = new Date(`${first}T00:00:00`)
+    if (Number.isNaN(dt.getTime())) return 0
+    return (dt.getDay() + 6) % 7
+  }, [cells])
+
+  const max = useMemo(() => Math.max(...cells.map((c) => c.value), 0), [cells])
+  const cols = Math.max(1, Math.ceil((lead + cells.length) / 7))
+  const gap = cols > 26 ? 2 : 3
+  const labelW = 24
+  const cell = Math.max(6, Math.min(18, Math.floor(((boxW || 320) - labelW - (cols - 1) * gap) / cols)))
+
+  const levelOf = (v) => {
+    if (!v || !max) return 0
+    const r = v / max
+    if (r >= 0.75) return 4
+    if (r >= 0.5) return 3
+    if (r >= 0.25) return 2
+    return 1
+  }
+
+  const grid = useMemo(() => {
+    const out = []
+    for (let i = 0; i < lead; i += 1) out.push(null)
+    cells.forEach((c) => out.push(c))
+    while (out.length % 7) out.push(null)
+    return out
+  }, [cells, lead])
+
+  const detail = useMemo(() => {
+    if (!sel) return ''
+    if (detailOf) return detailOf(sel.day)
+    const d = sel.day || {}
+    const bits = [d.date ? `${String(d.date).slice(5)} ·` : '', `专注 ${Math.round(sel.value)} ${unit}`]
+    if (d.questions != null) bits.push(`答题 ${d.questions}`)
+    if (d.words != null) bits.push(`单词 ${d.words}`)
+    return bits.filter(Boolean).join(' · ')
+  }, [sel, detailOf, unit])
+
+  return (
+    <div className={cx('v3-heat', className)} ref={wrapRef} style={{ '--v3-heat-color': color }}>
+      <div className="v3-heat__body">
+        <div className="v3-heat__days" aria-hidden="true" style={{ gap }}>
+          {HEAT_WEEK_CN.map((w, i) => (
+            <span key={w} style={{ height: cell, fontSize: cell >= 12 ? 10 : 9 }}>
+              {i % 2 === 0 ? w : ''}
+            </span>
+          ))}
+        </div>
+        <div className="v3-heat__cols" style={{ gap }}>
+          {Array.from({ length: cols }).map((_, c) => (
+            <div className="v3-heat__col" key={c} style={{ gap }}>
+              {Array.from({ length: 7 }).map((__, r) => {
+                const item = grid[c * 7 + r]
+                if (!item) return <span className="v3-heat__pad" key={r} style={{ width: cell, height: cell }} />
+                const lv = levelOf(item.value)
+                const d = item.day || {}
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    className={cx('v3-heat__cell', `lv-${lv}`, sel?.day?.date === d.date && 'is-sel')}
+                    style={{ width: cell, height: cell }}
+                    aria-label={`${d.date || ''} 专注 ${Math.round(item.value)} ${unit}`}
+                    title={`${d.date || ''} ${Math.round(item.value)} ${unit}`}
+                    onMouseEnter={() => setSel(item)}
+                    onFocus={() => setSel(item)}
+                    onClick={() => setSel(item)}
+                  />
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="v3-heat__foot">
+        <span className="v3-heat__detail" role="status" aria-live="polite">
+          {detail || '把鼠标移到或点一下格子，看当天学了什么'}
+        </span>
+        <span className="v3-heat__legend" aria-hidden="true">
+          <span className="v3-caption">少</span>
+          {[1, 2, 3, 4].map((lv) => (
+            <i key={lv} className={`v3-heat__sw lv-${lv}`} style={{ '--v3-heat-color': color }} />
+          ))}
+          <span className="v3-caption">多</span>
+        </span>
+      </div>
+    </div>
   )
 }

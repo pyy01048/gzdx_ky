@@ -212,30 +212,16 @@
   justify-content: center;
   min-width: 280px;
 }
+/* W5-2：首页倒计时改用 ui/Countdown（variant=hero）。
+   这里只负责把它嵌进 Hero 右侧 wells 的容器外观，读数分层由组件自身承担。 */
 .hub-countdown {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 16px 18px;
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
   border-radius: var(--v3-r-md);
   background: var(--hub-well);
   border: 1px solid var(--hub-line);
 }
-.hub-countdown .v3-ring { flex: none; }
-.hub-countdown__inside { display: grid; place-items: center; line-height: 1; }
-.hub-countdown__days {
-  font-family: var(--v3-font-display);
-  font-size: var(--v3-fs-28);
-  font-weight: 750;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-  color: var(--v3-text);
-}
-.hub-countdown__unit { font-size: var(--v3-fs-12); color: var(--v3-text-3); margin-top: 4px; }
-.hub-countdown__meta { display: grid; gap: 4px; min-width: 0; }
-.hub-countdown__label { font-size: var(--v3-fs-12); color: var(--v3-text-3); }
-.hub-countdown__meta strong { font-size: var(--v3-fs-14); font-variant-numeric: tabular-nums; }
-.hub-countdown__note { font-size: var(--v3-fs-12); color: var(--v3-text-3); line-height: 1.5; }
 
 /* ── 提示条 ─────────────────────────────────────────────────────────────── */
 .hub-banner {

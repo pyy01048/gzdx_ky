@@ -42,9 +42,12 @@ describe('PlanPage 届数由接口下发', () => {
     render(<MemoryRouter><PlanPage /></MemoryRouter>)
 
     const select = await screen.findByRole('combobox', { name: '选择届数' })
-    const options = [...select.querySelectorAll('option')].map((o) => o.textContent)
-    expect(options).toEqual(['2028 考研', '2027 考研'])
-    expect(options.some((t) => t.includes('2026'))).toBe(false)
+    // W5-1：主题化下拉的选项面板在展开后才存在（原来是常驻 DOM 的 <option>）
+    fireEvent.click(select)
+    const options = document.querySelectorAll('.v3-xsel__opt')
+    const texts = [...options].map((o) => o.textContent.trim())
+    expect(texts).toEqual(['2028 考研', '2027 考研'])
+    expect(texts.some((t) => t.includes('2026'))).toBe(false)
   })
 
   it('首屏不传年份，让后端按 Goal 配置的届推导', async () => {
@@ -62,7 +65,9 @@ describe('PlanPage 届数由接口下发', () => {
     render(<MemoryRouter><PlanPage /></MemoryRouter>)
     const select = await screen.findByRole('combobox', { name: '选择届数' })
 
-    await act(async () => { fireEvent.change(select, { target: { value: '2027' } }) })
+    // W5-1：主题化下拉 —— 展开后点选项，而不是对原生 select 派发 change
+    await act(async () => { fireEvent.click(select) })
+    await act(async () => { fireEvent.click(screen.getByRole('option', { name: '2027 考研' })) })
     expect(kaoyanApi.roadmap).toHaveBeenLastCalledWith(2027)
   })
 

@@ -260,6 +260,10 @@ describe('Cards：正确解析后端 {items}、科目下拉来自 API', () => {
     fireEvent.click(screen.getByRole('button', { name: '新建卡包' }))
     await settle()
 
+    // W5-1：科目下拉换成主题化 Select —— 选项面板在展开后才渲染
+    fireEvent.click(screen.getByRole('combobox', { name: '卡包科目' }))
+    await settle()
+
     expect(screen.getByRole('option', { name: '数字电子技术' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '数学' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: '专业课' })).toBeNull()

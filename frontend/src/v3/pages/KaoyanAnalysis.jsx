@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import {
-  Alert, Badge, Button, Chip, Empty, IconButton, PageHeader, Skeleton,
+  Alert, Badge, Button, Chip, Empty, IconButton, PageHeader, Select, Skeleton,
   Tile, toastErr, toastOk,
 } from '../ui'
 import {
@@ -336,18 +336,19 @@ export default function KaoyanAnalysis() {
             </div>
 
             <div className="v3-ky-analysis-select">
-              <label className="v3-ky-analysis-select__school">
+              <div className="v3-ky-analysis-select__school">
                 <span className="v3-label">院校</span>
-                <select
-                  className="v3-select"
-                  value={selected || ''}
+                {/* W5-1：原生 select 面板由系统绘制，与主题脱节；换成全站统一的主题化下拉 */}
+                <Select
                   aria-label="选择院校"
+                  value={String(selected || '')}
                   onChange={(e) => setSelected(e.target.value || null)}
-                >
-                  <option value="">请选择院校（共 {schoolItems.length} 所）</option>
-                  {schoolItems.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </label>
+                  options={[
+                    { value: '', label: `请选择院校（共 ${schoolItems.length} 所）` },
+                    ...schoolItems.map((s) => ({ value: String(s.id), label: s.name })),
+                  ]}
+                />
+              </div>
               <div className="v3-ky-metric-chips" role="group" aria-label="选择指标">
                 {METRICS.map((m) => (
                   <Chip key={m.value} active={metric === m.value} onClick={() => setMetric(m.value)}>

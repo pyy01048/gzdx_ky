@@ -805,6 +805,41 @@ button.v3-dash-link {
   gap: 6px;
 }
 
+/* W5-4：专注时长可自定义（快捷档 + 任意分钟输入），15/25/45 不再是天花板 */
+.v3-focus__plan {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.v3-focus__custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.v3-focus__minutes {
+  flex: 0 1 92px;
+  width: 92px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: var(--v3-r-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.v3-focus__subject-hint {
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .v3-focus__minutes {
+    flex: 1 1 96px;
+    min-height: var(--v3-touch);
+  }
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 760px) {
   .v3-dash-hero {
