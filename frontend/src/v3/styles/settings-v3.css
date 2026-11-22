@@ -1065,3 +1065,58 @@
     flex: 1 1 auto;
   }
 }
+
+/* ---- 备考策略（学长视角：/goals/strategy 结果展示） ---- */
+.v3-settings-strategy {
+  margin-top: 14px;
+  border-top: 1px dashed var(--v3-outline, rgba(127, 127, 127, 0.25));
+  padding-top: 12px;
+}
+.v3-settings-strategy__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.v3-settings-strategy__bar .v3-caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.v3-settings-strategy__body {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: var(--v3-r-sm);
+  background: var(--v3-surface-1);
+  color: var(--v3-text-2);
+  font-size: var(--v3-fs-12);
+  line-height: 1.75;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.v3-settings-strategy__body h4 {
+  margin: 0 0 8px;
+  color: var(--v3-text);
+  font-size: var(--v3-fs-14);
+}
+.v3-settings-strategy__body h5 {
+  margin: 12px 0 6px;
+  color: var(--v3-text);
+  font-size: var(--v3-fs-12);
+  font-weight: 650;
+}
+.v3-settings-strategy__body p {
+  margin: 4px 0;
+}
+.v3-settings-strategy__body p.is-note {
+  color: var(--v3-text-3);
+  font-size: 11.5px;
+}
+.v3-settings-strategy__body p.is-item {
+  padding-left: 10px;
+}
+.v3-settings-strategy__body b {
+  color: var(--v3-text);
+  font-weight: 650;
+}

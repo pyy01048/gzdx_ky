@@ -3,10 +3,15 @@
 import asyncio
 import datetime
 
-from core.models import Goal, KaoyanSchool, KaoyanScoreline
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from models import User
+
+# P0（2026-11-22 公网实测）：本路由曾从 core.models 引 Goal —— 那是另一套
+# DeclarativeBase 的元数据，其中没有 users 表；首次 PUT /goals 插入时
+# SQLAlchemy flush 排序解析 FK goals.user_id→users.id 直接抛
+# NoReferencedTableError → 500，新用户第一步「设置目标」即被挡死。
+# 统一改用 models.py（与 User/Task/Word 同一 Base），FK 可解析，行为不变。
+from models import Goal, KaoyanSchool, KaoyanScoreLine, User
 from schemas import GoalUpdate
 from sqlalchemy.orm import Session
 from utils.scope import owner_id, scoped  # B4 行级隔离
@@ -22,10 +27,7 @@ router = APIRouter(prefix="/api/goals", tags=["goals"])
 def _school_dict(db: Session, s: KaoyanSchool) -> dict:
     """组装院校响应（保持旧 /university 接口结构，数据源迁移至 kaoyan_schools/kaoyan_scorelines）。"""
     lines = (
-        db.query(KaoyanScoreline)
-        .filter(KaoyanScoreline.school_id == s.id)
-        .order_by(KaoyanScoreline.year.desc())
-        .all()
+        db.query(KaoyanScoreLine).filter(KaoyanScoreLine.school_id == s.id).order_by(KaoyanScoreLine.year.desc()).all()
     )
     return {
         "id": s.id,
@@ -70,9 +72,7 @@ async def update_subjects(payload: dict, db: Session = Depends(get_db), user: Us
     if support is not None and not isinstance(support, list):
         raise HTTPException(status_code=400, detail="support_subjects 必须是数组")
 
-    return subject_config.set_config(
-        db, exam_subjects=exam, support_subjects=support, user_id=owner_id(user)
-    )
+    return subject_config.set_config(db, exam_subjects=exam, support_subjects=support, user_id=owner_id(user))
 
 
 @router.get("")
@@ -150,12 +150,12 @@ async def update_exam_calendar(payload: dict, db: Session = Depends(get_db), use
         try:
             exam_date = datetime.date.fromisoformat(str(raw_date)[:10])
         except ValueError:
-            raise HTTPException(status_code=422, detail="exam_date 需为 YYYY-MM-DD")
+            raise HTTPException(status_code=422, detail="exam_date 需为 YYYY-MM-DD") from None
     elif exam_year is not None:
         try:
             year = exam_calendar.validate_exam_year(exam_year)
         except exam_calendar.ExamYearError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+            raise HTTPException(status_code=422, detail=str(e)) from e
         exam_date, _ = exam_calendar.resolve_exam_date(year)
     else:
         raise HTTPException(status_code=400, detail="至少提供 exam_year 或 exam_date")
@@ -163,8 +163,7 @@ async def update_exam_calendar(payload: dict, db: Session = Depends(get_db), use
     goal.exam_date = exam_date
     # 分项目标自洽性：分项之和与总分不一致时（真库实测 65+65+115+115=360 但总分填 350），
     # 不擅自改用户的分项目标，只把修正后的总分回填并明确告知，避免两个数字互相矛盾。
-    parts = [goal.politics_target, goal.english_target,
-             goal.math_target, goal.major_target]
+    parts = [goal.politics_target, goal.english_target, goal.math_target, goal.major_target]
     old_total = goal.total_score_target
     adjusted_total = None
     if all(p is not None for p in parts):
@@ -214,11 +213,7 @@ async def get_university(db: Session = Depends(get_db), user: User = Depends(cur
     if not goal or not goal.university:
         schools = db.query(KaoyanSchool).limit(10).all()
     else:
-        schools = (
-            db.query(KaoyanSchool)
-            .filter(KaoyanSchool.name.like(f"%{goal.university}%"))
-            .all()
-        )
+        schools = db.query(KaoyanSchool).filter(KaoyanSchool.name.like(f"%{goal.university}%")).all()
     return [_school_dict(db, s) for s in schools]
 
 
@@ -234,9 +229,7 @@ async def search_universities(
     if keyword:
         query = query.filter(KaoyanSchool.name.like(f"%{keyword}%"))
     if city:
-        query = query.filter(
-            (KaoyanSchool.city == city) | (KaoyanSchool.province == city)
-        )
+        query = query.filter((KaoyanSchool.city == city) | (KaoyanSchool.province == city))
     if type:
         query = query.filter(KaoyanSchool.level == type)
 
@@ -253,9 +246,7 @@ async def get_strategy(db: Session = Depends(get_db), user: User = Depends(curre
     if not goal:
         raise HTTPException(status_code=400, detail="请先设置考研目标")
 
-    school = (
-        db.query(KaoyanSchool).filter(KaoyanSchool.name.like(f"%{goal.university or ''}%")).first()
-    )
+    school = db.query(KaoyanSchool).filter(KaoyanSchool.name.like(f"%{goal.university or ''}%")).first()
 
     ai = AIService(db)
     prompt_parts = [
@@ -270,10 +261,15 @@ async def get_strategy(db: Session = Depends(get_db), user: User = Depends(curre
     try:
         # 给 AI 一个明确上限：超时即走下方模板降级。上限须小于 timeout_guard 对本路径的
         # 90s 阈值，否则守卫先 504，降级永远轮不到。
-        result = await asyncio.wait_for(ai.chat([
-            {"role": "system", "content": "你是一位考研规划专家，擅长制定院校备考策略。"},
-            {"role": "user", "content": "\n".join(prompt_parts)},
-        ]), timeout=STRATEGY_AI_TIMEOUT)
+        result = await asyncio.wait_for(
+            ai.chat(
+                [
+                    {"role": "system", "content": "你是一位考研规划专家，擅长制定院校备考策略。"},
+                    {"role": "user", "content": "\n".join(prompt_parts)},
+                ]
+            ),
+            timeout=STRATEGY_AI_TIMEOUT,
+        )
         return {"content": result["content"]}
     except Exception as e:
         # AI 不可用（未配置服务商 / 本地模型未启动 / 网络异常）时优雅降级，
@@ -311,14 +307,13 @@ def _fallback_strategy(goal, school, reason: str):
     school_note = ""
     if school is None and goal.university:
         school_note = (
-            f"\n> 注：题库中暂未检索到「{goal.university}」的完整招生数据，"
-            "院校层次、复试线等请以研究生院官网为准。\n"
+            f"\n> 注：题库中暂未检索到「{goal.university}」的完整招生数据，院校层次、复试线等请以研究生院官网为准。\n"
         )
 
-    content = f"""# {goal.university or '目标院校'} · {goal.major or '目标专业'} 备考策略
+    content = f"""# {goal.university or "目标院校"} · {goal.major or "目标专业"} 备考策略
 
 > 本策略由系统模板生成（当前 AI 规划助手不可用：{reason}）。配置可用 AI 服务商后可获得个性化策略。
-> 考试日期：{goal.exam_date or '未设置'}{days_left}
+> 考试日期：{goal.exam_date or "未设置"}{days_left}
 {school_note}
 ## 一、分数目标
 {total_line}

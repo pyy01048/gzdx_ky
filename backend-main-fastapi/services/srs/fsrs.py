@@ -10,6 +10,7 @@
 注意：这里不追求与 py-fsrs 数值完全一致，但遵循同一记忆曲线与更新方向；
 后续如需严格对齐，可替换 W 参数与 update 公式，不动调用方。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -18,16 +19,27 @@ from typing import Any, Optional
 
 from models import ReviewSchedule
 from sqlalchemy.orm import Session
-from utils.timeutil import utcnow
+from utils.timeutil import to_naive_utc, utcnow
 
 # FSRS-4.5 默认参数
 W = [
-    0.4872, 1.4003, 3.7145, 13.8206,  # 初始稳定度（Again/Hard/Good/Easy）
-    5.1618, 1.2298,                    # 初始难度
-    0.8975, 0.031,                     # 难度更新 / 均值回归
-    1.6474, 0.1367, 1.0461,            # 稳定度增长
-    2.1072, 0.0793, 0.3246, 1.587,     # 遗忘后的稳定度
-    0.2272, 2.8755,                    # Hard 惩罚 / Easy 奖励
+    0.4872,
+    1.4003,
+    3.7145,
+    13.8206,  # 初始稳定度（Again/Hard/Good/Easy）
+    5.1618,
+    1.2298,  # 初始难度
+    0.8975,
+    0.031,  # 难度更新 / 均值回归
+    1.6474,
+    0.1367,
+    1.0461,  # 稳定度增长
+    2.1072,
+    0.0793,
+    0.3246,
+    1.587,  # 遗忘后的稳定度
+    0.2272,
+    2.8755,  # Hard 惩罚 / Easy 奖励
 ]
 
 DECAY = -0.5
@@ -145,9 +157,8 @@ def schedule(
     兼容尚未接线的调用方。调用方（路由层）一律传 ``owner_id(user)``。
     """
     now = now or utcnow()
-    sched_q = (
-        db.query(ReviewSchedule)
-        .filter(ReviewSchedule.item_type == item_type, ReviewSchedule.item_id == int(item_id))
+    sched_q = db.query(ReviewSchedule).filter(
+        ReviewSchedule.item_type == item_type, ReviewSchedule.item_id == int(item_id)
     )
     if user_id is not None:
         # 同一 item 的排程按用户隔离，避免读到/覆写他人的调度状态
@@ -156,7 +167,11 @@ def schedule(
     had_history = bool(row and row.last_reviewed_at and (row.stability or row.interval_days))
     elapsed = 0.0
     if row and row.last_reviewed_at:
-        elapsed = max(0.0, (now - row.last_reviewed_at).total_seconds() / 86400.0)
+        # P0（2026-11-22 公网实测）：PG 的 review_schedules.last_reviewed_at 是
+        # TIMESTAMPTZ，驱动读回 **aware** datetime；now 是 naive UTC。直接相减抛
+        # TypeError → 拼写练习/任何「第二次复习」500。统一 to_naive_utc 后再算。
+        last = to_naive_utc(row.last_reviewed_at)
+        elapsed = max(0.0, (to_naive_utc(now) - last).total_seconds() / 86400.0)
 
     stability = row.stability if row else None
     difficulty = row.difficulty if row else None
@@ -190,8 +205,12 @@ def schedule(
     row.interval_days = out["interval_days"]
     row.repetitions = (row.repetitions or 0) + 1 if int(rating) >= 3 else 0
     row.lapses = (row.lapses or 0) + out["lapses"]
-    row.last_reviewed_at = now
-    row.next_review_at = now + datetime.timedelta(days=out["interval_days"])
+    # 写入统一 naive UTC（项目 P0-4 时间规范）：PG TIMESTAMPTZ 会话时区为 UTC，
+    # naive 值按 UTC 解释，语义正确；SQLite 降级库同样按 naive UTC 存储。
+    now_naive = to_naive_utc(now)
+    next_at = now_naive + datetime.timedelta(days=out["interval_days"])
+    row.last_reviewed_at = now_naive
+    row.next_review_at = next_at
     if commit:
         db.commit()
 
@@ -200,7 +219,9 @@ def schedule(
         "item_id": int(item_id),
         "algorithm": "fsrs",
         **out,
-        "due": row.next_review_at.isoformat() if row.next_review_at else None,
+        # due 恒为 naive UTC ISO 串：调用方（errors/review 路由）fromisoformat
+        # 后直接写业务表 next_review（naive 列口径），不会混入 aware 值。
+        "due": next_at.isoformat(),
     }
 
 

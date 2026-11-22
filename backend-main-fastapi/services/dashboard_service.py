@@ -5,6 +5,7 @@ Dashboard 业务逻辑服务层
 - 首屏聚合的唯一出口是 :meth:`DashboardService.get_summary`（01-仪表盘 §2.6），
   所有"哪天学了多少"的数字都从 ``services.study_calendar`` 的同一份日活台账派生
 """
+
 import datetime
 import re
 from collections import Counter
@@ -97,9 +98,7 @@ class DashboardService:
     """仪表盘数据聚合服务"""
 
     @staticmethod
-    def _due_counts(
-        db: Session, day: datetime.date, user_id: Optional[int] = None
-    ) -> dict:
+    def _due_counts(db: Session, day: datetime.date, user_id: Optional[int] = None) -> dict:
         """某一北京自然日的**累计到期量**（含此前欠下的复习债），切点为该日 24:00。
 
         这是到期口径的唯一出处：未来负荷三档（:meth:`_future_load`）和今日任务清单
@@ -194,9 +193,7 @@ class DashboardService:
         }
 
     @staticmethod
-    def _today_task_rollup(
-        day: study_calendar.DayActivity, due: Optional[dict]
-    ) -> list:
+    def _today_task_rollup(day: study_calendar.DayActivity, due: Optional[dict]) -> list:
         """今日任务清单（D-03）：按模块给出「现在到期多少 / 今天已做多少」。
 
         刻意**不给 percent**：``due`` 是此刻仍在队列里的到期量（做过即出队），
@@ -217,15 +214,17 @@ class DashboardService:
                 status = "clear"
             else:
                 status = "pending"
-            out.append({
-                "module": module,
-                "label": label,
-                "unit": unit,
-                "due": due_n,
-                "done": done,
-                "status": status,
-                "note": _DUE_NOTES.get(module),
-            })
+            out.append(
+                {
+                    "module": module,
+                    "label": label,
+                    "unit": unit,
+                    "due": due_n,
+                    "done": done,
+                    "status": status,
+                    "note": _DUE_NOTES.get(module),
+                }
+            )
         return out
 
     @staticmethod
@@ -252,10 +251,7 @@ class DashboardService:
         if user_id is not None:
             tq = tq.filter(Task.user_id == user_id)
         tasks = (
-            tq.filter(
-                (Task.due_date == today)
-                | (Task.status == "doing")
-            )
+            tq.filter((Task.due_date == today) | (Task.status == "doing"))
             .order_by(Task.priority.desc(), Task.due_date.asc())
             .all()
         )
@@ -265,9 +261,8 @@ class DashboardService:
         done = [t for t in tasks if t.status == "done"]
 
         if day is None:
-            day = (
-                study_calendar.day_ledger(db, user_id=user_id).get(today.isoformat())
-                or study_calendar.DayActivity(date=today)
+            day = study_calendar.day_ledger(db, user_id=user_id).get(today.isoformat()) or study_calendar.DayActivity(
+                date=today
             )
         if due is None:
             due = DashboardService._due_counts(db, today, user_id=user_id)
@@ -330,10 +325,12 @@ class DashboardService:
         for i in range(6, -1, -1):
             day = today - datetime.timedelta(days=i)
             day_str = day.isoformat()
-            daily_durations.append({
-                "date": day_str,
-                "duration": daily_map.get(day_str, 0),
-            })
+            daily_durations.append(
+                {
+                    "date": day_str,
+                    "duration": daily_map.get(day_str, 0),
+                }
+            )
 
         # 4. 今日学习时长
         #    ⚠️ 原实现读 StudyStats 表，但**全项目没有任何地方写这张表** ——
@@ -358,7 +355,7 @@ class DashboardService:
             db.query(func.count(Task.id))
             .filter(
                 Task.status == "done",
-                Task.completed_at != None,
+                Task.completed_at.isnot(None),
                 day_bucket_expr(Task.completed_at, db) >= week_ago,
                 *_u(Task),
             )
@@ -384,13 +381,12 @@ class DashboardService:
         再 Counter。改为三条聚合查询（总数 + 科目分布 + 错因分布），
         输出结构与阈值口径完全不变。B4：传入 ``user_id`` 时只看本人错题。
         """
+
         def _u():
             return () if user_id is None else (ErrorRecord.user_id == user_id,)
 
         total_errors = (
-            db.query(func.count(ErrorRecord.id))
-            .filter(ErrorRecord.status == "active", *_u())
-            .scalar()
+            db.query(func.count(ErrorRecord.id)).filter(ErrorRecord.status == "active", *_u()).scalar()
         ) or 0
 
         if not total_errors:
@@ -407,9 +403,7 @@ class DashboardService:
         subject_counter = Counter(
             {
                 s: c
-                for s, c in db.query(
-                    ErrorRecord.subject, func.count(ErrorRecord.id)
-                )
+                for s, c in db.query(ErrorRecord.subject, func.count(ErrorRecord.id))
                 .filter(ErrorRecord.status == "active", *_u())
                 .group_by(ErrorRecord.subject)
                 .all()
@@ -419,9 +413,7 @@ class DashboardService:
         reason_counter = Counter(
             {
                 r: c
-                for r, c in db.query(
-                    ErrorRecord.error_reason, func.count(ErrorRecord.id)
-                )
+                for r, c in db.query(ErrorRecord.error_reason, func.count(ErrorRecord.id))
                 .filter(ErrorRecord.status == "active", *_u())
                 .group_by(ErrorRecord.error_reason)
                 .all()
@@ -434,10 +426,7 @@ class DashboardService:
             for s, c in subject_counter.most_common(5)
         ]
 
-        common_reasons = [
-            {"reason": r, "count": c}
-            for r, c in reason_counter.most_common(5)
-        ]
+        common_reasons = [{"reason": r, "count": c} for r, c in reason_counter.most_common(5)]
 
         # 一条错题都没挂上知识点时这里就是空列表：首屏据此显示「知识点还没归集」，
         # 不拿科目名去冒充考点。
@@ -451,7 +440,8 @@ class DashboardService:
             "common_reasons": common_reasons,
             "suggestion": (
                 "建议重点复习薄弱科目，针对常见错误原因进行专项训练。"
-                if weak_subjects else "错题分布较均匀，保持全面复习。"
+                if weak_subjects
+                else "错题分布较均匀，保持全面复习。"
             ),
         }
 
@@ -476,20 +466,35 @@ class DashboardService:
     # ------------------------------------------------------------------ #
     @staticmethod
     def get_review_queue(db: Session, limit: int = 50, user_id: Optional[int] = None) -> dict:
-        """今日到期复习队列（卡片 / 任务 / 错题），口径完全沿用 review_scheduler。"""
+        """今日到期复习队列（卡片 / 任务 / 错题 / 单词），口径完全沿用 review_scheduler。
+
+        P1（2026-11-22 学生视角实测）：此前队列漏掉单词 —— 中枢「现在可做 N 项」
+        与单词页「今日待复习」给出两个数。单词走 due_date（date 列），与
+        /api/words/due、words stats 同一过滤（learning/reviewing、排除新词），
+        三处从此一个口径。
+        """
         from services.review_scheduler import ReviewScheduler
 
         cards = ReviewScheduler.get_due_flashcards(db, limit, user_id=user_id)
         tasks = ReviewScheduler.get_due_tasks(db, limit, user_id=user_id)
         errors = ReviewScheduler.get_due_errors(db, limit, user_id=user_id)
+        word_q = db.query(Word).filter(
+            Word.due_date != None,  # noqa: E711
+            Word.due_date <= local_today(),
+            Word.status.in_(["learning", "reviewing"]),
+        )
+        if user_id is not None:
+            word_q = word_q.filter(Word.user_id == user_id)
+        words = word_q.order_by(Word.due_date.asc(), Word.id.asc()).limit(limit).all()
         return {
             "generated_at": iso_utc_z(utcnow()),
             "source": "review_scheduler",
-            "total": len(cards) + len(tasks) + len(errors),
+            "total": len(cards) + len(tasks) + len(errors) + len(words),
             "limit": limit,
             # 某一类恰好取满 limit 就是"后面还有"，用 max 判断；
             # 用 min 会在"卡片取满、任务只有 2 条"时谎报"没截断"。
-            "truncated": max(len(cards), len(tasks), len(errors)) >= limit,
+            "truncated": max(len(cards), len(tasks), len(errors), len(words)) >= limit,
+            "words": [{"id": w.id, "kind": "word", "word": w.word, "status": w.status} for w in words],
             "cards": [
                 {
                     "id": x.id,
@@ -498,13 +503,9 @@ class DashboardService:
                 }
                 for x in cards
             ],
-            "tasks": [
-                {"id": x.id, "kind": "task", "title": x.title, "subject": x.subject}
-                for x in tasks
-            ],
+            "tasks": [{"id": x.id, "kind": "task", "title": x.title, "subject": x.subject} for x in tasks],
             "errors": [
-                {"id": x.id, "kind": "error", "subject": x.subject, "question_id": x.question_id}
-                for x in errors
+                {"id": x.id, "kind": "error", "subject": x.subject, "question_id": x.question_id} for x in errors
             ],
         }
 
@@ -557,11 +558,7 @@ class DashboardService:
         """
         if not university:
             return []
-        school = (
-            db.query(KaoyanSchool)
-            .filter(KaoyanSchool.name == university)
-            .first()
-        )
+        school = db.query(KaoyanSchool).filter(KaoyanSchool.name == university).first()
         if not school:
             return []
 
@@ -595,10 +592,7 @@ class DashboardService:
                 scope = "major"
         if not rows:
             rows = per_year()
-        return [
-            {"year": int(y), "total_line": int(tl), "scope": scope}
-            for y, tl in reversed(rows)
-        ]
+        return [{"year": int(y), "total_line": int(tl), "scope": scope} for y, tl in reversed(rows)]
 
     @staticmethod
     def _module_progress(goal: Optional[Goal], day: study_calendar.DayActivity) -> list:
@@ -621,16 +615,18 @@ class DashboardService:
                 status = "reached" if done >= target else "ok"
             else:
                 status = "no_target"
-            out.append({
-                "module": module,
-                "label": label,
-                "unit": unit,
-                "done": done,
-                "target": target,
-                "percent": round(100.0 * done / target) if (target and done is not None) else None,
-                "status": status,
-                "note": _MODULE_NOTES.get(module),
-            })
+            out.append(
+                {
+                    "module": module,
+                    "label": label,
+                    "unit": unit,
+                    "done": done,
+                    "target": target,
+                    "percent": round(100.0 * done / target) if (target and done is not None) else None,
+                    "status": status,
+                    "note": _MODULE_NOTES.get(module),
+                }
+            )
         return out
 
     @staticmethod
@@ -703,9 +699,7 @@ class DashboardService:
             else None
         )
 
-        trend_series = study_calendar.fill_series(
-            ledger, today - datetime.timedelta(days=TREND_DAYS - 1), today
-        )
+        trend_series = study_calendar.fill_series(ledger, today - datetime.timedelta(days=TREND_DAYS - 1), today)
         # 先算未来负荷：它的 due_today 就是今日任务清单的到期口径，一次查询两处用
         future_load = DashboardService._future_load(db, today, user_id=user_id)
 
@@ -721,15 +715,14 @@ class DashboardService:
                 "streak": streak,
             },
             "module_progress": DashboardService._module_progress(goal, t),
-            "today_tasks": DashboardService.get_today_tasks(
-                db, day=t, due=future_load["due_today"], user_id=user_id
-            ),
+            "today_tasks": DashboardService.get_today_tasks(db, day=t, due=future_load["due_today"], user_id=user_id),
             "review_queue": DashboardService.get_review_queue(db, user_id=user_id),
             "heatmap": {
                 "weeks": study_calendar.HEATMAP_WEEKS,
                 "value_field": "focus_minutes",
                 "levels": [0, 30, 90, 180],
-                "days": study_calendar.effective_activity_days(ledger, today=today),
+                # compact：首屏只带前端消费的 5 字段（104KB→26KB，2026-11-22 实测）
+                "days": study_calendar.effective_activity_days(ledger, today=today, compact=True),
             },
             "trend": {
                 "days": TREND_DAYS,
@@ -751,8 +744,7 @@ class DashboardService:
                 "today_effective": t.is_effective,
                 "is_empty": not ledger,
                 "empty_hint": (
-                    "还没有学习记录，先去完成一次专注或复习 10 个词，今天的第一格就亮了。"
-                    if not ledger else None
+                    "还没有学习记录，先去完成一次专注或复习 10 个词，今天的第一格就亮了。" if not ledger else None
                 ),
             },
         }

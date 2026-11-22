@@ -138,7 +138,8 @@ export function normalizeDue({ summary, insight, words, review } = {}) {
     words: toNum(fl.words),
   }
   const schedulerToday = toNum(fl.total, breakdown.errors + breakdown.cards + breakdown.tasks + breakdown.words)
-  const nowTotal = rq ? toNum(rq.total, arr(rq.cards).length + arr(rq.errors).length + arr(rq.tasks).length) : null
+  // review_queue 现含 words 段（2026-11-22 后端补齐）；旧响应无 words 时兜底求和不变
+  const nowTotal = rq ? toNum(rq.total, arr(rq.cards).length + arr(rq.errors).length + arr(rq.tasks).length + arr(rq.words).length) : null
   const planner = toNum(insight?.due_review_count)
   const newWords = toNum(words?.new)
   const segments = [

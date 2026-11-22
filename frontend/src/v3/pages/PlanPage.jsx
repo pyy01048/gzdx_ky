@@ -270,6 +270,11 @@ export default function PlanPage() {
                       <div className="v3-plan-milestone__action">
                         <b>行动：</b>{n.action || '—'}
                       </div>
+                      {n.pitfalls ? (
+                        <div className="v3-plan-milestone__pitfall">
+                          <b>学长避坑：</b>{n.pitfalls}
+                        </div>
+                      ) : null}
                       <div className="v3-plan-milestone__foot">
                         <span className={`v3-plan-milestone__days ${hasDaysLeft && daysLeft < 0 ? 'is-past' : ''}`}>
                           {hasDaysLeft

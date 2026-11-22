@@ -29,6 +29,7 @@ PostgreSQL canonical schema 对若干列做了改名（见下），models.py 已
 形成循环导入（实测：module 'models' has no attribute 'QuizQuestion'）。
 独立模块由**业务入口**（main.py / 脚本）在 import models 之后调用 `install()`。
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,27 +57,30 @@ ALIASES: dict[str, list[tuple[str, str]]] = {
 ENUM_COLUMNS: dict[str, dict[str, str]] = {
     "tasks": {"status": "task_status", "stage": "prep_stage"},
     "documents": {
-        "doc_type": "doc_type", "content_category": "content_category",
-        "exam_stage": "exam_stage", "structure_level": "structure_level",
-        "index_status": "index_status", "source_kind": "source_kind",
+        "doc_type": "doc_type",
+        "content_category": "content_category",
+        "exam_stage": "exam_stage",
+        "structure_level": "structure_level",
+        "index_status": "index_status",
+        "source_kind": "source_kind",
         "source_format": "doc_format",
     },
-    "knowledge_chunks": {"l3_content_type": "l3_content_type",
-                         "classify_source": "classify_source"},
+    "knowledge_chunks": {"l3_content_type": "l3_content_type", "classify_source": "classify_source"},
     "knowledge_points": {"extract_source": "extract_source"},
     "quiz_questions": {
-        "question_type": "question_type", "answer_type": "answer_type",
-        "source_kind": "source_kind", "confidence": "confidence_level",
-        "quality": "quality_grade", "validation_status": "question_validation_status",
+        "question_type": "question_type",
+        "answer_type": "answer_type",
+        "source_kind": "source_kind",
+        "confidence": "confidence_level",
+        "quality": "quality_grade",
+        "validation_status": "question_validation_status",
         "answer_source": "answer_source",
     },
     "flashcards": {"mastery": "mastery_level"},
     "review_records": {"result": "review_result"},
     "kaoyan_majors": {"degree_type": "degree_type"},
-    "kaoyan_notices": {"notice_type": "notice_type",
-                       "importance_level": "importance_level"},
-    "kaoyan_subscriptions": {"level_min": "importance_level",
-                             "scope": "subscription_scope"},
+    "kaoyan_notices": {"notice_type": "notice_type", "importance_level": "importance_level"},
+    "kaoyan_subscriptions": {"level_min": "importance_level", "scope": "subscription_scope"},
     "kaoyan_alert_records": {"alert_kind": "alert_kind"},
     "exam_sessions": {"question_source": "source_kind"},
     "exam_blueprints": {"blueprint_question_type": "question_type"},
@@ -138,12 +142,15 @@ def _load_pg_enum_labels() -> dict[str, list[str]]:
     try:
         from database import engine
         from sqlalchemy import text as _t
+
         with engine.connect() as conn:
-            rows = conn.execute(_t(
-                "SELECT t.typname, e.enumlabel FROM pg_type t "
-                "JOIN pg_enum e ON e.enumtypid = t.oid "
-                "ORDER BY t.typname, e.enumsortorder"
-            )).fetchall()
+            rows = conn.execute(
+                _t(
+                    "SELECT t.typname, e.enumlabel FROM pg_type t "
+                    "JOIN pg_enum e ON e.enumtypid = t.oid "
+                    "ORDER BY t.typname, e.enumsortorder"
+                )
+            ).fetchall()
         for typname, label in rows:
             labels.setdefault(typname, []).append(label)
     except Exception as exc:  # noqa: BLE001
@@ -195,21 +202,37 @@ def install_enum_types(M) -> dict[str, list[str]]:
         #: 旧值 → 新枚举值（跨表共用，键是"值"，与列无关）
         LEGACY_VALUE_MAP = {
             # mastery_level 系列
-            "new": "not_mastered", "weak": "learning",
-            "mastered": "reviewing", "review": "reviewing",
+            "new": "not_mastered",
+            "weak": "learning",
+            "mastered": "reviewing",
+            "review": "reviewing",
             # review_result 系列
-            "fuzzy": "hard", "forgotten": "again",
-            "good": "good", "easy": "easy", "again": "again", "hard": "hard",
+            "fuzzy": "hard",
+            "forgotten": "again",
+            "good": "good",
+            "easy": "easy",
+            "again": "again",
+            "hard": "hard",
             # 中文残留
-            "未学": "not_mastered", "薄弱": "learning", "已掌握": "reviewing",
-            "模糊": "hard", "不会": "again", "会": "good",
+            "未学": "not_mastered",
+            "薄弱": "learning",
+            "已掌握": "reviewing",
+            "模糊": "hard",
+            "不会": "again",
+            "会": "good",
+            # prep_stage 中文阶段词（2026-11-22 公网实测：任务传「强化」500）。
+            # 映射值不在目标枚举合法集时不会生效（process_bind_param 校验），
+            # 因此跨表共用安全。
+            "基础": "basic",
+            "强化": "intensive",
+            "冲刺": "sprint",
+            "复试": "retest",
         }
 
         def __init__(self, *values, enum_name="", **kw):
             self._enum_name = enum_name
             self._valid = set(values)
-            super().__init__(*values, name=enum_name, native_enum=True,
-                             create_type=False, validate_strings=False, **kw)
+            super().__init__(*values, name=enum_name, native_enum=True, create_type=False, validate_strings=False, **kw)
 
         def process_bind_param(self, value, dialect):
             """把旧值映射成当前枚举的合法值，再交给 PG。"""
@@ -249,12 +272,9 @@ def install_enum_types(M) -> dict[str, list[str]]:
                 continue
             values = enum_labels.get(pg_enum)
             if not values:
-                logger.debug("枚举适配跳过 %s.%s：PG 无此枚举 %s",
-                             table_name, col_name, pg_enum)
+                logger.debug("枚举适配跳过 %s.%s：PG 无此枚举 %s", table_name, col_name, pg_enum)
                 continue
             old_type = col.type
             col.type = _PgEnum(*values, enum_name=pg_enum)
-            out.setdefault(cls.__name__, []).append(
-                f"{col_name}: {type(old_type).__name__}→enum({pg_enum})"
-            )
+            out.setdefault(cls.__name__, []).append(f"{col_name}: {type(old_type).__name__}→enum({pg_enum})")
     return out

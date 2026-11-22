@@ -353,13 +353,30 @@ def effective_activity_days(
     *,
     weeks: int = HEATMAP_WEEKS,
     today: Optional[datetime.date] = None,
+    compact: bool = False,
 ) -> List[dict]:
     """近 ``weeks`` 周的逐日格子（含空日），前端渲染 53×7 热力图。
 
     起点对齐到**周一**，保证列数就是周数，不会出现半列错位。
+
+    ``compact=True``（首屏聚合专用，2026-11-22 性能实测）：
+    只保留前端实际消费的 5 个字段（date/focus_minutes/questions_done/
+    words_done/is_effective）。全量 14 字段 × 371 天 ≈ 104KB，其中新用户
+    370 天全零；compact 后 ≈ 26KB（-75%）。需要全字段的调用方保持默认。
     """
     today = today or local_today()
     start = today - datetime.timedelta(days=weeks * 7 - 1)
     start -= datetime.timedelta(days=start.weekday())  # 回到本周所在周的周一
     series = fill_series(ledger, start, today)
+    if compact:
+        return [
+            {
+                "date": a.date.isoformat(),
+                "focus_minutes": a.focus_minutes,
+                "questions_done": a.questions_done,
+                "words_done": a.words_done,
+                "is_effective": a.is_effective,
+            }
+            for a in series
+        ]
     return [a.to_dict() for a in series]

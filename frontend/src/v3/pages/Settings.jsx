@@ -100,6 +100,21 @@ export default function Settings() {
 
   useEffect(() => { window.scrollTo({ top: 0 }) }, [tab])
 
+  /* ---- 备考策略（学长视角增强：接通后端已有 /goals/strategy，AI 不可用时后端自动模板降级） ---- */
+  const [strategy, setStrategy] = useState(null)
+  const [strategyLoading, setStrategyLoading] = useState(false)
+  const loadStrategy = async () => {
+    setStrategyLoading(true)
+    try {
+      const d = await goalsApi.strategy()
+      setStrategy(d?.content || '')
+    } catch (e) {
+      toastWarn(e?.message?.includes('目标') ? '请先保存备考目标，再生成策略' : '策略生成失败，请稍后重试')
+    } finally {
+      setStrategyLoading(false)
+    }
+  }
+
   /* ---- 届数 / 初试日期（后端 services/exam_calendar 是唯一权威） ---- */
   const [cal, setCal] = useState(null)
   const [calYear, setCalYear] = useState('')
@@ -444,6 +459,32 @@ export default function Settings() {
             <div className="v3-card__foot v3-settings-foot">
               <span className="v3-caption">保存后会同步写入后端目标档案，避免被旧值覆盖。</span>
               <Button onClick={saveSettings}>保存设置</Button>
+            </div>
+            <div className="v3-settings-strategy">
+              <div className="v3-settings-strategy__bar">
+                <span className="v3-caption">
+                  <Sparkles size={13} aria-hidden="true" /> 按你的目标生成备考策略（AI 不可用时自动给经验模板）
+                </span>
+                <Button variant="tonal" onClick={loadStrategy} disabled={strategyLoading}>
+                  {strategyLoading ? '生成中…' : strategy ? '重新生成' : '生成备考策略'}
+                </Button>
+              </div>
+              {strategy ? (
+                <div className="v3-settings-strategy__body" role="region" aria-label="备考策略">
+                  {strategy.split('\n').map((line, i) => {
+                    const t = line.trim()
+                    if (!t) return null
+                    if (t.startsWith('# ')) return <h4 key={i}>{t.slice(2)}</h4>
+                    if (t.startsWith('## ')) return <h5 key={i}>{t.slice(3)}</h5>
+                    if (t.startsWith('> ')) return <p key={i} className="is-note">{t.slice(2)}</p>
+                    const bold = (s) => s.split(/\*\*(.+?)\*\*/g).map((seg, j) =>
+                      j % 2 === 1 ? <b key={j}>{seg}</b> : seg)
+                    if (/^[-*]\s+/.test(t)) return <p key={i} className="is-item">· {bold(t.replace(/^[-*]\s+/, ''))}</p>
+                    if (/^\d+\.\s+/.test(t)) return <p key={i} className="is-item">{bold(t)}</p>
+                    return <p key={i}>{bold(t)}</p>
+                  })}
+                </div>
+              ) : null}
             </div>
           </Card>
 

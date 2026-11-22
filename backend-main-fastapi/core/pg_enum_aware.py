@@ -40,6 +40,7 @@ PG 事务已进入 aborted 状态（``InFailedSqlTransaction``），
   · 必须传**真实的 PG ENUM 类型名**（见 core/pg_types.py 的 ENUM_CATALOG）
   · 类型名写错时：PG 下会在首次查询时报 undefined_object，属快速失败，可接受
 """
+
 from __future__ import annotations
 
 from sqlalchemy import String
@@ -47,6 +48,17 @@ from sqlalchemy.types import VARCHAR, TypeDecorator
 
 # 枚举值缓存：优先用权威目录，缺失时运行时从 pg_enum 反射（兜底）。
 _ENUM_VALUES_CACHE: dict = {}
+
+#: 写入侧中文别名 → DB 枚举标签（单向；读出恒为 DB 标签）。
+#: 只登记「业务文案天然中文、DB 标签英文」的枚举，避免过度映射。
+_ENUM_VALUE_ALIASES: dict[str, dict[str, str]] = {
+    "prep_stage": {
+        "基础": "basic",
+        "强化": "intensive",
+        "冲刺": "sprint",
+        "复试": "retest",
+    },
+}
 
 
 def _resolve_enum_values(name: str) -> tuple:
@@ -60,6 +72,7 @@ def _resolve_enum_values(name: str) -> tuple:
         return _ENUM_VALUES_CACHE[name]
     try:
         from core.pg_types import enum_values as _ev
+
         vals = tuple(_ev(name))
         _ENUM_VALUES_CACHE[name] = vals
         return vals
@@ -68,10 +81,10 @@ def _resolve_enum_values(name: str) -> tuple:
     try:
         from database import engine
         from sqlalchemy import text
+
         with engine.connect() as conn:
             rows = conn.execute(
-                text("SELECT e.enumlabel FROM pg_type t JOIN pg_enum e "
-                     "ON e.enumtypid = t.oid WHERE t.typname = :n"),
+                text("SELECT e.enumlabel FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typname = :n"),
                 {"n": name},
             ).fetchall()
             vals = tuple(r[0] for r in rows)
@@ -108,16 +121,27 @@ class PgEnumAware(TypeDecorator):
             # （2026-10-14 实测复现，且 name 单独传 values= 无效）。
             # validate_strings=False：放弃写入端冗余校验，DB 原生约束仍生效。
             from sqlalchemy.dialects.postgresql import ENUM
+
             vals = _resolve_enum_values(self.enum_name)
             if vals:
-                return dialect.type_descriptor(
-                    ENUM(*vals, name=self.enum_name, validate_strings=False))
+                return dialect.type_descriptor(ENUM(*vals, name=self.enum_name, validate_strings=False))
             # 兜底：未知枚举且无值可查 → 退化为 varchar（读取返回字符串；写入由 DB 约束兜底）
             return dialect.type_descriptor(String(self.length))
         return dialect.type_descriptor(String(self.length))
 
     def process_bind_param(self, value, dialect):
-        """写入：保持原值（PG ENUM 接受字符串字面量）。"""
+        """写入：中文别名归一为 DB 枚举标签，其余保持原值。
+
+        P1（2026-11-22 公网实测）：任务阶段传「强化」直接 500
+        （invalid input value for enum prep_stage）。模型注释/前端文案一直
+        用中文阶段词，DB 枚举却是英文标签 —— 这里做单向别名归一，
+        让「基础/强化/冲刺/复试」与 basic/intensive/sprint/retest 都能写。
+        读出一律返回 DB 权威标签（英文），不做反向映射，避免双口径漂移。
+        """
+        if isinstance(value, str):
+            alias = _ENUM_VALUE_ALIASES.get(self.enum_name)
+            if alias and value in alias:
+                return alias[value]
         return value
 
     def process_result_value(self, value, dialect):

@@ -1207,6 +1207,21 @@ button.pan-crumb-item:hover {
   font-weight: 650;
 }
 
+.v3-plan-milestone__pitfall {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--v3-r-sm);
+  background: var(--v3-warning-container);
+  color: var(--v3-text-2);
+  font-size: var(--v3-fs-12);
+  line-height: 1.65;
+}
+
+.v3-plan-milestone__pitfall b {
+  color: var(--v3-warning);
+  font-weight: 650;
+}
+
 .v3-plan-milestone__foot {
   display: flex;
   align-items: center;
