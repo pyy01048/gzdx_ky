@@ -177,7 +177,7 @@ export default function Onboarding() {
           {step === 0 ? (
             <div className="v3-onboard__form">
               <Field label="目标院校" htmlFor="ob-school" hint="可留空，之后在设置页选择">
-                <Input id="ob-school" placeholder="如：贵州大学" value={school}
+                <Input id="ob-school" placeholder="如：目标院校" value={school}
                   onChange={(e) => setSchool(e.target.value)} maxLength={64} />
               </Field>
               <Field label="目标专业" htmlFor="ob-major">

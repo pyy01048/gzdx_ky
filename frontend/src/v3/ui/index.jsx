@@ -802,6 +802,107 @@ export function useConfirm() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Pager                                                                      */
+/* -------------------------------------------------------------------------- */
+/* 与后端 utils/response.py MAX_PAGE_SIZE 同一口径 */
+export const PAGER_MAX_PAGE_SIZE = 200
+
+const PAGER_WINDOW = 7
+
+/* 编号页码窗口（沿用 KaoyanSchools 的实现）：最多 7 个连续页码 */
+function pageWindow(cur, total) {
+  if (total <= PAGER_WINDOW) return Array.from({ length: total }, (_, i) => i + 1)
+  const start = Math.min(Math.max(1, cur - 3), total - (PAGER_WINDOW - 1))
+  return Array.from({ length: PAGER_WINDOW }, (_, i) => start + i)
+}
+
+/**
+ * 通用编号分页：« 1 … k-1 k k+1 … n » + 「第x/y页」+ 可选「每页 N 条」Select。
+ * 换页后自动滚回 containerRef 指向的列表容器顶部（focusAndScroll 现成工具）。
+ */
+export function Pager({
+  page,
+  pageSize = 20,
+  total,
+  totalPages,
+  onChange,
+  onPageSizeChange,
+  pageSizeOptions = [20, 50, 100, 200],
+  unit = '条',
+  label = '分页',
+  disabled = false,
+  containerRef,
+  className = '',
+}) {
+  const size = Number(pageSize) > 0 ? Number(pageSize) : 20
+  const pages = Math.max(1, Number(totalPages) || Math.ceil((Number(total) || 0) / size) || 1)
+  const cur = Math.min(Math.max(1, Number(page) || 1), pages)
+
+  const scrollToTop = () => {
+    if (containerRef?.current) focusAndScroll(containerRef.current, 96)
+  }
+
+  const goto = (p) => {
+    const next = Math.min(Math.max(1, p), pages)
+    if (next === cur || disabled) return
+    onChange?.(next)
+    scrollToTop()
+  }
+
+  const pickPageSize = (e) => {
+    const n = Math.min(Math.max(1, Number(e.target.value) || size), PAGER_MAX_PAGE_SIZE)
+    if (n === size) return
+    onPageSizeChange?.(n)
+    scrollToTop()
+  }
+
+  const numbers = pageWindow(cur, pages)
+  const sizeChoices = [...new Set([...pageSizeOptions, size])]
+    .filter((n) => n >= 1 && n <= PAGER_MAX_PAGE_SIZE)
+    .sort((a, b) => a - b)
+
+  if (pages <= 1 && !onPageSizeChange) return null
+
+  return (
+    <nav className={cx('v3-pager', className)} aria-label={label}>
+      <button type="button" aria-label="上一页" disabled={disabled || cur <= 1} onClick={() => goto(cur - 1)}>«</button>
+      {numbers[0] > 1 ? (
+        <>
+          <button type="button" onClick={() => goto(1)}>1</button>
+          {numbers[0] > 2 ? <span className="v3-pager__gap" aria-hidden="true">…</span> : null}
+        </>
+      ) : null}
+      {numbers.map((n) => (
+        <button key={n} type="button" className={n === cur ? 'is-current' : ''} aria-current={n === cur ? 'page' : undefined} onClick={() => goto(n)}>
+          {n}
+        </button>
+      ))}
+      {numbers[numbers.length - 1] < pages ? (
+        <>
+          {numbers[numbers.length - 1] < pages - 1 ? <span className="v3-pager__gap" aria-hidden="true">…</span> : null}
+          <button type="button" onClick={() => goto(pages)}>{pages}</button>
+        </>
+      ) : null}
+      <button type="button" aria-label="下一页" disabled={disabled || cur >= pages} onClick={() => goto(cur + 1)}>»</button>
+      <span className="v3-pager__info">
+        第 {cur}/{pages} 页
+        {total != null ? ` · 共 ${total} ${unit}` : ''}
+      </span>
+      {onPageSizeChange ? (
+        <Select
+          className="v3-pager__size"
+          aria-label="每页条数"
+          value={String(size)}
+          onChange={pickPageSize}
+          disabled={disabled}
+          options={sizeChoices.map((n) => ({ value: String(n), label: `每页 ${n} 条` }))}
+        />
+      ) : null}
+    </nav>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
 /* Misc                                                                       */
 /* -------------------------------------------------------------------------- */
 export function focusAndScroll(el, offset = 96) {

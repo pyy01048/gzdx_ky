@@ -8,10 +8,10 @@ import { fetchSubjectNames } from '../../api/subjects'
 import {
   Alert, AnimatedNumber, Badge, Button, Chip, Dialog, Empty, Field, IconButton,
   Input, PageHeader, Progress, Ring, Segmented, Select, Skeleton, Textarea, Tile,
-  toast, toastErr, toastOk, toastWarn,
+  cx, toast, toastErr, toastOk, toastWarn,
 } from '../ui'
 import {
-  AlertCircle, Book, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Clock,
+  AlertCircle, Book, BookOpen, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock,
   Eye, Layers, List, Play, Plus, Quote, RefreshCw, Search, Target, Trash, Wand,
 } from '../icons'
 import '../styles/study-pages.css'
@@ -87,6 +87,7 @@ export default function Cards() {
   const setCards = useStore((s) => s.setCards)
 
   const [view, setView] = useState('study') // study | summary | packs | list
+  const [statsOpen, setStatsOpen] = useState(false) // study 视图顶部 bento 统计默认折叠成一行摘要
   const [curIdx, setCurIdx] = useState(0)
   const [showBack, setShowBack] = useState(false)
   const [flipped, setFlipped] = useState(false)
@@ -455,6 +456,22 @@ export default function Cards() {
             </Alert>
           ) : null}
 
+          {view === 'study' ? (
+            <button
+              type="button"
+              className="v3-study-statsbar"
+              aria-expanded={statsOpen}
+              onClick={() => setStatsOpen((v) => !v)}
+            >
+              <span className="v3-study-statsbar__text">
+                卡片 <b>{cards.length}</b> 张 · 待复习 <b className="is-danger">{due.length}</b> · 进行中 <b>{active}</b> · 已掌握 <b className="is-success">{mastered}</b>（{masteryPct}%）· 本轮已评 <b>{sessionTotal}</b>
+              </span>
+              <span className="v3-study-statsbar__act">{statsOpen ? '收起统计' : '展开统计'}</span>
+              <ChevronDown size={16} className={cx('v3-study-statsbar__chev', statsOpen && 'is-open')} />
+            </button>
+          ) : null}
+
+          {view !== 'study' || statsOpen ? (
           <div className="v3-bento">
             <Tile span={3} className="v3-study-stat">
               <span className="v3-tile__label"><Book size={15} /> 卡片总数</span>
@@ -589,6 +606,7 @@ export default function Cards() {
               </div>
             </Tile>
           </div>
+          ) : null}
 
           <div className="v3-study-toolbar">
             <Segmented
@@ -751,26 +769,29 @@ export default function Cards() {
                   </div>
                 </div>
 
-                <div className="v3-study-card-meta">
-                  <span>复习 {current.reps || 0} 次</span>
-                  <span>间隔 {current.interval || 0} 天</span>
-                  <span>EF {(Number(current.ef) || 2.5).toFixed(1)}</span>
-                  <span>状态 {CARD_STATUS_LABEL[current.status] || '新卡'}</span>
+                <div className="v3-study-sched">
+                  <div className="v3-study-card-meta">
+                    <span>复习 {current.reps || 0} 次</span>
+                    <span>间隔 {current.interval || 0} 天</span>
+                    <span>EF {(Number(current.ef) || 2.5).toFixed(1)}</span>
+                    <span>状态 {CARD_STATUS_LABEL[current.status] || '新卡'}</span>
+                  </div>
+
+                  <div className="v3-study-session-mini">
+                    <span>本轮 {sessionTotal} 张</span>
+                    <span>正确 {sessionCorrect}</span>
+                    <span>准确率 {sessionAccuracy}%</span>
+                  </div>
                 </div>
 
-                <div className="v3-study-session-mini">
-                  <span>本轮 {sessionTotal} 张</span>
-                  <span>正确 {sessionCorrect}</span>
-                  <span>准确率 {sessionAccuracy}%</span>
-                </div>
-
-                {!showBack ? (
-                  <Button variant="gradient" block size="lg" icon={<Eye size={18} />} onClick={flipCard}>
-                    点击卡片或点击此处显示答案
-                  </Button>
-                ) : (
-                  <>
-                    <div className="v3-study-grades">
+                <div className="v3-study-actionzone">
+                  {!showBack ? (
+                    <Button variant="gradient" block size="lg" icon={<Eye size={18} />} onClick={flipCard}>
+                      点击卡片或点击此处显示答案
+                    </Button>
+                  ) : (
+                    <>
+                      <div className="v3-study-grades">
                       <Button variant="tonal" className="v3-study-grade v3-study-grade--again" disabled={grading} onClick={() => grade(GRADE.AGAIN)}>
                         <span className="v3-study-grade__label">重学</span>
                         <span className="v3-study-grade__hint">10 分钟后</span>
@@ -788,9 +809,10 @@ export default function Cards() {
                         <span className="v3-study-grade__hint">{Math.round((current.interval || 1) * (current.ef || 2.5) * 1.3)} 天后</span>
                       </Button>
                     </div>
-                    <p className="v3-study-keyhint">快捷键：1 = 重学 · 2 = 困难 · 3 = 良好 · 4 = 轻松</p>
-                  </>
-                )}
+                      <p className="v3-study-keyhint">快捷键：1 = 重学 · 2 = 困难 · 3 = 良好 · 4 = 轻松</p>
+                    </>
+                  )}
+                </div>
               </Tile>
             )
           ) : null}

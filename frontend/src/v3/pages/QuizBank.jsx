@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AnimatedNumber, Badge, Button, Card, CardHead, Dialog, Empty, Field,
-  IconButton, Input, PageHeader, Select, Skeleton, Textarea, Tile, toast,
+  IconButton, Input, PageHeader, Pager, Select, Skeleton, Textarea, Tile, toast,
   useConfirm,
 } from '../ui'
 import {
-  BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Database, Edit, FileText,
+  BookOpen, CheckCircle2, Database, Edit, FileText,
   GraduationCap, Plus, RefreshCw, Search, Target, Trash,
 } from '../icons'
 import { quizApi, taxonomyApi } from '../../api/client'
@@ -46,7 +46,7 @@ const DIFFICULTY_OPTIONS = [
 /* 清洗选项：库内存在「数组非空但元素全空」的题，直接渲染会得到空白行 */
 const cleanOptions = (opts) => normalizeOptions(opts)
 
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 20
 
 /* 后端 images[].path 形如 question_pages/xxx.png，对外挂在 /media/images 下 */
 const mediaSrc = (img) => {
@@ -118,7 +118,9 @@ export default function QuizBank() {
   const [difficulty, setDifficulty] = useState('all')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [total, setTotal] = useState(0)
+  const listWrapRef = useRef(null)
 
   const [subjects, setSubjects] = useState([])   // 后端动态科目列表
   const [chapters, setChapters] = useState([])   // 常用章节（datalist）
@@ -134,7 +136,7 @@ export default function QuizBank() {
 
   const [editor, setEditor] = useState({ open: false, mode: 'create', id: null, form: EMPTY_FORM })
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   /* 拉真实科目与章节（科目走 taxonomy 科目接口；章节仍走 quizApi.sections 数据驱动） */
   useEffect(() => {
@@ -182,7 +184,7 @@ export default function QuizBank() {
     setLoading(true)
     setLoadError('')
     try {
-      const params = { page, page_size: PAGE_SIZE }
+      const params = { page, page_size: pageSize }
       if (subject !== 'all') params.subject = subject
       if (sourceKind !== 'all') params.source_kind = sourceKind
       if (qType !== 'all') params.question_type = qType
@@ -201,7 +203,7 @@ export default function QuizBank() {
     } finally {
       setLoading(false)
     }
-  }, [subject, sourceKind, qType, difficulty, q, page, onlyAnswerable])
+  }, [subject, sourceKind, qType, difficulty, q, page, pageSize, onlyAnswerable])
 
   useEffect(() => { loadQuestions() }, [loadQuestions])
 
@@ -485,7 +487,7 @@ export default function QuizBank() {
 
         {!loading && !loadError && questions.length > 0 ? (
           <>
-            <div className="v3-admin-table-wrap">
+            <div className="v3-admin-table-wrap v3-quiz-bank-table" ref={listWrapRef}>
               <table className="v3-admin-table">
                 <thead>
                   <tr>
@@ -502,7 +504,7 @@ export default function QuizBank() {
                     const isOpen = revealed.has(item.id)
                     const opts = cleanOptions(item.options)
                     const imgs = imageList(item.images)
-                    const seq = (page - 1) * PAGE_SIZE + idx + 1
+                    const seq = (page - 1) * pageSize + idx + 1
                     return (
                       <tr key={item.id || idx}>
                         <td>
@@ -618,27 +620,16 @@ export default function QuizBank() {
               </table>
             </div>
 
-            <div className="v3-quiz-bank-pager">
-              <Button
-                variant="outline"
-                size="sm"
-                icon={<ChevronLeft size={14} />}
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                上一页
-              </Button>
-              <span>第 {page} / {totalPages} 页 · 共 {total} 题</span>
-              <Button
-                variant="outline"
-                size="sm"
-                trailingIcon={<ChevronRight size={14} />}
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                下一页
-              </Button>
-            </div>
+            <Pager
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              unit="题"
+              disabled={loading}
+              containerRef={listWrapRef}
+              onChange={setPage}
+              onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+            />
           </>
         ) : null}
       </Card>

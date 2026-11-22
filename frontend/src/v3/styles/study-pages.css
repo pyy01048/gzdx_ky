@@ -106,7 +106,7 @@
 
 .v3-study-ring-center em {
   font-style: normal;
-  font-size: 10px;
+  font-size: var(--v3-fs-11);
   color: var(--v3-text-3);
 }
 
@@ -477,6 +477,88 @@
   color: var(--v3-text-3);
 }
 
+/* ---------- study 视图：统计摘要行（折叠 4 tile + hero + 侧栏） ---------- */
+.v3-study-statsbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--v3-touch);
+  padding: 10px 14px;
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-md);
+  background: var(--v3-surface);
+  color: var(--v3-text-2);
+  font-size: var(--v3-fs-12);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--v3-dur-2) var(--v3-ease-standard);
+}
+
+.v3-study-statsbar:hover {
+  border-color: var(--v3-primary);
+}
+
+.v3-study-statsbar__text {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.5;
+}
+
+.v3-study-statsbar__text b {
+  font-weight: 700;
+  color: var(--v3-text);
+}
+
+.v3-study-statsbar__text b.is-danger { color: var(--v3-danger); }
+.v3-study-statsbar__text b.is-success { color: var(--v3-success); }
+
+.v3-study-statsbar__act {
+  flex: none;
+  color: var(--v3-primary);
+  font-size: var(--v3-fs-12);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.v3-study-statsbar__chev {
+  flex: none;
+  color: var(--v3-text-3);
+  transition: transform var(--v3-dur-2) var(--v3-ease-standard);
+}
+
+.v3-study-statsbar__chev.is-open {
+  transform: rotate(180deg);
+}
+
+/* ---------- study 面板三组分区：题干区 / 调度信息 / 评分区 ---------- */
+.v3-study-sched {
+  margin-top: var(--v3-s-5);
+}
+
+.v3-study-focus .v3-study-session-mini {
+  margin-top: var(--v3-s-3);
+}
+
+.v3-study-actionzone {
+  margin-top: var(--v3-s-5);
+  padding-top: var(--v3-s-4);
+  border-top: 1px solid var(--v3-outline);
+}
+
+@media (max-width: 760px) {
+  /* 评分区吸底：拇指可及，翻页/滚动时评分按钮不消失在视口外 */
+  .v3-study-actionzone {
+    position: sticky;
+    bottom: 0;
+    z-index: 6;
+    margin: var(--v3-s-5) -4px 0;
+    padding: var(--v3-s-4) 4px calc(var(--v3-s-3) + env(safe-area-inset-bottom, 0px));
+    background: var(--v3-surface);
+    border-top: 1px solid var(--v3-outline);
+  }
+}
+
 /* ---------- Grade buttons ---------- */
 .v3-study-grades {
   display: grid;
@@ -516,7 +598,7 @@
 }
 
 .v3-study .v3-study-grade__hint {
-  font-size: 10px;
+  font-size: var(--v3-fs-12);
   font-weight: 550;
   line-height: 1.25;
   opacity: 0.78;
@@ -996,7 +1078,7 @@
 }
 
 .v3-study-word-row__details span {
-  font-size: 10px;
+  font-size: var(--v3-fs-11);
   color: var(--v3-text-3);
 }
 
@@ -1801,7 +1883,7 @@
   }
 
   .v3-study-stat .v3-tile__hint {
-    font-size: 10px;
+    font-size: var(--v3-fs-11);
   }
 
   .v3-study-hero {

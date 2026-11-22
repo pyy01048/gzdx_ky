@@ -5,11 +5,11 @@ import { adminUsersApi } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import {
   Alert, AnimatedNumber, Avatar, Badge, Button, Card, CardHead, Chip, Dialog,
-  Empty, Field, IconButton, Input, PageHeader, Select, Skeleton, Tabs, Textarea,
+  Empty, Field, IconButton, Input, PageHeader, Pager, Select, Skeleton, Tabs, Textarea,
   Tile, toastErr, toastOk, useConfirm,
 } from '../ui'
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, FileText, KeyRound,
+  CheckCircle2, Clock, Copy, FileText, KeyRound,
   Lock, Mail, Plus, RefreshCw, RotateCcw, Search, Shield, Trash, User,
 } from '../icons'
 import '../styles/admin-core-v3.css'
@@ -52,7 +52,7 @@ const EVENT_LABEL = {
 }
 
 const EMPTY_FORM = { username: '', display_name: '', role: 'user', password: '' }
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 20
 
 const fmt = (iso) => {
   if (!iso) return '—'
@@ -70,20 +70,6 @@ function StatusBadges({ u }) {
     <div className="v3-admin-user-status">
       <Badge tone={meta.tone}>{meta.label}</Badge>
       {s !== 'deleted' && u.must_change_password ? <Badge tone="warning">待改密</Badge> : null}
-    </div>
-  )
-}
-
-function Pager({ page, total, pageSize = PAGE_SIZE, onChange }) {
-  const pages = Math.max(1, Math.ceil((total || 0) / pageSize))
-  if (pages <= 1) return null
-  return (
-    <div className="v3-admin-pager">
-      <span className="v3-admin-pager__meta">共 {total} 条 · 第 {page} / {pages} 页</span>
-      <Button variant="outline" size="sm" icon={<ChevronLeft size={14} />}
-        disabled={page <= 1} onClick={() => onChange(page - 1)}>上一页</Button>
-      <Button variant="outline" size="sm" trailingIcon={<ChevronRight size={14} />}
-        disabled={page >= pages} onClick={() => onChange(page + 1)}>下一页</Button>
     </div>
   )
 }
@@ -117,6 +103,8 @@ function UsersTab({ me }) {
   const [rows, setRows] = useState(null)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const tableWrapRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const [loadErr, setLoadErr] = useState('')
   /* 服务端筛选（§5.2：关键词 / 角色 / 状态 / 注册时间段） */
@@ -154,7 +142,7 @@ function UsersTab({ me }) {
     setLoadErr('')
     try {
       const r = await adminUsersApi.list({
-        page, page_size: PAGE_SIZE,
+        page, page_size: pageSize,
         ...(kw ? { keyword: kw } : {}),
         ...(role ? { role } : {}),
         ...(statusF ? { status_filter: statusF } : {}),
@@ -173,7 +161,7 @@ function UsersTab({ me }) {
     } finally {
       setLoading(false)
     }
-  }, [page, kw, role, statusF, from, to, showDeleted])
+  }, [page, pageSize, kw, role, statusF, from, to, showDeleted])
 
   /* 统计口径是服务端 count（page_size=1 只取 total），不受当前筛选影响 */
   const loadStats = useCallback(async () => {
@@ -502,7 +490,7 @@ function UsersTab({ me }) {
         ) : null}
 
         {!loading && !loadErr && rows && rows.length > 0 ? (
-          <div className="v3-admin-table-wrap">
+          <div className="v3-admin-table-wrap" ref={tableWrapRef}>
             <table className="v3-admin-table">
               <thead>
                 <tr>
@@ -607,7 +595,18 @@ function UsersTab({ me }) {
           </div>
         ) : null}
 
-        {!loading && !loadErr ? <Pager page={page} total={total} onChange={setPage} /> : null}
+        {!loading && !loadErr ? (
+          <Pager
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            unit="人"
+            disabled={loading}
+            containerRef={tableWrapRef}
+            onChange={setPage}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+          />
+        ) : null}
 
         {!loading && !loadErr && rows && rows.length > 0 ? (
           <div className="v3-admin-q-table-note">
@@ -775,6 +774,8 @@ function EventsTab() {
   const [rows, setRows] = useState(null)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const tableWrapRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [type, setType] = useState('')
@@ -791,7 +792,7 @@ function EventsTab() {
     setErr('')
     try {
       const r = await adminUsersApi.authEvents({
-        page, page_size: PAGE_SIZE,
+        page, page_size: pageSize,
         ...(type ? { event_type: type } : {}),
         ...(kw ? { keyword: kw } : {}),
       })
@@ -803,7 +804,7 @@ function EventsTab() {
     } finally {
       setLoading(false)
     }
-  }, [page, type, kw])
+  }, [page, pageSize, type, kw])
 
   useEffect(() => { load() }, [load])
 
@@ -846,7 +847,7 @@ function EventsTab() {
         </div>
       ) : null}
       {!loading && !err && rows && rows.length > 0 ? (
-        <div className="v3-admin-table-wrap">
+        <div className="v3-admin-table-wrap" ref={tableWrapRef}>
           <table className="v3-admin-table">
             <thead>
               <tr><th>时间</th><th>事件</th><th>账号</th><th>结果</th><th>IP</th><th>详情</th></tr>
@@ -866,7 +867,18 @@ function EventsTab() {
           </table>
         </div>
       ) : null}
-      {!loading && !err ? <Pager page={page} total={total} onChange={setPage} /> : null}
+      {!loading && !err ? (
+        <Pager
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          unit="条"
+          disabled={loading}
+          containerRef={tableWrapRef}
+          onChange={setPage}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+        />
+      ) : null}
     </Card>
   )
 }

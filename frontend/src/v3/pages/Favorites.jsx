@@ -1,14 +1,14 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { favoritesApi } from '../../api/client'
 import useApiData from '../../hooks/useApiData'
 import { clearFavoriteCache } from '../../hooks/useFavorites'
 import {
   AnimatedNumber, Badge, Button, Card, CardHead, Empty, IconButton, Input, PageHeader,
-  Segmented, Skeleton, Tile, toastErr, toastOk,
+  Pager, Segmented, Skeleton, Tile, toastErr, toastOk,
 } from '../ui'
 import {
-  AlertCircle, AlertTriangle, Brain, ChevronLeft, ChevronRight, ExternalLink, FileText,
+  AlertCircle, AlertTriangle, Brain, ChevronRight, ExternalLink, FileText,
   Layers, ListChecks, RefreshCw, Search, Trash, Type,
 } from '../icons'
 import '../styles/favorites-v3.css'
@@ -43,7 +43,7 @@ const TYPE_META = {
 
 const FALLBACK_META = { name: '收藏', color: 'var(--v3-text-3)', icon: Layers, to: () => null }
 
-const PAGE_SIZE = 50
+const DEFAULT_PAGE_SIZE = 50
 
 function fmtDate(s) {
   if (!s) return ''
@@ -76,6 +76,8 @@ export default function Favorites() {
   const [type, setType] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const listRef = useRef(null)
   const [draft, setDraft] = useState('')
   const [removingId, setRemovingId] = useState(null)
 
@@ -83,17 +85,17 @@ export default function Favorites() {
     () => favoritesApi.list({
       item_type: type || undefined,
       q: q || undefined,
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
+      limit: pageSize,
+      offset: page * pageSize,
     }),
-    [type, q, page],
+    [type, q, page, pageSize],
   )
 
-  const { data, loading, error, reload } = useApiData(fetcher, { deps: [type, q, page] })
+  const { data, loading, error, reload } = useApiData(fetcher, { deps: [type, q, page, pageSize] })
 
   const items = data?.items || []
   const total = data?.total || 0
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   const onSearch = useCallback((e) => {
     e.preventDefault()
@@ -228,7 +230,7 @@ export default function Favorites() {
           label="本页条目"
           value={items.length}
           unit="条"
-          hint={q ? `搜索「${q}」的结果` : `每页最多 ${PAGE_SIZE} 条`}
+          hint={q ? `搜索「${q}」的结果` : `每页最多 ${pageSize} 条`}
         />
         <StatTile
           icon={<FileText size={15} />}
@@ -289,7 +291,7 @@ export default function Favorites() {
         </Card>
       ) : (
         <>
-          <div className="fv3-groups">
+          <div className="fv3-groups" ref={listRef}>
             {grouped.map(([t, list]) => {
               const meta = TYPE_META[t] || { ...FALLBACK_META, name: t }
               const GroupIcon = meta.icon
@@ -362,29 +364,16 @@ export default function Favorites() {
             })}
           </div>
 
-          {totalPages > 1 ? (
-            <div className="fv3-pager">
-              <Button
-                variant="tonal"
-                size="sm"
-                icon={<ChevronLeft size={15} />}
-                disabled={page === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-              >
-                上一页
-              </Button>
-              <span className="fv3-pager__info">第 {page + 1} / {totalPages} 页 · 共 {total} 条</span>
-              <Button
-                variant="tonal"
-                size="sm"
-                trailingIcon={<ChevronRight size={15} />}
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                下一页
-              </Button>
-            </div>
-          ) : null}
+          <Pager
+            page={page + 1}
+            pageSize={pageSize}
+            total={total}
+            unit="条"
+            disabled={loading}
+            containerRef={listRef}
+            onChange={(p) => setPage(p - 1)}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(0) }}
+          />
         </>
       )}
 

@@ -4,10 +4,10 @@ import { documentsApi } from '../../api/client'
 import { fmtBytes } from '../../utils/format'
 import {
   AnimatedNumber, Badge, Button, Card, CardHead, Chip, Empty, IconButton, PageHeader,
-  Segmented, Skeleton, Tile, toastErr, toastOk,
+  Pager, Segmented, Skeleton, Tile, toastErr, toastOk,
 } from '../ui'
 import {
-  AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, FileText, Folder, FolderOpen,
+  AlertCircle, CheckCircle2, ChevronDown, ChevronRight, FileText, Folder, FolderOpen,
   Layers, RefreshCw, Upload,
 } from '../icons'
 import { useAuth } from '../../auth/AuthContext'
@@ -44,7 +44,7 @@ const CT_TONE = {
 
 /* V3.12 分页整改：后端强制分页（上限 100/页），文库按 50/页浏览。
    chip 计数改用后端 facets（GROUP BY 紧凑计数组），不再拉全量列表数一遍。 */
-const PAGE_SIZE = 50
+const DEFAULT_PAGE_SIZE = 50
 
 /* 资料层级（doc_type）→ 中文 */
 const DOC_TYPE_LABEL = {
@@ -119,6 +119,8 @@ export default function Library() {
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const listRef = useRef(null)
   const [facet, setFacet] = useState([])
   /* 后端 facets 计数组（{subject,content_type,count,parsed_count}[]）；
      null = 旧形态响应（测试 mock / 兼容数组），回退到本地 countBy */
@@ -160,7 +162,7 @@ export default function Library() {
     const seq = ++listSeq.current
     setLoading(true)
     try {
-      const data = await documentsApi.list({ ...buildParams(stage, subject, contentType), page, page_size: PAGE_SIZE })
+      const data = await documentsApi.list({ ...buildParams(stage, subject, contentType), page, page_size: pageSize })
       if (seq !== listSeq.current) return false
       const list = normalizeList(data)
       setItems(list)
@@ -178,7 +180,7 @@ export default function Library() {
     } finally {
       if (seq === listSeq.current) setLoading(false)
     }
-  }, [stage, subject, contentType, page])
+  }, [stage, subject, contentType, page, pageSize])
 
   useEffect(() => { loadList() }, [loadList])
 
@@ -258,7 +260,7 @@ export default function Library() {
     [facetGroups, facet],
   )
 
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
 
   const closePreview = () => {
     openIdRef.current = null
@@ -516,7 +518,7 @@ export default function Library() {
               : null}
           />
         ) : (
-          <div className="lb3-list">
+          <div className="lb3-list" ref={listRef}>
             {items.map((d) => {
               const open = openId === d.id
               const parsed = isParsed(d)
@@ -598,27 +600,16 @@ export default function Library() {
           </div>
         )}
 
-        {pageCount > 1 ? (
-          <div className="lb3-pager">
-            <Button
-              variant="tonal"
-              icon={<ChevronLeft size={15} />}
-              disabled={loading || page <= 1}
-              onClick={() => gotoPage(page - 1)}
-            >
-              上一页
-            </Button>
-            <span className="lb3-pager__info">第 {page} / {pageCount} 页 · 共 {total} 条</span>
-            <Button
-              variant="tonal"
-              icon={<ChevronRight size={15} />}
-              disabled={loading || page >= pageCount}
-              onClick={() => gotoPage(page + 1)}
-            >
-              下一页
-            </Button>
-          </div>
-        ) : null}
+        <Pager
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          unit="条"
+          disabled={loading}
+          containerRef={listRef}
+          onChange={gotoPage}
+          onPageSizeChange={(n) => { closePreview(); setPageSize(n); setPage(1) }}
+        />
       </Card>
     </div>
   )

@@ -8,7 +8,7 @@ import { migrateKey, ukey } from '../../utils/userKeys'
 import {
   Alert, AnimatedNumber, Badge, Button, Chip, Dialog, Empty, Field, IconButton,
   Input, PageHeader, Progress, Ring, Segmented, Select, Skeleton, Textarea, Tile,
-  toast, toastErr, toastOk, toastWarn,
+  cx, toast, toastErr, toastOk, toastWarn,
 } from '../ui'
 import {
   ArrowRight, Book, BookOpen, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
@@ -121,6 +121,7 @@ export default function Words() {
   const setDecks = useStore((s) => s.setDecks)
 
   const [view, setView] = useState('learn')
+  const [statsOpen, setStatsOpen] = useState(false) // 今日复习视图顶部 bento 统计默认折叠成一行摘要
   const [flashcard, setFlashcard] = useState(false)
   const [curIdx, setCurIdx] = useState(0)
   const [showAns, setShowAns] = useState(false)
@@ -663,6 +664,22 @@ export default function Words() {
             </Alert>
           ) : null}
 
+          {view === 'learn' ? (
+            <button
+              type="button"
+              className="v3-study-statsbar"
+              aria-expanded={statsOpen}
+              onClick={() => setStatsOpen((v) => !v)}
+            >
+              <span className="v3-study-statsbar__text">
+                生词本 <b>{stats ? stats.total : '—'}</b> 词 · 待复习 <b className="is-danger">{queue.length}</b> · 学习中 <b>{learningCount}</b> · 已掌握 <b className="is-success">{masteredCount}</b>（{masteryPct}%）· 今日已评 <b>{reviewedToday}</b>
+              </span>
+              <span className="v3-study-statsbar__act">{statsOpen ? '收起统计' : '展开统计'}</span>
+              <ChevronDown size={16} className={cx('v3-study-statsbar__chev', statsOpen && 'is-open')} />
+            </button>
+          ) : null}
+
+          {view !== 'learn' || statsOpen ? (
           <div className="v3-bento">
             <Tile span={3} className="v3-study-stat">
               <span className="v3-tile__label"><Book size={15} /> 生词本</span>
@@ -780,6 +797,7 @@ export default function Words() {
               </div>
             </Tile>
           </div>
+          ) : null}
 
           <div className="v3-study-toolbar">
             <Segmented
@@ -974,6 +992,7 @@ export default function Words() {
                   {sessionDuration > 0 ? <span>用时 {sessionDuration} 分钟</span> : null}
                 </div>
 
+                <div className="v3-study-actionzone">
                 {!spellMode ? (
                   !showAns ? (
                     <Button variant="gradient" block size="lg" icon={<Eye size={18} />} onClick={() => setShowAns(true)}>
@@ -1009,6 +1028,7 @@ export default function Words() {
                 ) : (
                   <p className="v3-study-keyhint">看释义/音标输入拼写：正确自动记为「记得」，错误记为「忘记」并进入下次复习。</p>
                 )}
+                </div>
               </Tile>
             ) : null
           ) : null}

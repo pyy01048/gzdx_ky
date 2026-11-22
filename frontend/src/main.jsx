@@ -29,6 +29,26 @@ import './v3/styles/legacy-bridge.css'
    而当前 Layout 仍是侧边栏版式，全局引入会立刻改变线上观感。
    等 Layout 改造为顶栏时，由 Layout.jsx 局部 import './styles/nav.css'。 */
 
+/* PWA：Service Worker 注册（vite-plugin-pwa，registerType: 'autoUpdate'）。
+   virtual:pwa-register 由插件在构建时注入真实实现，dev 下不产出 SW 也不注册。
+   autoUpdate 语义：新版本 SW 装好后 skipWaiting + clientsClaim，下次进入即新版，
+   因此不需要「点击刷新」的交互，也不引入额外 UI 状态。
+
+   ⚠️ 上线注意：Service Worker 只在安全上下文可用（https:// 或 localhost/127.0.0.1）。
+   纯 http://60.204.223.140 直连时浏览器会拒绝注册 → 离线缓存与「安装到主屏」都不生效；
+   运维侧启用 HTTPS（域名 + 证书）后，本段代码无需改动即自动获得安装与离线能力。 */
+import { registerSW } from 'virtual:pwa-register'
+
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    try {
+      registerSW({ immediate: true })
+    } catch {
+      // 注册失败（非安全上下文 / 用户禁用 SW / 隐私模式）不影响 Web 端正常使用
+    }
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HashRouter>

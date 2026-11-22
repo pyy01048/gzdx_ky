@@ -7,7 +7,7 @@ import { fmtDateTime } from '../../utils/date'
 import MathText from '../../components/MathText'
 import {
   Alert, AnimatedNumber, Badge, Button, Card, CardHead, Chip, Empty, Field,
-  Menu, PageHeader, Select, Skeleton, Spinner, Tile, cx, toast,
+  Menu, PageHeader, Pager, Select, Skeleton, Spinner, Tile, cx, toast,
 } from '../ui'
 import {
   Activity, AlertCircle, BarChart3, Brain, CalendarClock, Check, CheckCircle,
@@ -17,7 +17,7 @@ import {
 import '../styles/review-pages.css'
 import '../styles/study-glass.css'
 
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 20
 const MASTERY_STATES = ['unlearned', 'weak', 'mastered']
 const MASTERY_FALLBACK_LABEL = { unlearned: '未学', weak: '薄弱', mastered: '已掌握' }
 const MASTERY_BADGE = { unlearned: 'outline', weak: 'warning', mastered: 'success' }
@@ -105,6 +105,7 @@ export default function ErrorReview() {
   const [masteryState, setMasteryState] = useState('')
   const [statusFilter, setStatusFilter] = useState('active')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
@@ -151,6 +152,7 @@ export default function ErrorReview() {
   const kpSeq = useRef(0)
   const fieldBtnRef = useRef(null)
   const detailRef = useRef(null)
+  const listWrapRef = useRef(null)
 
   const loadList = useCallback(async () => {
     const seq = ++listSeq.current
@@ -163,7 +165,7 @@ export default function ErrorReview() {
         status: statusFilter || undefined,
         knowledge_point_id: kpId || undefined,
         page,
-        page_size: PAGE_SIZE,
+        page_size: pageSize,
       })
       if (seq !== listSeq.current) return
       const list = normalizeList(data)
@@ -181,7 +183,7 @@ export default function ErrorReview() {
     } finally {
       if (seq === listSeq.current) setLoading(false)
     }
-  }, [subject, errorReason, masteryState, statusFilter, kpId, page])
+  }, [subject, errorReason, masteryState, statusFilter, kpId, page, pageSize])
 
   useEffect(() => { loadList() }, [loadList])
 
@@ -651,7 +653,7 @@ export default function ErrorReview() {
         )}
       </Tile>
 
-      <div className="v3-bento v3-er-layout">
+      <div className="v3-bento v3-er-layout" ref={listWrapRef}>
         <Tile span={7} className="v3-er-list-tile">
           <CardHead
             title="错题清单"
@@ -727,27 +729,17 @@ export default function ErrorReview() {
               </div>
             )}
 
-            {totalPages > 1 && (
-              <div className="v3-er-pager">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || loading}
-                >
-                  上一页
-                </Button>
-                <span className="v3-caption">{page} / {totalPages}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || loading}
-                >
-                  下一页
-                </Button>
-              </div>
-            )}
+            <Pager
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              totalPages={totalPages}
+              unit="条"
+              disabled={loading}
+              containerRef={listWrapRef}
+              onChange={setPage}
+              onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+            />
           </div>
         </Tile>
 

@@ -1338,3 +1338,86 @@ button.v3-chip:hover {
   animation: v3-breathe 2.4s var(--v3-ease-standard) infinite, v3-spin 6s linear infinite;
   box-shadow: var(--v3-shadow-glow);
 }
+
+/* ---------- Pager（v3/ui Pager 组件，编号页码 + 每页条数） ---------- */
+.v3-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 14px 4px 6px;
+}
+
+.v3-pager button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--v3-touch);
+  min-height: var(--v3-touch);
+  padding: 0 10px;
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-full);
+  background: var(--v3-surface);
+  color: var(--v3-text-2);
+  font-size: var(--v3-fs-13);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color var(--v3-dur-2) var(--v3-ease-standard),
+    color var(--v3-dur-2) var(--v3-ease-standard),
+    background var(--v3-dur-2) var(--v3-ease-standard);
+}
+
+.v3-pager button:hover:not(:disabled):not(.is-current) {
+  border-color: var(--v3-primary);
+  color: var(--v3-primary);
+}
+
+.v3-pager button.is-current {
+  border-color: transparent;
+  background: var(--v3-primary-container);
+  color: var(--v3-on-primary-container);
+}
+
+.v3-pager button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.v3-pager__gap {
+  min-width: 18px;
+  text-align: center;
+  color: var(--v3-text-3);
+  font-size: var(--v3-fs-13);
+}
+
+.v3-pager__info {
+  margin-left: 8px;
+  color: var(--v3-text-3);
+  font-size: var(--v3-fs-12);
+  white-space: nowrap;
+}
+
+.v3-pager__size {
+  width: auto;
+  min-height: 40px;
+  padding: 6px 34px 6px 12px;
+  margin-left: 6px;
+  font-size: var(--v3-fs-12);
+}
+
+/* 触屏/窄屏：图标钮与分页条数选择补足 44px 触控热区（桌面布局不动） */
+@media (max-width: 760px), (hover: none) {
+  .v3-iconbtn,
+  .v3-iconbtn--sm {
+    width: var(--v3-touch);
+    height: var(--v3-touch);
+    min-width: var(--v3-touch);
+    min-height: var(--v3-touch);
+  }
+
+  .v3-pager__size {
+    min-height: var(--v3-touch);
+  }
+}

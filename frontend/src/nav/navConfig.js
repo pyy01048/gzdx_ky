@@ -21,6 +21,7 @@ export const MODULES = [
       { to: '/textbooks', label: '教材目录', desc: '教材章节目录', public: true, kw: ['textbook', '教材', 'jiaocai', '目录'] },
       { to: '/pan', label: '网盘联动', desc: '云盘与同步', kw: ['pan', '网盘', '云盘', 'wangpan', 'cloud'] },
       { to: '/knowledge', label: '知识图谱', desc: '科目→章节→知识点纵览与掌握度', public: true, kw: ['knowledge', '知识图谱', '知识地图', '考点', 'zhishi', 'map', 'kbmap'] },
+      { to: '/tools', label: '学习工具箱', desc: '进制计算器 · 外部工具目录 · 站内直达', public: true, kw: ['tools', '工具箱', '工具', '进制', '计算器', '补码', 'gongju', 'binji', 'jisuanqi'] },
     ],
   },
   {

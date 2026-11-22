@@ -72,6 +72,8 @@ const ResetPassword = lazy(() => import('./v3/pages/ResetPassword'))
 const Forbidden = lazy(() => import('./v3/pages/Forbidden'))
 // Glass Lab：毛玻璃交互式页面（后端零依赖的纯前端动效演示页）
 const GlassLab = lazy(() => import('./v3/pages/GlassLab'))
+// 学习工具箱：进制计算器（纯本地 BigInt）+ 外部工具目录 + 站内入口（后端零依赖，访客可用）
+const Tools = lazy(() => import('./v3/pages/Tools'))
 
 function PageFallback() {
   return <LoadingState text="页面加载中…" />
@@ -165,6 +167,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route path="/403" element={<Forbidden />} />
             <Route path="/glass" element={<GlassLab />} />
+            <Route path="/tools" element={<Tools />} />
             {/* 数据质量旧书签兼容：早期侧栏入口用过 /data-quality */}
             <Route path="/data-quality" element={<Navigate to="/admin/quality" replace />} />
             <Route path="/" element={<GuestHome />} />

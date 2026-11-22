@@ -330,6 +330,20 @@ export default function Assistant() {
       }
     }
 
+    // done 事件携带权威全文：用替换而非追加落定，避免与已累加的 delta 重复整段。
+    const streamSet = (content, degraded) => {
+      const st = useStore.getState()
+      const msgs = st.ai.messages
+      const last = msgs[msgs.length - 1]
+      if (!last || last.role !== 'bot' || last.error) {
+        useStore.setState({ ai: { ...st.ai, messages: [...msgs, { role: 'bot', content, streaming: true, degraded: !!degraded }] } })
+      } else {
+        useStore.setState({
+          ai: { ...st.ai, messages: msgs.map((m, i) => (i === msgs.length - 1 ? { ...m, content, degraded: !!degraded } : m)) }
+        })
+      }
+    }
+
     setTyping(true)
     try {
       const provider = defaultProvider()
@@ -378,6 +392,14 @@ export default function Assistant() {
               }
               if (ev.type === 'status') {
                 setThinkingText(ev.status === 'thinking' ? '模型思考中…' : '生成中…')
+                return
+              }
+              if (ev.type === 'done') {
+                if (ev.content) {
+                  setThinkingText('')
+                  streamed = true
+                  streamSet(ev.content, ev.degraded)
+                }
                 return
               }
               if (ev.content) {
@@ -629,6 +651,15 @@ export default function Assistant() {
                     {m.role === 'bot'
                       ? <MathText text={m.content} className="v3-asst-bubble__content" />
                       : <span className="v3-asst-bubble__content">{m.content}</span>}
+                    {m.degraded && (
+                      <span
+                        className="v3-asst-degraded"
+                        title="在线与本地模型均不可用，以下为本地知识库资料片段，非模型生成"
+                        style={{ display: 'inline-block', marginTop: 6, fontSize: 12, lineHeight: 1.4, color: 'var(--warning, #b45309)', border: '1px solid currentColor', borderRadius: 6, padding: '1px 7px' }}
+                      >
+                        离线资料 · 非模型生成
+                      </span>
+                    )}
                     {m.streaming && <span className="v3-asst-caret" />}
                     {m.error && m.retry && (
                       <div className="v3-asst-bubble__retry">

@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import {
   Alert, Badge, Button, Card, CardHead, Chip, Dialog, Empty, Input, LoadingState,
-  PageHeader, Segmented, Select, Spinner, Tile, cx,
+  PageHeader, Pager, Segmented, Select, Spinner, Tile, cx,
 } from '../ui'
 import {
   ArrowRight, BarChart3, Database, Flame, InfoCircle, RefreshCw, Search, Target,
@@ -22,7 +22,7 @@ import '../styles/kaoyan-core-v3.css'
    学科榜单按 code 服务端查询。空态即交付：接口无数据时显示 Empty，不造演示数据。
    ========================================================================== */
 
-const PAGE_SIZE = 24
+const DEFAULT_PAGE_SIZE = 24
 const API_PAGE = 200 // 后端 MAX_PAGE_SIZE
 
 const GRADE_TONE = (g) => {
@@ -199,6 +199,8 @@ function SchoolsView({ schools, onOpen }) {
   const [flags, setFlags] = useState({ is_985: false, is_211: false, is_double_first: false, is_self_marked: false })
   const [sort, setSort] = useState('eval_cnt')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const gridRef = useRef(null)
 
   const provinces = useMemo(
     () => [...new Set(schools.map((s) => normProvince(s.province)))].sort((a, b) => a.localeCompare(b, 'zh')),
@@ -219,9 +221,9 @@ function SchoolsView({ schools, onOpen }) {
   }, [schools, q, province, unitType, flags, sort])
 
   useEffect(() => { setPage(1) }, [q, province, unitType, flags, sort])
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const cur = Math.min(page, pages)
-  const items = filtered.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE)
+  const items = filtered.slice((cur - 1) * pageSize, cur * pageSize)
 
   const stats = useMemo(() => ({
     total: schools.length,
@@ -263,7 +265,7 @@ function SchoolsView({ schools, onOpen }) {
       </Card>
 
       {items.length ? (
-        <div className="kyv3-school-grid">
+        <div className="kyv3-school-grid" ref={gridRef}>
           {items.map((s) => <SchoolCard key={s.id} s={s} onOpen={onOpen} />)}
         </div>
       ) : (
@@ -271,13 +273,15 @@ function SchoolsView({ schools, onOpen }) {
           text={schools.length ? '试试放宽筛选条件或清空关键词。' : '评估库尚未导入数据，请在服务端运行 import_school_eval_pg.py --apply。'} />
       )}
 
-      {pages > 1 ? (
-        <div className="v3-row" style={{ justifyContent: 'center', gap: 12 }}>
-          <Button variant="tonal" size="sm" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>上一页</Button>
-          <span className="v3-caption">{cur} / {pages}</span>
-          <Button variant="tonal" size="sm" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>下一页</Button>
-        </div>
-      ) : null}
+      <Pager
+        page={cur}
+        pageSize={pageSize}
+        total={filtered.length}
+        unit="所"
+        containerRef={gridRef}
+        onChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+      />
     </div>
   )
 }

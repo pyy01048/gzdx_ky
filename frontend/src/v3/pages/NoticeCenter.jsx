@@ -6,11 +6,11 @@ import { useUnreadNotices } from '../../hooks/useUnreadNotices'
 import { daysBetween, humanDate, todayStr } from '../../utils/date'
 import {
   AnimatedNumber, Badge, Button, Card, CardHead, Chip, Empty, IconButton, Input,
-  LoadingState, Progress, Segmented, Select, cx, toast,
+  LoadingState, Pager, Progress, Segmented, Select, cx, toast,
 } from '../ui'
 import {
-  ArrowUpRight, Bell, BookOpen, CalendarClock, Check, CheckCircle2, ChevronLeft,
-  ChevronRight, Clock, Compass, FileText, ListChecks, RefreshCw, School, Search,
+  ArrowUpRight, Bell, BookOpen, CalendarClock, Check, CheckCircle2,
+  Clock, Compass, FileText, ListChecks, RefreshCw, School, Search,
   Sparkles, Star, Target, Warning, X,
 } from '../icons'
 import { useAuth } from '../../auth/AuthContext'
@@ -19,7 +19,7 @@ import '../styles/notices-v3.css'
 /* ============================================================
    通知中心 · 公告已读/加星 + 改考雷达
    ============================================================ */
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 20
 
 const TYPE_TONE = {
   简章: 'primary',
@@ -307,6 +307,8 @@ export default function NoticeCenter() {
   const [noticeType, setNoticeType] = useState('')
   const [levelFilter, setLevelFilter] = useState('all')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const listRef = useRef(null)
   const [kw, setKw] = useState('')
   const [kwInput, setKwInput] = useState('')
 
@@ -340,7 +342,7 @@ export default function NoticeCenter() {
         urgent_only: levelFilter === 'urgent',
         important_only: levelFilter === 'important',
         page,
-        page_size: PAGE_SIZE,
+        page_size: pageSize,
       }, { guest: isGuest })
       if (seq !== reqSeq.current) return
       setItems(Array.isArray(d?.items) ? d.items : [])
@@ -358,7 +360,7 @@ export default function NoticeCenter() {
     } finally {
       if (seq === reqSeq.current) setFetching(false)
     }
-  }, [readFilter, noticeType, levelFilter, kw, page, isGuest])
+  }, [readFilter, noticeType, levelFilter, kw, page, pageSize, isGuest])
 
   useEffect(() => {
     if (authStatus === 'loading') return
@@ -467,7 +469,6 @@ export default function NoticeCenter() {
     { value: 'important', label: `仅重要${importantUnread ? ` ${importantUnread}` : ''}` },
   ]
 
-  const totalPages = Math.max(1, Math.ceil(meta.total / PAGE_SIZE))
   const readPct = meta.total > 0 ? ((meta.total - meta.unread) / meta.total) * 100 : 0
   const statTypes = ['简章', '复试', '报名', '初试']
 
@@ -692,7 +693,7 @@ export default function NoticeCenter() {
                 action={emptyAction}
               />
             ) : (
-              <div className="v3-notices-list">
+              <div className="v3-notices-list" ref={listRef}>
                 {items.map((n) => {
                   const lv = levelOf(n)
                   return (
@@ -755,29 +756,16 @@ export default function NoticeCenter() {
               </div>
             )}
 
-            {totalPages > 1 ? (
-              <div className="v3-notices-pager">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  icon={<ChevronLeft size={15} />}
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  上一页
-                </Button>
-                <span className="v3-notices-pager__info">第 {page} / {totalPages} 页</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  trailingIcon={<ChevronRight size={15} />}
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  下一页
-                </Button>
-              </div>
-            ) : null}
+            <Pager
+              page={page}
+              pageSize={pageSize}
+              total={meta.total}
+              unit="条"
+              disabled={fetching}
+              containerRef={listRef}
+              onChange={setPage}
+              onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+            />
           </Card>
         </>
       )}
