@@ -500,6 +500,7 @@ class AIService:
         use_routing: bool = True,
         kb_hit_count: int = 0,
         force_local: bool = False,
+        offline_fallback: bool = False,
     ) -> Dict[str, Any]:
         """统一对话接口，支持智能路由（本地+API自动选择）与降级。
 
@@ -555,6 +556,7 @@ class AIService:
                 "route": "offline",
                 "route_reason": route_reason or "本地知识库离线回答",
                 "model": None,
+                "degraded": True,
             }
 
         # 本地模型路径
@@ -576,6 +578,7 @@ class AIService:
                         "route": "offline",
                         "route_reason": f"本地调用失败（{str(e)[:50]}），离线知识库兜底",
                         "model": None,
+                        "degraded": True,
                     }
                 route = "online"
                 route_reason = f"本地调用失败（{str(e)[:50]}），回退在线"
@@ -601,26 +604,64 @@ class AIService:
                         "route": "offline",
                         "route_reason": f"本地调用失败（{str(e)[:50]}），离线知识库兜底",
                         "model": None,
+                        "degraded": True,
                     }
                 raise RuntimeError(f"本地模型调用失败：{str(e)}") from e
 
         fallbacks = self._get_fallback_providers(provider.id)
+        # 2026-11-22：降级链里的 Ollama 服务商必须真的走 _call_ollama。
+        # 旧实现对链上**所有**服务商一律调 _call_provider（OpenAI 兼容 POST），
+        # 于是库里的「本地学术答疑/文档处理」两行被当云端打：Ollama 没起时
+        # 各付一次 ConnectError，把「Key 失效(403)」这个真因盖成
+        # provider_unreachable，用户按提示去查网络永远查不对。
         all_providers = [provider] + fallbacks
 
         last_error = None
+        errors: List[str] = []
         for p in all_providers:
             try:
-                result = await self._call_provider(p, messages, temperature)
+                if self._is_local_provider(p):
+                    result = await self._call_ollama(p, messages, temperature)
+                    result["route"] = "local"
+                    result["route_reason"] = route_reason or "降级到本地模型"
+                else:
+                    result = await self._call_provider(p, messages, temperature)
+                    result["route"] = "online"
+                    result["route_reason"] = route_reason or "在线API"
                 result["provider"] = p.name
-                result["route"] = "online"
-                result["route_reason"] = route_reason or "在线API"
                 result["model"] = self._get_model_name(p)
                 return result
             except Exception as e:
                 last_error = str(e)
+                errors.append(f"{p.name}: {last_error}")
                 continue
 
-        raise RuntimeError(f"所有 AI 服务商调用失败，最后错误：{last_error}")
+        # 全链失败：交互式聊天（offline_fallback=True）走离线知识库兜底，不再 502；
+        # 内部/批处理调用方（默认 False）保持抛异常契约——否则文档知识点提取、作文
+        # 批改等会把 KB 片段当结构化数据写入，污染下游。
+        if offline_fallback:
+            return self._offline_fallback_result(last_user, errors, route_reason)
+        raise RuntimeError(f"所有 AI 服务商调用失败：{'; '.join(errors) or last_error}")
+
+    def _offline_fallback_result(self, query: str, errors: List[str], route_reason: str = "") -> Dict[str, Any]:
+        """全服务商失败后的离线知识库兜底（数据不出网，不抛异常）。
+
+        ``degraded=True`` + ``provider_errors`` 让前端能明确标注「这不是模型
+        回答，是本地资料片段」，并给出可操作的修复入口，而不是静默降级。
+        """
+        kb_hits = self.search_knowledge_base(query, limit=4)
+        reason = "在线与本地模型均不可用，已用本地知识库离线回答"
+        if route_reason:
+            reason = f"{route_reason}；{reason}"
+        return {
+            "content": self.answer_offline(query, kb_hits),
+            "provider": "offline-kb",
+            "route": "offline",
+            "route_reason": reason,
+            "model": None,
+            "degraded": True,
+            "provider_errors": errors,
+        }
 
     async def _call_provider(
         self, provider: AIProvider, messages: List[Dict[str, str]], temperature: Optional[float] = None
@@ -649,6 +690,7 @@ class AIService:
         provider_override: Optional[Dict[str, Any]] = None,
         kb_hit_count: int = 0,
         force_local: bool = False,
+        offline_fallback: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """SSE 流式对话接口，支持降级。
 
@@ -669,6 +711,10 @@ class AIService:
             yield {"type": "delta", "content": self.guard_message()}
             yield {"type": "done", "content": self.guard_message()}
             return
+
+        # 显式指定 provider_id / provider_override 时不进路由分支，
+        # route_reason 必须有初值：末尾的离线兜底会读它，否则 UnboundLocalError。
+        route_reason = ""
 
         # 智能路由：自动判断走本地还是在线（非force_local、非provider_override时）
         if not force_local and not provider_override and provider_id is None:
@@ -695,6 +741,8 @@ class AIService:
                             "route": "local",
                             "route_reason": route_reason,
                             "model": res.get("model"),
+                            "degraded": res.get("degraded", False),
+                            "provider_errors": res.get("provider_errors", []),
                         }
                         return
                     except Exception as e:
@@ -724,6 +772,8 @@ class AIService:
                 "content": content,
                 "route": res.get("route"),
                 "route_reason": res.get("route_reason"),
+                "degraded": res.get("degraded", False),
+                "provider_errors": res.get("provider_errors", []),
             }
             return
 
@@ -750,7 +800,7 @@ class AIService:
         fallbacks = self._get_fallback_providers(provider.id)
         all_providers = [provider] + fallbacks
 
-        last_error = None
+        errors: List[str] = []
         for p in all_providers:
             try:
                 yield {"type": "provider", "name": p.name}
@@ -758,10 +808,26 @@ class AIService:
                     yield ev
                 return
             except Exception as e:
-                last_error = str(e)
+                errors.append(f"{p.name}: {str(e)}")
                 continue
 
-        yield {"type": "error", "message": f"所有 AI 服务商调用失败，最后错误：{last_error}"}
+        # 与 chat() 同口径：交互式（offline_fallback=True）全链失败走离线知识库，
+        # 而不是丢 error 事件让前端停在「生成中…」；内部调用方默认仍报 error。
+        if not offline_fallback:
+            yield {"type": "error", "message": f"所有 AI 服务商调用失败：{'; '.join(errors)}"}
+            return
+        res = self._offline_fallback_result(last_user, errors, route_reason)
+        yield {"type": "provider", "name": res["provider"]}
+        yield {"type": "delta", "content": res["content"]}
+        yield {
+            "type": "done",
+            "content": res["content"],
+            "route": res["route"],
+            "route_reason": res["route_reason"],
+            "model": None,
+            "degraded": True,
+            "provider_errors": errors,
+        }
 
     async def _call_provider_stream(
         self, provider: AIProvider, messages: List[Dict[str, str]], temperature: Optional[float] = None

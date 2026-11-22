@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 import time
 from typing import Optional, Tuple
@@ -61,26 +62,56 @@ _AI_ERROR_HINTS = {
 
 
 def _classify_ai_error(exc: BaseException) -> Tuple[str, str]:
-    """把 AI 调用异常归类为 (reason_code, 可展示提示)。"""
+    """把 AI 调用异常归类为 (reason_code, 可展示提示)。
+
+    2026-11-22 归因优先级修正
+    ------------------------
+    原实现按**字符串出现顺序**判定：先查 401/403，再查 connect/timeout。
+    降级链把多个服务商的错误拼进同一条消息后，这个顺序会系统性误判——
+    线上实测：云知声 Key 失效返回 **403 Forbidden**（真因、可行动：换 Key），
+    链尾两个 Ollama 服务商未启动各抛 ``All connection attempts failed``，
+    整条消息同时含 "403" 与 "connect"。旧逻辑本该报 provider_auth，
+    但只要拼接顺序或措辞稍变就落到 provider_unreachable，
+    提示用户「网络不可达、DNS 失败」——而服务器到上游 TLS 握手仅 49ms，
+    网络完全正常。用户按错误提示排查网络，永远查不到真因。
+
+    现在把判定抽成 :func:`_reason_from_text`，并对聚合错误**逐段分类**，
+    按「可行动性」排序取主因：
+        provider_auth（换 Key 即可修复）
+      > provider_unreachable（查网络/起服务）
+      > all_providers_failed（笼统兜底）
+    """
     text = str(exc) or ""
-    low = f"{type(exc).__name__}: {text}".lower()
     t = text.lower()
     if "没有可用的 ai 服务商" in t or "服务商" in t and "不存在" in t:
         return "no_provider", _AI_ERROR_HINTS["no_provider"]
     if "本地模型调用失败" in text:
         return "local_unavailable", _AI_ERROR_HINTS["local_unavailable"]
-    if "所有 ai 服务商调用失败" in text.lower():
-        # 兜底错误里仍带着最后一个服务商的失败原因，二次归类便于用户直接定位
-        if "401" in text or "403" in text or "unauthorized" in low or "forbidden" in low:
-            return "provider_auth", _AI_ERROR_HINTS["provider_auth"]
-        if "timed out" in low or "timeout" in low or "connect" in low or "name or service not known" in low:
-            return "provider_unreachable", _AI_ERROR_HINTS["provider_unreachable"]
-        return "all_providers_failed", _AI_ERROR_HINTS["all_providers_failed"]
-    if "401" in text or "403" in text or "unauthorized" in low or "forbidden" in low:
-        return "provider_auth", _AI_ERROR_HINTS["provider_auth"]
+
+    # 聚合错误形如「所有 AI 服务商调用失败，最后错误：A: 403…; B: connect…」
+    # 逐段分类后按可行动性取主因，避免链尾噪声盖住链首真因。
+    if "所有 ai 服务商调用失败" in t or "; " in text:
+        segments = [s for s in re.split(r";\s*|\n", text) if s.strip()]
+        codes = [_reason_from_text(s) for s in segments] or [_reason_from_text(text)]
+        for preferred in ("provider_auth", "provider_unreachable"):
+            if preferred in codes:
+                return preferred, _AI_ERROR_HINTS[preferred]
+        if "all_providers_failed" in t or "所有 ai 服务商调用失败" in t:
+            return "all_providers_failed", _AI_ERROR_HINTS["all_providers_failed"]
+        return codes[0], _AI_ERROR_HINTS[codes[0]]
+
+    code = _reason_from_text(text)
+    return code, _AI_ERROR_HINTS[code]
+
+
+def _reason_from_text(text: str) -> str:
+    """单段错误文本 → 原因码。**鉴权优先于连通性**（换 Key 比查网络更可行动）。"""
+    low = f"{text}".lower()
+    if "401" in low or "403" in low or "unauthorized" in low or "forbidden" in low:
+        return "provider_auth"
     if "timed out" in low or "timeout" in low or "connect" in low or "name or service not known" in low:
-        return "provider_unreachable", _AI_ERROR_HINTS["provider_unreachable"]
-    return "upstream_error", _AI_ERROR_HINTS["upstream_error"]
+        return "provider_unreachable"
+    return "upstream_error"
 
 
 def _citation_location(c: dict) -> str:
@@ -443,6 +474,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             provider_id=request.provider_id,
             kb_hit_count=kb_hit_count,
             force_local=request.force_local,
+            offline_fallback=True,
         )
         result["rag"] = bool(rag_prompt) if request.use_rag else False
         # 引用溯源：结构化字段 + 回答末尾可读来源（文档名 + 页码/段号）
@@ -639,6 +671,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 provider_override=request.provider_override,
                 kb_hit_count=kb_hit_count,
                 force_local=request.force_local,
+                offline_fallback=True,
             ):
                 # 流结束时把「参考来源」作为最后一段正文补上：前端只渲染 delta，
                 # 不在正文里补的话用户看不到引用；同时 done 事件带结构化 citations。
