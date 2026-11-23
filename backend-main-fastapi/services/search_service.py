@@ -163,6 +163,70 @@ def _fts_query(user_query: str) -> str:
     return " OR ".join(f'"{t}"' for t in safe if t)
 
 
+# 停用词：中文疑问句里的高频虚词，进 LIKE/tsquery 只会拖慢召回质量。
+_STOPWORDS = frozenset(
+    {
+        "的",
+        "了",
+        "是",
+        "有",
+        "和",
+        "与",
+        "及",
+        "在",
+        "对",
+        "把",
+        "被",
+        "什么",
+        "怎么",
+        "怎样",
+        "为什么",
+        "如何",
+        "哪些",
+        "哪个",
+        "这个",
+        "那个",
+        "一下",
+        "请问",
+        "请",
+        "问",
+        "用",
+        "作用",
+        "时候",
+    }
+)
+
+#: tsquery 词元字面量里必须剔除的字符：`'` 结束引号、`\\` 是 tsquery 转义符。
+_TS_UNSAFE = re.compile(r"['\\]")
+
+
+def query_terms(query: str, max_terms: int = 5) -> Tuple[str, List[str]]:
+    """抽取检索词：返回 ``(整句 core, 关键词列表)``。
+
+    整句 core 用作「短语命中」这一最高权重信号；关键词按长度降序取 ``max_terms``
+    个（长词区分度高）。PG 全文路与 PG 文档路共用这一份口径，避免两处漂移。
+    """
+    core = _CTRL.sub("", (query or "").strip())[:60]
+    if not core:
+        return "", []
+    terms: List[str] = []
+    for t in segment(core).split():
+        t = _CTRL.sub("", t).strip()
+        if len(t) >= 2 and t not in _STOPWORDS and t not in terms:
+            terms.append(t)
+    return core, sorted(terms, key=len, reverse=True)[:max_terms]
+
+
+def _tsquery_or(terms: List[str]) -> str:
+    """把关键词拼成 `to_tsquery('simple', ...)` 的 OR 查询串（带引号转义）。"""
+    parts = []
+    for t in terms:
+        safe = _TS_UNSAFE.sub("", t)
+        if safe:
+            parts.append(f"'{safe}'")
+    return " | ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # 数据库表管理
 # ---------------------------------------------------------------------------
@@ -236,6 +300,95 @@ def ensure_tables(db: Session) -> None:
 # ---------------------------------------------------------------------------
 # 全文检索（双后端）
 # ---------------------------------------------------------------------------
+def _pg_tsvector_candidates(
+    conn, core: str, terms: List[str], want: int, subject: Optional[str]
+) -> List[Tuple[Any, ...]]:
+    """PG 全文主查：GIN(`search_vector`) 索引路，返回 [(chunk_id, text, doc_name)]。
+
+    为什么不再用 ILIKE 子串扫（2026-11-23 实测，81348 块）：
+
+    * `text ILIKE '%词%'` 的 OR 组合让优化器放弃 GIN trgm 走全表扫描，且为了
+      `ORDER BY length(text)` 把全部命中行的正文拖进排序元组 —— 单条 0.86~1.7 秒，
+      是 /api/ai/rag-search 冷启动 2.8 秒里的最大头；
+    * `search_vector` 是 020 分片的 GENERATED 列，输入正是**入库时 jieba 预分词**
+      的 `search_tokens`，与查询侧 :func:`segment` 同一套分词，因此词元级 `@@`
+      匹配覆盖得住原来的子串召回：同一批查询实测命中 3831 vs 3875（差 1.1%）、
+      6335 vs 6335、7067 vs 7068，而耗时 4 ms vs 1900 ms。
+
+    排序仍走「窄列排序 + 宽列回取」两段：内层只对 id 排 ts_rank，外层按选中的 id
+    取正文，避免上万行 TOAST 正文进排序元组。
+    """
+    tsq = _tsquery_or(terms) or _tsquery_or([core])
+    if not tsq:
+        return []
+    sql = (
+        "SELECT kc.id, kc.text, kc.doc_name FROM knowledge_chunks kc JOIN ("
+        " SELECT k2.id AS cid FROM knowledge_chunks k2"
+        "  WHERE k2.search_vector @@ to_tsquery('simple', %(q)s) "
+    )
+    params: dict[str, Any] = {"q": tsq, "n": want}
+    if subject:
+        sql += " AND k2.subject = %(subject)s"
+        params["subject"] = subject
+    sql += "  ORDER BY ts_rank(k2.search_vector, to_tsquery('simple', %(q)s)) DESC LIMIT %(n)s) s ON s.cid = kc.id"
+    try:
+        return conn.execute(sql, params).fetchall()
+    except Exception as exc:  # noqa: BLE001 —— 语法/扩展异常一律降级到 ILIKE 兜底路
+        logger.warning("PG tsvector 全文路异常，改用 ILIKE 兜底：%s", exc)
+        return []
+
+
+def _pg_ilike_candidates(
+    conn,
+    core: str,
+    terms: List[str],
+    want: int,
+    subject: Optional[str],
+    exclude: set,
+    tsq: str,
+) -> List[Tuple[Any, ...]]:
+    """PG 全文兜底路：子串 ILIKE，只在索引路召回不足 ``topn`` 时才跑。
+
+    保留它是因为历史数据里混有**未经 jieba 分词**的块（词元表里没有它们的中文词），
+    纯 tsvector 会漏。与旧版的关键差别：加了 `LIMIT` 屏障的候选池 CTE，排序只在
+    池内做（实测同一查询：全命中集 top-N 排序 1.6 秒 → 池内排序 0.2 秒）。
+    """
+    if not core and not terms:
+        return []
+    params: dict[str, Any] = {}
+    if terms:
+        ors = []
+        for i, t in enumerate(terms):
+            ors.append(f"kc.text ILIKE %(like{i})s")
+            params[f"like{i}"] = f"%{t}%"
+        pred = " OR ".join(ors)
+    else:
+        pred = "kc.text ILIKE %(like)s"
+        params["like"] = f"%{core}%"
+
+    sql = f"WITH pool AS MATERIALIZED (SELECT kc.id FROM knowledge_chunks kc WHERE ({pred})"
+    if tsq:
+        sql += " AND NOT (kc.search_vector @@ to_tsquery('simple', %(q)s))"
+        params["q"] = tsq
+    if exclude:
+        sql += " AND kc.id <> ALL(%(ex)s)"
+        params["ex"] = list(exclude)
+    if subject:
+        sql += " AND kc.subject = %(subject)s"
+        params["subject"] = subject
+    sql += (
+        " LIMIT %(scan)s) SELECT kc.id, kc.text, kc.doc_name FROM knowledge_chunks kc"
+        " JOIN pool ON pool.id = kc.id ORDER BY length(kc.text) ASC LIMIT %(n)s"
+    )
+    params["scan"] = max(want * 6, 200)
+    params["n"] = want
+    try:
+        return conn.execute(sql, params).fetchall()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("PG ILIKE 兜底全文路异常：%s", exc)
+        return []
+
+
 def fts_search(
     conn,
     query: str,
@@ -250,99 +403,21 @@ def fts_search(
     导致 hybrid 检索必然失败、退化为 Python 词集 Jaccard 全表扫描。
     """
     if _is_pg(conn):
-        # 全文检索策略（2026-10-14 建立，2026-10-20 修正召回）
-        # ------------------------------------------------
-        # 实测 `knowledge_chunks.search_vector` 的词元**并非全部按中文词切分**：
-        #   有的块切成 '卡诺图'（正确），有的整句存成 '用卡诺图化简下列逻辑函数。'（未切）。
-        # 因此单纯 `to_tsquery('simple', '傅里叶 & 变换')` 会大量漏召回。
-        #
-        # 现行策略（两段式，ILIKE + trgm 索引）：
-        #   第一段 主查：把 query 分词成关键词后 OR 做 ILIKE，取 limit*4 条候选
-        #                （中文无分词依赖；整句原样作为最高权重信号，防误召回）；
-        #   第二段 精排：只对这批候选按「整句命中/命中词数/密度/位置」打分排序。
-        # 2026-10-20 之前主查用的是**整句** ILIKE（`%译码器的使能端有什么用%`），
-        # 自然语言提问几乎不可能原样出现在某个 chunk 里，全文一路长期召回 0 条，
-        # 混合检索实际只剩向量一路 —— 这是本次修正的直接原因。
-        # 性能上仍只扫候选池，不把排序范围放大到全表（历史版本曾因此 13.1 秒）。
-        text_q = (query or "").strip()
-        if not text_q:
-            return []
-        core = _CTRL.sub("", text_q)[:60]
+        # 两段式（2026-10-20 定形的召回策略，2026-11-23 只换主查的执行方式）：
+        #   第一段 候选：GIN 索引路取 candidate_n 条（召回不足才补 ILIKE 池）
+        #   第二段 精排：只对这批候选按「整句命中/命中词数/密度/位置」打分排序
+        # 精排口径完全没动，动的是不再把全表 ILIKE 扫描当主查（见下方两个 helper 的实测说明）。
+        core, terms = query_terms(query)
         if not core:
             return []
-
-        # 性能关键（2026-10-14 实测校准）：
-        # 上一版把 ILIKE / tsvector / similarity() 混在一个 SELECT 里加权排序，
-        # 优化器因此放弃索引走全表扫描，6 万行耗时 13.1 秒。
-        # 实测 `ILIKE '%x%'` 单独用是能走 GIN trgm 索引的
-        # （EXPLAIN 显示 Bitmap Index Scan on idx_chunks_text_trgm）。
-        #
-        # 改为**两段式**：
-        #   第一段 主查：ILIKE + trgm 索引，取 limit*4 条候选（毫秒级）
-        #   第二段 精排：只对这批候选算 ts_rank/similarity 加权排序
-        # 这样既保留了三段式的召回质量，又把排序范围从 6 万行压到几十行。
-        # 召回策略修正（2026-10-20）：
-        # 旧实现把**整句**当子串 `ILIKE '%译码器的使能端有什么用%'`，自然语言提问
-        # 几乎不可能原样出现在某个 chunk 里 → 全文这一路长期返回空，混合检索实际
-        # 只剩向量一路（向量一挂就完全无召回）。这里改为按分词后的关键词 OR 召回，
-        # 再用命中词数/密度精排，保留"整句子串"作为最高权重信号。
-        stop = {
-            "的",
-            "了",
-            "是",
-            "有",
-            "和",
-            "与",
-            "及",
-            "在",
-            "对",
-            "把",
-            "被",
-            "什么",
-            "怎么",
-            "怎样",
-            "为什么",
-            "如何",
-            "哪些",
-            "哪个",
-            "这个",
-            "那个",
-            "一下",
-            "请问",
-            "请",
-            "问",
-            "用",
-            "作用",
-            "时候",
-        }
-        terms = []
-        for t in segment(core).split():
-            t = _CTRL.sub("", t).strip()
-            if len(t) >= 2 and t not in stop and t not in terms:
-                terms.append(t)
-        # 长词区分度高：最多取 5 个
-        terms = sorted(terms, key=len, reverse=True)[:5]
-
         candidate_n = max(topn * 4, 40)
-        if terms:
-            ors = []
-            params: dict[str, Any] = {}
-            for i, t in enumerate(terms):
-                ors.append(f"kc.text ILIKE %(like{i})s")
-                params[f"like{i}"] = f"%{t}%"
-            sql = f"SELECT kc.id, kc.text, kc.doc_name FROM knowledge_chunks kc WHERE ({' OR '.join(ors)})"
-        else:
-            sql = "SELECT kc.id, kc.text, kc.doc_name FROM knowledge_chunks kc WHERE kc.text ILIKE %(like)s"
-            params = {"like": f"%{core}%"}
-        if subject:
-            # subject 用子查询换算成 subject_id，与 030 分片的外键设计一致
-            sql += " AND kc.subject = %(subject)s"
-            params["subject"] = subject
-        sql += " ORDER BY length(kc.text) ASC LIMIT %(n)s"
-        params["n"] = candidate_n
-        rows = conn.execute(sql, params).fetchall()
+
+        rows = _pg_tsvector_candidates(conn, core, terms, candidate_n, subject)
+        if len(rows) < topn:
+            seen = {r[0] for r in rows}
+            rows += _pg_ilike_candidates(conn, core, terms, candidate_n - len(rows), subject, seen, _tsquery_or(terms))
         if not rows:
-            # 兜底：关键词未命中时退到向量/tsvector 已无意义，如实返回空
+            # 兜底：关键词未命中时退到向量已无意义，如实返回空
             return []
 
         # 精排：整句命中 > 命中词多 > 密度高 > 位置靠前；长度短者优先
@@ -728,13 +803,117 @@ def _search_knowledge_points(
         return []
 
 
+def _pg_doc_ids_for_term(conn, term: str, subject: Optional[str]) -> set:
+    """单个关键词命中的文档集合：标题（GIN trgm，列小）∪ 分块正文（GIN tsvector）。
+
+    分块就是文档正文切出来的（实测 2666 篇里 2600 篇已切块），所以"正文含该词"
+    这一判据在 GIN 索引上算，而不是在 64 MB 的 `documents.content` 上扫。
+    """
+    tsq = _tsquery_or([term])
+    ids: set = set()
+    if tsq:
+        sql = (
+            "SELECT kc.document_id FROM knowledge_chunks kc"
+            " WHERE kc.search_vector @@ to_tsquery('simple', %(q)s) AND kc.document_id IS NOT NULL"
+        )
+        params: dict[str, Any] = {"q": tsq}
+        if subject:
+            sql += " AND kc.subject = %(subject)s"
+            params["subject"] = subject
+        ids.update(r[0] for r in conn.execute(sql, params).fetchall())
+    tsql = "SELECT d.id FROM documents d WHERE d.is_junk IS NOT TRUE AND d.file_name ILIKE %(t)s"
+    tparams: dict[str, Any] = {"t": f"%{term}%"}
+    if subject:
+        tsql += " AND d.subject = %(subject)s"
+        tparams["subject"] = subject
+    ids.update(r[0] for r in conn.execute(tsql, tparams).fetchall())
+    return ids
+
+
+def _pg_unindexed_doc_ids(conn, terms: List[str], subject: Optional[str], want: int) -> List[int]:
+    """尚未切块的文档（实测 66/2666）没有索引可走，只能回落到原始 content 谓词。
+
+    用 `NOT EXISTS(分块)` 先把扫描面压到那几十行，再对 content 做 ILIKE，
+    这样"无索引全表扫 64 MB"就只剩历史欠账的那一小截。
+    """
+    if not terms:
+        return []
+    conds = " AND ".join(f"(u.file_name ILIKE %(t{i})s OR u.content ILIKE %(t{i})s)" for i in range(len(terms)))
+    params: dict[str, Any] = {f"t{i}": f"%{t}%" for i, t in enumerate(terms)}
+    # AS MATERIALIZED 是必需的屏障：直接写 WHERE ... AND (content ILIKE ...) 时
+    # 优化器按自身的低成本估计把 content 谓词排到 NOT EXISTS 之前，实测仍要
+    # 500~630 ms（64 MB TOAST 全表求值）；先物化"未切块"那几十行再判正文 = 11~22 ms。
+    sql = (
+        "WITH u AS MATERIALIZED ("
+        " SELECT d.id, d.file_name, d.content FROM documents d"
+        "  WHERE d.is_junk IS NOT TRUE"
+        "   AND NOT EXISTS (SELECT 1 FROM knowledge_chunks kc WHERE kc.document_id = d.id)"
+        " )"
+        f" SELECT u.id FROM u WHERE ({conds})"
+    )
+    if subject:
+        sql += " AND EXISTS (SELECT 1 FROM documents d2 WHERE d2.id = u.id AND d2.subject = %(subject)s)"
+        params["subject"] = subject
+    sql += " ORDER BY length(u.file_name) ASC LIMIT %(n)s"
+    params["n"] = want
+    try:
+        return [r[0] for r in conn.execute(sql, params).fetchall()]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("PG 未切块文档兜底检索异常：%s", exc)
+        return []
+
+
+def _pg_search_documents(conn, query: str, topn: int, subject: Optional[str]) -> List[int]:
+    """PG 文档路：跨词取交集（= 旧版 AND 语义），排序按标题长度升序（口径不变）。
+
+    旧实现是一条 `AND (file_name LIKE ? OR content LIKE ?)` ×5 谓词，PG 下对
+    documents.content（64 MB TOAST）全表求值，实测 0.4~1.0 秒/次，占 rag-search
+    剩余耗时的大头；补 pg_trgm GIN 也救不了（实测常见中文词命中七成文档，
+    走位图索引后 recheck 仍要把正文读出来：0.72 秒 vs 全表 0.66 秒）。
+    """
+    core, terms = query_terms(query)
+    if not terms:
+        terms = [core] if core else []
+    if not terms:
+        return []
+    try:
+        sets = [_pg_doc_ids_for_term(conn, t, subject) for t in terms]
+        hits = set.intersection(*[s for s in sets]) if sets else set()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("PG 文档路（索引交集）异常：%s", exc)
+        hits = set()
+    # 排序口径与旧版一致：短文件名（通常是主题文档）优先
+    out: List[int] = []
+    if hits:
+        try:
+            rows = conn.execute(
+                "SELECT d.id FROM documents d WHERE d.id = ANY(%(ids)s) AND d.is_junk IS NOT TRUE"
+                " ORDER BY length(d.file_name) ASC LIMIT %(n)s",
+                {"ids": list(hits), "n": topn},
+            ).fetchall()
+            out = [r[0] for r in rows]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("PG 文档路排序异常：%s", exc)
+            out = list(hits)[:topn]
+    if len(out) < topn:
+        out += _pg_unindexed_doc_ids(conn, terms, subject, topn - len(out))
+    return out
+
+
 def _search_documents(
     conn: sqlite3.Connection,
     query: str,
     topn: int = 30,
     subject: Optional[str] = None,
 ) -> List[int]:
-    """检索 documents（文档标题/内容），返回 ID 列表。"""
+    """检索 documents（文档标题/内容），返回 ID 列表。
+
+    PG 走 :func:`_pg_search_documents`（GIN 索引路）；SQLite 保留原 LIKE 谓词
+    （FTS5 影子表只覆盖分块，文档级标题匹配数据量小，实测毫秒级）。
+    """
+    if _is_pg(conn):
+        return _pg_search_documents(conn, query, topn, subject)
+
     tokens = [t for t in segment(query).split() if t]
     if not tokens:
         return []

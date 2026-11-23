@@ -17,10 +17,13 @@
   直接基于答案一致性做规则校验，**不调用** ``verify_score`` 的大模型，
   避免每次答疑都多付一次 LLM 调用。
 """
+
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 from services import subjective_grader
@@ -171,8 +174,22 @@ def _extract_keywords(text: str) -> List[str]:
 
     cjk = re.findall(r"[\u4e00-\u9fff]{2,8}", text[:_ANSWER_PROBE_LEN])
     stop = {
-        "答案", "正确", "解析", "参考", "因为", "所以", "因此", "根据",
-        "可以", "就是", "这个", "一个", "以及", "得到", "可知", "则",
+        "答案",
+        "正确",
+        "解析",
+        "参考",
+        "因为",
+        "所以",
+        "因此",
+        "根据",
+        "可以",
+        "就是",
+        "这个",
+        "一个",
+        "以及",
+        "得到",
+        "可知",
+        "则",
     }
     out: List[str] = []
     for w in cjk:
@@ -264,11 +281,17 @@ async def _retrieve_stage(db, question: Any, subject: Optional[str]) -> Dict[str
     hits: List[Dict[str, Any]] = []
     try:
         query = (question.content if not isinstance(question, dict) else question.get("content")) or ""
-        hits = AIService(db).search_knowledge_base(
-            query=query[:500] or "",
-            limit=_RETRIEVE_LIMIT,
-            subject=subject,
-        ) or []
+        hits = (
+            await asyncio.to_thread(
+                partial(
+                    AIService(db).search_knowledge_base,
+                    query=query[:500] or "",
+                    limit=_RETRIEVE_LIMIT,
+                    subject=subject,
+                )
+            )
+            or []
+        )
     except Exception as exc:  # noqa: BLE001 - 检索失败不阻断后续阶段
         logger.warning("知识库检索失败（已降级）: %s", exc)
         return {
@@ -276,7 +299,7 @@ async def _retrieve_stage(db, question: Any, subject: Optional[str]) -> Dict[str
             "degraded": True,
             "error": str(exc)[:300],
         }
-    return {"hits": hits[: _RETRIEVE_LIMIT], "degraded": False}
+    return {"hits": hits[:_RETRIEVE_LIMIT], "degraded": False}
 
 
 def _build_solve_messages(
@@ -299,9 +322,7 @@ def _build_solve_messages(
     kb_blocks: List[str] = []
     if hits:
         for i, h in enumerate(hits, 1):
-            kb_blocks.append(
-                f"[片段{i}｜来源：{h.get('source')}｜{h.get('title') or ''}]\n{h.get('content') or ''}"
-            )
+            kb_blocks.append(f"[片段{i}｜来源：{h.get('source')}｜{h.get('title') or ''}]\n{h.get('content') or ''}")
     kb_text = "\n\n".join(kb_blocks) if kb_blocks else "（未检索到相关讲义片段）"
 
     lines = [
@@ -375,18 +396,11 @@ def _remedy_stage(
     kp = knowledge_point or "本题考点"
 
     if consistency is False:
-        suggestions.append(
-            f"你的答案与参考答案不一致，建议回到「{kp}」重新复习概念与标准步骤，"
-            "再练 2~3 道同类题巩固。"
-        )
+        suggestions.append(f"你的答案与参考答案不一致，建议回到「{kp}」重新复习概念与标准步骤，再练 2~3 道同类题巩固。")
     elif consistency is True and math_verified is not True:
-        suggestions.append(
-            f"本题思路基本正确，建议再练 2~3 道同考点（{kp}）题，提升熟练度与准确率。"
-        )
+        suggestions.append(f"本题思路基本正确，建议再练 2~3 道同考点（{kp}）题，提升熟练度与准确率。")
     else:
-        suggestions.append(
-            f"建议围绕「{kp}」做一次知识点梳理，并用 2~3 道同类题检验是否真正掌握。"
-        )
+        suggestions.append(f"建议围绕「{kp}」做一次知识点梳理，并用 2~3 道同类题检验是否真正掌握。")
 
     if solve_confidence == "low":
         suggestions.append("本次解答置信度较低，建议结合参考解析逐步骤核对，或向老师追问。")
@@ -436,7 +450,7 @@ async def orchestrate_tutoring(
     Returns:
         供前端渲染的完整轨迹 dict（永不抛异常）。
     """
-    start = time.time()
+    start = time.time()  # noqa: F841
     trace: List[Dict[str, Any]] = []
 
     # ---- 题目上下文解析（若路由未传入则按 id 查询）----
@@ -447,9 +461,7 @@ async def orchestrate_tutoring(
     if question is None:
         return {
             "question_id": question_id,
-            "trace": [
-                _stage("retrieve", "degraded", {"error": "题目不存在"}, error="题目不存在")
-            ],
+            "trace": [_stage("retrieve", "degraded", {"error": "题目不存在"}, error="题目不存在")],
             "answer": "本地兜底：题目不存在或已被删除。",
             "confidence": "low",
             "degraded": True,
@@ -472,27 +484,36 @@ async def orchestrate_tutoring(
         retrieve_data = await _retrieve_stage(db, question, q_subject)
     except Exception as exc:  # noqa: BLE001
         retrieve_data = {"hits": [], "degraded": True, "error": str(exc)[:300]}
-    trace.append(_stage("retrieve", "degraded" if retrieve_data.get("degraded") else "ok",
-                        data={"hits": retrieve_data.get("hits", [])},
-                        elapsed_ms=(time.time() - t0) * 1000,
-                        error=retrieve_data.get("error")))
+    trace.append(
+        _stage(
+            "retrieve",
+            "degraded" if retrieve_data.get("degraded") else "ok",
+            data={"hits": retrieve_data.get("hits", [])},
+            elapsed_ms=(time.time() - t0) * 1000,
+            error=retrieve_data.get("error"),
+        )
+    )
     hits = retrieve_data.get("hits", []) or []
 
     # ---- solve ----
     t0 = time.time()
     solve_data = await _solve_stage(db, question, my_answer, q_subject, q_kp, hits)
     solve_degraded = bool(solve_data.get("degraded"))
-    trace.append(_stage("solve",
-                        "degraded" if solve_degraded else "ok",
-                        data={
-                            "provider": solve_data.get("provider"),
-                            "route": solve_data.get("route"),
-                            "route_reason": solve_data.get("route_reason"),
-                            "model": solve_data.get("model"),
-                            "preview": (solve_data.get("content") or "")[:200],
-                        },
-                        elapsed_ms=(time.time() - t0) * 1000,
-                        error=solve_data.get("error")))
+    trace.append(
+        _stage(
+            "solve",
+            "degraded" if solve_degraded else "ok",
+            data={
+                "provider": solve_data.get("provider"),
+                "route": solve_data.get("route"),
+                "route_reason": solve_data.get("route_reason"),
+                "model": solve_data.get("model"),
+                "preview": (solve_data.get("content") or "")[:200],
+            },
+            elapsed_ms=(time.time() - t0) * 1000,
+            error=solve_data.get("error"),
+        )
+    )
     answer = solve_data.get("content") or _fallback_answer(question)
 
     # ---- verify ----
@@ -512,11 +533,15 @@ async def orchestrate_tutoring(
             "degraded": True,
         }
         verify_degraded = True
-    trace.append(_stage("verify",
-                        "degraded" if verify_degraded else "ok",
-                        data={"verification": verify_data.get("verification", {})},
-                        elapsed_ms=(time.time() - t0) * 1000,
-                        error="验证不可用" if verify_degraded else None))
+    trace.append(
+        _stage(
+            "verify",
+            "degraded" if verify_degraded else "ok",
+            data={"verification": verify_data.get("verification", {})},
+            elapsed_ms=(time.time() - t0) * 1000,
+            error="验证不可用" if verify_degraded else None,
+        )
+    )
 
     # ---- 置信度汇总 ----
     consistency = verify_data.get("verification", {}).get("consistency")
@@ -541,11 +566,15 @@ async def orchestrate_tutoring(
         logger.warning("remedy 阶段异常（已降级）: %s", exc)
         remedy_data = {"suggestions": ["建议对照参考解析核对本题步骤。"], "knowledge_point": q_kp or "本题考点"}
         remedy_degraded = True
-    trace.append(_stage("remedy",
-                        "degraded" if remedy_degraded else "ok",
-                        data=remedy_data,
-                        elapsed_ms=(time.time() - t0) * 1000,
-                        error="补救建议不可用" if remedy_degraded else None))
+    trace.append(
+        _stage(
+            "remedy",
+            "degraded" if remedy_degraded else "ok",
+            data=remedy_data,
+            elapsed_ms=(time.time() - t0) * 1000,
+            error="补救建议不可用" if remedy_degraded else None,
+        )
+    )
 
     # ---- 旁路记录 L1 记忆轨迹（失败静默忽略）----
     try:

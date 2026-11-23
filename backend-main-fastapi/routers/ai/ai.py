@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+from functools import partial
 from typing import Optional, Tuple
 
 from database import SessionLocal, get_db
@@ -182,7 +183,8 @@ async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict, list
     except Exception as exc:
         # 旧实现静默吞掉异常，线上无法判断检索到底走没走通；这里必须留痕。
         logger.warning("混合检索失败，回退同步 FTS：%s", exc)
-        hits = ai.search_knowledge_base(query, limit=4)
+        # 同步检索链同样要离开事件循环（原因见 /rag-search 的说明）
+        hits = await asyncio.to_thread(partial(ai.search_knowledge_base, query, limit=4))
 
     citations = _build_citations(hits)
     logger.info(
@@ -466,7 +468,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         if request.use_routing and not request.provider_id and messages:
             last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
             try:
-                kb_hit_count = len(ai.search_knowledge_base(last_user, limit=4))
+                kb_hit_count = len(await asyncio.to_thread(partial(ai.search_knowledge_base, last_user, limit=4)))
             except Exception:
                 kb_hit_count = 0
         result = await ai.chat(
@@ -657,7 +659,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             if request.use_routing and not request.provider_id and messages:
                 last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
                 try:
-                    kb_hit_count = len(ai.search_knowledge_base(last_user, limit=4))
+                    kb_hit_count = len(await asyncio.to_thread(partial(ai.search_knowledge_base, last_user, limit=4)))
                 except Exception:
                     kb_hit_count = 0
             # observe 模式：meta 事件带上检索门控判定，便于灰度观测 would_abstain 率
@@ -709,9 +711,15 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 
 @router.post("/rag-search")
 async def rag_search(request: RAGSearchRequest, db: Session = Depends(get_db)):
-    """本地知识库检索（RAG 调试/前端提示展示）。支持学科过滤。"""
+    """本地知识库检索（RAG 调试/前端提示展示）。支持学科过滤。
+
+    检索链是同步阻塞的（分词 + 三路 SQL + RRF），必须丢工作线程执行，
+    否则这条 ~2 秒的查询会把事件循环上所有并发请求一起卡住。
+    """
     ai = AIService(db)
-    hits = ai.search_knowledge_base(request.query, limit=request.limit or 6, subject=request.subject)
+    hits = await asyncio.to_thread(
+        partial(ai.search_knowledge_base, request.query, limit=request.limit or 6, subject=request.subject)
+    )
     return {"query": request.query, "subject": request.subject, "hits": hits, "count": len(hits)}
 
 

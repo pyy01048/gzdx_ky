@@ -105,7 +105,24 @@ class UniversityResponse(UniversityBase):
 # =========================================================================== #
 # Task
 # =========================================================================== #
-class TaskBase(BaseModel):
+class TaskW3Fields(BaseModel):
+    """W3 任务体验重做新增字段（新建器共用，Create/Update 都继承）。
+
+    口径与 services/task_recurrence.py（循环展开）与 models.Task 列注释一致；
+    remind 仅存储展示，未接系统推送。
+    """
+
+    subjects: Optional[list[str]] = None
+    modules: Optional[list[str]] = None
+    start_date: Optional[datetime.date] = None
+    end_date: Optional[datetime.date] = None
+    recurrence: Optional[dict] = None
+    remind: Optional[dict] = None
+    show_progress: Optional[bool] = None
+    progress_total: Optional[int] = None
+
+
+class TaskBase(TaskW3Fields):
     title: str
     subject: Optional[str] = None
     task_type: Optional[str] = None
@@ -121,7 +138,7 @@ class TaskCreate(TaskBase):
     pass
 
 
-class TaskUpdate(BaseModel):
+class TaskUpdate(TaskW3Fields):
     title: Optional[str] = None
     subject: Optional[str] = None
     task_type: Optional[str] = None
@@ -131,6 +148,7 @@ class TaskUpdate(BaseModel):
     priority: Optional[int] = None
     next_review: Optional[datetime.datetime] = None
     review_count: Optional[int] = None
+    progress_done: Optional[int] = None
 
 
 class TaskResponse(TaskBase):

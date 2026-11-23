@@ -771,7 +771,7 @@ class DashboardService:
         return out
 
     @staticmethod
-    def get_summary(db: Session, user_id: Optional[int] = None) -> dict:
+    def get_summary(db: Session, user_id: Optional[int] = None, heatmap_mode: str = "compact") -> dict:
         """仪表盘首屏**唯一**聚合出口（01-仪表盘 §2.6）。
 
         契约（snake_case，与 #19 接口规范一致；标准文档里的 camelCase 骨架只做语义参考）：
@@ -853,13 +853,9 @@ class DashboardService:
                 db, day=t, due=due_today, user_id=user_id, subjects=subjects, plan=plan
             ),
             "review_queue": DashboardService.get_review_queue(db, user_id=user_id, subjects=subjects, plan=plan),
-            "heatmap": {
-                "weeks": study_calendar.HEATMAP_WEEKS,
-                "value_field": "focus_minutes",
-                "levels": [0, 30, 90, 180],
-                # compact：首屏只带前端消费的 5 字段（104KB→26KB，2026-11-22 实测）
-                "days": study_calendar.effective_activity_days(ledger, today=today, compact=True),
-            },
+            "heatmap": study_calendar.heatmap_payload(
+                ledger, today=today, mode=heatmap_mode
+            ),  # 档位见 study_calendar.heatmap_payload（compact=已提交默认，sparse=稀疏档）
             "trend": {
                 "days": TREND_DAYS,
                 "series": [d.to_dict() for d in trend_series],

@@ -555,7 +555,9 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     # 质量闸门：空正文/占位提示/乱码/二进制残留/同文重复一律拒绝。
     # 拒绝时**不覆盖** doc.content（老正文可能仍有用），状态置 failed 并把原因
     # 透给前端 —— 静默写进库才是这一轮审计里最难发现的那种损坏。
-    verdict = gate_for_write(db, content_text, path=doc.file_path or "", doc_id=doc.id)
+    # 性能波（2026-11-23）：gate_for_write 内含 BGE 向量查重（同步 ONNX 推理，
+    # 数百 ms 起），本端点有 await 必须保持 async，重活丢线程池（下方同款两处）。
+    verdict = await run_in_threadpool(gate_for_write, db, content_text, path=doc.file_path or "", doc_id=doc.id)
     if not verdict["ok"]:
         doc.index_status = "failed"
         db.commit()
@@ -975,7 +977,11 @@ async def parse_all_documents(db: Session = Depends(get_db)):
             # 导入时预清洗行内水印（与单篇解析同源，见 services.extraction_noise）
             content_text, _wm_dropped, _wm_mixed = preclean_watermarks(content_text)
 
-            verdict = gate_for_write(db, content_text, path=doc.file_path or "", doc_id=doc.id)
+            from starlette.concurrency import run_in_threadpool as _ritp
+
+            verdict = await _ritp(
+                gate_for_write, db, content_text, path=doc.file_path or "", doc_id=doc.id
+            )  # 同 parse_document：BGE 向量查重是同步 ONNX，丢线程池
             if not verdict["ok"]:
                 # 批量任务不能因一篇坏文件整体失败：跳过写入、标 failed、原因进结果
                 doc.index_status = "failed"
@@ -1461,7 +1467,12 @@ async def classify_doc_chunks(
 
     chunk_classifier.ensure_chunk_label_columns(db)
     if not background:
-        return chunk_classifier.classify_document(db, doc_id, use_llm=use_llm, only_unlabeled=only_unlabeled)
+        # 性能波：三路打标含 BGE ONNX 编码 + 可选 LLM 兜底，同步重活不占事件循环
+        from starlette.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(
+            chunk_classifier.classify_document, db, doc_id, use_llm=use_llm, only_unlabeled=only_unlabeled
+        )
 
     def _run():
         from database import SessionLocal

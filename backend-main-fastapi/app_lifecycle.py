@@ -38,6 +38,16 @@ async def lifespan(app: FastAPI):
         logger.info("[启动] OCR 可用性预热已发起（后台线程）")
     except Exception as e:  # noqa: BLE001
         logger.warning("[启动] OCR 预热发起失败（不影响主服务）: %s", e)
+    # 性能波（2026-11-23）：检索链路三连懒加载同样挪到启动期后台线程 ——
+    # bge/fastembed 模型载入、jieba 词典首切、真题 index.pkl 首载，
+    # 不预热的话这些钱全由第一个提问的用户付（实测首请求 6.7s）。
+    try:
+        from services.search_warmup import start_search_warmup
+
+        start_search_warmup()
+        logger.info("[启动] 检索链路预热已发起（后台线程）")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[启动] 检索链路预热发起失败（不影响主服务）: %s", e)
     Base.metadata.create_all(bind=engine)
     # 迁移账本（完善方案 05 §3.1）：create_all 只兜底"全新库"，结构变更一律走
     # core/sql 编号脚本。这里补跑未入账脚本（已入账的秒过）。存量库在账本为空时

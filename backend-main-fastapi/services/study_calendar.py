@@ -54,6 +54,8 @@ __all__ = [
     "fill_series",
     "streak_summary",
     "effective_activity_days",
+    "heatmap_payload",
+    "HEATMAP_MODES",
 ]
 
 #: 有效学习日门槛（01-仪表盘 §2.7 埋点口径）
@@ -380,3 +382,59 @@ def effective_activity_days(
             for a in series
         ]
     return [a.to_dict() for a in series]
+
+
+#: 热力图档位（2026-11-23 性能波新增 sparse）
+HEATMAP_MODES = ("compact", "full", "sparse")
+
+
+def heatmap_payload(
+    ledger: Dict[str, DayActivity],
+    *,
+    weeks: int = HEATMAP_WEEKS,
+    today: Optional[datetime.date] = None,
+    mode: str = "compact",
+) -> dict:
+    """首屏热力图整块（字段口径见 :func:`effective_activity_days`）。
+
+    三档：
+
+    * ``compact``（默认，**保持已提交契约**）：逐日连续、每天 5 字段，371 天 ≈ 26 KB；
+    * ``full``：逐日连续 + 全部字段（旧行为，≈104 KB，仅给需要全字段的调用方）；
+    * ``sparse``：只回**非零日**，另给 ``range`` / ``omitted_zero_days`` 元数据。
+      新用户 370 天全零时整块降到几百字节；代价是 ``days`` 不再逐日连续，
+      前端必须先按 ``date`` 建索引再按 ``range`` 铺格子
+      （``frontend/src/api/hub.js normalizeHeatmap`` 与 ``Hub.jsx`` 的
+      ``days.slice(-84)`` 目前按位置切片，所以 sparse 只能显式请求，默认不换）。
+    """
+    if mode not in HEATMAP_MODES:
+        raise ValueError(f"未知热力图档位：{mode}（可选 {'/'.join(HEATMAP_MODES)}）")
+    today = today or local_today()
+    series = effective_activity_days(ledger, weeks=weeks, today=today, compact=(mode != "full"))
+    payload = {
+        "weeks": weeks,
+        "value_field": "focus_minutes",
+        "levels": [0, 30, 90, 180],
+        "mode": mode,
+    }
+    if mode != "sparse":
+        payload["days"] = series
+        return payload
+
+    def _active(d: dict) -> bool:
+        return (
+            bool(d.get("focus_minutes"))
+            or bool(d.get("questions_done"))
+            or bool(d.get("words_done"))
+            or bool(d.get("is_effective"))
+        )
+
+    nonzero = [d for d in series if _active(d)]
+    payload["days"] = nonzero
+    payload["range"] = {
+        "start": series[0]["date"],
+        "end": series[-1]["date"],
+        "day_count": len(series),
+    }
+    payload["omitted_zero_days"] = len(series) - len(nonzero)
+    return payload

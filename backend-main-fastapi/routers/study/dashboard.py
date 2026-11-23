@@ -53,7 +53,7 @@ class StudySessionCreate(BaseModel):
 
 
 @router.post("/study-session")
-async def create_study_session(
+def create_study_session(
     data: StudySessionCreate,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -97,7 +97,7 @@ async def create_study_session(
 
 
 @router.get("")
-async def get_dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def get_dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """返回驾驶舱所有数据（业务逻辑在 DashboardService）。B4：只看本人。
 
     W1：附带 ``today_plan``，与 ``/dashboard/summary`` 里的同一份函数同一口径 ——
@@ -120,18 +120,30 @@ async def get_dashboard(db: Session = Depends(get_db), user: User = Depends(curr
 
 
 @router.get("/summary")
-async def get_dashboard_summary(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def get_dashboard_summary(
+    heatmap: Literal["compact", "full", "sparse"] = Query(
+        "compact", description="热力图档位：compact=逐日连续 5 字段（默认，前端现契约）；sparse=只回非零日+区间"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """首屏聚合唯一出口（01-仪表盘 §2.6，D-01…D-11）。
 
     新前端只该调这一个接口；``/api/dashboard`` 保留为旧响应壳的兼容读法，
     两者对同一个数字必然给出同一个值 —— 因为它们是同一个函数的两次调用。
     B4：目标、行为流水、待办、复习队列全部只看当前用户。
+
+    同步 ``def``（2026-11-23 性能波）：本函数与下面的取数全是同步 ORM/SQL，
+    挂在 async 端点里会把事件循环占死 —— 一个首屏请求期间，所有并发请求
+    （含 /api/health）都在排队。FastAPI 会把同步端点丢线程池执行。
+    ``heatmap=sparse`` 是稀疏档（体积 26KB→几百字节），需前端按 ``range`` 铺格子，
+    适配前默认仍是 compact，见 services/study_calendar.heatmap_payload。
     """
-    return DashboardService.get_summary(db, user_id=owner_id(user))
+    return DashboardService.get_summary(db, user_id=owner_id(user), heatmap_mode=heatmap)
 
 
 @router.get("/today-plan")
-async def get_today_plan(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def get_today_plan(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """今日推荐学习量**唯一出口**（W1）。
 
     替代"把整库到期量当今日任务"的旧展示口径：
@@ -146,7 +158,7 @@ async def get_today_plan(db: Session = Depends(get_db), user: User = Depends(cur
 
 
 @router.get("/review-queue")
-async def get_review_queue(
+def get_review_queue(
     limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -156,24 +168,24 @@ async def get_review_queue(
 
 
 @router.get("/countdown")
-async def get_countdown(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def get_countdown(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """倒计时数据。与 /dashboard 内嵌的 countdown 同一实现，避免两个端点给出两套日期。"""
     return DashboardService.get_countdown(db, user_id=owner_id(user))
 
 
 @router.get("/today-tasks")
-async def get_today_tasks(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def get_today_tasks(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """今日任务。B4：只看本人。"""
     return DashboardService.get_today_tasks(db, user_id=owner_id(user))
 
 
 @router.get("/stats")
-async def get_stats(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def get_stats(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """学习数据统计。B4：只看本人。"""
     return DashboardService.get_stats(db, user_id=owner_id(user))
 
 
 @router.get("/weakness")
-async def get_weakness(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def get_weakness(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """AI 薄弱项预警（分析错题数据）。B4：只看本人错题。"""
     return DashboardService.get_weakness(db, user_id=owner_id(user))

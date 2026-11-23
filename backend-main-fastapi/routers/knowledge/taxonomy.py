@@ -335,10 +335,15 @@ async def delete_subject(subject: str, db: Session = Depends(get_db)):
 
 
 @router.get("/tree")
-async def structure_tree(
+def structure_tree(
     subject: Optional[str] = None,
     include_extension: bool = Query(True, description="是否包含拓展科目"),
     include_empty: bool = Query(False, description="C批次3 #13：是否显示空章节（默认隐藏，计数透出）"),
+    include_points: bool = Query(
+        True,
+        description="性能波（2026-11-23）：是否内嵌知识点明细。false 只回科目/章节聚合，"
+        "明细由前端按章懒调 /api/taxonomy/knowledge-points?subject=&chapter=",
+    ),
     db: Session = Depends(get_db),
     user=Depends(optional_user),
 ):
@@ -350,6 +355,17 @@ async def structure_tree(
 
     掌握度三态（未学/薄弱/已掌握）口径见 ``services/kp_mastery.py``：
     未学知识点不计入薄弱统计。
+
+    性能口径（2026-11-23 性能波）：
+
+    * 改回同步 ``def`` —— 端点体全是同步 ORM 查询（5262 行知识点全表 + 本人
+      学习流水），挂在 async 上会把事件循环占死；
+    * ``include_points=false`` 走**增量下发**：只回科目/章节聚合，实测整包
+      1.40 MB → 约 40 KB（明细本来就该按章取，一次全吐是给首屏加负载）。
+      默认 ``true`` 保持已提交契约不变；
+    * **不做接口级缓存**：树里带 ``mastery`` / ``next_review`` / 三态，
+      这些是复习动作刚改的活数据，缓存几秒就会出现"刚复习完树还是旧的"，
+      与 W1 的数据真实性口径冲突。热点留给前端按章缓存（W2/W4 已减前端负担）。
     """
     # 已配置科目（subject_config）要先装载进内存缓存，否则「电磁场与电磁波」等
     # 已登记科目会被 normalize_subject 模糊归一进「其他」，导致树里找不到独立节点。
@@ -403,13 +419,13 @@ async def structure_tree(
                 empty_n += 1
                 if not include_empty:
                     continue
-            chapters.append(_chapter_node(ch_name, items, s, learned))
+            chapters.append(_chapter_node(ch_name, items, s, learned, include_points))
         # 再列出大纲外的章（实际资料里的自定义章）
         for ch_name in sorted(chapter_map.keys()):
-            chapters.append(_chapter_node(ch_name, chapter_map[ch_name], s, learned))
+            chapters.append(_chapter_node(ch_name, chapter_map[ch_name], s, learned, include_points))
         # 未标章节的
         if uncategorized:
-            chapters.append(_chapter_node("未归章", uncategorized, s, learned))
+            chapters.append(_chapter_node("未归章", uncategorized, s, learned, include_points))
 
         total = len(kps)
         counts = kp_mastery.tally(kps, learned)
@@ -431,14 +447,16 @@ async def structure_tree(
             }
         )
 
-    result = {"tree": tree}
+    result = {"tree": tree, "points_included": include_points}
     if user is None:
         # 审计 P0-1：匿名响应剔除一切个人域字段（服务层过滤）
         result = _strip_personal(result)
     return result
 
 
-def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str, learned: set) -> dict:
+def _chapter_node(
+    title: str, kps: list[KnowledgePoint], subject: str, learned: set, include_points: bool = True
+) -> dict:
     types: list[str] = []
     for kp in kps:
         for t in kp.question_types or []:
@@ -449,7 +467,7 @@ def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str, learned: 
 
     counts = kp_mastery.tally(kps, learned)
     learned_n = counts["total"] - counts["unlearned"]
-    return {
+    node = {
         "title": title,
         "knowledge_point_count": len(kps),
         "mastered_count": counts["mastered"],
@@ -458,7 +476,9 @@ def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str, learned: 
         "avg_mastery": round(counts["mastery_sum"] / counts["total"], 1) if kps else 0.0,
         "learned_avg_mastery": (round(counts["learned_mastery_sum"] / learned_n, 1) if learned_n else 0.0),
         "question_types": types,
-        "knowledge_points": [
+    }
+    if include_points:
+        node["knowledge_points"] = [
             {
                 "id": kp.id,
                 "name": kp.name,
@@ -472,8 +492,8 @@ def _chapter_node(title: str, kps: list[KnowledgePoint], subject: str, learned: 
                 "document_id": kp.document_id,
             }
             for kp in sorted(kps, key=lambda k: (int(k.mastery or 0), -(k.exam_frequency or 0)))
-        ],
-    }
+        ]
+    return node
 
 
 @router.get("/knowledge-points")

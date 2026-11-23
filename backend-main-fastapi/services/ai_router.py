@@ -6,8 +6,11 @@ V3.0 AI 智能路由网关
 - 资料题 → RAG检索 + 在线API，基于本地知识库精准回答
 - 敏感内容 → 拦截或转人工
 """
+
+import asyncio
 import logging
 import re
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -20,62 +23,264 @@ logger = logging.getLogger(__name__)
 #  否则会把模电题误判成数电。
 _SUBJECT_HINTS: Dict[str, List[str]] = {
     "数字电子技术": [
-        "逻辑", "卡诺图", "真值表", "触发器", "计数器", "寄存器", "编码器", "译码器",
-        "时序", "组合逻辑", "与非门", "或非门", "异或", "ttl", "cmos", "三态门",
-        "最小项", "数制", "二进制", "d/a", "a/d", "555", "施密特", "存储器",
-        "可编程", "竞争冒险", "移位寄存器", "全加器", "数据选择器", "数电",
+        "逻辑",
+        "卡诺图",
+        "真值表",
+        "触发器",
+        "计数器",
+        "寄存器",
+        "编码器",
+        "译码器",
+        "时序",
+        "组合逻辑",
+        "与非门",
+        "或非门",
+        "异或",
+        "ttl",
+        "cmos",
+        "三态门",
+        "最小项",
+        "数制",
+        "二进制",
+        "d/a",
+        "a/d",
+        "555",
+        "施密特",
+        "存储器",
+        "可编程",
+        "竞争冒险",
+        "移位寄存器",
+        "全加器",
+        "数据选择器",
+        "数电",
     ],
     "模拟电子技术": [
-        "放大电路", "共射", "共集", "共基", "运放", "运算放大", "反馈", "差分放大",
-        "静态工作点", "偏置", "整流", "滤波", "稳压", "功率放大", "功放", "振荡",
-        "pn结", "二极管", "三极管", "场效应", "失真", "射极跟随", "模电",
-        "有源滤波", "直流电源", "跨导", "波特图",
+        "放大电路",
+        "共射",
+        "共集",
+        "共基",
+        "运放",
+        "运算放大",
+        "反馈",
+        "差分放大",
+        "静态工作点",
+        "偏置",
+        "整流",
+        "滤波",
+        "稳压",
+        "功率放大",
+        "功放",
+        "振荡",
+        "pn结",
+        "二极管",
+        "三极管",
+        "场效应",
+        "失真",
+        "射极跟随",
+        "模电",
+        "有源滤波",
+        "直流电源",
+        "跨导",
+        "波特图",
     ],
     "数学": [
-        "极限", "导数", "微分", "积分", "矩阵", "行列式", "特征值", "概率",
-        "级数", "洛必达", "中值定理", "偏导", "二重积分", "微分方程", "线性代数",
-        "高数", "数二", "泰勒", "拐点", "渐近线",
+        "极限",
+        "导数",
+        "微分",
+        "积分",
+        "矩阵",
+        "行列式",
+        "特征值",
+        "概率",
+        "级数",
+        "洛必达",
+        "中值定理",
+        "偏导",
+        "二重积分",
+        "微分方程",
+        "线性代数",
+        "高数",
+        "数二",
+        "泰勒",
+        "拐点",
+        "渐近线",
     ],
     "英语": [
-        "单词", "词汇", "长难句", "完形", "阅读", "翻译", "作文", "语法",
-        "短语", "句式", "英译汉", "作文模板", "背单词", "从句",
+        "单词",
+        "词汇",
+        "长难句",
+        "完形",
+        "阅读",
+        "翻译",
+        "作文",
+        "语法",
+        "短语",
+        "句式",
+        "英译汉",
+        "作文模板",
+        "背单词",
+        "从句",
     ],
     "政治": [
-        "马原", "毛中特", "史纲", "思修", "辩证法", "唯物", "剩余价值", "生产力",
-        "生产关系", "社会主义", "近代史", "时政", "肖秀荣", "政治", "矛盾论",
+        "马原",
+        "毛中特",
+        "史纲",
+        "思修",
+        "辩证法",
+        "唯物",
+        "剩余价值",
+        "生产力",
+        "生产关系",
+        "社会主义",
+        "近代史",
+        "时政",
+        "肖秀荣",
+        "政治",
+        "矛盾论",
     ],
     "电路": [
-        "基尔霍夫", "节点电压", "网孔电流", "戴维南", "诺顿", "叠加定理", "一阶电路",
-        "二阶电路", "正弦稳态", "相量", "三相电路", "二端口", "耦合电感", "复频域",
-        "谐振", "功率因数", "动态电路", "换路定则", "时间常数",
+        "基尔霍夫",
+        "节点电压",
+        "网孔电流",
+        "戴维南",
+        "诺顿",
+        "叠加定理",
+        "一阶电路",
+        "二阶电路",
+        "正弦稳态",
+        "相量",
+        "三相电路",
+        "二端口",
+        "耦合电感",
+        "复频域",
+        "谐振",
+        "功率因数",
+        "动态电路",
+        "换路定则",
+        "时间常数",
     ],
     "信号与系统": [
-        "信号与系统", "卷积", "傅里叶", "拉氏变换", "z变换", "抽样定理", "采样定理",
-        "冲激响应", "阶跃响应", "系统函数", "零极点", "频谱", "因果", "稳定判据",
-        "离散时间", "连续时间", "状态方程", "帕塞瓦尔",
+        "信号与系统",
+        "卷积",
+        "傅里叶",
+        "拉氏变换",
+        "z变换",
+        "抽样定理",
+        "采样定理",
+        "冲激响应",
+        "阶跃响应",
+        "系统函数",
+        "零极点",
+        "频谱",
+        "因果",
+        "稳定判据",
+        "离散时间",
+        "连续时间",
+        "状态方程",
+        "帕塞瓦尔",
     ],
     "通信原理": [
-        "通信原理", "调制", "解调", "误码率", "信噪比", "香农", "信道容量",
-        "基带传输", "带通传输", "ask", "fsk", "psk", "qam", "曼彻斯特",
-        "差错控制", "汉明码", "循环码", "卷积码", "白噪声", "匹配滤波",
-        "同步", "眼图", "码间串扰", "pcm", "增量调制",
+        "通信原理",
+        "调制",
+        "解调",
+        "误码率",
+        "信噪比",
+        "香农",
+        "信道容量",
+        "基带传输",
+        "带通传输",
+        "ask",
+        "fsk",
+        "psk",
+        "qam",
+        "曼彻斯特",
+        "差错控制",
+        "汉明码",
+        "循环码",
+        "卷积码",
+        "白噪声",
+        "匹配滤波",
+        "同步",
+        "眼图",
+        "码间串扰",
+        "pcm",
+        "增量调制",
     ],
     "光学与工程光学": [
-        "工程光学", "几何光学", "成像", "光焦度", "近轴", "光阑", "像差", "色差",
-        "干涉", "衍射", "偏振", "光栅", "双缝", "牛顿环", "迈克尔逊", "马吕斯",
-        "布儒斯特", "菲涅耳", "波片", "全反射",
+        "工程光学",
+        "几何光学",
+        "成像",
+        "光焦度",
+        "近轴",
+        "光阑",
+        "像差",
+        "色差",
+        "干涉",
+        "衍射",
+        "偏振",
+        "光栅",
+        "双缝",
+        "牛顿环",
+        "迈克尔逊",
+        "马吕斯",
+        "布儒斯特",
+        "菲涅耳",
+        "波片",
+        "全反射",
     ],
     "普通物理": [
-        "普通物理", "大学物理", "质点", "刚体", "转动惯量", "动量守恒", "机械能",
-        "简谐振动", "波动方程", "热力学", "熵", "理想气体", "静电场", "高斯定理",
-        "稳恒磁场", "安培环路", "电磁感应", "麦克斯韦", "狭义相对论", "光电效应",
+        "普通物理",
+        "大学物理",
+        "质点",
+        "刚体",
+        "转动惯量",
+        "动量守恒",
+        "机械能",
+        "简谐振动",
+        "波动方程",
+        "热力学",
+        "熵",
+        "理想气体",
+        "静电场",
+        "高斯定理",
+        "稳恒磁场",
+        "安培环路",
+        "电磁感应",
+        "麦克斯韦",
+        "狭义相对论",
+        "光电效应",
     ],
     "计算机学科专业基础408": [
-        "408", "数据结构", "线性表", "链表", "二叉树", "哈夫曼", "图的遍历",
-        "最短路径", "拓扑排序", "快速排序", "堆排序", "哈希", "b树", "红黑树",
-        "计算机组成", "指令系统", "流水线", "cache", "虚拟内存", "操作系统",
-        "进程", "死锁", "页面置换", "文件系统", "计算机网络", "tcp", "ip协议",
-        "路由算法", "滑动窗口", "osi",
+        "408",
+        "数据结构",
+        "线性表",
+        "链表",
+        "二叉树",
+        "哈夫曼",
+        "图的遍历",
+        "最短路径",
+        "拓扑排序",
+        "快速排序",
+        "堆排序",
+        "哈希",
+        "b树",
+        "红黑树",
+        "计算机组成",
+        "指令系统",
+        "流水线",
+        "cache",
+        "虚拟内存",
+        "操作系统",
+        "进程",
+        "死锁",
+        "页面置换",
+        "文件系统",
+        "计算机网络",
+        "tcp",
+        "ip协议",
+        "路由算法",
+        "滑动窗口",
+        "osi",
     ],
     "电路分析": ["电路分析", "网孔分析", "节点分析"],
     "光学": ["杨氏双缝", "薄膜干涉"],
@@ -148,15 +353,28 @@ class AIRouter:
         # 判断原则：命中的是"政治性议题/违法内容"，而不是"政治这门课"。
         sensitive_patterns = [
             # 政治性敏感议题（须带语境，不能只匹配学科名）
-            r'领导人.{0,6}(评价|看法|观点|怎么样)',
-            r'(国家|政府|党).{0,4}(腐败|专制|独裁)',
-            r'(反|推翻).{0,4}(政府|政权|体制)',
+            r"领导人.{0,6}(评价|看法|观点|怎么样)",
+            r"(国家|政府|党).{0,4}(腐败|专制|独裁)",
+            r"(反|推翻).{0,4}(政府|政权|体制)",
             # 违法违规
-            r'违法', r'犯罪', r'贩毒', r'吸毒', r'枪支', r'炸弹', r'爆炸物',
+            r"违法",
+            r"犯罪",
+            r"贩毒",
+            r"吸毒",
+            r"枪支",
+            r"炸弹",
+            r"爆炸物",
             # 色情暴力
-            r'色情', r'淫秽', r'暴力恐怖', r'恐怖袭击',
+            r"色情",
+            r"淫秽",
+            r"暴力恐怖",
+            r"恐怖袭击",
             # 作弊与学术不端（考研场景高发，且确需拦截）
-            r'代考', r'替考', r'作弊器材', r'答案买卖', r'考前押题.{0,4}原题',
+            r"代考",
+            r"替考",
+            r"作弊器材",
+            r"答案买卖",
+            r"考前押题.{0,4}原题",
         ]
         for pattern in sensitive_patterns:
             if re.search(pattern, q):
@@ -166,7 +384,7 @@ class AIRouter:
                     "reason": "检测到敏感内容",
                     "need_rag": False,
                     "preferred_engine": "api",  # 敏感内容走API，由API安全策略处理
-                    "subject": None,            # 敏感内容不参与分科路由
+                    "subject": None,  # 敏感内容不参与分科路由
                 }
 
         # 1b. 学科识别（与敏感检测解耦：政治/历史等学科名必须能被正常识别）
@@ -179,10 +397,29 @@ class AIRouter:
 
         # 2. 资料/知识库相关问题检测
         knowledge_keywords = [
-            '文档', '资料', '课件', '讲义', '真题', '题目', '知识点',
-            '这本书', '这篇', '这个文档', '根据资料', '参考文档',
-            '数电', '模电', '高数', '英语', '政治', '专业课',
-            '第一章', '第二章', '第.*章', 'section', 'chapter',
+            "文档",
+            "资料",
+            "课件",
+            "讲义",
+            "真题",
+            "题目",
+            "知识点",
+            "这本书",
+            "这篇",
+            "这个文档",
+            "根据资料",
+            "参考文档",
+            "数电",
+            "模电",
+            "高数",
+            "英语",
+            "政治",
+            "专业课",
+            "第一章",
+            "第二章",
+            "第.*章",
+            "section",
+            "chapter",
         ]
         knowledge_score = 0
         for kw in knowledge_keywords:
@@ -190,7 +427,7 @@ class AIRouter:
                 knowledge_score += 1
 
         # 问题中包含具体知识点或科目
-        subject_keywords = ['数字电子', '模拟电子', '高等数学', '线性代数', '概率论', '英语', '政治', '专业课']
+        subject_keywords = ["数字电子", "模拟电子", "高等数学", "线性代数", "概率论", "英语", "政治", "专业课"]
         for kw in subject_keywords:
             if kw in question:
                 knowledge_score += 2
@@ -207,11 +444,29 @@ class AIRouter:
 
         # 3. 复杂问题检测（需要推理、计算、多步分析）
         complex_patterns = [
-            r'为什么', r'如何证明', r'推导', r'证明', r'分析',
-            r'比较', r'区别', r'优缺点', r'原理', r'机制',
-            r'计算', r'求解', r'解方程', r'积分', r'微分',
-            r'设计', r'实现', r'方案', r'架构',
-            r'请详细', r'请解释', r'深入', r'全面',
+            r"为什么",
+            r"如何证明",
+            r"推导",
+            r"证明",
+            r"分析",
+            r"比较",
+            r"区别",
+            r"优缺点",
+            r"原理",
+            r"机制",
+            r"计算",
+            r"求解",
+            r"解方程",
+            r"积分",
+            r"微分",
+            r"设计",
+            r"实现",
+            r"方案",
+            r"架构",
+            r"请详细",
+            r"请解释",
+            r"深入",
+            r"全面",
         ]
         complex_score = 0
         for pattern in complex_patterns:
@@ -247,6 +502,7 @@ class AIRouter:
     async def check_local_available(self) -> bool:
         """检查本地模型是否可用（带缓存）。"""
         import time
+
         now = time.time()
         if self.local_check_time and (now - self.local_check_time) < self.local_check_cache:
             return self.local_available
@@ -380,6 +636,7 @@ class AIRouter:
         }
         """
         import time
+
         start_time = time.time()
 
         # 1. 路由决策
@@ -463,9 +720,7 @@ class AIRouter:
             except Exception as _exc:  # noqa: BLE001
                 # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
                 # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-                logging.getLogger(__name__).warning(
-                    '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-                )
+                logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
             if not installed:
                 return default
@@ -473,9 +728,7 @@ class AIRouter:
             task = mr.route_for_subject(subject) if subject else "general"
             best = mr.pick_best_available(task, subject=subject, installed=installed)
             if best and best.get("ollama_name"):
-                logger.info(
-                    f"本地模型选型: {best['name']}（{best.get('relevance')}，科目={subject or '未识别'}）"
-                )
+                logger.info(f"本地模型选型: {best['name']}（{best.get('relevance')}，科目={subject or '未识别'}）")
                 return best["ollama_name"]
         except Exception as e:
             logger.debug(f"本地模型选型失败，用默认值: {e}")
@@ -522,9 +775,7 @@ class AIRouter:
             data = resp.json()
             answer = extract_answer(data.get("message", {}) or {})
             if not answer:
-                raise Exception(
-                    f"本地模型 {model} 只返回了思考过程，未给出正文（可换更小的模型或走云端）"
-                )
+                raise Exception(f"本地模型 {model} 只返回了思考过程，未给出正文（可换更小的模型或走云端）")
             return {"content": answer, "model": model}
         raise Exception(f"本地模型 {model} 返回错误: {resp.status_code}")
 
@@ -543,25 +794,68 @@ class AIRouter:
     # ------------------------------------------------------------------ #
     _CIRCUIT_SUBJECT_HINTS = ("电路", "模拟电子")
     _CIRCUIT_KEYWORDS = (
-        "基尔霍夫", "kcl", "kvl", "节点电压", "网孔电流", "戴维南", "诺顿",
-        "叠加定理", "一阶电路", "二阶电路", "正弦稳态", "相量", "三相电路",
-        "二端口", "耦合电感", "复频域", "谐振", "功率因数", "动态电路",
-        "换路", "时间常数", "静态工作点", "分压偏置", "共射", "共集", "共基",
-        "运算放大", "整流", "滤波电路",
+        "基尔霍夫",
+        "kcl",
+        "kvl",
+        "节点电压",
+        "网孔电流",
+        "戴维南",
+        "诺顿",
+        "叠加定理",
+        "一阶电路",
+        "二阶电路",
+        "正弦稳态",
+        "相量",
+        "三相电路",
+        "二端口",
+        "耦合电感",
+        "复频域",
+        "谐振",
+        "功率因数",
+        "动态电路",
+        "换路",
+        "时间常数",
+        "静态工作点",
+        "分压偏置",
+        "共射",
+        "共集",
+        "共基",
+        "运算放大",
+        "整流",
+        "滤波电路",
     )
     _CALC_KEYWORDS = (
-        "计算", "求解", "试求", "试计算", "求导", "积分", "微分", "极限",
-        "解方程", "等于", "多少", "值为", "推导", "证明",
+        "计算",
+        "求解",
+        "试求",
+        "试计算",
+        "求导",
+        "积分",
+        "微分",
+        "极限",
+        "解方程",
+        "等于",
+        "多少",
+        "值为",
+        "推导",
+        "证明",
     )
     _CONCEPT_KEYWORDS = (
-        "什么是", "什么叫", "定义", "概念", "区别", "联系", "原理", "为什么",
-        "简述", "解释", "名词解释",
+        "什么是",
+        "什么叫",
+        "定义",
+        "概念",
+        "区别",
+        "联系",
+        "原理",
+        "为什么",
+        "简述",
+        "解释",
+        "名词解释",
     )
 
     @classmethod
-    def _classify_solve_type(
-        cls, question: str, classification: Dict[str, Any], subject: Optional[str]
-    ) -> str:
+    def _classify_solve_type(cls, question: str, classification: Dict[str, Any], subject: Optional[str]) -> str:
         """在现有 classify_question / detect_subject 之上识别解题路径：
 
         ``circuit`` 电路题 / ``calc`` 计算题 / ``concept`` 概念题 / ``reference`` 资料题。
@@ -628,9 +922,7 @@ class AIRouter:
         return (item.get("content") or item.get("text") or "")[:160]
 
     @classmethod
-    def _rrf_fuse(
-        cls, ranked_lists: List[List[Dict[str, Any]]], k: int = 60
-    ) -> List[Dict[str, Any]]:
+    def _rrf_fuse(cls, ranked_lists: List[List[Dict[str, Any]]], k: int = 60) -> List[Dict[str, Any]]:
         """RRF 融合多路检索：score = Σ 1/(k+rank)，按融合分排序并去重。"""
         scores: Dict[str, float] = {}
         items: Dict[str, Dict[str, Any]] = {}
@@ -650,9 +942,7 @@ class AIRouter:
         return out
 
     @classmethod
-    def _merge_dedup(
-        cls, base: List[Dict[str, Any]], extra: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def _merge_dedup(cls, base: List[Dict[str, Any]], extra: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         seen = {cls._dedupe_key(b) for b in base}
         merged = list(base)
         for it in extra or []:
@@ -670,9 +960,21 @@ class AIRouter:
         text = content.strip()
         if len(text) < 20:
             return False
-        if not any(k in text for k in (
-            "因此", "所以", "答案", "结论", "故", "综上", "=", "＝", "为", "：",
-        )):
+        if not any(
+            k in text
+            for k in (
+                "因此",
+                "所以",
+                "答案",
+                "结论",
+                "故",
+                "综上",
+                "=",
+                "＝",
+                "为",
+                "：",
+            )
+        ):
             return False
         if solve_type == "calc" and not re.search(r"\d", text):
             return False
@@ -690,9 +992,7 @@ class AIRouter:
                 return mimg.group(1)
         return None
 
-    async def _retrieve_one(
-        self, query: str, ai_service, subject: Optional[str]
-    ) -> List[Dict[str, Any]]:
+    async def _retrieve_one(self, query: str, ai_service, subject: Optional[str]) -> List[Dict[str, Any]]:
         """单路检索：异步 hybrid 优先，失败回退同步 FTS，再失败返回 []。"""
         if not query or not str(query).strip():
             return []
@@ -702,7 +1002,11 @@ class AIRouter:
         except Exception as e:
             logger.debug("[RAG] hybrid 检索失败，回退同步: %s", e)
         try:
-            return ai_service.search_knowledge_base(query, limit=6, subject=subject) or []
+            # 同步检索链丢工作线程：直接在 async 里跑会把事件循环占死
+            return (
+                await asyncio.to_thread(partial(ai_service.search_knowledge_base, query, limit=6, subject=subject))
+                or []
+            )
         except Exception as e:
             logger.warning("[RAG] 同步检索也失败，按无上下文继续: %s", e)
             return []
@@ -740,8 +1044,11 @@ class AIRouter:
         except Exception as e:
             logger.warning("[RAG] classify_question 异常，默认资料路径: %s", e)
             classification = {
-                "type": "knowledge", "confidence": 0.5, "reason": "分类异常",
-                "need_rag": True, "preferred_engine": "rag",
+                "type": "knowledge",
+                "confidence": 0.5,
+                "reason": "分类异常",
+                "need_rag": True,
+                "preferred_engine": "rag",
             }
         try:
             subject = self.detect_subject(question)
@@ -756,6 +1063,7 @@ class AIRouter:
         # -------------------------------------------------------------- #
         try:
             from services import answer_cache as _ac
+
             hit = _ac.get_cached(question, subject=subject)
         except Exception as e:
             logger.debug("[RAG] answer_cache.get_cached 失败，按未命中: %s", e)
@@ -788,9 +1096,7 @@ class AIRouter:
         # 一次 LLM 往返，是 60s 504 的主因。即使命中电路/计算关键词，只要问句是
         # 概念定义式(如"什么是 KVL")也按简单题裁剪。
         # -------------------------------------------------------------- #
-        is_simple = (solve_type == "concept") or any(
-            kw in (question or "").lower() for kw in self._CONCEPT_KEYWORDS
-        )
+        is_simple = (solve_type == "concept") or any(kw in (question or "").lower() for kw in self._CONCEPT_KEYWORDS)
         if is_simple:
             queries = [question]
             _step("裁剪:简单概念题(单次检索,跳过改写/HyDE)")
@@ -843,17 +1149,20 @@ class AIRouter:
         # -------------------------------------------------------------- #
         try:
             from services import retrieval_gate as _gate
+
             gate = _gate.evaluate_gate(
-                final_chunks, question,
+                final_chunks,
+                question,
                 is_complex=_gate.is_complex_query(question),
             )
             logger.info(
                 "[retrieval_gate] query=%r decision=%s would_abstain=%s metrics=%s",
-                question[:30], gate.get("decision"), gate.get("would_abstain"),
+                question[:30],
+                gate.get("decision"),
+                gate.get("would_abstain"),
                 gate.get("metrics"),
             )
-            _step(f"gate:{gate.get('decision')}",
-                  would_abstain=gate.get("would_abstain"))
+            _step(f"gate:{gate.get('decision')}", would_abstain=gate.get("would_abstain"))
         except Exception as e:
             logger.warning("[RAG] retrieval_gate 判定失败，跳过打点: %s", e)
 
@@ -867,15 +1176,17 @@ class AIRouter:
             if image_path:
                 try:
                     from services import circuit_analysis as _ca
+
                     circ = await _ca.analyze_circuit_image(image_path, question)
-                    _step(f"电路图辅助:{circ.get('status')}",
-                          circuit_type=circ.get("circuit_type"))
+                    _step(f"电路图辅助:{circ.get('status')}", circuit_type=circ.get("circuit_type"))
                     if circ.get("description"):
-                        final_chunks = final_chunks + [{
-                            "source": "电路识图",
-                            "title": circ.get("circuit_type") or "电路图",
-                            "content": circ["description"],
-                        }]
+                        final_chunks = final_chunks + [
+                            {
+                                "source": "电路识图",
+                                "title": circ.get("circuit_type") or "电路图",
+                                "content": circ["description"],
+                            }
+                        ]
                 except Exception as e:
                     logger.warning("[RAG] 电路图辅助异常: %s", e)
                     _step("电路图辅助:异常已降级")
@@ -887,7 +1198,7 @@ class AIRouter:
         # -------------------------------------------------------------- #
         async def _generate(chunks: List[Dict[str, Any]]) -> str:
             ctx_text = "\n\n".join(
-                f"[资料{i+1}｜{c.get('source', 'chunk')}｜{c.get('title', '')}]\n"
+                f"[资料{i + 1}｜{c.get('source', 'chunk')}｜{c.get('title', '')}]\n"
                 f"{c.get('content') or c.get('text', '')}"
                 for i, c in enumerate(chunks)
             )
@@ -935,6 +1246,7 @@ class AIRouter:
         if content:
             try:
                 from services import answer_cache as _ac
+
                 _ac.set_cached(question, content, subject=subject)
             except Exception as e:
                 logger.debug("[RAG] answer_cache.set_cached 失败: %s", e)
@@ -951,6 +1263,7 @@ class AIRouter:
 
 # 单例
 _router_instance = None
+
 
 def get_ai_router(db: Session) -> AIRouter:
     """获取AI路由网关单例。"""

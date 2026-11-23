@@ -657,7 +657,12 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
 
     parser = DocumentParser()
     try:
-        content_text = parser.parse(save_path)
+        # 性能波（2026-11-23）：本函数是 async（下载要 await BaiduPCS），parse 与
+        # 质量闸门（BGE 向量查重）都是同步重活，直调会按住事件循环 —— documents.py
+        # P0-2 同款事故，一律丢线程池。
+        from starlette.concurrency import run_in_threadpool
+
+        content_text = await run_in_threadpool(parser.parse, save_path)
     except Exception as e:
         doc.index_status = "failed"
         db.commit()
@@ -668,7 +673,7 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
     # 质量闸门：网盘下载来的文件最常见的坏法是"扫描版 PDF 解析出空正文"，
     # 以前直接写成占位提示并标 indexed，检索命中它就等于假答案。
     # 拒绝时这篇 Document 只留 failed 状态，正文和分块都不写。
-    verdict = gate_for_write(db, content_text, path=save_path, doc_id=doc.id)
+    verdict = await run_in_threadpool(gate_for_write, db, content_text, path=save_path, doc_id=doc.id)
     if not verdict["ok"]:
         doc.index_status = "failed"
         doc.parse_progress = 1.0

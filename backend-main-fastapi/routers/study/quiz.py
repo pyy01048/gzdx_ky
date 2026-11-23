@@ -1,5 +1,6 @@
 """刷题路由。"""
 
+import asyncio
 import re
 from typing import Optional
 
@@ -38,10 +39,10 @@ router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 from services.quiz_query import (  # noqa: E402
     SOURCE_KIND_CHOICES as _SOURCE_KIND_CHOICES,
 )
-from services.quiz_query import (
+from services.quiz_query import (  # noqa: E402
     answerable_expr as _answerable_expr_shared,
 )
-from services.quiz_query import (
+from services.quiz_query import (  # noqa: E402
     source_kind_expr as _source_kind_expr_shared,
 )
 
@@ -73,7 +74,7 @@ async def list_questions(
     source_kind: Optional[str] = Query(
         None,
         description="来源大类：exam(真题) | textbook(教材/知识库) | custom(自建/ai)；不传=全部。"
-                    "用于「真题 / 教材题」分页隔离",
+        "用于「真题 / 教材题」分页隔离",
     ),
     question_type: Optional[str] = None,
     mode: Optional[str] = None,
@@ -82,8 +83,13 @@ async def list_questions(
     paper: Optional[str] = None,
     kp_id: Optional[int] = Query(None, description="按知识点ID过滤"),
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题（is_junk=1）；默认排除"),
-    answerable: bool = Query(True, description="是否只要「可作答」的题（有答案、is_available=1）。默认 True；真题浏览/审计可传 False 查看缺答案题"),
-    is_retest: Optional[bool] = Query(None, description="M6-3：按初试/复试过滤。None=全部（向后兼容）；False=仅初试；True=仅复试"),
+    answerable: bool = Query(
+        True,
+        description="是否只要「可作答」的题（有答案、is_available=1）。默认 True；真题浏览/审计可传 False 查看缺答案题",
+    ),
+    is_retest: Optional[bool] = Query(
+        None, description="M6-3：按初试/复试过滤。None=全部（向后兼容）；False=仅初试；True=仅复试"
+    ),
     page: int = 1,
     page_size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -121,7 +127,7 @@ async def list_questions(
     # M1-1f/h：默认排除 OCR 碎片题（碎片/答案串不参与刷题）——统一走共享过滤
     base = visible_quiz_filter(base, include_junk=include_junk)
     # 科目严格过滤：空白串一律视为「未指定」，避免前端传空串导致全表裸返回
-    subj_norm = (str(subject).strip() if subject is not None else "")
+    subj_norm = str(subject).strip() if subject is not None else ""
     if subj_norm:
         base = base.filter(QuizQuestion.subject == subj_norm)
     if chapter:
@@ -139,8 +145,7 @@ async def list_questions(
         if is_retest:
             base = base.filter(QuizQuestion.is_retest.is_(True))
         else:
-            base = base.filter(or_(QuizQuestion.is_retest.is_(False),
-                                   QuizQuestion.is_retest.is_(None)))
+            base = base.filter(or_(QuizQuestion.is_retest.is_(False), QuizQuestion.is_retest.is_(None)))
     if question_type:
         base = base.filter(QuizQuestion.question_type == question_type)
     if year:
@@ -154,9 +159,7 @@ async def list_questions(
         # 用 select 构造子查询内联，避免大 IN 列表与 SAWarning；与其余筛选参数可叠加（AND 语义）。
         from sqlalchemy import select
 
-        linked_ids = select(QuestionKnowledgeLink.question_id).where(
-            QuestionKnowledgeLink.knowledge_point_id == kp_id
-        )
+        linked_ids = select(QuestionKnowledgeLink.question_id).where(QuestionKnowledgeLink.knowledge_point_id == kp_id)
         base = base.filter(QuizQuestion.id.in_(linked_ids))
     if q:
         like = f"%{q.strip()}%"
@@ -218,18 +221,12 @@ async def list_questions(
                         QuizQuestion.chapter.in_(weakness_kps),
                     )
                 )
-                weak_questions = (
-                    weak_query.order_by(func.random()).all()
-                )
+                weak_questions = weak_query.order_by(func.random()).all()
                 extra_count = page_size - total
-                extra_questions = (
-                    extra_query.order_by(func.random()).limit(extra_count).all()
-                )
+                extra_questions = extra_query.order_by(func.random()).limit(extra_count).all()
                 questions = weak_questions + extra_questions
             else:
-                questions = (
-                    weak_query.order_by(func.random()).limit(page_size).all()
-                )
+                questions = weak_query.order_by(func.random()).limit(page_size).all()
             return {
                 "total": total,
                 "page": 1,
@@ -240,18 +237,32 @@ async def list_questions(
                 "source_kind": source_kind or "all",
                 "subject": subj_norm or None,
                 "applied": _applied_filters(
-                    subject=subj_norm or None, chapter=chapter, source=source,
-                    source_kind=source_kind, answerable=answerable, kp_id=kp_id,
-                    year=year, paper=paper, question_type=question_type, mode=mode,
+                    subject=subj_norm or None,
+                    chapter=chapter,
+                    source=source,
+                    source_kind=source_kind,
+                    answerable=answerable,
+                    kp_id=kp_id,
+                    year=year,
+                    paper=paper,
+                    question_type=question_type,
+                    mode=mode,
                 ),
                 "weakness_knowledge_points": weakness_kps,
                 "questions": [_serialize_question(q) for q in questions],
             }
 
     applied = _applied_filters(
-        subject=subj_norm or None, chapter=chapter, source=source,
-        source_kind=source_kind, answerable=answerable, kp_id=kp_id,
-        year=year, paper=paper, question_type=question_type, mode=mode,
+        subject=subj_norm or None,
+        chapter=chapter,
+        source=source,
+        source_kind=source_kind,
+        answerable=answerable,
+        kp_id=kp_id,
+        year=year,
+        paper=paper,
+        question_type=question_type,
+        mode=mode,
     )
 
     # 随机模式
@@ -278,12 +289,7 @@ async def list_questions(
         order_col = QuizQuestion.id.asc()
     else:
         order_col = QuizQuestion.id.desc()
-    questions = (
-        query.order_by(order_col)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    questions = query.order_by(order_col).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "total": total,
         "page": page,
@@ -301,8 +307,7 @@ async def list_questions(
 def _applied_filters(**kw) -> dict:
     """归一化「本次生效的筛选」，供前端「依据明示」展示（不暴露内部实现）。"""
     out: dict = {}
-    for k in ("subject", "chapter", "source", "source_kind", "kp_id",
-              "year", "paper", "question_type", "mode"):
+    for k in ("subject", "chapter", "source", "source_kind", "kp_id", "year", "paper", "question_type", "mode"):
         v = kw.get(k)
         if v not in (None, "", 0):
             out[k] = v
@@ -427,12 +432,7 @@ async def quiz_frequency(
         # total 却统计全部，前端会算出根本不存在的页数。
         if subject:
             base = base.filter(QuizQuestion.subject == subject)
-        rows = (
-            base.group_by(QuizQuestion.paper)
-            .order_by(func.count(QuizQuestion.id).desc())
-            .limit(limit)
-            .all()
-        )
+        rows = base.group_by(QuizQuestion.paper).order_by(func.count(QuizQuestion.id).desc()).limit(limit).all()
         # 每个套卷涉及的知识点数（经链路表去重，一次查回避免 N+1）
         kp_q = (
             visible_quiz_filter(
@@ -447,10 +447,7 @@ async def quiz_frequency(
         )
         if subject:
             kp_q = kp_q.filter(QuizQuestion.subject == subject)
-        kp_map = {
-            paper: cnt
-            for paper, cnt in kp_q.group_by(QuizQuestion.paper).all()
-        }
+        kp_map = {paper: cnt for paper, cnt in kp_q.group_by(QuizQuestion.paper).all()}
         items = [
             {
                 "name": paper or "未标套卷",
@@ -480,12 +477,7 @@ async def quiz_frequency(
         ).filter(QuizQuestion.chapter.isnot(None))
         if subject:
             rows = rows.filter(QuizQuestion.subject == subject)
-        rows = (
-            rows.group_by(QuizQuestion.chapter)
-            .order_by(func.count(QuizQuestion.id).desc())
-            .limit(limit)
-            .all()
-        )
+        rows = rows.group_by(QuizQuestion.chapter).order_by(func.count(QuizQuestion.id).desc()).limit(limit).all()
         kp_q = (
             visible_quiz_filter(
                 db.query(
@@ -499,10 +491,7 @@ async def quiz_frequency(
         )
         if subject:
             kp_q = kp_q.filter(QuizQuestion.subject == subject)
-        kp_map = {
-            chapter: cnt
-            for chapter, cnt in kp_q.group_by(QuizQuestion.chapter).all()
-        }
+        kp_map = {chapter: cnt for chapter, cnt in kp_q.group_by(QuizQuestion.chapter).all()}
         items = [
             {
                 "name": chapter or "未归章",
@@ -529,11 +518,7 @@ async def quiz_frequency(
         if subject:
             q = q.filter(KnowledgePoint.subject == subject)
         total = int(q.count())
-        kp_rows = (
-            q.order_by(KnowledgePoint.exam_frequency.desc(), KnowledgePoint.id.asc())
-            .limit(limit)
-            .all()
-        )
+        kp_rows = q.order_by(KnowledgePoint.exam_frequency.desc(), KnowledgePoint.id.asc()).limit(limit).all()
         kp_ids = [k.id for k in kp_rows]
         # 关联题数（经链路表去重，且排除碎片题）一次查回
         count_map: dict[int, int] = {}
@@ -576,7 +561,8 @@ async def quiz_frequency(
 async def papers_index(
     subject: Optional[str] = None,
     source_kind: Optional[str] = Query(
-        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"),
+        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"
+    ),
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题；默认排除，口径同列表"),
     db: Session = Depends(get_db),
 ):
@@ -622,26 +608,29 @@ async def papers_index(
 
     papers = []
     for paper, cnt, ymin, ymax in rows:
-        years = [y for y in (ymin, ymax) if y]
+        years = [y for y in (ymin, ymax) if y]  # noqa: F841
         year_label = None
         if ymin and ymax and ymin != ymax:
             year_label = f"{ymin}-{ymax}"
         elif ymin:
             year_label = str(ymin)
-        papers.append({
-            "paper": paper,
-            "count": cnt,
-            "year": ymin if (ymin and ymin == ymax) else None,
-            "year_label": year_label,
-            "subjects": subj_map.get(paper, {}),
-        })
+        papers.append(
+            {
+                "paper": paper,
+                "count": cnt,
+                "year": ymin if (ymin and ymin == ymax) else None,
+                "year_label": year_label,
+                "subjects": subj_map.get(paper, {}),
+            }
+        )
     return {"total": len(papers), "papers": papers}
 
 
 @router.get("/years")
 async def years_index(
     source_kind: Optional[str] = Query(
-        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"),
+        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"
+    ),
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题；默认排除，口径同列表"),
     db: Session = Depends(get_db),
 ):
@@ -670,7 +659,6 @@ async def years_index(
         node["total"] += cnt
     years = sorted(by_year.values(), key=lambda x: x["year"], reverse=True)
     return {"total_years": len(years), "years": years}
-
 
 
 @router.delete("/questions/{question_id}", dependencies=[Depends(require_admin)])
@@ -826,13 +814,17 @@ async def import_questions(
     if rejected_by_gate:
         msg += f"（内容闸门拦截 {sum(rejected_by_gate.values())} 道）"
     if sanitize_stats and sanitize_stats["fields_cleaned"]:
-        msg += (f"（清洗 {sanitize_stats['fields_cleaned']} 道："
-                f"去水印 {sanitize_stats['watermark_cleaned']} / "
-                f"抽取选项 {sanitize_stats['options_from_inline']}）")
+        msg += (
+            f"（清洗 {sanitize_stats['fields_cleaned']} 道："
+            f"去水印 {sanitize_stats['watermark_cleaned']} / "
+            f"抽取选项 {sanitize_stats['options_from_inline']}）"
+        )
     if classify_stats and classify_stats["classified"]:
-        msg += (f"（自动分类 {classify_stats['classified']}："
-                f"直接入库 {classify_stats['auto_accepted']} / 待复核 "
-                f"{classify_stats['needs_review']}）")
+        msg += (
+            f"（自动分类 {classify_stats['classified']}："
+            f"直接入库 {classify_stats['auto_accepted']} / 待复核 "
+            f"{classify_stats['needs_review']}）"
+        )
     return {
         "imported": count,
         "rejected": sum(rejected_by_gate.values()),
@@ -881,10 +873,7 @@ def _resolve_chapter_id(
         # 1) 知识点上的权威章节外键（legacy ORM 未映射 chapter_id，走 SQL）
         if knowledge_point_id is not None:
             row = db.execute(
-                _text(
-                    "SELECT chapter_id FROM knowledge_points "
-                    "WHERE id = :kid AND chapter_id IS NOT NULL LIMIT 1"
-                ),
+                _text("SELECT chapter_id FROM knowledge_points WHERE id = :kid AND chapter_id IS NOT NULL LIMIT 1"),
                 {"kid": int(knowledge_point_id)},
             ).first()
             if row and row[0] is not None:
@@ -893,11 +882,7 @@ def _resolve_chapter_id(
         # 2) 文本兜底：知识点 chapter → 题目 chapter → subject_chapters.title
         chapter_text: Optional[str] = None
         if knowledge_point_id is not None:
-            kp = (
-                db.query(KnowledgePoint)
-                .filter(KnowledgePoint.id == knowledge_point_id)
-                .first()
-            )
+            kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == knowledge_point_id).first()
             if kp is not None and kp.chapter:
                 chapter_text = kp.chapter
         if not chapter_text:
@@ -939,15 +924,15 @@ async def submit_answer(
 
     # V12 置信度分级：低置信答案（LLM 生成/缺失）不参与自动判分，
     # 仅记录作答流水，返回 needs_review 交前端提示「答案待人工核对」。
-    low_confidence = getattr(question, "answer_confidence", 1.0) is not None and \
-        getattr(question, "answer_confidence", 1.0) < 0.8
+    low_confidence = (
+        getattr(question, "answer_confidence", 1.0) is not None and getattr(question, "answer_confidence", 1.0) < 0.8
+    )
 
     # —— P0-2：主观题判定 —— #
     # 命中主观题时不做精确字符串匹配，避免 essay/calc/fill 几乎必然判错。
-    is_subjective = (
-        str(getattr(question, "answer_type", "") or "").lower() == "subjective"
-        or (question.question_type or "").lower() in ("essay", "calc", "fill")
-    )
+    is_subjective = str(getattr(question, "answer_type", "") or "").lower() == "subjective" or (
+        question.question_type or ""
+    ).lower() in ("essay", "calc", "fill")
 
     correct = False
     self_score = None
@@ -1023,10 +1008,7 @@ async def submit_answer(
             from sqlalchemy import text as _score_text
 
             db.execute(
-                _score_text(
-                    "UPDATE answer_records SET self_score = :sc "
-                    "WHERE id = :rid AND self_score IS NULL"
-                ),
+                _score_text("UPDATE answer_records SET self_score = :sc WHERE id = :rid AND self_score IS NULL"),
                 {"sc": float(submission.self_score), "rid": record.id},
             )
             db.commit()
@@ -1040,12 +1022,11 @@ async def submit_answer(
         try:
             from services import error_linker
 
-            error_linker.auto_link_error(db, error, top_k=3)
+            await asyncio.to_thread(error_linker.auto_link_error, db, error, top_k=3)
         except Exception as exc:  # 联动失败不影响答题响应
             import logging
 
-            logging.getLogger(__name__).warning(
-                "刷题错题自动关联知识点失败（已忽略）: %s", exc)
+            logging.getLogger(__name__).warning("刷题错题自动关联知识点失败（已忽略）: %s", exc)
 
         # B4 行级隔离：error_linker（禁改服务）建链时不知道归属，这里按错题
         # 主人回填 error_knowledge_links.user_id（列语义即"跟随 error_id 的主人"）；
@@ -1065,18 +1046,20 @@ async def submit_answer(
     try:
         from sqlalchemy import text as _text
 
-        db.execute(_text(
-            "UPDATE knowledge_points kp SET mastery = kp.mastery "
-            "WHERE EXISTS (SELECT 1 FROM question_knowledge_links qkl "
-            "              WHERE qkl.knowledge_point_id = kp.id "
-            "                AND qkl.question_id = :qid)"
-        ), {"qid": question.id})
+        db.execute(
+            _text(
+                "UPDATE knowledge_points kp SET mastery = kp.mastery "
+                "WHERE EXISTS (SELECT 1 FROM question_knowledge_links qkl "
+                "              WHERE qkl.knowledge_point_id = kp.id "
+                "                AND qkl.question_id = :qid)"
+            ),
+            {"qid": question.id},
+        )
         db.commit()
     except Exception as exc:  # 掌握度刷新失败不影响答题响应
         import logging
 
-        logging.getLogger(__name__).warning(
-            "答题后知识点掌握度刷新失败（已忽略）: %s", exc)
+        logging.getLogger(__name__).warning("答题后知识点掌握度刷新失败（已忽略）: %s", exc)
     db.rollback() if db.in_transaction() else None
 
     # —— M5-1：学习行为埋点（旁路，容错，绝不影响答题响应结构）—— #
@@ -1136,34 +1119,192 @@ async def submit_answer(
 #: 正则已保证长度 ≥4，这里再过滤掉高频功能词，避免词库被噪音污染。
 _QUIZ_STOPWORDS = {
     # —— 冠词 / 代词 / 指示词 ——
-    "the", "this", "that", "these", "those", "there", "their", "them", "they",
-    "your", "yours", "you", "yourself", "ours", "ourselves", "its", "itself",
-    "her", "hers", "him", "his", "my", "mine", "our", "us", "we",
-    "who", "whom", "whose", "which", "what", "when", "where", "why", "how",
+    "the",
+    "this",
+    "that",
+    "these",
+    "those",
+    "there",
+    "their",
+    "them",
+    "they",
+    "your",
+    "yours",
+    "you",
+    "yourself",
+    "ours",
+    "ourselves",
+    "its",
+    "itself",
+    "her",
+    "hers",
+    "him",
+    "his",
+    "my",
+    "mine",
+    "our",
+    "us",
+    "we",
+    "who",
+    "whom",
+    "whose",
+    "which",
+    "what",
+    "when",
+    "where",
+    "why",
+    "how",
     # —— 介词 / 连词 ——
-    "with", "from", "have", "will", "were", "would", "could", "should",
-    "about", "being", "been", "into", "over", "under", "again", "further",
-    "once", "only", "than", "then", "very", "just", "also", "after",
-    "before", "between", "during", "through", "above", "below", "against",
-    "along", "among", "around", "because", "while", "though", "although",
-    "without", "within", "across", "behind", "beyond", "beside", "besides",
-    "except", "toward", "towards", "upon", "until", "unless", "since",
-    "still", "even", "ever", "never", "always", "often", "rather", "either",
-    "neither", "whether", "however", "therefore", "moreover", "furthermore",
-    "instead", "otherwise", "whatever", "whenever", "wherever", "whoever",
-    "some", "any", "all", "each", "every", "both", "few", "many", "much",
-    "most", "more", "less", "least", "other", "another", "such", "own",
-    "same", "different", "several", "certain",
+    "with",
+    "from",
+    "have",
+    "will",
+    "were",
+    "would",
+    "could",
+    "should",
+    "about",
+    "being",
+    "been",
+    "into",
+    "over",
+    "under",
+    "again",
+    "further",
+    "once",
+    "only",
+    "than",
+    "then",
+    "very",
+    "just",
+    "also",
+    "after",
+    "before",
+    "between",
+    "during",
+    "through",
+    "above",
+    "below",
+    "against",
+    "along",
+    "among",
+    "around",
+    "because",
+    "while",
+    "though",
+    "although",
+    "without",
+    "within",
+    "across",
+    "behind",
+    "beyond",
+    "beside",
+    "besides",
+    "except",
+    "toward",
+    "towards",
+    "upon",
+    "until",
+    "unless",
+    "since",
+    "still",
+    "even",
+    "ever",
+    "never",
+    "always",
+    "often",
+    "rather",
+    "either",
+    "neither",
+    "whether",
+    "however",
+    "therefore",
+    "moreover",
+    "furthermore",
+    "instead",
+    "otherwise",
+    "whatever",
+    "whenever",
+    "wherever",
+    "whoever",
+    "some",
+    "any",
+    "all",
+    "each",
+    "every",
+    "both",
+    "few",
+    "many",
+    "much",
+    "most",
+    "more",
+    "less",
+    "least",
+    "other",
+    "another",
+    "such",
+    "own",
+    "same",
+    "different",
+    "several",
+    "certain",
     # —— 助动词 / 情态动词 / be 动词 ——
-    "may", "might", "must", "shall", "can", "does", "did", "doing", "has",
-    "had", "having", "need", "used", "use", "using", "get", "got", "give",
-    "given", "take", "took", "taken", "come", "came", "become", "became",
-    "keep", "know", "known", "think", "thought", "want", "wanted", "look",
-    "looked", "like", "liked", "way", "ways", "thing", "things", "time",
-    "times", "year", "years", "day", "days", "new", "now", "two", "one",
-    "first", "second", "last", "next",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "can",
+    "does",
+    "did",
+    "doing",
+    "has",
+    "had",
+    "having",
+    "need",
+    "used",
+    "use",
+    "using",
+    "get",
+    "got",
+    "give",
+    "given",
+    "take",
+    "took",
+    "taken",
+    "come",
+    "came",
+    "become",
+    "became",
+    "keep",
+    "know",
+    "known",
+    "think",
+    "thought",
+    "want",
+    "wanted",
+    "look",
+    "looked",
+    "like",
+    "liked",
+    "way",
+    "ways",
+    "thing",
+    "things",
+    "time",
+    "times",
+    "year",
+    "years",
+    "day",
+    "days",
+    "new",
+    "now",
+    "two",
+    "one",
+    "first",
+    "second",
+    "last",
+    "next",
 }
-
 
 
 def _extract_english_words(text: Optional[str]) -> list:
@@ -1231,11 +1372,7 @@ def extract_words(
     existing = set()
     if candidate_words:
         word_list = [c["word"] for c in candidate_words]
-        rows = (
-            db.query(Word.word)
-            .filter(Word.word.in_(word_list), scoped(Word, user))
-            .all()
-        )
+        rows = db.query(Word.word).filter(Word.word.in_(word_list), scoped(Word, user)).all()
         existing = {r[0] for r in rows}
 
     words = [
@@ -1352,7 +1489,8 @@ async def quiz_stats(
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题；默认排除，与列表端点口径一致"),
     subject: Optional[str] = Query(None, description="按科目过滤统计（与 /questions 同语义；空串=不过滤）"),
     source_kind: Optional[str] = Query(
-        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"),
+        None, description="来源大类：exam(真题) | textbook(教材/知识库) | custom；不传=全部"
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(current_user),  # B4 访客兜底
 ):
@@ -1377,7 +1515,7 @@ async def quiz_stats(
     from services.quiz_query import normalize_source_kind
     from services.stats_cache import cached_async
 
-    subj_norm = (str(subject).strip() if subject is not None else "")
+    subj_norm = str(subject).strip() if subject is not None else ""
     sk = normalize_source_kind(source_kind)
     # payload 生产者是 async（_quiz_stats_payload），必须用异步版缓存，
     # 否则缓存层返回协程对象，FastAPI 序列化直接 500。
@@ -1411,7 +1549,7 @@ async def _quiz_stats_payload(
 
     sk = normalize_source_kind(source_kind)
     sk_expr = _source_kind_expr(source_kind)  # 非法值 → 400
-    subj_norm = (str(subject).strip() if subject is not None else "")
+    subj_norm = str(subject).strip() if subject is not None else ""
 
     from sqlalchemy import func
 
@@ -1426,9 +1564,11 @@ async def _quiz_stats_payload(
     raw_total = _scoped(db.query(QuizQuestion)).count()
     visible_base = _scoped(visible_quiz_filter(db.query(QuizQuestion), include_junk=include_junk))
     total_questions = visible_base.count()
-    answerable_total = _scoped(
-        visible_quiz_filter(db.query(QuizQuestion), include_junk=include_junk)
-    ).filter(answerable_expr()).count()
+    answerable_total = (
+        _scoped(visible_quiz_filter(db.query(QuizQuestion), include_junk=include_junk))
+        .filter(answerable_expr())
+        .count()
+    )
     junk_total = raw_total - total_questions
 
     # 性能优化（2026-10）：错题两态计数与答题两条 count 各合并为一条条件聚合
@@ -1503,11 +1643,7 @@ async def _quiz_stats_payload(
         answer_ev_q = answer_ev_q.filter(StudyEvent.user_id == owner_id(user))
     ev_answers, ev_correct = answer_ev_q.first()
     answer_events_total = int(ev_answers or 0)
-    event_accuracy_rate = (
-        round(int(ev_correct or 0) / answer_events_total * 100, 1)
-        if answer_events_total
-        else 0
-    )
+    event_accuracy_rate = round(int(ev_correct or 0) / answer_events_total * 100, 1) if answer_events_total else 0
 
     today_start = local_window_for_day(local_today())[0]
     today_q = db.query(
@@ -1532,8 +1668,8 @@ async def _quiz_stats_payload(
 
     return {
         # —— 题目维度：三个显式口径 ——
-        "total_questions": total_questions,   # = visible_total（历史字段名，保留兼容）
-        "visible_total": total_questions,     # 显式命名，与 total_questions 恒等
+        "total_questions": total_questions,  # = visible_total（历史字段名，保留兼容）
+        "visible_total": total_questions,  # 显式命名，与 total_questions 恒等
         "answerable_total": answerable_total,
         "junk_total": junk_total,
         "raw_total": raw_total,
@@ -1561,9 +1697,7 @@ async def _quiz_stats_payload(
         "study_minutes": study_minutes,
         "today_events": int(today_events or 0),
         "today_study_minutes": round(int(today_seconds or 0) / 60),
-        "subject_distribution": [
-            {"subject": s or "未分类", "count": c} for s, c in subject_counts
-        ],
+        "subject_distribution": [{"subject": s or "未分类", "count": c} for s, c in subject_counts],
         "subject_accuracy": subject_accuracy,
     }
 
@@ -1712,11 +1846,15 @@ def _normalize_candidate(q: dict, index: int) -> dict:
     """
     from services.content_sanitizer import normalize_options, sanitize_question_fields
 
-    cleaned, _issues = sanitize_question_fields({
-        "content": q.get("content"), "options": q.get("options"),
-        "answer": q.get("answer"), "analysis": q.get("analysis"),
-        "question_type": q.get("question_type") or "single",
-    })
+    cleaned, _issues = sanitize_question_fields(
+        {
+            "content": q.get("content"),
+            "options": q.get("options"),
+            "answer": q.get("answer"),
+            "analysis": q.get("analysis"),
+            "question_type": q.get("question_type") or "single",
+        }
+    )
     opts, _opt_issues = normalize_options(cleaned.get("options"))
     return {
         "index": index,
@@ -1828,6 +1966,7 @@ async def import_markdown(
 
     # —— 直接落库（原有行为）—— #
     from services.quiz_classifier_v2 import ensure_quiz_classify_columns
+
     ensure_quiz_classify_columns(db)
     candidates, rejected_by_gate = _gate_rows(candidates)
     count = 0
@@ -1839,9 +1978,11 @@ async def import_markdown(
     if rejected_by_gate:
         msg += f"（内容闸门拦截 {sum(rejected_by_gate.values())} 道）"
     if classify_stats and classify_stats.get("classified"):
-        msg += (f"（自动分类 {classify_stats['classified']}："
-                f"直接入库 {classify_stats.get('auto_accepted', 0)} / "
-                f"待复核 {classify_stats.get('needs_review', 0)}）")
+        msg += (
+            f"（自动分类 {classify_stats['classified']}："
+            f"直接入库 {classify_stats.get('auto_accepted', 0)} / "
+            f"待复核 {classify_stats.get('needs_review', 0)}）"
+        )
     return {
         "imported": count,
         "rejected": sum(rejected_by_gate.values()),
@@ -1893,6 +2034,7 @@ async def import_confirm(
         cands.append(cand)
 
     from services.quiz_classifier_v2 import autoclassify_v2, ensure_quiz_classify_columns
+
     ensure_quiz_classify_columns(db)
     autoclassify_v2(cands, use_llm=True, db=db)
 
@@ -1956,7 +2098,7 @@ async def review_queue(
 
 
 class QuizReviewAction(BaseModel):
-    action: str                       # accept | reject
+    action: str  # accept | reject
     subject: Optional[str] = None
     question_type: Optional[str] = None
     knowledge_point: Optional[str] = None
@@ -2028,12 +2170,14 @@ async def retest_stats(
         initial_n = int(total or 0) - retest_n
         total_initial += initial_n
         total_retest += retest_n
-        items.append({
-            "subject": subject or "未分类",
-            "total": int(total or 0),
-            "initial": initial_n,
-            "retest": retest_n,
-        })
+        items.append(
+            {
+                "subject": subject or "未分类",
+                "total": int(total or 0),
+                "initial": initial_n,
+                "retest": retest_n,
+            }
+        )
     items.sort(key=lambda it: (-it["retest"], -it["total"], it["subject"]))
     return {
         "total": sum(it["total"] for it in items),
@@ -2082,10 +2226,12 @@ async def extract_knowledge_from_text(
         if len(candidates) >= limit:
             break
         try:
-            result = await ai.chat([
-                {"role": "system", "content": "你是知识提取专家，只返回JSON。"},
-                {"role": "user", "content": KNOWLEDGE_POINT_PROMPT.format(content=chunk["text"][:6000])},
-            ])
+            result = await ai.chat(
+                [
+                    {"role": "system", "content": "你是知识提取专家，只返回JSON。"},
+                    {"role": "user", "content": KNOWLEDGE_POINT_PROMPT.format(content=chunk["text"][:6000])},
+                ]
+            )
             raw = result.get("content", "") or ""
             # LLM 可能返回 ```json ... ``` 包裹或带前后缀文本，统一提取首个 JSON 数组。
             start = raw.find("[")
@@ -2093,23 +2239,27 @@ async def extract_knowledge_from_text(
             if start < 0 or end <= start:
                 continue
             import json as _json
+
             kps = _json.loads(raw[start:end])
             for kp in kps:
                 name = (kp.get("name") or "").strip()
                 if not name or name in seen_names:
                     continue
                 seen_names.add(name)
-                candidates.append({
-                    "name": name[:300],
-                    "subject": (kp.get("subject") or subject_hint or "其他")[:50],
-                    "chapter": (kp.get("chapter") or chunk.get("heading") or "")[:200],
-                    "description": (kp.get("description") or "")[:2000],
-                    "exam_frequency": min(5, max(1, int(kp.get("exam_frequency", 3) or 3))),
-                })
+                candidates.append(
+                    {
+                        "name": name[:300],
+                        "subject": (kp.get("subject") or subject_hint or "其他")[:50],
+                        "chapter": (kp.get("chapter") or chunk.get("heading") or "")[:200],
+                        "description": (kp.get("description") or "")[:2000],
+                        "exam_frequency": min(5, max(1, int(kp.get("exam_frequency", 3) or 3))),
+                    }
+                )
                 if len(candidates) >= limit:
                     break
         except Exception as e:  # noqa: BLE001 —— 单块失败不中断整体
             import logging
+
             logging.getLogger(__name__).warning("知识点抽取失败: %s", e)
             continue
 
@@ -2125,15 +2275,17 @@ async def extract_knowledge_from_text(
     # —— 落库（自定义来源，不关联文档）—— #
     created = 0
     for c in candidates:
-        db.add(KnowledgePoint(
-            name=c["name"],
-            subject=c["subject"],
-            chapter=c["chapter"],
-            document_id=None,
-            description=c["description"],
-            exam_frequency=c["exam_frequency"],
-            mastery=0,
-        ))
+        db.add(
+            KnowledgePoint(
+                name=c["name"],
+                subject=c["subject"],
+                chapter=c["chapter"],
+                document_id=None,
+                description=c["description"],
+                exam_frequency=c["exam_frequency"],
+                mastery=0,
+            )
+        )
         created += 1
     db.commit()
     return {"dry_run": False, "imported": created, "message": f"已落库 {created} 个知识点"}
@@ -2199,7 +2351,7 @@ async def quiz_subjects(
     items = [
         {
             "subject": s["subject"],
-            "question_count": s["question_count"],       # = visible_count（兼容，语义未变）
+            "question_count": s["question_count"],  # = visible_count（兼容，语义未变）
             "visible_count": visible_map.get(s["subject"], s["question_count"]),
             "raw_count": raw_map.get(s["subject"], s["question_count"]),
             "answerable_count": answerable_map.get(s["subject"], 0),
@@ -2236,13 +2388,18 @@ async def quiz_sections(
     """分项列表：指定科目（或全部）下的章节分布。题数默认排除 OCR 碎片题。"""
     from services.quiz_query import visible_quiz_filter
     from sqlalchemy import func
+
     q = visible_quiz_filter(
         db.query(QuizQuestion.chapter, func.count(QuizQuestion.id)),
         include_junk=include_junk,
     )
     if subject:
         q = q.filter(QuizQuestion.subject == subject)
-    q = q.filter(QuizQuestion.chapter.isnot(None)).group_by(QuizQuestion.chapter).order_by(func.count(QuizQuestion.id).desc())
+    q = (
+        q.filter(QuizQuestion.chapter.isnot(None))
+        .group_by(QuizQuestion.chapter)
+        .order_by(func.count(QuizQuestion.id).desc())
+    )
     rows = q.all()
     err_rows = (
         db.query(QuizQuestion.subject, QuizQuestion.chapter, func.count(ErrorRecord.id))
@@ -2274,6 +2431,7 @@ async def quiz_wrong_reasons(
 ):
     """错因汇总：活跃错题的错误原因分布（错题闭环第一环）。"""
     from sqlalchemy import func
+
     q = db.query(ErrorRecord.error_reason, func.count(ErrorRecord.id))
     if subject:
         q = q.filter(ErrorRecord.subject == subject)
@@ -2295,6 +2453,7 @@ async def quiz_weak_points(
 ):
     """薄弱点排行：按 科目×章节×知识点 聚合活跃错题数（刷题视角的错题闭环）。"""
     from sqlalchemy import func
+
     q = (
         db.query(
             QuizQuestion.subject,
@@ -2315,11 +2474,13 @@ async def quiz_weak_points(
     )
     items = []
     for s, ch, kp, c in rows:
-        items.append({
-            "subject": s or "",
-            "chapter": ch or "",
-            "knowledge_point": kp or "",
-            "error_count": c,
-            "key": f"{s or ''}|{ch or ''}|{kp or ''}",
-        })
+        items.append(
+            {
+                "subject": s or "",
+                "chapter": ch or "",
+                "knowledge_point": kp or "",
+                "error_count": c,
+                "key": f"{s or ''}|{ch or ''}|{kp or ''}",
+            }
+        )
     return {"total": len(items), "items": items}

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import List, Optional, Tuple
 
@@ -55,6 +56,7 @@ def _get_local_model():
         os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
 
         from fastembed import TextEmbedding
+
         cache_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "embedding_models"
         )
@@ -101,9 +103,7 @@ class EmbeddingService:
     def __init__(self, db: Session):
         self.db = db
 
-    async def generate_embeddings(
-        self, texts: List[str], allow_online: bool = False
-    ) -> Tuple[List[np.ndarray], str]:
+    async def generate_embeddings(self, texts: List[str], allow_online: bool = False) -> Tuple[List[np.ndarray], str]:
         """批量生成 embedding 向量。
 
         引擎选择：
@@ -122,7 +122,10 @@ class EmbeddingService:
         # 1) 可选：本地 bge（仅在显式开启且模型已缓存时）
         if backend == "bge":
             try:
-                embeddings = generate_local_embeddings(texts)
+                # ONNX 推理是**同步阻塞**的 CPU 活：直接在 async 端点里跑会把
+                # 事件循环整段占死（documents.py:222 的同款事故：期间连 /api/health
+                # 都不响应）。丢给工作线程，循环只等 future。
+                embeddings = await asyncio.to_thread(generate_local_embeddings, texts)
                 return embeddings, "bge"
             except Exception as e:
                 print(f"[embedding] bge 不可用，回退离线引擎: {e}")
@@ -130,8 +133,10 @@ class EmbeddingService:
         # 2) 默认：离线哈希引擎（绝不联网）
         try:
             from services.offline_embedder import OfflineEmbedder
+
             emb = OfflineEmbedder()
-            return emb.embed(texts), "offline"
+            # 同上：批量哈希向量化是纯 CPU 同步活，不占事件循环。
+            return await asyncio.to_thread(emb.embed, texts), "offline"
         except Exception as e:
             print(f"[embedding] 离线引擎异常: {e}")
 
@@ -141,7 +146,7 @@ class EmbeddingService:
                 embeddings = await self._generate_online_embeddings(texts)
                 return embeddings, "online"
             except Exception as e:
-                raise RuntimeError(f"本地与在线 embedding 均失败: {e}")
+                raise RuntimeError(f"本地与在线 embedding 均失败: {e}") from e
 
         raise RuntimeError("embedding 生成失败：本地离线引擎不可用")
 
@@ -159,16 +164,13 @@ class EmbeddingService:
 
         all_embeddings = []
         for i in range(0, len(texts), BATCH_SIZE):
-            batch = texts[i:i + BATCH_SIZE]
+            batch = texts[i : i + BATCH_SIZE]
             payload = {"model": model, "input": batch}
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
-            batch_embeddings = [
-                np.array(item["embedding"], dtype=np.float32)
-                for item in data.get("data", [])
-            ]
+            batch_embeddings = [np.array(item["embedding"], dtype=np.float32) for item in data.get("data", [])]
             all_embeddings.extend(batch_embeddings)
         return all_embeddings
 
@@ -176,14 +178,14 @@ class EmbeddingService:
         for ptype in ["doubao", "qwen", "gpt", "openai"]:
             provider = (
                 self.db.query(AIProvider)
-                .filter(AIProvider.provider_type == ptype, AIProvider.is_enabled == True)
+                .filter(AIProvider.provider_type == ptype, AIProvider.is_enabled.is_(True))
                 .first()
             )
             if provider:
                 return provider
         return (
             self.db.query(AIProvider)
-            .filter(AIProvider.is_enabled == True)
+            .filter(AIProvider.is_enabled.is_(True))
             .order_by(AIProvider.fallback_priority.asc())
             .first()
         )
@@ -211,9 +213,7 @@ class EmbeddingService:
         }
 
 
-async def build_all_embeddings(
-    db: Session, force: bool = False, batch_size: int = 100, progress_callback=None
-) -> dict:
+async def build_all_embeddings(db: Session, force: bool = False, batch_size: int = 100, progress_callback=None) -> dict:
     """为 knowledge_chunks 构建向量索引（默认完全离线）。
 
     Args:
@@ -285,7 +285,7 @@ async def build_all_embeddings(
     engine_used = "unknown"
 
     for i in range(0, total, batch_size):
-        batch = rows[i:i + batch_size]
+        batch = rows[i : i + batch_size]
         texts = [r[3] or "" for r in batch]
         try:
             embeddings, engine_used = await svc.generate_embeddings(texts)

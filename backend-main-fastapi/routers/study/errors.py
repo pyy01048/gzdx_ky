@@ -1,5 +1,6 @@
 """错题路由。"""
 
+import asyncio
 import datetime
 from typing import Optional
 
@@ -155,7 +156,7 @@ async def add_error(error: ErrorRecordCreate, db: Session = Depends(get_db), use
     # 错题本 ↔ 知识库联动：收录即挂考点，避免"错题孤岛"
     linked = []
     try:
-        linked = error_linker.auto_link_error(db, new_error, top_k=3)
+        linked = await asyncio.to_thread(error_linker.auto_link_error, db, new_error, top_k=3)
     except Exception as e:  # 联动失败不影响错题本身入库
         print(f"[error_linker] 错题 {new_error.id} 自动关联失败: {e}")
 
@@ -192,7 +193,9 @@ async def link_error_knowledge(
         raise HTTPException(status_code=404, detail="错题不存在")
 
     if payload.get("auto"):
-        items = error_linker.auto_link_error(db, db_error, top_k=int(payload.get("top_k") or 3))
+        items = await asyncio.to_thread(
+            error_linker.auto_link_error, db, db_error, top_k=int(payload.get("top_k") or 3)
+        )
         return {"message": "已重新自动关联", "items": items}
 
     kp_id = payload.get("knowledge_point_id")

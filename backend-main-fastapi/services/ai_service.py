@@ -4,10 +4,12 @@
 支持 OpenAI 兼容接口的 SSE 流式输出与本地知识库 RAG 检索。
 """
 
+import asyncio
 import json
 import os
 import re
 import time
+from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from models import AIProvider, KnowledgeChunk, KnowledgePoint
@@ -548,7 +550,7 @@ class AIService:
 
         # 本地知识库离线兜底（无模型、无在线）
         if route == "offline":
-            kb_hits = self.search_knowledge_base(last_user, limit=4)
+            kb_hits = await asyncio.to_thread(partial(self.search_knowledge_base, last_user, limit=4))
             answer = self.answer_offline(last_user, kb_hits)
             return {
                 "content": answer,
@@ -571,7 +573,7 @@ class AIService:
             except Exception as e:
                 if force_local:
                     # 本地调用失败也不回退在线，走离线知识库兜底
-                    kb_hits = self.search_knowledge_base(last_user, limit=4)
+                    kb_hits = await asyncio.to_thread(partial(self.search_knowledge_base, last_user, limit=4))
                     return {
                         "content": self.answer_offline(last_user, kb_hits),
                         "provider": "offline-kb",
@@ -597,7 +599,7 @@ class AIService:
                 return result
             except Exception as e:
                 if force_local:
-                    kb_hits = self.search_knowledge_base(last_user, limit=4)
+                    kb_hits = await asyncio.to_thread(partial(self.search_knowledge_base, last_user, limit=4))
                     return {
                         "content": self.answer_offline(last_user, kb_hits),
                         "provider": "offline-kb",
@@ -640,7 +642,7 @@ class AIService:
         # 内部/批处理调用方（默认 False）保持抛异常契约——否则文档知识点提取、作文
         # 批改等会把 KB 片段当结构化数据写入，污染下游。
         if offline_fallback:
-            return self._offline_fallback_result(last_user, errors, route_reason)
+            return await asyncio.to_thread(self._offline_fallback_result, last_user, errors, route_reason)
         raise RuntimeError(f"所有 AI 服务商调用失败：{'; '.join(errors) or last_error}")
 
     def _offline_fallback_result(self, query: str, errors: List[str], route_reason: str = "") -> Dict[str, Any]:
@@ -816,7 +818,7 @@ class AIService:
         if not offline_fallback:
             yield {"type": "error", "message": f"所有 AI 服务商调用失败：{'; '.join(errors)}"}
             return
-        res = self._offline_fallback_result(last_user, errors, route_reason)
+        res = await asyncio.to_thread(self._offline_fallback_result, last_user, errors, route_reason)
         yield {"type": "provider", "name": res["provider"]}
         yield {"type": "delta", "content": res["content"]}
         yield {
@@ -1092,15 +1094,28 @@ class AIService:
         try:
             from services import kg_rag
 
-            _graph_exp = kg_rag.expand_query_with_graph(self.db, query, subject=subject, max_expansions=3)
+            # 图谱扩展是同步 ORM 查询 —— 同样不能在主循环里跑（见下方 hybrid_search 说明）。
+            _graph_exp = await asyncio.to_thread(
+                partial(kg_rag.expand_query_with_graph, self.db, query, subject=subject, max_expansions=3)
+            )
             _search_query = _graph_exp.get("expanded_query") or query
         except Exception:  # noqa: BLE001 —— 图谱扩展不可用时退化为原查询
             _search_query = query
 
         # 混合检索
         try:
-            hits = search_service.hybrid_search(
-                self.db, _search_query, query_vec=query_vec, limit=limit * 2, subject=subject
+            # 整条检索链（分词 / 三路 SQL / RRF / 精排）都是同步阻塞的，
+            # async 端点里直调会把事件循环占死：期间所有并发请求（含 /api/health）
+            # 一起排队。丢进工作线程后，循环只负责等结果。
+            hits = await asyncio.to_thread(
+                partial(
+                    search_service.hybrid_search,
+                    self.db,
+                    _search_query,
+                    query_vec=query_vec,
+                    limit=limit * 2,
+                    subject=subject,
+                )
             )
             return [
                 {
@@ -1121,8 +1136,8 @@ class AIService:
                 for h in hits[:limit]
             ]
         except Exception:
-            # 混合检索失败，回退到同步 FTS 检索
-            return self.search_knowledge_base(query, limit=limit, subject=subject)
+            # 混合检索失败，回退到同步 FTS 检索（仍要离开事件循环）
+            return await asyncio.to_thread(partial(self.search_knowledge_base, query, limit=limit, subject=subject))
 
     def build_rag_context(
         self, query: str, limit: int = 4, subject: Optional[str] = None
