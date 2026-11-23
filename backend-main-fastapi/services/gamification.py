@@ -1455,7 +1455,9 @@ def admin_upsert_item(db: Session, code: str, fields: Dict[str, Any]) -> Dict[st
     row.description = str(fields.get("description") or "")[:200]
     row.monthly_limit = max(0, _int(fields.get("monthly_limit"), 0))
     row.sort_order = _int(fields.get("sort_order"), 0)
-    if "is_active" in fields:
+    # router 传 body.model_dump() 时未带的 is_active 恒为 None：只接受显式布尔值，
+    # None 跳过——新增落到列默认（上架），编辑维持原状，避免 bool(None)=False 静默下架。
+    if fields.get("is_active") is not None:
         row.is_active = bool(fields["is_active"])
     row.updated_at = utcnow()
     db.commit()

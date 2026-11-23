@@ -541,6 +541,29 @@ def test_admin_rule_and_item_validation(db):
     assert "frame_custom" not in {i["code"] for i in gami.list_items(db, only_active=True)}
 
 
+def test_admin_upsert_item_is_active_none_not_offlined(db):
+    """回归：router 传 body.model_dump() 恒含 is_active=None，不得把商品静默下架。"""
+    gami.ensure_gamification_schema(db)
+    base = {"name": "补卡券", "kind": "makeup_card", "cost_coins": 50, "payload": {}}
+
+    # 新增未给 is_active（model_dump 里是 None）→ 应落到列默认（上架）
+    created = gami.admin_upsert_item(db, "reg_item", {**base, "is_active": None})
+    assert created["is_active"] is True
+
+    # 编辑不带 is_active（None）→ 维持原状，不误下架
+    edited = gami.admin_upsert_item(db, "reg_item", {**base, "cost_coins": 60, "is_active": None})
+    assert edited["is_active"] is True and edited["cost_coins"] == 60
+
+    # 显式下架后，再编辑仍不带 is_active → 保持下架
+    gami.admin_toggle_item(db, "reg_item", False)
+    kept = gami.admin_upsert_item(db, "reg_item", {**base, "name": "补卡券改名", "is_active": None})
+    assert kept["is_active"] is False
+
+    # 显式传布尔值仍生效
+    on = gami.admin_upsert_item(db, "reg_item", {**base, "is_active": True})
+    assert on["is_active"] is True
+
+
 def test_admin_overview_counts(db):
     gami.ensure_gamification_schema(db)
     today = local_today()
