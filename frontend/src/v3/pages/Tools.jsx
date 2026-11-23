@@ -2,17 +2,19 @@
  * 学习工具箱（移动优先）
  *  A. 站内进制计算器：任意进制 2–36 互转（BigInt）、8/16/32 位原/反/补码、位网格双向绑定、
  *     一键复制、URL hash 分享。纯前端本地计算，不联网、无假数据。
+ *  A2. 站内计算工具套件（深链 ?tool=graph|verify|latex|diagram 或点卡片就地打开）：
+ *     函数图像生成器（mathjs 绘图 + 零点/极值/交点数值标注）、公式验算器（符号求导/极限/
+ *     积分/泰勒/矩阵/解方程）、LaTeX 工作台（KaTeX + mhchem，SVG/PNG 导出）、
+ *     框图编辑器（Mermaid 本地渲染导出）。全部浏览器本地真实计算，mathjs/mermaid 按需分包加载。
  *  B. 外部专业工具目录（4 组，按工科备考动线）：外链一律新标签页 + rel="noopener noreferrer"。
  *  C. 站内工具入口卡：直达既有真实路由（App.jsx 已核对）；未建成的标「即将上线」禁用态。
  *  D. 使用边界诚实声明。
- *  W2 归并：页首新增「复试工具箱」分区 —— CodeBank（代码上机，原「练习」导航入口）
- *  与进制计算器、规划中的函数图像 / 电路简单绘制合成一个复试准备入口；
- *  未实现项保持禁用态「即将上线」。
+ *  W2 归并：页首「复试工具箱」分区 —— CodeBank（代码上机）+ 进制计算器 + 函数图像。
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  Alert, Badge, Button, Card, CardHead, Chip, IconButton, Input, PageHeader, Select,
+  Alert, Badge, Button, Card, CardHead, Chip, IconButton, Input, LoadingState, PageHeader, Select,
   toastErr, toastOk,
 } from '../ui'
 import {
@@ -20,6 +22,55 @@ import {
   LayoutGrid, RotateCcw, Share2, Type,
 } from '../icons'
 import '../styles/tools-v3.css'
+
+/* 计算工具套件：按需加载，mathjs / mermaid / katex 不进首屏包 */
+const FunctionPlot = lazy(() => import('./tools/FunctionPlot'))
+const FormulaVerify = lazy(() => import('./tools/FormulaVerify'))
+const LatexStudio = lazy(() => import('./tools/LatexStudio'))
+const DiagramStudio = lazy(() => import('./tools/DiagramStudio'))
+
+const SUITE_TOOLS = {
+  graph: {
+    label: '函数图像生成器', icon: Image, comp: FunctionPlot,
+    desc: '多曲线绘图 · 参数滑块 · 零点/极值/交点自动标注',
+    loading: '正在加载函数图像引擎（mathjs）…',
+  },
+  verify: {
+    label: '公式验算器', icon: Check, comp: FormulaVerify,
+    desc: '求导/极限/积分/泰勒/矩阵/解方程 · 步骤可折叠',
+    loading: '正在加载符号计算引擎（mathjs）…',
+  },
+  latex: {
+    label: 'LaTeX 工作台', icon: Type, comp: LatexStudio,
+    desc: 'KaTeX 实时预览 · 化学式 · SVG/PNG 导出',
+    loading: '正在加载 KaTeX…',
+  },
+  diagram: {
+    label: '框图编辑器', icon: LayoutGrid, comp: DiagramStudio,
+    desc: 'Mermaid 源码 + 实时预览 · 控制框图/时序/状态机',
+    loading: '正在加载 Mermaid（本地包，稍候）…',
+  },
+}
+
+/* URL hash 查询串合并写入（HashRouter + 进制计算器分享共用，互不覆盖参数） */
+function currentHashQuery() {
+  const raw = window.location.hash.slice(1)
+  const qi = raw.indexOf('?')
+  return new URLSearchParams(qi >= 0 ? raw.slice(qi + 1) : '')
+}
+
+function syncHashQuery(patch) {
+  const q = currentHashQuery()
+  Object.entries(patch).forEach(([k, v]) => {
+    if (v == null || v === '') q.delete(k)
+    else q.set(k, String(v))
+  })
+  const raw = window.location.hash.slice(1)
+  const path = (raw.split('?')[0] || '/tools').split('#')[0]
+  const s = q.toString()
+  const base = window.location.href.split('#')[0]
+  window.history.replaceState(null, '', `${base}#${path}${s ? `?${s}` : ''}`)
+}
 
 /* ------------------------------------------------------------------ */
 /* A · 进制计算纯函数（BigInt，支持超大整数与负数）                       */
@@ -214,18 +265,21 @@ function RadixCalculator() {
     setLastTouched('grid')
   }
 
-  /* URL hash 分享：replaceState 写查询串，不触发路由重渲染 */
+  /* URL hash 分享：replaceState 合并写查询串（保留 ?tool= 等其它参数），不触发路由重渲染 */
   useEffect(() => {
     const id = window.setTimeout(() => {
-      const q = `?v=${encodeURIComponent(toRadix(num, srcBase))}&s=${srcBase}&t=${dstBase}&w=${width}`
-      const base = window.location.href.split('#')[0]
-      window.history.replaceState(null, '', `${base}#/tools${q}`)
+      syncHashQuery({ v: toRadix(num, srcBase), s: srcBase, t: dstBase, w: width })
     }, 400)
     return () => window.clearTimeout(id)
   }, [num, srcBase, dstBase, width])
 
   const share = async () => {
-    const url = `${window.location.href.split('#')[0]}#/tools?v=${encodeURIComponent(toRadix(num, srcBase))}&s=${srcBase}&t=${dstBase}&w=${width}`
+    const q = currentHashQuery()
+    q.set('v', toRadix(num, srcBase))
+    q.set('s', String(srcBase))
+    q.set('t', String(dstBase))
+    q.set('w', String(width))
+    const url = `${window.location.href.split('#')[0]}#/tools?${q.toString()}`
     if (await copyText(url)) toastOk('分享链接已复制（含当前数值与进制）')
     else toastErr('复制失败，请手动复制地址栏链接')
   }
@@ -575,19 +629,16 @@ const INTERNAL_TOOLS = [
   { to: '/error-review', label: '错题复盘', desc: '错因分布 · AI 归因', icon: RotateCcw },
   { to: '/quiz', label: '刷题中心', desc: '题库与章节强化', icon: ArrowRight },
 ]
-const PLANNED_TOOLS = [
-  { label: '公式验算器', desc: '关键公式在线代入核对结果', icon: Check },
-  { label: 'LaTeX 工作台', desc: '公式排版与实时预览', icon: Type },
-  { label: '框图编辑器', desc: '控制系统框图/SFV 站内绘制', icon: LayoutGrid },
-]
+/* 站内计算工具：点击就地打开面板，并写入 ?tool= 深链（可分享、刷新保留） */
+const SUITE_ORDER = ['verify', 'latex', 'diagram']
 
 /* W2 归并：复试工具箱 —— CodeBank（代码上机）自「练习」导航移入，
-   与站内进制计算器、规划中的函数图像/电路绘制合成一个复试准备入口。
-   未实现的项保持「即将上线」禁用态，不做假功能。 */
+   与站内进制计算器、函数图像生成器合成一个复试准备入口。
+   电路简单绘制尚未实现，保持「即将上线」禁用态，不做假功能。 */
 const FUSHI_TOOLS = [
   { key: 'codebank', label: '代码上机题库', desc: 'LeetCode 式复试 OJ · 提交即判', to: '/codebank', icon: Hash, ready: true },
-  { key: 'radix', label: '进制计算器', desc: '任意进制互转 · 原/反/补码 —— 已内置在本页上方', href: '#tools-calc', icon: Type, ready: true },
-  { key: 'funcplot', label: '函数图像生成器', desc: '考研高数函数图像速绘与变换', icon: Image, ready: false },
+  { key: 'radix', label: '进制计算器', desc: '任意进制互转 · 原/反/补码 —— 已内置在本页', scrollTo: 'tools-calc', icon: Type, ready: true },
+  { key: 'funcplot', label: '函数图像生成器', desc: '多曲线绘图 · 参数滑块 · 零点/极值/交点标注 —— 站内已可用', tool: 'graph', icon: Image, ready: true },
   { key: 'circuit', label: '电路简单绘制', desc: '基础电路图与连线练习', icon: LayoutGrid, ready: false },
 ]
 
@@ -595,12 +646,36 @@ const FUSHI_TOOLS = [
 /* 页面                                                                */
 /* ------------------------------------------------------------------ */
 export default function Tools() {
+  const [searchParams] = useSearchParams()
+  const bootTool = searchParams.get('tool')
+  const [tool, setTool] = useState(() => (SUITE_TOOLS[bootTool] ? bootTool : ''))
+
+  const openTool = useCallback((key) => {
+    setTool(key)
+    syncHashQuery({ tool: key })
+  }, [])
+  const closeTool = useCallback(() => {
+    setTool('')
+    syncHashQuery({ tool: null })
+  }, [])
+
+  useEffect(() => {
+    if (!tool) return
+    const id = window.setTimeout(() => {
+      document.getElementById('tools-active')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+    return () => window.clearTimeout(id)
+  }, [tool])
+
+  const meta = SUITE_TOOLS[tool]
+  const ActiveComp = meta?.comp
+
   return (
     <div className="v3-stack v3-tools">
       <PageHeader
         eyebrow="TOOLS · 工具箱"
         title="学习工具箱 · 复试工具箱"
-        sub="复试工具箱（代码上机 / 进制 / 函数图像 / 电路）· 工科备考外部工具目录 · 常用站内功能直达"
+        sub="站内计算工具（进制 / 函数图像 / 公式验算 / LaTeX / 框图，全部本地计算）· 工科备考外部工具目录 · 常用站内功能直达"
         actions={(
           <Link className="v3-btn v3-btn--tonal" to="/library">
             去知识库 <ArrowRight size={15} />
@@ -608,13 +683,21 @@ export default function Tools() {
         )}
       />
 
+      {meta && ActiveComp ? (
+        <section className="v3-tools-section" id="tools-active" aria-label={`站内工具：${meta.label}`}>
+          <Suspense fallback={<Card><LoadingState text={meta.loading} /></Card>}>
+            <ActiveComp onClose={closeTool} />
+          </Suspense>
+        </section>
+      ) : null}
+
       <section className="v3-tools-section" aria-labelledby="tools-fushi">
         <div className="v3-tools-section__head" id="tools-fushi">
           <div>
             <h2>复试工具箱</h2>
             <p>
-              复试准备一站进入：代码上机题库与进制计算器已可用；函数图像、电路简单绘制还在规划中，
-              上线前保持「即将上线」禁用态，不提供假功能。
+              复试准备一站进入：代码上机题库、进制计算器、函数图像生成器均已可用；
+              电路简单绘制还在规划中，上线前保持「即将上线」禁用态，不提供假功能。
             </p>
           </div>
         </div>
@@ -636,6 +719,27 @@ export default function Tools() {
                   {inner}
                   <Badge tone="outline">即将上线</Badge>
                 </div>
+              )
+            }
+            if (t.tool) {
+              return (
+                <button key={t.key} type="button" className="v3-tool-open-btn" onClick={() => openTool(t.tool)}>
+                  {inner}
+                  <ArrowRight size={16} className="v3-tools-int__go" />
+                </button>
+              )
+            }
+            if (t.scrollTo) {
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  className="v3-tool-open-btn"
+                  onClick={() => document.getElementById(t.scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                >
+                  {inner}
+                  <ArrowRight size={16} className="v3-tools-int__go" />
+                </button>
               )
             }
             if (t.href) {
@@ -688,7 +792,7 @@ export default function Tools() {
         <div className="v3-tools-section__head" id="tools-internal">
           <div>
             <h2>站内工具直达</h2>
-            <p>平台内已有功能一键进入；规划中的工具完成后会出现在这里。</p>
+            <p>平台内已有功能一键进入；下方「站内计算工具」点击即在本页打开，地址栏 ?tool= 深链可分享。</p>
           </div>
         </div>
         <div className="v3-tools-int-grid">
@@ -705,17 +809,27 @@ export default function Tools() {
               </Link>
             )
           })}
-          {PLANNED_TOOLS.map((t) => {
+        </div>
+        <div className="v3-tools-section__head" style={{ marginTop: 6 }}>
+          <div>
+            <h2>站内计算工具</h2>
+            <p>函数图像 · 公式验算 · LaTeX 排版 · 框图绘制 —— 均在本页就地打开，浏览器本地真实计算，不联网、无预置结果。</p>
+          </div>
+        </div>
+        <div className="v3-tools-int-grid">
+          {SUITE_ORDER.map((key) => {
+            const t = SUITE_TOOLS[key]
             const Icon = t.icon
             return (
-              <div key={t.label} className="v3-tools-int v3-tools-int--soon" aria-disabled="true">
+              <button key={key} type="button" className="v3-tool-open-btn" onClick={() => openTool(key)}>
                 <span className="v3-tools-int__icon"><Icon size={18} /></span>
                 <span className="v3-tools-int__copy">
                   <strong>{t.label}</strong>
                   <em>{t.desc}</em>
                 </span>
-                <Badge tone="outline">即将上线</Badge>
-              </div>
+                <Badge tone="success">已内置</Badge>
+                <ArrowRight size={16} className="v3-tools-int__go" />
+              </button>
             )
           })}
         </div>
@@ -724,7 +838,9 @@ export default function Tools() {
       <Alert tone="info" icon={<Info size={16} />} className="v3-tools-boundary">
         <div className="v3-tools-boundary__inner">
           <strong>使用边界说明</strong>
-          {' '}站内进制计算器为浏览器本地真实计算，不联网、不含任何预置假数据；外部工具为第三方官网入口，功能、额度与可用性以官方为准，本页不构成任何效果承诺。「国内加速」仅为镜像 / 官方中国节点的直达链接，本站不代理、不缓存其内容；所有外链均在新标签页打开。
+          {' '}站内进制计算器与计算工具套件（函数图像 / 公式验算 / LaTeX 工作台 / 框图编辑器）均为浏览器本地真实计算，不联网、不含任何预置假数据；
+          数值方法（求根、极限、积分、特征值）会标注精度与适用区间，重根、瑕积分、区间外解等超出范围的情形会如实提示而不是编造结果。
+          外部工具为第三方官网入口，功能、额度与可用性以官方为准，本页不构成任何效果承诺。「国内加速」仅为镜像 / 官方中国节点的直达链接，本站不代理、不缓存其内容；所有外链均在新标签页打开。
         </div>
       </Alert>
     </div>
