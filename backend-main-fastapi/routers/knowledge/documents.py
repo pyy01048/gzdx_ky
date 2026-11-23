@@ -557,7 +557,13 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     # 透给前端 —— 静默写进库才是这一轮审计里最难发现的那种损坏。
     # 性能波（2026-11-23）：gate_for_write 内含 BGE 向量查重（同步 ONNX 推理，
     # 数百 ms 起），本端点有 await 必须保持 async，重活丢线程池（下方同款两处）。
-    verdict = await run_in_threadpool(gate_for_write, db, content_text, path=doc.file_path or "", doc_id=doc.id)
+    # 闸门必须写在目标函数体内、doc.content 赋值的同一道收口里就地生效
+    # （tests/test_ingest_gate.py 的 AST 守卫认「函数内有 gate_for_write(...) 直调」，
+    # 把函数名当参数丢给 run_in_threadpool 会被判成未接闸入口）。
+    def _run_ingest_gate():
+        return gate_for_write(db, content_text, path=doc.file_path or "", doc_id=doc.id)
+
+    verdict = await run_in_threadpool(_run_ingest_gate)
     if not verdict["ok"]:
         doc.index_status = "failed"
         db.commit()
@@ -979,9 +985,12 @@ async def parse_all_documents(db: Session = Depends(get_db)):
 
             from starlette.concurrency import run_in_threadpool as _ritp
 
-            verdict = await _ritp(
-                gate_for_write, db, content_text, path=doc.file_path or "", doc_id=doc.id
-            )  # 同 parse_document：BGE 向量查重是同步 ONNX，丢线程池
+            # 同 parse_document：闸门直调写在线程目标函数体内（AST 守卫口径），
+            # BGE 向量查重是同步 ONNX，仍丢线程池执行。
+            def _run_batch_gate(_text=content_text, _path=doc.file_path or "", _doc_id=doc.id):
+                return gate_for_write(db, _text, path=_path, doc_id=_doc_id)
+
+            verdict = await _ritp(_run_batch_gate)
             if not verdict["ok"]:
                 # 批量任务不能因一篇坏文件整体失败：跳过写入、标 failed、原因进结果
                 doc.index_status = "failed"

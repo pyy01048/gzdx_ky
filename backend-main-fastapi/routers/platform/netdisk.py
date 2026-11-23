@@ -673,7 +673,12 @@ async def _ingest_netdisk_file(db: Session, file: NetdiskFile) -> dict:
     # 质量闸门：网盘下载来的文件最常见的坏法是"扫描版 PDF 解析出空正文"，
     # 以前直接写成占位提示并标 indexed，检索命中它就等于假答案。
     # 拒绝时这篇 Document 只留 failed 状态，正文和分块都不写。
-    verdict = await run_in_threadpool(gate_for_write, db, content_text, path=save_path, doc_id=doc.id)
+    # 闸门直调写在 to_thread/run_in_threadpool 目标函数体内（tests/test_ingest_gate.py
+    # 的 AST 守卫要求写正文的函数里能直接看到 gate_for_write(...)），重活仍不占事件循环。
+    def _run_netdisk_gate():
+        return gate_for_write(db, content_text, path=save_path, doc_id=doc.id)
+
+    verdict = await run_in_threadpool(_run_netdisk_gate)
     if not verdict["ok"]:
         doc.index_status = "failed"
         doc.parse_progress = 1.0
