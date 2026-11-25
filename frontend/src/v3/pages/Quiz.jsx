@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { toast } from '../../components/UI'
 import { quizApi, fetchAllPages } from '../../api/client'
@@ -30,8 +30,6 @@ import '../styles/quiz-container.css'
  *   quizShared.js     纯函数与 localStorage 工具（原 Quiz.jsx 模块级定义原样拆出）
  * 纯函数/存储工具集中维护于 quizShared.js，此处转供以保持既有导入面不变。
  * ===================================================================== */
-export * from './quizShared'
-
 export default function Quiz() {
   const [searchParams] = useSearchParams()
   const routeParams = useParams()
@@ -304,8 +302,6 @@ export default function Quiz() {
         setMode={setMode}
         sourceKind={sourceKind}
         setSourceKind={setSourceKind}
-        backendOk={backendOk}
-        setBackendOk={setBackendOk}
         kpFilter={kpFilter}
         kpEmpty={kpEmpty}
         favs={favs}

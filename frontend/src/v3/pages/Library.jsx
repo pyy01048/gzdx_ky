@@ -16,16 +16,29 @@ import '../styles/library-v3.css'
 /* ==========================================================================
    学习文库（Aurora v3）
    数据源：GET /api/documents（documentsApi.list，参数原样透传）
-     - subject_source=ima  只看 IMA 导入的资料
-     - stage               初试 / 复试
-     - subject             科目
-     - content_type        知识 / 试题 / 单词
-   两个请求：清单请求（全部筛选条件）+ 计数请求（只带阶段，用于 chip 条数）。
+     - subject_source     资料来源：默认【不下发】= 全部来源；ima / manual 按需筛选
+     - stage              初试 / 复试
+     - subject            科目
+     - content_type       知识 / 试题 / 单词
+   P0（F-01）：线上全库首条 subject_source=null，固定下发 ima 会让 2666 条资料
+   全部隐形。来源改成用户可选维度，默认展示全部。
+   两个请求：清单请求（全部筛选条件）+ 计数请求（只带阶段+来源，用于 chip 条数）。
    ========================================================================== */
 
+/* QA-01 裁决：首屏展示全库（2666 条），默认阶段为空串 = 不下发 stage；
+   用户可主动切「初试 / 复试」。 */
 const STAGE_OPTIONS = [
+  { value: '', label: '全部阶段' },
   { value: '初试', label: '初试' },
   { value: '复试', label: '复试' },
+]
+
+/* 来源值域对齐后端 Document.subject_source（ima / manual / 其它或空）。
+   空串 = 不下发 subject_source，即全部来源。 */
+const SOURCE_OPTIONS = [
+  { value: '', label: '全部来源' },
+  { value: 'ima', label: 'IMA' },
+  { value: 'manual', label: '手动录入' },
 ]
 
 const CONTENT_TYPE_OPTIONS = [
@@ -77,9 +90,13 @@ function countBy(list, field) {
   return m
 }
 
-/** 组装请求参数：空值不下发 */
-function buildParams(stage, subject, contentType) {
-  const p = { subject_source: 'ima', stage }
+/** 组装请求参数：空值不下发。
+ *  P0（F-01）：subject_source 默认不下发 —— 后端 subject_source=null 的资料
+ *  占全库绝大多数；只有用户主动选了来源才透传该参数。 */
+export function buildParams(stage, subject, contentType, source = '') {
+  const p = {}
+  if (stage) p.stage = stage
+  if (source) p.subject_source = source
   if (subject) p.subject = subject
   if (contentType) p.content_type = contentType
   return p
@@ -104,9 +121,10 @@ export default function Library() {
   const [searchParams] = useSearchParams()
   const urlSubject = searchParams.get('subject') || ''
 
-  const [stage, setStage] = useState('初试')
+  const [stage, setStage] = useState('') // '' = 全部阶段（不下发 stage）
   const [subject, setSubject] = useState(urlSubject)
   const [contentType, setContentType] = useState('')
+  const [source, setSource] = useState('') // '' = 全部来源（不下发 subject_source）
 
   /* 全局学科选择器联动：URL ?subject= 变化时同步本地筛选 */
   useEffect(() => {
@@ -162,7 +180,7 @@ export default function Library() {
     const seq = ++listSeq.current
     setLoading(true)
     try {
-      const data = await documentsApi.list({ ...buildParams(stage, subject, contentType), page, page_size: pageSize })
+      const data = await documentsApi.list({ ...buildParams(stage, subject, contentType, source), page, page_size: pageSize })
       if (seq !== listSeq.current) return false
       const list = normalizeList(data)
       setItems(list)
@@ -180,7 +198,7 @@ export default function Library() {
     } finally {
       if (seq === listSeq.current) setLoading(false)
     }
-  }, [stage, subject, contentType, page, pageSize])
+  }, [stage, subject, contentType, source, page, pageSize])
 
   useEffect(() => { loadList() }, [loadList])
 
@@ -191,12 +209,14 @@ export default function Library() {
     else toastErr('刷新失败，请检查后端服务后重试')
   }
 
-  /* 计数请求（facet）：只在阶段变化时重拉。
+  /* 计数请求（facet）：只在阶段/来源变化时重拉。
      新后端：page_size=1 只取一行，计数全部来自 facets.groups（DB 侧 GROUP BY）；
-     旧形态（数组/mock）：回退到全量列表本地计数。 */
+     旧形态（数组/mock）：回退到全量列表本地计数。
+     P0（F-01）：来源维度必须与清单同源，否则统计卡数字与清单对不上；
+     科目/性质仍不入计数参数 —— chip 需要交叉计数（选了科目还能看其它科目的数）。 */
   useEffect(() => {
     let alive = true
-    documentsApi.list({ subject_source: 'ima', stage, page: 1, page_size: 1 })
+    documentsApi.list({ ...buildParams(stage, '', '', source), page: 1, page_size: 1 })
       .then((d) => {
         if (!alive) return
         if (Array.isArray(d?.facets?.groups)) {
@@ -209,7 +229,7 @@ export default function Library() {
       })
       .catch(() => { if (alive) { setFacetGroups(null); setFacet([]) } })
     return () => { alive = false }
-  }, [stage])
+  }, [stage, source])
 
   /* 本阶段总条数：facets 计数组求和；旧形态用 facet 列表长度 */
   const stageTotal = useMemo(
@@ -271,6 +291,7 @@ export default function Library() {
   const pickSubject = (v) => { closePreview(); setPage(1); setSubject(v) }
   const pickContentType = (v) => { closePreview(); setPage(1); setContentType(v) }
   const pickStage = (v) => { closePreview(); setPage(1); setStage(v) }
+  const pickSource = (v) => { closePreview(); setPage(1); setSource(v) }
   const gotoPage = (p) => {
     const next = Math.min(Math.max(1, p), pageCount)
     if (next === page) return
@@ -312,12 +333,14 @@ export default function Library() {
 
   const subjectLabel = subject || '全部科目'
   const ctLabel = contentType || '全部性质'
+  const sourceLabel = source ? (SOURCE_OPTIONS.find((o) => o.value === source)?.label || source) : '全部来源'
+  const stageLabel = stage || '全部阶段'
 
   const header = (
     <PageHeader
-      eyebrow="LIBRARY · IMA 知识库"
+      eyebrow="LIBRARY · 学习资料库"
       title="学习文库"
-      sub="初试 / 复试 · 科目 · 知识 / 试题 / 单词 三维检索 IMA 资料"
+      sub="来源 · 初试 / 复试 · 科目 · 知识 / 试题 / 单词 四维检索全库资料"
       actions={(
         <>
           <IconButton
@@ -354,7 +377,7 @@ export default function Library() {
           <CardHead
             icon={<Layers size={17} />}
             title="资料清单"
-            sub="正在读取 IMA 知识库…"
+            sub="正在读取学习资料库…"
           />
           <div className="lb3-skeleton-list">
             {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -408,7 +431,7 @@ export default function Library() {
           label="本阶段资料"
           value={stageTotal}
           unit="条"
-          hint={`${stage} · 含全部科目与性质`}
+          hint={`${stageLabel} · 含全部科目与性质`}
         />
         <StatTile
           icon={<FileText size={15} />}
@@ -429,7 +452,7 @@ export default function Library() {
           label="覆盖科目"
           value={subjectChips.length}
           unit="个"
-          hint="按本阶段 IMA 实际数据收窄"
+          hint="按本阶段实际数据收窄"
         />
       </div>
 
@@ -445,9 +468,20 @@ export default function Library() {
           <div className="lb3-filter-summary">
             <Badge tone={loading ? 'outline' : 'primary'}>{loading ? '同步中' : `共 ${total} 条`}</Badge>
             <span>
-              {stage} / {subjectLabel} / {ctLabel}
+              {sourceLabel} / {stageLabel} / {subjectLabel} / {ctLabel}
               {loading ? ' · 加载中…' : ''}
             </span>
+          </div>
+        </div>
+
+        <div className="lb3-filter-row">
+          <span className="lb3-filter-label"><Layers size={15} />来源</span>
+          <div className="lb3-chips">
+            {SOURCE_OPTIONS.map((o) => (
+              <Chip key={o.value || 'all'} active={source === o.value} onClick={() => pickSource(o.value)}>
+                {o.label}
+              </Chip>
+            ))}
           </div>
         </div>
 
@@ -468,7 +502,7 @@ export default function Library() {
               )
             })}
             {subjectChips.length === 0 ? (
-              <span className="lb3-filter-note">当前阶段暂无 IMA 资料</span>
+              <span className="lb3-filter-note">当前筛选没有可用资料</span>
             ) : null}
           </div>
         </div>
@@ -501,21 +535,29 @@ export default function Library() {
           sub={total === 0
             ? '当前筛选组合下没有资料'
             : `共 ${total} 条资料 · 第 ${page}/${pageCount} 页 · 点击文件名可展开正文预览`}
-          actions={<Badge tone="outline">IMA 来源</Badge>}
+          actions={<Badge tone="outline">{sourceLabel}</Badge>}
         />
 
         {items.length === 0 ? (
           <Empty
             icon={<Folder size={26} />}
-            title={`「${stage} · ${subjectLabel} · ${ctLabel}」下暂无资料`}
-            text={stageTotal === 0
-              ? (isAdmin
-                ? '当前阶段还没有 IMA 导入记录，可先在「文档知识库」导入资料。'
-                : '当前阶段还没有资料，导入由管理员在「文档知识库」统一维护。')
-              : '数据里确实没有符合该组合的资料 —— 换个科目或内容性质看看。'}
-            action={isAdmin
+            title={`「${sourceLabel} · ${stageLabel} · ${subjectLabel} · ${ctLabel}」下暂无资料`}
+            text={source === 'ima' && stageTotal === 0
+              /* P0（F-01）：主动筛 IMA 命中 0 时给出「回落」出口，不再把访客
+                 引向无权访问的『文档知识库』导入页（死路 CTA）。 */
+              ? 'IMA 来源下暂无资料，可切换到「全部来源」查看其它资料。'
+              : stageTotal === 0
+                ? (isAdmin
+                  ? '当前筛选下还没有资料，可先在「文档知识库」导入。'
+                  : '当前筛选暂无资料，可切换来源或阶段试试。')
+                : '数据里确实没有符合该组合的资料 —— 换个科目或内容性质看看。'}
+            action={source === 'ima' && stageTotal === 0 ? (
+              <Button variant="tonal" icon={<RefreshCw size={16} />} onClick={() => pickSource('')}>
+                查看全部来源
+              </Button>
+            ) : (isAdmin
               ? <Button variant="gradient" icon={<Upload size={16} />} onClick={() => navigate('/documents')}>去导入资料</Button>
-              : null}
+              : null)}
           />
         ) : (
           <div className="lb3-list" ref={listRef}>

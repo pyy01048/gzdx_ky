@@ -78,6 +78,11 @@
   font-weight: 650;
 }
 
+/* 12px 主色文字在浅底上对比度不足 4.5:1，这里压深一档保证 AA */
+.kyv3-countdown-head .v3-btn--text {
+  color: #0b57d0;
+}
+
 .kyv3-countdown-rail {
   display: flex;
   gap: 10px;
@@ -151,8 +156,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: var(--v3-touch);
+  height: var(--v3-touch);
   border: 0;
   border-radius: 50%;
   background: transparent;
@@ -366,6 +371,13 @@
   background-position: right 11px center;
 }
 
+@media (max-width: 760px), (hover: none) {
+  .kyv3-select-sm {
+    height: var(--v3-touch);
+    min-height: var(--v3-touch);
+  }
+}
+
 .kyv3-filter-more {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
@@ -498,7 +510,7 @@
 
 /* tilt 与原有 hover 上浮复合（ specificity 高于 .kyv3-school:hover ） */
 .kyv3-school.v3-tilt {
-  transform: perspective(900px) translate3d(0, var(--tilt-lift, 0px), 0) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transform: translate3d(0, var(--tilt-lift, 0px), 0);
 }
 
 .kyv3-school.v3-tilt:hover {
@@ -848,8 +860,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 32px;
+  min-width: var(--v3-touch);
+  height: var(--v3-touch);
   padding: 0 9px;
   border: 1px solid var(--v3-outline);
   border-radius: var(--v3-r-full);
@@ -1019,6 +1031,8 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 44px;
+  min-height: 44px;
   align-self: flex-start;
   font-size: var(--v3-fs-12);
   color: var(--v3-text-3);
@@ -1050,6 +1064,9 @@
   height: 100%;
   object-fit: cover;
   object-position: center 38%;
+  /* 封面只作氛围底纹：轻模糊 + 降饱和，避免图文/校训字压过正文可读性 */
+  filter: saturate(0.85) blur(1.5px);
+  opacity: 0.9;
 }
 
 .kyv3-hero-cover::after {
@@ -1058,9 +1075,9 @@
   inset: 0;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--v3-surface) 68%, transparent),
-    color-mix(in srgb, var(--v3-surface) 88%, transparent) 58%,
-    var(--v3-surface)
+    color-mix(in srgb, var(--v3-surface) 80%, transparent),
+    color-mix(in srgb, var(--v3-surface) 94%, transparent) 32%,
+    var(--v3-surface) 56%
   );
 }
 
@@ -1141,6 +1158,8 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  min-width: 44px;
+  min-height: 44px;
   font-weight: 550;
 }
 
@@ -1236,6 +1255,35 @@
   color: var(--v3-text-2);
 }
 
+/* 无简介时的结构化事实兜底：用已有真实字段代替「暂无」空占位 */
+.kyv3-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 18px;
+  margin-top: 4px;
+}
+.kyv3-fact {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--v3-radius-md, 12px);
+  background: var(--v3-surface-2, rgba(127, 127, 127, 0.06));
+}
+.kyv3-fact__k {
+  flex: none;
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-3);
+}
+.kyv3-fact__v {
+  min-width: 0;
+  font-size: var(--v3-fs-14);
+  font-weight: 600;
+  color: var(--v3-text);
+  overflow-wrap: anywhere;
+}
+
 /* V14: 院校特色 / 研究方向 / 就业去向（择校宝典 txkyer.cn） */
 .kyv3-school-feature,
 .kyv3-school-research,
@@ -1305,6 +1353,23 @@
   gap: 7px;
   margin-top: 14px;
 }
+
+/* 未收录项折叠：资料稀疏的院校不再铺满整屏灰色占位 */
+.kyv3-coverage-more {
+  margin-top: 10px;
+}
+.kyv3-coverage-more > summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: var(--v3-fs-12);
+  color: var(--v3-text-3);
+  padding: 2px 0;
+  list-style: none;
+}
+.kyv3-coverage-more > summary::-webkit-details-marker { display: none; }
+.kyv3-coverage-more > summary::before { content: '＋ '; }
+.kyv3-coverage-more[open] > summary::before { content: '－ '; }
+.kyv3-coverage-more > summary:hover { color: var(--v3-primary); }
 
 .kyv3-coverage-item {
   min-width: 0;

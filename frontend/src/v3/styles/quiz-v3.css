@@ -2318,10 +2318,10 @@
     width: 100%;
   }
   .v3-quiz-cell {
-    height: 40px;
+    height: var(--v3-touch);
   }
   .v3-quiz-grid {
-    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
     gap: 5px;
   }
   .v3-quiz-row {
@@ -2372,10 +2372,10 @@
     grid-template-columns: 1fr 1fr;
   }
   .v3-quiz-sheet-grid {
-    grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
   }
   .v3-quiz-sheet-cell {
-    height: 34px;
+    height: var(--v3-touch);
   }
 }
 

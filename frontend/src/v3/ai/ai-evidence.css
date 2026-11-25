@@ -1,0 +1,51 @@
+/* 共享 AI 证据卡（批次 C6）：引用卡 / 归因置信度 / 推荐逐卡依据共用 */
+.v3-ai-evidence {
+  border: 1px solid var(--v3-outline, #ddd);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--v3-surface-2, var(--v3-surface, #fff));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.v3-ai-evidence__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.v3-ai-evidence__head strong { font-weight: 650; }
+.v3-ai-evidence__index { font-family: var(--v3-font-mono, monospace); opacity: .65; }
+
+.v3-ai-evidence__snippet {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--v3-text-2, #555);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.v3-ai-evidence__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: var(--v3-text-3, #888);
+}
+
+.v3-ai-evidence__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.v3-ai-evidence__fields > div { display: flex; gap: 6px; min-width: 0; }
+.v3-ai-evidence__fields dt { color: var(--v3-text-3, #888); flex: none; }
+.v3-ai-evidence__fields dd { margin: 0; overflow-wrap: anywhere; }

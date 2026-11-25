@@ -7,15 +7,74 @@ import { fmtDateTime } from '../../utils/date'
 import MathText from '../../components/MathText'
 import {
   Alert, AnimatedNumber, Badge, Button, Card, CardHead, Chip, Empty, Field,
-  Menu, PageHeader, Pager, Select, Skeleton, Spinner, Tile, cx, toast,
+  Menu, PageHeader, Pager, Select, Skeleton, Spinner, Textarea, Tile, cx, toast,
 } from '../ui'
+import AiEvidenceCard, { ConfidenceBadge } from '../ai/AiEvidenceCard'
 import {
   Activity, AlertCircle, BarChart3, Brain, CalendarClock, Check, CheckCircle,
-  ChevronDown, ChevronRight, CircleHelp, Download, FileText, FilterX, Folder, Map,
+  ChevronDown, ChevronRight, CircleHelp, Download, ExternalLink, FileText, FilterX, Folder, Map,
   RefreshCw, SlidersHorizontal, Target, Wand,
 } from '../icons'
 import '../styles/review-pages.css'
 import '../styles/study-glass.css'
+
+/* C2：AI 归因评估记录按 uid 落盘（与归档同口径），未经用户确认不写入人工 reason */
+const AI_FEEDBACK_KEY = 'kaoyan-ai-attribution-feedback-v1'
+const AI_FEEDBACK_LABEL = { accurate: '准确', partial: '部分准确', wrong: '错误 + 一键改写' }
+const AI_FEEDBACK_ORDER = ['accurate', 'partial', 'wrong']
+
+/** 写入评估记录（base 键由 ukey 自动按 uid 后缀隔离，切号互不可见）。 */
+function persistAiFeedback(next) {
+  try { localStorage.setItem(ukey(AI_FEEDBACK_KEY), JSON.stringify(next)) } catch { /* 隐私模式 */ }
+}
+
+/**
+ * 人工 reason 的唯一写入口径：
+ * - 没有用户确认（feedback=null）→ 原样保留人工 reason，AI 文本只在独立区域展示；
+ * - 准确/部分准确 → 带确认前缀写入；
+ * - 错误 → 只有用户改写文本才写入，没改写则仍保留人工 reason。
+ */
+export function resolveAttributionReason({ aiText = '', feedback = null, rewriteText = '', humanReason = '' }) {
+  if (!feedback) return humanReason
+  if (feedback === 'wrong') {
+    const rewritten = String(rewriteText || '').trim()
+    return rewritten ? `人工改写：${rewritten}` : humanReason
+  }
+  const prefix = feedback === 'accurate' ? 'AI 归因（已确认准确）' : 'AI 归因（部分采纳）'
+  return aiText ? `${prefix}：${String(aiText).slice(0, 120)}` : humanReason
+}
+
+/** 标「错误」后 AI归因 tag 立即失效，不再对人工结论背书。 */
+export function shouldKeepAiTag(feedback) {
+  return feedback === 'accurate' || feedback === 'partial'
+}
+
+export function visibleErrorTags(tags, feedback) {
+  const list = parseTags(tags)
+  /* 只有明确标「错误」才让 tag 失效；未评价时保持原样，不擅自改动人工记录 */
+  return feedback === 'wrong' ? list.filter((t) => t !== 'AI归因') : list
+}
+
+/** 三态反馈条：按钮数恒为 3，选中态用 aria-pressed 暴露给辅助技术。 */
+export function AiFeedbackBar({ value = null, onChange = () => {} }) {
+  return (
+    <div className="v3-er-ai-feedback" role="group" aria-label="AI 归因反馈">
+      <span className="v3-caption">这条归因对吗？</span>
+      {AI_FEEDBACK_ORDER.map((key) => (
+        <Button
+          key={key}
+          type="button"
+          variant={value === key ? 'filled' : 'outline'}
+          size="sm"
+          aria-pressed={value === key}
+          onClick={() => onChange(key)}
+        >
+          {AI_FEEDBACK_LABEL[key]}
+        </Button>
+      ))}
+    </div>
+  )
+}
 
 const DEFAULT_PAGE_SIZE = 20
 const MASTERY_STATES = ['unlearned', 'weak', 'mastered']
@@ -132,7 +191,12 @@ export default function ErrorReview() {
   const [linking, setLinking] = useState(false)
   const [ai, setAi] = useState({
     state: 'idle', text: '', err: '', category: '', knowledgePoint: '', suggestion: '', practice: [],
+    confidence: null, engine: '', model: '',
   })
+  const [aiFeedback, setAiFeedback] = useState(() => {
+    try { return readMigrated(AI_FEEDBACK_KEY, {}) || {} } catch { return {} }
+  })
+  const [rewriteText, setRewriteText] = useState('')
 
   const [showFieldPicker, setShowFieldPicker] = useState(false)
   const [visibleFields, setVisibleFields] = useState(() => {
@@ -312,6 +376,7 @@ export default function ErrorReview() {
     setSelectedId(err.id)
     setAi({
       state: 'idle', text: '', err: '', category: '', knowledgePoint: '', suggestion: '', practice: [],
+      confidence: null, engine: '', model: '',
     })
     setLinkKp('')
     loadKps(err.id)
@@ -348,6 +413,14 @@ export default function ErrorReview() {
 
   const runAiAnalyze = async () => {
     if (selectedId == null) return
+    /* 重新分析后旧反馈作废，避免上一轮结论沿用为新结论 */
+    setAiFeedback((prev) => {
+      const next = { ...prev }
+      delete next[selectedId]
+      persistAiFeedback(next)
+      return next
+    })
+    setRewriteText('')
     setAi((prev) => ({ ...prev, state: 'loading', text: '', err: '' }))
     try {
       const d = await errorsApi.aiAnalyze(selectedId)
@@ -362,6 +435,9 @@ export default function ErrorReview() {
         category: meta.category || '',
         knowledgePoint: meta.knowledge_point || '',
         suggestion: meta.suggestion || '',
+        confidence: meta.confidence ?? null,
+        engine: meta.engine || '',
+        model: meta.model || '',
         practice: Array.isArray(meta.practice_questions) ? meta.practice_questions : [],
       })
       loadList()
@@ -374,8 +450,28 @@ export default function ErrorReview() {
         knowledgePoint: '',
         suggestion: '',
         practice: [],
+        confidence: null,
+        engine: '',
+        model: '',
       })
     }
+  }
+
+  const submitAiFeedback = (kind) => {
+    if (selectedId == null || !AI_FEEDBACK_ORDER.includes(kind)) return
+    const next = {
+      ...aiFeedback,
+      [selectedId]: {
+        kind,
+        at: Date.now(),
+        confidence: ai.confidence,
+        text: ai.text,
+      },
+    }
+    setAiFeedback(next)
+    persistAiFeedback(next)
+    if (kind === 'wrong') setRewriteText(ai.text || '')
+    toast(`已记录反馈：${AI_FEEDBACK_LABEL[kind]}`)
   }
 
   const doLink = async () => {
@@ -406,15 +502,27 @@ export default function ErrorReview() {
 
   const saveAttributionToNotebook = () => {
     if (!selected) return
+    const feedback = aiFeedback[selectedId]?.kind || null
+    /* 未经用户确认的 AI 归因不写入人工 reason，只留在独立展示区 */
+    if (!feedback) {
+      toast('请先评价这条归因（准确 / 部分准确 / 错误），确认前不会写入人工错因')
+      return
+    }
+    const keepAiTag = shouldKeepAiTag(feedback)
     addNote({
       question: selected.content || '',
       answer: selected.correct_answer || '',
       analysis: ai.text || selected.analysis || '',
-      reason: ai.text ? `AI 归因：${ai.text.slice(0, 120)}` : (selected.error_reason || ''),
+      reason: resolveAttributionReason({
+        aiText: ai.text,
+        feedback,
+        rewriteText,
+        humanReason: selected.error_reason || '',
+      }),
       subject: selected.subject || '',
-      tags: ['AI归因'],
+      tags: keepAiTag ? ['AI归因'] : ['人工复核'],
     })
-    toast('已记入错题本')
+    toast(keepAiTag ? '已记入错题本' : '人工改写已记入错题本，AI归因标记已失效')
   }
 
   const toggleField = (key) => {
@@ -749,16 +857,21 @@ export default function ErrorReview() {
               title="错题详情"
               sub={selected ? `记录 #${selected.id}` : '请从左侧选择一条错题'}
               actions={selected ? (
-                <Button
-                  variant="tonal"
-                  size="sm"
-                  icon={<Wand size={15} />}
-                  loading={ai.state === 'loading'}
-                  disabled={ai.state === 'loading'}
-                  onClick={runAiAnalyze}
-                >
-                  {ai.state === 'loading' ? '分析中…' : 'AI 归因分析'}
-                </Button>
+                <div className="v3-row">
+                  <Link className="v3-btn v3-btn--text v3-btn--sm" to={`/error-review/${selected.id}`}>
+                    打开单题工作台 <ExternalLink size={14} />
+                  </Link>
+                  <Button
+                    variant="tonal"
+                    size="sm"
+                    icon={<Wand size={15} />}
+                    loading={ai.state === 'loading'}
+                    disabled={ai.state === 'loading'}
+                    onClick={runAiAnalyze}
+                  >
+                    {ai.state === 'loading' ? '分析中…' : 'AI 归因分析'}
+                  </Button>
+                </div>
               ) : null}
             />
             <div className="v3-er-detail-body">
@@ -814,11 +927,16 @@ export default function ErrorReview() {
                     </div>
                   )}
 
-                  {parseTags(selected.tags).length > 0 && (
+                  {visibleErrorTags(selected.tags, aiFeedback[selectedId]?.kind).length > 0 && (
                     <div className="v3-rp-tags">
-                      {parseTags(selected.tags).map((t) => <span className="v3-rp-tag" key={t}>{t}</span>)}
+                      {visibleErrorTags(selected.tags, aiFeedback[selectedId]?.kind)
+                        .map((t) => <span className="v3-rp-tag" key={t}>{t}</span>)}
                     </div>
                   )}
+                  {aiFeedback[selectedId]?.kind === 'wrong'
+                    && parseTags(selected.tags).includes('AI归因') && (
+                      <div className="v3-er-ai-invalid">AI 归因已被标记为错误，不再作为本题结论依据</div>
+                    )}
 
                   {visibleFields.has('analysis') && selected.analysis && ai.state !== 'ok' && (
                     <div className="v3-er-ai">
@@ -856,12 +974,42 @@ export default function ErrorReview() {
                         <span>AI 归因分析</span>
                         {ai.category && <Badge tone="warning">错因 {ai.category}</Badge>}
                         {ai.knowledgePoint && <Badge tone="primary">考点 {ai.knowledgePoint}</Badge>}
+                        <ConfidenceBadge confidence={ai.confidence} />
                       </div>
                       <MathText className="v3-rp-prose" text={ai.text} />
                       {ai.suggestion && (
                         <div className="v3-er-ai__suggestion">
                           <div className="v3-caption">纠正建议</div>
                           <MathText className="v3-rp-prose" text={ai.suggestion} />
+                        </div>
+                      )}
+                      {/* C6：共享证据卡统一呈现置信度 / 引擎 / 模型，缺字段显式不提供 */}
+                      <AiEvidenceCard
+                        title="AI 归因证据"
+                        confidence={ai.confidence}
+                        engine={ai.engine || '在线模型'}
+                        model={ai.model || '不提供'}
+                        fields={[
+                          ['错因分类', ai.category || '暂无记录'],
+                          ['知识点', ai.knowledgePoint || '暂无记录'],
+                          ['置信度', ai.confidence || '不提供'],
+                        ]}
+                      />
+                      {/* C2：三态反馈；确认前 AI 文本只停留在独立展示区，不覆盖人工 reason */}
+                      <AiFeedbackBar
+                        value={aiFeedback[selectedId]?.kind || null}
+                        onChange={submitAiFeedback}
+                      />
+                      {aiFeedback[selectedId]?.kind === 'wrong' && (
+                        <div className="v3-er-ai-rewrite">
+                          <div className="v3-caption">一键改写：确认后以你的文字作为人工错因写入，AI归因 tag 失效</div>
+                          <Textarea
+                            rows={3}
+                            aria-label="改写后的错因"
+                            value={rewriteText}
+                            placeholder="请改写这条归因…"
+                            onChange={(e) => setRewriteText(e.target.value)}
+                          />
                         </div>
                       )}
                       {ai.practice.length > 0 && (
@@ -888,7 +1036,7 @@ export default function ErrorReview() {
                         </div>
                       )}
                       <Button variant="outline" size="sm" onClick={saveAttributionToNotebook}>
-                        记入错题本
+                        {aiFeedback[selectedId]?.kind ? '确认记入错题本' : '记入错题本（先评价归因）'}
                       </Button>
                     </div>
                   )}

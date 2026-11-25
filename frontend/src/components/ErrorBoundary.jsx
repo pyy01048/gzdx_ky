@@ -41,6 +41,8 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('[ErrorBoundary] 组件渲染错误:', error, errorInfo)
+    /* P1（F-20）：组件栈单独上报一次，便于定位是哪个页面子树崩溃 */
+    console.warn('[ErrorBoundary] componentStack:', String(errorInfo?.componentStack || ''))
     this.setState({ errorInfo })
   }
 
@@ -121,7 +123,7 @@ class ErrorBoundary extends React.Component {
             </p>
             {this.state.retries >= 2 && (
               <p className="error-boundary-desc">
-                已重试 {this.state.retries} 次仍未恢复，建议返回首页或刷新页面；若反复出现，请复制错误信息反馈。
+                已重试 {this.state.retries} 次仍未恢复，建议返回首页或刷新页面；若反复出现请转人工（复制错误信息反馈）。
               </p>
             )}
             {this.state.error && (

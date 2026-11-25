@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useStore from '../../store/useStore'
 import { GRADE } from '../../utils/spaced'
-import { todayStr } from '../../utils/date'
+import { todayStr, fmtDateCN } from '../../utils/date'
 import { CORE_WORDS } from '../../utils/words'
 import { wordsApi } from '../../api/client'
 import { migrateKey, ukey } from '../../utils/userKeys'
@@ -31,6 +31,7 @@ import {
   toastWarn,
 } from '../ui'
 import {
+  AlertTriangle,
   ArrowRight,
   Book,
   BookOpen,
@@ -145,22 +146,49 @@ function maskWordInExample(example, word) {
   }
 }
 
-/* 分页拉全量：GET /api/words 返回 {items,total,page,page_size,total_pages}。 */
+/* 单页并发上限：贴近 HTTP/1.1 每源 6 连接，超过只会排队，不会更快。 */
+const FETCH_CONCURRENCY = 6
+
+/* 分页拉全量：GET /api/words 返回 {items,total,page,page_size,total_pages}。
+   先取第 1 页拿到 total_pages，其余页并发拉取（按页号回填，顺序与后端 order_by(id) 一致）。
+   词库越大收益越明显：5952 词从 30 次串行往返压成约 5 波并发。
+   include_extra=false：extra（近义词/短语）占列表载荷约八成，而它只在「行展开 / 当前学习词」
+   时展示，改为按需调 GET /api/words/{id} 补齐，批量拉取不再为它付费。 */
 async function fetchAllWords() {
-  const all = []
-  let page = 1
-  let totalPages = 1
-  do {
-    const resp = await wordsApi.list({ page, page_size: PAGE_SIZE })
-    const items = Array.isArray(resp?.items) ? resp.items : []
-    if (items.length === 0 && (resp?.total || 0) > 0) {
-      throw new Error(`单词列表接口未返回 items（total=${resp.total}）`)
+  const fetchPage = (page) => wordsApi.list({ page, page_size: PAGE_SIZE, include_extra: false })
+  const first = await fetchPage(1)
+  const firstItems = Array.isArray(first?.items) ? first.items : []
+  if (firstItems.length === 0 && (first?.total || 0) > 0) {
+    throw new Error(`单词列表接口未返回 items（total=${first.total}）`)
+  }
+  const totalPages = Math.max(
+    1,
+    first?.total_pages || Math.ceil((first?.total || firstItems.length) / PAGE_SIZE) || 1,
+  )
+  const pageItems = new Array(totalPages).fill(null)
+  pageItems[0] = firstItems
+  const remaining = []
+  for (let p = 2; p <= totalPages; p += 1) remaining.push(p)
+
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < remaining.length) {
+      const idx = cursor
+      cursor += 1
+      const page = remaining[idx]
+      try {
+        const resp = await fetchPage(page)
+        pageItems[page - 1] = Array.isArray(resp?.items) ? resp.items : []
+      } catch {
+        /* 单页失败留空，避免一页抖动拖垮整页；总数仍以第 1 页 total 为准。 */
+        pageItems[page - 1] = []
+      }
     }
-    all.push(...items)
-    totalPages = resp?.total_pages || Math.ceil((resp?.total || all.length) / PAGE_SIZE) || 1
-    page += 1
-  } while (page <= totalPages && all.length > 0)
-  return all.map(formatWord)
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(FETCH_CONCURRENCY, remaining.length) }, worker),
+  )
+  return pageItems.flatMap((items) => items || []).map(formatWord)
 }
 
 function MasteryRing({ level = 0, size = 34 }) {
@@ -333,6 +361,34 @@ export default function Words() {
   const current = remainingQueue[curIdx] || null
   /* 沉浸模式只在答题视图有当前词时生效 */
   const immersiveOn = immersive && view === 'learn' && !!current
+
+  /* 批量拉取不带 extra（约占载荷八成）；行展开或成为当前学习词时按需补齐一次。
+     detailTried 防重复：无 extra 的词拉一次后不再重试，避免无限请求。 */
+  const detailTried = useRef(new Set())
+  const hydrateDetail = useCallback(
+    async (id) => {
+      if (!id || detailTried.current.has(id)) return
+      detailTried.current.add(id)
+      try {
+        const detail = await wordsApi.get(id)
+        if (!detail || detail.id == null) return
+        setWords((ws) => ws.map((w) => (w.id === detail.id ? formatWord(detail) : w)))
+      } catch {
+        /* 详情是增强信息，失败不打断学习流程 */
+      }
+    },
+    [setWords],
+  )
+
+  useEffect(() => {
+    if (expandedId == null) return
+    const w = words.find((x) => x.id === expandedId)
+    if (w && !w.extra) hydrateDetail(expandedId)
+  }, [expandedId, words, hydrateDetail])
+
+  useEffect(() => {
+    if (current?.id != null && !current.extra) hydrateDetail(current.id)
+  }, [current?.id, current?.extra, hydrateDetail])
 
   const nextDue = useMemo(() => {
     const future = words.filter((w) => w.status !== 'mastered' && w.due && w.due > today)
@@ -800,11 +856,7 @@ export default function Words() {
         <PageHeader
           eyebrow="WORDS · FSRS 间隔重复"
           title="单词记忆"
-          sub={
-            planSource
-              ? `今日计划 ${todayPlanTotal} 词（新词 ${planNew ?? 0} · 复习 ${planReview ?? 0}）· 词库库存 ${totalWords} 词是总量不是今日 · 已掌握 ${masteredCount} 词${reviewDebt > 0 ? ` · 复习债 ${reviewDebt} 词排期中` : ''}`
-              : `词库库存 ${totalWords} 词 · 本机到期队列 ${queue.length} 词（后端未下发今日计划，暂按到期口径）· 已掌握 ${masteredCount} 词`
-          }
+          sub="按真实复习排期安排新词与复习，四档评分决定下一次出现的时间。"
           actions={
             <>
               <IconButton
@@ -868,18 +920,12 @@ export default function Words() {
           </Tile>
         </div>
       ) : loadError && !words.length ? (
-        <Tile span={12}>
-          <Empty
-            icon={<BookOpen size={26} />}
-            title="单词数据加载失败"
-            text={`后端接口请求失败：${loadError}`}
-            action={
-              <Button variant="tonal" onClick={loadData}>
-                重新加载
-              </Button>
-            }
-          />
-        </Tile>
+        <Alert tone="danger" icon={<BookOpen size={24} />} className="v3-study-alert" role="alert">
+          <div className="v3-study-alert__inner">
+            <div><strong>单词数据加载失败</strong><p>后端接口请求失败：{loadError}</p></div>
+            <Button variant="tonal" onClick={loadData}>重新加载</Button>
+          </div>
+        </Alert>
       ) : (
         <>
           {loadError ? (
@@ -919,7 +965,7 @@ export default function Words() {
             <div className="v3-bento">
               <Tile span={3} className="v3-study-stat">
                 <span className="v3-tile__label">
-                  <Book size={15} /> 生词本
+                  <Book size={15} /> 词库库存
                 </span>
                 <span className="v3-tile__value">
                   {stats ? <AnimatedNumber value={stats.total} /> : '—'}
@@ -989,8 +1035,8 @@ export default function Words() {
                         ? '导入自己的单词表或内置核心词表，系统会按遗忘曲线自动排期。'
                         : queue.length === 0
                           ? planSource
-                            ? `今日 ${todayPlanTotal} 词已排空。词库还有 ${Math.max(0, totalWords - masteredCount)} 词在路上，${nextDue ? `下一批复习在 ${nextDue}。` : '全部单词都已掌握。'}`
-                            : `没有今天到期的复习项（词库总量 ${totalWords} 词是库存，不是今天的任务）。${nextDue ? `最早下次复习在 ${nextDue}。` : '全部单词都已掌握。'}`
+                            ? `今日 ${todayPlanTotal} 词已排空。词库还有 ${Math.max(0, totalWords - masteredCount)} 词在路上，${nextDue ? `下一批复习在 ${fmtDateCN(nextDue)}。` : '全部单词都已掌握。'}`
+                            : `没有今天到期的复习项（词库总量 ${totalWords} 词是库存，不是今天的任务）。${nextDue ? `最早下次复习在 ${fmtDateCN(nextDue)}。` : '全部单词都已掌握。'}`
                           : `${planSource ? `今日计划 ${todayPlanTotal} 词` : `今日到期队列 ${queue.length} 词（后端未下发计划）`}：到期复习 ${reviewDue} 词 + ${planSource ? '计划' : '配额内'}新词 ${newDue} 词${reviewDebt > 0 ? `；另有复习债 ${reviewDebt} 词按每日计划分批消化` : ''}；评分后自动排入下一次复习。`}
                     </p>
                     <div className="v3-study-hero__meta">
@@ -1164,7 +1210,7 @@ export default function Words() {
                     text={
                       activeQueue.length > 0
                         ? `本轮已评 ${sessionTotal} 词；这些词本轮不再重复出现，可稍后再学或查看词库列表。`
-                        : `今日没有排入的复习（词库库存 ${totalWords} 词是总量，不是今日任务）。${nextDue ? `最早的下次复习在 ${nextDue}，想提前过一遍可以用自由学习。` : '全部单词都已掌握。'}`
+                        : `今日没有排入的复习（词库库存 ${totalWords} 词是总量，不是今日任务）。${nextDue ? `最早的下次复习在 ${fmtDateCN(nextDue)}，想提前过一遍可以用自由学习。` : '全部单词都已掌握。'}`
                     }
                     action={
                       freeQueue.length > 0 ? (
@@ -1860,7 +1906,7 @@ export default function Words() {
                               </div>
                               <div>
                                 <span>下次复习</span>
-                                <b>{w.due || '—'}</b>
+                                <b>{w.due ? fmtDateCN(w.due) : '—'}</b>
                               </div>
                               <div>
                                 <span>状态</span>
@@ -1868,7 +1914,7 @@ export default function Words() {
                               </div>
                               <div>
                                 <span>上次复习</span>
-                                <b>{w.lastReview ? String(w.lastReview).slice(0, 10) : '—'}</b>
+                                <b>{w.lastReview ? fmtDateCN(String(w.lastReview).slice(0, 10)) : '—'}</b>
                               </div>
                               {w.root ? (
                                 <div className="is-wide">

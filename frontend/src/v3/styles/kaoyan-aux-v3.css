@@ -1146,10 +1146,47 @@
   color: var(--v3-text-3);
 }
 
+.v3-ky-rec__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .v3-ky-rec__foot .v3-btn {
   height: 32px;
   padding: 0 11px;
   font-size: 10.5px;
+}
+
+/* C4：逐卡依据抽屉 */
+.v3-ky-rec__evidence {
+  border: 1px solid color-mix(in srgb, var(--v3-outline) 70%, transparent);
+  border-radius: var(--v3-r-sm);
+  padding: 7px 9px;
+  background: var(--v3-surface-1);
+}
+
+.v3-ky-rec__evidence > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  min-height: 26px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--v3-text-2);
+  list-style: none;
+}
+
+.v3-ky-rec__evidence > summary::-webkit-details-marker { display: none; }
+.v3-ky-rec__evidence > summary:hover { color: var(--v3-primary); }
+
+.v3-ky-rec__evidence-note {
+  margin: 8px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--v3-text-3);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -546,6 +546,25 @@ button.v3-kb-chapter:hover:not(:disabled) {
   cursor: not-allowed;
 }
 
+.v3-kb-chapter.is-loading .v3-kb-chapter__count,
+.v3-kb-chapter.is-error .v3-kb-chapter__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.v3-kb-chapter.is-loading .v3-kb-chapter__chev {
+  opacity: 0.45;
+}
+
+.v3-kb-chapter.is-error {
+  color: var(--v3-danger);
+}
+
+.v3-kb-chapter.is-error .v3-kb-chapter__count {
+  font-weight: 700;
+}
+
 .v3-kb-chapter__main {
   display: flex;
   align-items: center;
@@ -2689,6 +2708,18 @@ a.v3-ka-source__doc:hover {
 .v3-ka-move__item:focus-visible {
   outline: 2px solid var(--v3-outline-focus);
   outline-offset: 2px;
+}
+
+@media (max-width: 760px), (hover: none) {
+  .v3-kb-subjects .v3-chip {
+    min-height: var(--v3-touch);
+  }
+
+  .v3-ka-crumb__link,
+  .v3-ka-toc__item {
+    min-width: var(--v3-touch);
+    min-height: var(--v3-touch);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { documentsApi, getBackendState, subscribeBackendState } from '../../api/client'
+import { documentsApi } from '../../api/client'
+import { useBackendHealth } from '../../hooks/useBackendHealth'
 import { fmtDateCN } from '../../utils/date'
 import { fmtBytes } from '../../utils/format'
 import {
@@ -303,14 +304,9 @@ export default function Documents() {
   const [confirm, confirmDialog] = useConfirm()
 
   const [backendOk, setBackendOk] = useState(false)
-  const [backend, setBackend] = useState(() => {
-    try {
-      const s = getBackendState()
-      if (s && s.state) return s
-    } catch { /* 读不到状态按未知处理 */ }
-    return { state: 'unknown', failures: [], checkedAt: 0 }
-  })
-  const [apiIssues, setApiIssues] = useState(() => docIssuesOf(backend.failures))
+  /* C5：健康三态统一由 useBackendHealth 消费，本页不再自行订阅 client 状态 */
+  const backend = useBackendHealth()
+  const apiIssues = useMemo(() => docIssuesOf(backend.failures), [backend.failures])
 
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -392,22 +388,6 @@ export default function Documents() {
 
   useEffect(() => { refresh() }, [refresh])
   useEffect(() => { refreshSubjects() }, [refreshSubjects])
-
-  /* 订阅后端三态：失败登记会触发复判，这里只取回快照 */
-  useEffect(() => {
-    let alive = true
-    const onStatus = (s) => {
-      if (!alive || !s || !s.state) return
-      setBackend(s)
-      setApiIssues(docIssuesOf(s.failures))
-    }
-    let unsub = () => {}
-    try {
-      const ret = subscribeBackendState(onStatus)
-      if (typeof ret === 'function') unsub = ret
-    } catch { /* 忽略订阅异常 */ }
-    return () => { alive = false; unsub() }
-  }, [])
 
   const filtered = useMemo(() => {
     let arr = docs

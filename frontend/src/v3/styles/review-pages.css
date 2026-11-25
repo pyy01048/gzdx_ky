@@ -1863,6 +1863,31 @@
   border-left: 2px solid var(--v3-primary);
 }
 
+/* C2：三态反馈 / 人工改写 / AI 归因失效提示 */
+.v3-er-ai-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--v3-s-2);
+  padding-top: var(--v3-s-2);
+  border-top: 1px dashed var(--v3-outline);
+}
+
+.v3-er-ai-rewrite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v3-s-2);
+}
+
+.v3-er-ai-rewrite textarea {
+  width: 100%;
+}
+
+.v3-er-ai-invalid {
+  color: var(--v3-danger, #b91c1c);
+  font-size: var(--v3-fs-12);
+}
+
 /* Knowledge-point links */
 .v3-er-kps .v3-card__head {
   margin-bottom: var(--v3-s-3);

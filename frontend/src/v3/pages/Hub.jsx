@@ -18,7 +18,7 @@
  *  - 调试口径（接口路径 / 耗时 / 字段名）只出现在管理端 /admin/caliber，本页不暴露；
  *  - 无障碍：H1 唯一、面板 H2、卡片内 span[role=heading]、实心焦点环、reduced-motion 降级。
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { fetchHubOverview, peekHubCache } from '../../api/hub'
@@ -301,7 +301,7 @@ export default function Hub() {
     } catch (e) {
       if (!aliveRef.current) return false
       setError(e)
-      setStatus(dataRef.current ? 'ok' : 'error')
+      setStatus(dataRef.current ? 'stale' : 'error')
       if (!silent) toastErr('同步失败 · 点击刷新重试')
       return false
     } finally {
@@ -597,11 +597,16 @@ export default function Hub() {
             <span>{data.goalLine || '还没有设置目标院校'}</span>
             <span className={cx('hub-live', status === 'stale' && 'is-stale')} aria-label="数据同步状态">
               <i aria-hidden="true" />
-              {refreshing ? '同步中' : agoLabel(syncedAt)}
+              {refreshing ? '同步中' : status === 'stale' ? '同步失败 · 显示缓存' : agoLabel(syncedAt)}
             </span>
           </p>
 
-          <h1 className="hub-hero__title">{greeting()}，{providerName}</h1>
+          {/* P1（F-06）：H1 固定为页面身份「今日中枢」；问候语降级为副信息，
+              不再让用户名/时段改变页面标题（QA-08 身份串页根因）。 */}
+          <p className="hub-hero__greet" style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--v3-text-3)' }}>
+            {greeting()}，{providerName}
+          </p>
+          <h1 className="hub-hero__title">今日中枢</h1>
 
           {/* 全页唯一 36px 主数字：今天该做 N 项（今日推荐量口径） */}
           <div className="hub-mainfig">
@@ -623,7 +628,6 @@ export default function Hub() {
                 '今日到期口径（后端未提供推荐量）'
               )}
               {nowAvailable == null ? '' : ` · ${fmt(nowAvailable)} 项现在可做`}
-              {remainingCount > 0 ? ` · 航线还剩 ${fmt(remainingCount)} 件` : ' · 航线欠账已清'}
             </span>
             {plan ? (
               <details className="hub-mainfig__trace">
@@ -775,7 +779,7 @@ export default function Hub() {
                 key={step.id}
                 type="button"
                 {...stepFx}
-                className={cx('hub-step', 'v3-spotlight', `hub-toned--${step.tone}`, step.done && 'is-done', active && 'is-active')}
+                className={cx('hub-step', 'v3-spotlight', `hub-toned--${step.tone}`, step.done && 'is-done', active && 'is-active', step.empty && !step.done && !active && 'is-empty')}
                 data-state={state}
                 onClick={() => navigate(step.to)}
                 style={{ '--i': i }}

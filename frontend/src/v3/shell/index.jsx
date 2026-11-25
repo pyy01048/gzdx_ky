@@ -7,18 +7,19 @@ import { chatCompletion, defaultProvider, hasAiConfigured } from '../../utils/ap
 import { authApi, taxonomyApi } from '../../api/client'
 import { ukey, migrateKey } from '../../utils/userKeys'
 import {
-  MODULES, NAV_OTHER, NAV_ADMIN, MOBILE_TABS, crumbName, visibleModules, visibleModulesFor,
-  visibleOther,
+  MODULES, NAV_OTHER, NAV_ADMIN, MOBILE_TABS, GUEST_TAB_LANDING, crumbName, routeMeta,
+  visibleModules, visibleModulesFor, visibleOther,
 } from '../../nav/navConfig'
 import { useUiLayout } from '../../hooks/useUiLayout'
+import { useSyncStatus } from '../../hooks/useSyncStatus'
 import {
   Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarClock, ChevronRight, Clock,
   Cloud, Command, Cpu, Database, FileText, Flag, FolderOpen, Gauge, Globe, Home, Layers,
   Library, ListChecks, LogOut, Mail, Map, Menu, Moon, NotebookPen, PanelLeftClose, PanelLeftOpen,
-  School, Search, Send, Settings, Sparkles, Star, Sun, Target, Type, User, Wand, X, Zap,
+  RefreshCw, School, Search, Send, Settings, Sparkles, Star, Sun, Target, Type, User, Wand, X, Zap,
 } from '../icons'
 import {
-  Avatar, Badge, Button, IconButton, Kbd, MenuItem, Select, ToastHost, cx, toastOk, toastErr,
+  Avatar, Badge, Button, IconButton, Kbd, MenuItem, Select, ToastHost, cx, toastOk, toastErr, useMedia,
 } from '../ui'
 
 /* -------------------------------------------------------------------------- */
@@ -106,12 +107,51 @@ function NavItem({ item, active, onNavigate, collapsed }) {
   )
 }
 
-function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
+function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen, isMobile, returnFocusRef }) {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, isAdmin, logout } = useAuth()
   const layout = useUiLayout()
   const isGuest = !user
+  const sidebarRef = useRef(null)
+
+  /* 移动关闭时整个侧栏不渲染；打开后移入焦点，卸载（Esc/遮罩/导航）时归还焦点。 */
+  useEffect(() => {
+    if (!isMobile || !mobileOpen) return undefined
+    const trigger = returnFocusRef.current?.querySelector('button')
+    const frame = window.requestAnimationFrame(() => {
+      sidebarRef.current?.querySelector('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')?.focus()
+    })
+    return () => {
+      window.cancelAnimationFrame(frame)
+      if (trigger?.isConnected) trigger.focus()
+    }
+  }, [isMobile, mobileOpen, returnFocusRef])
+
+  const onSidebarKeyDown = (e) => {
+    if (!isMobile || !mobileOpen) return
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setMobileOpen(false)
+      return
+    }
+    if (e.key !== 'Tab') return
+    const items = [...sidebarRef.current.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )].filter((el) => el.tabIndex >= 0)
+    const first = items[0]
+    const last = items[items.length - 1]
+    if (!first) return e.preventDefault()
+    const outside = !sidebarRef.current.contains(document.activeElement)
+    if (e.shiftKey && (document.activeElement === first || outside)) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && (document.activeElement === last || outside)) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
 
   const groups = useMemo(() => {
     const modules = visibleModulesFor(visibleModules(layout), isGuest)
@@ -163,7 +203,15 @@ function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
   const role = isAdmin ? 'ADMIN' : '学习者'
 
   return (
-    <aside className={cx('v3-sidebar', mobileOpen && 'is-open')} data-collapsed={collapsed} aria-label="主导航">
+    <aside
+      ref={sidebarRef}
+      className={cx('v3-sidebar', mobileOpen && 'is-open')}
+      data-collapsed={collapsed}
+      role={isMobile ? 'dialog' : undefined}
+      aria-modal={isMobile ? true : undefined}
+      aria-label="主导航"
+      onKeyDown={onSidebarKeyDown}
+    >
       <Link to="/" className="v3-brand" onClick={() => setMobileOpen(false)}>
         <BrandMark />
         <span className="v3-brand__word">
@@ -295,7 +343,7 @@ function GlobalSubjectSwitcher() {
 /* P1-8 事实唯一：考研倒计时只在「今日中枢」出现一次，顶栏不再重复展示。
    P2-3 顶栏 ≤5 个控件：学科选择 / 搜索 / 通知 / 主题 / 账号；
    板块切换与侧栏分组重复，移除（命令面板 ⌘K 仍可直达任何页面）。 */
-function TopBar({ collapsed, onOpenMobile, onOpenCommand }) {
+function TopBar({ collapsed, onOpenMobile, onOpenCommand, mobileTriggerRef }) {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, isAdmin, logout } = useAuth()
@@ -310,10 +358,12 @@ function TopBar({ collapsed, onOpenMobile, onOpenCommand }) {
 
   return (
     <header className="v3-topbar" data-collapsed={collapsed}>
-      <IconButton className="v3-topbar__mobile-only" label="打开导航" icon={<Menu size={20} />} onClick={onOpenMobile} />
+      <span ref={mobileTriggerRef}>
+        <IconButton className="v3-topbar__mobile-only" label="打开导航" icon={<Menu size={20} />} onClick={onOpenMobile} />
+      </span>
 
       <div className="v3-topbar__crumbs">
-        <Link to="/" aria-label="首页">硕途</Link>
+        <Link to="/" aria-label="硕途首页">硕途</Link>
         <ChevronRight size={13} className="v3-topbar__sep" />
         <strong>{crumbName(location.pathname)}</strong>
       </div>
@@ -375,6 +425,9 @@ function CommandPalette({ open, onClose }) {
     const base = [
       ...MODULES.flatMap((m) => m.items.map((it) => ({ ...it, group: m.title }))),
       ...NAV_OTHER.map((it) => ({ ...it, group: '通用' })),
+      /* C3：择校 AI 助手是 RequireAuth 内的独立路由，不在侧栏导航集合里，
+         但命令面板必须能检索到（与 /assistant 一起命中「AI」共 2 条）。 */
+      { to: '/kaoyan/assistant', label: '择校 AI 助手', desc: '结合院校库数据的择校问答', group: '通用', kw: ['ai', 'assistant', '择校助手', 'zexiao'] },
       ...(isAdmin ? NAV_ADMIN.map((it) => ({ ...it, group: '管理' })) : []),
     ]
     const seen = new Set()
@@ -630,10 +683,26 @@ function AiOrb() {
    清单来自 navConfig.MOBILE_TABS 单一导航源；完整导航走顶栏抽屉。 */
 function MobileNav() {
   const location = useLocation()
+  const { user } = useAuth()
+  const layout = useUiLayout()
+  /* P1（F-05）：与 Sidebar 完全相同的一条访客过滤规则（visibleModulesFor），
+     访客态 practice/review 分组无公开项 → /quiz、/error-review 两个 Tab 自然消失。
+     「今日」对访客重定向到院校库，按落点去重，保证 aria-current 唯一、文案=H1。 */
+  const tabs = useMemo(() => {
+    const groups = visibleModulesFor(visibleModules(layout), !user)
+    const seen = new Set()
+    return MOBILE_TABS
+      .filter((t) => groups.some((g) => g.key === t.group && g.items.some((it) => it.to === t.to)))
+      .map((t) => {
+        const landing = !user ? (GUEST_TAB_LANDING[t.to] || t.to) : t.to
+        return { ...t, to: landing, label: routeMeta(landing).h1 }
+      })
+      .filter((t) => { if (seen.has(t.to)) return false; seen.add(t.to); return true })
+  }, [layout, user])
   return (
     <nav className="v3-mobile-nav" aria-label="移动端导航">
       <div className="v3-mobile-nav__inner">
-        {MOBILE_TABS.map((t) => {
+        {tabs.map((t) => {
           const active = t.to === '/'
             ? location.pathname === '/' || location.pathname === '/hub'
             : location.pathname === t.to || location.pathname.startsWith(`${t.to}/`)
@@ -707,12 +776,48 @@ function VerifyEmailBanner({ user }) {
   )
 }
 
+/* -------------------------------------------------------------------------- */
+/* 同步失败提示条（P0-F03）：失败写队列已按 uid 落盘，这里给全局可见的出口。   */
+/* 固定在底部居中、不遮挡主内容；无失败写时返回 null，不占布局。               */
+/* -------------------------------------------------------------------------- */
+function SyncFailedBanner() {
+  const { failedCount, retry } = useSyncStatus()
+  if (!failedCount) return null
+  return (
+    <div
+      className="v3-sync-banner"
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed', left: '50%', bottom: 88, transform: 'translateX(-50%)',
+        zIndex: 60, display: 'inline-flex', alignItems: 'center', gap: 10,
+        maxWidth: 'calc(100vw - 32px)', padding: '9px 14px', borderRadius: 999,
+        background: 'var(--v3-surface, #fff)', color: 'var(--v3-text-2, #444)',
+        border: '1px solid var(--v3-outline, #ddd)',
+        boxShadow: '0 8px 28px rgba(0,0,0,.16)', fontSize: 13, whiteSpace: 'nowrap',
+      }}
+    >
+      <RefreshCw size={15} aria-hidden="true" />
+      <span>{failedCount} 项改动未同步，恢复网络后重试</span>
+      <Button size="sm" variant="tonal" icon={<RefreshCw size={13} />} onClick={retry}>重试</Button>
+    </div>
+  )
+}
+
 export default function AppShell({ children }) {
   const location = useLocation()
   const { user } = useAuth()
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
+  const isMobile = useMedia('(max-width: 767px)')
+  const mobileTriggerRef = useRef(null)
+
+  /* 跨断点后不保留抽屉状态，桌面仍始终渲染侧栏。 */
+  useEffect(() => { setMobileOpen(false) }, [isMobile])
+
+  const openMobile = useCallback(() => setMobileOpen(true), [])
+  const closeMobile = useCallback(() => setMobileOpen(false), [])
 
   useEffect(() => {
     try { localStorage.setItem(ukey(SIDEBAR_KEY), collapsed ? '1' : '0') } catch { /* ignore */ }
@@ -728,17 +833,14 @@ export default function AppShell({ children }) {
   useEffect(() => {
     setMobileOpen(false)
     window.scrollTo({ top: 0, behavior: 'auto' })
-    /* P1 页面标题：每个路由设置 document.title，tab 可区分 */
-    const name = crumbName(location.pathname)
-    document.title = (name && name !== '页面' && name !== '首页')
-      ? `${name} · 硕途考研`
-      : '硕途 · 考研学习平台'
+    /* P1（F-06）：document.title 已收敛到 App 的 RouteTitle（ROUTE_META 单一源） */
   }, [location.pathname])
 
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
+        setMobileOpen(false)
         setCommandOpen((v) => !v)
       }
     }
@@ -746,7 +848,10 @@ export default function AppShell({ children }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const openCommand = useCallback(() => setCommandOpen(true), [])
+  const openCommand = useCallback(() => {
+    setMobileOpen(false)
+    setCommandOpen(true)
+  }, [])
 
   /* 跳转链接（P0-5）：hash 路由下原生 #anchor 会改路由，
      必须 preventDefault 后手动 focus 主内容区。 */
@@ -763,16 +868,26 @@ export default function AppShell({ children }) {
       <div className="v3-root">
         <a href="#hub-main" className="v3-skip-link" onClick={skipToMain}>跳到主要内容</a>
         <div className="v3-shell">
-          <Sidebar
-            collapsed={collapsed}
-            setCollapsed={setCollapsed}
-            mobileOpen={mobileOpen}
-            setMobileOpen={setMobileOpen}
-          />
-          {mobileOpen ? <div className="v3-mobile-mask" onClick={() => setMobileOpen(false)} /> : null}
+          {!isMobile || mobileOpen ? (
+            <Sidebar
+              collapsed={collapsed}
+              setCollapsed={setCollapsed}
+              mobileOpen={mobileOpen}
+              setMobileOpen={setMobileOpen}
+              isMobile={isMobile}
+              returnFocusRef={mobileTriggerRef}
+            />
+          ) : null}
+          {isMobile && mobileOpen ? <div className="v3-mobile-mask" onClick={closeMobile} /> : null}
           <div className="v3-main" data-collapsed={collapsed}>
-            <TopBar collapsed={collapsed} onOpenMobile={() => setMobileOpen(true)} onOpenCommand={openCommand} />
+            <TopBar
+              collapsed={collapsed}
+              onOpenMobile={openMobile}
+              onOpenCommand={openCommand}
+              mobileTriggerRef={mobileTriggerRef}
+            />
             <VerifyEmailBanner key={user?.id ?? 'anon'} user={user} />
+            <SyncFailedBanner />
             <main id="hub-main" className="v3-main__inner" tabIndex={-1}>
               <div className="v3-page" key={location.pathname}>{children}</div>
             </main>

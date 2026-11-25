@@ -23,30 +23,40 @@ import {
 } from '../icons'
 import '../styles/tools-v3.css'
 
-/* 计算工具套件：按需加载，mathjs / mermaid / katex 不进首屏包 */
-const FunctionPlot = lazy(() => import('./tools/FunctionPlot'))
-const FormulaVerify = lazy(() => import('./tools/FormulaVerify'))
-const LatexStudio = lazy(() => import('./tools/LatexStudio'))
-const DiagramStudio = lazy(() => import('./tools/DiagramStudio'))
+/* P1（F-13）：二次 dynamic import —— 只有用户点开某个工具（或 ?tool= 深链）
+   才 import 对应模块；不在模块顶层声明 4 个 lazy，避免构建期把重库依赖
+   一起挂到 Tools 入口的预取图上（elk/mathjs/mermaid 合计约 4MB）。 */
+const TOOL_LOADERS = {
+  graph: () => import('./tools/FunctionPlot'),
+  verify: () => import('./tools/FormulaVerify'),
+  latex: () => import('./tools/LatexStudio'),
+  diagram: () => import('./tools/DiagramStudio'),
+}
+const toolComponentCache = new Map()
+function getToolComponent(key) {
+  if (!TOOL_LOADERS[key]) return null
+  if (!toolComponentCache.has(key)) toolComponentCache.set(key, lazy(TOOL_LOADERS[key]))
+  return toolComponentCache.get(key)
+}
 
 const SUITE_TOOLS = {
   graph: {
-    label: '函数图像生成器', icon: Image, comp: FunctionPlot,
+    label: '函数图像生成器', icon: Image,
     desc: '多曲线绘图 · 参数滑块 · 零点/极值/交点自动标注',
     loading: '正在加载函数图像引擎（mathjs）…',
   },
   verify: {
-    label: '公式验算器', icon: Check, comp: FormulaVerify,
+    label: '公式验算器', icon: Check,
     desc: '求导/极限/积分/泰勒/矩阵/解方程 · 步骤可折叠',
     loading: '正在加载符号计算引擎（mathjs）…',
   },
   latex: {
-    label: 'LaTeX 工作台', icon: Type, comp: LatexStudio,
+    label: 'LaTeX 工作台', icon: Type,
     desc: 'KaTeX 实时预览 · 化学式 · SVG/PNG 导出',
     loading: '正在加载 KaTeX…',
   },
   diagram: {
-    label: '框图编辑器', icon: LayoutGrid, comp: DiagramStudio,
+    label: '框图编辑器', icon: LayoutGrid,
     desc: 'Mermaid 源码 + 实时预览 · 控制框图/时序/状态机',
     loading: '正在加载 Mermaid（本地包，稍候）…',
   },
@@ -668,13 +678,13 @@ export default function Tools() {
   }, [tool])
 
   const meta = SUITE_TOOLS[tool]
-  const ActiveComp = meta?.comp
+  const ActiveComp = meta ? getToolComponent(tool) : null
 
   return (
     <div className="v3-stack v3-tools">
       <PageHeader
         eyebrow="TOOLS · 工具箱"
-        title="学习工具箱 · 复试工具箱"
+        title="学习工具箱"
         sub="站内计算工具（进制 / 函数图像 / 公式验算 / LaTeX / 框图，全部本地计算）· 工科备考外部工具目录 · 常用站内功能直达"
         actions={(
           <Link className="v3-btn v3-btn--tonal" to="/library">

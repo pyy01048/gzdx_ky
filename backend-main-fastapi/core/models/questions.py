@@ -104,14 +104,8 @@ class QuizQuestion(BigIntPKMixin, TimestampMixin, Base):
         ForeignKey("subjects.id", ondelete="SET NULL"), comment="权威科目 ID"
     )
     subject: Mapped[str | None] = mapped_column(String(50), comment="兼容列：科目中文名")
-    textbook_id: Mapped[int | None] = mapped_column(
-        ForeignKey("textbooks.id", ondelete="SET NULL"), comment="权威教材 ID（五层知识树：学科→教材→章→节→知识点）"
-    )
     chapter_id: Mapped[int | None] = mapped_column(
         ForeignKey("subject_chapters.id", ondelete="SET NULL"), comment="权威章节 ID（章或节的父节点）"
-    )
-    section_id: Mapped[int | None] = mapped_column(
-        ForeignKey("subject_chapters.id", ondelete="SET NULL"), comment="权威小节 ID（章的子节点，五层结构第4层）"
     )
     chapter: Mapped[str | None] = mapped_column(String(200), comment="兼容列：章节名")
     knowledge_point: Mapped[str | None] = mapped_column(
@@ -152,6 +146,24 @@ class QuizQuestion(BigIntPKMixin, TimestampMixin, Base):
         JSONBList, nullable=False, server_default="[]", comment="校验门错误明细"
     )
     validated_at: Mapped[datetime.datetime | None] = mapped_column(DateTimeUTC, comment="最近一次过校验门的时间")
+
+    # —— 分类与复核（迁移 095 / 117 已在 DB 建列，此处补映射；与实际 schema 对齐）—— #
+    needs_review: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", index=True, comment="是否进入人工复核队列"
+    )
+    classify_confidence: Mapped[float | None] = mapped_column(Float, comment="三路融合分类置信度 0-1")
+    classify_source: Mapped[str | None] = mapped_column(
+        String(30), comment="分类来源留痕：keyword/vector/fusion/llm/disagree/none（VARCHAR，非 classify_source ENUM）"
+    )
+    question_category: Mapped[str] = mapped_column(
+        build_enum("question_category"),
+        nullable=False,
+        server_default="习题",
+        comment="题目主分类：真题/练习题/习题/考研题",
+    )
+    exam_type: Mapped[str | None] = mapped_column(String(50), comment="考试类型")
+    source_platform: Mapped[str | None] = mapped_column(String(100), comment="来源平台")
+    source_url: Mapped[str | None] = mapped_column(Text, comment="来源链接，供溯源与复核")
 
     knowledge_links: Mapped[list["QuestionKnowledgeLink"]] = relationship(
         "QuestionKnowledgeLink", back_populates="question"

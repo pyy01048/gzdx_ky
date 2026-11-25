@@ -38,6 +38,16 @@ describe('navConfig 单一导航源', () => {
     expect(dead).toEqual([])
   })
 
+  it('RELATED 目标必须是导航可见页，不指向重定向别名（P1-F18）', () => {
+    const app = fs.readFileSync(nodePath.resolve(process.cwd(), 'src', 'App.jsx'), 'utf8')
+    const redirects = new Set(ADMIN_LEGACY_REDIRECTS.map(([from]) => from))
+    for (const m of app.matchAll(/<Route path="([^"]+)" element=\{<Navigate/g)) redirects.add(m[1])
+    const visible = new Set([...ALL_ENTRIES.map((e) => e.to), ...MOBILE_TABS.map((t) => t.to)])
+    const targets = Object.values(RELATED).flat().map((to) => to.split('?')[0])
+    expect(targets.filter((to) => redirects.has(to))).toEqual([])
+    expect(targets.filter((to) => !visible.has(to))).toEqual([])
+  })
+
   it('入口路径不重复，且每条都带可搜索的描述与关键词', () => {
     const tos = ALL_ENTRIES.map((e) => e.to)
     expect(new Set(tos).size).toBe(tos.length)
@@ -66,6 +76,16 @@ describe('navConfig 单一导航源', () => {
   it('择校模块 Tab 与顶栏「择校」下拉同源', () => {
     const school = MODULES.find((m) => m.key === 'school').items
     expect(KAOYAN_TABS).toEqual(school.map((it) => ({ value: it.to, label: it.label })))
+  })
+
+  it('访客可沿导航走完择校决策工具链', () => {
+    const targets = MODULES.find((m) => m.key === 'school').items.map((item) => item.to)
+    expect(targets).toEqual(expect.arrayContaining([
+      '/kaoyan', '/kaoyan/compare', '/kaoyan/analysis',
+      '/kaoyan/recommend', '/kaoyan/scatter', '/kaoyan/map',
+    ]))
+    const school = MODULES.find((m) => m.key === 'school').items
+    expect(school.filter((item) => ['/kaoyan/compare', '/kaoyan/analysis', '/kaoyan/recommend', '/kaoyan/scatter', '/kaoyan/map'].includes(item.to)).every((item) => item.public)).toBe(true)
   })
 })
 

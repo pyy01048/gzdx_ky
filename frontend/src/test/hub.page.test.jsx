@@ -4,7 +4,7 @@
  * 页面只依赖 api/hub.js 一个出口，因此测试直接 mock 这个出口，
  * 既能锁住 UI 契约，又不会把测试绑死在某几个后端端点上。
  */
-import React, { StrictMode } from 'react'
+import { StrictMode } from 'react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -212,6 +212,16 @@ describe('Hub 今日聚合中枢', () => {
     const blockTitles = [...document.querySelectorAll('.hub-block .hub-panel__title')].map((el) => el.textContent)
     expect(blockTitles.some((t) => t.includes('14 天趋势'))).toBe(false)
     expect(localStorage.getItem('hub_layout_v1')).toContain('trend')
+  })
+
+  it('刷新失败时保留旧数据并明确标记缓存状态', async () => {
+    renderHub()
+    await screen.findByText('今日航线')
+    fetchHubOverview.mockRejectedValueOnce(new Error('网络中断'))
+    fireEvent.click(screen.getByRole('button', { name: '刷新聚合数据' }))
+    expect(await screen.findByText('同步失败 · 显示缓存')).toBeInTheDocument()
+    expect(screen.getByText('今日航线')).toBeInTheDocument()
+    expect(screen.queryByText('聚合数据暂时取不到')).toBeNull()
   })
 
   it('部分数据源失败显示降级提示，核心失败显示错误页', async () => {

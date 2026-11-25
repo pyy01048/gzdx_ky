@@ -28,6 +28,14 @@ function teardownSession() {
   clearFavoriteCache()
   clearPan()
   clearHubCache()
+  /* P0（F-02）：Service Worker 的 api-cache 只放公开字典，但旧版本 SW 可能已
+     缓存个人接口响应；登出/强制下线必须一并清掉，否则换账号断网仍会读到
+     A 的 /auth/me、/tasks、/errors 等旧响应。非安全上下文没有 caches，忽略。 */
+  try {
+    if (typeof window !== 'undefined' && 'caches' in window && window.caches?.delete) {
+      void window.caches.delete('api-cache')
+    }
+  } catch { /* 隐私模式 / CacheStorage 不可用 */ }
   setUserKeys(null)
 }
 

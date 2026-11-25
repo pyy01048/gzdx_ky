@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { taxonomyApi, reviewApi, quizApi, qualityApi } from '../../api/client'
+import { taxonomyApi, reviewApi, quizApi, qualityApi, fetchAllPages, MAX_PAGE_SIZE } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { chatCompletion, defaultProvider, recordUsage } from '../../utils/api'
 import {
@@ -113,6 +113,9 @@ function normalizeSubjects(data) {
   return []
 }
 
+const chapterKey = (subject, title) => JSON.stringify([subject, title])
+const idleChapterLoad = { status: 'idle', items: [], error: '' }
+
 const isNum = (v) => v != null && Number.isFinite(Number(v))
 
 function MetricValue({ value, suffix }) {
@@ -170,7 +173,7 @@ function TypeTags({ types = [], max = 4 }) {
 /* -------------------------------------------------------------------------- */
 /* Chapter group                                                              */
 /* -------------------------------------------------------------------------- */
-function SubjectGroup({ group, activeChapter, quality, onSelectChapter }) {
+function SubjectGroup({ group, activeChapter, quality, chapterLoads, onSelectChapter, onRetryChapter }) {
   const tone = nodeTone(group.node)
   const avg = nodeAvg(group.node)
   const confOk = quality && Number(quality.avg_confidence) >= 0.4
@@ -205,22 +208,34 @@ function SubjectGroup({ group, activeChapter, quality, onSelectChapter }) {
           const hasData = ch.knowledge_point_count > 0
           const isSel =
             !!activeChapter && activeChapter.subject === group.subject && activeChapter.title === ch.title
+          const load = chapterLoads[chapterKey(group.subject, ch.title)] || idleChapterLoad
+          const loading = load.status === 'loading'
+          const failed = load.status === 'error'
           const chTone = nodeTone(ch)
+          const statusText = loading ? '加载中…' : failed ? '加载失败' : hasData ? `${ch.knowledge_point_count} 个` : '暂无资料'
           return (
             <button
               key={ch.title}
               type="button"
-              className={cx('v3-kb-chapter', isSel && 'is-selected', !hasData && 'is-empty')}
-              onClick={() => hasData && onSelectChapter(group.subject, ch.title, ch.knowledge_points)}
+              className={cx(
+                'v3-kb-chapter',
+                isSel && 'is-selected',
+                !hasData && 'is-empty',
+                loading && 'is-loading',
+                failed && 'is-error',
+              )}
+              onClick={() => (failed ? onRetryChapter(group.subject, ch.title) : onSelectChapter(group.subject, ch.title))}
               disabled={!hasData}
               aria-current={isSel ? 'true' : undefined}
-              title={hasData ? `查看「${ch.title}」的知识点` : '该章节暂无资料'}
+              aria-busy={loading || undefined}
+              title={failed ? `加载失败：${load.error}，点击重试` : hasData ? `查看「${ch.title}」的知识点` : '该章节暂无资料'}
             >
               <span className="v3-kb-chapter__main">
                 <ChevronRight size={13} className="v3-kb-chapter__chev" />
                 <span className="v3-kb-chapter__title">{ch.title}</span>
-                <span className="v3-kb-chapter__count">
-                  {hasData ? `${ch.knowledge_point_count} 个` : '暂无资料'}
+                <span className="v3-kb-chapter__count" role={failed ? 'status' : undefined}>
+                  {loading ? <Spinner size={12} /> : null}
+                  {statusText}
                 </span>
               </span>
               {hasData ? <Meter value={nodeAvg(ch)} tone={chTone.cls} height={4} /> : null}
@@ -577,11 +592,19 @@ export default function KbMap() {
   const [searchParams] = useSearchParams()
 
   const [activeChapter, setActiveChapter] = useState(null)
+  const [chapterLoads, setChapterLoads] = useState({})
+  const chapterCache = useRef(new Map())
+  const activeChapterRef = useRef(null)
+  const subjectTreeSeq = useRef(0)
+  activeChapterRef.current = activeChapter
   const [selectedKpId, setSelectedKpId] = useState(null)
   const [detail, setDetail] = useState({ loading: false, error: '', data: null })
   const [kpQCount, setKpQCount] = useState(null)
   const [detailReviewing, setDetailReviewing] = useState(false)
   const detailSeq = useRef(0)
+  const [searchState, setSearchState] = useState({ status: 'idle', items: [], total: 0, error: '', query: '' })
+  const [searchRetry, setSearchRetry] = useState(0)
+  const searchSeq = useRef(0)
 
   const [aiExplain, setAiExplain] = useState({ open: false, loading: false, text: '', error: '' })
   const aiSeq = useRef(0)
@@ -670,20 +693,89 @@ export default function KbMap() {
     resetAiExplain()
   }, [resetAiExplain])
 
+  const publishChapterLoad = useCallback((key, entry) => {
+    if (entry) chapterCache.current.set(key, entry)
+    else chapterCache.current.delete(key)
+    setChapterLoads((prev) => {
+      const next = { ...prev }
+      if (entry) next[key] = entry
+      else delete next[key]
+      return next
+    })
+  }, [])
+
+  /* 章节明细按需取全：每页最多 200，未取完继续翻；同章并发复用 promise。 */
+  const loadChapter = useCallback(
+    (subject, title, { force = false } = {}) => {
+      const key = chapterKey(subject, title)
+      const cached = chapterCache.current.get(key)
+      if (!force && cached?.status === 'ready') return Promise.resolve(cached.items)
+      if (!force && cached?.promise) return cached.promise
+      if (force) cached?.controller?.abort()
+
+      const controller = new AbortController()
+      const entry = { status: 'loading', items: [], error: '', controller, promise: null }
+      const promise = (async () => {
+        try {
+          const items = await fetchAllPages(
+            async ({ page, page_size }) => {
+              if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+              const result = await taxonomyApi.knowledgePoints(
+                { subject, chapter: title, page, page_size },
+                { signal: controller.signal },
+              )
+              if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+              return result
+            },
+            { pageSize: MAX_PAGE_SIZE, maxItems: Number.MAX_SAFE_INTEGER },
+          )
+          if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+          const ready = { status: 'ready', items, error: '', controller: null, promise: null }
+          publishChapterLoad(key, ready)
+          return items
+        } catch (e) {
+          if (controller.signal.aborted || e?.name === 'AbortError') {
+            if (chapterCache.current.get(key) === entry) publishChapterLoad(key, null)
+            return []
+          }
+          const failed = { status: 'error', items: [], error: e?.message || '知识点加载失败', controller: null, promise: null }
+          publishChapterLoad(key, failed)
+          throw e
+        }
+      })()
+      entry.promise = promise
+      publishChapterLoad(key, entry)
+      return promise
+    },
+    [publishChapterLoad],
+  )
+
+  useEffect(
+    () => () => {
+      for (const entry of chapterCache.current.values()) entry.controller?.abort()
+    },
+    [],
+  )
+
   const loadAll = useCallback(async () => {
     setStatus('loading')
     setErrMsg('')
+    for (const entry of chapterCache.current.values()) entry.controller?.abort()
+    chapterCache.current.clear()
+    setChapterLoads({})
+    setActiveChapter(null)
+    activeChapterRef.current = null
+    closeDetail()
     /* W4 前端减负（第一段·骨架）：地图只需要 subjects + tree 两个接口就能开画。
+       树显式关闭知识点明细，章节内容等用户点击后再取。
        复习进度 / 到期队列 / 覆盖率 / 语料质量挪到第二段后台加载，
-       任何一个慢或失败都不再把整页吊在 loading 骨架上。
-       真正的提速瓶颈在后端 taxonomy/tree 聚合本身（大科目树一次全量序列化），
-       前端只能做到「不等它旁边的接口」——接口级缓存/增量下发已标注交主控。 */
+       任何一个慢或失败都不再把整页吊在 loading 骨架上。 */
     let sj
     let tNodes
     try {
       const [sjRes, tRes] = await Promise.all([
         taxonomyApi.subjects(),
-        taxonomyApi.tree(undefined, true, showEmptyRef.current),
+        taxonomyApi.tree(undefined, true, showEmptyRef.current, false),
       ])
       sj = sjRes
       tNodes = tRes?.tree || []
@@ -704,31 +796,31 @@ export default function KbMap() {
 
       setActiveSubject(urlSubject)
 
-      let chap = null
-      let kp = null
-      if (urlSubject && urlChapter) {
-        const s = tNodes.find((x) => x.subject === urlSubject)
-        const ch = s?.chapters?.find((x) => x.title === urlChapter)
-        if (ch) chap = { subject: urlSubject, title: urlChapter }
-      }
-      if (!chap) {
-        const first = tNodes.find((x) => x.knowledge_point_count > 0)
-        const firstCh = first?.chapters?.find((x) => x.knowledge_point_count > 0)
-        if (first && firstCh) chap = { subject: first.subject, title: firstCh.title }
-      }
+      /* 普通进入只画轻量树；只有显式章节深链才在首屏加载该章。 */
+      const s = urlSubject ? tNodes.find((x) => x.subject === urlSubject) : null
+      const ch = s?.chapters?.find((x) => x.title === urlChapter)
+      const chap = urlSubject && ch ? { subject: urlSubject, title: urlChapter } : null
       setActiveChapter(chap)
-
-      /* 只有显式深链 ?kp_id= 才在首屏预载详情（详情 = 2 个额外请求）；
-         普通进入不再默认点开第一个知识点，点开才算。 */
-      if (urlKpId) {
-        kp = { id: urlKpId }
-      } else if (chap && sp && (sp.get('chapter') || sp.get('subject'))) {
-        const s = tNodes.find((x) => x.subject === chap.subject)
-        const ch = s?.chapters?.find((x) => x.title === chap.title)
-        kp = (ch?.knowledge_points || [])[0] || null
+      activeChapterRef.current = chap
+      if (chap) {
+        loadChapter(chap.subject, chap.title)
+          .then((items) => {
+            const current = activeChapterRef.current
+            if (
+              !urlKpId &&
+              items[0] &&
+              current?.subject === chap.subject &&
+              current?.title === chap.title &&
+              selectedIdRef.current == null
+            ) {
+              openDetail(items[0])
+            }
+          })
+          .catch(() => {}) // 失败状态由章节行与中栏展示，不降级成空数据
       }
-      if (kp) openDetail(kp)
-      else closeDetail()
+
+      if (urlKpId) openDetail({ id: urlKpId })
+      else if (!chap) closeDetail()
     } else if (selectedIdRef.current != null) {
       openDetail({ id: selectedIdRef.current })
     }
@@ -736,7 +828,7 @@ export default function KbMap() {
 
     /* 第二段·辅助指标（后台）：完成一个填一个，失败只降级对应模块。 */
     loadAux()
-  }, [openDetail, closeDetail, loadAux])
+  }, [openDetail, closeDetail, loadAux, loadChapter])
 
   useEffect(() => {
     loadAll()
@@ -749,7 +841,7 @@ export default function KbMap() {
     let alive = true
     setTreeLoading(true)
     taxonomyApi
-      .tree(undefined, true, showEmpty)
+      .tree(undefined, true, showEmpty, false)
       .then((t) => {
         if (alive) setTree(t?.tree || [])
       })
@@ -764,62 +856,91 @@ export default function KbMap() {
     }
   }, [showEmpty])
 
-  /* 切换科目：只重拉该科结构树，保留全局总览与队列 */
+  /* 切换科目：只重拉该科结构树；章节仍等用户点击，不预载知识点。 */
   const selectSubject = useCallback(
     async (name) => {
       if (name === activeSubject) return
+      const requestSeq = ++subjectTreeSeq.current
+      const previous = activeChapterRef.current
+      if (previous) chapterCache.current.get(chapterKey(previous.subject, previous.title))?.controller?.abort()
       setActiveSubject(name)
+      activeChapterRef.current = null
+      setActiveChapter(null)
       setQuery('')
+      closeDetail()
       setTreeLoading(true)
       try {
-        const t = await taxonomyApi.tree(name || undefined, true, showEmpty)
+        const t = await taxonomyApi.tree(name || undefined, true, showEmpty, false)
+        if (requestSeq !== subjectTreeSeq.current) return
         const tNodes = t?.tree || []
         setTree(tNodes)
-        const first = tNodes.find((s) => s.knowledge_point_count > 0)
-        const firstCh = first?.chapters?.find((ch) => ch.knowledge_point_count > 0)
-        if (first && firstCh) {
-          setActiveChapter({ subject: first.subject, title: firstCh.title })
-          const kp = (firstCh.knowledge_points || [])[0]
-          if (kp) openDetail(kp)
-          else closeDetail()
-        } else {
-          setActiveChapter(null)
-          closeDetail()
-        }
       } catch (e) {
-        toastErr('加载知识结构失败：' + (e?.message || ''))
+        if (requestSeq === subjectTreeSeq.current) toastErr('加载知识结构失败：' + (e?.message || ''))
       } finally {
-        setTreeLoading(false)
+        if (requestSeq === subjectTreeSeq.current) setTreeLoading(false)
       }
     },
-    [activeSubject, openDetail, closeDetail, showEmpty],
+    [activeSubject, closeDetail, showEmpty],
   )
 
   const selectChapter = useCallback(
-    (subject, title, kpList) => {
-      setActiveChapter({ subject, title })
-      const kp = (kpList || [])[0]
-      if (kp) openDetail(kp)
-      else closeDetail()
+    (subject, title, retry = false) => {
+      const key = chapterKey(subject, title)
+      const previous = activeChapterRef.current
+      if (previous && chapterKey(previous.subject, previous.title) !== key) {
+        chapterCache.current.get(chapterKey(previous.subject, previous.title))?.controller?.abort()
+      }
+      const next = { subject, title }
+      activeChapterRef.current = next
+      setActiveChapter(next)
+      closeDetail()
+      loadChapter(subject, title, { force: retry })
+        .then((items) => {
+          const current = activeChapterRef.current
+          if (
+            items[0] &&
+            current?.subject === subject &&
+            current?.title === title &&
+            selectedIdRef.current == null
+          ) {
+            openDetail(items[0])
+          }
+        })
+        .catch(() => {}) // 中栏保留独立 error + 重试入口
     },
-    [openDetail, closeDetail],
+    [closeDetail, loadChapter, openDetail],
+  )
+
+  const retryChapter = useCallback(
+    (subject, title) => selectChapter(subject, title, true),
+    [selectChapter],
   )
 
   /* 复习打卡后的刷新：打卡只改变「掌握度 / 到期队列」，不影响题库结构。
      本地 patch 树里该知识点的掌握度（章节聚合分随下次进页/切科目自然更新），
      再后台重拉辅助指标——不再整套 loadAll（含最慢的 tree 全量序列化）。 */
   const patchKpInTree = useCallback((id, patch) => {
+    const applyPatch = (items) =>
+      items.map((k) => (String(k.id) === String(id) ? { ...k, ...patch } : k))
     setTree((prev) =>
       prev.map((s) => ({
         ...s,
         chapters: (s.chapters || []).map((c) => ({
           ...c,
-          knowledge_points: (c.knowledge_points || []).map((k) =>
-            String(k.id) === String(id) ? { ...k, ...patch } : k,
-          ),
+          knowledge_points: applyPatch(c.knowledge_points || []),
         })),
       })),
     )
+    setChapterLoads((prev) => {
+      const next = { ...prev }
+      for (const [key, entry] of Object.entries(prev)) {
+        if (entry.status !== 'ready') continue
+        const updated = { ...entry, items: applyPatch(entry.items) }
+        chapterCache.current.set(key, updated)
+        next[key] = updated
+      }
+      return next
+    })
   }, [])
 
   const masteryPatchFrom = (r) => ({
@@ -968,6 +1089,9 @@ export default function KbMap() {
       .filter((g) => g.chapters.length > 0)
   }, [tree, activeSubject])
 
+  const activeChapterKey = activeChapter ? chapterKey(activeChapter.subject, activeChapter.title) : ''
+  const activeChapterLoad = chapterLoads[activeChapterKey] || idleChapterLoad
+  const activeChapterPoints = activeChapterLoad.items || []
   const activeChapterData = useMemo(() => {
     if (!activeChapter) return null
     const s = tree.find((x) => x.subject === activeChapter.subject)
@@ -994,30 +1118,48 @@ export default function KbMap() {
     [qualityBySubject],
   )
 
-  /* 客户端搜索：数据来自已加载的 taxonomy 树，不发请求、不造字段 */
-  const searchPool = useMemo(() => {
-    const out = []
-    for (const s of tree) {
-      for (const ch of s.chapters || []) {
-        for (const kp of ch.knowledge_points || []) {
-          out.push({ ...kp, subject: s.subject, chapter: ch.title })
-        }
-      }
+  /* 全库搜索走服务端 keyword：轻量树不再决定能搜到什么。 */
+  useEffect(() => {
+    const q = query.trim()
+    const seq = ++searchSeq.current
+    if (!q) {
+      setSearchState({ status: 'idle', items: [], total: 0, error: '', query: '' })
+      return undefined
     }
-    return out
-  }, [tree])
+    const controller = new AbortController()
+    setSearchState({ status: 'loading', items: [], total: 0, error: '', query: q })
+    const timer = setTimeout(() => {
+      taxonomyApi
+        .knowledgePoints({ keyword: q, page: 1, page_size: 60 }, { signal: controller.signal })
+        .then((result) => {
+          if (controller.signal.aborted || seq !== searchSeq.current) return
+          setSearchState({
+            status: 'ready',
+            items: result?.items || [],
+            total: Number(result?.total) || 0,
+            error: '',
+            query: q,
+          })
+        })
+        .catch((e) => {
+          if (controller.signal.aborted || seq !== searchSeq.current) return
+          setSearchState({
+            status: 'error',
+            items: [],
+            total: 0,
+            error: e?.message || '搜索失败',
+            query: q,
+          })
+        })
+    }, 300)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [query, searchRetry])
 
-  const searchResults = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return []
-    return searchPool
-      .filter((kp) =>
-        String(kp.name || '')
-          .toLowerCase()
-          .includes(q),
-      )
-      .slice(0, 60)
-  }, [searchPool, query])
+  const retrySearch = useCallback(() => setSearchRetry((n) => n + 1), [])
+  const searchResults = searchState.items
 
   const coverageTotals = useMemo(() => {
     let outline = 0
@@ -1064,6 +1206,20 @@ export default function KbMap() {
       <Button variant="tonal" icon={<BookOpen size={16} />} onClick={goTextbooks}>
         {activeSubject ? '本科教材' : '教材总目录'}
       </Button>
+      {/* 沉浸式全屏复习入口：选中科目后进入 /studio/subject/:subject 三级全屏页。
+          目标科目优先取页内选中态，兜底取 URL 的 subject 参数（顶部全局下拉只写 URL，
+          不会触发本页 activeSubject 的 bootstrapped 同步，故需兜底）。 */}
+      {(activeSubject || searchParams.get('subject')) && (
+        <Button
+          variant="primary"
+          icon={<Sparkles size={16} />}
+          onClick={() =>
+            navigate(`/studio/subject/${encodeURIComponent(activeSubject || searchParams.get('subject'))}`)
+          }
+        >
+          全屏复习
+        </Button>
+      )}
     </>
   )
 
@@ -1459,7 +1615,9 @@ export default function KbMap() {
                     group={g}
                     activeChapter={activeChapter}
                     quality={pickQuality(g.subject)}
+                    chapterLoads={chapterLoads}
                     onSelectChapter={selectChapter}
+                    onRetryChapter={retryChapter}
                   />
                 ))
               )}
@@ -1477,8 +1635,16 @@ export default function KbMap() {
               </div>
               <Badge tone="outline">
                 {searchActive
-                  ? `${searchResults.length} 个匹配`
-                  : `${activeChapterData?.chapter.knowledge_point_count ?? 0} 个`}
+                  ? searchState.status === 'loading'
+                    ? '搜索中…'
+                    : searchState.status === 'error'
+                      ? '搜索失败'
+                      : `${searchState.total} 个匹配`
+                  : activeChapterLoad.status === 'loading'
+                    ? '加载中…'
+                    : activeChapterLoad.status === 'error'
+                      ? '加载失败'
+                      : `${activeChapterData?.chapter.knowledge_point_count ?? 0} 个`}
               </Badge>
             </div>
             <div className="v3-kb-column__scroll">
@@ -1489,7 +1655,24 @@ export default function KbMap() {
                   <Skeleton height={78} />
                 </div>
               ) : searchActive ? (
-                searchResults.length === 0 ? (
+                searchState.status === 'loading' ? (
+                  <div className="v3-kb-skeleton-list" aria-label="搜索加载中">
+                    <Skeleton height={78} />
+                    <Skeleton height={78} />
+                    <Skeleton height={78} />
+                  </div>
+                ) : searchState.status === 'error' ? (
+                  <Empty
+                    icon={<AlertCircle size={22} />}
+                    title="搜索加载失败"
+                    text={searchState.error}
+                    action={
+                      <Button size="sm" variant="tonal" onClick={retrySearch}>
+                        重试搜索
+                      </Button>
+                    }
+                  />
+                ) : searchResults.length === 0 ? (
                   <Empty
                     icon={<Search size={22} />}
                     title="没有匹配的知识点"
@@ -1520,9 +1703,30 @@ export default function KbMap() {
                 <Empty
                   icon={<Target size={22} />}
                   title="请选择章节"
-                  text="从左栏选择一个章节，这里会列出该章节的全部知识点与掌握度。"
+                  text="从左栏选择一个章节，这里会按需列出该章节的全部知识点与掌握度。"
                 />
-              ) : (activeChapterData.chapter.knowledge_points || []).length === 0 ? (
+              ) : activeChapterLoad.status === 'loading' ? (
+                <div className="v3-kb-skeleton-list" aria-label="章节知识点加载中">
+                  <Skeleton height={78} />
+                  <Skeleton height={78} />
+                  <Skeleton height={78} />
+                </div>
+              ) : activeChapterLoad.status === 'error' ? (
+                <Empty
+                  icon={<AlertCircle size={22} />}
+                  title="章节知识点加载失败"
+                  text={activeChapterLoad.error}
+                  action={
+                    <Button
+                      size="sm"
+                      variant="tonal"
+                      onClick={() => retryChapter(activeChapter.subject, activeChapter.title)}
+                    >
+                      重试
+                    </Button>
+                  }
+                />
+              ) : activeChapterPoints.length === 0 ? (
                 <Empty
                   icon={<Brain size={22} />}
                   title="该章节暂无知识点"
@@ -1541,12 +1745,11 @@ export default function KbMap() {
                 />
               ) : (
                 <div className="v3-kb-points">
-                  {(activeChapterData.chapter.knowledge_points || []).map((kp) => (
+                  {activeChapterPoints.map((kp) => (
                     <PointCard
                       key={kp.id}
                       kp={kp}
                       selected={String(selectedKpId) === String(kp.id)}
-                      query={query}
                       onOpen={() => navigate(`/knowledge/${kp.id}`)}
                       onPreview={() => openDetail(kp)}
                       onPractice={() =>

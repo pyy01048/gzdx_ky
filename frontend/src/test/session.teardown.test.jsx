@@ -26,6 +26,8 @@ vi.mock('../api/client', async (importOriginal) => {
       login: vi.fn(), changePassword: vi.fn(),
     },
     tasksApi: { ...orig.tasksApi, complete: vi.fn(), uncomplete: vi.fn() },
+    errorsApi: { ...orig.errorsApi, create: vi.fn(), update: vi.fn(), remove: vi.fn() },
+    flashcardsApi: { ...orig.flashcardsApi, create: vi.fn(), review: vi.fn(), remove: vi.fn() },
   }
 })
 
@@ -35,10 +37,10 @@ vi.mock('../api/hub', () => ({
   peekHubCache: vi.fn(),
 }))
 
-import { authApi, tasksApi } from '../api/client'
+import { authApi, tasksApi, errorsApi } from '../api/client'
 import { clearHubCache } from '../api/hub'
 import { AuthProvider, useAuth } from '../auth/AuthContext'
-import useStore, { __syncStateForTest, __pendingOpsForTest } from '../store/useStore'
+import useStore, { __syncStateForTest, __pendingOpsForTest, retrySyncQueue } from '../store/useStore'
 import { primeFavorites, useFavorite } from '../hooks/useFavorites'
 import { storePan, getStoredPan } from '../utils/pan'
 import { currentUid, setUser } from '../utils/userKeys'
@@ -63,6 +65,9 @@ const favState = () => JSON.parse(screen.getByTestId('fav').textContent)
 beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  errorsApi.create.mockReset()
+  errorsApi.update.mockReset()
+  errorsApi.remove.mockReset()
   setUser(null)
   useStore.getState().resetAll()
 })
@@ -194,5 +199,94 @@ describe('logout 保留本账号落盘归档', () => {
     /* 内存已清：下一个账号/访客看不到 A 的会话与任务 */
     expect(useStore.getState().ai.localSessions || []).toEqual([])
     expect(useStore.getState().tasks).toEqual([])
+  })
+})
+
+describe('CacheStorage 清理（P0-F02 / QA-17）', () => {
+  it('logout 在解绑 uid 之前删除 api-cache，杜绝换账号断网读旧响应', async () => {
+    const deleteMock = vi.fn().mockResolvedValue(true)
+    Object.defineProperty(window, 'caches', { configurable: true, value: { delete: deleteMock } })
+    try {
+      authApi.me.mockResolvedValue(USER)
+      authApi.logout.mockResolvedValue({})
+      renderProbe()
+      expect(await screen.findByTestId('status')).toHaveTextContent('ready')
+
+      let atUnbind = null
+      const onUid = () => { atUnbind = deleteMock.mock.calls.length }
+      window.addEventListener('userkeys:uid-changed', onUid)
+      try {
+        await act(async () => { fireEvent.click(screen.getByTestId('logout')) })
+      } finally {
+        window.removeEventListener('userkeys:uid-changed', onUid)
+      }
+      expect(deleteMock).toHaveBeenCalledWith('api-cache')
+      expect(atUnbind).toBe(1)
+      expect(screen.getByTestId('status')).toHaveTextContent('anon')
+    } finally {
+      delete window.caches
+    }
+  })
+})
+
+describe('失败写队列持久化（P0-F03 / QA-19）', () => {
+  it('失败写按 uid 落盘，切号不重放，切回恢复且重放幂等', async () => {
+    act(() => { setUser(7) })
+    errorsApi.create.mockRejectedValueOnce(new Error('500'))
+    act(() => {
+      useStore.getState().addNote({ subject: '数学', question: '刷新后不能丢', answer: 'A' })
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(__syncStateForTest.failedQueue.length).toBe(1)
+    const raw7 = localStorage.getItem('kaoyan-sync-queue-v1:7')
+    expect(raw7).toBeTruthy()
+    expect(raw7).toContain('errorsApi')
+    expect(raw7).toContain('create')
+    expect(localStorage.getItem('kaoyan-sync-queue-v1:8')).toBeNull()
+    expect(errorsApi.create).toHaveBeenCalledTimes(1)
+
+    /* 切号：旧账号队列不进内存，更不会被重放到新账号 */
+    act(() => { setUser(8) })
+    expect(__syncStateForTest.failedQueue).toEqual([])
+    expect(errorsApi.create).toHaveBeenCalledTimes(1)
+    expect(__syncStateForTest.inflight).toBe(0)
+
+    /* 切回 A：从自己的命名空间恢复（等价于刷新后按 uid 恢复） */
+    act(() => { setUser(7) })
+    expect(__syncStateForTest.failedQueue.length).toBe(1)
+
+    errorsApi.create.mockResolvedValue({ id: 99 })
+    await act(async () => {
+      retrySyncQueue()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      retrySyncQueue() // 二次调用必须幂等，不重复插入/重放
+      await Promise.resolve()
+    })
+    expect(errorsApi.create).toHaveBeenCalledTimes(2)
+    expect(__syncStateForTest.failedQueue).toEqual([])
+    expect(__syncStateForTest.inflight).toBe(0)
+    expect(localStorage.getItem('kaoyan-sync-queue-v1:7')).toBeNull()
+  })
+
+  it('重放失败时按 opId 去重，队列不会越积越多', async () => {
+    act(() => { setUser(11) })
+    errorsApi.create.mockRejectedValue(new Error('still 500'))
+    act(() => { useStore.getState().addNote({ subject: '英语', question: 'Q', answer: 'A' }) })
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(__syncStateForTest.failedQueue.length).toBe(1)
+
+    await act(async () => { retrySyncQueue(); await Promise.resolve(); await Promise.resolve() })
+    await act(async () => { retrySyncQueue(); await Promise.resolve(); await Promise.resolve() })
+    expect(__syncStateForTest.failedQueue.length).toBe(1)
+    expect(__syncStateForTest.inflight).toBe(0)
+    const persisted = JSON.parse(localStorage.getItem('kaoyan-sync-queue-v1:11') || '[]')
+    expect(persisted.length).toBe(1)
   })
 })

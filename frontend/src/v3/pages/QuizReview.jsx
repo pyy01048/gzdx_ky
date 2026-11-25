@@ -1,487 +1,334 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import {
-  Alert, Badge, Button, Card, CardHead, Chip, Empty, Input, LoadingState, toast,
-} from '../ui'
-import {
-  Brain, CheckCircle2, ChevronDown, ChevronRight, Clock, FileText, Play, RefreshCw,
-  Search, Target,
-} from '../icons'
-import { errorsApi, quizSectionApi, fetchAllPages } from '../../api/client'
-import { normalizeOptions } from '../../utils/optionText'
-import '../styles/quiz-v3.css'
-
-/* =====================================================================
- * 刷题中心 · 错题库与收藏（v3）
+/**
+ * 题库复核队列（/admin/quiz-review，仅管理员）
  *
- * 1. 进入 Tab 同时加载错题列表 + 闭环数据，失败分别给错误态与重试；
- * 2. 错题按学科 / 掌握度 / 关键词筛选，展开即可看答案解析，并直达复盘页；
- * 3. 右侧收藏仍是本地快照，但会明确标注「为什么不能判分」；
- * 4. 所有空态都带下一步动作，不留空白区域。
- * ===================================================================== */
+ * 闭环处理 needs_review 题，分两类：
+ *   - quarantined  隔离中：OCR 损坏（validation_errors 写明原因），已移出练习池，
+ *                   可「编辑 → 修复后上架」或「永久下架」；
+ *   - low_confidence 低置信：自动分类置信度低，仍在练习池，可「确认无误」或「永久下架」。
+ * 后端：GET /api/quiz/review-queue · POST /api/quiz/review/{id}（routers/study/quiz.py）。
+ * 非管理员手输 URL 由 RequireAdmin 送去 403。
+ */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import '../styles/pages.css'
+import { quizApi } from '../../api/client'
+import {
+  Button, Card, Badge, Chip, Input, Textarea, Empty, LoadingState, Segmented,
+  Select, Alert, cx, toastOk, toastErr, PageHeader,
+} from '../ui'
+import { RefreshCw, Check, X, Edit, Trash, RotateCcw, AlertTriangle, Eye } from '../icons'
 
-const MASTERY_LABEL = { unlearned: '未学', weak: '薄弱', mastered: '已掌握' }
-const ALL = ''
+const STATUS_TABS = [
+  { value: '', label: '全部' },
+  { value: 'quarantined', label: '隔离待修复' },
+  { value: 'low_confidence', label: '低置信待确认' },
+]
 
-export default function QuizReview({ visible, tab, favs, mode, onBeginSession }) {
-  /* ---------- 错题库 ---------- */
-  const [errorItems, setErrorItems] = useState([])
-  const [errLoading, setErrLoading] = useState(false)
-  const [errError, setErrError] = useState('')
-  const [q, setQ] = useState('')
-  const [subject, setSubject] = useState(ALL)
-  const [mastery, setMastery] = useState(ALL)
-  const [expandedId, setExpandedId] = useState(null)
-
-  /* ---------- 错题闭环面板（薄弱点 / 错因 / 待复习队列） ---------- */
-  const [weak, setWeak] = useState([])
-  const [reasons, setReasons] = useState([])
-  const [closedStats, setClosedStats] = useState(null)
-  const [due, setDue] = useState([])
-  const [panelLoading, setPanelLoading] = useState(false)
-  const [panelError, setPanelError] = useState('')
-
-  const loadErrors = useCallback(async () => {
-    setErrLoading(true)
-    setErrError('')
-    try {
-      // 活跃错题全集：面板上写的是"活跃错题 N 道"，只翻第一页的话 N 会被截到 200。
-      const rows = await fetchAllPages((p) => errorsApi.list({ ...p, status: 'active' }), { keys: ['errors'] })
-      setErrorItems(rows)
-    } catch (e) {
-      setErrError(e?.message || '无法读取 /api/errors')
-      setErrorItems([])
-    } finally {
-      setErrLoading(false)
-    }
-  }, [])
-
-  const loadPanel = useCallback(async () => {
-    setPanelLoading(true)
-    setPanelError('')
-    try {
-      const [w, rs, st, d] = await Promise.all([
-        quizSectionApi.weakPoints({ limit: 15 }),
-        quizSectionApi.wrongReasons({ limit: 15 }),
-        quizSectionApi.reviewStats(),
-        quizSectionApi.reviews({ limit: 30 }),
-      ])
-      setWeak(Array.isArray(w?.items) ? w.items : [])
-      setReasons(Array.isArray(rs?.items) ? rs.items : [])
-      setClosedStats(st || null)
-      setDue(Array.isArray(d?.items) ? d.items : [])
-    } catch (e) {
-      setPanelError(e?.message || '加载错题闭环数据失败')
-    } finally {
-      setPanelLoading(false)
-    }
-  }, [])
-
-  const reloadAll = useCallback(() => { loadErrors(); loadPanel() }, [loadErrors, loadPanel])
-
-  /* 待复习队列：提交复习结果（忘了 / 模糊 / 掌握） */
-  const reviewItem = async (item, result) => {
-    try {
-      await quizSectionApi.submitReview({
-        item_type: item.item_type || 'error',
-        item_id: item.item_id,
-        result,
-      })
-      toast('复习已记录')
-      loadPanel()
-    } catch (e) { toast(e.message || '复习提交失败') }
-  }
-
-  /* 进入 Tab 时同时加载两块数据；之前的实现漏了 loadPanel，整块面板恒为空。 */
-  useEffect(() => {
-    if (tab !== 'review') return
-    loadErrors()
-    loadPanel()
-  }, [tab, loadErrors, loadPanel])
-
-  const subjectOptions = useMemo(() => {
-    const map = new Map()
-    for (const e of errorItems) {
-      const name = e.subject || '未分类'
-      map.set(name, (map.get(name) || 0) + 1)
-    }
-    return [...map.entries()].map(([name, count]) => ({ name, count }))
-  }, [errorItems])
-
-  const filtered = useMemo(() => {
-    const kw = q.trim().toLowerCase()
-    return errorItems.filter((e) => {
-      if (subject !== ALL && (e.subject || '未分类') !== subject) return false
-      if (mastery !== ALL && (e.mastery_state || 'unlearned') !== mastery) return false
-      if (kw) {
-        const hay = `${e.content || ''} ${e.error_reason || ''} ${e.analysis || ''}`.toLowerCase()
-        if (!hay.includes(kw)) return false
-      }
-      return true
-    })
-  }, [errorItems, subject, mastery, q])
-
-  if (!visible) return null
-
-  /* options 走同一条归一化（对象数组 [{key,text}] 与字符串数组都吃），
-     且 /api/errors 当前不返回选项 —— 归一化后为空是预期结果，
-     此时做题页会落到「本题无选项」只读态，而不是把对象渲染成 [object Object]。 */
-  const errQuestions = filtered.map((e) => ({
-    id: String(e.question_id || e.id),
-    content: e.content || '',
-    options: normalizeOptions(e.options),
-    answer: e.correct_answer || '', analysis: e.analysis || '',
-    subject: e.subject || '', chapter: '错题', difficulty: 1, question_type: '',
-  }))
-  const favEntries = Object.entries(favs)
-  /* 收藏快照本地只存题干/科目/章节，**没有 options**（历史设计）。
-     这里同样过一遍归一化：空就空，但绝不让原始对象流到渲染层。 */
-  const favQuestions = favEntries.map(([id, f]) => ({
-    id, content: f.content || '', options: normalizeOptions(f.options),
-    answer: '', analysis: '',
-    subject: f.subject || '', chapter: f.chapter || '', difficulty: 1, question_type: f.type || '',
-  }))
-
-  const masteryTone = (state) => (
-    state === 'mastered' ? 'success' : state === 'weak' ? 'warning' : undefined
-  )
-
-  /* ---------- 错题库主视图 ---------- */
-  const renderErrorBank = () => (
-    <Card className="v3-quiz-review-main">
-      <CardHead
-        title="错题库"
-        sub={errLoading
-          ? '正在读取错题…'
-          : `活跃错题 ${errorItems.length} 道${filtered.length !== errorItems.length ? ` · 当前筛选 ${filtered.length} 道` : ''} · 展开可看答案解析`}
-        actions={(
-          <>
-            <Button size="sm" variant="ghost" icon={<RefreshCw size={14} />}
-              onClick={reloadAll} disabled={errLoading || panelLoading}>
-              刷新
-            </Button>
-            <Link className="v3-btn v3-btn--ghost v3-btn--sm" to="/error-review">
-              <Brain size={14} /> 去复盘
-            </Link>
-            <Button
-              size="sm"
-              variant="filled"
-              icon={<Play size={13} />}
-              disabled={!errQuestions.length}
-              onClick={() => onBeginSession(`错题重练（${errQuestions.length} 题）`, errQuestions, mode)}
-            >
-              全部重练
-            </Button>
-          </>
-        )}
-      />
-
-      <div className="v3-quiz-toolbar">
-        <Input
-          className="v3-quiz-search"
-          icon={<Search size={15} />}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索题干 / 错因 / 解析"
-          aria-label="搜索错题"
-        />
-        <div className="v3-quiz-chipgroup" role="group" aria-label="按学科筛选">
-          <Chip active={subject === ALL} onClick={() => setSubject(ALL)}>全部学科</Chip>
-          {subjectOptions.map((s) => (
-            <Chip
-              key={s.name}
-              active={subject === s.name}
-              onClick={() => setSubject(subject === s.name ? ALL : s.name)}
-            >
-              {s.name}<small style={{ marginLeft: 4, opacity: 0.7 }}>{s.count}</small>
-            </Chip>
-          ))}
-        </div>
-        <div className="v3-quiz-chipgroup" role="group" aria-label="按掌握度筛选">
-          {[['', '全部'], ['unlearned', '未学'], ['weak', '薄弱'], ['mastered', '已掌握']].map(([v, label]) => (
-            <Chip key={v || 'all'} active={mastery === v} onClick={() => setMastery(v)}>{label}</Chip>
-          ))}
-        </div>
-      </div>
-
-      {errLoading && <LoadingState text="正在加载错题…" />}
-      {!errLoading && errError && (
-        <Alert tone="danger">
-          <div className="v3-quiz-inline">
-            <span><strong>错题库加载失败：</strong>{errError}</span>
-            <Button size="sm" variant="text" onClick={loadErrors}>重新加载</Button>
-          </div>
-        </Alert>
-      )}
-      {!errLoading && !errError && !filtered.length && (
-        <Empty
-          icon={<FileText size={26} />}
-          title={errorItems.length ? '当前筛选下没有错题' : '错题库还是空的'}
-          text={errorItems.length
-            ? '清空搜索或切换学科 / 掌握度，就能看到全部错题。'
-            : '在刷题中心作答后，答错的题会自动归集到这里；也可以先手动录入。'}
-          action={(
-            <div className="v3-quiz-inline">
-              <Link className="v3-btn v3-btn--filled" to="/quiz">去刷题</Link>
-              <Link className="v3-btn v3-btn--ghost" to="/notebook">手动录入</Link>
-            </div>
-          )}
-        />
-      )}
-
-      {!errLoading && !errError && filtered.length > 0 && (
-        <div className="v3-quiz-list">
-          {filtered.slice(0, 100).map((e) => {
-            const open = expandedId === e.id
-            const state = e.mastery_state || 'unlearned'
-            return (
-              <div key={e.id} className={`v3-quiz-item ${open ? 'is-open' : ''}`}>
-                <button
-                  type="button"
-                  className="v3-quiz-item__head"
-                  aria-expanded={open}
-                  onClick={() => setExpandedId(open ? null : e.id)}
-                >
-                  <Badge tone={masteryTone(state)}>
-                    {e.mastery_label || MASTERY_LABEL[state] || state}
-                  </Badge>
-                  <span className="v3-quiz-item__subj">{e.subject || '未分类'}</span>
-                  {e.error_reason && <span className="v3-quiz-item__reason">{e.error_reason}</span>}
-                  <span className="v3-quiz-item__meta">复习 {e.review_count || 0} 次</span>
-                  <span className="v3-quiz-item__caret">
-                    {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                  </span>
-                </button>
-                <div className="v3-quiz-item__q">{e.content || '（题干为空）'}</div>
-                {open && (
-                  <div className="v3-quiz-item__detail">
-                    <div className="v3-quiz-answers">
-                      <div className="v3-quiz-answer is-wrong">
-                        <span>我的答案</span><b>{e.my_answer || '—'}</b>
-                      </div>
-                      <div className="v3-quiz-answer is-right">
-                        <span>正确答案</span><b>{e.correct_answer || '—'}</b>
-                      </div>
-                    </div>
-                    {e.analysis && (
-                      <div className="v3-quiz-analysis">
-                        <div className="v3-quiz-analysis__title">解析</div>
-                        <p>{e.analysis}</p>
-                      </div>
-                    )}
-                    <div className="v3-quiz-item__foot">
-                      <span>
-                        正确率 {Math.round((Number(e.accuracy) || 0) * 100)}% · 下次复习 {fmtDate(e.next_review)}
-                      </span>
-                      <div className="v3-quiz-inline">
-                        <Link className="v3-btn v3-btn--ghost v3-btn--sm" to={`/error-review?error_id=${e.id}`}>
-                          在复盘中查看
-                        </Link>
-                        <Button
-                          size="sm"
-                          variant="filled"
-                          onClick={() => onBeginSession(`错题 · ${e.subject || '未分类'}`, [{
-                            id: String(e.question_id || e.id), content: e.content || '',
-                            options: normalizeOptions(e.options),
-                            answer: e.correct_answer || '', analysis: e.analysis || '',
-                            subject: e.subject || '', chapter: '错题', difficulty: 1, question_type: '',
-                          }], mode, 0, true)}
-                        >
-                          重练本题
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-          {filtered.length > 100 && (
-            <p className="v3-quiz-note">已展示前 100 道。需要按考点或错因细看，请前往「错题复盘」。</p>
-          )}
-        </div>
-      )}
-    </Card>
-  )
-
-  /* ---------- 收藏（本地快照） ---------- */
-  const renderFavorites = () => (
-    <Card className="v3-quiz-review-side">
-      <CardHead
-        title="我的收藏"
-        sub="收藏的是题目快照，不含选项，因此以浏览模式重看"
-        actions={(
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<Play size={13} />}
-            disabled={!favQuestions.length}
-            onClick={() => onBeginSession('收藏题目', favQuestions, mode, 0, true)}
-          >
-            重看全部
-          </Button>
-        )}
-      />
-      {!favQuestions.length ? (
-        <Empty
-          icon={<CheckCircle2 size={24} />}
-          title="还没有收藏"
-          text="作答时点击题目右上角的星标，题目就会出现在这里。"
-          action={<Link className="v3-btn v3-btn--ghost" to="/quiz">去刷题</Link>}
-        />
-      ) : (
-        <div className="v3-quiz-fav-list">
-          {favQuestions.map((f) => (
-            <div key={f.id} className="v3-quiz-fav">
-              <div className="v3-quiz-fav__meta">{f.subject}{f.chapter ? ` · ${f.chapter}` : ''}</div>
-              <div className="v3-quiz-fav__text">{f.content}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  )
-
-  /* ---------- 闭环面板 ---------- */
-  const renderClosedLoop = () => (
-    <Card>
-      <CardHead
-        title="错题闭环"
-        sub={`今日已复习 ${closedStats?.today_reviews ?? '—'} 次 · 累计 ${closedStats?.total_reviews ?? '—'} 次`}
-        actions={(
-          <Button size="sm" variant="ghost" icon={<RefreshCw size={14} />}
-            onClick={loadPanel} disabled={panelLoading}>
-            {panelLoading ? '刷新中…' : '刷新'}
-          </Button>
-        )}
-      />
-
-      {panelError ? (
-        <Alert tone="danger">
-          <div className="v3-quiz-inline">
-            <span>{panelError}</span>
-            <Button size="sm" variant="text" onClick={loadPanel}>重试</Button>
-          </div>
-        </Alert>
-      ) : (
-        <div className="v3-quiz-loop">
-          <div className="v3-quiz-loop__stats">
-            <div className="v3-quiz-loop__stat">
-              <span className="v3-quiz-loop__ico"><Target size={16} /></span>
-              <div><b>{closedStats?.active_errors ?? '—'}</b><span>活跃错题</span></div>
-            </div>
-            <div className="v3-quiz-loop__stat">
-              <span className="v3-quiz-loop__ico is-warn"><Clock size={16} /></span>
-              <div><b>{closedStats?.due_errors ?? '—'}</b><span>今日待复习</span></div>
-            </div>
-            <div className="v3-quiz-loop__stat">
-              <span className="v3-quiz-loop__ico is-ok"><CheckCircle2 size={16} /></span>
-              <div><b>{closedStats?.graduated_errors ?? '—'}</b><span>已掌握</span></div>
-            </div>
-          </div>
-
-          <div className="v3-quiz-loop__grid">
-            <div>
-              <div className="v3-quiz-subtitle">薄弱点排行</div>
-              {panelLoading && !weak.length ? (
-                <LoadingState text="加载中…" />
-              ) : weak.length === 0 ? (
-                <div className="v3-quiz-muted">暂无薄弱点数据</div>
-              ) : (
-                <ol className="v3-quiz-rank">
-                  {weak.map((w, i) => (
-                    <li key={w.key || i}>
-                      <span className="v3-quiz-rank__no">{String(i + 1).padStart(2, '0')}</span>
-                      <span className="v3-quiz-rank__name">
-                        {w.chapter || w.subject}{w.knowledge_point ? ` · ${w.knowledge_point}` : ''}
-                      </span>
-                      <Badge tone="danger">{w.error_count} 错</Badge>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-            <div>
-              <div className="v3-quiz-subtitle">错因分布</div>
-              {panelLoading && !reasons.length ? (
-                <LoadingState text="加载中…" />
-              ) : reasons.length === 0 ? (
-                <div className="v3-quiz-muted">暂无错因数据</div>
-              ) : (
-                <div className="v3-quiz-reasons">
-                  {reasons.map((r, i) => {
-                    const max = Math.max(...reasons.map((x) => Number(x.count) || 0), 1)
-                    const pct = Math.round(((Number(r.count) || 0) / max) * 100)
-                    return (
-                      <div key={`${r.reason}-${i}`} className="v3-quiz-reason">
-                        <span>{r.reason}</span>
-                        <span className="v3-quiz-reason__bar"><i style={{ width: `${pct}%` }} /></span>
-                        <b>{r.count}</b>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="v3-quiz-due">
-            <div className="v3-quiz-subtitle">
-              待复习队列（艾宾浩斯）
-              <small>按遗忘曲线排好序，直接给结果即可</small>
-            </div>
-            {panelLoading && !due.length ? (
-              <LoadingState text="加载中…" />
-            ) : due.length === 0 ? (
-              <div className="v3-quiz-muted">暂无待复习项。答错或标记薄弱后会自动进入队列。</div>
-            ) : (
-              <div className="v3-quiz-due__list">
-                {due.map((item) => (
-                  <div key={item.id || item.item_id} className="v3-quiz-due__item">
-                    <div className="v3-quiz-due__main">
-                      <div className="v3-quiz-due__title">
-                        {item.title || item.content || `${item.item_type}#${item.item_id}`}
-                      </div>
-                      <div className="v3-quiz-due__meta">
-                        {[item.subject, item.chapter].filter(Boolean).join(' · ') || '未分类'}
-                        {' · 掌握度 '}{Math.round(Number(item.mastery) || 0)}
-                      </div>
-                    </div>
-                    <div className="v3-quiz-inline">
-                      <Button size="sm" variant="ghost" onClick={() => reviewItem(item, 'forgotten')}>忘了</Button>
-                      <Button size="sm" variant="ghost" onClick={() => reviewItem(item, 'fuzzy')}>模糊</Button>
-                      <Button size="sm" variant="filled" onClick={() => reviewItem(item, 'mastered')}>掌握</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </Card>
-  )
-
-  return (
-    <div className="v3-quiz">
-      <nav className="v3-quiz-domain" aria-label="错题域导航">
-        <Link to="/error-review">错题分析</Link>
-        <Link to="/notebook">错题本</Link>
-        <Link to="/quiz?tab=review" className="is-active" aria-current="page">快速重练</Link>
-      </nav>
-      <div className="v3-quiz-review-grid">
-        {renderErrorBank()}
-        {renderFavorites()}
-      </div>
-      {renderClosedLoop()}
-    </div>
-  )
+const TYPE_LABEL = {
+  single: '单选', multiple: '多选', judge: '判断',
+  fill: '填空', calc: '计算', essay: '简答', draw: '作图', proof: '证明', other: '其他',
 }
 
-/* 后端返回 ISO 时间；无效值不显示 "Invalid Date" */
-function fmtDate(s) {
-  if (!s) return '—'
-  const d = new Date(s)
-  if (Number.isNaN(d.getTime())) return '—'
-  return `${d.getMonth() + 1}月${d.getDate()}日`
+function sameJson(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+}
+
+export default function QuizReview() {
+  const [items, setItems] = useState([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [status, setStatus] = useState('')
+  const [subject, setSubject] = useState('')
+  const [subjects, setSubjects] = useState([])
+  const [limit, setLimit] = useState(50)
+  const [drafts, setDrafts] = useState({})   // id -> {content, options, answer, analysis}
+  const [editing, setEditing] = useState({})  // id -> bool
+  const [busyId, setBusyId] = useState(null)
+  const alive = useRef(true)
+
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const params = { limit }
+      if (status) params.status = status
+      if (subject) params.subject = subject
+      const res = await quizApi.reviewQueue(params)
+      if (!alive.current) return
+      setItems(Array.isArray(res?.items) ? res.items : [])
+      setTotal(res?.total || 0)
+    } catch (e) {
+      if (!alive.current) return
+      setError(e)
+    } finally {
+      if (alive.current) setLoading(false)
+    }
+  }, [limit, status, subject])
+
+  useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    quizApi.subjects()
+      .then((s) => {
+        const list = Array.isArray(s) ? s : (s?.items || s?.subjects || [])
+        setSubjects(list.map((x) => (typeof x === 'string' ? { value: x, label: x } : { value: x?.name || x?.value, label: x?.name || x?.label || x?.value })))
+      })
+      .catch(() => {})
+  }, [])
+
+  const shownCounts = useMemo(() => {
+    const c = { quarantined: 0, low_confidence: 0 }
+    for (const it of items) c[it.status] = (c[it.status] || 0) + 1
+    return c
+  }, [items])
+
+  const getDraft = (it) => drafts[it.id] || {
+    content: it.content ?? '', options: it.options ?? [], answer: it.answer ?? '', analysis: it.analysis ?? '',
+  }
+  const setDraft = (id, patch) => setDrafts((d) => ({ ...d, [id]: { ...(d[id] || {}), ...patch } }))
+  const isDirty = (it) => {
+    const d = drafts[it.id]; if (!d) return false
+    return !(sameJson(d.content, it.content) && sameJson(d.options, it.options)
+      && sameJson(d.answer, it.answer) && sameJson(d.analysis, it.analysis))
+  }
+
+  const act = async (it, action) => {
+    const edited = !!editing[it.id]
+    const body = { action }
+    if (edited) {
+      const d = getDraft(it)
+      body.content = d.content
+      body.options = d.options
+      body.answer = d.answer
+      body.analysis = d.analysis
+    }
+    setBusyId(it.id)
+    try {
+      const res = await quizApi.reviewAction(it.id, body)
+      toastOk(res?.message || '已处理')
+      setItems((prev) => prev.filter((x) => x.id !== it.id))
+      setTotal((t) => Math.max(0, t - 1))
+      setDrafts((d) => { const n = { ...d }; delete n[it.id]; return n })
+      setEditing((e) => { const n = { ...e }; delete n[it.id]; return n })
+    } catch (e) {
+      toastErr(e?.message || '处理失败，请重试')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const confirmReject = (it) => {
+    if (window.confirm(`确认永久作废该题？作废后移出练习与复核，不可在本页恢复。\n\n${String(it.content || '').slice(0, 80)}`)) {
+      act(it, 'reject')
+    }
+  }
+
+  const toggleEdit = (id) => setEditing((e) => ({ ...e, [id]: !e[id] }))
+
+  // ---- 渲染 ----
+  if (loading && items.length === 0) {
+    return <div className="quiz-review"><LoadingState text="复核队列加载中…" /></div>
+  }
+  if (error && items.length === 0) {
+    return (
+      <div className="quiz-review">
+        <Alert tone="danger" icon={<AlertTriangle size={18} />}>
+          复核队列加载失败：{String(error?.message || '接口不可达')}
+          <Button variant="text" size="sm" style={{ marginLeft: 12 }} onClick={() => load()}>重试</Button>
+        </Alert>
+      </div>
+    )
+  }
+
+  return (
+    <div className="quiz-review">
+      <PageHeader
+        eyebrow="题库治理"
+        icon={<AlertTriangle size={18} />}
+        title="题库复核队列"
+        sub={`共 ${total} 条待复核：隔离待修复 ${shownCounts.quarantined} 条，低置信待确认 ${shownCounts.low_confidence} 条。修复后上架的题目会立即回到练习池。`}
+        actions={
+          <Button variant="filled" icon={<RefreshCw size={16} />} onClick={() => load()} loading={loading}>刷新</Button>
+        }
+      />
+
+      <div className="quiz-review__filters">
+        <Segmented options={STATUS_TABS} value={status} onChange={setStatus} ariaLabel="复核状态筛选" />
+        <div className="quiz-review__filter-right">
+          <Select
+            aria-label="按科目筛选"
+            placeholder="全部科目"
+            value={subject}
+            onChange={(v) => setSubject(v)}
+            options={[{ value: '', label: '全部科目' }, ...subjects.filter((s) => s.value)]}
+            style={{ minWidth: 180 }}
+          />
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <Empty
+          icon={<Check size={32} />}
+          title="复核队列为空"
+          text={status || subject ? '当前筛选条件下没有待复核题目。' : '所有题目都已复核完毕，题库状态健康。'}
+          action={<Button variant="filled" onClick={() => load()}>刷新</Button>}
+        />
+      ) : (
+        <div className="quiz-review__list">
+          {items.map((it) => {
+            const isQ = it.status === 'quarantined'
+            const ed = !!editing[it.id]
+            const draft = getDraft(it)
+            const dirty = isDirty(it)
+            const busy = busyId === it.id
+            return (
+              <Card key={it.id} className={cx('quiz-review__card', isQ && 'is-quarantined')}>
+                <div className="quiz-review__card-head">
+                  <div className="quiz-review__card-meta">
+                    <Badge tone={isQ ? 'warn' : 'info'}>{isQ ? '隔离中' : '低置信'}</Badge>
+                    <Chip size="sm">{it.subject || '未分科'}</Chip>
+                    <Chip size="sm">{TYPE_LABEL[it.question_type] || it.question_type}</Chip>
+                    <span className="quiz-review__id">#{it.id}</span>
+                    {it.classify_confidence != null && (
+                      <span className="quiz-review__conf">置信 {Math.round(it.classify_confidence * 100)}%</span>
+                    )}
+                  </div>
+                  <div className="quiz-review__card-actions">
+                    <Button variant="text" size="sm" icon={<Edit size={15} />} onClick={() => toggleEdit(it.id)}>
+                      {ed ? '收起编辑' : '编辑'}
+                    </Button>
+                  </div>
+                </div>
+
+                {it.validation_errors?.length > 0 && (
+                  <Alert tone="warn" icon={<AlertTriangle size={16} />} className="quiz-review__alert">
+                    {it.validation_errors.map((e, i) => (
+                      <div key={i}>{e.detail || e.code || '校验未通过'}</div>
+                    ))}
+                  </Alert>
+                )}
+
+                {/* 题干 */}
+                {ed ? (
+                  <Textarea
+                    className="quiz-review__field"
+                    value={draft.content}
+                    onChange={(e) => setDraft(it.id, { content: e.target.value })}
+                    rows={3}
+                    aria-label="题干"
+                  />
+                ) : (
+                  <p className="quiz-review__content">{it.content}</p>
+                )}
+
+                {/* 选项 */}
+                {Array.isArray(draft.options) && draft.options.length > 0 && (
+                  <div className="quiz-review__options">
+                    {draft.options.map((o, i) => {
+                      const correct = String(it.answer || '').includes(o.key)
+                      return (
+                        <div key={i} className={cx('quiz-review__option', correct && 'is-answer')}>
+                          <span className="quiz-review__option-key">{o.key}</span>
+                          {ed ? (
+                            <Input
+                              className="quiz-review__option-input"
+                              value={o.text ?? ''}
+                              onChange={(e) => {
+                                const next = draft.options.map((x, j) => j === i ? { ...x, text: e.target.value } : x)
+                                setDraft(it.id, { options: next })
+                              }}
+                              aria-label={`选项 ${o.key}`}
+                            />
+                          ) : (
+                            <span className="quiz-review__option-text">{o.text}</span>
+                          )}
+                          {correct && <Check size={15} className="quiz-review__option-check" aria-label="正确答案" />}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* 答案行 */}
+                <div className="quiz-review__answer-row">
+                  <span className="quiz-review__answer-label">答案</span>
+                  {ed ? (
+                    <Input
+                      className="quiz-review__answer-input"
+                      value={draft.answer}
+                      onChange={(e) => setDraft(it.id, { answer: e.target.value })}
+                      aria-label="答案"
+                    />
+                  ) : (
+                    <span className="quiz-review__answer-value">{it.answer || '—'}</span>
+                  )}
+                </div>
+
+                {/* 解析 */}
+                {ed ? (
+                  <Textarea
+                    className="quiz-review__field"
+                    value={draft.analysis}
+                    onChange={(e) => setDraft(it.id, { analysis: e.target.value })}
+                    rows={2}
+                    placeholder="解析（可留空）"
+                    aria-label="解析"
+                  />
+                ) : it.analysis ? (
+                  <p className="quiz-review__analysis">{it.analysis}</p>
+                ) : null}
+
+                {/* 底部操作 */}
+                <div className="quiz-review__foot">
+                  {dirty && <span className="quiz-review__dirty-hint">已修改未保存</span>}
+                  <div className="quiz-review__foot-actions">
+                    {isQ ? (
+                      <Button
+                        variant="filled"
+                        size="sm"
+                        icon={<RotateCcw size={15} />}
+                        loading={busy}
+                        onClick={() => { if (!ed) toggleEdit(it.id); else act(it, 'restore') }}
+                      >
+                        {ed ? '保存并上架' : '修复后上架'}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="filled"
+                        size="sm"
+                        icon={<Check size={15} />}
+                        loading={busy}
+                        onClick={() => act(it, 'accept')}
+                      >
+                        确认无误
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      tone="danger"
+                      icon={<Trash size={15} />}
+                      loading={busy}
+                      onClick={() => confirmReject(it)}
+                    >
+                      永久下架
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {total > items.length && (
+        <div className="quiz-review__more">
+          <Button variant="outline" onClick={() => setLimit((l) => l + 50)}>
+            还有 {total - items.length} 条，加载更多
+          </Button>
+        </div>
+      )}
+    </div>
+  )
 }

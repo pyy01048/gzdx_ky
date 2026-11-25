@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import {
   Alert, Badge, Button, Empty, IconButton, PageHeader, Select, Skeleton, Tile,
@@ -49,27 +49,56 @@ function num(value, digits = 1) {
   return n.toFixed(digits)
 }
 
+export function formatCount(value) {
+  if (value == null || value === '') return '—'
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '—'
+}
+
+function schoolIdOf(item) {
+  const id = Number(item?.id ?? item?.school_id)
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
 /* -------------------------------------------------------------------------- */
 /* Scales                                                                     */
 /* -------------------------------------------------------------------------- */
 
-function niceScale(min, max, count = 5) {
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return { min: 0, max: 1, ticks: [0, 1] }
-  if (min === max) {
-    const pad = Math.abs(min) * 0.1 || 1
-    min -= pad
+export function niceScale(min, max, count = 5, nonNegative = false) {
+  const intervals = Math.max(1, Number.isFinite(count) ? Math.floor(count) - 1 : 4)
+  const fallback = { min: 0, max: 1, ticks: [0, 1] }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return fallback
+  if (min > max) [min, max] = [max, min]
+  if (nonNegative) min = Math.max(0, min)
+
+  const magnitude = Math.max(Math.abs(min), Math.abs(max))
+  const resolution = magnitude * Number.EPSILON * 4
+  if (max - min <= resolution) {
+    const pad = Math.max(magnitude * 0.02, 1)
+    min = nonNegative ? Math.max(0, min - pad) : min - pad
     max += pad
   }
+
   const span = max - min
-  const rough = span / Math.max(1, count - 1)
+  const rough = span / intervals
   const mag = Math.pow(10, Math.floor(Math.log10(rough)))
   const err = rough / mag
-  const step = mag * (err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1)
-  const lo = Math.floor(min / step) * step
-  const hi = Math.ceil(max / step) * step
+  const rawStep = mag * (err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1)
+  if (!Number.isFinite(span) || span <= 0 || !Number.isFinite(rawStep) || rawStep <= 0) return fallback
+
+  const step = Number(rawStep.toPrecision(12))
+  let lo = Math.floor(min / step) * step
+  let hi = Math.ceil(max / step) * step
+  if (nonNegative) lo = Math.max(0, lo)
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return fallback
+
   const ticks = []
-  for (let v = lo; v <= hi + step * 0.5; v += step) ticks.push(Number(v.toFixed(6)))
-  return { min: lo, max: hi, ticks }
+  const tickCount = Math.ceil((hi - lo) / step)
+  for (let i = 0; i <= tickCount; i += 1) {
+    const tick = Number((lo + i * step).toPrecision(12))
+    if (!ticks.length || tick > ticks[ticks.length - 1]) ticks.push(tick)
+  }
+  return { min: lo, max: hi, ticks: ticks.length ? ticks : [lo, hi] }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -81,27 +110,25 @@ const CHART_H = 520
 const CHART_M = { top: 30, right: 30, bottom: 62, left: 74 }
 
 function ScatterChart({ points, hiddenLevels, onToggleLevel, levels }) {
+  const navigate = useNavigate()
   const [active, setActive] = useState(null)
   const innerW = CHART_W - CHART_M.left - CHART_M.right
   const innerH = CHART_H - CHART_M.top - CHART_M.bottom
 
   const scales = useMemo(() => {
     if (!points.length) {
-      return { x: niceScale(0, 100, 6), y: niceScale(300, 450, 5) }
+      return { x: niceScale(0, 100, 6, true), y: niceScale(300, 450, 5) }
     }
     const xs = points.map((p) => p.enroll)
     const ys = points.map((p) => p.admitAvg)
-    const xMax = Math.max(...xs, 1)
-    const yMin = Math.min(...ys)
-    const yMax = Math.max(...ys)
     return {
-      x: niceScale(0, xMax, 6),
-      y: niceScale(Math.floor((yMin - 8) / 10) * 10, yMax + 8, 5),
+      x: niceScale(0, Math.max(...xs), 6, true),
+      y: niceScale(Math.min(...ys), Math.max(...ys), 5),
     }
   }, [points])
 
-  const px = (value) => CHART_M.left + ((value - scales.x.min) / Math.max(scales.x.max - scales.x.min, 1e-9)) * innerW
-  const py = (value) => CHART_M.top + innerH - ((value - scales.y.min) / Math.max(scales.y.max - scales.y.min, 1e-9)) * innerH
+  const px = (value) => CHART_M.left + ((value - scales.x.min) / (scales.x.max - scales.x.min)) * innerW
+  const py = (value) => CHART_M.top + innerH - ((value - scales.y.min) / (scales.y.max - scales.y.min)) * innerH
 
   const visible = points.filter((p) => !hiddenLevels.has(p.level))
   const activePoint = active != null ? points.find((p) => p.i === active) : null
@@ -143,7 +170,7 @@ function ScatterChart({ points, hiddenLevels, onToggleLevel, levels }) {
           className="v3-ky-scatter__svg"
           viewBox={`0 0 ${CHART_W} ${CHART_H}`}
           role="img"
-          aria-label={`招生人数与录取均分散点图，共 ${visible.length} 所院校`}
+          aria-label={`专业均值招生人数与录取均分散点图，共 ${visible.length} 所院校`}
         >
           {scales.y.ticks.map((tick) => {
             const ty = py(tick)
@@ -173,7 +200,7 @@ function ScatterChart({ points, hiddenLevels, onToggleLevel, levels }) {
                   y1={CHART_M.top}
                   y2={CHART_M.top + innerH}
                 />
-                <text className="v3-ky-scatter__tick" x={tx} y={CHART_M.top + innerH + 24} textAnchor="middle">{tick}</text>
+                <text className="v3-ky-scatter__tick" x={tx} y={CHART_M.top + innerH + 24} textAnchor="middle">{formatCount(tick)}</text>
               </g>
             )
           })}
@@ -200,7 +227,7 @@ function ScatterChart({ points, hiddenLevels, onToggleLevel, levels }) {
             y={CHART_H - 16}
             textAnchor="end"
           >
-            拟招生人数（人）
+            专业均值招生人数（人）
           </text>
 
           {visible.map((point) => {
@@ -208,20 +235,32 @@ function ScatterChart({ points, hiddenLevels, onToggleLevel, levels }) {
             const cy = py(point.admitAvg)
             const meta = levelMeta(point.level)
             const isActive = active === point.i
+            const canNavigate = point.id != null
+            const openSchool = () => {
+              if (canNavigate) navigate(`/kaoyan/schools/${point.id}`)
+            }
             return (
               <g
                 key={`${point.name}-${point.i}`}
                 className={`v3-ky-scatter__point${isActive ? ' is-active' : ''}`}
                 tabIndex={0}
-                role="img"
-                aria-label={`${point.name}，${point.level}，招生 ${point.enroll} 人，录取均分 ${num(point.admitAvg, 1)}，复录比 ${point.retestRatio == null ? '未收录' : num(point.retestRatio, 2)}`}
+                role={canNavigate ? 'button' : 'img'}
+                style={{ cursor: canNavigate ? 'pointer' : 'default' }}
+                aria-label={`${point.name}，${point.level}，专业均值招生 ${formatCount(point.enroll)} 人，录取均分 ${num(point.admitAvg, 1)}，复录比 ${point.retestRatio == null ? '未收录' : num(point.retestRatio, 2)}${canNavigate ? '，按 Enter 查看院校详情' : ''}`}
                 onMouseEnter={() => setActive(point.i)}
                 onMouseLeave={() => setActive(null)}
                 onFocus={() => setActive(point.i)}
                 onBlur={() => setActive(null)}
                 onClick={(e) => {
                   e.stopPropagation()
-                  setActive((prev) => (prev === point.i ? null : point.i))
+                  if (canNavigate) openSchool()
+                  else setActive((prev) => (prev === point.i ? null : point.i))
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return
+                  e.preventDefault()
+                  if (canNavigate) openSchool()
+                  else setActive(point.i)
                 }}
               >
                 <circle
@@ -238,7 +277,7 @@ function ScatterChart({ points, hiddenLevels, onToggleLevel, levels }) {
                   style={{ fill: meta.color }}
                 />
                 <title>
-                  {`${point.name} · ${point.level} · ${point.province || '省份未标注'} · 招生 ${point.enroll} 人 · 均分 ${num(point.admitAvg, 1)} · 复录比 ${point.retestRatio == null ? '—' : num(point.retestRatio, 2)}`}
+                  {`${point.name} · ${point.level} · ${point.province || '省份未标注'} · 专业均值招生 ${formatCount(point.enroll)} 人 · 均分 ${num(point.admitAvg, 1)} · 复录比 ${point.retestRatio == null ? '—' : num(point.retestRatio, 2)}`}
                 </title>
               </g>
             )
@@ -253,7 +292,7 @@ function ScatterChart({ points, hiddenLevels, onToggleLevel, levels }) {
               {activePoint.level} · {activePoint.province || '省份未标注'}
             </span>
             <div className="v3-ky-scatter__tip-grid">
-              <span>招生 <em>{activePoint.enroll} 人</em></span>
+              <span>专业均值招生 <em>{formatCount(activePoint.enroll)} 人</em></span>
               <span>录取均分 <em>{num(activePoint.admitAvg, 1)}</em></span>
               <span>复录比 <em>{activePoint.retestRatio == null ? '—' : num(activePoint.retestRatio, 2)}</em></span>
             </div>
@@ -270,7 +309,7 @@ function ScatterChart({ points, hiddenLevels, onToggleLevel, levels }) {
 
       <p className="v3-ky-scatter__size-note">
         <i aria-hidden="true" />
-        气泡大小代表复录比，复录比越高，气泡越大；横轴为拟招生人数，纵轴为录取均分。
+        气泡大小代表复录比，复录比越高，气泡越大；横轴为专业记录的平均招生人数，纵轴为录取均分。
       </p>
     </div>
   )
@@ -332,6 +371,7 @@ export default function KaoyanScatter() {
         const ratio = Number(item.retest_ratio)
         return {
           i,
+          id: schoolIdOf(item),
           name: item.name || '未命名院校',
           level: levelOf(item),
           province: item.province || '',
@@ -352,15 +392,15 @@ export default function KaoyanScatter() {
 
   const chartReady = points.length > 0
   const stats = useMemo(() => {
-    const enrollVals = items.map((item) => Number(item.enroll)).filter((n) => Number.isFinite(n) && n > 0)
-    const avgVals = items.map((item) => Number(item.admit_avg)).filter((n) => Number.isFinite(n) && n > 0)
-    const ratioVals = items.map((item) => Number(item.retest_ratio)).filter((n) => Number.isFinite(n) && n > 0)
+    const enrollVals = visibleItems.map((item) => Number(item.enroll)).filter((n) => Number.isFinite(n) && n > 0)
+    const avgVals = visibleItems.map((item) => Number(item.admit_avg)).filter((n) => Number.isFinite(n) && n > 0)
+    const ratioVals = visibleItems.map((item) => Number(item.retest_ratio)).filter((n) => Number.isFinite(n) && n > 0)
     return {
-      totalEnroll: enrollVals.reduce((sum, n) => sum + n, 0),
+      totalEnroll: enrollVals.length ? enrollVals.reduce((sum, n) => sum + n, 0) : null,
       avgAdmit: mean(avgVals),
       medianRatio: medians(ratioVals),
     }
-  }, [items])
+  }, [visibleItems])
 
   const toggleLevel = (level) => {
     setHiddenLevels((prev) => {
@@ -376,15 +416,17 @@ export default function KaoyanScatter() {
     ? '正在读取招生分布数据…'
     : error
       ? '招生分布数据加载失败'
-      : items.length
-        ? `${items.length} 所院校 · 招生 ${stats.totalEnroll} 人 · 气泡大小表示复录比`
-        : '招生人数、录取均分与复录比的分布视图'
+      : visibleItems.length
+        ? `${visibleItems.length} 所院校 · 专业均值合计 ${formatCount(stats.totalEnroll)} 人 · 气泡大小表示复录比`
+        : items.length
+          ? '当前层级已全部隐藏'
+          : '专业均值招生人数、录取均分与复录比的分布视图'
 
   return (
     <div className="v3-stack v3-ky">
       <PageHeader
         eyebrow="SCATTER · 招生分布"
-        title="招生人数分布"
+        title="专业均值招生分布"
         sub={headerSub}
         actions={(
           <>
@@ -402,7 +444,7 @@ export default function KaoyanScatter() {
             <span className="v3-eyebrow v3-ky-hero__eyebrow"><BarChart3 size={13} /> 招生 × 分数</span>
             <h2>招生规模大，<br />不一定代表更好考。</h2>
             <p>
-              横轴是拟招生人数，纵轴是录取均分，气泡大小对应复录比。
+              横轴是各院校专业记录的平均招生人数，纵轴是录取均分，气泡大小对应复录比。
               把「招得多」和「录得高」放在同一张图里，比单看一条分数线更接近真实竞争格局。
             </p>
             <div className="v3-ky-hero__actions">
@@ -413,12 +455,12 @@ export default function KaoyanScatter() {
           </div>
           <div className="v3-ky-hero__stats">
             <div className="v3-ky-hero__stat">
-              <b>{items.length || '—'}</b>
+              <b>{visibleItems.length}</b>
               <span>院校数</span>
             </div>
             <div className="v3-ky-hero__stat">
-              <b>{items.length ? stats.totalEnroll : '—'}</b>
-              <span>招生总数</span>
+              <b>{formatCount(stats.totalEnroll)}</b>
+              <span>招生规模估算（专业均值合计）</span>
             </div>
             <div className="v3-ky-hero__stat">
               <b>{stats.avgAdmit == null ? '—' : num(stats.avgAdmit, 1)}</b>
@@ -435,7 +477,7 @@ export default function KaoyanScatter() {
       <Tile span={12} className="v3-ky-scatter-panel">
         <div className="v3-ky-scatter-head">
           <div>
-            <h2>招生与录取分布</h2>
+            <h2>专业均值招生与录取分布</h2>
             <p>颜色区分院校层级，点击图例可暂时隐藏该层级。</p>
           </div>
           <div className="v3-ky-scatter-tools">
@@ -476,15 +518,15 @@ export default function KaoyanScatter() {
             icon={<BarChart3 size={26} />}
             title={years.length === 0 ? '院校库还没有招生数据' : `${data.year ?? '该'} 年还没有可绘制的招生数据`}
             text={years.length === 0
-              ? '散点图依赖各院校的招生人数与录取均分。招生数据入库后，这里会按库里的真实年份出图。'
-              : '散点图需要「拟招生人数 + 录取均分」同时有值。该年份目前可能只采到录取分、还缺招生人数，补齐后会自动出图。'}
+              ? '散点图依赖各院校专业记录的平均招生人数与录取均分。招生数据入库后，这里会按库里的真实年份出图。'
+              : '散点图需要「专业均值招生人数 + 录取均分」同时有值。该年份目前可能只采到录取分、还缺招生人数，补齐后会自动出图。'}
             action={<Link className="v3-btn v3-btn--tonal" to="/kaoyan/schools">浏览院校库</Link>}
           />
         ) : !chartReady ? (
           <Empty
             icon={<BarChart3 size={26} />}
             title="暂无可绘制的坐标数据"
-            text="当前年份的院校记录缺少「拟招生人数」或「录取均分」，无法定位气泡。下方表格保留原始记录。"
+            text="当前年份的院校记录缺少「专业均值招生人数」或「录取均分」，无法定位气泡。下方表格保留原始记录。"
             action={<Link className="v3-btn v3-btn--tonal" to="/kaoyan/schools">浏览院校库</Link>}
           />
         ) : (
@@ -510,7 +552,7 @@ export default function KaoyanScatter() {
           <div className="v3-ky-section__head">
             <div>
               <h2>院校数据明细 <span className="v3-ky-section__count">{visibleItems.length} 所</span></h2>
-              <p>招生人数与录取均分来自招生记录；复录比为空时显示 —。</p>
+              <p>招生人数为专业记录均值，仅作规模估算；复录比为空时显示 —。</p>
             </div>
             {items.length > 50 ? <Badge tone="outline">仅显示前 50 条</Badge> : null}
           </div>
@@ -531,7 +573,7 @@ export default function KaoyanScatter() {
                         <th>院校</th>
                         <th>层级</th>
                         <th>省份</th>
-                        <th>拟招生</th>
+                        <th>专业均值招生</th>
                         <th>录取均分</th>
                         <th>复录比</th>
                       </tr>
@@ -549,7 +591,7 @@ export default function KaoyanScatter() {
                             </span>
                           </td>
                           <td>{item.province || '—'}</td>
-                          <td>{item.enroll == null ? '—' : item.enroll}</td>
+                          <td>{formatCount(item.enroll)}</td>
                           <td>{item.admit_avg == null ? '—' : num(item.admit_avg, 1)}</td>
                           <td>{item.retest_ratio == null ? '—' : num(item.retest_ratio, 2)}</td>
                         </tr>
@@ -567,7 +609,7 @@ export default function KaoyanScatter() {
       ) : null}
 
       <p className="v3-ky-footnote">
-        <School size={13} /> 散点数据来自 /kaoyan/analysis/scatter；只绘制同时具备招生人数与录取均分的院校，不为缺失值补零。
+        <School size={13} /> 散点数据来自 /kaoyan/analysis/scatter；招生人数为专业记录均值，仅作规模估算；只绘制同时具备有效招生人数与录取均分的院校，不为缺失值补零。
       </p>
     </div>
   )

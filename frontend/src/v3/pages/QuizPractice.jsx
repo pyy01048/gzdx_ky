@@ -157,35 +157,46 @@ export default function QuizPractice({
     let correct = false,
       correctAnswer = q.answer,
       analysis = q.analysis
-    if (backendOk && !q.id.startsWith('l')) {
+    let sync = {
+      syncStatus: 'local',
+      syncError: backendOk ? '本地题目未同步' : '后端暂不可用',
+    }
+    if (backendOk && !String(q.id).startsWith('l')) {
       setSubmitting(true)
       try {
         const r = await quizApi.submit({ question_id: Number(q.id), my_answer: myAns })
         correct = !!r.correct
         correctAnswer = r.correct_answer ?? correctAnswer
         analysis = r.analysis ?? analysis
-      } catch {
+        sync = { syncStatus: 'synced', syncError: '' }
+      } catch (err) {
         correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
+        sync.syncError = err?.message || '提交失败，请稍后重试'
       } finally {
         setSubmitting(false)
       }
     } else {
       correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
     }
-    applyGrade(q, correct, myAns, correctAnswer, analysis)
+    applyGrade(q, correct, myAns, correctAnswer, analysis, sync)
   }
 
-  const applyGrade = (q, correct, selected, correctAnswer, analysis) => {
+  const applyGrade = (q, correct, selected, correctAnswer, analysis, sync = {}) => {
     if (session?.noAnswer) {
       onRecord(q.id, { selfCheckOnly: true, selected, correctAnswer: '', analysis: '' })
       return
     }
-    onRecord(q.id, { correct, selected, correctAnswer, analysis })
+    const syncStatus = sync.syncStatus || 'synced'
+    const syncError = sync.syncError || ''
+    onRecord(q.id, { correct, selected, correctAnswer, analysis, syncStatus, syncError })
     pushRec(q.id, correct) // V10 本地作答累计（做过次数 + 最近对错）
-    if (correct) toast('回答正确')
-    else {
+    if (correct) {
+      toast(syncStatus === 'synced' ? '回答正确' : '本地判分：回答正确（后端未同步）')
+    } else {
       addWrong(q.id)
-      toast('答错已加入错题本')
+      toast(syncStatus === 'synced'
+        ? '答错已计入错题本'
+        : `本地判分：错题仅记录在本机，后端未同步${syncError ? `（${syncError}）` : ''}`)
     }
   }
 
@@ -213,29 +224,43 @@ export default function QuizPractice({
       toast('请先输入你的作答，再点「对照答案」')
       return
     }
-    let correctAnswer = q.answer,
-      analysis = q.analysis
-    if (backendOk && !q.id.startsWith('l')) {
+    // 对照答案只展示本地题库内容；真正提交延迟到用户自评，避免一次作答落两条记录。
+    setSelfCheck({ qid: q.id, myAns: txt, correctAnswer: q.answer, analysis: q.analysis })
+  }
+
+  /* 文本题自评落分：按后端契约携带 self_score，只提交一次。 */
+  const selfGrade = async (correct) => {
+    if (!selfCheck || submitting || records[selfCheck.qid]) return
+    const q = session.questions.find((x) => x.id === selfCheck.qid)
+    if (!q) return
+    const maxScore = Number(q.max_score) || Number(q.score) || 10
+    let finalCorrect = correct
+    let correctAnswer = selfCheck.correctAnswer
+    let analysis = selfCheck.analysis
+    let sync = {
+      syncStatus: 'local',
+      syncError: backendOk ? '本地题目未同步' : '后端暂不可用',
+    }
+    if (backendOk && !String(q.id).startsWith('l')) {
       setSubmitting(true)
       try {
-        const r = await quizApi.submit({ question_id: Number(q.id), my_answer: txt })
+        const r = await quizApi.submit({
+          question_id: Number(q.id),
+          my_answer: selfCheck.myAns,
+          self_score: correct ? maxScore : 0,
+          max_score: maxScore,
+        })
+        if (typeof r.correct === 'boolean') finalCorrect = r.correct
         correctAnswer = r.correct_answer ?? correctAnswer
         analysis = r.analysis ?? analysis
-      } catch {
-        /* 自评模式，后端不可用不影响 */
+        sync = { syncStatus: 'synced', syncError: '' }
+      } catch (err) {
+        sync.syncError = err?.message || '提交失败，请稍后重试'
       } finally {
         setSubmitting(false)
       }
     }
-    setSelfCheck({ qid: q.id, myAns: txt, correctAnswer, analysis })
-  }
-
-  /* 文本题自评落分 */
-  const selfGrade = (correct) => {
-    if (!selfCheck) return
-    const q = session.questions.find((x) => x.id === selfCheck.qid)
-    if (!q) return
-    applyGrade(q, correct, selfCheck.myAns, selfCheck.correctAnswer, selfCheck.analysis)
+    applyGrade(q, finalCorrect, selfCheck.myAns, correctAnswer, analysis, sync)
     setSelfCheck(null)
   }
 
@@ -577,7 +602,13 @@ export default function QuizPractice({
           )}
 
           {/* 依赖原书插图的题目给出提示，避免用户对着「见下图」困惑 */}
-          {dependsOnFigure(q) && <p className="v3-quiz-fig-note">本题依赖原书插图，答案见原书。</p>}
+          {q.figure_missing ? (
+            <Alert tone="warning" className="v3-quiz-mark">
+              本题题干含图，但原图尚未入库 —— 可先按文字作答，答案与解析不受影响。
+            </Alert>
+          ) : dependsOnFigure(q) && !(Array.isArray(q.images) && q.images.length) ? (
+            <p className="v3-quiz-fig-note">本题依赖原书插图，答案见原书。</p>
+          ) : null}
 
           {/* 选择题：点选即判 */}
           {isChoiceQ(q) && (
@@ -661,7 +692,7 @@ export default function QuizPractice({
                   >
                     {aiGrades[q.id]?.loading ? 'AI 批改中…' : 'AI 批改'}
                   </Button>
-                  <span className="v3-quiz-keyhint">提交后展开参考答案与解析，再由你自评对错</span>
+                  <span className="v3-quiz-keyhint">对照后展开参考答案与解析，自评时才提交并携带自评分</span>
                 </div>
               )}
               {/* P0-2 AI 批改结果（未判分/未自评时也直接展示在作答区下方） */}
@@ -703,12 +734,14 @@ export default function QuizPractice({
                   正确答案：
                   <span className="v3-quiz-reveal__ans">{(rec?.correctAnswer ?? q.answer) || '—'}</span>
                 </span>
-                {rec &&
-                  (rec.correct ? (
-                    <span className="v3-quiz-reveal__ok">· 回答正确</span>
-                  ) : (
-                    <span className="v3-quiz-reveal__bad">· 你选了 {rec.selected || '—'}，已计入错题本</span>
-                  ))}
+                {rec && (
+                  <span className={rec.correct ? 'v3-quiz-reveal__ok' : 'v3-quiz-reveal__bad'}>
+                    · {rec.correct ? '回答正确' : `你选了 ${rec.selected || '—'}`}
+                    {rec.syncStatus === 'local'
+                      ? ` · 本地判分，后端未同步${rec.syncError ? `（${rec.syncError}）` : ''}`
+                      : (!rec.correct ? ' · 已计入错题本' : '')}
+                  </span>
+                )}
                 {selfCheck && <span>· 你的作答：{selfCheck.myAns}</span>}
               </div>
 
@@ -831,11 +864,11 @@ export default function QuizPractice({
 
               {selfCheck && (
                 <div className="v3-quiz-text-row">
-                  <Button variant="filled" onClick={() => selfGrade(true)}>
+                  <Button variant="filled" disabled={submitting} onClick={() => selfGrade(true)}>
                     我答对了
                   </Button>
-                  <Button variant="danger" onClick={() => selfGrade(false)}>
-                    我答错了（收入错题本）
+                  <Button variant="danger" disabled={submitting} onClick={() => selfGrade(false)}>
+                    我答错了
                   </Button>
                 </div>
               )}

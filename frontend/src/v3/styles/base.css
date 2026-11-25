@@ -30,11 +30,8 @@ body {
   min-height: 100%;
   color: var(--v3-text);
   background:
-    radial-gradient(1100px 620px at 12% -10%, var(--v3-glow-blue), transparent 62%),
-    radial-gradient(900px 560px at 96% -4%, var(--v3-glow-purple), transparent 60%),
-    radial-gradient(760px 520px at 60% 108%, var(--v3-glow-pink), transparent 62%),
+    radial-gradient(900px 480px at 100% 0%, color-mix(in srgb, var(--v3-primary) 4%, transparent), transparent 70%),
     var(--v3-bg);
-  background-attachment: fixed;
 }
 
 .v3-root *,
@@ -139,7 +136,7 @@ hr {
   background: var(--v3-action-hover);
 }
 [data-theme="dark"] .v3-btn[data-cta="primary"] {
-  color: #0E0B26;
+  color: var(--v3-focus-on-action);
 }
 
 /* 跳转链接（P0-5）：平时藏在视口上方，键盘聚焦时滑入。
@@ -165,7 +162,7 @@ hr {
   outline-offset: 2px;
 }
 [data-theme="dark"] .v3-skip-link {
-  color: #0E0B26;
+  color: var(--v3-focus-on-action);
 }
 
 /* ---------- Layout utilities ---------- */
@@ -270,8 +267,8 @@ hr {
 .v3-h1 {
   font-family: var(--v3-font-display);
   font-size: var(--v3-fs-32);
-  line-height: var(--v3-lh-tight);
-  letter-spacing: var(--v3-tracking-tight);
+  line-height: 1.25;
+  letter-spacing: 0.01em;
   font-weight: 700;
 }
 
@@ -305,15 +302,15 @@ hr {
 .v3-caption {
   font-size: var(--v3-fs-12);
   color: var(--v3-text-3);
-  line-height: 1.45;
+  line-height: 1.65;
 }
 
 .v3-eyebrow {
   font-size: var(--v3-fs-11);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--v3-text-3);
+  color: var(--v3-primary);
 }
 
 .v3-mono {
@@ -327,12 +324,9 @@ hr {
 }
 
 .v3-gradient-text {
-  background: var(--v3-gemini-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  background-size: 180% 100%;
-  animation: v3-gradient-pan 12s var(--v3-ease-standard) infinite;
+  background: none;
+  color: var(--v3-primary);
+  -webkit-text-fill-color: currentColor;
 }
 
 .v3-muted { color: var(--v3-text-3); }
@@ -381,6 +375,19 @@ hr {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--v3-fs-13);
+  font-variant-numeric: tabular-nums;
+}
+
+.v3-table thead th:first-child,
+.v3-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--v3-surface-1);
+  box-shadow: 8px 0 12px -12px rgba(28, 27, 24, 0.45);
+}
+
+.v3-table tbody td:first-child {
+  background: var(--v3-surface);
 }
 
 .v3-table thead th {
@@ -414,6 +421,10 @@ hr {
 
 .v3-table tbody tr:hover {
   background: color-mix(in srgb, var(--v3-primary) 4%, transparent);
+}
+
+.v3-table tbody tr:hover td:first-child {
+  background: color-mix(in srgb, var(--v3-primary) 4%, var(--v3-surface));
 }
 
 /* ---------- Scroll region ---------- */

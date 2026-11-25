@@ -27,8 +27,8 @@
 }
 
 /* 色调：KPI 图标 / 描边共用。步骤的 --tone 随后被 data-state 覆盖。 */
-.hub-toned--indigo { --tone: #4285f4; --tone-soft: rgba(66, 133, 244, 0.13); }
-.hub-toned--blue { --tone: #4285f4; --tone-soft: rgba(66, 133, 244, 0.13); }
+.hub-toned--indigo { --tone: var(--v3-primary); --tone-soft: var(--v3-primary-container); }
+.hub-toned--blue { --tone: var(--v3-primary); --tone-soft: var(--v3-primary-container); }
 .hub-toned--cyan { --tone: #1a9bb8; --tone-soft: rgba(26, 155, 184, 0.13); }
 .hub-toned--violet { --tone: #8b5cf6; --tone-soft: rgba(139, 92, 246, 0.14); }
 .hub-toned--rose { --tone: #d96570; --tone-soft: rgba(217, 101, 112, 0.14); }
@@ -109,8 +109,7 @@
   gap: 24px 32px;
   /* 静态双色晕染：实体表面上的低饱和氛围，不做模糊、不做动画 */
   background:
-    radial-gradient(120% 150% at 100% 0%, color-mix(in srgb, var(--v3-action) 7%, transparent), transparent 55%),
-    radial-gradient(90% 130% at 0% 100%, color-mix(in srgb, var(--v3-primary) 6%, transparent), transparent 60%),
+    linear-gradient(90deg, color-mix(in srgb, var(--v3-primary) 5%, transparent), transparent 42%),
     var(--v3-surface);
   animation: hub-rise var(--v3-dur-3) var(--v3-ease-emphasized) both;
 }
@@ -143,7 +142,6 @@
 .hub-live i {
   width: 6px; height: 6px; border-radius: 50%;
   background: currentColor;
-  animation: hub-pulse 2.4s ease-out infinite;
 }
 .hub-live.is-stale { background: color-mix(in srgb, var(--v3-warning) 14%, transparent); color: var(--v3-warning); }
 .hub-live.is-stale i { animation: none; }
@@ -185,7 +183,7 @@
 .hub-mainfig__trace > summary {
   cursor: pointer;
   list-style: none;
-  min-height: 28px;
+  min-height: var(--v3-touch);
   display: inline-flex;
   align-items: center;
   border-bottom: 1px dashed var(--v3-border-strong);
@@ -326,6 +324,9 @@
 }
 .hub-step.is-done { opacity: 0.72; }
 .hub-step.is-done:hover { opacity: 0.92; }
+/* 今日无欠账的模块降权：保留入口，但不与有任务的卡片争夺注意力 */
+.hub-step.is-empty { opacity: 0.66; }
+.hub-step.is-empty:hover { opacity: 1; }
 .hub-step.is-active {
   border-color: var(--tone);
   box-shadow: 0 0 0 1px var(--tone), 0 16px 34px -24px var(--tone);
@@ -703,8 +704,8 @@
 .hub-mod:hover { background: var(--hub-well); border-color: var(--hub-line); transform: translateY(-2px); }
 .hub-mod.is-muted { opacity: 0.55; }
 .hub-mod__pct { font-size: var(--v3-fs-12); font-weight: 700; color: var(--v3-text-2); font-variant-numeric: tabular-nums; }
-.hub-mod__label { font-size: var(--v3-fs-12); font-weight: 600; white-space: nowrap; }
-.hub-mod__value { font-size: var(--v3-fs-12); color: var(--v3-text-3); white-space: nowrap; }
+.hub-mod__label { font-size: var(--v3-fs-12); font-weight: 600; color: var(--v3-text-2); white-space: nowrap; }
+.hub-mod__value { font-size: var(--v3-fs-12); color: var(--v3-text-2); white-space: nowrap; }
 
 /* ── 口径体检（仅管理端 /admin/caliber 使用） ───────────────────────────── */
 .caliber-page {

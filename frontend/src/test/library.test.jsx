@@ -129,18 +129,19 @@ async function clickChip(re) {
 
 // ========================================================================= //
 describe('学习文库 Library 页面', () => {
-  it('打开即以 subject_source=ima + stage=初试 拉取 IMA 资料', async () => {
+  it('打开即默认展示全部来源 + 全部阶段（QA-01 裁决）', async () => {
     await renderLibrary()
 
-    // 首屏至少一次带 ima 来源 + 初试 阶段的请求
+    // 默认既不下发 subject_source 也不下发 stage —— 全库 2666 条全部可见
     const first = listMock.mock.calls[0][0]
-    expect(first).toMatchObject({ subject_source: 'ima', stage: '初试' })
+    expect(first.subject_source).toBeUndefined()
+    expect(first.stage).toBeUndefined()
 
-    // 初试的 3 条都在，复试的 1 条不在
+    // 初试 3 条 + 复试 1 条都在
     expect(screen.getByText('模电第三章-放大电路.pdf')).toBeTruthy()
     expect(screen.getByText('408真题-2019.pdf')).toBeTruthy()
     expect(screen.getByText('考研核心词汇.xlsx')).toBeTruthy()
-    expect(screen.queryByText('复试面试手册.docx')).toBeNull()
+    expect(screen.getByText('复试面试手册.docx')).toBeTruthy()
   })
 
   it('切到「复试」后按 stage=复试 重新拉数据', async () => {

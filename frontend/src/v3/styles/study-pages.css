@@ -28,6 +28,16 @@
   min-width: 0;
 }
 
+.v3-study-alert__inner > div {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.v3-study-alert__inner p {
+  margin: 3px 0 0;
+  line-height: var(--v3-lh-normal);
+  overflow-wrap: anywhere;
+}
+
 .v3-study-alert__inner > span,
 .v3-study-banner__inner > span {
   flex: 1 1 220px;
@@ -1080,14 +1090,14 @@
 }
 
 .v3-study-word-row__actions .v3-iconbtn--sm {
-  width: 30px;
-  height: 30px;
+  width: var(--v3-touch);
+  height: var(--v3-touch);
 }
 
 .v3-study-word-row__actions .v3-study-grade-text {
-  min-width: 28px;
+  min-width: var(--v3-touch);
   padding: 0 5px;
-  height: 30px;
+  height: var(--v3-touch);
   font-size: var(--v3-fs-12);
 }
 
@@ -1776,8 +1786,8 @@
 }
 
 .v3-study-card-row__actions .v3-iconbtn--sm {
-  width: 30px;
-  height: 30px;
+  width: var(--v3-touch);
+  height: var(--v3-touch);
 }
 
 /* ---------- Note picker ---------- */

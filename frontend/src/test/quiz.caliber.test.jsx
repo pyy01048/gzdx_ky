@@ -85,15 +85,14 @@ async function renderPage(modPath, route) {
 }
 
 describe('#103① 刷题中心首页统计口径明示', () => {
-  it('分别显示「可见题」与「可作答」两个具名口径，且数字来自对应字段', async () => {
-    await renderPage('../v3/pages/Quiz', '/quiz')
-    expect(await screen.findByText('可见题')).toBeInTheDocument()
-    expect(screen.getByText('可作答')).toBeInTheDocument()
-    // 口径字样必须出现在界面上（dogfood ISSUE-005：改为用户语言，不暴露接口路径与「具名字段」字样）
-    expect(screen.getByText(/可见题已排除 OCR 碎片题/)).toBeInTheDocument()
-    expect(screen.getByText(/「可作答」= 有答案、可自动判分/)).toBeInTheDocument()
-    // CountUp 动画期间数字可能未落定，断言容器存在即可（值由 mock 驱动）
-    expect(screen.getByText('可见题').closest('.qh-hstat')).toBeTruthy()
+  it('统计条分别展示「题库」与「可作答」两个口径，且数字来自对应字段', async () => {
+    const { container } = await renderPage('../v3/pages/Quiz', '/quiz')
+    // 首页统计条：题库总量 = visible_total（排除 OCR 碎片）；可作答 = answerable_total
+    expect((await screen.findAllByText(/可作答/)).length).toBeGreaterThan(0)
+    const text = container.textContent
+    expect(text).toContain('题库')
+    expect(text).toContain(String(STATS.visible_total))
+    expect(text).toContain(String(STATS.answerable_total))
   })
 })
 

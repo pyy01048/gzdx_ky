@@ -200,6 +200,10 @@ describe('Cards：正确解析后端 {items}、科目下拉来自 API', () => {
     render(<Wrapper route="/cards"><Cards /></Wrapper>)
     await settle()
 
+    /* 首屏统计默认折叠成一行摘要（减少冗余展示），点「展开统计」后才渲染 tile */
+    fireEvent.click(screen.getByRole('button', { name: /展开统计/ }))
+    await settle(60)
+
     // 卡片总数 tile 值应为 2（后端 items 长度）
     expect(screen.getByText('卡片总数')).toBeInTheDocument()
     const tiles = screen.getAllByText('2')

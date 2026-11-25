@@ -14,8 +14,15 @@ import { VitePWA } from 'vite-plugin-pwa'
 // 一旦挂上 HTTPS（域名 + 证书），无需改前端代码即可自动获得：
 //   · manifest.webmanifest → 安装到主屏（standalone 全屏 App）
 //   · sw.js 预缓存 + 导航回退 index.html → 断网可打开已用过的页面
-//   · /api NetworkFirst → 弱网/断网时回退到最近一次缓存响应
+//   · 公开字典 API（/api/health、taxonomy、教材、院校等）NetworkFirst →
+//     弱网/断网回退最近一次缓存；个人域 API 一律不缓存（P0-F02 换账号串号）
 // ────────────────────────────────────────────────────────────────────────
+/* P0（F-02）：个人 API 绝不进 Service Worker 缓存。
+   采用「公开白名单」而非「个人黑名单」：黑名单会漏掉以后新增的按 uid 端点
+   （/auth/me、/tasks、/errors、/favorites、/planner…），白名单是 fail-closed ——
+   未显式列入的 /api/** 路径一律不缓存。只有不带身份的公开静态字典可离线回退。
+   注意：urlPattern 的函数体被 workbox 原样注入 sw.js，不能引用本文件的外部
+   变量/函数（不会随 worker 打包），白名单必须内联在函数体内。 */
 const PWA_MANIFEST = {
   name: '硕途 · 考研学习平台',
   short_name: '硕途',
@@ -75,8 +82,22 @@ export default defineConfig(({ command }) => ({
         clientsClaim: true,
         runtimeCaching: [
           {
-            // 同源 GET /api/**：优先走网络，超时或断网回退最近一次缓存
-            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith('/api/'),
+            // 同源【公开字典】GET /api/**：优先走网络，超时或断网回退最近一次缓存。
+            // 个人域（auth/tasks/errors/flashcards/notes/favorites/notebook/cards/
+            // words/growth/user/profile/sync/hub/planner/goals…）不在白名单内，
+            // 一个字节都不进 CacheStorage —— 换账号断网不可能看到上一个人的数据。
+            urlPattern: ({ url, sameOrigin }) => {
+              if (!sameOrigin) return false
+              const p = url.pathname
+              if (!p.startsWith('/api/')) return false
+              return p === '/api/health'
+                || p.startsWith('/api/taxonomy/')
+                || p === '/api/textbooks'
+                || p.startsWith('/api/textbooks/')
+                || p === '/api/kaoyan/schools'
+                || p.startsWith('/api/kaoyan/schools/')
+                || p === '/api/documents/subjects'
+            },
             method: 'GET',
             handler: 'NetworkFirst',
             options: {
@@ -141,22 +162,27 @@ export default defineConfig(({ command }) => ({
     sourcemap: false,
     minify: 'esbuild',
     cssMinify: true,
-    // 批次2-7（P2-4）：回调默认 500，让真实超大 chunk（EChart / pdfjs）显式告警
-    chunkSizeWarningLimit: 500,
+    // 首屏壳层与按需工具库分开；Mermaid 保留包内图形解析器的动态分块。
+    chunkSizeWarningLimit: 1600,
     rollupOptions: {
       output: {
-        // 重库分包（完善方案 07 §3.2）：按 npm 包判断，避免"只是改个 chunk 名"
-        // —— echarts/pdfjs/katex/mammoth 只会在引用它们的懒加载路由里被拉取。
         manualChunks(id) {
-          if (!id.includes('node_modules')) return undefined
-          if (/[\\/]node_modules[\\/](react|react-dom|react-router-dom|scheduler)[\\/]/.test(id)) {
+          const normalized = id.replace(/\\/g, '/')
+          if (normalized.includes('/src/v3/shell/') || normalized.includes('/src/v3/ui/') || normalized.includes('/src/components/UI')) {
+            return 'app-shell'
+          }
+          if (!normalized.includes('/node_modules/')) return undefined
+          if (/\/node_modules\/(react|react-dom|react-router-dom|scheduler)\//.test(normalized)) {
             return 'react-vendor'
           }
-          if (/[\\/]node_modules[\\/]zustand[\\/]/.test(id)) return 'state-vendor'
-          if (/[\\/]node_modules[\\/](echarts|zrender)[\\/]/.test(id)) return 'charts-vendor'
-          if (/[\\/]node_modules[\\/]pdfjs-dist[\\/]/.test(id)) return 'pdf-vendor'
-          if (/[\\/]node_modules[\\/]mammoth[\\/]/.test(id)) return 'doc-vendor'
-          if (/[\\/]node_modules[\\/]katex[\\/]/.test(id)) return 'math-vendor'
+          if (/\/node_modules\/zustand\//.test(normalized)) return 'state-vendor'
+          if (/\/node_modules\/(echarts|zrender)\//.test(normalized)) return 'charts-vendor'
+          if (/\/node_modules\/pdfjs-dist\//.test(normalized)) return 'pdf-vendor'
+          if (/\/node_modules\/mammoth\//.test(normalized)) return 'doc-vendor'
+          if (/\/node_modules\/katex\//.test(normalized)) return 'math-vendor'
+          if (/\/node_modules\/mathjs\//.test(normalized)) return 'mathjs-vendor'
+          if (/\/node_modules\/elkjs\//.test(normalized)) return 'elk-vendor'
+          if (/\/node_modules\/cytoscape/.test(normalized)) return 'graph-vendor'
           return undefined
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',

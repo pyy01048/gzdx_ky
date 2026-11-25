@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { authApi } from '../../api/client'
 import { Button, Field, Input } from '../ui'
 import { Eye, EyeOff, KeyRound, CheckCircle2, AlertCircle, Shield } from '../icons'
-import { PasswordStrength, passwordCategories } from './Login'
+import { passwordCategories } from '../../utils/password'
+import { PasswordStrength } from '../ui/PasswordStrength'
 import '../styles/pages.css'
 
 /* 重置密码落地页：后端 GET /api/auth/reset-link 校验后把 token 放进 httpOnly
@@ -22,7 +23,7 @@ export default function ResetPassword() {
   const [done, setDone] = useState(false)
   const checked = useRef(false)
 
-  useEffect(() => { document.title = '重置密码 · 硕途考研' }, [])
+  /* P1（F-06）：title 由 App 的 RouteTitle 从 ROUTE_META 统一派生 */
 
   useEffect(() => {
     if (checked.current) return

@@ -6,17 +6,19 @@
 
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import Document, KnowledgeChunk, KnowledgePoint, SubjectConfig
 from services import kp_mastery, taxonomy
-from sqlalchemy import func
+from sqlalchemy import String, cast, func
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id
 from utils.security import optional_user, require_admin
+
+from models import Document, KnowledgeChunk, KnowledgePoint, SubjectConfig
 
 router = APIRouter(prefix="/api/taxonomy", tags=["知识结构"])
 
@@ -497,21 +499,25 @@ def _chapter_node(
 
 
 @router.get("/knowledge-points")
-async def list_knowledge_points(
+def list_knowledge_points(
     subject: Optional[str] = None,
     chapter: Optional[str] = None,
     question_type: Optional[str] = None,
     keyword: Optional[str] = None,
     low_mastery: bool = False,
-    page: int = 1,
+    page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     user=Depends(optional_user),
 ):
     """知识点列表（支持 科目 / 章节 / 题型 / 关键词 / 薄弱 筛选）。
 
+    章节按树节点的**完整章名精确匹配**；模糊检索请使用 ``keyword``。
     ``low_mastery`` 按三态口径过滤：只有**已学且掌握度 < 70** 的才算薄弱，
     未学知识点（无任何学习记录）不入选 —— 见 services/kp_mastery.py。
+
+    过滤、排序与分页均在数据库执行，只序列化当前页。``question_types`` 为
+    JSON 数组，转文本后按完整 JSON 字符串元素匹配，PG / SQLite 通用。
 
     审计 P0-1：访客响应剔除个人域字段；``low_mastery`` 属个人筛选，
     匿名请求直接返回空集；登录态学习流水按本人隔离（B4）。
@@ -520,30 +526,40 @@ async def list_knowledge_points(
     if subject:
         q = q.filter(KnowledgePoint.subject == taxonomy.normalize_subject(subject))
     if chapter:
-        q = q.filter(KnowledgePoint.chapter.like(f"%{chapter}%"))
+        chapter = chapter.strip()
+        if chapter == "未归章":
+            q = q.filter(KnowledgePoint.chapter.is_(None) | (KnowledgePoint.chapter == ""))
+        elif chapter:
+            # 不再用 LIKE：「极限」会把「极限存在」等相似章一并纳入。
+            q = q.filter(KnowledgePoint.chapter == chapter)
     if keyword:
-        q = q.filter(KnowledgePoint.name.like(f"%{keyword}%"))
-    rows = q.all()
+        q = q.filter(KnowledgePoint.name.contains(keyword.strip(), autoescape=True))
+    if question_type:
+        encoded = json.dumps(question_type, ensure_ascii=False)
+        q = q.filter(cast(KnowledgePoint.question_types, String).contains(encoded, autoescape=True))
 
     learned = kp_mastery.learned_kp_ids(db, user_id=owner_id(user)) if user is not None else set()
     if low_mastery:
         if user is None:
-            rows = []
+            q = q.filter(False)
         else:
-            rows = [
-                r
-                for r in rows
-                if kp_mastery.classify_state(r.mastery, r.id in learned)
-                in (kp_mastery.STATE_LEARNING, kp_mastery.STATE_WEAK)
-            ]
+            q = q.filter(
+                KnowledgePoint.id.in_(learned),
+                func.coalesce(KnowledgePoint.mastery, 0) < kp_mastery.MASTERED_THRESHOLD,
+            )
 
-    if question_type:
-        rows = [r for r in rows if question_type in (r.question_types or [])]
-
-    total = len(rows)
-    rows.sort(key=lambda k: (taxonomy.normalize_subject(k.subject), k.chapter or "", k.name or ""))
-    start = (page - 1) * page_size
-    page_rows = rows[start : start + page_size]
+    total = q.order_by(None).count()
+    rows = (
+        q.order_by(
+            KnowledgePoint.subject.asc(),
+            func.coalesce(KnowledgePoint.chapter, "").asc(),
+            KnowledgePoint.name.asc(),
+            KnowledgePoint.id.asc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
 
     payload = {
         "total": total,
@@ -567,7 +583,7 @@ async def list_knowledge_points(
                 "description": k.description,
                 "document_id": k.document_id,
             }
-            for k in page_rows
+            for k in rows
         ],
     }
     if user is None:

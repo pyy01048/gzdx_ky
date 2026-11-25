@@ -3,11 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import {
   Alert, Badge, Button, Card, CardHead, Chip, Dialog, Empty, Input, LoadingState,
-  PageHeader, Pager, Segmented, Select, Spinner, Tile, cx,
+  PageHeader, Pager, Segmented, Select, Spinner,
 } from '../ui'
 import {
-  ArrowRight, BarChart3, Database, Flame, InfoCircle, RefreshCw, Search, Target,
+  ArrowRight, BarChart3, Flame, InfoCircle, RefreshCw, Search,
 } from '../icons'
+import { Reveal } from '../motion'
 import '../styles/kaoyan-core-v3.css'
 
 /* ==========================================================================
@@ -34,6 +35,10 @@ const GRADE_TONE = (g) => {
 const SCOPE_LABEL = { normal: '高校', joint: '两地联合', institute: '科研院所' }
 const UNIT_LABEL = { 1: '高校', 2: '科研院所', 3: '军队院校' }
 
+/* 985/211 本身即双一流建设高校，再挂一枚「双一流」是重复信息；
+   只有层级看不出来的双非双一流才补这枚徽章（与院校库列表口径一致）。 */
+const showDoubleFirst = (s) => Boolean(s?.is_double_first) && !s.is_985 && !s.is_211
+
 const SORTS = [
   { value: 'eval_cnt', label: '上榜学科数' },
   { value: 'a_cnt', label: 'A 类学科数' },
@@ -45,6 +50,19 @@ const normProvince = (p) => String(p || '')
   .replace(/(壮族|回族|维吾尔)?自治区$/, '')
   .replace(/(省|市)$/, '')
   .trim() || '未知'
+
+/* 卡片标题下已有「省市 · 单位类型」，上面一排徽标也已是 985/211/双一流/自划线；
+   而库内简介首句固定是「××大学位于××××，985工程、211工程、双一流、34所自划线。」
+   ——整句都在复述这两处已有信息，白占了卡片唯一一行描述。
+   只在首句很短（≤60 字）且确含「位于」时剥离，避免误删实质内容。 */
+function introBody(text) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim()
+  const stop = t.indexOf('。')
+  if (stop > 0 && stop <= 60 && t.slice(0, stop).includes('位于')) {
+    return t.slice(stop + 1).trim()
+  }
+  return t
+}
 
 /* -------------------------------------------------------------------------- */
 /* 详情弹窗（院校卡片 / 榜单校名共用）                                          */
@@ -61,6 +79,8 @@ function EvalDetailDialog({ schoolId, onClose }) {
       .catch((e) => { if (!dead) setErr(e?.message || '加载失败') })
     return () => { dead = true }
   }, [schoolId])
+
+  const intro = introBody(data?.intro)
 
   return (
     <Dialog open={!!schoolId} onClose={onClose} wide
@@ -79,12 +99,12 @@ function EvalDetailDialog({ schoolId, onClose }) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {data.is_985 ? <Badge tone="primary">985</Badge> : null}
             {data.is_211 ? <Badge tone="primary">211</Badge> : null}
-            {data.is_double_first ? <Badge tone="success">双一流</Badge> : null}
+            {showDoubleFirst(data) ? <Badge tone="success">双一流</Badge> : null}
             {data.is_self_marked ? <Badge tone="warning">自划线</Badge> : null}
             {data.data_status === 3 ? <Badge tone="danger" title={data.verify_note || ''}>待核验</Badge> : null}
             {data.heat_tag ? <Badge tone="outline" title={data.heat_note || '主观估算，仅供参考'}><Flame size={11} /> 热度·{data.heat_tag}</Badge> : null}
           </div>
-          {data.intro ? <p className="v3-body" style={{ margin: 0 }}>{data.intro}</p> : null}
+          {intro ? <p className="v3-body" style={{ margin: 0 }}>{intro}</p> : null}
           {data.evaluation ? (
             <div>
               <div className="v3-eyebrow">客观评价</div>
@@ -156,8 +176,9 @@ function EvalDetailDialog({ schoolId, onClose }) {
 /* 院校总览                                                                    */
 /* -------------------------------------------------------------------------- */
 function SchoolCard({ s, onOpen }) {
+  const desc = introBody(s.intro)
   return (
-    <Card interactive className="v3-stack" style={{ gap: 10, padding: 16 }} role="button" tabIndex={0}
+    <Card interactive className="v3-stack" style={{ gap: 10, padding: 16, height: '100%' }} role="button" tabIndex={0}
       onClick={() => onOpen(s.id)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(s.id) } }}
       aria-label={`查看 ${s.name} 评估详情`}>
@@ -171,12 +192,12 @@ function SchoolCard({ s, onOpen }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
         {s.is_985 ? <Badge tone="primary">985</Badge> : null}
         {s.is_211 ? <Badge tone="primary">211</Badge> : null}
-        {s.is_double_first ? <Badge tone="success">双一流</Badge> : null}
+        {showDoubleFirst(s) ? <Badge tone="success">双一流</Badge> : null}
         {s.is_self_marked ? <Badge tone="warning">自划线</Badge> : null}
         {s.data_status === 3 ? <Badge tone="danger">待核验</Badge> : null}
       </div>
       <p className="v3-caption" style={{ margin: 0, minHeight: 32 }}>
-        {s.intro ? s.intro.replace(/\s+/g, ' ').slice(0, 72) : '暂无院校简介'}
+        {desc ? (desc.length > 72 ? `${desc.slice(0, 72)}…` : desc) : '暂无院校简介'}
       </p>
       <div className="v3-row" style={{ gap: 18 }}>
         <span className="v3-caption"><b style={{ fontSize: 16 }}>{s.eval_cnt}</b> 上榜学科</span>
@@ -225,24 +246,18 @@ function SchoolsView({ schools, onOpen }) {
   const cur = Math.min(page, pages)
   const items = filtered.slice((cur - 1) * pageSize, cur * pageSize)
 
-  const stats = useMemo(() => ({
-    total: schools.length,
-    n985: schools.filter((s) => s.is_985).length,
-    syl: schools.filter((s) => s.is_double_first).length,
-    evals: schools.reduce((acc, s) => acc + (s.eval_cnt || 0), 0),
-  }), [schools])
-
   const toggle = (k) => setFlags((p) => ({ ...p, [k]: !p[k] }))
+  const hasFilter = Boolean(q.trim() || province || unitType || Object.values(flags).some(Boolean))
+  const resetFilters = () => {
+    setQ('')
+    setProvince('')
+    setUnitType('')
+    setFlags({ is_985: false, is_211: false, is_double_first: false, is_self_marked: false })
+    setSort('eval_cnt')
+  }
 
   return (
     <div className="v3-stack" style={{ gap: 14 }}>
-      <div className="v3-bento">
-        <Tile span={3}><span className="v3-tile__label"><Database size={14} /> 工学招生院校</span><span className="v3-tile__value">{stats.total}</span></Tile>
-        <Tile span={3}><span className="v3-tile__label"><Target size={14} /> 985</span><span className="v3-tile__value">{stats.n985}</span></Tile>
-        <Tile span={3}><span className="v3-tile__label"><BarChart3 size={14} /> 双一流</span><span className="v3-tile__value">{stats.syl}</span></Tile>
-        <Tile span={3}><span className="v3-tile__label"><Flame size={14} /> 上榜评估记录</span><span className="v3-tile__value">{stats.evals}</span></Tile>
-      </div>
-
       <Card style={{ padding: 14 }}>
         <div className="v3-stack" style={{ gap: 10 }}>
           <div className="v3-row" style={{ gap: 10, flexWrap: 'wrap' }}>
@@ -269,12 +284,24 @@ function SchoolsView({ schools, onOpen }) {
       </Card>
 
       {items.length ? (
-        <div className="kyv3-school-grid" ref={gridRef}>
-          {items.map((s) => <SchoolCard key={s.id} s={s} onOpen={onOpen} />)}
+        /* 翻页/换排序时整组重挂载，让卡片按既有 Reveal 节奏再入场一次，
+           给「内容确实换了」一个视觉信号；筛选不重挂载，避免边打字边闪。 */
+        <div key={`${cur}-${sort}`} className="kyv3-school-grid" ref={gridRef}>
+          {items.map((s, i) => (
+            <Reveal key={s.id} delay={Math.min(i, 10) * 24} style={{ height: '100%' }}>
+              <SchoolCard s={s} onOpen={onOpen} />
+            </Reveal>
+          ))}
         </div>
       ) : (
-        <Empty icon={<Search size={22} />} title="没有符合条件的院校"
-          text={schools.length ? '试试放宽筛选条件或清空关键词。' : '评估库尚未导入数据，请在服务端运行 import_school_eval_pg.py --apply。'} />
+        <Empty
+          icon={<Search size={22} />}
+          title={schools.length ? '没有符合条件的院校' : '评估数据暂未就绪'}
+          text={schools.length
+            ? '试试放宽筛选条件或清空关键词。'
+            : '学科评估数据正在整理中，请稍后再来查看。'}
+          action={hasFilter ? <Button variant="tonal" onClick={resetFilters}>清空筛选</Button> : null}
+        />
       )}
 
       <Pager
@@ -316,7 +343,7 @@ function RankGroup({ title, hint, entries, onOpen }) {
               {e.province ? <span className="v3-caption">{normProvince(e.province)}</span> : null}
               {e.is_985 ? <Badge tone="primary">985</Badge> : null}
               {e.is_211 ? <Badge tone="outline">211</Badge> : null}
-              {e.is_double_first ? <Badge tone="success">双一流</Badge> : null}
+              {showDoubleFirst(e) ? <Badge tone="success">双一流</Badge> : null}
             </span>
           </div>
         ))}
@@ -333,7 +360,7 @@ function RankView({ disciplines, code, onCode, onOpen }) {
   useEffect(() => {
     if (!code) { setRank(null); return undefined }
     let dead = false
-    setLoading(true); setErr('')
+    setLoading(true); setErr(''); setRank(null)
     kaoyanApi.evalDisciplineRank(code)
       .then((d) => { if (!dead) setRank(d) })
       .catch((e) => { if (!dead) { setErr(e?.message || '加载失败'); setRank(null) } })
@@ -367,14 +394,14 @@ function RankView({ disciplines, code, onCode, onOpen }) {
           text={rank.discipline?.note || '未上榜/未公布不代表学科差；第五轮结果未官方公开。'} />
       ) : null}
       {rank && rank.total > 0 ? (
-        <>
+        <div key={rank.discipline.code} className="v3-stack v3-anim-in" style={{ gap: 14 }}>
           <div className="v3-caption">
             {rank.discipline.code} {rank.discipline.name} · 共 {rank.total} 家上榜（仅公布前 70%）
           </div>
           <RankGroup title="高校榜单" hint="按评估等级排序（A+ → C-）" entries={rank.groups.normal || []} onOpen={onOpen} />
           <RankGroup title="两地联合评估" hint="统一实体参评，校区共享结果；招生时各校区独立" entries={rank.groups.joint || []} onOpen={onOpen} />
           <RankGroup title="科研院所单列" hint="与高校分开排名，不可直接混排比较" entries={rank.groups.institute || []} onOpen={onOpen} />
-        </>
+        </div>
       ) : null}
     </div>
   )
@@ -455,10 +482,12 @@ export default function KaoyanSchoolEval() {
         </Alert>
       ) : null}
 
-      {loading ? <LoadingState text="加载学科评估数据…" /> : (
-        view === 'schools'
-          ? <SchoolsView schools={schools} onOpen={openDetail} />
-          : <RankView disciplines={disciplines} code={code} onCode={setCode} onOpen={openDetail} />
+      {loading ? <LoadingState text="加载学科评估数据…" /> : err && !schools.length ? null : (
+        <div key={view} className="v3-anim-in">
+          {view === 'schools'
+            ? <SchoolsView schools={schools} onOpen={openDetail} />
+            : <RankView disciplines={disciplines} code={code} onCode={setCode} onOpen={openDetail} />}
+        </div>
       )}
 
       {caveats.length ? (

@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import {
   Alert,
-  Badge,
   Button,
   Card,
   CardHead,
@@ -34,7 +33,7 @@ import { quizApi, taxonomyApi, goalsApi, errorsApi, fetchAllPages } from '../../
 import { useAuth } from '../../auth/AuthContext'
 import { SOURCE_KINDS, SOURCE_KIND_LABEL, loadFavs, normQ } from './quizShared'
 import QuizYear from './QuizYear'
-import QuizReview from './QuizReview'
+import QuizWrongReview from './QuizWrongReview'
 import '../styles/quiz-v3.css'
 import '../styles/study-glass.css'
 
@@ -52,8 +51,6 @@ export default function QuizHome({
   setMode,
   sourceKind,
   setSourceKind,
-  backendOk,
-  setBackendOk,
   kpFilter,
   kpEmpty,
   favs,
@@ -121,14 +118,12 @@ export default function QuizHome({
     setStatsErr(false)
     try {
       setStats(await quizApi.stats())
-      setBackendOk(true)
     } catch {
       setStatsErr(true)
-      setBackendOk(false)
     } finally {
       setStatsLoading(false)
     }
-  }, [setBackendOk])
+  }, [])
 
   const loadCfgOrder = useCallback(async () => {
     if (cfgLoadedRef.current) return
@@ -658,13 +653,10 @@ export default function QuizHome({
     <div className="v3-quiz">
       <PageHeader
         eyebrow={isExamRoute ? 'REAL EXAM · 真题中心' : 'QUIZ CENTER · 刷题中心'}
-        title={isExamRoute ? '历年真题，按年份整卷精练' : '历年真题，按知识点、按年份精准刷'}
+        title={isExamRoute ? '真题中心' : '刷题中心'}
         sub="覆盖考纲知识点与历年真题，点选即判、即时显示答案与解析；答错自动收入错题本，薄弱点一目了然。支持练习 / 背题双模式与键盘快捷作答。"
         actions={
           <>
-            <Badge tone={backendOk ? 'success' : 'warning'}>
-              {backendOk ? '已连接真实题库' : '统计加载失败'}
-            </Badge>
             <Button
               variant="outline"
               size="sm"
@@ -674,6 +666,16 @@ export default function QuizHome({
             >
               刷新统计
             </Button>
+            {/* 沉浸式全屏刷题入口：进入 /studio/quiz 二级全屏页（壳外路由，无侧边栏） */}
+            <Link
+              to={urlSubject ? `/studio/quiz?subject=${encodeURIComponent(urlSubject)}` : '/studio/quiz'}
+              style={{ textDecoration: 'none' }}
+              title="进入沉浸式全屏刷题页"
+            >
+              <Button variant="primary" size="sm" icon={<Play size={15} />}>
+                全屏刷题
+              </Button>
+            </Link>
           </>
         }
       />
@@ -1021,7 +1023,7 @@ export default function QuizHome({
         mode={mode}
         onBeginSession={onBeginSession}
       />
-      <QuizReview
+      <QuizWrongReview
         visible={visible && tab === 'review'}
         tab={tab}
         favs={favs}

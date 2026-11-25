@@ -14,7 +14,7 @@ export default function VerifyEmail() {
   const consumed = useRef(false)
 
   useEffect(() => {
-    document.title = '邮箱验证 · 硕途考研'
+    /* P1（F-06）：title 由 App 的 RouteTitle 从 ROUTE_META 统一派生 */
     if (!token || consumed.current) return
     consumed.current = true
     authApi.verifyEmail(token)

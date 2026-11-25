@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { Button, Field, Input } from '../ui'
@@ -18,11 +18,7 @@ export default function ForceChangePassword() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  /* P1-5：独立页面的 title 同步（应用壳不覆盖此路由） */
-  useEffect(() => {
-    document.title = '首次登录 · 修改密码 · 硕途考研'
-    return () => { document.title = '硕途 · 考研学习平台' }
-  }, [])
+  /* P1（F-06）：title 由 App 的 RouteTitle 从 ROUTE_META 统一派生 */
 
   if (status === 'anon') return <Navigate to="/login" replace />
   if (status === 'ready') return <Navigate to="/" replace />

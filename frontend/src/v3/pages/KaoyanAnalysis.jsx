@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import {
@@ -12,12 +12,12 @@ import {
 import '../styles/kaoyan-aux-v3.css'
 
 const METRICS = [
-  { value: 'total_line', label: '总分线', unit: '分' },
-  { value: 'retest_line', label: '复试线', unit: '分' },
-  { value: 'national_line', label: '国家线', unit: '分' },
-  { value: 'admit_avg_score', label: '录取均分', unit: '分' },
-  { value: 'enroll_count', label: '招生人数', unit: '人' },
-  { value: 'retest_ratio', label: '复录比', unit: '' },
+  { value: 'total_line', label: '最低总分线', unit: '分', aggregate: 'min', note: '当年有效专业总分线的最低值' },
+  { value: 'retest_line', label: '最低复试线', unit: '分', aggregate: 'min', note: '当年有效专业复试线的最低值' },
+  { value: 'national_line', label: '国家线', unit: '分', aggregate: 'min', note: '当年国家线记录的最低值' },
+  { value: 'admit_avg_score', label: '录取均分', unit: '分', aggregate: 'avg', note: '当年各专业录取均分的算术平均' },
+  { value: 'enroll_count', label: '招生人数', unit: '人', aggregate: 'sum', note: '当年各专业拟招生人数之和' },
+  { value: 'retest_ratio', label: '复录比', unit: '', aggregate: 'median', note: '当年各专业复录比的中位数' },
 ]
 
 function fmtValue(value, unit = '') {
@@ -26,6 +26,31 @@ function fmtValue(value, unit = '') {
   if (!Number.isFinite(n)) return '—'
   const text = Number.isInteger(n) ? String(n) : n.toFixed(1)
   return unit ? `${text} ${unit}` : text
+}
+
+function aggregateTrendRows(rows, aggregation) {
+  const byYear = new Map()
+  for (const row of rows) {
+    const year = Number(row?.year)
+    if (!Number.isFinite(year) || year <= 0) continue
+    const value = Number(row?.value)
+    const values = byYear.get(year) || []
+    if (Number.isFinite(value) && value > 0) values.push(value)
+    byYear.set(year, values)
+  }
+  return [...byYear.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([year, values]) => {
+      if (!values.length) return { year, value: null }
+      if (aggregation === 'sum') return { year, value: values.reduce((sum, value) => sum + value, 0) }
+      if (aggregation === 'avg') return { year, value: values.reduce((sum, value) => sum + value, 0) / values.length }
+      if (aggregation === 'median') {
+        const sorted = [...values].sort((a, b) => a - b)
+        const mid = Math.floor(sorted.length / 2)
+        return { year, value: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2 }
+      }
+      return { year, value: Math.min(...values) }
+    })
 }
 
 function niceScale(min, max, count = 5) {
@@ -77,6 +102,9 @@ function TrendChart({ data, unit, label }) {
   const points = useMemo(() => data
     .map((d, i) => ({ ...d, _i: i, n: Number(d.value) }))
     .filter((d) => Number.isFinite(d.n)), [data])
+  const years = points.map((point) => Number(point.year)).filter(Number.isFinite)
+  const minYear = years.length ? Math.min(...years) : 0
+  const maxYear = years.length ? Math.max(...years) : 0
 
   const scale = useMemo(() => {
     const values = points.map((p) => p.n)
@@ -85,9 +113,11 @@ function TrendChart({ data, unit, label }) {
 
   if (!points.length) return null
 
-  const x = (i) => (points.length === 1 ? M.left + innerW / 2 : M.left + (i * innerW) / (points.length - 1))
+  const x = (year) => maxYear === minYear
+    ? M.left + innerW / 2
+    : M.left + ((Number(year) - minYear) / (maxYear - minYear)) * innerW
   const y = (v) => M.top + innerH - ((v - scale.min) / Math.max(scale.max - scale.min, 1e-9)) * innerH
-  const pts = points.map((p, i) => [x(i), y(p.n)])
+  const pts = points.map((p) => [x(p.year), y(p.n)])
   const line = smoothPath(pts)
   const area = `${line} L${pts[pts.length - 1][0]},${M.top + innerH} L${pts[0][0]},${M.top + innerH} Z`
 
@@ -171,6 +201,7 @@ export default function KaoyanAnalysis() {
   const [trend, setTrend] = useState({ data: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const trendSeq = useRef(0)
 
   const loadSchools = useCallback(async () => {
     setLoadingSchools(true)
@@ -198,6 +229,7 @@ export default function KaoyanAnalysis() {
   useEffect(() => { loadSchools() }, [loadSchools])
 
   const loadTrend = useCallback(async () => {
+    const seq = ++trendSeq.current
     if (!selected) {
       setTrend({ data: [] })
       setError('')
@@ -205,16 +237,19 @@ export default function KaoyanAnalysis() {
     }
     setLoading(true)
     setError('')
+    setTrend({ data: [] })
     try {
       const d = await kaoyanApi.trend({ school_id: selected, metric, years: 5 })
+      if (seq !== trendSeq.current) return false
       setTrend(d?.data ? d : { data: [] })
       return true
     } catch (e) {
+      if (seq !== trendSeq.current) return false
       setError(e?.message || '趋势数据加载失败')
       setTrend({ data: [] })
       return false
     } finally {
-      setLoading(false)
+      if (seq === trendSeq.current) setLoading(false)
     }
   }, [selected, metric])
 
@@ -229,7 +264,8 @@ export default function KaoyanAnalysis() {
   const schoolItems = Array.isArray(schools.items) ? schools.items : []
   const selectedSchool = schoolItems.find((s) => String(s.id) === String(selected))
   const metricMeta = METRICS.find((m) => m.value === metric) || METRICS[0]
-  const rows = Array.isArray(trend.data) ? trend.data : []
+  const rawRows = Array.isArray(trend.data) ? trend.data : []
+  const rows = useMemo(() => aggregateTrendRows(rawRows, metricMeta.aggregate), [rawRows, metricMeta.aggregate])
   const validRows = rows.filter((d) => d.value != null && Number.isFinite(Number(d.value)))
   const latest = validRows.length ? validRows[validRows.length - 1] : null
   const first = validRows.length ? validRows[0] : null
@@ -269,7 +305,7 @@ export default function KaoyanAnalysis() {
             <h2>同一所院校，六种指标，<br />五年变化一眼看清。</h2>
             <p>
               总分线、复试线、国家线、录取均分、招生人数与复录比全部来自库内记录；
-              缺值的年份留空，不用 0 或预测值补齐。
+              同一年的多条专业记录先按指标口径聚合，再展示年度趋势。缺值不补 0，也不做预测。
             </p>
             <div className="v3-ky-hero__actions">
               {selectedSchool ? (
@@ -291,7 +327,7 @@ export default function KaoyanAnalysis() {
             </div>
             <div className="v3-ky-hero__stat">
               <b>{validRows.length}</b>
-              <span>有效数据点</span>
+              <span>有效年份</span>
             </div>
             <div className="v3-ky-hero__stat">
               <b>{metricMeta.label}</b>
@@ -330,7 +366,7 @@ export default function KaoyanAnalysis() {
             <div className="v3-ky-panel__head">
               <div>
                 <h2>选择院校与指标</h2>
-                <p>院校下拉来自库内实际记录；切换指标会重新请求近 5 年趋势。</p>
+                <p>院校下拉来自库内实际记录；切换指标会重新请求近 5 年记录并按年聚合。</p>
               </div>
               <Badge tone="outline">{schoolItems.length} 所院校</Badge>
             </div>
@@ -426,7 +462,7 @@ export default function KaoyanAnalysis() {
                 <div className="v3-ky-table-block">
                   <div className="v3-ky-table-block__head">
                     <h3>逐年数值</h3>
-                    <span>共 {rows.length} 条记录 · 空值显示为 —</span>
+                    <span>共 {rows.length} 个年份 · {metricMeta.note}</span>
                   </div>
                   <div className="v3-table-wrap">
                     <table className="v3-table">
@@ -434,15 +470,15 @@ export default function KaoyanAnalysis() {
                         <tr>
                           <th>年份</th>
                           <th>{metricMeta.label}</th>
-                          <th>记录位置</th>
+                          <th>年度口径</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.map((d, i) => (
-                          <tr key={`${d.year}-${i}`}>
+                        {rows.map((d) => (
+                          <tr key={d.year}>
                             <td><b>{d.year}</b></td>
                             <td>{d.value == null ? '—' : fmtValue(d.value, metricMeta.unit)}</td>
-                            <td className="v3-ky-table-muted">第 {i + 1} 条</td>
+                            <td className="v3-ky-table-muted">{metricMeta.note}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -471,7 +507,7 @@ export default function KaoyanAnalysis() {
       )}
 
       <p className="v3-ky-footnote">
-        <LineChart size={13} /> 数据点来自 /kaoyan/analysis/trend，按库内实际记录展示；趋势线只连线真实年份，不做外推。
+        <LineChart size={13} /> 数据点来自 /kaoyan/analysis/trend；同一年的专业记录按当前指标聚合后展示，横轴按真实年份间距绘制，不做外推。
       </p>
     </div>
   )

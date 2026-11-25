@@ -6,7 +6,6 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from models import ErrorKnowledgeLink, ErrorRecord, User
 from schemas import ErrorRecordCreate, ErrorRecordUpdate
 from services.ocr_service import OCRService
 from services.review_scheduler import ReviewScheduler
@@ -17,7 +16,34 @@ from utils.scope import owner_id, scoped  # B4 行级隔离
 from utils.security import current_user
 from utils.timeutil import local_today, utcnow  # 统一 naive UTC 时间规范（P0-4）
 
+from models import ErrorKnowledgeLink, ErrorRecord, User
+
 router = APIRouter(prefix="/api/errors", tags=["errors"])
+
+
+def _error_row(e: ErrorRecord) -> dict:
+    from services import kp_mastery
+
+    state = kp_mastery.error_mastery_state(e.accuracy, e.review_count, e.status)
+    return {
+        "id": e.id,
+        "question_id": e.question_id,
+        "content": e.content,
+        "my_answer": e.my_answer,
+        "correct_answer": e.correct_answer,
+        "error_reason": e.error_reason,
+        "subject": e.subject,
+        "accuracy": e.accuracy,
+        "review_count": e.review_count,
+        "last_review": e.last_review.isoformat() if e.last_review else None,
+        "next_review": e.next_review.isoformat() if e.next_review else None,
+        "status": e.status,
+        "mastery_state": state,
+        "mastery_label": kp_mastery.STATE_LABELS.get(state, state),
+        "tags": e.tags,
+        "analysis": e.analysis,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    }
 
 
 @router.get("")
@@ -45,8 +71,6 @@ async def list_errors(
     用 ``IN (select…)`` 而不是 join：join 会把这个筛选条件带进 ``query.count()``，
     计数与列表走两条不同 SQL 时容易分叉出「total 与 items 长度不一致」。
     """
-    from services import kp_mastery
-
     query = db.query(ErrorRecord).filter(scoped(ErrorRecord, user))
     if subject:
         query = query.filter(ErrorRecord.subject == subject)
@@ -72,34 +96,12 @@ async def list_errors(
     total = query.count()
     errors = query.order_by(ErrorRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
-    def _row(e: ErrorRecord) -> dict:
-        state = kp_mastery.error_mastery_state(e.accuracy, e.review_count, e.status)
-        return {
-            "id": e.id,
-            "question_id": e.question_id,
-            "content": e.content,
-            "my_answer": e.my_answer,
-            "correct_answer": e.correct_answer,
-            "error_reason": e.error_reason,
-            "subject": e.subject,
-            "accuracy": e.accuracy,
-            "review_count": e.review_count,
-            "last_review": e.last_review.isoformat() if e.last_review else None,
-            "next_review": e.next_review.isoformat() if e.next_review else None,
-            "status": e.status,
-            "mastery_state": state,
-            "mastery_label": kp_mastery.STATE_LABELS.get(state, state),
-            "tags": e.tags,
-            "analysis": e.analysis,
-            "created_at": e.created_at.isoformat() if e.created_at else None,
-        }
-
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
         "total_pages": (total + page_size - 1) // page_size,
-        "items": [_row(e) for e in errors],
+        "items": [_error_row(e) for e in errors],
     }
 
 
@@ -386,6 +388,18 @@ async def export_errors_pdf(
             "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
         },
     )
+
+
+@router.get("/{error_id}")
+async def get_error(
+    error_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    db_error = db.query(ErrorRecord).filter(ErrorRecord.id == error_id, scoped(ErrorRecord, user)).first()
+    if not db_error:
+        raise HTTPException(status_code=404, detail="错题不存在")
+    return _error_row(db_error)
 
 
 @router.post("/{error_id}/ai-analyze")

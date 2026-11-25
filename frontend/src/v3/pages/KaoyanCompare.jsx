@@ -5,7 +5,7 @@ import EChart from '../../components/EChart'
 import { readMigrated, ukey } from '../../utils/userKeys'
 import { chartTheme } from '../charts'
 import {
-  AnimatedNumber, Badge, Button, Card, CardHead, Empty, Input, LoadingState, PageHeader,
+  AnimatedNumber, Badge, Button, Card, CardHead, Empty, Input, LoadingState, PageHeader, Select,
   Tile, toast, toastWarn, useClickOutside, useMedia,
 } from '../ui'
 import {
@@ -15,12 +15,25 @@ import '../styles/kaoyan-core-v3.css'
 
 /* ==========================================================================
    院校对比 · Aurora v3
-   对比口径与旧版一致：先选 2–5 所，再由 /analysis/compare 返回各校
-   最新一年的最低院线、拟招人数、录取均分；雷达图只使用三项可信指标。
+   先选 2–5 所，再由 /analysis/compare 返回各校近年数据；按所选同年
+   对齐最低院线、拟招人数、录取均分，雷达图与表格共用同一份数据。
    ========================================================================== */
 
 const CMP_KEY = 'ky_compare_school_ids'
 const MAX_CMP = 5
+
+const metricValue = (value) => {
+  if (value == null || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+const sameYear = (entry, year) => entry?.year != null && Number(entry.year) === year
+
+const radarMax = (values, minimum, step) => Math.max(
+  minimum,
+  Math.ceil(Math.max(0, ...values.filter((value) => value != null)) / step) * step,
+)
 
 function useThemeMode() {
   const read = () => (typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
@@ -59,6 +72,7 @@ export default function KaoyanCompare() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [libLoaded, setLibLoaded] = useState(false)
+  const [selectedYear, setSelectedYear] = useState(null)
 
   const searchRef = useRef(null)
   const compareSeq = useRef(0)
@@ -118,20 +132,39 @@ export default function KaoyanCompare() {
       .slice(0, 8)
   }, [keyword, allSchools, selected])
 
-  const latestYear = useMemo(() => {
-    const years = []
-    result.items.forEach((item) => {
-      ;(item.recent_scores || []).forEach((s) => { if (s.year != null) years.push(Number(s.year)) })
-      ;(item.recent_admissions || []).forEach((a) => { if (a.year != null) years.push(Number(a.year)) })
+  const availableYears = useMemo(() => {
+    const years = new Set()
+    ;(result.items || []).forEach((item) => {
+      ;[...(item.recent_scores || []), ...(item.recent_admissions || [])].forEach((entry) => {
+        const year = Number(entry?.year)
+        if (entry?.year != null && Number.isFinite(year)) years.add(year)
+      })
     })
-    const valid = years.filter((y) => Number.isFinite(y))
-    return valid.length ? Math.max(...valid) : null
+    return [...years].sort((a, b) => b - a)
   }, [result])
+
+  // 新结果默认最新年；用户仍选结果中存在的年份时保留选择。
+  const activeYear = availableYears.includes(selectedYear) ? selectedYear : availableYears[0] ?? null
+
+  const compareRows = useMemo(() => (result.items || []).map((item) => {
+    const score = (item.recent_scores || []).find((entry) => sameYear(entry, activeYear)) || null
+    const admission = (item.recent_admissions || []).find((entry) => sameYear(entry, activeYear)) || null
+    return {
+      ...item,
+      totalLine: metricValue(score?.total_line),
+      enrollCount: metricValue(admission?.enroll_count),
+      admitAvgScore: metricValue(admission?.admit_avg_score),
+      olderScores: (item.recent_scores || [])
+        .filter((entry) => Number(entry.year) < activeYear && metricValue(entry.total_line) != null)
+        .map((entry) => ({ year: entry.year, totalLine: metricValue(entry.total_line) })),
+    }
+  }), [result, activeYear])
 
   const commitSelection = (next) => {
     compareSeq.current += 1
     setSelected(next)
     setResult({ items: [] })
+    setSelectedYear(null)
     setCompared(false)
     setError(null)
     setLoading(false)
@@ -238,15 +271,14 @@ export default function KaoyanCompare() {
   }
 
   const radarOption = useMemo(() => {
-    const items = result.items || []
-    if (!items.length) return null
+    if (!compareRows.length) return null
     const t = chartTheme(isDark)
     return {
       color: t.color,
       textStyle: t.textStyle,
       tooltip: { ...t.tooltip, trigger: 'item' },
       legend: {
-        data: items.map((i) => i.name),
+        data: compareRows.map((item) => item.name),
         top: 0,
         type: 'scroll',
         itemWidth: 10,
@@ -256,9 +288,9 @@ export default function KaoyanCompare() {
       },
       radar: {
         indicator: [
-          { name: '最低院线', max: 450 },
-          { name: '拟招人数', max: 500 },
-          { name: '录取均分', max: 420 },
+          { name: '最低院线', max: radarMax(compareRows.map((row) => row.totalLine), 450, 50) },
+          { name: '拟招人数', max: radarMax(compareRows.map((row) => row.enrollCount), 500, 100) },
+          { name: '录取均分', max: radarMax(compareRows.map((row) => row.admitAvgScore), 420, 20) },
         ],
         center: ['50%', '57%'],
         radius: '62%',
@@ -275,13 +307,11 @@ export default function KaoyanCompare() {
       series: [{
         type: 'radar',
         symbolSize: 4,
-        data: items.map((item, index) => {
-          const score = item.recent_scores?.[0] || {}
-          const adm = item.recent_admissions?.[0] || {}
+        data: compareRows.map((row, index) => {
           const color = t.color[index % t.color.length]
           return {
-            name: item.name,
-            value: [Number(score.total_line) || 0, Number(adm.enroll_count) || 0, Number(adm.admit_avg_score) || 0],
+            name: row.name,
+            value: [row.totalLine, row.enrollCount, row.admitAvgScore],
             itemStyle: { color },
             lineStyle: { color, width: 2 },
             areaStyle: { color, opacity: 0.09 },
@@ -289,13 +319,13 @@ export default function KaoyanCompare() {
         }),
       }],
     }
-  }, [result, isDark])
+  }, [compareRows, isDark])
 
   const header = (
     <PageHeader
       eyebrow="SCHOOL COMPARE · 择校对比"
-      title="院校对比"
-      sub={`从院校库勾选后跳转至此，或在此搜索添加院校（最多 ${MAX_CMP} 所）`}
+      title="院校同年对比"
+      sub={`从院校库勾选后跳转至此，或在此搜索添加院校（最多 ${MAX_CMP} 所），按所选年份同年对比`}
       actions={(
         <Link className="v3-btn v3-btn--tonal" to="/kaoyan/schools">
           去院校库勾选 <ArrowRight size={15} />
@@ -325,7 +355,7 @@ export default function KaoyanCompare() {
     { key: 'selected', label: '已选院校', icon: ListChecks, value: selected.length, unit: '所' },
     { key: 'library', label: '院校库', icon: School, value: allSchools.length, unit: '所' },
     { key: 'metrics', label: '对比指标', icon: Gauge, value: 3, unit: '项' },
-    { key: 'year', label: '数据年份', icon: CalendarClock, value: latestYear, unit: '年' },
+    { key: 'year', label: '数据年份', icon: CalendarClock, value: activeYear, unit: '年' },
   ]
 
   const canCompare = selected.length >= 2 && !loading
@@ -359,7 +389,7 @@ export default function KaoyanCompare() {
         <CardHead
           icon={<ListChecks size={17} />}
           title="对比清单"
-          sub="选择 2–5 所院校，横向查看最低院线、拟招人数与录取均分"
+          sub="选择 2–5 所院校，按所选同年横向对比最低院线、拟招人数与录取均分"
           actions={<Badge tone={selected.length >= MAX_CMP ? 'warning' : 'primary'}>{selected.length} / {MAX_CMP} 所</Badge>}
         />
 
@@ -483,10 +513,22 @@ export default function KaoyanCompare() {
         </Card>
       ) : result.items.length > 0 ? (
         <>
+          <div className="kyv3-compare-controls">
+            <label>
+              对比年份
+              <Select
+                aria-label="对比年份"
+                value={activeYear ?? ''}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                options={availableYears.map((year) => ({ value: year, label: `${year} 年` }))}
+              />
+            </label>
+            <span className="v3-caption">雷达图与表格统一使用所选年份；缺失指标显示为 —</span>
+          </div>
           <Card className="kyv3-radar-card">
             <div className="kyv3-radar-head">
-              <h2>三项指标雷达 · 各校最新一年</h2>
-              <p>最低院线看门槛下限，拟招人数看规模，录取均分看实际竞争强度</p>
+              <h2>三项指标雷达 · 同年对比</h2>
+              <p>{activeYear} 年：最低院线看门槛下限，拟招人数看规模，录取均分看实际竞争强度</p>
             </div>
             {radarOption ? (
               <EChart
@@ -502,9 +544,9 @@ export default function KaoyanCompare() {
           </Card>
 
           <Card className="kyv3-compare-table-card">
-            <div className="kyv3-compare-title">最新一年逐校对比</div>
+            <div className="kyv3-compare-title">同年逐校对比</div>
             <div className="kyv3-compare-sub">
-              拟招人数为当年各专业计划招生数之和；录取均分为各专业录取均分的平均值
+              {activeYear} 年拟招人数为各专业计划招生数之和；录取均分为各专业录取均分的平均值
             </div>
             <div className="v3-table-wrap kyv3-compare-table-wrap">
               <table className="v3-table">
@@ -520,37 +562,32 @@ export default function KaoyanCompare() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.items.map((item) => {
-                    const score = item.recent_scores?.[0] || {}
-                    const adm = item.recent_admissions?.[0] || {}
-                    const olderScores = (item.recent_scores || []).slice(1).filter((s) => s.total_line != null)
-                    return (
-                      <tr key={item.id}>
-                        <td>
-                          <Link to={`/kaoyan/schools/${item.id}`} className="kyv3-compare-school">
-                            {item.name}
-                          </Link>
-                        </td>
-                        <td>
-                          {item.level
-                            ? <Badge tone={levelTone(item.level)}>{item.level}</Badge>
-                            : '—'}
-                        </td>
-                        <td>{item.province || '—'}</td>
-                        <td className="is-year">{score.year ?? adm.year ?? '—'}</td>
-                        <td>
-                          <span className="kyv3-compare-value">{score.total_line ?? '—'}</span>
-                          {olderScores.length > 0 ? (
-                            <div className="kyv3-older-scores">
-                              {olderScores.map((s) => `${s.year}: ${s.total_line}`).join(' · ')}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td>{adm.enroll_count ?? '—'}</td>
-                        <td>{adm.admit_avg_score ?? '—'}</td>
-                      </tr>
-                    )
-                  })}
+                  {compareRows.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <Link to={`/kaoyan/schools/${row.id}`} className="kyv3-compare-school">
+                          {row.name}
+                        </Link>
+                      </td>
+                      <td>
+                        {row.level
+                          ? <Badge tone={levelTone(row.level)}>{row.level}</Badge>
+                          : '—'}
+                      </td>
+                      <td>{row.province || '—'}</td>
+                      <td className="is-year">{activeYear}</td>
+                      <td>
+                        <span className="kyv3-compare-value">{row.totalLine ?? '—'}</span>
+                        {row.olderScores.length > 0 ? (
+                          <div className="kyv3-older-scores">
+                            {row.olderScores.map((score) => `${score.year}: ${score.totalLine}`).join(' · ')}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>{row.enrollCount ?? '—'}</td>
+                      <td>{row.admitAvgScore ?? '—'}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

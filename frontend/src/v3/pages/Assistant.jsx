@@ -1,20 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import useStore from '../../store/useStore'
 import { uid } from '../../utils/date'
 import { examDaysLeft, resolveExamDate } from '../../utils/exam'
 import { chatCompletion, defaultProvider, hasAiConfigured, recordUsage } from '../../utils/api'
 import { aiApi, aiChatStream } from '../../api/client'
+import { saveAiAnswer } from '../../utils/aiAnswerArchive'
 import { useSubjectConfig } from '../../hooks/useSubjectConfig'
 import DeepTools from '../../components/DeepTools'
 import MathText from '../../components/MathText'
 import {
   Avatar, Badge, Button, Card, CardHead, Chip, Dialog, Empty, Field, IconButton, Input,
-  PageHeader, Segmented, Skeleton, SparkleBadge, Switch, Textarea, cx, toast, toastErr, toastOk,
+  PageHeader, Segmented, SparkleBadge, Switch, Textarea, cx, toast, toastErr, toastOk,
 } from '../ui'
 import {
   AlertTriangle, Bot, Brain, Check, ChevronDown, Copy, Edit, Image, Lightbulb, Loader,
-  MessageSquare, Paperclip, Pause, Plus, RefreshCw, Send, Sparkles, Trash, User, Wand, X,
+  MessageSquare, Pause, Plus, RefreshCw, Send, Sparkles, Trash, User, Wand, X,
 } from '../icons'
+import AiEvidenceCard, { resolveEngineLabel } from '../ai/AiEvidenceCard'
 import '../styles/assistant-v3.css'
 
 /* ============================================================
@@ -97,7 +100,7 @@ function aiFailBubble(e) {
   const code = e?.code || ''
   const msg = e?.message || '未知错误'
   if (code === 'network') {
-    return `注意 网络错误：${msg}\n\nAI 服务连接不上（后端未启动 / 网络中断 / 请求超时）。可点下方「重试」，或切换到「本地」引擎先拿离线建议。`
+    return `注意 网络错误：${msg}\n\nAI 服务连接不上（后端未启动 / 网络中断 / 请求超时）。可点下方「重试」；若只是想拿离线建议，请切到「本地规则」引擎（这是内置规则，不是「本地 LoRA 模型」，两者能力不同）。`
   }
   if (code === 'ai_stream_error' || code === 'http_error') {
     return `注意 AI 服务报错：${msg}\n\n可点下方「重试」；若反复失败，到「设置 → AI 服务」检查服务商配置（API Key、模型名，以及本地 Ollama 是否已启动）。`
@@ -131,7 +134,8 @@ export default function Assistant() {
   const settings = useStore((s) => s.settings)
   const countdown = useStore((s) => s.countdown)
 
-  const [input, setInput] = useState('')
+  const [searchParams] = useSearchParams()
+  const [input, setInput] = useState(() => String(searchParams.get('q') || '').slice(0, 4000))
   const [typing, setTyping] = useState(false)
   const [mode, setMode] = useState('答疑')
   const [engine, setEngine] = useState('api')
@@ -151,9 +155,8 @@ export default function Assistant() {
   const [renameTarget, setRenameTarget] = useState(null)
   const [renameValue, setRenameValue] = useState('')
 
-  const [refs, setRefs] = useState(null)
-  const [refLoading, setRefLoading] = useState(false)
-  const [refDetail, setRefDetail] = useState(null)
+  /* C1：引擎徽标三态所需的真实来源（本地 LoRA / Ollama 可用性 + 路由模式） */
+  const [engineInfo, setEngineInfo] = useState({ localAvailable: false, routingMode: 'auto' })
 
   const [summary, setSummary] = useState('')
   const [summarizing, setSummarizing] = useState(false)
@@ -182,6 +185,22 @@ export default function Assistant() {
   }
 
   useEffect(() => {
+    let alive = true
+    /* 老后端 / 测试桩可能还没有这两个端点，缺失时按「本地不可用 + 默认路由」降级 */
+    Promise.allSettled([
+      typeof aiApi.localStatus === 'function' ? aiApi.localStatus() : Promise.resolve(null),
+      typeof aiApi.getRouting === 'function' ? aiApi.getRouting() : Promise.resolve(null),
+    ]).then(([status, routing]) => {
+      if (!alive) return
+      setEngineInfo({
+        localAvailable: !!(status.status === 'fulfilled' && status.value?.available),
+        routingMode: (routing.status === 'fulfilled' && (routing.value?.mode || routing.value?.routing_mode)) || 'auto',
+      })
+    })
+    return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
     const current = useStore.getState().ai
     setSessions(current.localSessions || [])
     setActiveSession(current.activeSessionId || null)
@@ -208,20 +227,6 @@ export default function Assistant() {
       return `【${ctx.days} 天冲刺规划 · 生成中】\n${schoolLine ? `基于你当前数据：${schoolLine}${settings.targetScore ? `，目标 ${settings.targetScore} 分` : ''}。\n` : ''}· 阶段一（${Math.max(1, Math.round(ctx.days * 0.5))} 天）：基础强化，主攻数学与专业课，英语真题精读；\n· 阶段二（${Math.max(1, Math.round(ctx.days * 0.3))} 天）：真题模考 + 错题集中攻克；\n· 阶段三（${Math.max(1, Math.round(ctx.days * 0.2))} 天）：政治大题背诵 + 全真模拟。\n建议：错题坚持七刷，定期看知识地图的薄弱考点。需要我细化某阶段吗？`
     }
     return DEFAULT_REPLY(ctx)
-  }
-
-  const loadRefs = async (q) => {
-    if (!useRag || !q) { setRefs(null); return }
-    setRefLoading(true)
-    try {
-      const r = await aiApi.ragSearch({ query: q, limit: 6 })
-      const hits = Array.isArray(r?.hits) ? r.hits : []
-      setRefs({ query: q, hits })
-    } catch {
-      setRefs(null)
-    } finally {
-      setRefLoading(false)
-    }
   }
 
   const makeSummary = async () => {
@@ -261,11 +266,11 @@ export default function Assistant() {
     })
   }
 
-  const finalizeStreaming = () => {
+  const finalizeStreaming = (meta = {}) => {
     const st = useStore.getState()
     if (!st.ai.messages.some((m) => m.streaming)) return
     useStore.setState({
-      ai: { ...st.ai, messages: st.ai.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m)) }
+      ai: { ...st.ai, messages: st.ai.messages.map((m) => (m.streaming ? { ...m, ...meta, streaming: false } : m)) }
     })
   }
 
@@ -290,13 +295,42 @@ export default function Assistant() {
     setImgUploading(false)
   }
 
+  const archiveAnswer = (questionId, answerId, question) => {
+    const answer = useStore.getState().ai.messages.find((m) => m.id === answerId && m.questionId === questionId)
+    if (!answer || !answer.content) return false
+    const savedId = saveAiAnswer({
+      id: answerId,
+      question,
+      answer: answer.content,
+      engine: answer.engine || '',
+      model: answer.model || '',
+      elapsedMs: answer.elapsedMs,
+      rag: answer.rag,
+      degraded: answer.degraded,
+      citations: answer.citations,
+    })
+    if (!savedId) return false
+    const st = useStore.getState()
+    useStore.setState({
+      ai: {
+        ...st.ai,
+        messages: st.ai.messages.map((m) => (
+          m.id === answerId ? { ...m, archived: true } : m
+        )),
+      },
+    })
+    return true
+  }
+
   const send = async (text) => {
     const q = (text ?? input).trim()
     if ((!q && !image) || typing) return
     const question = q || '请分析这张电路图'
-    sendAi(question + (image ? ' 图片' : ''))
+    const questionId = uid()
+    const answerId = uid()
+    const startedAt = Date.now()
+    sendAi(question + (image ? ' 图片' : ''), { id: questionId })
     setInput('')
-    loadRefs(q)
 
     if (image) {
       setTyping(true)
@@ -309,7 +343,12 @@ export default function Assistant() {
           image_path: img.path,
         })
         const steps = (r.reasoning_steps || []).map((s) => s.step).join(' → ')
-        replyAi(`${r.content || '（模型未返回内容）'}${steps ? `\n\n---\n推理链：${steps}` : ''}`)
+        const answer = `${r.content || '（模型未返回内容）'}${steps ? `\n\n---\n推理链：${steps}` : ''}`
+        replyAi(answer, {
+          id: answerId, questionId, engine: '本地读图路由', model: '不提供',
+          elapsedMs: Date.now() - startedAt, rag: true, citations: [],
+        })
+        archiveAnswer(questionId, answerId, question)
       } catch (e) {
         replyAi(`注意 读图分析失败：${e.message}\n\n可尝试：① 确认本地 Ollama 已启动；② 稍后重试（批量答案回填期间 GPU 繁忙会显著拖慢读图）。`)
       }
@@ -322,7 +361,7 @@ export default function Assistant() {
       const msgs = st.ai.messages
       const last = msgs[msgs.length - 1]
       if (!last || last.role !== 'bot' || last.error) {
-        useStore.setState({ ai: { ...st.ai, messages: [...msgs, { role: 'bot', content: delta, streaming: true }] } })
+        useStore.setState({ ai: { ...st.ai, messages: [...msgs, { id: answerId, questionId, role: 'bot', content: delta, streaming: true }] } })
       } else {
         useStore.setState({
           ai: { ...st.ai, messages: msgs.map((m, i) => (i === msgs.length - 1 ? { ...m, content: m.content + delta } : m)) }
@@ -336,7 +375,7 @@ export default function Assistant() {
       const msgs = st.ai.messages
       const last = msgs[msgs.length - 1]
       if (!last || last.role !== 'bot' || last.error) {
-        useStore.setState({ ai: { ...st.ai, messages: [...msgs, { role: 'bot', content, streaming: true, degraded: !!degraded }] } })
+        useStore.setState({ ai: { ...st.ai, messages: [...msgs, { id: answerId, questionId, role: 'bot', content, streaming: true, degraded: !!degraded }] } })
       } else {
         useStore.setState({
           ai: { ...st.ai, messages: msgs.map((m, i) => (i === msgs.length - 1 ? { ...m, content, degraded: !!degraded } : m)) }
@@ -360,6 +399,13 @@ export default function Assistant() {
         const history = ai.messages.filter((m) => !m.error).slice(keep)
           .map((m) => ({ role: m.role === 'bot' ? 'assistant' : 'user', content: m.content }))
         let streamed = false
+        let answerMeta = {
+          engine: engineLabel,
+          model: provider?.model || '不提供',
+          rag: useRag,
+          citations: [],
+          hits: null,
+        }
         try {
           const streamBody = {
             messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: q }],
@@ -383,6 +429,12 @@ export default function Assistant() {
             signal: controller.signal,
             onDelta: (ev) => {
               if (ev.meta) {
+                answerMeta = {
+                  ...answerMeta,
+                  rag: ev.rag,
+                  hits: ev.rag_hits,
+                  citations: Array.isArray(ev.citations) ? ev.citations : [],
+                }
                 setThinkingText(ev.rag ? '正在检索知识库…' : '模型思考中…')
                 return
               }
@@ -423,9 +475,15 @@ export default function Assistant() {
         if (!streamed) {
           throw new Error('模型未返回任何内容（可能是服务商额度、模型名或流式配置问题）')
         }
-        finalizeStreaming()
+        finalizeStreaming({ ...answerMeta, elapsedMs: Date.now() - startedAt })
+        archiveAnswer(questionId, answerId, question)
       } else {
-        replyAi(think(q))
+        const answer = think(q)
+        replyAi(answer, {
+          id: answerId, questionId, engine: '本地规则', model: '不提供',
+          elapsedMs: Date.now() - startedAt, rag: false, citations: [],
+        })
+        archiveAnswer(questionId, answerId, question)
       }
     } catch (e) {
       pushError(aiFailBubble(e), question)
@@ -478,7 +536,6 @@ export default function Assistant() {
     setSessions(list)
     setActiveSession(s.id)
     clearAi()
-    setRefs(null)
     setSummary('')
     setUseSummary(false)
     persistSessions(list, s.id)
@@ -492,11 +549,10 @@ export default function Assistant() {
       next = sessions.map((s) => (s.id === activeSession ? { ...s, messages: cur, title: s.title || titleFromMessages(cur), updatedAt: Date.now() } : s))
     }
     const target = next.find((s) => s.id === id)
-    const history = (target?.messages || []).map((m) => ({ role: m.role === 'assistant' ? 'bot' : 'user', content: m.content }))
+    const history = (target?.messages || []).map((m) => ({ ...m, role: m.role === 'assistant' ? 'bot' : 'user' }))
     setSessions(next)
     setActiveSession(id)
     useStore.setState({ ai: { ...useStore.getState().ai, messages: history } })
-    setRefs(null)
     setSummary('')
     setUseSummary(false)
     persistSessions(next, id)
@@ -523,7 +579,7 @@ export default function Assistant() {
     if (activeSession === id) {
       if (rest.length) {
         const target = rest[0]
-        const history = (target.messages || []).map((m) => ({ role: m.role === 'assistant' ? 'bot' : 'user', content: m.content }))
+        const history = (target.messages || []).map((m) => ({ ...m, role: m.role === 'assistant' ? 'bot' : 'user' }))
         setSessions(rest)
         setActiveSession(target.id)
         useStore.setState({ ai: { ...useStore.getState().ai, messages: history } })
@@ -542,7 +598,15 @@ export default function Assistant() {
     toast('已删除会话')
   }
 
-  const engineLabel = engine === 'api' ? '自定义 AI API（SSE 流式）' : '本地规则模式（离线）'
+  /* C1：provider_override 指向本地 Ollama 时标「本地模型」，不再统称自定义 AI API */
+  const activeProvider = defaultProvider()
+  const engineLabel = resolveEngineLabel({
+    engine,
+    localAvailable: engineInfo.localAvailable,
+    routingMode: engineInfo.routingMode,
+    providerType: activeProvider?.key || '',
+    providerModel: activeProvider?.model || '',
+  })
   const prompts = quickPrompts(ctx.subjects)
 
   return (
@@ -571,6 +635,7 @@ export default function Assistant() {
               options={['答疑', '规划']}
             />
             <Button variant="tonal" icon={<Plus size={16} />} onClick={newChat}>新会话</Button>
+            <a className="v3-btn v3-btn--outline v3-btn--sm" href="#/kaoyan/assistant">择校 AI 问答 →</a>
           </>
         )}
       />
@@ -614,7 +679,7 @@ export default function Assistant() {
                   <IconButton
                     label="清空对话"
                     icon={<RefreshCw size={16} />}
-                    onClick={() => { clearAi(); setRefs(null); toast('已清空对话') }}
+                    onClick={() => { clearAi(); toast('已清空对话') }}
                   />
                 </>
               )}
@@ -660,6 +725,33 @@ export default function Assistant() {
                         离线资料 · 非模型生成
                       </span>
                     )}
+                    {m.role === 'bot' && !m.error && !m.streaming ? (
+                      <>
+                        <AiEvidenceCard
+                          engine={m.engine || '历史回答 · 引擎未记录'}
+                          model={m.model || '不提供'}
+                          rag={m.rag}
+                          hits={m.hits ?? m.citations?.length}
+                          elapsedMs={m.elapsedMs}
+                          confidence={null}
+                          degradeReason={m.degraded ? '在线与本地模型均不可用，已降级为知识片段展示' : ''}
+                        />
+                        {m.citations?.length ? (
+                          <details className="v3-asst-msg-citations">
+                            <summary>本轮权威引用（{m.citations.length}）</summary>
+                            <div className="v3-asst-refs__list">
+                              {m.citations.map((h, index) => (
+                                <span key={`${h.chunk_id || h.doc_id || 'h'}-${index}`} title={(h.content || '').slice(0, 100)}>
+                                  [{index + 1}] {(h.title || h.source || '知识片段').slice(0, 24)}
+                                </span>
+                              ))}
+                            </div>
+                            <p className="v3-asst-refs__hint">来自 AI 服务返回的 meta（元数据）事件，与这条回答一一对应。</p>
+                          </details>
+                        ) : null}
+                        {m.archived ? <Link className="v3-asst-answer-link" to={`/assistant/answers/${m.id}`}>查看回答与引用详情</Link> : null}
+                      </>
+                    ) : null}
                     {m.streaming && <span className="v3-asst-caret" />}
                     {m.error && m.retry && (
                       <div className="v3-asst-bubble__retry">
@@ -681,33 +773,6 @@ export default function Assistant() {
               )}
             </div>
 
-            {(refLoading || (refs && refs.hits.length > 0)) && (
-              <div className="v3-asst-refs">
-                <div className="v3-asst-refs__head">
-                  <span className="v3-asst-refs__title"><Paperclip size={14} /> 本轮引用 · 本地知识库</span>
-                  {refLoading
-                    ? <Skeleton width={64} height={18} radius="999px" />
-                    : <Badge tone="primary">{refs.hits.length} 条命中</Badge>}
-                </div>
-                {refLoading ? (
-                  <div className="v3-asst-refs__loading">
-                    <Skeleton width="72%" height={26} radius="999px" />
-                    <Skeleton width="54%" height={26} radius="999px" />
-                  </div>
-                ) : (
-                  <div className="v3-asst-refs__list">
-                    {refs.hits.map((h, i) => (
-                      <Chip key={`${h.chunk_id || h.doc_id || 'h'}-${i}`} active onClick={() => setRefDetail(h)} title={(h.content || '').slice(0, 100)}>
-                        [{i + 1}] {(h.title || h.source || '知识片段').slice(0, 18)}{h.subject ? ` · ${h.subject}` : ''}
-                      </Chip>
-                    ))}
-                  </div>
-                )}
-                {refs && refs.hits.length > 0 ? (
-                  <p className="v3-asst-refs__hint">点击引用可查看原文片段；这些片段已随本轮提问注入 AI 上下文。</p>
-                ) : null}
-              </div>
-            )}
           </Card>
 
           <Card className="v3-asst-composer">
@@ -875,41 +940,6 @@ export default function Assistant() {
           </Card>
         </aside>
       </div>
-
-      <Dialog
-        open={!!refDetail}
-        title={refDetail ? (refDetail.title || refDetail.source || '知识片段') : ''}
-        onClose={() => setRefDetail(null)}
-        wide
-        footer={refDetail ? (
-          <>
-            <Button variant="text" onClick={() => setRefDetail(null)}>关闭</Button>
-            <Button
-              variant="gradient"
-              onClick={() => {
-                const seg = (refDetail.content || '').slice(0, 160)
-                setInput(`结合这段资料继续讲解：\n「${seg}」\n请说明它在考试中怎么考、易错点是什么。`)
-                setRefDetail(null)
-                toast('已填入输入框，可直接发送追问')
-              }}
-            >追问这段</Button>
-          </>
-        ) : null}
-      >
-        {refDetail && (
-          <div className="v3-asst-stack">
-            <div className="v3-asst-refmeta">
-              <Badge tone="primary">{refDetail.source || '知识分块'}</Badge>
-              {refDetail.subject && <Badge tone="outline">{refDetail.subject}</Badge>}
-              {refDetail.score != null && <Badge tone="success">相关度 {Number(refDetail.score).toFixed(2)}</Badge>}
-              {refDetail.doc_id != null && <Badge tone="outline">文档 #{refDetail.doc_id}</Badge>}
-            </div>
-            <div className="v3-asst-refdetail">
-              {refDetail.content || '（该片段无正文内容）'}
-            </div>
-          </div>
-        )}
-      </Dialog>
 
       <Dialog
         open={showSummary && !!summary}

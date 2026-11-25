@@ -6,6 +6,19 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from schemas import QuizQuestionCreate, QuizQuestionUpdate, QuizSubmit
+from services.delete_guard import require_physical_delete_enabled
+from services.quiz_content_gate import admit as gate_admit
+from services.quiz_validator import classify, validate_question
+from services.review_scheduler import ReviewScheduler
+from sqlalchemy import Integer, func
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from utils.response import MAX_PAGE_SIZE
+from utils.scope import owner_id, scoped  # B4 行级隔离：个人域查询按用户过滤、写入落归属
+from utils.security import current_user, require_admin
+
 from models import (
     AnswerRecord,
     ErrorKnowledgeLink,
@@ -17,16 +30,6 @@ from models import (
     User,
     Word,
 )
-from pydantic import BaseModel, Field
-from schemas import QuizQuestionCreate, QuizQuestionUpdate, QuizSubmit
-from services.delete_guard import require_physical_delete_enabled
-from services.quiz_content_gate import admit as gate_admit
-from services.review_scheduler import ReviewScheduler
-from sqlalchemy import Integer, func
-from sqlalchemy.orm import Session
-from utils.response import MAX_PAGE_SIZE
-from utils.scope import owner_id, scoped  # B4 行级隔离：个人域查询按用户过滤、写入落归属
-from utils.security import current_user, require_admin
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
@@ -342,6 +345,8 @@ def _serialize_question(q):
         "year": getattr(q, "year", None),
         "paper": getattr(q, "paper", None),
         "question_no": getattr(q, "question_no", None),
+        # 题干含图但图未取到 → 前端必须显式提示，避免学生对着「如图所示」干瞪眼
+        "figure_missing": int(getattr(q, "figure_missing", 0) or 0),
     }
 
 
@@ -2054,24 +2059,35 @@ async def import_confirm(
     }
 
 
-@router.get("/review-queue")
+@router.get("/review-queue", dependencies=[Depends(require_admin)])
 async def review_queue(
     limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     subject: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="quarantined | low_confidence"),
     db: Session = Depends(get_db),
     user: User = Depends(current_user),  # B4 访客兜底
 ):
-    """分类复核队列：返回 needs_review=True 且可用的候选题（供前端人工确认/驳回）。"""
+    """题库复核队列（管理员）：返回所有 needs_review=True 的题目。
+
+    含两类，前端据此展示不同操作：
+      - quarantined：is_available=False，多为 OCR 损坏（validation_errors 写明原因），
+        已移出练习池，需「修复后上架」或「永久下架」；
+      - low_confidence：is_available=True，自动分类低置信，仍在练习池，
+        需「确认分类」或「作废」。
+    """
     from sqlalchemy import or_
 
     q = (
         db.query(QuizQuestion)
         .filter(QuizQuestion.needs_review.is_(True))
         .filter(or_(QuizQuestion.is_junk.is_(False), QuizQuestion.is_junk.is_(None)))
-        .filter(or_(QuizQuestion.is_available.is_(True), QuizQuestion.is_available.is_(None)))
     )
     if subject:
         q = q.filter(QuizQuestion.subject == subject)
+    if status == "quarantined":
+        q = q.filter(QuizQuestion.is_available.is_(False))
+    elif status == "low_confidence":
+        q = q.filter(or_(QuizQuestion.is_available.is_(True), QuizQuestion.is_available.is_(None)))
     # total = 队列全量（不只是本页），前端据此显示「还有 N 条待复核」。
     total = int(q.count())
     rows = q.order_by(QuizQuestion.id.desc()).limit(limit).all()
@@ -2088,9 +2104,13 @@ async def review_queue(
                 "subject": r.subject,
                 "question_type": r.question_type,
                 "knowledge_point": r.knowledge_point,
+                "is_available": bool(r.is_available),
+                "status": "quarantined" if not r.is_available else "low_confidence",
+                "validation_errors": r.validation_errors or [],
                 "classify_confidence": r.classify_confidence,
                 "classify_source": r.classify_source,
-                "source": r.source,
+                "source_kind": r.source_kind,
+                "source_label": r.source_label,
             }
             for r in rows
         ],
@@ -2098,38 +2118,116 @@ async def review_queue(
 
 
 class QuizReviewAction(BaseModel):
-    action: str  # accept | reject
+    action: str  # accept | reject | restore
     subject: Optional[str] = None
     question_type: Optional[str] = None
     knowledge_point: Optional[str] = None
+    # 行内修复字段（restore 常用；accept 也允许微调后确认）。仅传值时覆盖。
+    content: Optional[str] = None
+    options: Optional[list] = None
+    answer: Optional[str] = None
+    analysis: Optional[str] = None
 
 
-@router.post("/review/{question_id}")
+@router.post("/review/{question_id}", dependencies=[Depends(require_admin)])
 async def review_question(
     question_id: int,
     body: QuizReviewAction,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),  # B4 访客兜底
 ):
-    """复核处理：accept=确认分类正确并清复核；reject=标记作废（is_junk）移出练习。"""
+    """复核处理（管理员）：
+      - accept  = 确认分类无误（可顺带修正 subject/type/kp/正文），清复核标记与告警；
+      - restore = 修复后重新逐题校验；仅无 fail 的问题可上架，warn 如实保留；
+      - reject  = 永久作废（is_junk=True），移出练习与复核。
+    任一动作均可携带 content/options/answer/analysis/subject/... 做行内修正。
+    """
     q = db.query(QuizQuestion).filter(QuizQuestion.id == question_id).first()
     if not q:
         raise HTTPException(status_code=404, detail="题目不存在")
+    # 行内字段：仅在传值时覆盖，避免空值误清
+    if body.content is not None:
+        q.content = body.content
+    if body.options is not None:
+        q.options = body.options
+    if body.answer is not None:
+        q.answer = body.answer
+    if body.analysis is not None:
+        q.analysis = body.analysis
+    if body.subject is not None:
+        q.subject = body.subject
+    if body.question_type is not None:
+        q.question_type = body.question_type
+    if body.knowledge_point is not None:
+        q.knowledge_point = body.knowledge_point
+
     if body.action == "accept":
-        if body.subject is not None:
-            q.subject = body.subject
-        if body.question_type is not None:
-            q.question_type = body.question_type
-        if body.knowledge_point is not None:
-            q.knowledge_point = body.knowledge_point
         q.needs_review = False
+        q.validation_errors = []
         msg = "已确认，移出复核队列"
+    elif body.action == "restore":
+        # 修复内容必须先过与导入相同的逐题质量门；不能靠人工点按钮绕过。
+        issues = validate_question(
+            {
+                "content": q.content,
+                "options": q.options,
+                "answer": q.answer,
+                "analysis": q.analysis,
+                "question_type": q.question_type,
+                "images": q.images,
+                "figure_missing": q.figure_missing,
+                "year": q.year,
+                "question_no": q.question_no,
+                "source_kind": q.source_kind,
+                "is_past_exam": getattr(q, "is_past_exam", False),
+            }
+        )
+        validation_status = classify(issues)
+        validation_errors = [
+            {
+                "code": issue.code,
+                "message": issue.message,
+                "detail": issue.message,
+                "severity": issue.severity,
+            }
+            for issue in issues
+        ]
+        try:
+            # 先落可保存的修复，让既有 DB 触发器完成检查；下一步再写统一
+            # validator 的权威结论，避免触发器仅 warn/pass 的口径覆盖 fail。
+            db.commit()
+        except SQLAlchemyError:
+            # 例如选项缺 key/text 会触发数据库结构 CHECK。此编辑本身不可落库，
+            # 回滚后仍把失败结论写到原题，保证题目保持隔离且返回 422 而非 500。
+            db.rollback()
+            q = db.query(QuizQuestion).filter(QuizQuestion.id == question_id).first()
+            if not q:
+                raise
+        q.validation_status = validation_status
+        q.validation_errors = validation_errors
+        if validation_status == "fail":
+            q.is_available = False
+            q.needs_review = True
+            db.commit()  # 保留可落库的修复与失败原因，便于继续复核。
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "题目校验未通过，未重新上架",
+                    "validation_status": validation_status,
+                    "validation_errors": validation_errors,
+                },
+            )
+        q.is_available = True
+        q.is_junk = False
+        q.needs_review = False
+        msg = "已修复并通过校验，重新上架至练习池"
     elif body.action == "reject":
         q.is_junk = True
+        q.is_available = False
         q.needs_review = False
         msg = "已作废（移出练习与复核）"
     else:
-        raise HTTPException(status_code=400, detail="action 仅支持 accept / reject")
+        raise HTTPException(status_code=400, detail="action 仅支持 accept / restore / reject")
     db.commit()
     return {"id": question_id, "action": body.action, "message": msg}
 

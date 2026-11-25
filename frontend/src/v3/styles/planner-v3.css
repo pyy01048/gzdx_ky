@@ -11,25 +11,12 @@
   overflow: hidden;
   border-radius: var(--v3-r-3xl);
   border: 1px solid color-mix(in srgb, var(--v3-primary) 14%, var(--v3-outline));
-  background:
-    radial-gradient(120% 180% at 100% 0%, color-mix(in srgb, var(--v3-gemini-3) 18%, transparent) 0%, transparent 52%),
-    radial-gradient(100% 160% at 0% 100%, color-mix(in srgb, var(--v3-gemini-1) 12%, transparent) 0%, transparent 52%),
-    var(--v3-surface);
-  box-shadow: var(--v3-shadow-2);
+  background: var(--v3-surface);
+  box-shadow: var(--v3-shadow-1);
   padding: var(--v3-s-8) var(--v3-s-10);
 }
 .v3-plan-head__glow {
-  position: absolute;
-  right: -100px;
-  top: -150px;
-  width: 340px;
-  height: 340px;
-  border-radius: 50%;
-  background: var(--v3-gemini-conic);
-  filter: blur(70px);
-  opacity: 0.18;
-  animation: v3-spin 26s linear infinite;
-  pointer-events: none;
+  display: none;
 }
 .v3-plan-head__inner {
   position: relative;
@@ -42,9 +29,9 @@
 .v3-plan-title {
   margin: 6px 0 0;
   font-family: var(--v3-font-display);
-  font-size: clamp(30px, 3.6vw, var(--v3-fs-40));
-  line-height: 1.08;
-  letter-spacing: -0.035em;
+  font-size: clamp(28px, 3.2vw, var(--v3-fs-36));
+  line-height: 1.25;
+  letter-spacing: 0.01em;
   font-weight: 700;
 }
 .v3-plan-sub {
@@ -87,11 +74,10 @@
   top: 72px;
   z-index: 4;
   align-self: flex-start;
-  padding: 4px;
-  border-radius: var(--v3-r-full);
-  background: color-mix(in srgb, var(--v3-bg) 82%, transparent);
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  padding: 0;
+  border-radius: var(--v3-r-sm);
+  background: var(--v3-surface);
+  border: 1px solid var(--v3-outline);
 }
 .v3-plan-tabs .v3-seg {
   width: 100%;
@@ -548,10 +534,6 @@
   font-size: 11px;
   white-space: nowrap;
 }
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
 .v3-plan-cyclechips .v3-chip {
   height: 23px;
   padding: 0 7px;
@@ -913,7 +895,7 @@
     align-items: flex-start;
   }
   .v3-plan-task__actions .v3-iconbtn {
-    width: 30px;
-    height: 30px;
+    width: var(--v3-touch);
+    height: var(--v3-touch);
   }
 }

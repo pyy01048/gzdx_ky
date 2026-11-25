@@ -4,36 +4,57 @@
    Single source: this file. No legacy tokens are consumed by v3 components.
    ========================================================================== */
 
+/* 自托管可变字体：Inter Tight 负责拉丁字母/数字，JetBrains Mono 负责代码与等宽数字。
+   unicode-range 限定拉丁区，避免影响中文系统的正文字体。 */
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('/fonts/inter-tight-latin-var.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122,
+    U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono-latin-var.woff2') format('woff2-variations');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+2074, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   color-scheme: light;
 
-  /* ---------- Canvas & surfaces (tonal, cool-neutral) ---------- */
-  --v3-bg: #F6F8FC;
-  --v3-bg-alt: #EEF2F9;
-  --v3-surface: #FFFFFF;
-  --v3-surface-1: #F2F5FA;
-  --v3-surface-2: #E9EEF7;
-  --v3-surface-3: #DEE5F2;
-  --v3-surface-inverse: #1F2023;
-  --v3-surface-glass: rgba(255, 255, 255, 0.72);
-  --v3-scrim: rgba(15, 20, 32, 0.32);
+  /* ---------- Canvas & surfaces (warm paper, cool ink) ---------- */
+  --v3-bg: #F6F4EF;
+  --v3-bg-alt: #EFEEE8;
+  --v3-surface: #FFFEFA;
+  --v3-surface-1: #F4F2EC;
+  --v3-surface-2: #ECE9E1;
+  --v3-surface-3: #E3DFD5;
+  --v3-surface-inverse: #22231F;
+  --v3-surface-glass: rgba(255, 254, 250, 0.82);
+  --v3-scrim: rgba(28, 27, 24, 0.36);
 
   /* ---------- Text ---------- */
-  --v3-text: #1F2023;
-  --v3-text-2: #474B55;
-  /* FE_REVIEW P0-6：#6E7480 在浅底上对比不足，加深一档 */
-  --v3-text-3: #5A6270;
-  --v3-text-inverse: #FFFFFF;
+  --v3-text: #22231F;
+  --v3-text-2: #484B43;
+  --v3-text-3: #62665C;
+  --v3-text-inverse: #FFFEFA;
   --v3-text-on-primary: #FFFFFF;
 
   /* ---------- Outline ---------- */
-  --v3-outline: #E1E6EF;
-  --v3-outline-strong: #C8D0DD;
+  --v3-outline: #E2DED4;
+  --v3-outline-strong: #C9C3B7;
   --v3-outline-focus: #1A73E8;
 
-  /* ---------- Action & focus (FE_REVIEW 阶段1：主操作专用紫，焦点环专用蓝) ---------- */
-  --v3-action: #6D5AE6;
-  --v3-action-hover: #5B48D6;
+  /* ---------- Action & focus ---------- */
+  --v3-action: #4F46B8;
+  --v3-action-hover: #4338A5;
   --v3-focus: #1A73E8;
   --v3-focus-on-action: #FFFFFF;
 
@@ -44,11 +65,11 @@
   --v3-state-blocked: #C2413B;
 
   /* ---------- Brand & semantic ---------- */
-  --v3-primary: #1A73E8;
-  --v3-primary-hover: #1765CC;
-  --v3-primary-container: #DCEBFF;
+  --v3-primary: #4F46B8;
+  --v3-primary-hover: #4338A5;
+  --v3-primary-container: #ECE9FC;
   --v3-on-primary: #FFFFFF;
-  --v3-on-primary-container: #0B3D91;
+  --v3-on-primary-container: #332B7A;
   --v3-secondary: #7A5AF8;
   --v3-secondary-container: #EDE7FF;
   --v3-on-secondary-container: #3D2A8A;
@@ -73,41 +94,42 @@
   --v3-gemini-2: #9B72CB;
   --v3-gemini-3: #D96570;
   --v3-gemini-4: #F2A03D;
-  --v3-gemini-gradient: linear-gradient(115deg, #4285F4 0%, #9B72CB 48%, #D96570 100%);
-  --v3-gemini-gradient-soft: linear-gradient(135deg, rgba(66, 133, 244, 0.12), rgba(155, 114, 203, 0.12) 52%, rgba(217, 101, 112, 0.12));
-  --v3-gemini-conic: conic-gradient(from 210deg, #4285F4, #9B72CB, #D96570, #F2A03D, #4285F4);
+  --v3-gemini-gradient: var(--v3-primary);
+  --v3-gemini-gradient-soft: var(--v3-primary-container);
+  --v3-gemini-conic: var(--v3-primary);
   --v3-glow-blue: rgba(66, 133, 244, 0.26);
   --v3-glow-purple: rgba(155, 114, 203, 0.24);
   --v3-glow-pink: rgba(217, 101, 112, 0.20);
 
   /* ---------- Shape ---------- */
-  --v3-r-xs: 8px;
-  --v3-r-sm: 12px;
-  --v3-r-md: 16px;
-  --v3-r-lg: 20px;
-  --v3-r-xl: 24px;
-  --v3-r-2xl: 28px;
-  --v3-r-3xl: 36px;
+  --v3-r-xs: 6px;
+  --v3-r-sm: 8px;
+  --v3-r-md: 10px;
+  --v3-r-lg: 12px;
+  --v3-r-xl: 14px;
+  --v3-r-2xl: 18px;
+  --v3-r-3xl: 24px;
   --v3-r-full: 999px;
 
   /* ---------- Elevation ---------- */
-  --v3-shadow-1: 0 1px 2px rgba(24, 33, 52, 0.04), 0 1px 3px rgba(24, 33, 52, 0.05);
-  --v3-shadow-2: 0 2px 6px rgba(24, 33, 52, 0.04), 0 10px 24px -10px rgba(24, 33, 52, 0.12);
-  --v3-shadow-3: 0 8px 20px -8px rgba(24, 33, 52, 0.10), 0 24px 48px -16px rgba(24, 33, 52, 0.16);
-  --v3-shadow-4: 0 32px 80px -24px rgba(24, 33, 52, 0.24);
-  --v3-shadow-glow: 0 12px 40px -12px rgba(66, 133, 244, 0.35);
-  --v3-inset-well: inset 2px 2px 6px rgba(24, 33, 52, 0.07), inset -2px -2px 6px rgba(255, 255, 255, 0.9);
-  --v3-neu-raised: 6px 6px 16px rgba(24, 33, 52, 0.10), -6px -6px 16px rgba(255, 255, 255, 0.9);
+  --v3-shadow-1: 0 1px 2px rgba(45, 40, 30, 0.03);
+  --v3-shadow-2: 0 2px 6px rgba(45, 40, 30, 0.04), 0 10px 24px -16px rgba(45, 40, 30, 0.16);
+  --v3-shadow-3: 0 8px 20px -12px rgba(45, 40, 30, 0.16), 0 24px 48px -28px rgba(45, 40, 30, 0.20);
+  --v3-shadow-4: 0 24px 64px -24px rgba(28, 27, 24, 0.28);
+  --v3-shadow-glow: 0 10px 28px -16px rgba(79, 70, 184, 0.32);
+  --v3-inset-well: inset 0 0 0 1px color-mix(in srgb, var(--v3-outline) 60%, transparent);
+  --v3-neu-raised: var(--v3-shadow-1);
 
   /* ---------- Typography ---------- */
-  --v3-font-sans: "Google Sans", "Google Sans Text", "Product Sans", "Segoe UI Variable Text", "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --v3-font-display: "Google Sans Display", "Google Sans", "Product Sans", "Segoe UI Variable Display", "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --v3-font-mono: "Google Sans Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --v3-font-sans: "Inter Tight", "Google Sans", "Google Sans Text", "Product Sans", "Segoe UI Variable Text", "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --v3-font-display: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", "Inter Tight", "Segoe UI", serif;
+  --v3-font-mono: "JetBrains Mono", "Google Sans Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --v3-fs-11: 11px;
   --v3-fs-12: 12px;
   --v3-fs-13: 13px;
   --v3-fs-14: 14px;
+  --v3-fs-15: 15px;
   --v3-fs-16: 16px;
   --v3-fs-18: 18px;
   --v3-fs-20: 20px;
@@ -120,9 +142,9 @@
   --v3-fs-48: 48px;
   --v3-fs-56: 56px;
 
-  --v3-lh-tight: 1.12;
-  --v3-lh-snug: 1.32;
-  --v3-lh-normal: 1.55;
+  --v3-lh-tight: 1.18;
+  --v3-lh-snug: 1.4;
+  --v3-lh-normal: 1.7;
 
   --v3-tracking-tight: -0.025em;
   --v3-tracking-wide: 0.06em;
@@ -149,10 +171,10 @@
   --v3-sp-6: 32px;
 
   /* ---------- Layout ---------- */
-  --v3-sidebar-w: 248px;
+  --v3-sidebar-w: 232px;
   --v3-sidebar-collapsed: 76px;
-  --v3-topbar-h: 68px;
-  --v3-content-max: 1480px;
+  --v3-topbar-h: 64px;
+  --v3-content-max: 1360px;
   --v3-gutter: 28px;
   --v3-touch: 44px;
 
@@ -183,42 +205,41 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --v3-bg: #0B0D11;
-  --v3-bg-alt: #0F1218;
-  --v3-surface: #12151C;
-  /* FE_REVIEW 阶段2：暗色表面拉开层级（bg #0B0D11 → surface #12151C → 1 #191D26 → 2 #222833） */
-  --v3-surface-1: #191D26;
-  --v3-surface-2: #222833;
-  --v3-surface-3: #2A3140;
-  --v3-surface-inverse: #E9EDF4;
-  --v3-surface-glass: rgba(18, 21, 28, 0.72);
-  --v3-scrim: rgba(0, 0, 0, 0.55);
+  --v3-bg: #111210;
+  --v3-bg-alt: #161714;
+  --v3-surface: #1A1B17;
+  --v3-surface-1: #21221E;
+  --v3-surface-2: #292A25;
+  --v3-surface-3: #34352F;
+  --v3-surface-inverse: #F2F0E9;
+  --v3-surface-glass: rgba(26, 27, 23, 0.84);
+  --v3-scrim: rgba(0, 0, 0, 0.58);
 
-  --v3-text: #E9EDF4;
-  --v3-text-2: #B6BDCA;
-  --v3-text-3: #8A93A3;
-  --v3-text-inverse: #14161B;
-  --v3-text-on-primary: #062E6F;
+  --v3-text: #F2F0E9;
+  --v3-text-2: #C8C5BC;
+  --v3-text-3: #A19D93;
+  --v3-text-inverse: #171814;
+  --v3-text-on-primary: #201A52;
 
-  --v3-outline: #262C38;
-  --v3-outline-strong: #39414F;
-  --v3-outline-focus: #A8C7FA;
+  --v3-outline: #30312B;
+  --v3-outline-strong: #494A42;
+  --v3-outline-focus: #8FB6FF;
 
   /* Action & focus / data states（暗色） */
-  --v3-action: #8B7BF0;
-  --v3-action-hover: #A294F6;
+  --v3-action: #B8AEFB;
+  --v3-action-hover: #C7BFFF;
   --v3-focus: #8FB6FF;
-  --v3-focus-on-action: #FFFFFF;
+  --v3-focus-on-action: #18132F;
   --v3-state-todo: #9AA3B2;
   --v3-state-doing: #6FA8FF;
   --v3-state-done: #4CC38A;
   --v3-state-blocked: #F08078;
 
-  --v3-primary: #A8C7FA;
-  --v3-primary-hover: #C2D7FC;
-  --v3-primary-container: #0842A0;
-  --v3-on-primary: #062E6F;
-  --v3-on-primary-container: #D3E3FD;
+  --v3-primary: #C7C2FF;
+  --v3-primary-hover: #DAD6FF;
+  --v3-primary-container: #322B72;
+  --v3-on-primary: #201A52;
+  --v3-on-primary-container: #ECE8FF;
   --v3-secondary: #C7B6FF;
   --v3-secondary-container: #3B2C6B;
   --v3-on-secondary-container: #E9DFFF;
@@ -238,9 +259,9 @@
   --v3-info: #8AB4F8;
   --v3-info-container: #0B3B66;
 
-  --v3-gemini-gradient: linear-gradient(115deg, #6DA2FF 0%, #B79BFF 48%, #FF9AA8 100%);
-  --v3-gemini-gradient-soft: linear-gradient(135deg, rgba(109, 162, 255, 0.16), rgba(183, 155, 255, 0.14) 52%, rgba(255, 154, 168, 0.12));
-  --v3-gemini-conic: conic-gradient(from 210deg, #6DA2FF, #B79BFF, #FF9AA8, #F7C96B, #6DA2FF);
+  --v3-gemini-gradient: #6D5AE6;
+  --v3-gemini-gradient-soft: var(--v3-primary-container);
+  --v3-gemini-conic: #6D5AE6;
   --v3-glow-blue: rgba(109, 162, 255, 0.30);
   --v3-glow-purple: rgba(183, 155, 255, 0.28);
   --v3-glow-pink: rgba(255, 154, 168, 0.22);

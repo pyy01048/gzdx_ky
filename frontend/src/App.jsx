@@ -8,7 +8,7 @@ import { LoadingState } from './v3/ui'
 import { hydrate } from './api/sync'
 import { AuthProvider, RequireAuth, RequireAdmin, useAuth } from './auth/AuthContext'
 import AppShellV3, { AdminLayout } from './v3/shell'
-import { ADMIN_LEGACY_REDIRECTS, KAOYAN_TABS } from './nav/navConfig'
+import { ADMIN_LEGACY_REDIRECTS, KAOYAN_TABS, ROUTE_META, routeMeta } from './nav/navConfig'
 
 /* 路由级代码分割：按页面懒加载，减小首屏主包体积 */
 /* W2 融合：今日中枢（/hub）与仪表盘总览（/）合并为单页首页 —— Hub 是唯一落点；
@@ -29,6 +29,7 @@ const Settings = lazy(() => import('./v3/pages/Settings'))
 const CodeBank = lazy(() => import('./v3/pages/CodeBank'))
 const Quiz = lazy(() => import('./v3/pages/Quiz'))
 const QuizBank = lazy(() => import('./v3/pages/QuizBank'))
+const QuizReview = lazy(() => import('./v3/pages/QuizReview'))
 const LearnerProfile = lazy(() => import('./v3/pages/LearnerProfile'))
 const SubjectManager = lazy(() => import('./v3/pages/SubjectManager'))
 const UserAdmin = lazy(() => import('./v3/pages/UserAdmin'))
@@ -43,6 +44,7 @@ const KaoyanSchoolDetail = lazy(() => import('./v3/pages/KaoyanSchoolDetail'))
 const KaoyanCompare = lazy(() => import('./v3/pages/KaoyanCompare'))
 const KaoyanAnalysis = lazy(() => import('./v3/pages/KaoyanAnalysis'))
 const KaoyanRecommend = lazy(() => import('./v3/pages/KaoyanRecommend'))
+const KaoyanRecommendDetail = lazy(() => import('./v3/pages/KaoyanRecommendDetail'))
 const KaoyanImport = lazy(() => import('./v3/pages/KaoyanImport'))
 const KaoyanMap = lazy(() => import('./v3/pages/KaoyanMap'))
 const KaoyanScatter = lazy(() => import('./v3/pages/KaoyanScatter'))
@@ -50,6 +52,8 @@ const KaoyanAssistant = lazy(() => import('./v3/pages/KaoyanAssistant'))
 const PlanPage = lazy(() => import('./v3/pages/PlanPage'))
 const GrowthPage = lazy(() => import('./v3/pages/GrowthPage'))
 const ErrorReview = lazy(() => import('./v3/pages/ErrorReview'))
+const ErrorDetail = lazy(() => import('./v3/pages/ErrorDetail'))
+const AssistantAnswer = lazy(() => import('./v3/pages/AssistantAnswer'))
 const QualityDashboard = lazy(() => import('./v3/pages/QualityDashboard'))
 const Insights = lazy(() => import('./v3/pages/Insights'))
 // S7：全站收藏夹 + 学习轨迹
@@ -74,9 +78,22 @@ const Forbidden = lazy(() => import('./v3/pages/Forbidden'))
 const GlassLab = lazy(() => import('./v3/pages/GlassLab'))
 // 学习工具箱：进制计算器（纯本地 BigInt）+ 外部工具目录 + 站内入口（后端零依赖，访客可用）
 const Tools = lazy(() => import('./v3/pages/Tools'))
+// 沉浸式全屏二级/三级页：独立全屏壳（无侧边栏），src/immersive 全量新建，不与 v3 页面冲突
+const ImmersiveQuiz = lazy(() => import('./immersive/QuizStudio'))
+const ImmersiveReview = lazy(() => import('./immersive/SubjectReview'))
 
 function PageFallback() {
   return <LoadingState text="页面加载中…" />
+}
+
+/* P1（F-06）：全站唯一 document.title 出口。ROUTE_META 是唯一事实源，
+   页面组件不再各写一份 title effect（登录/引导等壳外路由也由这里统一设置）。 */
+function RouteTitle() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    document.title = routeMeta(pathname).title
+  }, [pathname])
+  return null
 }
 
 /* 改版前的管理页路径 → /admin/*，带上查询串，旧书签与外链不丢参数 */
@@ -91,18 +108,25 @@ const Textbooks = lazy(() => import('./v3/pages/Textbooks'))
 const KaoyanModuleLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  /* P1（F-19）：/kaoyan/guide 过去被最长前缀匹配算作 /kaoyan（高亮「院校库」），
+     这里在 guide 页临时插入一个「择校数据中心」Tab 并命中它；Tab 数量仍与
+     KAOYAN_TABS 派生源绑定，不在代码里写死数字。 */
+  const onGuide = location.pathname === '/kaoyan/guide' || location.pathname.startsWith('/kaoyan/guide/')
+  const tabOptions = onGuide
+    ? [{ value: '/kaoyan/guide', label: ROUTE_META['/kaoyan/guide'].h1 }, ...KAOYAN_TABS]
+    : KAOYAN_TABS
   /* 当前 tab：取「最长前缀匹配」，避免模块主页 /kaoyan 吞掉 /kaoyan/schools/:id 等子路由。
      管理类页面（原 /kaoyan/import）已归口 /admin，不再占用择校 Tab；
      匹配不到时不强行高亮「择校中心」，避免当前位置误导。 */
-  const currentTab = KAOYAN_TABS
+  const currentTab = tabOptions
     .filter((t) => location.pathname === t.value || location.pathname.startsWith(t.value + '/'))
     .sort((a, b) => b.value.length - a.value.length)[0]?.value || ''
   return (
     <div>
-      {/* dogfood ISSUE-007：11 个 tab 在窄屏下曾被压缩成逐字竖排；
-          超宽时整条横向滚动，按钮永不收缩换行（样式见 global.css .seg-scroll）。 */}
+      {/* dogfood ISSUE-007：Tab 数量随导航源变化（现为 {KAOYAN_TABS.length} 个）；
+          窄屏曾被压缩成逐字竖排，超宽时整条横向滚动，按钮永不收缩换行。 */}
       <div className="seg-scroll">
-        <Segmented options={KAOYAN_TABS} value={currentTab} onChange={(v) => navigate(v)} />
+        <Segmented options={tabOptions} value={currentTab} onChange={(v) => navigate(v)} />
       </div>
       <Outlet />
     </div>
@@ -121,7 +145,11 @@ function AppShell() {
   return (
     <AppShellV3>
       <Suspense fallback={<PageFallback />}>
-        <Outlet />
+        {/* P1（F-20）：路由级错误边界 —— 单页渲染崩溃只替换内容区，
+            侧栏/顶栏与其它 Tab 仍可点击；最外层全局边界保留作最后兜底。 */}
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </Suspense>
     </AppShellV3>
   )
@@ -154,6 +182,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+    <RouteTitle />
     <AuthProvider>
       <Suspense fallback={<PageFallback />}>
         <Routes>
@@ -161,6 +190,10 @@ export default function App() {
           <Route path="/force-change-password" element={<ForceChangePassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          {/* ── 沉浸式全屏二级/三级页：壳外路由，不嵌 AppShell（无侧边栏，独立全屏壳） ──
+              /studio/quiz：刷题全屏页；/studio/subject/:subject：知识地图选科目后的全屏复习页 */}
+          <Route path="/studio/quiz" element={<RequireAuth><ImmersiveQuiz /></RequireAuth>} />
+          <Route path="/studio/subject/:subject" element={<RequireAuth><ImmersiveReview /></RequireAuth>} />
           {/* ── 公开壳（2026-10-19 访客模式）：未登录可浏览共享数据 ──
               院校库/通知/教材/知识图谱/真题索引对访客只读开放（后端 access_policy 白名单），
               顶栏右上角提供「登录」；个人数据页仍在下方 <RequireAuth> 壳内，
@@ -192,6 +225,7 @@ export default function App() {
               <Route path="map" element={<KaoyanMap />} />
               <Route path="scatter" element={<KaoyanScatter />} />
               <Route path="recommend" element={<KaoyanRecommend />} />
+              <Route path="recommend/:schoolId" element={<KaoyanRecommendDetail />} />
               {/* 工学学科评估：共享招生数据，访客可读（119 分片） */}
               <Route path="school-eval" element={<KaoyanSchoolEval />} />
               {/* 个人数据：成长/择校 AI 问答仍需登录；规划页已对访客只读开放
@@ -241,6 +275,7 @@ export default function App() {
           <Route path="/profile" element={<LearnerProfile />} />
           {/* 错题复盘：错因分布 / 薄弱知识点 / 单题 AI 归因与知识点挂接（5+1 的第 5 个模块主页） */}
           <Route path="/error-review" element={<ErrorReview />} />
+          <Route path="/error-review/:id" element={<ErrorDetail />} />
           {/* 旧入口兼容：/errors 与 /cuoti 早期用过，重定向到新页，避免历史链接失效 */}
           <Route path="/errors" element={<Navigate to="/error-review" replace />} />
           <Route path="/cuoti" element={<Navigate to="/error-review" replace />} />
@@ -250,6 +285,7 @@ export default function App() {
           <Route path="/notebook" element={<Notebook />} />
           <Route path="/planner" element={<Planner />} />
           <Route path="/assistant" element={<Assistant />} />
+          <Route path="/assistant/answers/:id" element={<AssistantAnswer />} />
           <Route path="/pan" element={<Pan />} />
           <Route path="/words" element={<Words />} />
           <Route path="/cards" element={<Cards />} />
@@ -267,6 +303,8 @@ export default function App() {
             <Route path="users" element={<UserAdmin />} />
             <Route path="subjects" element={<SubjectManager />} />
             <Route path="quiz-bank" element={<QuizBank />} />
+            {/* 题库复核：隔离题修复上架 / 低置信确认（仅管理员） */}
+            <Route path="quiz-review" element={<QuizReview />} />
             {/* 评测与数据质量：eval_runs 历史 + 语料体检（数字全部来自库内聚合） */}
             <Route path="quality" element={<QualityDashboard />} />
             {/* 院校数据管理 = 采集中心（定向采集 / 国家线回填 / 公告采集 / 采集历史） */}

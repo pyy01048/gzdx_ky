@@ -462,8 +462,14 @@ function DailyPlanTab() {
   const [quickDuration, setQuickDuration] = useState(25)
   /* P2 乐观保存：草稿改动后自动静默落库（详情见下方防抖 effect） */
   const [autoSavedAt, setAutoSavedAt] = useState('')
+  const [saveErr, setSaveErr] = useState('')
   const saveTimerRef = useRef(null)
   const lastSavedRef = useRef('')
+  const latestStampRef = useRef('')
+  const saveQueueRef = useRef(Promise.resolve())
+  const loadGenerationRef = useRef(0)
+  const activeDateRef = useRef(date)
+  activeDateRef.current = date
   const quickRef = useRef(null)
   const dragFrom = useRef(null)
 
@@ -472,10 +478,12 @@ function DailyPlanTab() {
   }, [exam])
 
   const loadPlan = useCallback(async () => {
+    const generation = ++loadGenerationRef.current
     setLoadErr('')
     setLoading(true)
     try {
       const data = await plannerApi.getDaily(date)
+      if (generation !== loadGenerationRef.current) return
       setPlan(data)
       const rawTasks = data.tasks || {}
       if (Array.isArray(rawTasks)) {
@@ -504,14 +512,28 @@ function DailyPlanTab() {
       setScore(data.score || 0)
       setSummary(data.summary || '')
     } catch (e) {
+      if (generation !== loadGenerationRef.current) return
       setLoadErr(e?.message || '后端未响应')
       toastErr('加载日计划失败')
     } finally {
-      setLoading(false)
+      if (generation === loadGenerationRef.current) setLoading(false)
     }
   }, [date])
 
-  useEffect(() => { loadPlan() }, [loadPlan])
+  useEffect(() => {
+    setAutoSavedAt('')
+    setSaveErr('')
+    loadPlan()
+    // 切日期或卸载后，旧请求不得再写当前日期的草稿与错误状态。
+    return () => { loadGenerationRef.current += 1 }
+  }, [loadPlan])
+
+  /* 自动保存与手动保存共用串行队列，确保后产生的草稿最终后落库。 */
+  const queueDailySave = useCallback((payload) => {
+    const task = saveQueueRef.current.then(() => plannerApi.saveDaily(payload))
+    saveQueueRef.current = task.catch(() => {})
+    return task
+  }, [])
 
   /* ---- P2：草稿自动保存 ------------------------------------------------
      上一版唯一的持久化入口是「保存计划」按钮——用户勾完任务、写完总结，
@@ -520,35 +542,63 @@ function DailyPlanTab() {
      看了一眼就悄悄创建一条空日计划记录）；失败不打断输入，手动按钮仍是兜底。 */
   useEffect(() => {
     if (loading) return undefined
-    if (!taskList.length && !timeline.length && !score && !summary) return undefined
+    if (!taskList.length && !timeline.length && !score && !summary) {
+      latestStampRef.current = ''
+      setAutoSavedAt('')
+      return undefined
+    }
     const payload = { date, tasks: taskList, timeline, score, summary }
     const stamp = JSON.stringify(payload)
+    latestStampRef.current = stamp
     if (stamp === lastSavedRef.current) return undefined
+    setAutoSavedAt('')
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null
-      plannerApi.saveDaily(payload)
+      queueDailySave(payload)
         .then(() => {
           lastSavedRef.current = stamp
-          setAutoSavedAt(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
+          if (activeDateRef.current !== payload.date) return
+          setSaveErr('')
+          if (latestStampRef.current === stamp) {
+            setAutoSavedAt(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
+          }
         })
-        .catch(() => { /* 静默失败：左上有「保存计划」按钮兜底 */ })
+        .catch((err) => {
+          if (activeDateRef.current !== payload.date) return
+          const message = err?.message || '后端未响应'
+          setSaveErr(message)
+          toastErr('自动保存失败，草稿仍保留在本页，请手动保存')
+        })
     }, 1200)
     return () => {
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
     }
-  }, [loading, date, taskList, timeline, score, summary])
+  }, [loading, date, taskList, timeline, score, summary, queueDailySave])
 
   const savePlan = async () => {
+    if (loading || saving) return
     setSaving(true)
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
+    const payload = { date, tasks: taskList, timeline, score, summary }
+    const stamp = JSON.stringify(payload)
+    latestStampRef.current = stamp
     try {
-      const payload = { date, tasks: taskList, timeline, score, summary }
-      await plannerApi.saveDaily(payload)
-      lastSavedRef.current = JSON.stringify(payload) /* 手动保存计入防抖基线，避免紧跟着重复一次自动保存 */
-      toastOk('日计划已保存')
-      loadPlan()
-    } catch {
-      toastErr('保存失败')
+      await queueDailySave(payload)
+      lastSavedRef.current = stamp
+      if (activeDateRef.current !== payload.date) return
+      setSaveErr('')
+      setPlan((prev) => (prev ? { ...prev, exists: true } : prev))
+      if (latestStampRef.current === stamp) {
+        setAutoSavedAt(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
+        toastOk('日计划已保存')
+      } else {
+        toast('已保存点击时的版本；新改动将自动保存')
+      }
+    } catch (err) {
+      if (activeDateRef.current !== payload.date) return
+      setSaveErr(err?.message || '后端未响应')
+      toastErr('保存失败，草稿仍保留在本页')
     } finally {
       setSaving(false)
     }
@@ -665,6 +715,13 @@ function DailyPlanTab() {
           onRetry={loadPlan}
         />
       )}
+      {saveErr && (
+        <LoadErrorBar
+          title="日计划保存失败"
+          detail={`${saveErr}。草稿仍保留在当前页面，请检查网络后点击重试。`}
+          onRetry={savePlan}
+        />
+      )}
 
       <Card variant="tonal" className="v3-plan-dailybar">
         <div className="v3-plan-toolbar">
@@ -681,7 +738,7 @@ function DailyPlanTab() {
           </div>
           <div className="v3-plan-toolbaractions">
             <Button variant="ghost" size="sm" onClick={loadPlan} loading={loading}>重新载入</Button>
-            <Button size="sm" onClick={savePlan} loading={saving}>保存计划</Button>
+            <Button size="sm" onClick={savePlan} loading={saving} disabled={loading}>保存计划</Button>
           </div>
         </div>
         <div className="v3-plan-progressrow">
@@ -961,40 +1018,53 @@ function WeekMonthPlanTab() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadErr, setLoadErr] = useState('')
+  const loadGenerationRef = useRef(0)
+  const activePeriodRef = useRef('')
+  activePeriodRef.current = mode === 'month' ? `${year}-${month}` : weekStart
 
   const loadPlan = useCallback(async () => {
+    const generation = ++loadGenerationRef.current
     setLoadErr('')
     setLoading(true)
     try {
       const data = mode === 'month'
         ? await plannerApi.getMonth(year, month)
         : await plannerApi.getWeek(weekStart)
+      if (generation !== loadGenerationRef.current) return
       setPlan(data)
       setTasks(data.tasks || {})
       setCompletion(data.completion || '')
     } catch (e) {
+      if (generation !== loadGenerationRef.current) return
       setLoadErr(e?.message || '后端未响应')
       toastErr('加载计划失败')
     } finally {
-      setLoading(false)
+      if (generation === loadGenerationRef.current) setLoading(false)
     }
   }, [mode, year, month, weekStart])
 
-  useEffect(() => { loadPlan() }, [loadPlan])
+  useEffect(() => {
+    loadPlan()
+    return () => { loadGenerationRef.current += 1 }
+  }, [loadPlan])
 
   const savePlan = async () => {
+    if (loading || saving) return
     setSaving(true)
+    const periodKey = activePeriodRef.current
     try {
       if (mode === 'month') {
         await plannerApi.saveMonth({ year, month, tasks, completion })
-        toastOk('月计划已保存')
       } else {
         await plannerApi.saveWeek({ week_start: weekStart, tasks, completion })
-        toastOk('周计划已保存')
       }
-      loadPlan()
+      // 保存响应不回灌草稿，也不触发 reload：期间的新编辑必须保留。
+      if (activePeriodRef.current === periodKey) {
+        setPlan((prev) => (prev ? { ...prev, exists: true } : prev))
+        toastOk(mode === 'month' ? '月计划已保存' : '周计划已保存')
+      }
     } catch {
-      toastErr('保存失败')
+      if (activePeriodRef.current === periodKey) toastErr('保存失败')
     } finally {
       setSaving(false)
     }
@@ -1080,7 +1150,7 @@ function WeekMonthPlanTab() {
           )}
           <div className="v3-plan-toolbaractions">
             {plan && (plan.exists ? <Badge tone="success">已有记录</Badge> : <Badge tone="outline">新建中</Badge>)}
-            <Button size="sm" onClick={savePlan} loading={saving}>保存</Button>
+            <Button size="sm" onClick={savePlan} loading={saving} disabled={loading}>保存</Button>
           </div>
         </div>
       </Card>

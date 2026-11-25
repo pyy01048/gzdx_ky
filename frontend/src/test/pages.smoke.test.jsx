@@ -1,7 +1,7 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup, act, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { render, screen, waitFor, cleanup, act, fireEvent, within } from '@testing-library/react'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { summaryPayload, makeSummary, makeTaskModules } from './dashboardSummary.fixture'
 import { apiSurface } from './apiSurface'
 import { toggleHidden } from '../hooks/useUiLayout'
@@ -823,6 +823,97 @@ describe('Planner 页面渲染 smoke', () => {
 })
 
 // ========================================================================= //
+// 三·六、院校详情：数据页签不重复展示同一指标
+// ========================================================================= //
+describe('KaoyanSchoolDetail 数据页签', () => {
+  it('总分只出现一次，招生明细不再叠加同指标均分图', async () => {
+    const KaoyanSchoolDetail = (await import('../v3/pages/KaoyanSchoolDetail')).default
+    const school = { id: 1, name: '测试院校', province: '贵州' }
+    const scores = [{
+      source_id: 1, year: 2025, degree_type: '专业型', major_code: '085404', major_name: '计算机技术',
+      depart_name: '计算机学院', total_line: 300, politics_line: 0, english_line: 45,
+      math_line: 70, major_line: 80, national_line: 273, diff_total: 27, note: '',
+    }]
+    const admissions = [{
+      year: 2025, major_code: '085404', major_name: '计算机技术', enroll_count: 12,
+      retest_count: 24, admit_count: 18, admit_avg_score: 350, major_avg_score: 118,
+      retest_ratio: 1.33, data_source: 'txkyer.cn', extra: null,
+    }, {
+      year: 2025, major_code: '085404', major_name: '计算机技术', enroll_count: 12,
+      retest_count: 24, admit_count: 18, admit_avg_score: 350, major_avg_score: 118,
+      retest_ratio: 1.33, data_source: 'txkyer.cn', extra: null,
+    }]
+    apiMocks.authApi.me.mockResolvedValue(null)
+    apiMocks.offlineProbe.request.mockImplementation((url) => {
+      if (url === '/kaoyan/schools/1') return Promise.resolve(school)
+      if (url === '/kaoyan/schools/1/majors') return Promise.resolve([])
+      if (url === '/kaoyan/schools/1/scores') return Promise.resolve(scores)
+      if (url === '/kaoyan/schools/1/admissions') return Promise.resolve(admissions)
+      if (url === '/kaoyan/schools/1/admissions/details') return Promise.resolve([])
+      if (url === '/kaoyan/analysis/score-detail/1') return Promise.resolve({
+        trends: { admit_avg_trend: '数据不足' },
+        line_vs_national: { year: 2025, total_line: 300, national_line: 300, diff: 0 },
+      })
+      return Promise.resolve(null)
+    })
+
+    render(
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/kaoyan/schools/1']}>
+          <Routes>
+            <Route path="/kaoyan/schools/:id" element={<KaoyanSchoolDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    )
+    await screen.findByText('测试院校')
+    expect(screen.getByText('与国家线持平')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /^历年分数/ }))
+    const scoreTable = await screen.findByRole('table')
+    expect(within(scoreTable).getAllByText('300')).toHaveLength(1)
+    expect(within(scoreTable).getByText('↗27')).toBeInTheDocument()
+    expect(within(scoreTable).queryByText('0', { exact: true })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /^招生数据/ }))
+    await screen.findByRole('table')
+    expect(screen.getAllByText('350')).toHaveLength(1)
+    expect(screen.getAllByText('118')).toHaveLength(1)
+    expect(screen.queryByText(/各专业均分对比/)).not.toBeInTheDocument()
+  })
+
+  it('无数据时仍可进入招生计划、历年分数和招生数据空态', async () => {
+    const KaoyanSchoolDetail = (await import('../v3/pages/KaoyanSchoolDetail')).default
+    apiMocks.authApi.me.mockResolvedValue(null)
+    apiMocks.offlineProbe.request.mockImplementation((url) => {
+      if (url === '/kaoyan/schools/2') return Promise.resolve({ id: 2, name: '空数据院校', province: '贵州' })
+      if (url === '/kaoyan/analysis/score-detail/2') return Promise.resolve(null)
+      return Promise.resolve([])
+    })
+
+    render(
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/kaoyan/schools/2']}>
+          <Routes>
+            <Route path="/kaoyan/schools/:id" element={<KaoyanSchoolDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    )
+    await screen.findByText('空数据院校')
+
+    fireEvent.click(screen.getByRole('tab', { name: /^招生计划/ }))
+    expect(await screen.findByText(/暂无招生计划/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /^历年分数/ }))
+    expect(await screen.findByText('暂无分数线数据')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /^招生数据/ }))
+    expect(await screen.findByText('暂无招生数据')).toBeInTheDocument()
+  })
+})
+
+// ========================================================================= //
 // 四、健壮性守卫：后端完全不可用时页面仍能出骨架
 // ========================================================================= //
 describe('页面健壮性总守卫', () => {
@@ -853,6 +944,8 @@ describe('页面健壮性总守卫', () => {
     /* Quiz 是会话容器（真题/知识点会话引擎），子视图在 v3/pages/Quiz*，路由仍指向容器 */
     ['Quiz', '../v3/pages/Quiz', '/quiz'],
     ['QuizBank', '../v3/pages/QuizBank', '/admin/quiz-bank'],
+    /* 管理员题库复核页：核心接口全挂时应显示可重试错误态，不白屏 */
+    ['QuizReview', '../v3/pages/QuizReview', '/admin/quiz-review'],
     ['LearnerProfile', '../v3/pages/LearnerProfile', '/profile'],
     ['SubjectManager', '../v3/pages/SubjectManager', '/admin/subjects'],
     ['UserAdmin', '../v3/pages/UserAdmin', '/admin/users'],
@@ -866,6 +959,7 @@ describe('页面健壮性总守卫', () => {
     ['KaoyanCompare', '../v3/pages/KaoyanCompare', '/kaoyan/compare'],
     ['KaoyanAnalysis', '../v3/pages/KaoyanAnalysis', '/kaoyan/analysis'],
     ['KaoyanRecommend', '../v3/pages/KaoyanRecommend', '/kaoyan/recommend'],
+    ['KaoyanRecommendDetail', '../v3/pages/KaoyanRecommendDetail', '/kaoyan/recommend/1?score=350'],
     ['KaoyanImport', '../v3/pages/KaoyanImport', '/admin/schools'],
     ['KaoyanMap', '../v3/pages/KaoyanMap', '/kaoyan/map'],
     ['KaoyanScatter', '../v3/pages/KaoyanScatter', '/kaoyan/scatter'],
@@ -873,6 +967,8 @@ describe('页面健壮性总守卫', () => {
     ['PlanPage', '../v3/pages/PlanPage', '/kaoyan/plan'],
     ['GrowthPage', '../v3/pages/GrowthPage', '/kaoyan/growth'],
     ['ErrorReview', '../v3/pages/ErrorReview', '/error-review'],
+    ['ErrorDetail', '../v3/pages/ErrorDetail', '/error-review/1'],
+    ['AssistantAnswer', '../v3/pages/AssistantAnswer', '/assistant/answers/test-answer'],
     ['QualityDashboard', '../v3/pages/QualityDashboard', '/admin/quality'],
     ['Insights', '../v3/pages/Insights', '/insights'],
     ['Favorites', '../v3/pages/Favorites', '/favorites'],

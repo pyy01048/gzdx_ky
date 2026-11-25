@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import useStore from '../../store/useStore'
 import { dueCards, GRADE, CARD_STATUS } from '../../utils/spaced'
-import { todayStr } from '../../utils/date'
+import { todayStr, fmtDateCN } from '../../utils/date'
 import { noteToCard } from '../../utils/words'
 import { flashcardsApi, fetchAllPages } from '../../api/client'
 import { fetchSubjectNames } from '../../api/subjects'
@@ -326,29 +326,19 @@ export default function Cards() {
     setShowAddPack(false)
   }
 
-  const noteToCardNow = async (note) => {
+  // 创建由 useStore.addCard 独占：它负责乐观插入、完整字段同步与后端 ID adoption。
+  const noteToCardNow = (note) => {
     const pack = packs[0]
     if (!pack) {
       toastWarn('请先创建卡包')
       return
     }
-    const newCard = { ...noteToCard(note), packId: pack.id }
-    addCard(newCard)
-    try {
-      await flashcardsApi.create({
-        front: newCard.front,
-        back: newCard.back,
-        hint: newCard.hint,
-        deck_id: pack.id,
-      })
-    } catch (err) {
-      toastErr(`卡片同步到后端失败：${err?.message || '未知错误'}（仅保存在本机）`)
-    }
-    toastOk('已生成记忆卡片')
+    addCard({ ...noteToCard(note), packId: pack.id })
+    toastOk('已生成记忆卡片，正在后台同步')
     setShowFromNote(false)
   }
 
-  const createCard = async () => {
+  const createCard = () => {
     if (!form.packId) {
       setCardErr(packs.length ? '请先选择卡包' : '还没有卡包：请先新建一个卡包再添加卡片')
       return
@@ -358,19 +348,8 @@ export default function Cards() {
       return
     }
     setCardErr('')
-    const newCard = { ...form, packId: form.packId }
-    addCard(newCard)
-    try {
-      await flashcardsApi.create({
-        front: newCard.front,
-        back: newCard.back,
-        hint: newCard.hint,
-        deck_id: form.packId,
-      })
-    } catch (err) {
-      toastErr(`卡片同步到后端失败：${err?.message || '未知错误'}（仅保存在本机）`)
-    }
-    toastOk('卡片已添加')
+    addCard({ ...form, packId: form.packId })
+    toastOk('卡片已添加，正在后台同步')
     setForm({ packId: '', front: '', back: '', hint: '' })
     setShowAddCard(false)
   }
@@ -425,7 +404,7 @@ export default function Cards() {
       <PageHeader
         eyebrow="CARDS · FSRS 间隔重复"
         title="记忆卡片"
-        sub={`共 ${cards.length} 张卡片 · 今日到期 ${due.length} 张 · 已掌握 ${mastered} 张 · ${packs.length} 个卡包`}
+        sub="把知识点整理成正反面，按记忆强度安排复习。"
         actions={(
           <>
             <IconButton label="刷新卡片数据" icon={<RefreshCw size={17} />} onClick={refresh} disabled={loading} />
@@ -437,14 +416,12 @@ export default function Cards() {
       />
 
       {loading && cards.length === 0 && !loadErr ? renderLoading() : loadErr && cards.length === 0 ? (
-        <Tile span={12}>
-          <Empty
-            icon={<AlertCircle size={26} />}
-            title="卡片加载失败"
-            text={`后端接口请求失败：${loadErr}`}
-            action={<Button variant="tonal" onClick={refresh}>重新加载</Button>}
-          />
-        </Tile>
+        <Alert tone="danger" icon={<AlertCircle size={24} />} className="v3-study-alert" role="alert">
+          <div className="v3-study-alert__inner">
+            <div><strong>卡片加载失败</strong><p>后端接口请求失败：{loadErr}</p></div>
+            <Button variant="tonal" onClick={refresh}>重新加载</Button>
+          </div>
+        </Alert>
       ) : (
         <>
           {loadErr ? (
@@ -538,7 +515,7 @@ export default function Cards() {
                       : remaining.length === 0
                         ? (queue.length > 0
                           ? `本次已评 ${sessionTotal} 张，仍有 ${queue.length} 张重学卡留在今日队列，可点「再来一轮」继续。`
-                          : `当前范围共 ${scope.length} 张卡片，没有今天到期的项目。${nextDue ? `最早下次复习在 ${nextDue}。` : '所有卡片都已掌握。'}`)
+                          : `当前范围共 ${scope.length} 张卡片，没有今天到期的项目。${nextDue ? `最早下次复习在 ${fmtDateCN(nextDue)}。` : '所有卡片都已掌握。'}`)
                         : `当前范围剩余 ${remaining.length} 张待复习，新卡排在队尾；四档评分决定下一次间隔。`}
                   </p>
                   <div className="v3-study-hero__meta">
@@ -598,7 +575,7 @@ export default function Cards() {
               </div>
               <div className="v3-study-side__note">
                 <Clock size={14} />
-                <span>{nextDue ? `最早下次复习：${nextDue}` : '暂无排期中的复习卡'}</span>
+                <span>{nextDue ? `最早下次复习：${fmtDateCN(nextDue)}` : '暂无排期中的复习卡'}</span>
               </div>
               <div className="v3-study-side__note">
                 <Book size={14} />
@@ -693,7 +670,7 @@ export default function Cards() {
                   title="本次复习完成"
                   text={queue.length > 0
                     ? `本次已评 ${sessionTotal} 张，仍有 ${queue.length} 张重学卡留在今日队列，可再来一轮继续。`
-                    : `共 ${scope.length} 张卡片，没有今天到期的项目。${nextDue ? `最早下次复习在 ${nextDue}。` : '所有卡片都已掌握。'}`}
+                    : `共 ${scope.length} 张卡片，没有今天到期的项目。${nextDue ? `最早下次复习在 ${fmtDateCN(nextDue)}。` : '所有卡片都已掌握。'}`}
                   action={(
                     <div className="v3-row v3-study-empty__actions">
                       {queue.length > 0 ? (
@@ -883,7 +860,7 @@ export default function Cards() {
                 </div>
                 <div className="v3-study-side__note">
                   <Clock size={14} />
-                  <span>{nextDue ? `最早下次复习：${nextDue}` : '暂无排期中的复习卡'}</span>
+                  <span>{nextDue ? `最早下次复习：${fmtDateCN(nextDue)}` : '暂无排期中的复习卡'}</span>
                 </div>
                 <div className="v3-study-side__note">
                   <Layers size={14} />

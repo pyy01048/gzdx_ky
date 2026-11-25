@@ -53,10 +53,7 @@ export default function Onboarding() {
   const [exam, setExam] = useState([])
   const [support, setSupport] = useState([])
 
-  useEffect(() => {
-    document.title = '初始化引导 · 硕途考研'
-    return () => { document.title = '硕途 · 考研学习平台' }
-  }, [])
+  /* P1（F-06）：title 由 App 的 RouteTitle 从 ROUTE_META 统一派生 */
 
   /* 预填已有档案：任何一路失败都不阻塞向导（对应步骤退化为空表单） */
   useEffect(() => {

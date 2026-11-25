@@ -338,6 +338,14 @@ class QuizQuestion(Base):
     knowledge_point = Column(String(200), nullable=True, comment="知识点")
     difficulty = Column(Integer, default=3, comment="难度 1-5")
     source_label = Column(String(200), nullable=True, comment="来源：真题/模拟/自建/ai:variant")
+    # ADR-003：来源正交双列。source_kind 为权威归位列（DB 早已有之，此处补映射）；
+    # 业务侧旧属性名 source 通过 orm_aliases 同义指向 source_label。
+    source_kind = Column(
+        PgEnumAware("source_kind", 30),
+        nullable=False,
+        default="external_import",
+        comment="来源性质（权威归类列）：past_exam/textbook/chapter_exercise/mock_exam/ai_generated/user_created/external_import",
+    )
     question_type = Column(
         PgEnumAware("question_type", 50), default="single", comment="题型：single/multiple/judge/essay"
     )
@@ -404,6 +412,14 @@ class QuizQuestion(Base):
     classify_confidence = Column(Float, nullable=True, comment="导入自动分类整体置信度 0-1")
     classify_source = Column(String(30), nullable=True, comment="分类来源：keyword/vector/fusion/llm/disagree/none")
     needs_review = Column(Boolean, default=False, index=True, comment="分类低置信待人工复核（进复核队列）")
+    # —— 校验门（DB 已有列，模型补映射；复核队列接口读写依赖）—— #
+    validation_status = Column(
+        PgEnumAware("question_validation_status", 20),
+        nullable=False,
+        default="pending",
+        comment="校验门结果：pending/pass/warn/fail",
+    )
+    validation_errors = Column(NullSafeJSON, nullable=False, default=list, comment="校验门错误明细（JSON 数组）")
     created_at = Column(DateTime, default=_utcnow)
 
 

@@ -3,18 +3,23 @@
 import csv
 import datetime
 import io
+import ipaddress
 from collections import Counter
 from typing import List, Optional
 
+from core.models.schools import AuditLog
 from database import get_db
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from models import AnswerRecord, ErrorRecord, QuizQuestion, StudySession, User
+from services.delete_guard import require_physical_delete_enabled
+from services.kb_service import ensure_write_backup
 from sqlalchemy import Integer, cast, func
 from sqlalchemy.orm import Session
 from utils.scope import scoped  # B4 行级隔离（只读不写，不需 owner_id）
-from utils.security import current_user
+from utils.security import client_ip, current_user, require_admin
 from utils.timeutil import local_date_of, local_range_utc, local_today
+
+from models import AnswerRecord, ErrorRecord, QuizQuestion, StudySession, User
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -61,10 +66,7 @@ async def stats_overview(db: Session = Depends(get_db), user: User = Depends(cur
         .filter(scoped(AnswerRecord, user), AnswerRecord.created_at >= trend_start)
         .all()
     )
-    trend = {
-        (today - datetime.timedelta(days=i)).isoformat(): {"answered": 0, "correct": 0}
-        for i in range(6, -1, -1)
-    }
+    trend = {(today - datetime.timedelta(days=i)).isoformat(): {"answered": 0, "correct": 0} for i in range(6, -1, -1)}
     for created_at, is_correct in trend_rows:
         key = local_date_of(created_at).isoformat() if created_at else None
         if key in trend:
@@ -86,9 +88,7 @@ async def stats_overview(db: Session = Depends(get_db), user: User = Depends(cur
         .group_by(StudySession.subject)
         .all()
     )
-    study_time = [
-        {"subject": s or "未分类", "minutes": int(d or 0)} for s, d in time_rows
-    ]
+    study_time = [{"subject": s or "未分类", "minutes": int(d or 0)} for s, d in time_rows]
     study_time.sort(key=lambda x: -x["minutes"])
 
     return {
@@ -125,12 +125,20 @@ async def export_errors(
     writer = csv.writer(buf)
     writer.writerow(["ID", "科目", "题干", "我的答案", "正确答案", "错误原因", "标签", "状态", "复习次数", "创建时间"])
     for r in rows:
-        writer.writerow([
-            r.id, r.subject or "", r.content or "", r.my_answer or "", r.correct_answer or "",
-            r.error_reason or "", " ".join(r.tags) if isinstance(r.tags, list) else (r.tags or ""),
-            r.status or "", r.review_count or 0,
-            r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
-        ])
+        writer.writerow(
+            [
+                r.id,
+                r.subject or "",
+                r.content or "",
+                r.my_answer or "",
+                r.correct_answer or "",
+                r.error_reason or "",
+                " ".join(r.tags) if isinstance(r.tags, list) else (r.tags or ""),
+                r.status or "",
+                r.review_count or 0,
+                r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
+            ]
+        )
     buf.seek(0)
     filename = f"errors_{local_today().isoformat()}.csv"
     return StreamingResponse(
@@ -147,7 +155,11 @@ async def batch_delete_errors(ids: List[int], db: Session = Depends(get_db), use
         raise HTTPException(status_code=400, detail="ids 不能为空")
     if len(ids) > 500:
         raise HTTPException(status_code=400, detail="单次最多删除 500 条")
-    deleted = db.query(ErrorRecord).filter(ErrorRecord.id.in_(ids), scoped(ErrorRecord, user)).delete(synchronize_session=False)
+    deleted = (
+        db.query(ErrorRecord)
+        .filter(ErrorRecord.id.in_(ids), scoped(ErrorRecord, user))
+        .delete(synchronize_session=False)
+    )
     db.commit()
     return {"deleted": deleted}
 
@@ -192,20 +204,49 @@ async def export_quiz_questions(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow([
-        "ID", "科目", "章节", "知识点", "题型", "题干", "选项", "答案", "解析",
-        "难度", "真题年份", "来源", "质量评级", "AI生成", "已校验", "可用", "创建时间",
-    ])
+    writer.writerow(
+        [
+            "ID",
+            "科目",
+            "章节",
+            "知识点",
+            "题型",
+            "题干",
+            "选项",
+            "答案",
+            "解析",
+            "难度",
+            "真题年份",
+            "来源",
+            "质量评级",
+            "AI生成",
+            "已校验",
+            "可用",
+            "创建时间",
+        ]
+    )
     for r in rows:
-        writer.writerow([
-            r.id, r.subject or "", r.chapter or "", r.knowledge_point or "",
-            r.question_type or "", r.content or "", _options_to_text(r.options),
-            r.answer or "", r.analysis or "",
-            r.difficulty or "", r.year or "", r.source_label or "", r.quality or "",
-            "是" if r.ai_generated else "否", "是" if r.verified else "否",
-            "是" if r.is_available else "否",
-            r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
-        ])
+        writer.writerow(
+            [
+                r.id,
+                r.subject or "",
+                r.chapter or "",
+                r.knowledge_point or "",
+                r.question_type or "",
+                r.content or "",
+                _options_to_text(r.options),
+                r.answer or "",
+                r.analysis or "",
+                r.difficulty or "",
+                r.year or "",
+                r.source_label or "",
+                r.quality or "",
+                "是" if r.ai_generated else "否",
+                "是" if r.verified else "否",
+                "是" if r.is_available else "否",
+                r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
+            ]
+        )
     buf.seek(0)
     filename = f"quiz_questions_{local_today().isoformat()}.csv"
     return StreamingResponse(
@@ -215,17 +256,78 @@ async def export_quiz_questions(
     )
 
 
-@quiz_export_router.post("/batch-delete")
-async def batch_delete_quiz_questions(ids: List[int], db: Session = Depends(get_db)):
-    """题库批量删除（硬删除，连带知识点链路由外键 CASCADE 处理）。"""
+@quiz_export_router.post("/batch-delete", dependencies=[Depends(require_admin)])
+async def batch_delete_quiz_questions(
+    ids: List[int],
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """题库批量硬删除：管理员权限、物理删除开关、跨后端备份与审计缺一不可。"""
     if not ids:
         raise HTTPException(status_code=400, detail="ids 不能为空")
     if len(ids) > 500:
         raise HTTPException(status_code=400, detail="单次最多删除 500 条")
-    deleted = (
-        db.query(QuizQuestion)
-        .filter(QuizQuestion.id.in_(ids))
-        .delete(synchronize_session=False)
-    )
-    db.commit()
+
+    questions = db.query(QuizQuestion).filter(QuizQuestion.id.in_(ids)).all()
+    if not questions:
+        return {"deleted": 0}
+    question_ids = [question.id for question in questions]
+    snapshots = [
+        {
+            field: getattr(question, field)
+            for field in (
+                "id",
+                "content",
+                "options",
+                "images",
+                "answer",
+                "analysis",
+                "subject",
+                "chapter",
+                "knowledge_point",
+                "question_type",
+                "source_kind",
+                "source_label",
+                "year",
+                "question_no",
+                "is_available",
+                "is_junk",
+                "needs_review",
+                "validation_status",
+                "validation_errors",
+            )
+        }
+        for question in questions
+    ]
+
+    require_physical_delete_enabled("quiz_questions")
+    # PostgreSQL 走 pg_dump、SQLite 走备份 API；失败由统一异常处理返回 503。
+    ensure_write_backup()
+
+    try:
+        db.query(AnswerRecord).filter(AnswerRecord.question_id.in_(question_ids)).delete(synchronize_session=False)
+        deleted = db.query(QuizQuestion).filter(QuizQuestion.id.in_(question_ids)).delete(synchronize_session=False)
+        try:
+            operator_ip = str(ipaddress.ip_address(client_ip(request)))
+        except ValueError:
+            operator_ip = None
+        db.add_all(
+            [
+                AuditLog(
+                    table_name="quiz_questions",
+                    record_id=question_id,
+                    action="DELETE",
+                    operator_id=user.id,
+                    operator_ip=operator_ip,
+                    before_data=snapshot,
+                    change_summary=f"批量删除题目 {question_id}",
+                )
+                for question_id, snapshot in zip(question_ids, snapshots, strict=True)
+            ]
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return {"deleted": deleted}

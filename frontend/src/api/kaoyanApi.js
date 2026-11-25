@@ -11,7 +11,7 @@ export const kaoyanApi = {
   schoolMajors: (id) => request('/kaoyan/schools/' + id + '/majors'),
   // M3-4: 招生计划聚合（院系→专业→拟招人数→考试科目，单次调用）
   schoolEnrollmentPlan: (id, params) => request('/kaoyan/schools/' + id + '/enrollment-plan', { params }),
-  schoolScores: (id) => request('/kaoyan/schools/' + id + '/scores'),
+  schoolScores: (id, params) => request('/kaoyan/schools/' + id + '/scores', { params }),
   schoolAdmissions: (id) => request('/kaoyan/schools/' + id + '/admissions'),
   // V14: 逐人录取分数明细（txkyer 择校宝 2026 拟录取分析 / 公告名单 OCR）
   schoolAdmissionDetails: (id, params) => request('/kaoyan/schools/' + id + '/admissions/details', { params }),

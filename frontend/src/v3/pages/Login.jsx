@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { authApi, goalsApi } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
@@ -7,47 +7,20 @@ import { Button, Field, Input, cx } from '../ui'
 import { ScrambleText, Typewriter, useMagnetic, usePointerFx, useParallax, useReducedMotion } from '../motion'
 import { Eye, EyeOff, Sparkles, ArrowRight, ChevronLeft, BookOpen, Map, Target, Bot, Mail, KeyRound, CheckCircle2 } from '../icons'
 import '../styles/pages.css'
-import { crumbName } from '../../nav/navConfig'
+import { crumbName, routeMeta } from '../../nav/navConfig'
+import { passwordCategories } from '../../utils/password'
+import { PasswordStrength } from '../ui/PasswordStrength'
 
+/* C3（QA-04）：登录页 4 张主视觉卡不宣传需登录的能力 —— 文案不含「AI」字样，
+   卡片保持不可点击；AI 能力的「需登录」说明放在卡片列表之后，不占首屏主视觉位。 */
 const FEATURES = [
   { icon: Map, title: '院校库', text: '分数线、招生计划、院校对比，一次看清。' },
   { icon: Target, title: '真题题库', text: '按年份与考点刷题，错题自动归集。' },
-  { icon: Sparkles, title: 'AI 规划', text: '每日任务与复习节奏自动安排。' },
-  { icon: Bot, title: '知识库', text: '资料入库、全文检索、AI 问答。' },
+  { icon: Sparkles, title: '复习规划', text: '每日任务与复习节奏，登录后自动安排。' },
+  { icon: Bot, title: '资料文库', text: '资料入库与全文检索，登录后解锁更多能力。' },
 ]
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-
-/* 密码强度：8–128 位 + 大小写/数字/特殊字符至少 3 类（与后端 validate_strong_password 同口径） */
-export function passwordCategories(pwd) {
-  let n = 0
-  if (/[a-z]/.test(pwd)) n += 1
-  if (/[A-Z]/.test(pwd)) n += 1
-  if (/\d/.test(pwd)) n += 1
-  if (/[^A-Za-z0-9]/.test(pwd)) n += 1
-  return n
-}
-
-export function PasswordStrength({ value }) {
-  const cats = passwordCategories(value || '')
-  const okLen = (value || '').length >= 8
-  const level = !value ? 0 : Math.min(cats + (okLen ? 1 : 0), 4)
-  const labels = ['', '弱', '一般', '较强', '强']
-  const tones = ['', 'danger', 'warning', 'primary', 'success']
-  if (!value) return null
-  return (
-    <div className="v3-pwd-meter" aria-live="polite">
-      <div className="v3-pwd-meter__bars">
-        {[1, 2, 3, 4].map((i) => (
-          <i key={i} className={i <= level ? `is-on is-${tones[level]}` : ''} />
-        ))}
-      </div>
-      <span className={`v3-pwd-meter__label is-${tones[level] || 'muted'}`}>
-        {okLen && cats >= 3 ? `强度：${labels[level]}` : '需 8 位以上，含大小写/数字/特殊字符中至少 3 类'}
-      </span>
-    </div>
-  )
-}
 
 function SentPanel({ icon: Icon, title, text, email, onResend, resendBusy, cooldown, onBack }) {
   return (
@@ -88,13 +61,8 @@ export default function Login() {
   const from = location.state?.from?.pathname || '/'
   const fromName = location.state?.from?.crumb || crumbName(from)
 
-  /* P1-5：登录页独立于应用壳，路由切换不会触发壳内的 title 同步 */
-  useEffect(() => {
-    document.title = from && from !== '/' && from !== '/login'
-      ? `登录 · ${fromName} · 硕途考研`
-      : '登录 · 硕途考研'
-    return () => { document.title = '硕途 · 考研学习平台' }
-  }, [from, fromName])
+  /* P1（F-06）：document.title 由 App 的 RouteTitle 统一从 ROUTE_META 派生，
+     登录页不再自己写一份；回跳提示仍用 fromName（与 title 无关）。 */
 
   useEffect(() => {
     if (cooldown <= 0) return undefined
@@ -226,10 +194,12 @@ export default function Login() {
               </li>
             ))}
           </ul>
+          <p className="v3-login__note"><Bot size={14} /> AI 助手与 AI 问答需登录后使用（卡片不可点击，不占主视觉位）</p>
           <div className="v3-login__note"><BookOpen size={14} /> 完全免费 · 无会员 · 无付费墙</div>
         </section>
 
         <section className={cx('v3-login__panel', 'v3-spotlight')} {...panelFx}>
+          <h1 className="v3-login__mobile-title">{routeMeta('/login').h1}</h1>
           {from && from !== '/' && from !== '/login' && mode === 'login' ? (
             <div className="v3-login__hint">
               <BookOpen size={15} />

@@ -765,12 +765,13 @@ export function Tabs({ options = [], value, onChange, className = '', ariaLabel 
 /* -------------------------------------------------------------------------- */
 /* Feedback                                                                   */
 /* -------------------------------------------------------------------------- */
-export function Progress({ value = 0, gradient = false, indeterminate = false, className = '', height }) {
+export function Progress({ value = 0, gradient = false, indeterminate = false, className = '', height, ariaLabel = '进度' }) {
   const pct = Math.max(0, Math.min(100, Number(value) || 0))
   return (
     <div
       className={cx('v3-progress', indeterminate && 'v3-progress--indeterminate', className)}
       role="progressbar"
+      aria-label={ariaLabel}
       aria-valuenow={indeterminate ? undefined : Math.round(pct)}
       aria-valuemin={0}
       aria-valuemax={100}
@@ -1540,7 +1541,7 @@ export function StudyHeatmap({
   const cols = Math.max(1, Math.ceil((lead + cells.length) / 7))
   const gap = cols > 26 ? 2 : 3
   const labelW = 24
-  const cell = Math.max(6, Math.min(18, Math.floor(((boxW || 320) - labelW - (cols - 1) * gap) / cols)))
+  const cell = Math.max(8, Math.min(30, Math.floor(((boxW || 320) - labelW - (cols - 1) * gap) / cols)))
 
   const levelOf = (v) => {
     if (!v || !max) return 0

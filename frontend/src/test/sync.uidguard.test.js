@@ -26,6 +26,9 @@ vi.mock('../api/client', () => ({
   aiApi: { providers: hoisted.providers },
   dashboardApi: { countdown: hoisted.countdown },
   studyApi: { addSession: vi.fn() },
+  /* C5：三态桩保持 unknown —— hydrate 尚未探测时用成功数兜底，维持本文件原有语义 */
+  getBackendState: () => ({ state: 'unknown', failures: [], checkedAt: 0 }),
+  isBackendOnline: () => null,
   /* 分页壳简化：取第一页，按 keys 顺序找数组字段 */
   fetchAllPages: async (fn, { keys }) => {
     const r = await fn({ page: 1, page_size: 200 })

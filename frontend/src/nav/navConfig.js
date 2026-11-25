@@ -50,10 +50,13 @@ export const MODULES = [
   },
   {
     key: 'school', title: '择校', icon: Target, items: [
-      /* 2026-10-19 信息架构精简（对标掌上考研/txkyer，见 docs/kaoyan-ia-benchmark.md）：
-         13 页 → 3 入口。对比/推荐/热力图/散点图/成长/分数线/AI 问答等保留路由（书签不 404），
-         不再占用学生端导航；收集/导入/抓取源属管理工具，后续归入 /admin。 */
+      /* 学生端保留完整择校决策路径；采集与导入仍只归管理端。 */
       { to: '/kaoyan', label: '院校库', exact: true, desc: '全国院校 · 专业 · 通知', public: true, kw: ['kaoyan', '择校', 'zexiao', '院校', 'yuanxiao', 'schools'] },
+      { to: '/kaoyan/compare', label: '院校对比', desc: '同年分数与招生数据横向比较', public: true, kw: ['compare', '对比', 'duibi', '院校对比'] },
+      { to: '/kaoyan/analysis', label: '分数分析', desc: '近五年分数线与招生趋势', public: true, kw: ['analysis', '分析', '趋势', '分数线', 'fenxi', 'qushi'] },
+      { to: '/kaoyan/recommend', label: '择校推荐', desc: '按分数与目标筛选院校', public: true, kw: ['recommend', '推荐', 'tuijian', '智能择校'] },
+      { to: '/kaoyan/scatter', label: '招生分布', desc: '招生规模与录取均分散点', public: true, kw: ['scatter', '散点', '招生', 'sandi', 'zhaosheng'] },
+      { to: '/kaoyan/map', label: '区域热力', desc: '按省份比较院校与录取数据', public: true, kw: ['map', '地图', '热力', '省份', 'ditu', 'reli'] },
       { to: '/kaoyan/notices', label: '通知中心', desc: '简章/复试/报名/初试 · 改考雷达', public: true, kw: ['notice', '通知', '公告', '简章', 'tongzhi', 'gonggao'] },
       { to: '/kaoyan/plan', label: '考研规划', desc: '18 节点关键日程与阶段规划', public: true, kw: ['plan', '规划', '日程', '时间节点', 'guihua'] },
       { to: '/kaoyan/school-eval', label: '学科评估', desc: '教育部第四轮学科评估 · 双一流 · 按学科选校', public: true, kw: ['eval', '评估', '学科', '双一流', 'pinggu', 'xueke', 'rank', '排名'] },
@@ -78,6 +81,7 @@ export const NAV_ADMIN = [
   { to: '/admin/users', legacy: '/users', label: '用户管理', desc: '账号 · 角色 · 重置密码', kw: ['user', '用户', '账号', 'yonghu', 'users'] },
   { to: '/admin/subjects', legacy: '/subjects', label: '科目管理', desc: '科目 · 章节 · 题型', kw: ['subject', '科目', 'kemu'] },
   { to: '/admin/quiz-bank', legacy: '/quiz-bank', label: '题库管理', desc: '真题地图 · 章节刷题', kw: ['bank', '题库', 'tiku'] },
+  { to: '/admin/quiz-review', legacy: '/quiz-review', label: '题库复核', desc: '隔离题修复上架 · 低置信确认', kw: ['review', '复核', '错题', '隔离', 'fuhe'] },
   { to: '/admin/quality', legacy: '/quality', label: '数据质量', desc: '识别口径与语料体检', kw: ['quality', '评测', '质量', 'zhiliang', 'eval'] },
   { to: '/admin/schools', legacy: '/kaoyan/import', label: '院校数据管理', desc: '定向采集 · 国家线回填 · 公告采集', kw: ['import', '导入', '院校数据', 'daoru', 'notice', '公告'] },
   { to: '/admin/crawl-sources', legacy: '/crawl-sources', label: '院校采集源', desc: '选择参与采集的院校 · 数据源目录', kw: ['crawl', '采集', '爬取', 'caiji', 'paqu'] },
@@ -89,15 +93,54 @@ export const ADMIN_LEGACY_REDIRECTS = NAV_ADMIN.map((e) => [e.legacy, e.to])
 
 export const NAV_MODULES = MODULES
 
+/* P1（F-06）：路由元信息单一事实源。document.title 与各页 H1 身份都从这里派生，
+   不再散落在 6 个页面里各写一份；MobileNav 的 Tab 文案也取 h1，保证「文案=落点」。 */
+export const ROUTE_META = {
+  '/': { title: '今日中枢 · 硕途考研', h1: '今日中枢' },
+  '/hub': { title: '今日中枢 · 硕途考研', h1: '今日中枢' },
+  '/kaoyan': { title: '院校库 · 硕途考研', h1: '院校库' },
+  '/kaoyan/schools': { title: '院校库 · 硕途考研', h1: '院校库' },
+  '/kaoyan/guide': { title: '择校数据中心 · 硕途考研', h1: '择校数据中心' },
+  '/kaoyan/plan': { title: '考研规划 · 硕途考研', h1: '考研规划' },
+  '/knowledge': { title: '知识地图 · 硕途考研', h1: '知识地图' },
+  '/quiz': { title: '刷题中心 · 硕途考研', h1: '刷题中心' },
+  '/exam': { title: '真题中心 · 硕途考研', h1: '真题中心' },
+  '/error-review': { title: '错题复盘 · 硕途考研', h1: '错题复盘' },
+  '/error-review/:id': { title: '错题详情 · 硕途考研', h1: '错题详情' },
+  '/assistant': { title: 'AI 助手 · 硕途考研', h1: 'AI 助手' },
+  '/assistant/answers/:id': { title: 'AI 回答详情 · 硕途考研', h1: 'AI 回答详情' },
+  '/kaoyan/recommend/:schoolId': { title: '推荐依据详情 · 硕途考研', h1: '推荐依据详情' },
+  '/words': { title: '单词记忆 · 硕途考研', h1: '单词记忆' },
+  '/cards': { title: '记忆卡片 · 硕途考研', h1: '记忆卡片' },
+  '/library': { title: '知识库 · 硕途考研', h1: '知识库' },
+  '/tools': { title: '学习工具箱 · 硕途考研', h1: '学习工具箱' },
+  '/login': { title: '登录 · 硕途考研', h1: '把考研的每一步，放在同一张地图上。' },
+  '/force-change-password': { title: '首次登录 · 修改密码 · 硕途考研', h1: '首次登录 · 修改密码' },
+  '/onboarding': { title: '初始化引导 · 硕途考研', h1: '初始化引导' },
+  '/reset-password': { title: '重置密码 · 硕途考研', h1: '重置密码' },
+  '/verify-email': { title: '邮箱验证 · 硕途考研', h1: '邮箱验证' },
+}
+
+/** 路由元信息读取：未登记的路由回落到面包屑名（仍只有一个 title 出口）。 */
+export function routeMeta(pathname) {
+  const hit = ROUTE_META[pathname]
+  if (hit) return hit
+  const name = crumbName(pathname)
+  return { title: `${name} · 硕途考研`, h1: name }
+}
+
 /* 移动端底部 Tab：与桌面侧栏分组用同一套词（P1-1：全平台 ≤5 个相同导航词）。
-   落点取各分组的首个核心页；完整导航仍可从顶栏抽屉进入。 */
+   P1（F-05）：带 group，壳层用与 Sidebar 相同的 visibleModulesFor 做访客过滤。 */
 export const MOBILE_TABS = [
-  { to: '/', label: '今日', icon: Home },
-  { to: '/knowledge', label: '学习', icon: Folder },
-  { to: '/quiz', label: '练习', icon: Book },
-  { to: '/error-review', label: '复盘', icon: FileText },
-  { to: '/kaoyan', label: '择校', icon: Target },
-]
+  { to: '/', group: 'today', icon: Home },
+  { to: '/knowledge', group: 'learn', icon: Folder },
+  { to: '/quiz', group: 'practice', icon: Book },
+  { to: '/error-review', group: 'review', icon: FileText },
+  { to: '/kaoyan', group: 'school', icon: Target },
+].map((t) => ({ ...t, label: routeMeta(t.to).h1 }))
+
+/* 访客的「今日」落点被 GuestHome 重定向到院校库（登录用户仍是今日中枢）。 */
+export const GUEST_TAB_LANDING = { '/': '/kaoyan' }
 
 /* 命令面板与面包屑用的扁平清单（分组顺序 = 顶栏顺序，其后通用入口、管理页） */
 export const ALL_ENTRIES = [
@@ -127,12 +170,16 @@ CRUMB_BY_PATH.set('/kaoyan/recommend', '智能择校推荐')
 CRUMB_BY_PATH.set('/kaoyan/growth', '成长体系')
 CRUMB_BY_PATH.set('/kaoyan/assistant', '择校 AI 助手')
 CRUMB_BY_PATH.set('/kaoyan/school-eval', '工学学科评估')
+CRUMB_BY_PATH.set('/assistant', 'AI 助手')
 /* 面包屑父级：管理端页面挂在「管理后台」下 */
 export function crumbParent(path) {
   return path !== ADMIN_ROOT && isAdminPath(path) ? { to: ADMIN_ROOT, label: '管理后台' } : null
 }
 const CRUMB_PREFIX = [
   ['/kaoyan/schools/', '院校详情'],
+  ['/kaoyan/recommend/', '推荐依据详情'],
+  ['/error-review/', '错题详情'],
+  ['/assistant/answers/', 'AI 回答详情'],
   ['/knowledge/', '知识点详情'],
   ['/exam/', '真题中心'],
   ['/kaoyan/guide', '择校数据中心'],
@@ -147,20 +194,22 @@ export function crumbName(path) {
 
 export const RELATED = {
   '/tasks': ['/knowledge', '/planner', '/error-review'],
-  '/knowledge': ['/documents', '/quiz', '/error-review'],
+  '/knowledge': ['/library', '/quiz', '/error-review'],
   /* W2：文档知识库已并入「知识库」页内视图，文库的相关功能不再自指 /documents */
   '/library': ['/knowledge', '/quiz', '/textbooks'],
   '/quiz': ['/error-review', '/knowledge', '/cards'],
   '/admin/quiz-bank': ['/quiz', '/knowledge', '/error-review'],
   '/error-review': ['/notebook', '/quiz', '/knowledge'],
+  '/assistant': ['/error-review', '/knowledge', '/kaoyan/recommend'],
+  '/kaoyan/recommend': ['/kaoyan', '/kaoyan/compare', '/kaoyan/analysis'],
   '/notebook': ['/quiz', '/knowledge', '/error-review'],
   '/insights': ['/quiz', '/error-review', '/notebook'],
   '/documents': ['/knowledge', '/pan', '/assistant'],
-  '/pan': ['/documents', '/assistant', '/settings'],
+  '/pan': ['/library', '/assistant', '/settings'],
   '/planner': ['/tasks', '/knowledge', '/error-review'],
-  '/settings': ['/pan', '/documents', '/assistant'],
-  '/admin/overview': ['/documents', '/quiz', '/error-review'],
-  '/admin/crawl-sources': ['/admin/schools', '/kaoyan/schools', '/admin/overview'],
+  '/settings': ['/pan', '/library', '/assistant'],
+  '/admin/overview': ['/library', '/quiz', '/error-review'],
+  '/admin/crawl-sources': ['/admin/schools', '/kaoyan', '/admin/overview'],
   '/admin/subjects': ['/admin/quiz-bank', '/knowledge', '/settings'],
 }
 

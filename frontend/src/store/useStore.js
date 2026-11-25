@@ -9,11 +9,14 @@ import { ukey } from '../utils/userKeys'
 /* 后端 id（数字）判断：纯数字字符串才可同步，uid 仅为本地离线占位 */
 const isBackendId = (id) => /^\d+$/.test(String(id || ''))
 
-/* 同步状态跟踪 + 失败队列（V3.0 改进：不再静默吞掉错误） */
+/* 同步状态跟踪 + 失败队列（V3.0 改进：不再静默吞掉错误）
+   P0（F-03）：失败写队列按 uid 落盘，刷新/弱网不再静默丢失。
+   落盘只存可序列化的「操作描述符」，不存无法 JSON 化的闭包。 */
+const SYNC_QUEUE_NAME = 'kaoyan-sync-queue-v1'
 const syncState = {
   status: 'idle', // idle / syncing / synced / error
   lastError: null,
-  failedQueue: [], // 失败的操作队列，恢复网络后可重试
+  failedQueue: [], // 失败的操作队列，恢复网络后可重试（启动时按 uid 恢复）
   listeners: [],
   inflight: 0, // 在飞的同步操作数：并发时决定「已同步」能不能报
 }
@@ -30,9 +33,65 @@ function notifySyncStatus(status, error = null) {
    旧账号仍在途的请求回来后不得再动 inflight 计数、不得把失败操作塞进
    新账号的 failedQueue —— 否则 A 的离线写会重放进 B 账号。 */
 let syncGeneration = 0
+let opSeq = 0
+const API_REGISTRY = { tasksApi, errorsApi, flashcardsApi }
 
-function syncTask(promiseOrFn, operationName = 'unknown') {
+/** 失败写的可序列化描述：刷新后闭包丢失，靠它重新发起同一个请求。
+ *  adopt 表示成功后把本地 uid 记录换成后端 id（与同步成功路径同口径）。 */
+function descriptor(api, method, args, adopt = null) {
+  return { api, method, args, ...(adopt ? { adopt } : {}) }
+}
+
+/** 按描述符重放一条失败写 */
+function replayDescriptor(d) {
+  const api = API_REGISTRY[d?.api]
+  const fn = api && typeof api[d?.method] === 'function' ? api[d.method] : null
+  if (!fn) return Promise.reject(new Error(`无法重放同步操作：${d?.api}.${d?.method}`))
+  const result = fn(...(Array.isArray(d.args) ? d.args : []))
+  return d.adopt ? Promise.resolve(result).then((r) => adoptId(d.adopt.listKey, d.adopt.localId, r?.id)) : Promise.resolve(result)
+}
+
+/** 队列条目 → 内存条目（附可重放工厂） */
+function hydrateQueueEntry(entry) {
+  return { ...entry, fn: () => replayDescriptor(entry.descriptor) }
+}
+
+/** 读取指定命名空间的持久化队列（坏数据/隐私模式一律按空队列） */
+function readPersistedQueue(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((e) => e && e.id && e.descriptor) : []
+  } catch { return [] }
+}
+
+/** 内存队列 → 落盘；只存描述符，不存闭包。空队列删键，不留脏数据。 */
+function persistFailedQueue() {
+  try {
+    const entries = syncState.failedQueue
+      .filter((q) => q.descriptor)
+      .map(({ id, descriptor: d, operationName, time }) => ({ id, descriptor: d, operationName, time }))
+    if (entries.length) localStorage.setItem(archiveKey(SYNC_QUEUE_NAME), JSON.stringify(entries))
+    else localStorage.removeItem(archiveKey(SYNC_QUEUE_NAME))
+  } catch { /* 隐私模式 / 配额满：退化为内存队列 */ }
+}
+
+/** uid 命名空间切换：绝不把 A 的失败写带进 B —— 旧代际在途请求全部作废，
+ *  内存队列换成新命名空间自己的持久化队列（无则不重放任何东西）。 */
+let currentQueueKey = null
+function switchSyncQueue() {
+  const key = archiveKey(SYNC_QUEUE_NAME)
+  if (key === currentQueueKey) return
+  currentQueueKey = key
+  syncGeneration += 1
+  syncState.inflight = 0
+  syncState.failedQueue = readPersistedQueue(key).map(hydrateQueueEntry)
+  notifySyncStatus(syncState.failedQueue.length ? 'error' : 'idle')
+}
+
+function syncTask(promiseOrFn, operationName = 'unknown', desc = null) {
   const gen = syncGeneration
+  const opId = desc?.id || `${Date.now()}-${opSeq++}`
   notifySyncStatus('syncing')
   syncState.inflight += 1
   // 支持传入Promise或工厂函数；工厂函数确保重试时能重新发起请求
@@ -40,7 +99,7 @@ function syncTask(promiseOrFn, operationName = 'unknown') {
   getPromise()
     .then(() => {
       if (gen !== syncGeneration) return
-      syncState.inflight -= 1
+      syncState.inflight = Math.max(0, syncState.inflight - 1)
       // 并发时先返回的那个不能把还在跑、甚至已失败的操作冒充成「已同步」：
       // 只有在飞请求清零、失败队列也为空时才报 synced。
       if (syncState.inflight === 0 && syncState.failedQueue.length === 0) notifySyncStatus('synced')
@@ -49,30 +108,50 @@ function syncTask(promiseOrFn, operationName = 'unknown') {
     })
     .catch((err) => {
       if (gen !== syncGeneration) return
-      syncState.inflight -= 1
+      syncState.inflight = Math.max(0, syncState.inflight - 1)
       console.error(`[sync] ${operationName} 失败:`, err)
       notifySyncStatus('error', err)
-      // 加入失败队列，存工厂函数确保重试时能重新发起请求
-      syncState.failedQueue.push({ fn: getPromise, operationName, time: Date.now() })
+      // 加入失败队列（按 opId 去重，重放再失败不会重复插入）；带描述符的
+      // 条目同步落盘，刷新后仍在。
+      if (!syncState.failedQueue.some((q) => q.id === opId)) {
+        syncState.failedQueue.push({
+          id: opId,
+          ...(desc ? { descriptor: { ...desc, id: opId } } : {}),
+          fn: getPromise,
+          operationName,
+          time: Date.now(),
+        })
+        if (desc) persistFailedQueue()
+      }
       // 显示用户可感知的提示（通过自定义事件）
-      window.dispatchEvent(new CustomEvent('sync-error', { detail: { operationName, error: err } }))
+      window.dispatchEvent(new CustomEvent('sync-error', { detail: { operationName, error: err, id: opId } }))
     })
 }
 
-/* 重试失败队列中的操作 */
+/* 重试失败队列中的操作（先清空再重放；清空即落盘，重放失败会按 id 重新入队） */
+let retrying = false
 function retryFailedQueue() {
-  if (syncState.failedQueue.length === 0) return
-  console.log(`[sync] 重试 ${syncState.failedQueue.length} 个失败操作`)
-  const queue = [...syncState.failedQueue]
-  syncState.failedQueue = []
-  queue.forEach(({ fn, operationName }) => {
-    // 调用工厂函数获取新的Promise，确保重新发起请求
-    syncTask(fn, operationName)
-  })
+  if (retrying || syncState.failedQueue.length === 0) return
+  retrying = true
+  try {
+    console.log(`[sync] 重试 ${syncState.failedQueue.length} 个失败操作`)
+    const queue = [...syncState.failedQueue]
+    syncState.failedQueue = []
+    persistFailedQueue()
+    queue.forEach(({ fn, operationName, descriptor: d }) => {
+      syncTask(fn, operationName, d)
+    })
+  } finally {
+    retrying = false
+  }
 }
 
-/* 订阅同步状态变化 */
-function subscribeSyncStatus(fn) {
+/** 供全局提示条读取/手动重试（不暴露可写的队列本体） */
+export function getFailedCount() { return syncState.failedQueue.length }
+export function retrySyncQueue() { retryFailedQueue() }
+
+/* 订阅同步状态变化（供 useSyncStatus 等跨页消费者使用） */
+export function subscribeSyncStatus(fn) {
   syncState.listeners.push(fn)
   return () => {
     syncState.listeners = syncState.listeners.filter((f) => f !== fn)
@@ -149,6 +228,13 @@ const userArchiveStorage = {
   },
 }
 
+/* P0（F-03）：队列命名空间跟随 uid。登录/会话恢复 → 读该账号自己的失败写；
+   切号/登出 → 旧队列留在旧键里且旧代际请求作废，绝不重放到新账号。 */
+if (typeof window !== 'undefined') {
+  window.addEventListener('userkeys:uid-changed', switchSyncQueue)
+  switchSyncQueue()
+}
+
 const useStore = create(
   persist(
     (set, get) => ({
@@ -171,10 +257,11 @@ const useStore = create(
       addTask: (task) => {
         const local = { id: uid(), done: false, createdAt: todayStr(), ...task }
         set((s) => ({ tasks: [local, ...s.tasks] }))
-        syncTask(() =>
-          tasksApi.create({ title: local.title, subject: local.subject, due_date: local.due, priority: local.priority || 0 })
-            .then((r) => adoptId('tasks', local.id, r?.id)),
+        const body = { title: local.title, subject: local.subject, due_date: local.due, priority: local.priority || 0 }
+        syncTask(
+          () => tasksApi.create(body).then((r) => adoptId('tasks', local.id, r?.id)),
           '任务新增',
+          descriptor('tasksApi', 'create', [body], { listKey: 'tasks', localId: local.id }),
         )
       },
       updateTask: (id, patch) => {
@@ -184,28 +271,38 @@ const useStore = create(
         if (patch.due != null) body.due_date = patch.due
         if (!isBackendId(id)) {
           // V3.0 修复：uid状态下缓存操作，adoptId后执行
-          queuePendingOp(id, (backendId) => syncTask(() => tasksApi.update(backendId, body), '任务更新'))
+          queuePendingOp(id, (backendId) => syncTask(
+            () => tasksApi.update(backendId, body), '任务更新',
+            descriptor('tasksApi', 'update', [backendId, body]),
+          ))
           return
         }
-        syncTask(() => tasksApi.update(id, body), '任务更新')
+        syncTask(() => tasksApi.update(id, body), '任务更新', descriptor('tasksApi', 'update', [id, body]))
       },
       removeTask: (id) => {
         set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }))
         if (!isBackendId(id)) {
           // V3.0 修复：uid状态下缓存操作，adoptId后执行
-          queuePendingOp(id, (backendId) => syncTask(() => tasksApi.remove(backendId), '任务删除'))
+          queuePendingOp(id, (backendId) => syncTask(
+            () => tasksApi.remove(backendId), '任务删除',
+            descriptor('tasksApi', 'remove', [backendId]),
+          ))
           return
         }
-        syncTask(() => tasksApi.remove(id), '任务删除')
+        syncTask(() => tasksApi.remove(id), '任务删除', descriptor('tasksApi', 'remove', [id]))
       },
       toggleTask: (id) => {
         set((s) => {
           const done = !(s.tasks.find((t) => t.id === id)?.done)
           if (isBackendId(id)) {
-            syncTask(() => (done ? tasksApi.complete(id) : tasksApi.uncomplete(id)), '任务打卡')
+            const method = done ? 'complete' : 'uncomplete'
+            syncTask(() => tasksApi[method](id), '任务打卡', descriptor('tasksApi', method, [id]))
           } else {
             // V3.0 修复：uid状态下缓存操作，adoptId后执行
-            queuePendingOp(id, (backendId) => syncTask(() => (done ? tasksApi.complete(backendId) : tasksApi.uncomplete(backendId)), '任务打卡'))
+            const method = done ? 'complete' : 'uncomplete'
+            queuePendingOp(id, (backendId) => syncTask(
+              () => tasksApi[method](backendId), '任务打卡', descriptor('tasksApi', method, [backendId]),
+            ))
           }
           return { tasks: s.tasks.map((t) => (t.id === id ? { ...t, done } : t)) }
         })
@@ -213,17 +310,21 @@ const useStore = create(
       importTasks: (list) => {
         const items = list.map((t) => ({ id: uid(), done: false, createdAt: todayStr(), ...t }))
         set((s) => ({ tasks: [...items, ...s.tasks] }))
-        items.forEach((t) =>
-          syncTask(() =>
-            tasksApi.create({ title: t.title, subject: t.subject, due_date: t.due })
-              .then((r) => adoptId('tasks', t.id, r?.id))
+        items.forEach((t) => {
+          const body = { title: t.title, subject: t.subject, due_date: t.due }
+          syncTask(
+            () => tasksApi.create(body).then((r) => adoptId('tasks', t.id, r?.id)),
+            '任务批量导入',
+            descriptor('tasksApi', 'create', [body], { listKey: 'tasks', localId: t.id }),
           )
-        )
+        })
       },
       clearDone: () => {
         const done = get().tasks.filter((t) => t.done)
         set((s) => ({ tasks: s.tasks.filter((t) => !t.done) }))
-        done.filter((t) => isBackendId(t.id)).forEach((t) => syncTask(() => tasksApi.remove(t.id)))
+        done.filter((t) => isBackendId(t.id)).forEach((t) => syncTask(
+          () => tasksApi.remove(t.id), '任务删除', descriptor('tasksApi', 'remove', [t.id]),
+        ))
       },
 
       /* ---------- 学习时长记录 ----------
@@ -247,14 +348,17 @@ const useStore = create(
       addNote: (n) => {
         const local = { id: uid(), mastery: 0, reviews: [], createdAt: todayStr(), lastReview: null, ...n }
         set((s) => ({ notebook: [local, ...s.notebook] }))
-        syncTask(() =>
-          errorsApi.create({
-            subject: local.subject,
-            content: local.question,
-            correct_answer: local.answer,
-            analysis: local.analysis,
-            error_reason: local.reason
-          }).then((r) => adoptId('notebook', local.id, r?.id))
+        const body = {
+          subject: local.subject,
+          content: local.question,
+          correct_answer: local.answer,
+          analysis: local.analysis,
+          error_reason: local.reason,
+        }
+        syncTask(
+          () => errorsApi.create(body).then((r) => adoptId('notebook', local.id, r?.id)),
+          '错题新增',
+          descriptor('errorsApi', 'create', [body], { listKey: 'notebook', localId: local.id }),
         )
       },
       updateNote: (id, patch) => {
@@ -265,12 +369,12 @@ const useStore = create(
         if (patch.answer != null) body.correct_answer = patch.answer
         if (patch.analysis != null) body.analysis = patch.analysis
         if (patch.mastery != null) body.accuracy = patch.mastery / 7
-        syncTask(() => errorsApi.update(id, body))
+        syncTask(() => errorsApi.update(id, body), '错题更新', descriptor('errorsApi', 'update', [id, body]))
       },
       removeNote: (id) => {
         set((s) => ({ notebook: s.notebook.filter((n) => n.id !== id) }))
         if (!isBackendId(id)) return
-        syncTask(() => errorsApi.remove(id))
+        syncTask(() => errorsApi.remove(id), '错题删除', descriptor('errorsApi', 'remove', [id]))
       },
       reviewNote: (id, correct) => {
         set((s) => ({
@@ -285,7 +389,10 @@ const useStore = create(
             }
           })
         }))
-        if (isBackendId(id)) syncTask(() => errorsApi.update(id, { accuracy: (get().notebook.find((n) => n.id === id)?.mastery || 0) / 7 }))
+        if (isBackendId(id)) {
+          const body = { accuracy: (get().notebook.find((n) => n.id === id)?.mastery || 0) / 7 }
+          syncTask(() => errorsApi.update(id, body), '错题复习', descriptor('errorsApi', 'update', [id, body]))
+        }
       },
 
       /* ---------- 网盘 ---------- */
@@ -296,8 +403,8 @@ const useStore = create(
 
       /* ---------- AI 助手 ---------- */
       ai: SEED.ai,
-      sendAi: (msg) => set((s) => ({ ai: { ...s.ai, messages: [...s.ai.messages, { role: 'user', content: msg }] } })),
-      replyAi: (msg) => set((s) => ({ ai: { ...s.ai, messages: [...s.ai.messages, { role: 'bot', content: msg }] } })),
+      sendAi: (msg, meta = {}) => set((s) => ({ ai: { ...s.ai, messages: [...s.ai.messages, { id: uid(), role: 'user', content: msg, ...meta }] } })),
+      replyAi: (msg, meta = {}) => set((s) => ({ ai: { ...s.ai, messages: [...s.ai.messages, { id: uid(), role: 'bot', content: msg, ...meta }] } })),
       setAiPersona: (persona) => set((s) => ({ ai: { ...s.ai, persona } })),
       clearAi: () => set((s) => ({ ai: { ...s.ai, messages: [] } })),
 
@@ -408,9 +515,16 @@ const useStore = create(
           cards: [local, ...s.cards],
           packs: s.packs.map((p) => (p.id === c.packId ? { ...p, count: (p.count || 0) + 1 } : p))
         }))
-        syncTask(() =>
-          flashcardsApi.create({ front: local.front, back: local.back })
-            .then((r) => adoptId('cards', local.id, r?.id))
+        const body = {
+          front: local.front,
+          back: local.back,
+          hint: local.hint,
+          deck_id: local.packId,
+        }
+        syncTask(
+          () => flashcardsApi.create(body).then((r) => adoptId('cards', local.id, r?.id)),
+          '卡片新增',
+          descriptor('flashcardsApi', 'create', [body], { listKey: 'cards', localId: local.id }),
         )
       },
       reviewCard: (id, grade) => {
@@ -421,7 +535,10 @@ const useStore = create(
             return { ...c, ...next }
           })
         }))
-        if (isBackendId(id)) syncTask(() => flashcardsApi.review(id, { quality: grade }))
+        if (isBackendId(id)) {
+          const body = { quality: grade }
+          syncTask(() => flashcardsApi.review(id, body), '卡片复习', descriptor('flashcardsApi', 'review', [id, body]))
+        }
       },
       removeCard: (id) => {
         const c = get().cards.find((x) => x.id === id)
@@ -429,7 +546,7 @@ const useStore = create(
           cards: s.cards.filter((x) => x.id !== id),
           packs: c ? s.packs.map((p) => (p.id === c.packId ? { ...p, count: Math.max(0, (p.count || 0) - 1) } : p)) : s.packs
         }))
-        if (isBackendId(id)) syncTask(() => flashcardsApi.remove(id)) // 调用后端真正的删除接口
+        if (isBackendId(id)) syncTask(() => flashcardsApi.remove(id), '卡片删除', descriptor('flashcardsApi', 'remove', [id]))
       },
       addPack: (name, subject, color) =>
         set((s) => ({ packs: [...s.packs, { id: uid(), name, subject, color: color ?? 0, count: 0 }] })),
@@ -447,6 +564,9 @@ const useStore = create(
            代际自增让仍在途的旧请求回来后静默作废（见 syncTask）。 */
         syncGeneration += 1
         syncState.failedQueue = []
+        /* P0（F-03）：登出/强制下线连落盘队列一起清 —— 旧账号的失败写
+           不能在下一次登录后被当成本账号的待重放操作。 */
+        try { localStorage.removeItem(archiveKey(SYNC_QUEUE_NAME)) } catch { /* 隐私模式 */ }
         syncState.inflight = 0
         Object.keys(pendingOps).forEach((k) => { delete pendingOps[k] })
         notifySyncStatus('idle')

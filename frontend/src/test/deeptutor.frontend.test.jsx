@@ -91,7 +91,11 @@ beforeEach(() => {
   }
   quizApiMock.stats.mockResolvedValue({ total_questions: 0, total_attempts: 0, accuracy_rate: 0, active_errors: 0 })
   quizApiMock.questions.mockResolvedValue({ questions: QUIZ_QUESTIONS, total: 2, total_count: 2, answerable_count: 2 })
-  quizApiMock.submit.mockResolvedValue({ correct: true, correct_answer: 'A', analysis: '' })
+  quizApiMock.submit.mockImplementation((body) => Promise.resolve({
+    correct: body.question_id === 1 || Number(body.self_score) >= Number(body.max_score) * 0.6,
+    correct_answer: 'A',
+    analysis: '',
+  }))
   quizApiMock.papersIndex.mockResolvedValue({ papers: [] })
   quizApiMock.years.mockResolvedValue({ years: [] })
   quizApiMock.subjects.mockResolvedValue({ total: 1, items: [{ subject: '英语', question_count: 2, answerable_count: 2, error_count: 0 }] })

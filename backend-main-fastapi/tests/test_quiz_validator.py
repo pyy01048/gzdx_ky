@@ -174,3 +174,91 @@ def test_dedup_key_normalizes_whitespace():
     a = {"content": "求 极限  lim x→0 sinx/x", "subject": "高等数学", "chapter": "极限"}
     b = {"content": "求极限lim x→0 sinx/x", "subject": "高等数学", "chapter": "极限"}
     assert dedup_key(a) == dedup_key(b)
+
+
+# —— 历史数据实证的四类缺陷：必须在导入质量门就被拦住 —— #
+
+
+def test_duplicate_option_text_fails():
+    """OCR 丢字导致两个选项正文相同 → 学生看到两个一样的选项，无法作答。"""
+    q = {
+        "content": "下列关于反馈的说法正确的是？",
+        "options": [
+            {"key": "A", "text": "负反馈提高增益稳定性"},
+            {"key": "B", "text": "负反馈提高增益稳定性"},
+            {"key": "C", "text": "正反馈用于振荡"},
+        ],
+        "answer": "A",
+        "question_type": "single",
+        "analysis": "x",
+    }
+    codes = _codes(validate_question(q))
+    assert "OPTION_TEXT_DUP" in codes
+    assert classify(validate_question(q)) == "fail"
+
+
+def test_stem_option_leak_fails():
+    """上一题选项被拼进本题题干（跨题串行），题干与答案不属同题。"""
+    q = {
+        "content": "奉献社会是职业道德规范之一。此外还有 A. 爱岗敬业 B. 诚实守信 C. 办事公道 D. 热情服务。第七章 法律基础 67. 法律的国家强制性表现为",
+        "options": [
+            {"key": "A", "text": "国家对违法行为的否定和制裁"},
+            {"key": "B", "text": "国家对合法行为的肯定和保护"},
+        ],
+        "answer": "A",
+        "question_type": "single",
+        "analysis": "x",
+    }
+    assert "STEM_OPTION_LEAK" in _codes(validate_question(q))
+
+
+def test_station_enumeration_not_flagged_as_leak():
+    """「站 A、B、C、D 通过 CDMA 共享链路」是普通枚举，不是选项泄漏。"""
+    q = {
+        "content": "站A、B、C、D通过CDMA共享链路，A、B、C要向D发送数据，码片序列如下，则发送的数据分别是（）",
+        "options": [{"key": "A", "text": "1,0,1"}, {"key": "B", "text": "0,0,1"}],
+        "answer": "A",
+        "question_type": "single",
+        "analysis": "x",
+    }
+    assert "STEM_OPTION_LEAK" not in _codes(validate_question(q))
+
+
+def test_figure_missing_is_warn():
+    q = {
+        "content": "电路如图 3-1 所示，输出电压 Uo 等于？",
+        "options": ["A. 6V", "B. 12V"],
+        "answer": "A",
+        "question_type": "single",
+        "analysis": "x",
+        "figure_missing": 1,
+        "images": [],
+    }
+    issues = validate_question(q)
+    assert "FIGURE_MISSING" in _codes(issues)
+    assert classify(issues) == "warn"
+
+
+def test_truncated_formula_stem_is_warn():
+    q = {
+        "content": "设，则（　　）．",
+        "options": ["A. 1", "B. 2"],
+        "answer": "A",
+        "question_type": "single",
+        "analysis": "x",
+    }
+    issues = validate_question(q)
+    assert "STEM_FORMULA_LOST" in _codes(issues)
+    assert classify(issues) == "warn"
+
+
+def test_legit_short_stem_not_flagged():
+    """「下列描述不正确的是（）」是完整的短题干，不应被误判为公式丢失。"""
+    q = {
+        "content": "下列描述不正确的是（　　）。",
+        "options": ["A. 甲", "B. 乙"],
+        "answer": "A",
+        "question_type": "single",
+        "analysis": "x",
+    }
+    assert "STEM_FORMULA_LOST" not in _codes(validate_question(q))

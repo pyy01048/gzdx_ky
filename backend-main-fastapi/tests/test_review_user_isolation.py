@@ -21,6 +21,10 @@ from types import SimpleNamespace
 
 import pytest
 from database import SessionLocal
+from sqlalchemy import text
+from utils.security import current_user
+from utils.timeutil import local_today, utcnow
+
 from models import (
     ErrorKnowledgeLink,
     ErrorRecord,
@@ -34,9 +38,6 @@ from models import (
     Word,
     WordDeck,
 )
-from sqlalchemy import text
-from utils.security import current_user
-from utils.timeutil import local_today, utcnow
 
 UID_A = 9101
 UID_B = 9102
@@ -430,7 +431,32 @@ class TestReviewIsolation:
 
 
 # --------------------------------------------------------------------------- #
-# 二、洞察域：今日引导 / 周报 / 智能组卷
+# 二、错题详情：单条深链按账号隔离，静态路由不被动态 ID 遮蔽
+# --------------------------------------------------------------------------- #
+class TestErrorDetailIsolation:
+    def test_owner_can_open_detail(self, client, iso):
+        iso.login(UID_A)
+        resp = client.get(f"/api/errors/{iso.err_id}")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["id"] == iso.err_id
+        assert resp.json()["content"] == "隔离错题-甲"
+        assert "mastery_label" in resp.json()
+
+    def test_other_user_gets_404(self, client, iso):
+        iso.login(UID_B)
+        resp = client.get(f"/api/errors/{iso.err_id}")
+        assert resp.status_code == 404, resp.text
+        assert "隔离错题-甲" not in resp.text
+
+    def test_stats_route_is_not_shadowed(self, client, iso):
+        iso.login(UID_B)
+        resp = client.get("/api/errors/stats")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["total"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# 三、洞察域：今日引导 / 周报 / 智能组卷
 # --------------------------------------------------------------------------- #
 class TestInsightIsolation:
     def test_today_due_review_zero_for_new_user(self, client, iso):
@@ -463,7 +489,7 @@ class TestInsightIsolation:
 
 
 # --------------------------------------------------------------------------- #
-# 三、模考域：场次互不可见 / KPI / 热力图
+# 四、模考域：场次互不可见 / KPI / 热力图
 # --------------------------------------------------------------------------- #
 class TestExamIsolation:
     def test_sessions_mutually_invisible(self, client, iso):
@@ -497,7 +523,7 @@ class TestExamIsolation:
 
 
 # --------------------------------------------------------------------------- #
-# 四、词库域：空态 / 模板目录 / 显式导入幂等 / 归属 CRUD
+# 五、词库域：空态 / 模板目录 / 显式导入幂等 / 归属 CRUD
 # --------------------------------------------------------------------------- #
 class TestWordsIsolation:
     def test_new_user_decks_empty_no_autoclone(self, client, iso):

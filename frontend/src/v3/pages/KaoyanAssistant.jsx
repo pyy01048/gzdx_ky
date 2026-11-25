@@ -236,7 +236,12 @@ export default function KaoyanAssistant() {
           eyebrow="ASSISTANT · 登录可用"
           title="择校 AI 助手"
           sub="登录后即可结合本地院校库提问，问题与推荐结果仅在你的账号内使用"
-          actions={<Link className="v3-btn v3-btn--gradient" to="/login">去登录 <ArrowRight size={15} /></Link>}
+          actions={(
+            <>
+              <Link className="v3-btn v3-btn--gradient" to="/login">去登录 <ArrowRight size={15} /></Link>
+              <Link className="v3-btn v3-btn--outline" to="/assistant">通用 AI 助手 →</Link>
+            </>
+          )}
         />
         <Tile span={12} className="v3-ky-chat-gate">
           <Empty
@@ -271,6 +276,7 @@ export default function KaoyanAssistant() {
             <Link className="v3-btn v3-btn--tonal" to="/kaoyan/recommend">
               打开推荐页 <ArrowRight size={15} />
             </Link>
+            <Link className="v3-btn v3-btn--outline" to="/assistant">通用 AI 助手 →</Link>
           </>
         )}
       />

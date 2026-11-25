@@ -22,6 +22,12 @@ let uid = null
 
 export function setUser(id) {
   uid = id
+  /* P1（F-10 首帧 FOUC）：给 index.html 的防闪脚本一个「当前账号」线索。
+     只存 uid，不存任何个人数据；登出清空，访客落到 :anon 命名空间。 */
+  try {
+    if (id == null) localStorage.removeItem('kaoyan-active-uid')
+    else localStorage.setItem('kaoyan-active-uid', String(id))
+  } catch { /* 隐私模式 */ }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('userkeys:uid-changed'))
   }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { qualityApi } from '../../api/client'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { useAuth } from '../../auth/AuthContext'
+import AiEvidenceCard, { ConfidenceBadge } from '../ai/AiEvidenceCard'
 import {
   Alert, Badge, Button, Chip, Empty, Field, Input, PageHeader, Progress,
   Ring, Select, Skeleton, Tile, toastWarn,
@@ -39,10 +40,41 @@ function normalizeProvince(value) {
 }
 
 function num(v, digits = 1) {
+  if (v == null || String(v).trim() === '') return '—'
   const n = Number(v)
   if (!Number.isFinite(n)) return '—'
   return digits == null ? String(n) : n.toFixed(digits)
 }
+
+function formatGap(v, digits = null) {
+  if (v == null || String(v).trim() === '') return '—'
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '—'
+  if (n === 0) return '±0'
+  return `${n > 0 ? '+' : ''}${num(n, digits)}`
+}
+
+/**
+ * C4：逐卡依据字段（≥5 项），全部优先取推荐接口已有字段。
+ * 后端暂未下发的采集时间等给明确占位「暂无记录」，绝不编造。
+ * 口径与院校库一致：第三方聚合、未经院校官方逐条核验。
+ *
+ * 需主理人裁决的后端扩字段（本批次不改后端）：
+ *   data_source / collected_at / confidence / year —— 目前推荐接口未逐卡下发，
+ *   前端按「暂无记录 / 不提供」占位；若要求真实采集时间与可信度，需后端补字段。
+ */
+export function buildEvidenceFields(item = {}, refYear = null) {
+  return [
+    ['数据源', item.data_source || item.source || '库内分数线 / 招生记录聚合'],
+    ['年份', item.year ?? refYear ?? '暂无记录'],
+    ['采集时间', item.collected_at || item.crawled_at || '暂无记录'],
+    ['可信度', item.confidence ?? item.reliability ?? '不提供'],
+    ['与本人分数差值', formatGap(item.gap, null)],
+  ]
+}
+
+export const RECOMMEND_DISCLAIMER =
+  '数据来自第三方聚合，未经院校官方逐条核验，仅供择校参考；正式信息以目标院校研究生院官网为准。'
 
 function CoveragePanel({ cov }) {
   const s = cov?.summary
@@ -84,7 +116,16 @@ function CoveragePanel({ cov }) {
   )
 }
 
-function RecommendCard({ item, rank, goalId, onSetGoal, busy }) {
+export function buildRecommendDetailUrl(item, form = {}) {
+  const params = new URLSearchParams({ score: String(form.score ?? '') })
+  const fields = ['level', 'province', 'subject_code', 'target_avg_score', 'max_retest_ratio', 'year']
+  fields.forEach((key) => {
+    if (form[key] != null && String(form[key]).trim() !== '') params.set(key, String(form[key]))
+  })
+  return `/kaoyan/recommend/${item.school_id}?${params.toString()}`
+}
+
+function RecommendCard({ item, rank, refYear = null, goalId, onSetGoal, busy, form }) {
   const meta = SAFETY_META[item.safety] || { tone: 'outline', cls: 'neutral' }
   const kb = item.kb_coverage
   const coveragePct = kb && kb.majors > 0 ? Math.round((kb.covered / kb.majors) * 100) : 0
@@ -112,7 +153,7 @@ function RecommendCard({ item, rank, goalId, onSetGoal, busy }) {
       </div>
 
       <div className="v3-ky-rec__metrics">
-        <div><span>分差</span><b className="is-positive">+{item.gap ?? '—'}</b><em>分</em></div>
+        <div><span>分差</span><b className="is-positive">{formatGap(item.gap)}</b><em>分</em></div>
         <div><span>复录比</span><b>{item.retest_ratio == null ? '—' : num(item.retest_ratio, 2)}</b></div>
         <div><span>录取均分</span><b>{item.admit_avg_score == null ? '—' : num(item.admit_avg_score, 1)}</b></div>
       </div>
@@ -142,17 +183,38 @@ function RecommendCard({ item, rank, goalId, onSetGoal, busy }) {
         )
       ) : null}
 
+      {/* C4/C6：逐卡「依据」抽屉，每张卡都渲染，覆盖率 100% */}
+      <details className="v3-ky-rec__evidence">
+        <summary>
+          <InfoCircle size={13} /> 依据
+          <ConfidenceBadge confidence={item.confidence ?? item.reliability ?? null} />
+        </summary>
+        <AiEvidenceCard
+          title={`${item.name || '院校'} · 推荐依据`}
+          index={rank}
+          engine="库内聚合"
+          confidence={item.confidence ?? item.reliability ?? null}
+          fields={buildEvidenceFields(item, refYear)}
+        />
+        <p className="v3-ky-rec__evidence-note">{RECOMMEND_DISCLAIMER}</p>
+      </details>
+
       <div className="v3-ky-rec__foot">
         <span className="v3-ky-rec__gap">总分线 {item.total_line ?? '—'} · 国家线 {item.national_line ?? '—'}</span>
-        <Button
-          size="sm"
-          variant={goalId === item.school_id ? 'tonal' : 'outline'}
-          icon={goalId === item.school_id ? <CheckCircle2 size={15} /> : <Flag size={15} />}
-          disabled={busy || goalId === item.school_id}
-          onClick={() => onSetGoal(item)}
-        >
-          {goalId === item.school_id ? '已设为目标' : '设为目标院校'}
-        </Button>
+        <div className="v3-ky-rec__actions">
+          <Button
+            size="sm"
+            variant={goalId === item.school_id ? 'tonal' : 'outline'}
+            icon={goalId === item.school_id ? <CheckCircle2 size={15} /> : <Flag size={15} />}
+            disabled={busy || goalId === item.school_id}
+            onClick={() => onSetGoal(item)}
+          >
+            {goalId === item.school_id ? '已设为目标' : '设为目标院校'}
+          </Button>
+          <Link className="v3-btn v3-btn--text v3-btn--sm" to={buildRecommendDetailUrl(item, form)}>
+            查看推荐依据 <ArrowRight size={14} />
+          </Link>
+        </div>
       </div>
     </article>
   )
@@ -244,7 +306,7 @@ function AutoAdjustPanel({ form }) {
                           <div className="v3-ky-bucket__item-meta">
                             <span>{s.level || '—'}</span>
                             <span>{s.province || '—'}</span>
-                            <span>分差 {Number(s.gap) > 0 ? '+' : ''}{num(s.gap, 1)}</span>
+                            <span>分差 {formatGap(s.gap, 1)}</span>
                             <span>{s.years_used ? `${s.years_used} 年数据` : '—'}</span>
                           </div>
                           <div className="v3-ky-bucket__confidence">
@@ -287,6 +349,7 @@ export default function KaoyanRecommend() {
   })
   const [years, setYears] = useState([])
   const [results, setResults] = useState([])
+  const [resultParams, setResultParams] = useState(null)
   const [algorithm, setAlgorithm] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -318,6 +381,7 @@ export default function KaoyanRecommend() {
   const resetFilters = () => {
     setForm((f) => ({ ...f, level: '', province: '', subject_code: '', target_avg_score: '', max_retest_ratio: 1.5 }))
     setResults([])
+    setResultParams(null)
     setAlgorithm('')
     setHasSearched(false)
     setError('')
@@ -336,10 +400,11 @@ export default function KaoyanRecommend() {
     setHasSearched(true)
     setGoalMsg(null)
     setResults([])
+    setResultParams(null)
     setAlgorithm('')
     setSafety('all')
     try {
-      const r = await kaoyanApi.recommend({
+      const requestParams = {
         score,
         level: form.level || undefined,
         province: normalizeProvince(form.province) || undefined,
@@ -347,7 +412,9 @@ export default function KaoyanRecommend() {
         target_avg_score: String(form.target_avg_score).trim() || undefined,
         max_retest_ratio: String(form.max_retest_ratio).trim() || undefined,
         year: form.year == null ? undefined : form.year,
-      })
+      }
+      const r = await kaoyanApi.recommend(requestParams)
+      setResultParams(requestParams)
       setResults(Array.isArray(r?.recommendations) ? r.recommendations : [])
       setAlgorithm(r?.algorithm || '')
     } catch (e) {
@@ -364,15 +431,15 @@ export default function KaoyanRecommend() {
       setGoalMsg({ tone: 'info', text: '登录后可将院校设为目标并同步到考研规划。当前推荐结果可正常浏览。' })
       return
     }
-    if (!form.score) {
+    if (!resultParams?.score) {
       toastWarn('请先填写预估总分')
       return
     }
     setGoalBusy(true)
     try {
-      await kaoyanApi.setGoal(item.school_id, form.score)
+      await kaoyanApi.setGoal(item.school_id, resultParams.score)
       setGoalId(item.school_id)
-      setGoalMsg({ tone: 'success', text: `已将「${item.name}」设为目标院校（目标分 ${form.score}）。` })
+      setGoalMsg({ tone: 'success', text: `已将「${item.name}」设为目标院校（目标分 ${resultParams.score}）。` })
     } catch (e) {
       setGoalMsg({ tone: 'danger', text: `设置「${item.name}」失败：${e?.message || '请稍后重试'}` })
     } finally {
@@ -394,7 +461,7 @@ export default function KaoyanRecommend() {
   const headerSub = years.length === 0 && hasSearched && !loading
     ? '院校库还没有可用的分数线年份，推荐依赖分数线与招生记录两张表'
     : results.length
-      ? `按 ${form.score} 分筛出 ${results.length} 所院校 · 冲 ${counts.冲刺} / 稳 ${counts.适中} / 保 ${counts.稳妥} · 多维权重排序`
+      ? `按 ${resultParams?.score ?? form.score} 分筛出 ${results.length} 所院校 · 冲 ${counts.冲刺} / 稳 ${counts.适中} / 保 ${counts.稳妥} · 多维权重排序`
       : '输入预估分数和偏好，按分差、复录比、均分与区域综合排序，输出冲 / 稳 / 保三档院校'
 
   return (
@@ -624,9 +691,11 @@ export default function KaoyanRecommend() {
                   key={item.school_id}
                   item={item}
                   rank={results.findIndex((r) => r.school_id === item.school_id) + 1}
+                  refYear={resultParams?.year}
                   goalId={goalId}
                   onSetGoal={setGoal}
                   busy={goalBusy}
+                  form={resultParams}
                 />
               ))}
             </div>
@@ -634,10 +703,10 @@ export default function KaoyanRecommend() {
         </section>
       ) : null}
 
-      <AutoAdjustPanel form={form} />
+      {isAdmin ? <AutoAdjustPanel form={form} /> : null}
 
       <p className="v3-ky-footnote">
-        <TrendingUp size={13} /> 推荐结果来自库内分数线 / 招生记录聚合；划线数据经第三方聚合的院校会标注来源可信度，请以院校官网口径为准。
+        <TrendingUp size={13} /> 推荐结果来自库内分数线 / 招生记录聚合；{RECOMMEND_DISCLAIMER}
       </p>
     </div>
   )

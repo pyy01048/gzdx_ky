@@ -217,13 +217,13 @@ describe('核心路由 smoke test', () => {
      点导航「招生散点图」实际看到热力图。恢复直连后钉住落点，防止再退回去。 */
   it('招生散点图 /kaoyan/scatter 落在散点页而不是热力图', async () => {
     renderApp('/kaoyan/scatter')
-    expect(await screen.findByRole('heading', { name: '招生人数分布', level: 1 }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '专业均值招生分布', level: 1 }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.queryByText('区域择校热力图')).not.toBeInTheDocument()
   })
 
   it('分数线数据 /kaoyan/analysis 落在分数分析页而不是院校列表', async () => {
     renderApp('/kaoyan/analysis')
-    expect(await screen.findByText('分数分析', {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '分数分析', level: 1 }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.queryByText('院校数据库')).not.toBeInTheDocument()
   })
 

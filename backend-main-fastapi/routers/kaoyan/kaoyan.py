@@ -15,17 +15,6 @@ from typing import List, Optional
 
 from database import SessionLocal
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import (
-    Goal,
-    KaoyanAdmission,
-    KaoyanAdmissionDetail,
-    KaoyanCollectionRun,
-    KaoyanCollege,
-    KaoyanMajor,
-    KaoyanSchool,
-    KaoyanScoreLine,
-    KaoyanSubject,
-)
 from services.dbapi_compat import wrap_conn
 from services.kaoyan.data_years import available_years, resolve_year
 from services.kaoyan.datasource_registry import (
@@ -36,12 +25,26 @@ from services.kaoyan.datasource_registry import (
 from services.kaoyan.school_alias import match_aliases
 from sqlalchemy import func, or_, text, tuple_
 from sqlalchemy.orm import Session
-from utils.security import require_admin
+from utils.scope import owner_id, scoped
+from utils.security import current_user, require_admin
 from utils.timeutil import (
     day_bucket_text_expr,
     iso_utc_z,
     local_today,
     utcnow,
+)
+
+from models import (
+    Goal,
+    KaoyanAdmission,
+    KaoyanAdmissionDetail,
+    KaoyanCollectionRun,
+    KaoyanCollege,
+    KaoyanMajor,
+    KaoyanSchool,
+    KaoyanScoreLine,
+    KaoyanSubject,
+    User,
 )
 
 router = APIRouter(prefix="/api/kaoyan", tags=["考研择校"])
@@ -52,7 +55,7 @@ router = APIRouter(prefix="/api/kaoyan", tags=["考研择校"])
 # 院校数据变更频率极低，60s TTL 足够；详情页（/schools/{id}）不缓存，编辑即时生效。
 # --------------------------------------------------------------------------- #
 _SCHOOLS_LIST_CACHE: dict = {}
-_SCHOOLS_CACHE_TTL = 60  # 秒
+_SCHOOLS_CACHE_TTL = 300  # 秒；院校与择校聚合数据按周采集，5 分钟内复用即可，避免每分钟重算
 
 
 def _schools_cache_get(key) -> Optional[dict]:
@@ -665,29 +668,20 @@ def get_school_admissions(school_id: int, db: Session = Depends(get_db)):
 def get_school_admission_details(
     school_id: int,
     year: int | None = None,
-    name: str | None = None,
     limit: int = Query(200, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    """院校拟录取/复试名单逐人明细（DeepSeek-OCR 扫描件名单）。"""
+    """公开匿名分数记录，仅用于录取总分分布统计。"""
     q = db.query(KaoyanAdmissionDetail).filter(KaoyanAdmissionDetail.school_id == school_id)
     if year is not None:
         q = q.filter(KaoyanAdmissionDetail.year == year)
-    if name:
-        q = q.filter(KaoyanAdmissionDetail.name.like(f"%{name}%"))
     limit = max(1, min(limit, 200))
     items = q.order_by(KaoyanAdmissionDetail.year.desc(), KaoyanAdmissionDetail.id).limit(limit).all()
     return [
         {
-            "id": d.id,
             "year": d.year,
-            "exam_no": d.exam_no,
-            "name": d.name,
             "major_name": d.major_name,
-            "score_initial": d.score_initial,
-            "score_retest": d.score_retest,
             "score_total": d.score_total,
-            "data_source": d.data_source,
         }
         for d in items
     ]
@@ -1243,18 +1237,19 @@ def set_recommend_as_goal(
     school_id: int,
     target_score: Optional[int] = Query(None, description="目标总分"),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    """D3: 将推荐院校设为考研目标，写入 Goal 表。"""
+    """D3: 将推荐院校设为当前用户的考研目标，写入 Goal 表。"""
     s = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not s:
         raise HTTPException(404, "院校不存在")
 
-    goal = db.query(Goal).order_by(Goal.id.asc()).first()
+    goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
     if not goal:
-        goal = Goal()
+        goal = Goal(user_id=owner_id(user))
         db.add(goal)
     goal.university = s.name
-    if target_score:
+    if target_score is not None:
         goal.total_score_target = target_score
     goal.updated_at = utcnow()
     db.commit()
@@ -1433,34 +1428,33 @@ def analysis_heatmap(
     year: Optional[int] = Query(None, description="年份；不传则用库里最新的年份"),
     db: Session = Depends(get_db),
 ):
-    """D5: 按省份统计院校数、平均分数线、平均复录比。单次聚合查询。"""
+    """按省份统计院校数、平均分数线、平均复录比，各自独立聚合。"""
     year = resolve_year(db, year)
     years = available_years(db)
-    rows = (
-        db.query(
-            KaoyanSchool.province,
-            # 两路 outerjoin 会把院校行按分数线/招生记录放大，必须按院校去重计数；
-            # 否则「院校数量」变成分数线行数（实测天津 1368、辽宁 1924）。
-            func.count(func.distinct(KaoyanSchool.id)).label("school_count"),
-            func.avg(KaoyanScoreLine.total_line).label("avg_line"),
-            func.avg(KaoyanAdmission.retest_ratio).label("avg_ratio"),
-        )
-        .outerjoin(
-            KaoyanScoreLine,
-            (KaoyanScoreLine.school_id == KaoyanSchool.id) & (KaoyanScoreLine.year == year),
-        )
-        .outerjoin(
-            KaoyanAdmission,
-            (KaoyanAdmission.school_id == KaoyanSchool.id) & (KaoyanAdmission.year == year),
-        )
+    school_rows = db.query(KaoyanSchool.province, func.count(KaoyanSchool.id)).group_by(KaoyanSchool.province).all()
+    line_rows = (
+        db.query(KaoyanSchool.province, func.avg(KaoyanScoreLine.total_line))
+        .join(KaoyanScoreLine, KaoyanScoreLine.school_id == KaoyanSchool.id)
+        .filter(KaoyanScoreLine.year == year)
         .group_by(KaoyanSchool.province)
         .all()
     )
+    ratio_rows = (
+        db.query(KaoyanSchool.province, func.avg(KaoyanAdmission.retest_ratio))
+        .join(KaoyanAdmission, KaoyanAdmission.school_id == KaoyanSchool.id)
+        .filter(KaoyanAdmission.year == year)
+        .group_by(KaoyanSchool.province)
+        .all()
+    )
+    lines = {province: avg for province, avg in line_rows if province}
+    ratios = {province: avg for province, avg in ratio_rows if province}
 
     result = []
-    for province, school_count, avg_line, avg_ratio in rows:
+    for province, school_count in school_rows:
         if not province:
             continue
+        avg_line = lines.get(province)
+        avg_ratio = ratios.get(province)
         result.append(
             {
                 "name": province,
@@ -1509,6 +1503,7 @@ def analysis_scatter(
             continue
         items.append(
             {
+                "id": _school_id,
                 "name": name,
                 "level": level,
                 "province": province,
@@ -2188,14 +2183,20 @@ def analysis_dashboard(db: Session = Depends(get_db)):
       college_enroll    —— 学院级：招生人数
       major_score_dist  —— 专业课均分分数段分布
     """
-    # ---- 1) 科目分布：遍历专业考试科目 ----
-    majors = db.query(KaoyanMajor).all()
+    # 择校聚合数据变更频率极低（每周采集一次），60s TTL 缓存避免每次加载都全表扫描 + 解析上万专业
+    _cache_key = ("analysis_dashboard",)
+    _cached = _schools_cache_get(_cache_key)
+    if _cached is not None:
+        return _cached
+
+    # ---- 1) 科目分布：遍历专业考试科目（只读 exam_subjects 列，避免实例化上万 ORM 对象）----
+    major_rows = db.query(KaoyanMajor.exam_subjects).all()
     math_agg, english_agg, major2_agg = {}, {}, {}
-    for m in majors:
+    for (exam_subjects,) in major_rows:
         # 库内 exam_subjects 实为竖线分隔文本 "(302)数学（二） | (204)英语（二） | ..."，
         # 不能用 isinstance(list) 判断（那会让数学/英语/专业课统计**恒为空**）。
         # 统一走 _parse_exam_subjects：兼容文本与 JSON 数组两种存储形态。
-        for item in _parse_exam_subjects(m.exam_subjects):
+        for item in _parse_exam_subjects(exam_subjects):
             s = (item.get("name") or "").strip()
             if not s:
                 continue
@@ -2321,7 +2322,7 @@ def analysis_dashboard(db: Session = Depends(get_db)):
         )
         math_score_dist.append({"band": label, "count": int(cnt)})
 
-    return {
+    result = {
         "subject_math": top(math_agg),
         "subject_english": top(english_agg),
         "major2_top": top(major2_agg, 15),
@@ -2332,3 +2333,5 @@ def analysis_dashboard(db: Session = Depends(get_db)):
         "math_score_dist": math_score_dist,
         "generated_at": iso_utc_z(utcnow()),
     }
+    _schools_cache_set(_cache_key, result)
+    return result

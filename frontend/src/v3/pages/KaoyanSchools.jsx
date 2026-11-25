@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { request } from '../../api/client'
-import EChart from '../../components/EChart'
 import { useAuth } from '../../auth/AuthContext'
 import useStore from '../../store/useStore'
 import { resolveExamDate, examDateMD, examDaysLeft } from '../../utils/exam'
@@ -10,18 +9,22 @@ import { examSubjectText } from '../../utils/kaoyanFields'
 import { ukey, readMigrated } from '../../utils/userKeys'
 import { readSchoolFavs, writeSchoolFavs } from '../../utils/schoolFavs'
 import { chartTheme } from '../charts'
-import { Marquee, usePointerFx, useReducedMotion, useReveal } from '../motion'
+import { Reveal, usePointerFx, useReducedMotion, useReveal } from '../motion'
 import {
   Alert, AnimatedNumber, Badge, Button, Card, CardHead, Chip, Dialog, Empty, Field,
   IconButton, Input, LoadingState, PageHeader, Segmented, Select, Skeleton, Spinner,
-  Tile, toast, toastErr, toastWarn, cx,
+  toast, toastErr, toastOk, toastWarn, cx,
 } from '../ui'
 import {
   AlertCircle, ArrowRight, BarChart3, Bookmark, CalendarClock, Check, ChevronDown,
   ChevronUp, Database, Flame, InfoCircle, ListChecks, Plus, RefreshCw, Search,
-  SlidersHorizontal, Sparkles, Target, X,
+  SlidersHorizontal, Sparkles, X,
 } from '../icons'
 import '../styles/kaoyan-core-v3.css'
+
+/* ECharts 体积大（vendor 约 220KB gzip），且数据看板默认收起：
+   按需加载，首屏只在用户展开看板时才下载图表运行时。 */
+const EChart = React.lazy(() => import('../../components/EChart'))
 
 /* ==========================================================================
    院校库 · Aurora v3
@@ -88,6 +91,14 @@ function levelTone(level) {
   return undefined
 }
 
+/* 985 / 211 / 「双一流」层级本身已含双一流身份，再挂一枚同色徽章只是重复；
+   只有层级看不出来的双一流高校（如双非里的宁波大学）才补这枚徽章。 */
+function showDoubleFirst(s) {
+  if (!s?.is_double_first_class) return false
+  const lv = normLevel(s.level)
+  return lv !== '985' && lv !== '211' && lv !== '双一流'
+}
+
 function ratioClass(r) {
   if (r == null || Number.isNaN(Number(r))) return ''
   if (Number(r) < 1.2) return 'is-ok'
@@ -127,19 +138,51 @@ function countdownParts(dateStr, nowMs) {
 
 const pad2 = (n) => String(n).padStart(2, '0')
 
-async function fetchAllSchools(extra = {}) {
-  let page = 1
-  const out = []
-  let total = Infinity
-  while (out.length < total) {
-    const data = await kaoyanApi.schools({ page_size: 100, page, ...extra })
-    if (!data || !data.items) break
-    out.push(...data.items)
-    total = data.total || 0
-    if (data.items.length < 100) break
-    page += 1
-    if (page > 20) break
+// 院校全量缓存：60s 内重复进入页面直接复用，避免每次都重拉 1150 条
+const _schoolsCache = new Map()
+const SCHOOLS_TTL = 60000
+function invalidateSchoolsCache() {
+  _schoolsCache.clear()
+}
+
+// 与后端 /kaoyan/schools 的 sort 口径保持一致，改为本地排序后切换排序不再重拉 1150 条
+function sortRows(list, key) {
+  const out = [...list]
+  if (key === 'name') {
+    out.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'))
+  } else if (key === 'admit') {
+    out.sort((a, b) => (Number(b.admit_count) || 0) - (Number(a.admit_count) || 0))
+  } else if (key === 'ratio') {
+    out.sort((a, b) => (Number(b.retest_ratio) || 0) - (Number(a.retest_ratio) || 0))
+  } else if (key === 'avg') {
+    out.sort((a, b) => (Number(b.admit_avg_score) || 0) - (Number(a.admit_avg_score) || 0))
+  } else {
+    out.sort((a, b) => (Number(b.heat) || 0) - (Number(a.heat) || 0))
   }
+  return out
+}
+
+async function fetchAllSchools(extra = {}, onPartial) {
+  const key = JSON.stringify(extra || {})
+  const hit = _schoolsCache.get(key)
+  if (hit && Date.now() - hit.at < SCHOOLS_TTL) return hit.data
+  // 首页先探总数，其余分页并行拉取（后端 page_size 上限 200），把串行 12 次往返压成 2 波
+  const PS = 200
+  const first = await kaoyanApi.schools({ page_size: PS, page: 1, ...extra })
+  if (!first || !first.items) return []
+  const out = [...first.items]
+  const total = first.total || out.length
+  const pages = Math.ceil(total / PS)
+  if (pages > 1) {
+    // 首屏优先：第一页（200 条）先回调，剩余分页并行补齐，避免首屏干等 6 个请求
+    if (typeof onPartial === 'function') onPartial(out)
+    const rest = await Promise.all(
+      Array.from({ length: pages - 1 }, (_, i) =>
+        kaoyanApi.schools({ page_size: PS, page: i + 2, ...extra }).catch(() => null))
+    )
+    rest.forEach((d) => { if (d && Array.isArray(d.items)) out.push(...d.items) })
+  }
+  _schoolsCache.set(key, { at: Date.now(), data: out })
   return out
 }
 
@@ -208,6 +251,9 @@ function pageWindow(cur, total) {
 /* Countdown (own clock so the page itself does not re-render every second)    */
 /* -------------------------------------------------------------------------- */
 function CountdownStrip() {
+  const { user } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
   const cd = useStore((s) => s.countdown)
   const settingExamDate = useStore((s) => s.settings.examDate)
   const mainExamDate = resolveExamDate(settingExamDate || cd?.exam_date, null)
@@ -262,7 +308,18 @@ function CountdownStrip() {
       <div className="kyv3-countdown-rail">
         {list.length === 0 ? (
           <div className="kyv3-cd-empty">
-            倒计时未配置。去「设置」填写初试日期，或点右侧「添加考试」自行添加。
+            {/* P1（F-15）：访客点「设置」会被 RequireAuth 弹去登录页且不带回跳上下文。
+                这里给出可见提示 + 带 from 的登录入口；登录后由 RequireAuth 自动回到本页。 */}
+            {user ? '倒计时未配置。去「设置」填写初试日期，或点右侧「添加考试」自行添加。' : '倒计时未配置。登录后继续设置初试日期，或点右侧「添加考试」自行添加。'}
+            {!user ? (
+              <button
+                type="button"
+                className="v3-btn v3-btn--tonal v3-btn--sm"
+                onClick={() => navigate('/login', { state: { from: location, crumb: '院校库' } })}
+              >
+                登录后设置初试日期
+              </button>
+            ) : null}
           </div>
         ) : null}
         {list.map((e) => {
@@ -351,6 +408,7 @@ function SchoolCard({
             src={s.cover_url}
             alt={`${s.name || '院校'} 校园实景`}
             loading="lazy"
+            decoding="async"
             onError={() => setCoverOk(false)}
           />
         </div>
@@ -365,8 +423,10 @@ function SchoolCard({
           <Link to={`/kaoyan/schools/${s.id}`} className="kyv3-school-name" title={s.name}>{s.name}</Link>
           <div className="kyv3-school-badges">
             <Badge tone={levelTone(normLevel(s.level))}>{normLevel(s.level)}</Badge>
-            {s.is_double_first_class ? <Badge tone="success">双一流</Badge> : null}
-            {s.region ? <Badge>{s.region}</Badge> : null}
+            {showDoubleFirst(s) ? <Badge tone="success">双一流</Badge> : null}
+            {(s.geo_region || s.exam_region) ? (
+              <Badge>{[s.geo_region, s.exam_region].filter(Boolean).join(' · ')}</Badge>
+            ) : null}
             {s.type ? <Badge>{s.type}</Badge> : null}
             {s.has0854 ? <Badge tone="primary">0854</Badge> : null}
             {isFav ? <Badge tone="warning">目标院校</Badge> : null}
@@ -391,7 +451,9 @@ function SchoolCard({
         <a href={yzLink} target="_blank" rel="noopener noreferrer">研招网 ↗</a>
       </div>
 
-      <p className="kyv3-school-intro">{s.intro ? s.intro.replace(/\s+/g, ' ').slice(0, 96) : '暂无院校简介'}</p>
+      {s.intro ? (
+        <p className="kyv3-school-intro">{s.intro.replace(/\s+/g, ' ').slice(0, 96)}</p>
+      ) : null}
 
       <div className="kyv3-school-tags">
         {s.coverage_score != null ? (
@@ -439,7 +501,7 @@ function SchoolCard({
       </div>
 
       {isOpen ? (
-        <div className="kyv3-major-panel">
+        <Reveal className="kyv3-major-panel">
           <div className="kyv3-major-panel-head">
             专业方向 / 招生科目
             <span>徽标＝知识库语料覆盖，未覆盖不代表答不了</span>
@@ -465,7 +527,7 @@ function SchoolCard({
           ) : (
             <div className="kyv3-major-empty">暂无专业方向数据</div>
           )}
-        </div>
+        </Reveal>
       ) : null}
     </article>
   )
@@ -476,22 +538,29 @@ function SchoolCard({
 /* -------------------------------------------------------------------------- */
 export default function KaoyanSchools() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const initialFilters = () => {
+    const province = searchParams.get('province')?.trim()
+    return { ...EMPTY_FILTERS(), province: province ? normProvince(province) : '' }
+  }
   const { user, status: authStatus } = useAuth()
   const mode = useThemeMode()
   const t = useMemo(() => chartTheme(mode === 'dark'), [mode])
 
-  const [rows, setRows] = useState([])
+  const [rawRows, setRawRows] = useState([])
   const [hotList, setHotList] = useState([])
   const [analysis, setAnalysis] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
   const [showAnalysis, setShowAnalysis] = useState(false)
+  const [analysisLoading, setAnalysisLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sort, setSort] = useState('heat')
+  const rows = useMemo(() => sortRows(rawRows, sort), [rawRows, sort])
   const [covMap, setCovMap] = useState(null)
 
-  const [draft, setDraft] = useState(EMPTY_FILTERS)
-  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  const [draft, setDraft] = useState(initialFilters)
+  const [filters, setFilters] = useState(initialFilters)
   const [page, setPage] = useState(1)
   const [showMore, setShowMore] = useState(false)
   const [onlyFav, setOnlyFav] = useState(false)
@@ -509,22 +578,22 @@ export default function KaoyanSchools() {
   const [majorsMap, setMajorsMap] = useState({})
   const [majorsLoading, setMajorsLoading] = useState(null)
 
-  const load = useCallback(async (sortKey) => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError('')
     setAnalysisError('')
     try {
-      const [schools, schools0854, dashboard, hot, cov] = await Promise.all([
-        fetchAllSchools({ sort: sortKey }),
+      const [schools, schools0854, hot, cov] = await Promise.all([
+        fetchAllSchools({}, (partial) => {
+          // 首次进页：第一页先渲染，剩余分页到齐后整体替换；刷新时保留旧列表避免页数抖动
+          setRawRows((prev) => (prev.length ? prev : partial.map((s) => ({ ...s, has0854: false }))))
+        }),
         fetchAllSchools({ subject_code: '0854' }).catch(() => []),
-        kaoyanApi.dashboardAnalysis().catch(() => null),
         kaoyanApi.hot({ limit: 10 }).catch(() => ({ items: [] })),
         user ? request('/quality/major-coverage').catch(() => null) : Promise.resolve(null),
       ])
       const ids0854 = new Set((schools0854 || []).map((s) => s.id))
-      setRows(schools.map((s) => ({ ...s, has0854: ids0854.has(s.id) })))
-      setAnalysis(dashboard)
-      if (!dashboard) setAnalysisError('数据分析聚合接口暂不可用，图表区已隐藏')
+      setRawRows(schools.map((s) => ({ ...s, has0854: ids0854.has(s.id) })))
       setHotList(hot?.items || [])
       setCovMap((cov && cov.by_school) || {})
     } catch (e) {
@@ -534,10 +603,26 @@ export default function KaoyanSchools() {
     }
   }, [user])
 
+  /* 数据看板默认收起：聚合接口只在用户首次展开时请求，首屏少一次重请求 */
+  const loadAnalysis = useCallback(async (force = false) => {
+    if (!force && (analysis || analysisLoading)) return
+    setAnalysisLoading(true)
+    setAnalysisError('')
+    try {
+      const d = await kaoyanApi.dashboardAnalysis()
+      setAnalysis(d)
+      if (!d) setAnalysisError('数据分析聚合接口暂不可用，图表区已隐藏')
+    } catch (e) {
+      setAnalysisError(e?.message || '数据分析聚合接口暂不可用，图表区已隐藏')
+    } finally {
+      setAnalysisLoading(false)
+    }
+  }, [analysis, analysisLoading])
+
   useEffect(() => {
     if (authStatus === 'loading') return
-    load(sort)
-  }, [load, sort, authStatus])
+    load()
+  }, [load, authStatus])
 
   useEffect(() => {
     /* 写回统一 map：保留已有条目（详情页写入的 name/level），新增 id 从当前 rows 补全 */
@@ -561,7 +646,14 @@ export default function KaoyanSchools() {
   }, [rows])
 
   const filtered = useMemo(() => rows.filter((r) => {
-    if (filters.region && (r.region || '') !== filters.region) return false
+    // 地区双口径：A区/B区 查 exam_region，七大地理区查 geo_region（旧 region 列混装两种口径，不再参与筛选）
+    if (filters.region) {
+      if (filters.region === 'A区' || filters.region === 'B区') {
+        if ((r.exam_region || '') !== filters.region) return false
+      } else if ((r.geo_region || '') !== filters.region) {
+        return false
+      }
+    }
     if (filters.level && normLevel(r.level) !== filters.level) return false
     if (filters.type && (r.type || '') !== filters.type) return false
     if (filters.province && normProvince(r.province) !== filters.province) return false
@@ -585,6 +677,23 @@ export default function KaoyanSchools() {
   const curPage = Math.min(page, totalPages)
   const current = filtered.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE)
 
+  /* 翻页后新内容渲染在列表上方，而操作点（分页条）在页面底部：
+     若列表顶部已滚出视口，就把列表头顶回视口，避免「点了下一页却还停在旧位置」。
+     首屏与筛选（列表顶部仍在视野内）都不动，免得点个筛选条整页往下跳。 */
+  const gridRef = useRef(null)
+  const lastPageRef = useRef(curPage)
+  useEffect(() => {
+    if (lastPageRef.current === curPage) return
+    lastPageRef.current = curPage
+    const el = gridRef.current
+    if (!el || typeof el.getBoundingClientRect !== 'function') return
+    if (el.getBoundingClientRect().top >= 0) return
+    if (typeof el.scrollIntoView !== 'function') return
+    const reduce = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' })
+  }, [curPage])
+
   const applyFilters = () => { setFilters({ ...draft }); setPage(1) }
   const quickApply = (patch) => {
     const next = { ...draft, ...patch }
@@ -604,12 +713,17 @@ export default function KaoyanSchools() {
     setPage(1)
   }
 
-  const toggleFav = (id) => setFavs((prev) => {
+  const toggleFav = (id) => {
     const k = String(id)
-    const n = new Set(prev)
-    if (n.has(k)) n.delete(k); else n.add(k)
-    return n
-  })
+    const removing = favs.has(k)
+    setFavs((prev) => {
+      const n = new Set(prev)
+      if (n.has(k)) n.delete(k)
+      else n.add(k)
+      return n
+    })
+    toastOk(removing ? '已取消关注' : '已关注院校')
+  }
 
   const toggleCmp = (id) => setCmpSet((prev) => {
     const n = new Set(prev)
@@ -652,26 +766,6 @@ export default function KaoyanSchools() {
     navigate('/kaoyan/compare')
   }
 
-  const withAdmitCount = useMemo(() => rows.filter((r) => r.admit_count != null).length, [rows])
-
-  const schoolStats = useMemo(() => {
-    let l985 = 0, l211 = 0, withScores = 0
-    rows.forEach((r) => {
-      const lv = normLevel(r.level)
-      if (lv === '985') l985++
-      if (lv === '211') l211++
-      if ((r.scoreline_count || 0) > 0) withScores++
-    })
-    return [
-      { k: '院校总数', v: rows.length, unit: '所', icon: Database },
-      { k: '覆盖省份', v: provinceOptions.length, unit: '个', icon: Target },
-      { k: '985 院校', v: l985, unit: '所', icon: Sparkles },
-      { k: '211 院校', v: l211, unit: '所', icon: Sparkles },
-      { k: '有分数线', v: withScores, unit: '所', icon: BarChart3 },
-      { k: '有招生数据', v: withAdmitCount, unit: '所', icon: Flame },
-    ]
-  }, [rows, provinceOptions.length, withAdmitCount])
-
   const activeFilterCount = useMemo(() => {
     let n = Object.entries(filters).filter(([, v]) => v !== '' && v !== false).length
     if (onlyFav) n++
@@ -679,6 +773,9 @@ export default function KaoyanSchools() {
   }, [filters, onlyFav])
 
   const hotTop = useMemo(() => hotList.filter((s) => (s.heat || 0) > 0).slice(0, 10), [hotList])
+  /* 默认热度排序的第一页本身就是同一份热度榜，此时不再重复渲染 TOP10 卡片 */
+  const showHotRank = hotTop.length > 0
+    && !(sort === 'heat' && curPage === 1 && activeFilterCount === 0)
 
   const dash = useMemo(() => analysis || {}, [analysis])
 
@@ -865,11 +962,6 @@ export default function KaoyanSchools() {
           sub="择校第一步 · 查院校、看分数、比招生"
           actions={<Link className="v3-btn v3-btn--tonal" to="/kaoyan/compare">院校对比 <ArrowRight size={15} /></Link>}
         />
-        <div className="v3-bento">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Tile key={i} span={2} className="kyv3-stat-tile"><Skeleton height={54} /></Tile>
-          ))}
-        </div>
         <Card><Skeleton height={180} /><div style={{ height: 12 }} /><Skeleton height={180} /></Card>
         <LoadingState text="院校数据加载中…" />
       </div>
@@ -891,7 +983,7 @@ export default function KaoyanSchools() {
             icon={<AlertCircle size={26} />}
             title="院校数据加载失败"
             text={error}
-            action={<Button variant="tonal" onClick={() => load(sort)}>重新加载</Button>}
+            action={<Button variant="tonal" onClick={() => load()}>重新加载</Button>}
           />
         </Card>
       </div>
@@ -910,25 +1002,10 @@ export default function KaoyanSchools() {
               院校对比 <ArrowRight size={15} />
             </Link>
             <Link className="v3-btn v3-btn--text" to="/kaoyan/recommend">智能推荐</Link>
-            <IconButton label="刷新院校数据" icon={<RefreshCw size={17} />} onClick={() => load(sort)} disabled={loading} />
+            <IconButton label="刷新院校数据" icon={<RefreshCw size={17} />} onClick={() => { invalidateSchoolsCache(); load(); if (showAnalysis) loadAnalysis(true) }} disabled={loading} />
           </>
         )}
       />
-
-      <div className="v3-bento">
-        {schoolStats.map((s) => {
-          const Icon = s.icon
-          return (
-            <Tile key={s.k} span={2} className="kyv3-stat-tile">
-              <span className="v3-tile__label"><Icon size={14} /> {s.k}</span>
-              <span className="v3-tile__value">
-                <AnimatedNumber value={s.v} format={(n) => Math.round(n).toLocaleString('zh-CN')} />
-                <em>{s.unit}</em>
-              </span>
-            </Tile>
-          )
-        })}
-      </div>
 
       <Alert tone="info" icon={<InfoCircle size={18} />} className="kyv3-note">
         <p><b>数据说明：</b>本页招生 / 录取 / 复录比均为第三方聚合数据，未经院校官方逐条核验，仅供择校参考；正式信息以目标院校研究生院官网为准。</p>
@@ -942,7 +1019,7 @@ export default function KaoyanSchools() {
 
       <CountdownStrip />
 
-      {hotTop.length > 0 ? (
+      {showHotRank ? (
         <Card className="kyv3-hot">
           <CardHead
             icon={<Flame size={17} style={{ color: 'var(--v3-danger)' }} />}
@@ -956,10 +1033,14 @@ export default function KaoyanSchools() {
                   {s.rank ?? i + 1}
                 </span>
                 <div className="kyv3-hot-main">
-                  <Link to={`/kaoyan/schools/${s.id || 0}`} className="kyv3-hot-name" title={s.name}>{s.name}</Link>
+                  {s.id ? (
+                    <Link to={`/kaoyan/schools/${s.id}`} className="kyv3-hot-name" title={s.name}>{s.name}</Link>
+                  ) : (
+                    <span className="kyv3-hot-name" title={s.name}>{s.name}</span>
+                  )}
                   <div className="kyv3-hot-meta">
                     <Badge tone={levelTone(normLevel(s.level))}>{normLevel(s.level)}</Badge>
-            {s.is_double_first_class ? <Badge tone="success">双一流</Badge> : null}
+                    {showDoubleFirst(s) ? <Badge tone="success">双一流</Badge> : null}
                     <span>热度 {s.heat != null ? Math.round(s.heat) : '—'}</span>
                   </div>
                 </div>
@@ -989,7 +1070,6 @@ export default function KaoyanSchools() {
           >
             {showMore ? '收起更多筛选' : '更多筛选'}
           </Button>
-          <span className="kyv3-found">筛出 <b>{filtered.length}</b> 所</span>
         </div>
 
         <div className="kyv3-filter-grid">
@@ -1006,7 +1086,7 @@ export default function KaoyanSchools() {
               <Chip active={draft.level === ''} onClick={() => quickApply({ level: '' })}>全部</Chip>
               {LEVELS.map((l) => <Chip key={l} active={draft.level === l} onClick={() => quickApply({ level: l })}>{l}</Chip>)}
             </div>
-            <span className="v3-caption">双一流为嵌套标签（含 985/211）：{rows.filter((r) => r.is_double_first_class).length} 所；地区含考研分区与地理大区双口径</span>
+            <span className="v3-caption">双一流为嵌套标签（含 985/211）：{rows.filter((r) => r.is_double_first_class).length} 所；A区/B区为研招分区，七大区为地理分区</span>
           </div>
           <div className="kyv3-filter-line">
             <span className="kyv3-filter-label">类型</span>
@@ -1032,7 +1112,7 @@ export default function KaoyanSchools() {
         </div>
 
         {showMore ? (
-          <div className="kyv3-filter-more">
+          <div className="kyv3-filter-more v3-anim-up">
             <label className="kyv3-num">
               <span>录取均分范围</span>
               <span className="kyv3-range">
@@ -1081,7 +1161,7 @@ export default function KaoyanSchools() {
         <div className="kyv3-list-head">
           <div className="kyv3-list-title">
             院校列表
-            <small>共 {filtered.length} 所 · 第 {curPage}/{totalPages} 页</small>
+            <small>共 {filtered.length} 所</small>
           </div>
           <div className="kyv3-list-tools">
             <Segmented
@@ -1102,16 +1182,8 @@ export default function KaoyanSchools() {
           </Alert>
         ) : null}
 
-        {current.length >= 4 ? (
-          <Marquee className="kyv3-hot-strip" duration={36}>
-            {[...current].sort((a, b) => (b.heat || 0) - (a.heat || 0)).slice(0, 10).map((s) => (
-              <span key={s.id} className="kyv3-hot-item"><Flame size={13} /> {s.name}</span>
-            ))}
-          </Marquee>
-        ) : null}
-
         {current.length ? (
-          <div className="kyv3-school-grid">
+          <div className="kyv3-school-grid" ref={gridRef}>
             {current.map((s, i) => (
               <SchoolCard
                 key={s.id}
@@ -1158,7 +1230,7 @@ export default function KaoyanSchools() {
               </>
             ) : null}
             <button type="button" disabled={curPage >= totalPages} onClick={() => setPage(curPage + 1)}>下一页</button>
-            <span className="kyv3-pager-info">第 {curPage}/{totalPages} 页 · 共 {filtered.length} 所</span>
+            <span className="kyv3-pager-info">第 {curPage}/{totalPages} 页</span>
           </nav>
         ) : null}
 
@@ -1182,13 +1254,25 @@ export default function KaoyanSchools() {
             title="数据分析"
             sub="汇总招生、录取与院校库的实时聚合数据"
           />
-          <Button variant="text" size="sm" onClick={() => setShowAnalysis((v) => !v)} aria-expanded={showAnalysis}>
+          <Button
+            variant="text"
+            size="sm"
+            onClick={() => {
+              const next = !showAnalysis
+              setShowAnalysis(next)
+              if (next) loadAnalysis()
+            }}
+            aria-expanded={showAnalysis}
+          >
             {showAnalysis ? '收起数据看板' : '展开数据看板'}
           </Button>
         </div>
         {showAnalysis ? (
-          analysis ? (
-            <div className="kyv3-chart-grid">
+          analysisLoading ? (
+            <LoadingState text="图表数据加载中…" />
+          ) : analysis ? (
+            <React.Suspense fallback={<p className="v3-caption" style={{ padding: '14px 0' }}>图表组件加载中…</p>}>
+            <Reveal className="kyv3-chart-grid">
               <div className="kyv3-chart-card">
                 <div className="kyv3-chart-title">各省份拟录取人数 Top10</div>
                 <EChart option={provinceBar} style={{ height: 260 }} />
@@ -1256,7 +1340,8 @@ export default function KaoyanSchools() {
                   数据库无逐考生原始分数，基于现有分数线 / 均分数据按分数段统计；前端兜底计算的部分已标注为「兜底」。
                 </div>
               </div>
-            </div>
+            </Reveal>
+            </React.Suspense>
           ) : (
             <Empty icon={<BarChart3 size={24} />} title="数据分析暂不可用" text={analysisError || '聚合接口没有返回数据，稍后刷新重试。'} />
           )

@@ -160,7 +160,8 @@ function normQ(q) {
     is_available: q.is_available ?? null,
     year: q.year ?? null,
     paper: q.paper ?? null,
-    question_no: q.question_no ?? null
+    question_no: q.question_no ?? null,
+    figure_missing: Number(q.figure_missing || 0),
   }
 }
 const isChoiceQ = (q) => hasRealOptions(q)

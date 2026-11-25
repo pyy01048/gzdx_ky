@@ -5,7 +5,10 @@
    写操作的后端同步已内联在 useStore.js 各 action 中（fire-and-forget）。
    ============================================================ */
 
-import { tasksApi, errorsApi, flashcardsApi, netdiskApi, goalsApi, aiApi, dashboardApi, wordsApi, fetchAllPages } from './client'
+import {
+  tasksApi, errorsApi, flashcardsApi, netdiskApi, goalsApi, aiApi, dashboardApi,
+  wordsApi, fetchAllPages, getBackendState, isBackendOnline,
+} from './client'
 import useStore from '../store/useStore'
 import { todayStr } from '../utils/date'
 import { currentUid } from '../utils/userKeys'
@@ -145,7 +148,8 @@ const LOADERS = {
      导致后端 /api/words 明明有数据、页面永远显示 0。补上（响应是统一分页壳 items）。 */
   words: async () => {
     const uidAtStart = currentUid()
-    const list = await fetchAllPages((p) => wordsApi.list(p), { keys: ['items', 'words'] })
+    // include_extra=false：词库页自己会按需补详情，后台同步不必为近义词/短语付八成载荷。
+    const list = await fetchAllPages((p) => wordsApi.list({ ...p, include_extra: false }), { keys: ['items', 'words'] })
     if (stale(uidAtStart)) return
     useStore.setState({ words: list })
   },
@@ -211,15 +215,73 @@ export function loadDomain(key) {
   return fn()
 }
 
+/* 首屏关键路径保护（性能 · LCP）：
+   words / cards / pan 是「翻全量」的重域——数千行、数十个分页请求。旧实现把它们
+   与轻量域一起在应用挂载瞬间并发拉取；云端走 HTTP/1.1，每源只有 6 个并发连接，
+   这股洪水会把首屏路由 chunk、schools 数据、字体全部挤到队尾，实测把 LCP 渲染延迟
+   拖到 2.5s+（TTFB 仅 15ms，瓶颈全在前端渲染等待）。
+   这些数据只有进入对应功能页才用到，且 Words/Flashcards 页本身会自加载，因此把重域
+   挪到首屏渲染后/浏览器空闲时再拉；即时域只保留应用壳导航与在线判定所需的轻量调用。 */
+const DEFERRED_DOMAINS = ['words', 'cards', 'pan']
+const DEFERRED_SLICE = { words: 'words', cards: 'cards', pan: 'pan' }
+
+function runDeferredDomains(uidAtStart) {
+  if (stale(uidAtStart)) return
+  /* 重域之间串行错峰：即便放到后台，也不再形成数十并发的洪水，减轻 DB 与连接池压力。
+     若对应 store 切片已有数据（功能页已自加载或本地缓存命中），跳过重复全量拉取。 */
+  DEFERRED_DOMAINS.reduce(
+    (chain, key) =>
+      chain.then(() => {
+        if (stale(uidAtStart)) return null
+        const slice = DEFERRED_SLICE[key]
+        if (slice && Array.isArray(useStore.getState()[slice]) && useStore.getState()[slice].length > 0) {
+          return null
+        }
+        return LOADERS[key]().catch(() => {
+          /* 单域失败不影响其它域；离线时静默保留本地已有内容 */
+        })
+      }),
+    Promise.resolve()
+  )
+}
+
+function scheduleDeferredHydrate(uidAtStart) {
+  let done = false
+  const run = () => {
+    if (done) return
+    done = true
+    window.removeEventListener('pointerdown', run)
+    window.removeEventListener('keydown', run)
+    window.removeEventListener('scroll', run, true)
+    runDeferredDomains(uidAtStart)
+  }
+  /* 「浏览器空闲」≠「首屏已渲染」：requestIdleCallback 会在 JS 执行完的短暂空闲里
+     立即触发，仍与首屏路由/数据争抢连接。改用首次用户交互（必然发生在首屏渲染之后）
+     或 4s 兜底，确保 words/cards/pan 的全量翻页请求绝不进入首屏关键路径。 */
+  window.addEventListener('pointerdown', run, { passive: true, once: true })
+  window.addEventListener('keydown', run, { passive: true, once: true })
+  window.addEventListener('scroll', run, { passive: true, once: true })
+  setTimeout(run, 4000)
+}
+
 /**
  * 从后端全量拉取各数据域并回填 store。
  * 仅做“后端优先”，任何单域失败不影响其它域；全部失败则保持本地兜底。
+ * 重域（words/cards/pan）延迟到首屏后加载，避免拖慢首屏关键路径。
  */
 export async function hydrate() {
   const uidAtStart = currentUid()
-  const results = await Promise.allSettled(Object.values(LOADERS).map((fn) => fn()))
+  const immediateKeys = Object.keys(LOADERS).filter((k) => !DEFERRED_DOMAINS.includes(k))
+  const results = await Promise.allSettled(immediateKeys.map((k) => LOADERS[k]()))
   const ok = results.filter((r) => r.status === 'fulfilled').length
-  /* 切号后旧 hydrate 的「在线」结论也不属于新账号，不回写 */
-  if (!stale(uidAtStart)) useStore.setState({ backendOnline: ok > 0 })
-  return { online: ok > 0, total: results.length, ok }
+  /* C5：backendOnline 不再是「任一数据域成功」的独立结论，而是三态的布尔投影。
+     三态尚未探测（unknown）时才用本次 hydrate 的成功数临时兜底。
+     切号后旧 hydrate 的在线结论也不属于新账号，不回写。 */
+  const health = typeof getBackendState === 'function' ? getBackendState() : null
+  const derived = typeof isBackendOnline === 'function' ? isBackendOnline(health) : null
+  /* 只接受布尔结果：unknown（或测试桩未实现）才回落到本次 hydrate 成功数 */
+  const online = typeof derived === 'boolean' ? derived : ok > 0
+  if (!stale(uidAtStart)) useStore.setState({ backendOnline: online })
+  scheduleDeferredHydrate(uidAtStart)
+  return { online, total: results.length, ok }
 }

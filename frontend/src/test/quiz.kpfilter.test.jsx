@@ -1,4 +1,3 @@
-import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -23,6 +22,11 @@ const quizApiMock = {
   submit: vi.fn().mockResolvedValue({ correct: true }),
   papersIndex: vi.fn().mockResolvedValue({ papers: [] }),
   years: vi.fn().mockResolvedValue({ years: [] }),
+  /* 与真实 client 对齐：QuizReview（复核页）会用到这些方法；mock 缺失会在挂载时抛
+     TypeError 并连累同文件渲染 Quiz 的用例。 */
+  reviewQueue: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+  reviewAction: vi.fn().mockResolvedValue({ ok: true }),
+  subjects: vi.fn().mockResolvedValue([]),
 }
 const taxonomyApiMock = {
   subjects: vi.fn().mockResolvedValue({ subjects: [] }),
@@ -57,6 +61,9 @@ beforeEach(() => {
   quizApiMock.stats.mockResolvedValue({ total_questions: 0, total_attempts: 0, accuracy_rate: 0, active_errors: 0 })
   quizApiMock.questions.mockResolvedValue({ questions: [] })
   quizApiMock.submit.mockResolvedValue({ correct: true })
+  quizApiMock.reviewQueue.mockResolvedValue({ items: [], total: 0 })
+  quizApiMock.reviewAction.mockResolvedValue({ ok: true })
+  quizApiMock.subjects.mockResolvedValue([])
   taxonomyApiMock.subjects.mockResolvedValue({ subjects: [] })
   taxonomyApiMock.tree.mockResolvedValue({ tree: [] })
   errorsApiMock.list.mockResolvedValue({ items: [] })
@@ -85,6 +92,18 @@ function firstQuestionsArg() {
   return quizApiMock.questions.mock.calls[0][0]
 }
 
+describe('Quiz 页错题重练', () => {
+  it('错题库页签使用学习者组件，不请求管理员复核队列', async () => {
+    await renderQuiz('/quiz?tab=review')
+
+    await waitFor(() => expect(document.querySelector('.v3-quiz-review-main')).toBeInTheDocument())
+    expect(document.querySelector('.v3-quiz-review-main')).toHaveTextContent('错题库')
+    expect(document.querySelector('.v3-quiz-review-side')).toHaveTextContent('我的收藏')
+    expect(quizApiMock.reviewQueue).not.toHaveBeenCalled()
+    expect(quizApiMock.reviewAction).not.toHaveBeenCalled()
+  })
+})
+
 describe('Quiz 页 kp_id 知识点级精确刷题', () => {
   it('URL 带 kp_id 时，按知识点级透传 kp_id 调 questions 接口', async () => {
     quizApiMock.questions.mockResolvedValue({
@@ -96,6 +115,8 @@ describe('Quiz 页 kp_id 知识点级精确刷题', () => {
     await renderQuiz('/quiz?subject=数电&chapter=逻辑门&kp_id=89&kp_name=布尔代数')
 
     const arg = firstQuestionsArg()
+    expect(quizApiMock.reviewQueue).not.toHaveBeenCalled()
+    expect(quizApiMock.reviewAction).not.toHaveBeenCalled()
     // 核心契约：kp_id 必须原样透传给后端（后端按 kp_id 精确筛题）
     expect(String(arg.kp_id)).toBe('89')
   })
@@ -134,6 +155,8 @@ describe('Quiz 页向后兼容（无 kp_id 时行为不变）', () => {
     await renderQuiz('/quiz?subject=数学&chapter=行列式')
 
     const arg = firstQuestionsArg()
+    expect(quizApiMock.reviewQueue).not.toHaveBeenCalled()
+    expect(quizApiMock.reviewAction).not.toHaveBeenCalled()
     expect(arg.subject).toBe('数学')
     expect(arg.chapter).toBe('行列式')
     // 降级路径核心：绝不携带 kp_id

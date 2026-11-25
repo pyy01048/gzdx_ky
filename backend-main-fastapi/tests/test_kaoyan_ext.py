@@ -10,6 +10,7 @@
 4. GET /api/kaoyan/analysis/score-detail/{id} 返回多年分数/录取/趋势结构；
 5. POST /api/kaoyan/analysis/auto-adjust 三档分箱正确 + 422 校验。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,6 +19,8 @@ from database import SessionLocal
 from main import app
 from services.kaoyan import reform_detector
 from tests.asgi_client import ASGIClient
+
+from models import KaoyanAdmissionDetail
 
 client = ASGIClient(app)
 
@@ -37,8 +40,15 @@ def _seed(db_schema):
         # 幂等：测试库跨轮持久，固定 ID 的种子必须先清（含子表）再建，
         # 否则第二轮直接 kaoyan_schools_pkey 冲突（实测 30 例 UniqueViolation）。
         _SENTINEL_SCHOOLS = (9001, 9002)
-        db.query(KaoyanScoreline).filter(KaoyanScoreline.school_id.in_(_SENTINEL_SCHOOLS)).delete(synchronize_session=False)
-        db.query(KaoyanAdmission).filter(KaoyanAdmission.school_id.in_(_SENTINEL_SCHOOLS)).delete(synchronize_session=False)
+        db.query(KaoyanScoreline).filter(KaoyanScoreline.school_id.in_(_SENTINEL_SCHOOLS)).delete(
+            synchronize_session=False
+        )
+        db.query(KaoyanAdmissionDetail).filter(KaoyanAdmissionDetail.school_id.in_(_SENTINEL_SCHOOLS)).delete(
+            synchronize_session=False
+        )
+        db.query(KaoyanAdmission).filter(KaoyanAdmission.school_id.in_(_SENTINEL_SCHOOLS)).delete(
+            synchronize_session=False
+        )
         db.query(KaoyanMajor).filter(KaoyanMajor.school_id.in_(_SENTINEL_SCHOOLS)).delete(synchronize_session=False)
         db.query(KaoyanSchool).filter(KaoyanSchool.id.in_(_SENTINEL_SCHOOLS)).delete(synchronize_session=False)
         db.commit()
@@ -51,24 +61,75 @@ def _seed(db_schema):
         db.add(m1)
         db.flush()
         # 分数线：2024/2025 两年
-        db.add_all([
-            KaoyanScoreline(school_id=9001, major_id=9101, year=2024, total_line=330,
-                            politics_line=55, english_line=55, math_line=80,
-                            major_line=90, national_line=273, retest_line=335,
-                            line_type="复试线"),
-            KaoyanScoreline(school_id=9001, major_id=9101, year=2025, total_line=340,
-                            politics_line=55, english_line=55, math_line=85,
-                            major_line=90, national_line=275, retest_line=345,
-                            line_type="复试线"),
-        ])
-        db.add_all([
-            KaoyanAdmission(school_id=9001, major_id=9101, year=2024, enroll_count=30,
-                            retest_count=45, admit_count=30, admit_avg_score=355,
-                            major_avg_score=110, retest_ratio=1.5),
-            KaoyanAdmission(school_id=9001, major_id=9101, year=2025, enroll_count=30,
-                            retest_count=42, admit_count=30, admit_avg_score=362,
-                            major_avg_score=112, retest_ratio=1.4),
-        ])
+        db.add_all(
+            [
+                KaoyanScoreline(
+                    school_id=9001,
+                    major_id=9101,
+                    year=2024,
+                    total_line=330,
+                    politics_line=55,
+                    english_line=55,
+                    math_line=80,
+                    major_line=90,
+                    national_line=273,
+                    retest_line=335,
+                    line_type="复试线",
+                ),
+                KaoyanScoreline(
+                    school_id=9001,
+                    major_id=9101,
+                    year=2025,
+                    total_line=340,
+                    politics_line=55,
+                    english_line=55,
+                    math_line=85,
+                    major_line=90,
+                    national_line=275,
+                    retest_line=345,
+                    line_type="复试线",
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                KaoyanAdmission(
+                    school_id=9001,
+                    major_id=9101,
+                    year=2024,
+                    enroll_count=30,
+                    retest_count=45,
+                    admit_count=30,
+                    admit_avg_score=355,
+                    major_avg_score=110,
+                    retest_ratio=1.5,
+                ),
+                KaoyanAdmission(
+                    school_id=9001,
+                    major_id=9101,
+                    year=2025,
+                    enroll_count=30,
+                    retest_count=42,
+                    admit_count=30,
+                    admit_avg_score=362,
+                    major_avg_score=112,
+                    retest_ratio=1.4,
+                ),
+            ]
+        )
+        db.add(
+            KaoyanAdmissionDetail(
+                school_id=9001,
+                year=2025,
+                exam_no="TEST-2025-001",
+                name="测试考生",
+                major_name="电子信息",
+                score_initial=350,
+                score_retest=90,
+                score_total=440,
+                data_source="test:admission-detail:9001",
+            )
+        )
         db.commit()
     finally:
         db.close()
@@ -80,6 +141,7 @@ def _add_notices(rows):
     """直接往 kaoyan_notices 表插数据（原生 DDL 表）。"""
     from services.kaoyan.reform_detector import ensure_reforms_schema
     from services.kaoyan.spider_notices import ensure_notices_schema
+
     db = SessionLocal()
     try:
         ensure_notices_schema(db)
@@ -90,10 +152,11 @@ def _add_notices(rows):
         # 前置清理：uq_notice(school_name,title,publish_date) 撞历史残留行
         from sqlalchemy import text as _t
 
-        for title, school_id, school_name, ntype, date in rows:
-            db.execute(_t(
-                "DELETE FROM kaoyan_notices WHERE school_name=:s AND title=:t AND publish_date=:d"),
-                {"s": school_name, "t": title, "d": date})
+        for title, _school_id, school_name, _ntype, date in rows:
+            db.execute(
+                _t("DELETE FROM kaoyan_notices WHERE school_name=:s AND title=:t AND publish_date=:d"),
+                {"s": school_name, "t": title, "d": date},
+            )
         # 派生表同步清理：reform 行按 detail_hash 去重，残留会让 inserted=0
         db.execute(_t("DELETE FROM kaoyan_reforms WHERE school_name IN ('测试大学A','测试大学B')"))
         db.commit()
@@ -106,8 +169,7 @@ def _add_notices(rows):
             conn.execute(
                 "INSERT INTO kaoyan_notices (school_id, school_name, title, "
                 "notice_type, publish_date, url, source) VALUES (?,?,?,?,?,?,?)",
-                (school_id, school_name, title, ntype, date,
-                 "https://example.com/n", "test"),
+                (school_id, school_name, title, ntype, date, "https://example.com/n", "test"),
             )
         conn.commit()
     finally:
@@ -117,16 +179,19 @@ def _add_notices(rows):
 # --------------------------------------------------------------------------- #
 # 1. 分类纯函数
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("title,expect", [
-    ("2026年计算机学院初试科目调整公告", "改考科目"),
-    ("关于改用全国统考数学一的说明", "改考科目"),
-    ("XX专业2026年暂停招生的通知", "停招"),
-    ("新增人工智能专业硕士点的公示", "新增专业"),
-    ("2026年硕士研究生招生考试自命题科目考试大纲调整", "大纲调整"),
-    ("初试参考书目变更说明", "参考书变更"),
-    ("复试科目及形式调整的通知", "复试调整"),
-    ("全日制硕士学制由两年调整为三年的公告", "学制/学费调整"),
-])
+@pytest.mark.parametrize(
+    "title,expect",
+    [
+        ("2026年计算机学院初试科目调整公告", "改考科目"),
+        ("关于改用全国统考数学一的说明", "改考科目"),
+        ("XX专业2026年暂停招生的通知", "停招"),
+        ("新增人工智能专业硕士点的公示", "新增专业"),
+        ("2026年硕士研究生招生考试自命题科目考试大纲调整", "大纲调整"),
+        ("初试参考书目变更说明", "参考书变更"),
+        ("复试科目及形式调整的通知", "复试调整"),
+        ("全日制硕士学制由两年调整为三年的公告", "学制/学费调整"),
+    ],
+)
 def test_classify_reform_title(title, expect):
     result = reform_detector.classify_reform_title(title)
     assert (result["change_type"] if result else None) == expect
@@ -140,12 +205,14 @@ def test_classify_normal_notice_returns_none():
 # 2. 扫描 + 幂等
 # --------------------------------------------------------------------------- #
 def test_scan_creates_and_dedups():
-    _add_notices([
-        ("计算机学院2026年初试科目调整公告", 9001, "测试大学A", "公告", "2025-09-01"),
-        ("软件工程专业暂停招生", 9001, "测试大学A", "公告", "2025-09-02"),
-        ("关于新增网络空间安全专业硕士点的公示", 9002, "测试大学B", "公告", "2025-09-03"),
-        ("国庆节放假安排", 9002, "测试大学B", "公告", "2025-09-04"),
-    ])
+    _add_notices(
+        [
+            ("计算机学院2026年初试科目调整公告", 9001, "测试大学A", "公告", "2025-09-01"),
+            ("软件工程专业暂停招生", 9001, "测试大学A", "公告", "2025-09-02"),
+            ("关于新增网络空间安全专业硕士点的公示", 9002, "测试大学B", "公告", "2025-09-03"),
+            ("国庆节放假安排", 9002, "测试大学B", "公告", "2025-09-04"),
+        ]
+    )
     db = SessionLocal()
     try:
         r1 = reform_detector.scan_notices_for_reforms(db)
@@ -197,6 +264,82 @@ def test_score_detail_shape():
     assert r404.status_code == 404
 
 
+def test_analysis_heatmap_averages_are_not_row_multiplied():
+    db = SessionLocal()
+    school_ids = (9003, 9004)
+    major_ids = (9201, 9202, 9203, 9204)
+    try:
+        db.query(KaoyanScoreline).filter(KaoyanScoreline.school_id.in_(school_ids)).delete(synchronize_session=False)
+        db.query(KaoyanAdmission).filter(KaoyanAdmission.school_id.in_(school_ids)).delete(synchronize_session=False)
+        db.query(KaoyanMajor).filter(KaoyanMajor.id.in_(major_ids)).delete(synchronize_session=False)
+        db.query(KaoyanSchool).filter(KaoyanSchool.id.in_(school_ids)).delete(synchronize_session=False)
+        db.add_all(
+            [
+                KaoyanSchool(id=9003, name="热力测试甲", province="热力测试省"),
+                KaoyanSchool(id=9004, name="热力测试乙", province="热力测试省"),
+            ]
+        )
+        db.flush()
+        db.add_all(
+            [
+                KaoyanMajor(id=9201, school_id=9003, code="9201", name="甲专业一"),
+                KaoyanMajor(id=9202, school_id=9003, code="9202", name="甲专业二"),
+                KaoyanMajor(id=9203, school_id=9004, code="9203", name="乙专业一"),
+                KaoyanMajor(id=9204, school_id=9004, code="9204", name="乙专业二"),
+            ]
+        )
+        db.flush()
+        db.add_all(
+            [
+                KaoyanScoreline(school_id=9003, major_id=9201, year=2025, total_line=400),
+                KaoyanScoreline(school_id=9003, major_id=9202, year=2025, total_line=400),
+                KaoyanScoreline(school_id=9004, major_id=9203, year=2025, total_line=500),
+                KaoyanAdmission(school_id=9003, major_id=9201, year=2025, enroll_count=10, retest_ratio=1),
+                KaoyanAdmission(school_id=9004, major_id=9203, year=2025, enroll_count=10, retest_ratio=3),
+                KaoyanAdmission(school_id=9004, major_id=9204, year=2025, enroll_count=10, retest_ratio=3),
+            ]
+        )
+        db.commit()
+
+        r = client.get("/api/kaoyan/analysis/heatmap", params={"year": 2025})
+        assert r.status_code == 200
+        row = next(item for item in r.json()["items"] if item["name"] == "热力测试省")
+        assert row["value"] == 2
+        assert row["avg_line"] == 433.3
+        assert row["avg_retest_ratio"] == 2.33
+    finally:
+        db.rollback()
+        db.query(KaoyanScoreline).filter(KaoyanScoreline.school_id.in_(school_ids)).delete(synchronize_session=False)
+        db.query(KaoyanAdmission).filter(KaoyanAdmission.school_id.in_(school_ids)).delete(synchronize_session=False)
+        db.query(KaoyanMajor).filter(KaoyanMajor.id.in_(major_ids)).delete(synchronize_session=False)
+        db.query(KaoyanSchool).filter(KaoyanSchool.id.in_(school_ids)).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
+def test_analysis_scatter_exposes_public_school_id():
+    r = client.get("/api/kaoyan/analysis/scatter", params={"year": 2025})
+    assert r.status_code == 200
+    rows = r.json()["items"]
+    assert len(rows) == 1
+    assert rows[0]["id"] == 9001
+    assert rows[0]["name"] == "测试大学A"
+    assert rows[0]["enroll"] == 30
+    assert rows[0]["admit_avg"] == 362
+
+
+def test_public_admission_details_are_anonymized():
+    r = client.get("/api/kaoyan/schools/9001/admissions/details")
+    assert r.status_code == 200
+    rows = r.json()
+    assert rows == [{"year": 2025, "major_name": "电子信息", "score_total": 440}]
+    assert all(not ({"id", "exam_no", "name", "data_source"} & row.keys()) for row in rows)
+
+    by_name = client.get("/api/kaoyan/schools/9001/admissions/details", params={"name": "测试考生"})
+    assert by_name.status_code == 200
+    assert by_name.json() == rows
+
+
 # --------------------------------------------------------------------------- #
 # 5. 自动调整
 # --------------------------------------------------------------------------- #
@@ -204,8 +347,7 @@ def test_auto_adjust_buckets():
     # A 校近两年录取均分 355/362 → 基准约 358.5（加权近期）
     # 390 分：gap≈+31.5 → 保；340 分：gap≈-18.5 → 冲
     for score, expect_bucket in ((390, "safe"), (340, "rush")):
-        r = client.post("/api/kaoyan/analysis/auto-adjust",
-                        json={"user_score": score})
+        r = client.post("/api/kaoyan/analysis/auto-adjust", json={"user_score": score})
         assert r.status_code == 200
         d = r.json()
         assert d["buckets"][expect_bucket], f"score={score} 应命中 {expect_bucket}"

@@ -5,13 +5,14 @@ from typing import List, Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, File, HTTPException, Query
-from models import User, Word, WordDeck
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id, scoped  # B4 行级隔离：词库/单词均严格本人
 from utils.security import current_user
 from utils.timeutil import local_today
+
+from models import User, Word, WordDeck
 
 router = APIRouter(prefix="/api/words", tags=["单词词库"])
 
@@ -215,12 +216,26 @@ def _load_word_examples(db, word_ids) -> dict:
     return out
 
 
+# word_roots 是静态词根参考数据（变更极低频），但列表每页都会全量装载它——
+# 词库 5952 词、page_size=200 时一次页面加载就要全表扫描 30 遍。
+# 这里加进程内 TTL 缓存（默认 60s），把重复扫描降为每进程每 60s 一次。
+_WORD_ROOTS_CACHE: dict = {"data": None, "ts": 0.0}
+_WORD_ROOTS_TTL = 60.0
+
+
 def _load_word_roots(db) -> dict:
-    """把 word_roots 全量装载为「例词 → 词根条目」反查索引。
+    """把 word_roots 全量装载为「例词 → 词根条目」反查索引（进程内 TTL 缓存）。
 
     Returns:
         ``{example_word_lower: {"morpheme": str, "meaning_cn": str}}``。
     """
+    import time
+
+    now = time.monotonic()
+    cached = _WORD_ROOTS_CACHE["data"]
+    if cached is not None and (now - _WORD_ROOTS_CACHE["ts"]) < _WORD_ROOTS_TTL:
+        return cached
+
     from sqlalchemy import text
 
     try:
@@ -237,6 +252,8 @@ def _load_word_roots(db) -> dict:
             key = str(ew).strip().lower()
             if key and key not in by_example_word:
                 by_example_word[key] = entry
+    _WORD_ROOTS_CACHE["data"] = by_example_word
+    _WORD_ROOTS_CACHE["ts"] = time.monotonic()
     return by_example_word
 
 
@@ -414,10 +431,15 @@ def list_words(
     search: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
+    include_extra: bool = Query(True, description="是否携带 extra（近义词/短语，占列表载荷约八成）"),
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    """获取单词列表，支持按词库/状态/标签/关键词筛选和分页（B4：只看本人单词）。"""
+    """获取单词列表，支持按词库/状态/标签/关键词筛选和分页（B4：只看本人单词）。
+
+    include_extra=false 时省略 extra 字段：词库页批量拉全量只用于队列计算，
+    extra 仅在单行展开/当前学习词时展示，可按需再调 GET /api/words/{id} 补齐。
+    """
     q = db.query(Word).filter(scoped(Word, user))
     if deck_id is not None:
         q = q.filter(Word.deck_id == deck_id)
@@ -440,6 +462,9 @@ def list_words(
     examples = _load_word_examples(db, [w.id for w in rows])
     root_by_word = _load_word_roots(db)
     items = [_word_out(w, db, examples, root_by_word) for w in rows]
+    if not include_extra:
+        for it in items:
+            it.pop("extra", None)
     return {
         "items": items,
         "total": total,

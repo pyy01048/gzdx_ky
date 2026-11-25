@@ -247,6 +247,7 @@ export default function KaoyanMap() {
   const avgRatio = useMemo(() => meanOf(items, 'avg_retest_ratio'), [items])
   const activeMapName = hoverName || pinnedName
   const activeItem = activeMapName ? itemByMapName.get(activeMapName) : null
+  const pinnedItem = pinnedName ? itemByMapName.get(pinnedName) : null
   const activeFeature = activeMapName && projection
     ? projection.features.find((feature) => feature.name === activeMapName)
     : null
@@ -312,11 +313,11 @@ export default function KaoyanMap() {
             </div>
             <div className="v3-ky-hero__stat">
               <b>{avgLine == null ? '—' : num(avgLine, 1)}</b>
-              <span>平均分数线</span>
+              <span>省份均分均值</span>
             </div>
             <div className="v3-ky-hero__stat">
               <b>{avgRatio == null ? '—' : num(avgRatio, 2)}</b>
-              <span>平均复录比</span>
+              <span>省份复录比均值</span>
             </div>
           </div>
         </div>
@@ -523,8 +524,18 @@ export default function KaoyanMap() {
               </aside>
             </div>
 
+            {pinnedItem ? (
+              <Alert tone="info" className="v3-ky-map-alert">
+                已选择 {pinnedItem.name}，共 {pinnedItem.value ?? '—'} 所院校。
+                <Link className="v3-btn v3-btn--tonal" to={`/kaoyan/schools?province=${encodeURIComponent(pinnedItem.name)}`}>
+                  查看该省院校 <ArrowRight size={14} />
+                </Link>
+              </Alert>
+            ) : null}
+
             <p className="v3-ky-map-help">
               悬停查看数据，点击省份可固定高亮；键盘可用 Tab 聚焦、Enter 固定。
+              固定省份后可进入院校库并自动应用该省筛选。
               底图和省份边界来自本地 GeoJSON，数据只做区域聚合，不代表官方口径。
             </p>
           </>

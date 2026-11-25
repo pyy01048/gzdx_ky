@@ -20,8 +20,20 @@
  *     （本地是 UI 的即时反馈源，不能因为网络抖动就回滚用户操作）。
  * ========================================================================== */
 
-import { favoritesApi } from './client'
+import { favoritesApi, fetchAllPages } from './client'
 import { ukey, currentUid, readMigrated } from '../utils/userKeys'
+
+/* 账号代际：setUser 每次广播（包括重设同一 uid），旧请求不得跨登录会话回写。 */
+let accountGeneration = 0
+if (typeof window !== 'undefined') {
+  window.addEventListener('userkeys:uid-changed', () => { accountGeneration += 1 })
+}
+function accountAtStart() {
+  return { uid: currentUid(), generation: accountGeneration }
+}
+function isCurrentAccount(account) {
+  return account.uid === currentUid() && account.generation === accountGeneration
+}
 
 /* P4：两键均按登录账号隔离（实际读写 `quiz_favorites_v9:{uid}`），
    首读时 readMigrated 把旧全局键一次性迁给当前用户并删旧键。 */
@@ -102,18 +114,18 @@ export function pushFav(qid, snapshot) {
     },
   }
   if (!Number.isFinite(body.item_id)) return
-  const uidAtStart = currentUid()
+  const account = accountAtStart()
   favoritesApi
     .add(body)
     .then(() => {
-      if (currentUid() !== uidAtStart) return /* 响应属于旧账号：丢弃 */
+      if (!isCurrentAccount(account)) return /* 响应属于旧账号会话：丢弃 */
       pendingSet().delete(String(qid))
       markSynced(qid)
     })
     .catch(() => {
       // 不弹 toast：收藏的即时反馈由本地态负责，网络失败不该打断刷题节奏。
       // 记进 pending，下次 hydrate / 迁移时补推。
-      if (currentUid() !== uidAtStart) return
+      if (!isCurrentAccount(account)) return
       pendingSet().add(String(qid))
     })
 }
@@ -122,12 +134,15 @@ export function pushFav(qid, snapshot) {
 export function removeFav(qid) {
   const id = Number(qid)
   if (!Number.isFinite(id)) return
+  const account = accountAtStart()
   favoritesApi
     .remove(ITEM_TYPE, id)
-    .then(() => unmarkSynced(qid))
-    .catch(() => {
-      /* 后端本来就没有这条也要视为成功语义 —— DELETE 404 无副作用 */
-      unmarkSynced(qid)
+    .then(() => {
+      if (isCurrentAccount(account)) unmarkSynced(qid)
+    })
+    .catch((err) => {
+      /* 仅“明确不存在”可按删除成功处理；500/断网等必须保留 synced 标记。 */
+      if (err?.status === 404 && isCurrentAccount(account)) unmarkSynced(qid)
     })
 }
 
@@ -162,17 +177,23 @@ function unmarkSynced(qid) {
  *          localOnly>0 表示存在历史未同步的收藏，可继续调 migrateLocal()。
  */
 export async function hydrateFavs() {
+  const account = accountAtStart()
   const local = loadFavs()
   let items = []
   try {
-    // 后端上限 200/页；收藏量级是个人级，一页足够。若真超了，
-    // 分页拉取也不会丢 —— 这里保守只拉第一页但**不做删除**，
-    // 超出的本地项仍保留在缓存里。
-    const res = await favoritesApi.list({ item_type: ITEM_TYPE, limit: 200 })
-    items = res?.items || []
+    // 后端 favorites 使用 limit/offset 分页；逐页取全量，避免只同步前 200 条。
+    items = await fetchAllPages(
+      ({ page, page_size }) => favoritesApi.list({
+        item_type: ITEM_TYPE,
+        limit: page_size,
+        offset: (page - 1) * page_size,
+      }),
+      { keys: ['items'] },
+    )
   } catch {
     return { serverCount: 0, localOnly: 0 } // 后端不可用：保留本地态，纯离线可用
   }
+  if (!isCurrentAccount(account)) return { serverCount: 0, localOnly: 0 }
 
   const merged = { ...local }
   let added = 0
@@ -205,6 +226,7 @@ export async function hydrateFavs() {
 
 /** 把「本地有、后端无」的历史收藏一次性推上去。 */
 export async function migrateLocalFavs() {
+  const account = accountAtStart()
   const local = loadFavs()
   const syncedMap = readSynced()
   const todo = Object.keys(local).filter((k) => !syncedMap[k] || pendingSet().has(k))
@@ -225,10 +247,12 @@ export async function migrateLocalFavs() {
           source: 'quiz-migrated',
         },
       })
+      if (!isCurrentAccount(account)) break
       markSynced(k)
       pendingSet().delete(String(k))
       ok += 1
     } catch {
+      if (!isCurrentAccount(account)) break
       pendingSet().add(String(k))
     }
   }
@@ -237,6 +261,7 @@ export async function migrateLocalFavs() {
 
 /** 仅供测试：重置内存态。 */
 export function __resetFavCache() {
+  accountGeneration += 1
   cache = null
   cacheUid = null
   synced = null

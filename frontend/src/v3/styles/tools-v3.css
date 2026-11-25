@@ -9,6 +9,15 @@
   min-width: 0;
 }
 
+/* P1（F-06 / QA-30）：页头固定在滚动容器顶部，初始视口始终有稳定可见的 H1，
+   不再因为页面自动滚动而被顶出视口。 */
+.v3-tools > .v3-page-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--v3-surface, #fff);
+}
+
 .v3-tools-section {
   display: flex;
   flex-direction: column;
@@ -468,6 +477,18 @@
 }
 
 /* ---------------- 响应式（移动优先，向上加列） ---------------- */
+@media (max-width: 760px), (hover: none) {
+  .v3-tools-swap,
+  .v3-bit {
+    width: var(--v3-touch);
+    height: var(--v3-touch);
+  }
+
+  .v3-bit-idx {
+    width: var(--v3-touch);
+  }
+}
+
 @media (min-width: 640px) {
   .v3-tools-conv {
     grid-template-columns: 1fr auto 1fr;

@@ -5,7 +5,7 @@
   "description": "考研备考学习平台 - 前端应用",
   "scripts": {
     "dev": "vite --port 5173",
-    "build": "vite build",
+    "build": "vite build && node scripts/check-tool-chunks.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "e2e": "playwright test",

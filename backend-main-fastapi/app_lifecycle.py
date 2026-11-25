@@ -19,8 +19,9 @@ from contextlib import asynccontextmanager
 
 from database import Base, SessionLocal, engine
 from fastapi import FastAPI
-from models import AIProvider, CustomLink, PlatformConfig
 from utils.logger import get_logger
+
+from models import AIProvider, CustomLink, PlatformConfig
 
 logger = get_logger("main.lifecycle")
 
@@ -48,6 +49,15 @@ async def lifespan(app: FastAPI):
         logger.info("[启动] 检索链路预热已发起（后台线程）")
     except Exception as e:  # noqa: BLE001
         logger.warning("[启动] 检索链路预热发起失败（不影响主服务）: %s", e)
+    # 热门数据路径冷启动预热：连接池 / PG 计划缓存 / 操作系统页缓存提前预热，
+    # 消除部署/重启后首调 150~300ms 冷 spike（dashboard/schools/quiz 等只读端点）。
+    try:
+        from services.hot_path_warmup import start_hot_path_warmup
+
+        start_hot_path_warmup()
+        logger.info("[启动] 热门数据路径预热已发起（后台线程）")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[启动] 热门数据路径预热发起失败（不影响主服务）: %s", e)
     Base.metadata.create_all(bind=engine)
     # 迁移账本（完善方案 05 §3.1）：create_all 只兜底"全新库"，结构变更一律走
     # core/sql 编号脚本。这里补跑未入账脚本（已入账的秒过）。存量库在账本为空时

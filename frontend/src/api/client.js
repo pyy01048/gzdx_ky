@@ -147,6 +147,18 @@ export function getBackendState() {
   return backendState
 }
 
+/**
+ * 后端在线与否的唯一派生口径：只有 health 不可达（offline）才算离线。
+ * degraded（窗口内有失败接口）仍属「后端在线，局部异常」，unknown 由调用方
+ * 用首屏 hydrate 结果做临时兜底，页面不得各自解释三态。
+ */
+export function isBackendOnline(state = backendState) {
+  const key = String(state?.state || 'unknown')
+  if (key === 'offline') return false
+  if (key === 'online' || key === 'degraded') return true
+  return null
+}
+
 /** 订阅三态变化，返回取消订阅函数（立即回放一次当前快照）。 */
 export function subscribeBackendState(fn) {
   if (typeof fn !== 'function') return () => {}
@@ -624,6 +636,13 @@ export const quizApi = {
   // P0-2 主观题 AI 批改：POST /api/quiz/grade-subjective
   // 请求 {question_id, my_answer, max_score}；响应 {score, max_score, evaluation, reference_answer}
   gradeSubjective: (body) => request('/quiz/grade-subjective', { method: 'POST', body }),
+  // 题库复核队列（管理员）：GET /api/quiz/review-queue?limit=&subject=&status=
+  // 响应 {total, items:[{id,content,options,answer,analysis,subject,question_type,
+  //        is_available,status,validation_errors,classify_confidence,...}]}
+  reviewQueue: (params) => request('/quiz/review-queue', { params }),
+  // 复核处理（管理员）：POST /api/quiz/review/{id}
+  // body={action: accept|restore|reject, content?, options?, answer?, analysis?, subject?, ...}
+  reviewAction: (id, body) => request(`/quiz/review/${id}`, { method: 'POST', body }),
   // P1-E 多Agent编排答疑：POST /api/ai/tutoring/orchestrated
   // 请求 {question_id, my_answer?, subject?}；响应 {answer, trace, confidence, degraded}
   orchestratedTutoring: (body) => request('/ai/tutoring/orchestrated', { method: 'POST', body, timeout: AI_TIMEOUT }),
@@ -696,6 +715,7 @@ export const errorsApi = {
   batchDelete: (ids) => request('/errors/batch-delete', { method: 'POST', body: ids }),
 
   list: (params) => request('/errors', { params }),
+  get: (id) => request(`/errors/${id}`),
   // 错题统计（唯一口径：与仪表盘 stats.active_errors/due_errors 同一聚合函数）
   stats: (params) => request('/errors/stats', { params }),
   create: (body) => request('/errors', { method: 'POST', body }),
@@ -943,9 +963,17 @@ export const taxonomyApi = {
     request(`/taxonomy/subjects/${encodeURIComponent(subject)}`, { method: 'PUT', body }),
   removeSubject: (subject) =>
     request(`/taxonomy/subjects/${encodeURIComponent(subject)}`, { method: 'DELETE' }),
-  tree: (subject, includeExtension = true, includeEmpty = false) =>
-    request('/taxonomy/tree', { params: { subject, include_extension: includeExtension, include_empty: includeEmpty } }),
-  knowledgePoints: (params) => request('/taxonomy/knowledge-points', { params }),
+  // includePoints 默认 true，保持其他调用方的旧契约；轻量首屏显式传 false。
+  tree: (subject, includeExtension = true, includeEmpty = false, includePoints = true) =>
+    request('/taxonomy/tree', {
+      params: {
+        subject,
+        include_extension: includeExtension,
+        include_empty: includeEmpty,
+        include_points: includePoints,
+      },
+    }),
+  knowledgePoints: (params, options = {}) => request('/taxonomy/knowledge-points', { params, ...options }),
   knowledgePoint: (id) => request(`/taxonomy/knowledge-points/${id}`),
   createKnowledgePoint: (body) => request('/taxonomy/knowledge-points', { method: 'POST', body }),
   updateKnowledgePoint: (id, body) => request(`/taxonomy/knowledge-points/${id}`, { method: 'PUT', body }),

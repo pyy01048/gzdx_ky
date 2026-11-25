@@ -135,6 +135,24 @@ def _option_key_list(options: Any) -> tuple[list[str], list[Issue]]:
     return keys, issues
 
 
+def _option_texts(options: Any) -> list[str]:
+    """抽取选项正文（与 _option_key_list 相同的兼容口径），用于文本级校验。"""
+    out: list[str] = []
+    if not isinstance(options, list | tuple):
+        return out
+    for opt in options:
+        if isinstance(opt, Mapping):
+            text = opt.get("text")
+        else:
+            raw = str(opt or "").strip()
+            m = re.match(r"^([A-Za-z])[.、:：)]\s*(.*)$", raw)
+            text = m.group(2) if m else raw
+        txt = str(text or "").strip()
+        if txt:
+            out.append(txt)
+    return out
+
+
 def _answer_keys(answer: Any) -> list[str]:
     """把答案归一成大写 key 列表（'AB' / 'A,B' / 'A、B' / 'a b' 都接受）。"""
     raw = str(answer or "").strip()
@@ -161,6 +179,41 @@ def validate_question(q: Mapping[str, Any], *, require_analysis: bool = False) -
     analysis = q.get("analysis")
     keys, opt_issues = _option_key_list(q.get("options"))
     issues += opt_issues
+
+    # —— 选项文本级缺陷（历史数据实证：OCR 丢字会让多个选项读起来一模一样，
+    #    或把上一题的选项拼进题干，学生无法作答、判分必然错）—— #
+    texts = _option_texts(q.get("options"))
+    norm_texts = [_norm(t) for t in texts if not _is_placeholder(t)]
+    if len(norm_texts) != len(set(norm_texts)):
+        issues.append(Issue("OPTION_TEXT_DUP", "选项正文重复，疑 OCR 丢字"))
+    # 题干逐字包含 >=2 个选项正文 → 上一题选项被拼进本题题干（跨题串行）
+    if norm_texts and content:
+        norm_content = _norm(content)
+        leaked = [t for t in norm_texts if len(t) >= 4 and t in norm_content]
+        if len(set(leaked)) >= 2:
+            issues.append(Issue("STEM_OPTION_LEAK", f"题干包含选项正文：{leaked[:3]}，疑跨题串行"))
+    # 题干内联出现 3 个及以上「A. 正文」选项标记 → 选项被抄进了题干
+    # （要求标记后紧跟 >=1 个非 A-F 字符，排除「站 A、B、C、D」这类普通枚举）
+    marker_keys = {m.group(1) for m in re.finditer(r"(?:^|[\s（(：:])([A-F])[.、．)）]\s*[^\sA-F]", content)}
+    if len(marker_keys) >= 3:
+        issues.append(Issue("STEM_OPTION_LEAK", f"题干内联了选项标记 {sorted(marker_keys)}，疑选项抄进题干"))
+
+    # —— 图形/公式缺失：题目依赖图或公式但内容里拿不到，作答只能靠猜 —— #
+    images = q.get("images")
+    has_image = bool(images) and images not in ("null", "[]")
+    if q.get("figure_missing") and not has_image:
+        issues.append(Issue("FIGURE_MISSING", "题干引用图表但无配图", "warn"))
+    if (
+        qtype in {"single", "multi", "multiple"}
+        and not has_image
+        and len(_norm(content)) <= 20
+        and re.match(
+            r"^(设[，,]?则|则|是|曲线|函数|极限|中正确|中错误|已知[，,]|已知则|级数|求|正确的有|若[，,]|当[，,])",
+            content,
+        )
+        and not re.match(r"^(下列|以下|关于)", content)
+    ):
+        issues.append(Issue("STEM_FORMULA_LOST", "公式在 OCR 中丢失，题干只剩悬空残句", "warn"))
 
     if qtype in {"single", "multi", "multiple"}:
         if len(keys) < 2:
