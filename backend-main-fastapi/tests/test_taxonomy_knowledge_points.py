@@ -88,8 +88,8 @@ def test_keyword_and_json_question_type_are_server_filters(memory_db):
     _add(db, "极限相似", chapter="另一章", types=["essay"])
 
     by_keyword = _list(db, keyword="极限")
-    assert by_keyword["total"] == 2
-    assert {x["name"] for x in by_keyword["items"]} == {"极限存在", "极限相似"}
+    assert by_keyword["total"] == 3
+    assert {x["name"] for x in by_keyword["items"]} == {"极限存在", "左右极限", "极限相似"}
 
     by_type = _list(db, question_type="single")
     assert [x["name"] for x in by_type["items"]] == ["极限存在"], "JSON 元素必须精确匹配，不能命中 single_choice"
