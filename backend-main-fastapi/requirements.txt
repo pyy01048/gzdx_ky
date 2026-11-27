@@ -35,7 +35,7 @@ httpx>=0.27,<0.29
 trafilatura>=2.0,<3
 readability-lxml>=0.8.1
 lxml>=4.9
-aiofiles==23.2.1
+aiofiles==25.1.0
 PyJWT==2.15.0
 # 凭据落库加密（utils/secret_codec.py：AES-256-GCM 保护 platform_configs 的网盘 token/app_key/secret_key）
 cryptography==50.0.0
