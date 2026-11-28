@@ -83,6 +83,7 @@ def test_register_verify_login_full_loop(email_app, mail_out):
     assert len(mail_out) == 1 and "验证" in mail_out[0][1]
 
     from database import SessionLocal
+
     from models import User
 
     s = SessionLocal()
@@ -143,6 +144,7 @@ def test_forgot_password_branches_and_timing(email_app, mail_out):
     r = c.post("/api/auth/forgot-password", json={"email": "stu@example.com"})
     assert r.status_code == 200 and not mail_out
     from database import SessionLocal
+
     from models import AuthEvent
 
     s = SessionLocal()
@@ -220,6 +222,7 @@ def test_disable_requires_reason_and_blocks_login_with_reason(email_app, mail_ou
     _register(c)
     _verify(c, mail_out)
     from database import SessionLocal
+
     from models import User
 
     s = SessionLocal()
@@ -270,6 +273,7 @@ def test_admin_force_reset_email_mode_and_audit_events(email_app, mail_out):
     _register(c)
     _verify(c, mail_out)
     from database import SessionLocal
+
     from models import User
 
     s = SessionLocal()

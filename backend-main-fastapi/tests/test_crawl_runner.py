@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """``services/crawl/runner.py`` 单测：假抓取器 + 内存队列，不联网、不落生产库。"""
+
 from __future__ import annotations
 
 import os
@@ -42,8 +43,12 @@ class FakeFetcher:
         if url in self.results:
             return self.results[url]
         return FetchResult(
-            url=url, final_url=url, status=200, html=HTML,
-            content_type="text/html; charset=utf-8", elapsed=0.01,
+            url=url,
+            final_url=url,
+            status=200,
+            html=HTML,
+            content_type="text/html; charset=utf-8",
+            elapsed=0.01,
         )
 
 
@@ -90,14 +95,16 @@ def test_run_once_dedupes_same_page():
     url = "https://yz.example.edu.cn/2025/fenshuxian.html"
     index = MemoryPageIndex()
     queue = _queue_with([url])
-    stats = run_once(None, queue=queue, page_index=index, fetcher=FakeFetcher(),
-                     extract_fn=extract, classify_fn=classify_notice)
+    stats = run_once(
+        None, queue=queue, page_index=index, fetcher=FakeFetcher(), extract_fn=extract, classify_fn=classify_notice
+    )
     assert stats["fetched"] == 1
 
     # 同一 URL 再来一次（不同 source_key）→ 应判重
     queue2 = _queue_with([url])
-    stats2 = run_once(None, queue=queue2, page_index=index, fetcher=FakeFetcher(),
-                      extract_fn=extract, classify_fn=classify_notice)
+    stats2 = run_once(
+        None, queue=queue2, page_index=index, fetcher=FakeFetcher(), extract_fn=extract, classify_fn=classify_notice
+    )
     assert stats2["deduped"] == 1
     assert stats2["notices_written"] == 0
     assert len(index.records) == 1
@@ -105,11 +112,11 @@ def test_run_once_dedupes_same_page():
 
 def test_run_once_counts_failures():
     url = "https://yz.example.edu.cn/2025/boom.html"
-    failed = FetchResult(url=url, final_url=url, status=0, html="", content_type="",
-                         elapsed=0.01, error="robots_disallowed")
+    failed = FetchResult(
+        url=url, final_url=url, status=0, html="", content_type="", elapsed=0.01, error="robots_disallowed"
+    )
     queue = _queue_with([url])
-    stats = run_once(None, queue=queue, page_index=MemoryPageIndex(),
-                     fetcher=FakeFetcher({url: failed}))
+    stats = run_once(None, queue=queue, page_index=MemoryPageIndex(), fetcher=FakeFetcher({url: failed}))
     assert stats["failed"] == 1
     assert stats["fetched"] == 0
     assert any("robots_disallowed" in e for e in stats["errors"])
@@ -119,9 +126,16 @@ def test_run_once_counts_failures():
 def test_run_once_dry_run_writes_nothing():
     url = "https://yz.example.edu.cn/2025/fenshuxian.html"
     index = MemoryPageIndex()
-    stats = run_once(None, queue=_queue_with([url]), page_index=index,
-                     page_writer=NullPageWriter(), notice_writer=None,
-                     fetcher=FakeFetcher(), extract_fn=extract, classify_fn=classify_notice)
+    stats = run_once(
+        None,
+        queue=_queue_with([url]),
+        page_index=index,
+        page_writer=NullPageWriter(),
+        notice_writer=None,
+        fetcher=FakeFetcher(),
+        extract_fn=extract,
+        classify_fn=classify_notice,
+    )
     assert stats["notices_written"] == 0
     assert stats["pages_written"] == 0
     assert stats["fetched"] == 1
@@ -131,11 +145,16 @@ def test_run_once_skips_other_type_notices():
     html = "<html><body><p>关于开展学生公寓空调维修的通知</p></body></html>"
     url = "https://yz.example.edu.cn/2025/other.html"
     notices = MemoryNoticeWriter()
-    result = FetchResult(url=url, final_url=url, status=200, html=html,
-                         content_type="text/html", elapsed=0.01)
-    stats = run_once(None, queue=_queue_with([url]), page_index=MemoryPageIndex(),
-                     notice_writer=notices, fetcher=FakeFetcher({url: result}),
-                     extract_fn=extract, classify_fn=classify_notice)
+    result = FetchResult(url=url, final_url=url, status=200, html=html, content_type="text/html", elapsed=0.01)
+    stats = run_once(
+        None,
+        queue=_queue_with([url]),
+        page_index=MemoryPageIndex(),
+        notice_writer=notices,
+        fetcher=FakeFetcher({url: result}),
+        extract_fn=extract,
+        classify_fn=classify_notice,
+    )
     assert stats["fetched"] == 1
     assert stats["notices_written"] == 0
     assert notices.written == []

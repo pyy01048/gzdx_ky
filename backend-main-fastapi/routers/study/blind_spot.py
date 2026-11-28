@@ -1,11 +1,11 @@
 """知识盲区池路由（A4）：前缀 /api/blind-spot。"""
+
 from __future__ import annotations
 
 from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import User
 from pydantic import BaseModel
 from services import blind_spot_pool
 from services.module_a_schema import ensure_module_a_schema
@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id  # B4 行级隔离：写入归属
 from utils.security import current_user
+
+from models import User
 
 router = APIRouter(prefix="/api/blind-spot", tags=["知识盲区"])
 
@@ -47,14 +49,18 @@ def top_gaps(
 
 
 @router.get("/weakest-subjects")
-def weakest_subjects(limit: int = Query(10, ge=1, le=MAX_PAGE_SIZE), db: Session = Depends(get_db), user: User = Depends(current_user)):
+def weakest_subjects(
+    limit: int = Query(10, ge=1, le=MAX_PAGE_SIZE), db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """薄弱科目排行（未解决缺口加权）。"""
     ensure_module_a_schema(db)
     return blind_spot_pool.get_weakest_subjects(db, limit=limit, user_id=owner_id(user))
 
 
 @router.get("/weakest-kps")
-def weakest_kps(limit: int = Query(20, ge=1, le=MAX_PAGE_SIZE), db: Session = Depends(get_db), user: User = Depends(current_user)):
+def weakest_kps(
+    limit: int = Query(20, ge=1, le=MAX_PAGE_SIZE), db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """薄弱知识点建议（反哺刷题）。"""
     ensure_module_a_schema(db)
     return blind_spot_pool.get_weakest_kps(db, limit=limit, user_id=owner_id(user))

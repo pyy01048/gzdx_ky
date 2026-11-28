@@ -15,6 +15,7 @@
 6. GET /api/taxonomy/subjects 返回合并列表（含 question_count/error_count），
    且旧字段 core/extension/question_type_pool/doc_types 向后兼容仍在。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -67,10 +68,7 @@ def test_seed_idempotent_and_builtins_present(client):
     for item in body["subjects"]:
         assert "unregistered" in item, f"端点未透出 unregistered 标志: {item['subject']}"
 
-    builtin_names = {
-        s["subject"] for s in body["subjects"]
-        if not s["is_custom"] and not s["unregistered"]
-    }
+    builtin_names = {s["subject"] for s in body["subjects"] if not s["is_custom"] and not s["unregistered"]}
     # 2026-10-14 修正：原先断言 ``builtin_names == set(ALL_SUBJECTS)``。
     # 但core/sql/091_subjects_ece_seed.sql 已把「数字信号处理」「电磁场与电磁波」
     # 等电子通信核心科目注册为内置科目，它们不在 taxonomy.ALL_SUBJECTS 里，
@@ -80,12 +78,11 @@ def test_seed_idempotent_and_builtins_present(client):
     missing = set(taxonomy.ALL_SUBJECTS) - builtin_names
     assert not missing, f"内置科目缺失: {sorted(missing)}"
     extra = builtin_names - set(taxonomy.ALL_SUBJECTS)
-    assert not any(name.startswith("QA") for name in extra), (
-        f"疑似测试残留科目混入内置集合: {sorted(extra)}"
-    )
+    assert not any(name.startswith("QA") for name in extra), f"疑似测试残留科目混入内置集合: {sorted(extra)}"
 
     # 再次调用播种函数应为 no-op（幂等）
     from database import SessionLocal
+
     db = SessionLocal()
     try:
         again = taxonomy.ensure_subject_config_seeds(db)
@@ -112,12 +109,8 @@ def test_post_custom_subject_and_409(client, cleanup_subjects):
     # 「对象数组[{code,title,...}]」—— 前端 KbMap.jsx 等页面已按
     # x.title / x.code 消费（见 src/pages/KbMap.jsx:200/215/361），
     # 只有这里的断言还停留在旧口径。
-    assert [c["title"] for c in body["chapters"]] == ["第1章 QA", "第2章 QA"], (
-        f"章节标题顺序不符: {body['chapters']}"
-    )
-    assert [c["code"] for c in body["chapters"]] == ["ch01", "ch02"], (
-        f"章节 code 顺序不符: {body['chapters']}"
-    )
+    assert [c["title"] for c in body["chapters"]] == ["第1章 QA", "第2章 QA"], f"章节标题顺序不符: {body['chapters']}"
+    assert [c["code"] for c in body["chapters"]] == ["ch01", "ch02"], f"章节 code 顺序不符: {body['chapters']}"
     assert body["question_types"] == ["single", "calc"]
 
     # GET 列表里能查到，且 question_count/error_count 默认为 0
@@ -168,12 +161,8 @@ def test_put_rename_and_update(client, cleanup_subjects):
     assert body["renamed"] is True
     # 重命名不改业务表，给前端提示
     assert "question_tag_note" in body
-    assert [c["title"] for c in body["chapters"]] == ["新章1", "新章2"], (
-        f"重命名后章节标题顺序不符: {body['chapters']}"
-    )
-    assert [c["code"] for c in body["chapters"]] == ["ch01", "ch02"], (
-        f"重命名后章节 code 顺序不符: {body['chapters']}"
-    )
+    assert [c["title"] for c in body["chapters"]] == ["新章1", "新章2"], f"重命名后章节标题顺序不符: {body['chapters']}"
+    assert [c["code"] for c in body["chapters"]] == ["ch01", "ch02"], f"重命名后章节 code 顺序不符: {body['chapters']}"
     assert body["question_types"] == ["single", "draw"]
 
     # 旧名已不存在

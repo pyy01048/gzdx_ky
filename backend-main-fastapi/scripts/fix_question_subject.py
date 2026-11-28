@@ -21,6 +21,7 @@
     python scripts/fix_question_subject.py --include-cross-domain
     python scripts/fix_question_subject.py --apply             # 写库（先备份）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,19 +38,15 @@ DB_PATH = os.environ.get("DATABASE_PATH", "").strip() or os.path.join(
     os.path.dirname(BASE_DIR), "database", "kaoyan.db"
 )
 REPO_ROOT = os.path.dirname(BASE_DIR)
-MISMATCH_JSON = os.path.join(REPO_ROOT, "tools", "datasource",
-                             "question_subject_mismatch.json")
-AUDIT_JSON = os.path.join(REPO_ROOT, "tools", "datasource",
-                          "subject_fix_audit.json")
+MISMATCH_JSON = os.path.join(REPO_ROOT, "tools", "datasource", "question_subject_mismatch.json")
+AUDIT_JSON = os.path.join(REPO_ROOT, "tools", "datasource", "subject_fix_audit.json")
 
 ELEC = {"模拟电子技术", "数字电子技术"}
 
 
 def _load_mismatches() -> list[dict]:
     if not os.path.exists(MISMATCH_JSON):
-        raise FileNotFoundError(
-            f"未找到诊断清单 {MISMATCH_JSON}，请先运行 diagnose_question_subject.py"
-        )
+        raise FileNotFoundError(f"未找到诊断清单 {MISMATCH_JSON}，请先运行 diagnose_question_subject.py")
     with open(MISMATCH_JSON, encoding="utf-8") as f:
         return json.load(f).get("mismatches", [])
 
@@ -70,14 +67,14 @@ def _classify(m: dict, include_cross_domain: bool) -> str:
     """
     a, b = m["current_subject"], m["suggested_subject"]
     if a in ELEC and b in ELEC:
-        return "pending"          # 数模边界，人工抽验
+        return "pending"  # 数模边界，人工抽验
     if a == "计算机学科专业基础408" or b == "计算机学科专业基础408":
         # 408 与电子的词重叠度高，假阳性风险大 → 不自动改
         if a == "专业课":
-            return "fix"          # 专业课→408 清晰
+            return "fix"  # 专业课→408 清晰
         return "pending"
     if b in ELEC:
-        return "fix"              # 政治/其他 → 电子：证据充分
+        return "fix"  # 政治/其他 → 电子：证据充分
     # 其余跨域项
     return "fix" if include_cross_domain else "pending"
 
@@ -112,31 +109,32 @@ def _apply_source_rules(cur: sqlite3.Cursor) -> list[dict]:
     out: list[dict] = []
     for rule in SOURCE_RULES:
         rows = cur.execute(
-            "SELECT id, subject, source FROM quiz_questions "
-            "WHERE subject = ? AND source LIKE ?",
+            "SELECT id, subject, source FROM quiz_questions WHERE subject = ? AND source LIKE ?",
             (rule["match_subject"], rule["source_like"]),
         ).fetchall()
         for qid, old, src in rows:
-            out.append({
-                "id": qid,
-                "current_subject": old,
-                "suggested_subject": rule["new_subject"],
-                "evidence_hits": [f"source匹配:{rule['name']}"],
-                "scores": {},
-                "chapter": None,
-                "snippet": (src or "")[:90],
-                "subject_source": rule["subject_source"],
-            })
+            out.append(
+                {
+                    "id": qid,
+                    "current_subject": old,
+                    "suggested_subject": rule["new_subject"],
+                    "evidence_hits": [f"source匹配:{rule['name']}"],
+                    "scores": {},
+                    "chapter": None,
+                    "snippet": (src or "")[:90],
+                    "subject_source": rule["subject_source"],
+                }
+            )
     return out
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="quiz_questions 科目字段错配修复")
     ap.add_argument("--apply", action="store_true", help="实际写库（默认仅预览）")
-    ap.add_argument("--include-cross-domain", action="store_true",
-                    help="一并修跨域项（如 模电→数学、英语→政治）；默认只标待核")
-    ap.add_argument("--no-source-rules", action="store_true",
-                    help="禁用 A 组 source 精确规则（默认启用）")
+    ap.add_argument(
+        "--include-cross-domain", action="store_true", help="一并修跨域项（如 模电→数学、英语→政治）；默认只标待核"
+    )
+    ap.add_argument("--no-source-rules", action="store_true", help="禁用 A 组 source 精确规则（默认启用）")
     ap.add_argument("--sample", type=int, default=10, help="预览样例条数")
     args = ap.parse_args()
 
@@ -168,17 +166,23 @@ def main() -> int:
 
     # 现行 subject_source 状态（dry-run 只读探测，不改 schema）
     col_exists = _has_column(cur)
-    fixed_ids = {r[0] for r in cur.execute(
-        "SELECT id FROM quiz_questions WHERE subject_source IN "
-        "('corrected_rule','corrected_keyword','corrected_source_rule')")} \
-        if col_exists else set()
+    fixed_ids = (
+        {
+            r[0]
+            for r in cur.execute(
+                "SELECT id FROM quiz_questions WHERE subject_source IN "
+                "('corrected_rule','corrected_keyword','corrected_source_rule')"
+            )
+        }
+        if col_exists
+        else set()
+    )
     effective = [m for m in union_fix if m["id"] not in fixed_ids]
 
     print(f"数据库: {DB_PATH}")
     print(f"A 组 source 精确规则：命中 {len(a_group)} 条")
     print(f"B 组 关键词诊断（fix）：{len(to_fix)} 条")
-    print(f"A∪B 并集：{len(union_fix)} 条（已修过跳过 {len(union_fix) - len(effective)}，"
-          f"本次实际 {len(effective)}）")
+    print(f"A∪B 并集：{len(union_fix)} 条（已修过跳过 {len(union_fix) - len(effective)}，本次实际 {len(effective)}）")
     print(f"仅标记待核 (pending_review)：{len(pending)} 条")
     print(f"subject_source 列：{'已存在' if col_exists else '待 --apply 时创建'}\n")
 
@@ -194,8 +198,7 @@ def main() -> int:
         print(f"  {k:<16} {before.get(k, 0):>4}  →  {after.get(k, 0):>4}")
 
     # ---- 全库科目分布（修前 → 预估修后）----
-    full_before = {r[0]: r[1] for r in cur.execute(
-        "SELECT subject, COUNT(*) FROM quiz_questions GROUP BY subject")}
+    full_before = {r[0]: r[1] for r in cur.execute("SELECT subject, COUNT(*) FROM quiz_questions GROUP BY subject")}
     full_after = dict(full_before)
     for m in effective:
         full_after[m["current_subject"]] = full_after.get(m["current_subject"], 0) - 1
@@ -208,8 +211,10 @@ def main() -> int:
     if args.sample > 0 and effective:
         print(f"\n----- 修复样例（前 {args.sample} 条）-----")
         for m in effective[: args.sample]:
-            print(f"  Q{m['id']}  {m['current_subject']} → {m['suggested_subject']}"
-                  f"  证据：{ '、'.join(m['evidence_hits'][:4]) }")
+            print(
+                f"  Q{m['id']}  {m['current_subject']} → {m['suggested_subject']}"
+                f"  证据：{'、'.join(m['evidence_hits'][:4])}"
+            )
             print(f"      「{m['snippet'][:70]}」")
 
     if not args.apply:
@@ -220,8 +225,7 @@ def main() -> int:
     # ---- 备份 ----
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_subjectfix_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+    bak = os.path.join(bak_dir, f"kaoyan_pre_subjectfix_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     print(f"\n已备份 → {bak}")
@@ -236,8 +240,7 @@ def main() -> int:
     by_source: dict[str, int] = {}
     # 先从数据库取真实原值（不信任 JSON 的快照）
     for m in effective:
-        row = cur.execute("SELECT subject FROM quiz_questions WHERE id = ?",
-                          (m["id"],)).fetchone()
+        row = cur.execute("SELECT subject FROM quiz_questions WHERE id = ?", (m["id"],)).fetchone()
         if not row:
             continue
         old = row[0]
@@ -245,25 +248,24 @@ def main() -> int:
         if old == new:
             continue
         src_tag = m.get("subject_source", "corrected_keyword")
-        cur.execute(
-            "UPDATE quiz_questions SET subject = ?, subject_source = ? WHERE id = ?",
-            (new, src_tag, m["id"]))
+        cur.execute("UPDATE quiz_questions SET subject = ?, subject_source = ? WHERE id = ?", (new, src_tag, m["id"]))
         by_source[src_tag] = by_source.get(src_tag, 0) + 1
-        audit.append({
-            "question_id": m["id"],
-            "old_subject": old,
-            "new_subject": new,
-            "subject_source": src_tag,
-            "evidence_hits": m["evidence_hits"],
-            "scores": m.get("scores", {}),
-            "chapter": m.get("chapter"),
-            "fixed_at": now,
-        })
+        audit.append(
+            {
+                "question_id": m["id"],
+                "old_subject": old,
+                "new_subject": new,
+                "subject_source": src_tag,
+                "evidence_hits": m["evidence_hits"],
+                "scores": m.get("scores", {}),
+                "chapter": m.get("chapter"),
+                "fixed_at": now,
+            }
+        )
     con.commit()
 
     # 仅为「未改动」的题补 subject_source='original'（幂等：只补 NULL）
-    cur.execute(
-        "UPDATE quiz_questions SET subject_source = 'original' WHERE subject_source IS NULL")
+    cur.execute("UPDATE quiz_questions SET subject_source = 'original' WHERE subject_source IS NULL")
     con.commit()
 
     # ---- 审计落盘（追加模式，保留历史批次）----
@@ -275,24 +277,23 @@ def main() -> int:
         except Exception:
             prev = {}
     batches = prev.get("batches", []) if isinstance(prev, dict) else []
-    batches.append({
-        "applied_at": now,
-        "db_path": DB_PATH,
-        "backup": bak,
-        "fixed_count": len(audit),
-        "pending_review_count": len(pending),
-        "pending_review_ids": [m["id"] for m in pending],
-        "entries": audit,
-    })
+    batches.append(
+        {
+            "applied_at": now,
+            "db_path": DB_PATH,
+            "backup": bak,
+            "fixed_count": len(audit),
+            "pending_review_count": len(pending),
+            "pending_review_ids": [m["id"] for m in pending],
+            "entries": audit,
+        }
+    )
     with open(AUDIT_JSON, "w", encoding="utf-8") as f:
         json.dump({"batches": batches}, f, ensure_ascii=False, indent=2)
 
     # ---- 结果核对 ----
-    fixed_now = cur.execute(
-        "SELECT COUNT(*) FROM quiz_questions WHERE subject_source LIKE 'corrected_%'"
-    ).fetchone()[0]
-    full_after = {r[0]: r[1] for r in cur.execute(
-        "SELECT subject, COUNT(*) FROM quiz_questions GROUP BY subject")}
+    fixed_now = cur.execute("SELECT COUNT(*) FROM quiz_questions WHERE subject_source LIKE 'corrected_%'").fetchone()[0]
+    full_after = {r[0]: r[1] for r in cur.execute("SELECT subject, COUNT(*) FROM quiz_questions GROUP BY subject")}
     print("\n===== 修复完成 =====")
     print(f"本批修复 {len(audit)} 条；按依据：{by_source}")
     print(f"全库 subject_source LIKE 'corrected_%' 共 {fixed_now} 条")

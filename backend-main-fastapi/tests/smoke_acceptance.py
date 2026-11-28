@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """交付前最终验收：静态页面 / 新接口 / 移除项 / 回归。"""
+
 import json
 import os
 import re
@@ -61,8 +62,7 @@ s, d = get("/api/taxonomy/subjects")
 check(s == 200, "科目清单可读")
 if s == 200:
     core = [x["name"] for x in d["core"]]
-    check(core == ["数字电子技术", "模拟电子技术", "数学", "英语", "政治", "真题综合"],
-          "主线科目口径正确", str(core))
+    check(core == ["数字电子技术", "模拟电子技术", "数学", "英语", "政治", "真题综合"], "主线科目口径正确", str(core))
     check(all(x["is_core"] is False for x in d["extension"]), "拓展科目不进主线")
 
 s, d = get("/api/taxonomy/tree")
@@ -83,8 +83,10 @@ if s == 200:
     check(no_ch == 0, "所有知识点都有章节")
     check(no_qt == 0, "所有知识点都有题型")
     for subj in filled:
-        print(f"        {subj['subject']:<10} 知识点 {subj['knowledge_point_count']:>4} "
-              f"章 {subj['filled_chapter_count']}/{subj['outline_chapter_count']}")
+        print(
+            f"        {subj['subject']:<10} 知识点 {subj['knowledge_point_count']:>4} "
+            f"章 {subj['filled_chapter_count']}/{subj['outline_chapter_count']}"
+        )
 
 s, d = get("/api/taxonomy/coverage")
 if s == 200:
@@ -97,8 +99,7 @@ print("=" * 74)
 print("D. 真题题库")
 print("=" * 74)
 s, d = get("/api/quiz/stats")
-check(s == 200 and d.get("total_questions", 0) > 1000,
-      f"题目总数 {d.get('total_questions') if s == 200 else 'ERR'}")
+check(s == 200 and d.get("total_questions", 0) > 1000, f"题目总数 {d.get('total_questions') if s == 200 else 'ERR'}")
 s, d = get("/api/quiz/questions?limit=3")
 if s == 200:
     items = d.get("items") or d.get("questions") or []
@@ -115,8 +116,9 @@ check(s == 200, "进度总览可读")
 if s == 200:
     check(d["total_knowledge_points"] >= 200, f"总知识点 {d['total_knowledge_points']}")
     check("new_count" in d and "due_count" in d, "新知识点与到期数分开统计")
-    print(f"        新={d['new_count']} 到期={d['due_count']} 已复习={d['reviewed_count']} "
-          f"平均掌握度={d['avg_mastery']}")
+    print(
+        f"        新={d['new_count']} 到期={d['due_count']} 已复习={d['reviewed_count']} 平均掌握度={d['avg_mastery']}"
+    )
 s, d = get("/api/review/due?limit=5")
 check(s == 200 and d.get("total", 0) > 0, f"今日复习队列有 {d.get('total') if s == 200 else 'ERR'} 条")
 
@@ -127,8 +129,7 @@ print("=" * 74)
 s, d = get("/api/review/link-stats")
 check(s == 200, "联动覆盖率可读")
 if s == 200:
-    print(f"        错题 {d['total_errors']} · 已挂考点 {d['linked_errors']} · "
-          f"覆盖率 {d['coverage_rate']}%")
+    print(f"        错题 {d['total_errors']} · 已挂考点 {d['linked_errors']} · 覆盖率 {d['coverage_rate']}%")
 # 用最短路径验证"收录即挂考点"（不落库）
 s, d = get("/api/errors/1/knowledge-points")
 check(s in (200, 404), f"/api/errors/1/knowledge-points 可达（{s}）")
@@ -137,11 +138,21 @@ print()
 print("=" * 74)
 print("G. 原有功能回归")
 print("=" * 74)
-for p in ("/api/health", "/api/dashboard", "/api/tasks", "/api/errors",
-          "/api/documents/subjects", "/api/flashcards", "/api/goals",
-          "/api/words/decks", "/api/analytics/overview",
-          f"/api/planner/daily?date={TODAY}", "/api/planner/ebbinghaus/due",
-          "/api/planner/earlybird/streak", "/api/quiz/modes"):
+for p in (
+    "/api/health",
+    "/api/dashboard",
+    "/api/tasks",
+    "/api/errors",
+    "/api/documents/subjects",
+    "/api/flashcards",
+    "/api/goals",
+    "/api/words/decks",
+    "/api/analytics/overview",
+    f"/api/planner/daily?date={TODAY}",
+    "/api/planner/ebbinghaus/due",
+    "/api/planner/earlybird/streak",
+    "/api/quiz/modes",
+):
     s, _ = get(p)
     check(s == 200, f"{p}")
 

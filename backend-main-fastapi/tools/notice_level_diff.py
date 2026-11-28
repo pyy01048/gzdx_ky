@@ -8,6 +8,7 @@
     python tools/notice_level_diff.py            # 对比当前规则 vs 库中已存 level
     python tools/notice_level_diff.py --dump     # 额外打印变化行明细
 """
+
 from __future__ import annotations
 
 import os
@@ -28,8 +29,7 @@ DB = str(_REPO / "database" / "kaoyan.db")
 def main() -> int:
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     rows = conn.execute(
-        "SELECT id, title, notice_type, COALESCE(importance_level,'normal') "
-        "FROM kaoyan_notices"
+        "SELECT id, title, notice_type, COALESCE(importance_level,'normal') FROM kaoyan_notices"
     ).fetchall()
     conn.close()
 

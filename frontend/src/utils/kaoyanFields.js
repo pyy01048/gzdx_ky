@@ -39,13 +39,26 @@ const SOURCE_TYPE_MAP = {
  * @param {string} [source] 库内 source / data_source 原始标记
  * @returns {'官方'|'聚合'|'未验证'} 三档分档；无法识别时按「未验证」处理
  */
-export function resolveSourceType(source) {
+export function resolveSourceType(source, sourceType) {
+  const backendType = {
+    school_official: SOURCE_TYPES.OFFICIAL,
+    aggregator: SOURCE_TYPES.AGGREGATOR,
+    unverified: SOURCE_TYPES.UNVERIFIED,
+    官方: SOURCE_TYPES.OFFICIAL,
+    聚合: SOURCE_TYPES.AGGREGATOR,
+    未验证: SOURCE_TYPES.UNVERIFIED,
+  }[sourceType]
+  if (backendType) return backendType
   if (!source) return SOURCE_TYPES.UNVERIFIED
-  if (SOURCE_TYPE_MAP[source]) return SOURCE_TYPE_MAP[source]
-  if (source.includes('yz.chsi.com.cn') || source.includes('.edu.cn') || source.toLowerCase().includes('exam')) {
+  const value = String(source)
+  const lowered = value.toLowerCase()
+  if (/^(zexiaobao|txkyer|seed_txkyer|kaoyan\.cn|csv)/.test(lowered)) {
+    return SOURCE_TYPES.AGGREGATOR
+  }
+  if (SOURCE_TYPE_MAP[value]) return SOURCE_TYPE_MAP[value]
+  if (lowered.startsWith('notice:') || value.includes('yz.chsi.com.cn') || value.includes('.edu.cn') || lowered.includes('exam')) {
     return SOURCE_TYPES.OFFICIAL
   }
-  if (source.includes('txkyer') || source.toLowerCase().includes('csv')) return SOURCE_TYPES.AGGREGATOR
   return SOURCE_TYPES.UNVERIFIED
 }
 
@@ -54,15 +67,14 @@ export function resolveSourceType(source) {
  * `key` 为后端字段名，`label` 为真实口径。
  *
  * 2026-10 起分数线由掌上考研逐专业采集（院线：总分 + 政治/外语/
- * 专业课一/专业课二），`math_line`/`major_line` 两列分别承载
- * 专业课一/专业课二；旧种子数据的口径审计说明见文件头。
+ * 专业课一/专业课二）；字段展示名与数据库模型定义保持一致。
  */
 export const SCORE_FIELDS = [
   { key: 'total_line', label: '总分', kind: 'line' },
   { key: 'politics_line', label: '政治', kind: 'line' },
   { key: 'english_line', label: '外语', kind: 'line' },
-  { key: 'math_line', label: '专业课一', kind: 'line' },
-  { key: 'major_line', label: '专业课二', kind: 'line' },
+  { key: 'math_line', label: '数学', kind: 'line' },
+  { key: 'major_line', label: '专业课', kind: 'line' },
 ]
 
 /**
@@ -73,10 +85,10 @@ export const SCORE_FIELDS = [
  *   - 'ratio' 复录比 → 审计命中率 93.8%，可信度较高，不挂角标
  */
 export const ADMISSION_FIELDS = [
-  { key: 'enroll_count', label: '进线人数', kind: 'count' },
-  { key: 'retest_count', label: '录取人数', kind: 'count' },
-  { key: 'admit_avg_score', label: '进面均分', kind: 'line' },
-  { key: 'major_avg_score', label: '数学均分', kind: 'line' },
+  { key: 'enroll_count', label: '拟招生人数', kind: 'count' },
+  { key: 'retest_count', label: '进复试人数', kind: 'count' },
+  { key: 'admit_avg_score', label: '录取均分', kind: 'line' },
+  { key: 'major_avg_score', label: '专业课均分', kind: 'line' },
   { key: 'retest_ratio', label: '复录比', kind: 'ratio' },
 ]
 
@@ -124,20 +136,25 @@ export function examSubjects(raw) {
     if (Array.isArray(value)) return value.flatMap(flatten)
     if (typeof value === 'object') {
       const name = String(value.name ?? value.label ?? '').trim()
-      return name ? [name] : []
+      const rawCode = value.code == null ? '' : String(value.code).trim()
+      return name ? [{ code: rawCode || null, name }] : []
     }
-    return String(value).split(/\s*\|\s*/)
+    const text = String(value).trim()
+    if ((text.startsWith('[') && text.endsWith(']')) || (text.startsWith('{') && text.endsWith('}'))) {
+      try { return flatten(JSON.parse(text)) } catch { /* 非 JSON 文本按原始科目串处理 */ }
+    }
+    return [{ code: null, name: String(value) }]
   }
 
   const seen = new Set()
   const out = []
   for (const seg of flatten(raw)) {
-    const text = String(seg).replace(/[；\n]/g, '|')
+    const text = String(seg.name).replace(/[；\n]/g, '|')
     for (const piece of text.split('|')) {
       const s = piece.trim()
       if (!s) continue
       const m = s.match(CODE_RE)
-      const code = m ? m[1] : null
+      const code = seg.code || (m ? m[1] : null)
       const name = (m ? m[2] : s).replace(/^[、·\s]+/, '').trim()
       if (!name || PLACEHOLDER.has(name)) continue
       const key = `${code ?? ''}|${name}`
@@ -170,10 +187,10 @@ export function examSubjectText(raw, sep = ' · ') {
 
 /** 趋势分析可选指标（仅暴露可信字段） */
 export const TRUSTED_TREND_METRICS = [
-  { value: 'total_line', label: '进面最低分', kind: 'line' },
-  { value: 'major_avg_score', label: '数学均分', kind: 'line' },
-  { value: 'admit_avg_score', label: '进面均分', kind: 'line' },
-  { value: 'enroll_count', label: '进线人数', kind: 'count' },
-  { value: 'retest_count', label: '录取人数', kind: 'count' },
+  { value: 'total_line', label: '总分线', kind: 'line' },
+  { value: 'major_avg_score', label: '专业课均分', kind: 'line' },
+  { value: 'admit_avg_score', label: '录取均分', kind: 'line' },
+  { value: 'enroll_count', label: '拟招生人数', kind: 'count' },
+  { value: 'retest_count', label: '进复试人数', kind: 'count' },
   { value: 'retest_ratio', label: '复录比', kind: 'ratio' },
 ]

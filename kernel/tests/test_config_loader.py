@@ -1,20 +1,25 @@
 # -*- coding: utf-8 -*-
 """config_loader：冻结 dataclass、缺省回退、显式错误（不静默吞配置问题）。"""
+
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
 from kernel.config_loader import (
-    ConfigError, KernelConfig, load_compliance_config, load_config,
-    load_fsrs_config, load_rules_config, parse_simple_yaml,
+    ConfigError,
+    KernelConfig,
+    load_compliance_config,
+    load_config,
+    load_fsrs_config,
+    load_rules_config,
+    parse_simple_yaml,
 )
 
 
 class TestYamlParser:
     def test_scalars_and_lists(self):
-        doc = parse_simple_yaml(
-            "a: 1\nb: 0.5\nc: true\nd: hello\ne: [x, y, z]\nf: []\n")
+        doc = parse_simple_yaml("a: 1\nb: 0.5\nc: true\nd: hello\ne: [x, y, z]\nf: []\n")
         assert doc["a"] == 1 and doc["b"] == 0.5
         assert doc["c"] is True
         assert doc["d"] == "hello"
@@ -42,9 +47,9 @@ class TestLoaders:
         cfg = load_config()
         assert isinstance(cfg, KernelConfig)
         with pytest.raises(FrozenInstanceError):
-            cfg.rules.drift.on_track_band = 0.99      # type: ignore[misc]
+            cfg.rules.drift.on_track_band = 0.99  # type: ignore[misc]
         with pytest.raises((FrozenInstanceError, AttributeError)):
-            cfg.fsrs.desired_retention = 0.5          # type: ignore[misc]
+            cfg.fsrs.desired_retention = 0.5  # type: ignore[misc]
 
     def test_tuple_fields_immutable(self):
         cfg = load_config()
@@ -59,8 +64,7 @@ class TestLoaders:
     def test_bad_value_raises(self, tmp_path):
         d = tmp_path / "config"
         d.mkdir()
-        (d / "rules.yaml").write_text("drift:\n  window_days: not_a_number\n",
-                                      encoding="utf-8")
+        (d / "rules.yaml").write_text("drift:\n  window_days: not_a_number\n", encoding="utf-8")
         with pytest.raises(ConfigError):
             load_rules_config(base=tmp_path)
 

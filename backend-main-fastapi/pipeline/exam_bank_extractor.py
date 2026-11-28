@@ -28,6 +28,7 @@
     · 抽不到答案的题一律丢弃（不可刷的题入库只会污染题库）
     · 抽到的题在返回前做完整性自检
 """
+
 from __future__ import annotations
 
 import re
@@ -152,20 +153,39 @@ def _should_join(prev: str, cur: str) -> bool:
     if not p:
         return False
     # 上一行以这些字符结尾 → 句子未结束
-    if p.endswith(("（", "(", "＝", "=", "，", "、", "。", "的", "是", "为",
-                   "在", "和", "与", "或", "及", "：", ":", "×", "＋", "+")):
+    if p.endswith(
+        (
+            "（",
+            "(",
+            "＝",
+            "=",
+            "，",
+            "、",
+            "。",
+            "的",
+            "是",
+            "为",
+            "在",
+            "和",
+            "与",
+            "或",
+            "及",
+            "：",
+            ":",
+            "×",
+            "＋",
+            "+",
+        )
+    ):
         return True
     # 当前行以这些字符开头 → 承接上文
-    if c.startswith(("）", ")", "＝", "=", "×", "＋", "+", "－", "-", "；", "，",
-                     "、", "。", "。", "，", "研", "年")):
+    if c.startswith(("）", ")", "＝", "=", "×", "＋", "+", "－", "-", "；", "，", "、", "。", "。", "，", "研", "年")):
         return True
     # 双方都很短 → 视为被拆碎的片段
     return len(p) <= 14 and len(c) <= 14
 
 
-def extract_from_text(
-    content: str, *, chapter_hint: str = "", is_pdf_layer: bool = False
-) -> ExtractStats:
+def extract_from_text(content: str, *, chapter_hint: str = "", is_pdf_layer: bool = False) -> ExtractStats:
     """从文档正文抽取所有选择题。
 
     Args:
@@ -181,6 +201,7 @@ def extract_from_text(
     stats = ExtractStats()
     if is_pdf_layer:
         from pipeline.pdf_text_rebuilder import rebuild_text_with_options
+
         lines = rebuild_text_with_options(content).splitlines()
     else:
         lines = _merge_fragmented_lines(content).splitlines()
@@ -212,7 +233,7 @@ def extract_from_text(
         m = SECTION_RE.match(line)
         if m:
             kind = m.group(1)
-            rest = (m.group(2) or "").strip()   # 标题后紧跟的题干（PDF 重建后常见）
+            rest = (m.group(2) or "").strip()  # 标题后紧跟的题干（PDF 重建后常见）
             if kind == "选择题":
                 flush()
                 in_choice = True
@@ -263,14 +284,17 @@ def _parse_block(block: list[str], chapter: str) -> ExtractedQuestion | None:
     # 判定顺序：
     #   1. 优先取含疑问标记（？/（　　））的最后一行——选择题题干几乎必含
     #   2. 退而取最长的非题号行
-    cand = [ln.strip() for ln in block[:start]
-            if ln.strip() and not re.match(r"^\d+$", ln.strip())
-            and ln.strip() not in ("【答案】", "【解析】")]
+    cand = [
+        ln.strip()
+        for ln in block[:start]
+        if ln.strip() and not re.match(r"^\d+$", ln.strip()) and ln.strip() not in ("【答案】", "【解析】")
+    ]
     if not cand:
         return None
 
-    marked = [ln for ln in cand if "？" in ln or "?" in ln
-              or "（ " in ln or "（  ）" in ln or "（　　）" in ln or "(" in ln]
+    marked = [
+        ln for ln in cand if "？" in ln or "?" in ln or "（ " in ln or "（  ）" in ln or "（　　）" in ln or "(" in ln
+    ]
     stem_raw = (marked[-1] if marked else max(cand, key=len)).strip()
 
     # 多选标记
@@ -293,9 +317,12 @@ def _parse_block(block: list[str], chapter: str) -> ExtractedQuestion | None:
         if not text:
             j = i + 1
             extra: list[str] = []
-            while j <= len(block) - 1 and not OPTION_RE.match(block[j]) \
-                    and block[j].strip() not in ("【答案】", "【解析】") \
-                    and not re.match(r"^\d+\s*[．.]\s*\S", block[j].strip()):
+            while (
+                j <= len(block) - 1
+                and not OPTION_RE.match(block[j])
+                and block[j].strip() not in ("【答案】", "【解析】")
+                and not re.match(r"^\d+\s*[．.]\s*\S", block[j].strip())
+            ):
                 if block[j].strip():
                     extra.append(block[j].strip())
                 j += 1
@@ -304,9 +331,12 @@ def _parse_block(block: list[str], chapter: str) -> ExtractedQuestion | None:
         else:
             # 内容可能延续到下一行（下一行不是新选项/新题/标签）
             j = i + 1
-            while j <= len(block) - 1 and not OPTION_RE.match(block[j]) \
-                    and block[j].strip() not in ("【答案】", "【解析】") \
-                    and not re.match(r"^\d+\s*[．.]\s*\S", block[j].strip()):
+            while (
+                j <= len(block) - 1
+                and not OPTION_RE.match(block[j])
+                and block[j].strip() not in ("【答案】", "【解析】")
+                and not re.match(r"^\d+\s*[．.]\s*\S", block[j].strip())
+            ):
                 nxt = block[j].strip()
                 if nxt and not nxt.startswith(("【", "图")):
                     text = f"{text} {nxt}"
@@ -339,10 +369,8 @@ def _parse_block(block: list[str], chapter: str) -> ExtractedQuestion | None:
     # 判定方式：找 【答案】 位置，看它**前一行**和**后一行**哪个是纯字母答案。
     answer = ""
     analysis = ""
-    ans_idx = next((i for i, ln in enumerate(block)
-                    if ln.strip() == "【答案】"), None)
-    exp_idx = next((i for i, ln in enumerate(block)
-                    if ln.strip() == "【解析】"), None)
+    ans_idx = next((i for i, ln in enumerate(block) if ln.strip() == "【答案】"), None)
+    exp_idx = next((i for i, ln in enumerate(block) if ln.strip() == "【解析】"), None)
 
     if ans_idx is not None:
         # 格式 A：答案在标签前
@@ -354,7 +382,7 @@ def _parse_block(block: list[str], chapter: str) -> ExtractedQuestion | None:
 
     # 兜底：取选项块之后第一个纯字母行（两种格式都覆盖不到的罕见情况）
     if not answer:
-        for ln in block[end + 1:]:
+        for ln in block[end + 1 :]:
             s = ln.strip()
             if s in ("【答案】", "【解析】"):
                 continue
@@ -363,17 +391,22 @@ def _parse_block(block: list[str], chapter: str) -> ExtractedQuestion | None:
                 break
 
     # 解析：按格式 B → 【解析】之后；格式 A → 【答案】与【解析】之间
-    if exp_idx is not None and answer and ans_idx is not None \
-            and ans_idx < exp_idx and block[ans_idx + 1].strip() == answer:
+    if (
+        exp_idx is not None
+        and answer
+        and ans_idx is not None
+        and ans_idx < exp_idx
+        and block[ans_idx + 1].strip() == answer
+    ):
         # 格式 B：【解析】标签之后才是正文
-        body = [ln.strip() for ln in block[exp_idx + 1:] if ln.strip()]
+        body = [ln.strip() for ln in block[exp_idx + 1 :] if ln.strip()]
         analysis = " ".join(body)
     elif ans_idx is not None and exp_idx is not None and ans_idx < exp_idx:
         # 格式 A：【答案】与【解析】之间是正文
-        body = [ln.strip() for ln in block[ans_idx + 1:exp_idx] if ln.strip()]
+        body = [ln.strip() for ln in block[ans_idx + 1 : exp_idx] if ln.strip()]
         analysis = " ".join(body)
     elif exp_idx is not None:
-        body = [ln.strip() for ln in block[exp_idx + 1:] if ln.strip()]
+        body = [ln.strip() for ln in block[exp_idx + 1 :] if ln.strip()]
         analysis = " ".join(body)
 
     paper, year = _parse_tag(stem_raw)
@@ -396,7 +429,7 @@ def _longest_ascending(options: list[dict]) -> list[dict]:
         return []
     best: list[dict] = []
     cur: list[dict] = [options[0]]
-    for prev, now in zip(options, options[1:]):
+    for prev, now in zip(options, options[1:], strict=False):
         if ord(now["key"]) == ord(prev["key"]) + 1:
             cur.append(now)
         else:

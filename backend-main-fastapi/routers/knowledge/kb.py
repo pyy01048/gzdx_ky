@@ -40,9 +40,7 @@ def _run_heal(use_ocr: bool, do_embeddings: bool):
             _heal_task["stage"] = name
             _heal_task["detail"] = str(payload)[:300]
 
-        result = kb_pipeline.heal(
-            db, use_ocr=use_ocr, do_embeddings=do_embeddings, progress=on_progress
-        )
+        result = kb_pipeline.heal(db, use_ocr=use_ocr, do_embeddings=do_embeddings, progress=on_progress)
         _heal_task.update(result=result, stage="done", running=False)
     except Exception as e:
         _heal_task.update(error=f"{type(e).__name__}: {e}", running=False, stage="failed")

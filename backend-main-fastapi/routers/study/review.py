@@ -15,13 +15,14 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import ErrorRecord, ReviewRecord
 from services import error_linker, review_service, taxonomy
 from services.srs import fsrs
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id
 from utils.security import current_user
+
+from models import ErrorRecord, ReviewRecord
 
 router = APIRouter(prefix="/api/review", tags=["复习进度"])
 

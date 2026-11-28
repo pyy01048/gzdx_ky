@@ -19,12 +19,13 @@ from typing import Any, Dict, List
 import sqlalchemy
 from database import get_db
 from fastapi import APIRouter, Depends, Query
-from models import StudyEvent
 from services.study_calendar import day_ledger, streak_summary
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from utils.security import current_user
 from utils.timeutil import day_bucket_expr, local_range_utc, local_today
+
+from models import StudyEvent
 
 router = APIRouter(prefix="/api/growth", tags=["成长体系"])
 
@@ -311,7 +312,8 @@ def _level_of(points: int) -> Dict[str, Any]:
     }
 
 
-def _points_detail(stats: Dict[str, int]) -> Dict[str, Any]:
+def _points_detail(stats: Dict[str, int]) -> List[Dict[str, Any]]:
+    """积分明细：各积分来源的计数、单价与贡献分值。"""
     return [
         {"source": "答题答对", "count": stats["answer_correct"], "unit": 10, "points": stats["answer_correct"] * 10},
         {"source": "答题答错", "count": stats["answer_wrong"], "unit": 3, "points": stats["answer_wrong"] * 3},
@@ -452,7 +454,7 @@ def growth_timeline(days: int = Query(30, ge=1, le=365), db: Session = Depends(g
 def growth_drift(
     window: int = Query(30, ge=7, le=90),
     db: Session = Depends(get_db),
-    user=Depends(current_user),
+    user: User = Depends(current_user),
 ):
     """本人近 N 天执行漂移（kernel G2 口径）。
 

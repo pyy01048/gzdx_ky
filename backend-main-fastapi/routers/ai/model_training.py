@@ -9,6 +9,7 @@
 训练进程由 ``training/lora_finetune.py`` 启动；该脚本与 API 共用
 ``data/lora_finetune/training_state.json``，所以命令行训练也能被页面看到。
 """
+
 from __future__ import annotations
 
 import json
@@ -23,10 +24,11 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from models import Document, QuizQuestion
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from utils.security import require_admin
+
+from models import Document, QuizQuestion
 
 router = APIRouter(prefix="/api/model-training", tags=["model-training"], dependencies=[Depends(require_admin)])
 
@@ -41,8 +43,9 @@ TRAIN_SCRIPT = BASE_DIR / "training" / "lora_finetune.py"
 # --------------------------------------------------------------------------- #
 class TrainingStartRequest(BaseModel):
     """启动训练请求。"""
+
     base_model: str = ""  # 留空则用后端 LORA_MODEL_NAME 环境变量
-    data_dir: str = ""    # 留空则用后端 LORA_DATA_DIR 环境变量
+    data_dir: str = ""  # 留空则用后端 LORA_DATA_DIR 环境变量
     num_epochs: int = Field(3, ge=1, le=20)
     batch_size: int = Field(1, ge=1, le=16)  # QLoRA 在 8GB 卡上默认 1
     learning_rate: float = Field(2e-4, gt=0, le=1e-2)
@@ -53,6 +56,7 @@ class TrainingStartRequest(BaseModel):
 
 class OcrBatchRequest(BaseModel):
     """批量 OCR 识别请求。"""
+
     doc_ids: Optional[list[int]] = None
     enable_denoise: bool = False
     file_types: Optional[list[str]] = None
@@ -60,6 +64,7 @@ class OcrBatchRequest(BaseModel):
 
 class ImportProgress(BaseModel):
     """导入进度响应。"""
+
     total_docs: int = 0
     processed_docs: int = 0
     extracted_questions: int = 0
@@ -72,6 +77,7 @@ class ImportProgress(BaseModel):
 # 训练状态文件
 # --------------------------------------------------------------------------- #
 def _read_state() -> dict:
+    """读取训练状态文件；不存在或损坏时返回空 dict。"""
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
             return json.load(f)
@@ -80,6 +86,7 @@ def _read_state() -> dict:
 
 
 def _write_state(**updates) -> dict:
+    """原子写入训练状态（先写 tmp 再 os.replace，避免半写损坏）。"""
     state = _read_state()
     state.update(updates)
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -91,6 +98,7 @@ def _write_state(**updates) -> dict:
 
 
 def _pid_alive(pid: int) -> bool:
+    """判断进程是否仍在运行（跨平台：Windows 走 OpenProcess，POSIX 走 os.kill 0）。"""
     if not pid:
         return False
     if os.name == "nt":
@@ -117,6 +125,7 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _tail_log(path: str, limit: int = 20) -> list[str]:
+    """读取日志文件尾部有效行（跳过 tqdm 进度条等噪音行）。"""
     try:
         with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
@@ -125,7 +134,7 @@ def _tail_log(path: str, limit: int = 20) -> list[str]:
             raw = f.read().decode("utf-8", errors="replace")
     except OSError:
         return []
-    lines = []
+    lines: list[str] = []
     for line in raw.replace("\r", "\n").splitlines():
         line = line.strip()
         if not line or "%|" in line or line.startswith("Map:") or line.startswith("Filter:"):
@@ -135,6 +144,7 @@ def _tail_log(path: str, limit: int = 20) -> list[str]:
 
 
 def _trainer_progress(output_dir: str) -> dict:
+    """从 trainer_state.json 解析训练进度（优先 checkpoint-* 子目录）。"""
     root = Path(output_dir)
     path = root / "trainer_state.json"
     if not path.is_file():
@@ -174,6 +184,7 @@ def _trainer_progress(output_dir: str) -> dict:
 
 
 def _estimate_remaining(started_at: str, progress: int) -> str:
+    """根据已耗时与进度估算剩余时间（进度≤5% 时不估，避免剧烈抖动）。"""
     if not started_at or progress <= 5:
         return "-"
     try:
@@ -190,6 +201,7 @@ def _estimate_remaining(started_at: str, progress: int) -> str:
 
 
 def _resolve_data_dir(raw: str) -> Path:
+    """解析训练数据目录：必须位于 data/ 下且含 train.jsonl + val.jsonl。"""
     raw = (raw or os.environ.get("LORA_DATA_DIR", "")).strip() or "data/lora_finetune"
     path = Path(raw)
     if not path.is_absolute():
@@ -206,6 +218,7 @@ def _resolve_data_dir(raw: str) -> Path:
 
 
 def _resolve_python() -> str:
+    """解析训练用 Python 解释器路径（默认当前进程 sys.executable）。"""
     python = os.environ.get("LORA_TRAIN_PYTHON", "").strip() or sys.executable
     if not Path(python).is_file():
         raise HTTPException(status_code=400, detail=f"训练 Python 不存在：{python}")
@@ -216,13 +229,18 @@ def _resolve_python() -> str:
 # 训练任务管理
 # --------------------------------------------------------------------------- #
 @router.get("/training/status")
-async def get_training_status():
+async def get_training_status() -> dict:
     """获取当前训练任务状态。"""
     state = _read_state()
     if not state:
         return {
-            "status": "idle", "progress": 0, "current_epoch": 0, "total_epochs": 0,
-            "message": "暂无训练任务", "logs": [], "estimated_time": "-",
+            "status": "idle",
+            "progress": 0,
+            "current_epoch": 0,
+            "total_epochs": 0,
+            "message": "暂无训练任务",
+            "logs": [],
+            "estimated_time": "-",
         }
 
     pid = int(state.get("pid") or 0)
@@ -268,7 +286,7 @@ async def get_training_status():
 
 
 @router.post("/training/start")
-async def start_training(req: TrainingStartRequest):
+async def start_training(req: TrainingStartRequest) -> dict:
     """启动 LoRA 微调任务（真实子进程）。"""
     current = _read_state()
     if current.get("status") in {"preparing", "training", "merging"} and _pid_alive(int(current.get("pid") or 0)):
@@ -300,7 +318,10 @@ async def start_training(req: TrainingStartRequest):
         try:
             return subprocess.run(
                 [python, "-c", "import torch, transformers, peft, bitsandbytes"],
-                capture_output=True, text=True, timeout=120, env=env,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             return None
@@ -316,8 +337,15 @@ async def start_training(req: TrainingStartRequest):
         )
 
     cmd = [
-        python, "-u", str(TRAIN_SCRIPT), "--stage", "train",
-        "--data-dir", str(data_dir), "--output-dir", str(output_dir),
+        python,
+        "-u",
+        str(TRAIN_SCRIPT),
+        "--stage",
+        "train",
+        "--data-dir",
+        str(data_dir),
+        "--output-dir",
+        str(output_dir),
     ]
     if req.base_model.strip():
         cmd += ["--base-model", req.base_model.strip()]
@@ -327,7 +355,11 @@ async def start_training(req: TrainingStartRequest):
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     try:
         proc = subprocess.Popen(
-            cmd, cwd=str(BASE_DIR), env=env, stdout=log_file, stderr=subprocess.STDOUT,
+            cmd,
+            cwd=str(BASE_DIR),
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
             creationflags=creationflags,
         )
     finally:
@@ -370,7 +402,7 @@ async def start_training(req: TrainingStartRequest):
 
 
 @router.post("/training/cancel")
-async def cancel_training():
+async def cancel_training() -> dict:
     """取消当前训练任务（只杀本任务 PID，不用 taskkill /IM）。"""
     state = _read_state()
     pid = int(state.get("pid") or 0)
@@ -378,8 +410,7 @@ async def cancel_training():
         return {"message": "当前没有正在运行的任务"}
 
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                       capture_output=True, text=True)
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True)
     else:
         try:
             os.killpg(os.getpgid(pid), signal.SIGTERM)
@@ -403,7 +434,7 @@ async def cancel_training():
 # OCR 识别与去手写（未接入，明确拒绝）
 # --------------------------------------------------------------------------- #
 @router.post("/ocr/batch-scan")
-async def batch_ocr_scan(req: OcrBatchRequest, db: Session = Depends(get_db)):
+async def batch_ocr_scan(req: OcrBatchRequest, db: Session = Depends(get_db)) -> dict:
     """批量 OCR 尚未接入后台队列，返回 501，避免前端误以为已提交。"""
     count = db.query(Document).count()
     raise HTTPException(
@@ -413,7 +444,7 @@ async def batch_ocr_scan(req: OcrBatchRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/ocr/denoise")
-async def denoise_document(doc_id: int, db: Session = Depends(get_db)):
+async def denoise_document(doc_id: int, db: Session = Depends(get_db)) -> dict:
     """去手写算法未实现，返回 501，不返回假长度。"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
@@ -425,16 +456,11 @@ async def denoise_document(doc_id: int, db: Session = Depends(get_db)):
 # 知识库导入进度
 # --------------------------------------------------------------------------- #
 @router.get("/import/progress")
-async def get_import_progress(db: Session = Depends(get_db)):
+async def get_import_progress(db: Session = Depends(get_db)) -> dict:
     """获取知识库导入进度。"""
     total_docs = db.query(Document).count()
     total_questions = db.query(QuizQuestion).count()
-    docs_with_content = (
-        db.query(Document)
-        .filter(Document.content.isnot(None))
-        .filter(Document.content != "")
-        .count()
-    )
+    docs_with_content = db.query(Document).filter(Document.content.isnot(None), Document.content != "").count()
     return {
         "total_docs": total_docs,
         "docs_with_content": docs_with_content,
@@ -444,7 +470,7 @@ async def get_import_progress(db: Session = Depends(get_db)):
 
 
 @router.post("/import/start")
-async def start_kb_import(req: OcrBatchRequest, db: Session = Depends(get_db)):
+async def start_kb_import(req: OcrBatchRequest, db: Session = Depends(get_db)) -> dict:
     """启动知识库导入流程（复用 kb_import 扫描）。
 
     流程：批量 OCR → 提取候选题目 → 去重检测 → 用户预览勾选 → 确认入库
@@ -452,7 +478,9 @@ async def start_kb_import(req: OcrBatchRequest, db: Session = Depends(get_db)):
     from routers.kb_import import scan as kb_scan
 
     class FakePayload:
-        def __init__(self, doc_ids):
+        """最小 payload 适配器，复用 kb_import.scan 的入参形态。"""
+
+        def __init__(self, doc_ids: Optional[list[int]]) -> None:
             self.doc_ids = doc_ids
 
     try:
@@ -462,4 +490,4 @@ async def start_kb_import(req: OcrBatchRequest, db: Session = Depends(get_db)):
             "message": "扫描完成，请在文档页面预览并确认入库",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"扫描失败：{str(e)}")
+        raise HTTPException(status_code=500, detail=f"扫描失败：{str(e)}") from e

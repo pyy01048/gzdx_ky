@@ -9,6 +9,7 @@
 
 说明：保持 186 接口不变，本生成能力以 CLI + services.flashcard_gen 提供。
 """
+
 import argparse
 import os
 import sys
@@ -28,9 +29,7 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        result = generate_from_knowledge_points(
-            db, subject=args.subject, limit=args.limit, overwrite=args.overwrite
-        )
+        result = generate_from_knowledge_points(db, subject=args.subject, limit=args.limit, overwrite=args.overwrite)
         print(
             f"生成 {result['generated']} 张闪卡，"
             f"跳过 {result['skipped_existing']} 个已存在知识点，"

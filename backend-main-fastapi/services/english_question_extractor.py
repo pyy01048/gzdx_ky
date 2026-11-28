@@ -59,18 +59,21 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 # --------------------------------------------------------------------------- #
 
 #: PDF 页眉页脚 / 公众号水印 / OCR 分页标记
-_NOISE_LINE_PATTERNS: Tuple[re.Pattern, ...] = tuple(re.compile(p) for p in (
-    r"^-+\s*第?\s*\d+\s*页?\s*\(?OCR\)?\s*-+$",
-    r"^公众号[：:]",
-    r"研池大叔",
-    r"免费分享考研",
-    r"^\s*英语[（(]?[一二]\s*[)）]?\s*试题\s*[.．]?\s*\d+\s*[（(]共\s*\d+\s*页[)）]",
-    r"^关注公众号",
-    r"^\s*红宝书\s*[·・]?\s*考研英语\s*$",
-    r"^\s*绝密[★☆☆]?\s*启用前?\s*$",
-    r"^\s*更多考研资料\s*$",
-    r"^\s*【?考研真题】?\s*$",
-))
+_NOISE_LINE_PATTERNS: Tuple[re.Pattern[str], ...] = tuple(
+    re.compile(p)
+    for p in (
+        r"^-+\s*第?\s*\d+\s*页?\s*\(?OCR\)?\s*-+$",
+        r"^公众号[：:]",
+        r"研池大叔",
+        r"免费分享考研",
+        r"^\s*英语[（(]?[一二]\s*[)）]?\s*试题\s*[.．]?\s*\d+\s*[（(]共\s*\d+\s*页[)）]",
+        r"^关注公众号",
+        r"^\s*红宝书\s*[·・]?\s*考研英语\s*$",
+        r"^\s*绝密[★☆☆]?\s*启用前?\s*$",
+        r"^\s*更多考研资料\s*$",
+        r"^\s*【?考研真题】?\s*$",
+    )
+)
 
 #: PDF 抽取产生的乱码水印行（如 ``QlOS÷ÿxl`Y'SÔ QM9RN«xþzÿNf|M``）。
 #: 判定条件刻意收紧：必须含 U+FFFD 或 Latin-1 符号区字符，且**不含任何
@@ -189,7 +192,7 @@ def page_boilerplate_ratio(raw: Optional[str]) -> float:
 # 二、卷种 / 年份 / 小标题识别
 # --------------------------------------------------------------------------- #
 
-_ROMAN = "ⅠⅡⅢⅣⅤⅥⅦⅧ"          # 常见 Unicode 罗马数字
+_ROMAN = "ⅠⅡⅢⅣⅤⅥⅦⅧ"  # 常见 Unicode 罗马数字
 _ROMAN_MAP = {"Ⅰ": "I", "Ⅱ": "II", "Ⅲ": "III", "Ⅳ": "IV", "Ⅴ": "V"}
 
 #: ``Section I`` / ``Section Ⅰ`` / ``Section IUse of English``（OCR 会吞空格）。
@@ -217,8 +220,18 @@ _SECTION_NAMED_RE = re.compile(
 
 #: OCR 把罗马数字认错的常见形态 -> 正确罗马数字
 _ROMAN_OCR_FIX = {
-    "l": "I", "ll": "II", "lll": "III", "lV": "IV", "iV": "IV", "i": "I",
-    "ii": "II", "iii": "III", "iv": "IV", "v": "V", "Ill": "III", "Il": "II",
+    "l": "I",
+    "ll": "II",
+    "lll": "III",
+    "lV": "IV",
+    "iV": "IV",
+    "i": "I",
+    "ii": "II",
+    "iii": "III",
+    "iv": "IV",
+    "v": "V",
+    "Ill": "III",
+    "Il": "II",
 }
 
 
@@ -312,7 +325,7 @@ def split_sections(text: str) -> List[Tuple[str, str]]:
         num = ""
         r = re.search(r"Section\s*(?:[" + _ROMAN + r"]|[IVX]{1,4})", norm, re.IGNORECASE)
         if r:
-            num = _normalize_roman(r.group(0)[len("Section"):])
+            num = _normalize_roman(r.group(0)[len("Section") :])
         marks.append((m.start(), f"Section {num} {kind}".strip()))
 
     # 补充：只带英文小节名、罗马数字被 OCR 认错的标题
@@ -331,8 +344,7 @@ def split_sections(text: str) -> List[Tuple[str, str]]:
             kind = "Translation"
         else:
             kind = "Writing"
-        tok = re.match(r"Section\s*(\S{0,4}?)\s*$|Section\s*(\S{0,4}?)\s+" + re.escape(name[:6]),
-                       head, re.IGNORECASE)
+        tok = re.match(r"Section\s*(\S{0,4}?)\s*$|Section\s*(\S{0,4}?)\s+" + re.escape(name[:6]), head, re.IGNORECASE)
         num = ""
         if tok:
             num = _normalize_roman(tok.group(1) or tok.group(2) or "")
@@ -452,10 +464,10 @@ def _parse_answer_table(text: str) -> Dict[int, str]:
     """
     out: Dict[int, str] = {}
     for hm in _ANS_TABLE_HEAD_RE.finditer(text):
-        tail = text[hm.end():]
+        tail = text[hm.end() :]
         lines = tail.split("\n")
         for ln in lines[:120]:
-            #终止信号：出现书信/范文正文（如 ``Dear Paul,``）或中文章落
+            # 终止信号：出现书信/范文正文（如 ``Dear Paul,``）或中文章落
             if re.match(r"^\s*(?:Dear|Sincerely|The drawing|I have just)", ln):
                 break
             for pm in _ANS_PAIR_RE.finditer(ln):
@@ -463,6 +475,8 @@ def _parse_answer_table(text: str) -> Dict[int, str]:
                 if 1 <= no <= 55:
                     out.setdefault(no, ch)
     return out
+
+
 #: 逐题内联答案：``41.【答案】A`` / ``12. 【答案】B 【精解】`` / ``41．[答案]D``
 #: /``1.【答案】[A] Still``（答案文档常用「字母+原文」形式，实测 2026 英语一 doc=1643）
 _INLINE_ANS_RE = re.compile(
@@ -487,9 +501,7 @@ def _expand(lo: int, hi: int, letters: str) -> Dict[int, str]:
 _ANS_QNO_SCAN_RE = re.compile(r"^\s{0,6}(\d{1,2})\s*[.、．]\s*\S", re.MULTILINE)
 
 
-def _map_bare_group_by_preceding_qnos(
-    text: str, groups_with_pos: List[Tuple[int, str]]
-) -> Dict[int, str]:
+def _map_bare_group_by_preceding_qnos(text: str, groups_with_pos: List[Tuple[int, str]]) -> Dict[int, str]:
     """把 ``【参考答案】CCDAD`` 这类裸字母串映射到具体题号。
 
     解析文档的排版规律是：**先完整重复 5 道题的题干与选项，紧接着给出这5 题的
@@ -521,8 +533,8 @@ def _map_bare_group_by_preceding_qnos(
         n_need = len(letters)
         if len(prev_idx) < n_need:
             continue
-        window = no_list[prev_idx[-n_need]:prev_idx[-1] + 1]
-        if any(b - a != 1 for a, b in zip(window, window[1:])):
+        window = no_list[prev_idx[-n_need] : prev_idx[-1] + 1]
+        if any(b - a != 1 for a, b in zip(window, window[1:], strict=False)):
             continue
         if not (1 <= window[0] and window[-1] <= 55):
             continue
@@ -554,8 +566,8 @@ def parse_answer_sections(text: str) -> Tuple[Dict[int, str], Dict[str, List[str
             by_no[no] = im.group(2).upper()
 
     for m in _ANS_BLOCK_RE.finditer(text):
-        tail = text[m.end():]
-        #答案区到下一个 Section / 【标记】 为止
+        tail = text[m.end() :]
+        # 答案区到下一个 Section / 【标记】 为止
         cut = len(tail)
         for stop in ("【", "Section"):
             p = tail.find(stop, 5)
@@ -700,12 +712,12 @@ def trim_trailing_noize(lines: List[str]) -> List[str]:
     """
     out = list(lines)
     for i, ln in enumerate(out):
-        if re.match(r"^\s*Part\s*[ABC]\b", ln) or re.match(r"^\s*\d{1,2}\s*[.、．]\s*Directions",
-                                                          ln):
+        if re.match(r"^\s*Part\s*[ABC]\b", ln) or re.match(r"^\s*\d{1,2}\s*[.、．]\s*Directions", ln):
             out = out[:i]
             break
-    while out and (not out[-1].strip() or _PAGE_NUM_ONLY.match(out[-1])
-                   or any(p.search(out[-1]) for p in _NOISE_LINE_PATTERNS)):
+    while out and (
+        not out[-1].strip() or _PAGE_NUM_ONLY.match(out[-1]) or any(p.search(out[-1]) for p in _NOISE_LINE_PATTERNS)
+    ):
         out.pop()
     while out and not out[-1].strip():
         out.pop()
@@ -743,7 +755,7 @@ def _cloze_article(text: str) -> Tuple[str, List[int]]:
     """
     # 定位 Directions 之后的正文起点
     m = re.search(r"Directions\s*:?[\s\S]{0,400}?ANSWER\s*SHEET[^\n]*", text, re.IGNORECASE)
-    body = text[m.end():] if m else text
+    body = text[m.end() :] if m else text
     # 结束于「连续出现>=4 个题号行」（说明进入阅读部分）
     lines = body.split("\n")
     keep: List[str] = []
@@ -764,13 +776,13 @@ def _cloze_article(text: str) -> Tuple[str, List[int]]:
                 break
         keep.append(ln)
     body = "\n".join(keep).strip()
-    numbers = sorted({int(n) for n in re.findall(r"(?<![\w])(\d{1,2})(?=\s*[,.]?\s)", body)
-                      if 1 <= int(n) <= 20})
+    numbers = sorted({int(n) for n in re.findall(r"(?<![\w])(\d{1,2})(?=\s*[,.]?\s)", body) if 1 <= int(n) <= 20})
     return body, numbers
 
 
-def parse_cloze(text: str, answers: Dict[int, str], meta: PaperMeta,
-                full_text: Optional[str] = None) -> List[EnglishQuestion]:
+def parse_cloze(
+    text: str, answers: Dict[int, str], meta: PaperMeta, full_text: Optional[str] = None
+) -> List[EnglishQuestion]:
     """完形：切成 20 道，每道带完整文章。
 
     ``full_text`` 是整卷原文。选项区可能落在 Section I 之外（双栏排版时PDF
@@ -782,8 +794,7 @@ def parse_cloze(text: str, answers: Dict[int, str], meta: PaperMeta,
         return []
     if len(numbers) < 5:
         # 退化：很多年份把空号写成 ``1`` 独占一行，用 ``\\n\\d{1,2}\\n`` 兜底
-        numbers = sorted({int(n) for n in re.findall(r"^\s*(\d{1,2})\s*$", article,
-                                                     re.MULTILINE) if 1 <= int(n) <= 20})
+        numbers = sorted({int(n) for n in re.findall(r"^\s*(\d{1,2})\s*$", article, re.MULTILINE) if 1 <= int(n) <= 20})
     if not numbers:
         return []
     # 选项块：形如 ``1. [A] xxx`` 连续 20 组。
@@ -855,8 +866,7 @@ def parse_cloze(text: str, answers: Dict[int, str], meta: PaperMeta,
         # 补出来的D 就是错的 —— 错选项比缺选项危害大得多，宁可留空。
         complete = all(len(inline_map.get(n, [])) == 3 for n in range(1, 21))
         if complete:
-            d_col = [ln.strip() for ln in opt_src.split("\n")
-                     if re.match(r"^\s*D\s*[.、．]", ln)]
+            d_col = [ln.strip() for ln in opt_src.split("\n") if re.match(r"^\s*D\s*[.、．]", ln)]
             if len(d_col) >= 20:
                 for no in range(1, 21):
                     dm = _OPT_DOT_RE.match(d_col[no - 1])
@@ -887,28 +897,32 @@ def parse_cloze(text: str, answers: Dict[int, str], meta: PaperMeta,
     for no in numbers:
         opts = opt_map.get(no, [])
         head = f"（完形填空 第 {no} 空）\n以下短文的第 {no} 空应填入哪个最恰当的选项？\n\n{article}"
-        out.append(EnglishQuestion(
-            content=head,
-            options=opts,
-            answer=answers.get(no),
-            section_type="完形",
-            question_type=QT_CLOZE,
-            year=meta.year, paper=meta.paper, question_no=no,
-            source_paper=meta_src(meta),
-            external_id=f"en:{meta.year}:{meta.paper}:cloze:{no}",
-            chapter="完形填空",
-        ))
+        out.append(
+            EnglishQuestion(
+                content=head,
+                options=opts,
+                answer=answers.get(no),
+                section_type="完形",
+                question_type=QT_CLOZE,
+                year=meta.year,
+                paper=meta.paper,
+                question_no=no,
+                source_paper=meta_src(meta),
+                external_id=f"en:{meta.year}:{meta.paper}:cloze:{no}",
+                chapter="完形填空",
+            )
+        )
     return out
 
 
-def parse_reading_a(text: str, answers: Dict[int, str], meta: PaperMeta,
-                    source_paper: str) -> List[EnglishQuestion]:
+def parse_reading_a(text: str, answers: Dict[int, str], meta: PaperMeta, source_paper: str) -> List[EnglishQuestion]:
     """阅读 A：4篇 Text，每篇 5 题，题干带完整文章。"""
     # 切成 Text 1..4
     text_marks = [(m.start(), int(m.group(1))) for m in re.finditer(r"^\s*Text\s*(\d)\s*$", text, re.MULTILINE)]
     if not text_marks:
-        text_marks = [(m.start(), int(m.group(1))) for m in
-                      re.finditer(r"^\s*Text\s*(\d)\b[^\n]*$", text, re.MULTILINE)]
+        text_marks = [
+            (m.start(), int(m.group(1))) for m in re.finditer(r"^\s*Text\s*(\d)\b[^\n]*$", text, re.MULTILINE)
+        ]
     if len(text_marks) < 4:
         return []
 
@@ -927,7 +941,7 @@ def parse_reading_a(text: str, answers: Dict[int, str], meta: PaperMeta,
         first_no = blocks[0][0]
         fm = re.search(rf"(?m)^\s*{first_no}\s*[.、．]", passage)
         art = passage[: fm.start()] if fm else ""
-        #清掉 Part B / Directions 尾巴
+        # 清掉 Part B / Directions 尾巴
         art = re.split(r"Part\s*B|Directions\s*:", art)[-1] if re.search(r"Part\s*B|Directions\s*:", art) else art
         art_lines = trim_trailing_noize(art.split("\n"))
         art_text = "\n".join(art_lines).strip()
@@ -938,34 +952,36 @@ def parse_reading_a(text: str, answers: Dict[int, str], meta: PaperMeta,
             stem, opts = block_to_question(no, lines)
             if not stem or len(opts) < 2:
                 continue
-            qs.append(EnglishQuestion(
-                content=f"{art_text}\n\n{no}. {stem}",
-                options=opts,
-                answer=answers.get(no),
-                section_type="选择",
-                question_type=QT_READING,
-                year=meta.year, paper=meta.paper, question_no=no,
-                source_paper=source_paper,
-                external_id=f"en:{meta.year}:{meta.paper}:readingA:{no}",
-                chapter=f"阅读理解Text{i + 1}",
-            ))
+            qs.append(
+                EnglishQuestion(
+                    content=f"{art_text}\n\n{no}. {stem}",
+                    options=opts,
+                    answer=answers.get(no),
+                    section_type="选择",
+                    question_type=QT_READING,
+                    year=meta.year,
+                    paper=meta.paper,
+                    question_no=no,
+                    source_paper=source_paper,
+                    external_id=f"en:{meta.year}:{meta.paper}:readingA:{no}",
+                    chapter=f"阅读理解Text{i + 1}",
+                )
+            )
     return qs
 
 
-def parse_new_type(text: str, answers: Dict[int, str], meta: PaperMeta,
-                   source_paper: str) -> List[EnglishQuestion]:
+def parse_new_type(text: str, answers: Dict[int, str], meta: PaperMeta, source_paper: str) -> List[EnglishQuestion]:
     """新题型（Part B）：5 道。英二= 七选五（A-G 长句），英一= 排序。"""
     # 取 Part B 到下一个 Part C / Section 之间
     m = re.search(r"Part\s*B\s*(?:Directions)?", text, re.IGNORECASE)
     if not m:
         return []
-    tail = text[m.end():]
+    tail = text[m.end() :]
     stop = re.search(r"Part\s*C|Section\s*[ⅠI]?\s*[ⅣV]?\s*Translation", tail, re.IGNORECASE)
     seg = tail[: stop.start()] if stop else tail
 
     # 文章主体（用于上下文）：`(41)` / `( 41) ` 标记的空
-    blanks = sorted({int(n) for n in re.findall(r"\(\s*(\d{2})\s*\)", seg)
-                     if 41 <= int(n) <= 45})
+    blanks = sorted({int(n) for n in re.findall(r"\(\s*(\d{2})\s*\)", seg) if 41 <= int(n) <= 45})
     body_lines: List[str] = []
     for ln in seg.split("\n"):
         if re.match(r"^\s*\[\s*[A-G]\s*\]", ln) or _OPT_DOT_RE.match(ln):
@@ -990,19 +1006,22 @@ def parse_new_type(text: str, answers: Dict[int, str], meta: PaperMeta,
         body_q = body.replace(f"({no})", f"（第 {no} 空）____").replace(f"( {no} )", f"（第 {no} 空）____")
         if f"（第 {no} 空）" not in body_q:
             body_q = body_q.replace(f"({no} )", f"（第 {no} 空）____")
-        stem = (f"（新题型 第 {no} 空）\n"
-                f"以下段落第 {no} 空应填入最恰当的一项：\n\n{body_q}")
-        qs.append(EnglishQuestion(
-            content=stem,
-            options=[] if is_order else cand,
-            answer=answers.get(no),
-            section_type="选择" if cand else "排序",
-            question_type=QT_NEW_TYPE,
-            year=meta.year, paper=meta.paper, question_no=no,
-            source_paper=source_paper,
-            external_id=f"en:{meta.year}:{meta.paper}:newtype:{no}",
-            chapter="新题型",
-        ))
+        stem = f"（新题型 第 {no} 空）\n以下段落第 {no} 空应填入最恰当的一项：\n\n{body_q}"
+        qs.append(
+            EnglishQuestion(
+                content=stem,
+                options=[] if is_order else cand,
+                answer=answers.get(no),
+                section_type="选择" if cand else "排序",
+                question_type=QT_NEW_TYPE,
+                year=meta.year,
+                paper=meta.paper,
+                question_no=no,
+                source_paper=source_paper,
+                external_id=f"en:{meta.year}:{meta.paper}:newtype:{no}",
+                chapter="新题型",
+            )
+        )
     return qs
 
 
@@ -1048,15 +1067,14 @@ def _split_inline_part_c(seg: str) -> List[Tuple[int, str]]:
     return out
 
 
-def parse_translation(text: str, answers: Dict[int, str], meta: PaperMeta,
-                      source_paper: str) -> List[EnglishQuestion]:
+def parse_translation(text: str, answers: Dict[int, str], meta: PaperMeta, source_paper: str) -> List[EnglishQuestion]:
     """翻译：英一 = Part C 5 道（划线部分），英二 = 整段 1 道。"""
     out: List[EnglishQuestion] = []
 
     if meta.paper == "英语一":
         m = re.search(r"Part\s*C\s*(?:Directions)?", text, re.IGNORECASE)
         if m:
-            tail = text[m.end():]
+            tail = text[m.end() :]
             stop = re.search(r"Section\s*(?:[ⅠI]{1,3}|[IVX]{1,4})\s*Writing", tail, re.IGNORECASE)
             seg = tail[: stop.start()] if stop else tail
             paras: List[str] = []
@@ -1071,19 +1089,24 @@ def parse_translation(text: str, answers: Dict[int, str], meta: PaperMeta,
                 piece = "\n".join(trim_trailing_noize(piece.split("\n"))).strip()
                 if len(piece) < 40:
                     continue
-                out.append(EnglishQuestion(
-                    content=(f"（英一翻译 第 {no} 段）\n请把下面划线部分译成中文：\n\n{piece}\n\n"
-                             f"【全文语境】\n{ctx}"),
-                    options=[],
-                    answer=None,  # 翻译答案必须来自解析文档的人工译文，否则留空
-                    section_type="翻译",
-                    question_type=QT_TRANSLATION,
-                    year=meta.year, paper=meta.paper, question_no=no,
-                    source_paper=source_paper,
-                    external_id=f"en:{meta.year}:{meta.paper}:trans:{no}",
-                    answer_type="subjective",
-                    chapter="翻译",
-                ))
+                out.append(
+                    EnglishQuestion(
+                        content=(
+                            f"（英一翻译 第 {no} 段）\n请把下面划线部分译成中文：\n\n{piece}\n\n【全文语境】\n{ctx}"
+                        ),
+                        options=[],
+                        answer=None,  # 翻译答案必须来自解析文档的人工译文，否则留空
+                        section_type="翻译",
+                        question_type=QT_TRANSLATION,
+                        year=meta.year,
+                        paper=meta.paper,
+                        question_no=no,
+                        source_paper=source_paper,
+                        external_id=f"en:{meta.year}:{meta.paper}:trans:{no}",
+                        answer_type="subjective",
+                        chapter="翻译",
+                    )
+                )
             if out:
                 return out
 
@@ -1092,33 +1115,34 @@ def parse_translation(text: str, answers: Dict[int, str], meta: PaperMeta,
     target = next((b for b in blocks if b[0] == 46), None)
     if target:
         stem = "\n".join(trim_trailing_noize(target[1])).strip()
-        stem = re.sub(r"^Directions?:?[\s\S]{0,300}?ANSWER\s*SHEET[^\n]*\n?", "", stem,
-                      flags=re.IGNORECASE)
+        stem = re.sub(r"^Directions?:?[\s\S]{0,300}?ANSWER\s*SHEET[^\n]*\n?", "", stem, flags=re.IGNORECASE)
         if len(stem) > 80:
-            out.append(EnglishQuestion(
-                content=f"（英二翻译）\n请把下面英文段落译成中文：\n\n{stem}",
-                options=[],
-                answer=None,
-                section_type="翻译",
-                question_type=QT_TRANSLATION,
-                year=meta.year, paper=meta.paper, question_no=46,
-                source_paper=source_paper,
-                external_id=f"en:{meta.year}:{meta.paper}:trans:46",
-                answer_type="subjective",
-                chapter="翻译",
-            ))
+            out.append(
+                EnglishQuestion(
+                    content=f"（英二翻译）\n请把下面英文段落译成中文：\n\n{stem}",
+                    options=[],
+                    answer=None,
+                    section_type="翻译",
+                    question_type=QT_TRANSLATION,
+                    year=meta.year,
+                    paper=meta.paper,
+                    question_no=46,
+                    source_paper=source_paper,
+                    external_id=f"en:{meta.year}:{meta.paper}:trans:46",
+                    answer_type="subjective",
+                    chapter="翻译",
+                )
+            )
     return out
 
 
-def parse_writing(text: str, answers: Dict[int, str], meta: PaperMeta,
-                  source_paper: str) -> List[EnglishQuestion]:
+def parse_writing(text: str, answers: Dict[int, str], meta: PaperMeta, source_paper: str) -> List[EnglishQuestion]:
     """写作：小作文 1 道 + 大作文 1 道。答案一律留空。"""
     out: List[EnglishQuestion] = []
-    for m in re.finditer(r"Part\s*([AB])\s*(?:\n\s*)?(\d{1,2})\s*[.、．]?\s*Directions\s*:?",
-                         text, re.IGNORECASE):
+    for m in re.finditer(r"Part\s*([AB])\s*(?:\n\s*)?(\d{1,2})\s*[.、．]?\s*Directions\s*:?", text, re.IGNORECASE):
         part = m.group(1).upper()
         no = int(m.group(2))
-        tail = text[m.end():]
+        tail = text[m.end() :]
         nxt = re.search(r"Part\s*[ABC]\b|\n\s*\d{1,2}\s*[.、．]\s*Directions", tail, re.IGNORECASE)
         body = tail[: nxt.start()] if nxt else tail
         body = trim_trailing_noize(body.split("\n"))
@@ -1127,18 +1151,22 @@ def parse_writing(text: str, answers: Dict[int, str], meta: PaperMeta,
         if len(content) < 40:
             continue
         label = "小作文" if part == "A" else "大作文"
-        out.append(EnglishQuestion(
-            content=f"（{label}）\n{content}",
-            options=[],
-            answer=None,
-            section_type="写作",
-            question_type=QT_WRITING,
-            year=meta.year, paper=meta.paper, question_no=no,
-            source_paper=source_paper,
-            external_id=f"en:{meta.year}:{meta.paper}:writing:{part}",
-            answer_type="subjective",
-            chapter=label,
-        ))
+        out.append(
+            EnglishQuestion(
+                content=f"（{label}）\n{content}",
+                options=[],
+                answer=None,
+                section_type="写作",
+                question_type=QT_WRITING,
+                year=meta.year,
+                paper=meta.paper,
+                question_no=no,
+                source_paper=source_paper,
+                external_id=f"en:{meta.year}:{meta.paper}:writing:{part}",
+                answer_type="subjective",
+                chapter=label,
+            )
+        )
     return out
 
 
@@ -1149,6 +1177,7 @@ def meta_src(meta: PaperMeta) -> str:
 # --------------------------------------------------------------------------- #
 # 七、入口：切一份试卷
 # --------------------------------------------------------------------------- #
+
 
 @dataclass
 class PaperResult:
@@ -1171,9 +1200,14 @@ class PaperResult:
         return sum(1 for q in self.questions if (q.answer or "").strip())
 
 
-def extract_paper(raw: str, file_name: str, *, doc_id: Optional[int] = None,
-                  answer_raw: Optional[str] = None,
-                  answer_file_name: str = "") -> PaperResult:
+def extract_paper(
+    raw: str,
+    file_name: str,
+    *,
+    doc_id: Optional[int] = None,
+    answer_raw: Optional[str] = None,
+    answer_file_name: str = "",
+) -> PaperResult:
     """切一份英语试卷。
 
     Args:
@@ -1196,9 +1230,10 @@ def extract_paper(raw: str, file_name: str, *, doc_id: Optional[int] = None,
     # 整卷乱码闸门：成片 U+FFFD 的文档直接弃用，不切出"半可读"的题
     if is_doc_too_mojibake(primary_raw):
         ffr, ffn = doc_mojibake_rate(primary_raw)
-        return PaperResult(meta=PaperMeta(year=detect_year(raw, file_name),
-                                          paper=detect_paper(raw, file_name)),
-                           doc_reject=f"整卷乱码：U+FFFD {ffn} 个（占比 {ffr:.4%}）")
+        return PaperResult(
+            meta=PaperMeta(year=detect_year(raw, file_name), paper=detect_paper(raw, file_name)),
+            doc_reject=f"整卷乱码：U+FFFD {ffn} 个（占比 {ffr:.4%}）",
+        )
 
     text = clean_content(primary_raw)
     meta = PaperMeta(
@@ -1215,7 +1250,7 @@ def extract_paper(raw: str, file_name: str, *, doc_id: Optional[int] = None,
     qs: List[EnglishQuestion] = []
     sections = split_sections(text)
     if not sections:
-        #整卷文档里连一个 Section 标题都没有（实测 2023 英语一 doc=2503 就是
+        # 整卷文档里连一个 Section 标题都没有（实测 2023 英语一 doc=2503 就是
         # 这种：直接从 "Section I Use of English" 的正文/ "Text 1" 开始）。
         # 此时按全文 + 题号区间兜底切分。
         sections = [("Section ? 全卷", text)]
@@ -1226,7 +1261,7 @@ def extract_paper(raw: str, file_name: str, *, doc_id: Optional[int] = None,
         elif kind == "Reading Comprehension":
             # Part A 只取 Part A 区段
             pa = re.search(r"Part\s*A", seg, re.IGNORECASE)
-            seg_a = seg[pa.end():] if pa else seg
+            seg_a = seg[pa.end() :] if pa else seg
             qs.extend(parse_reading_a(seg_a, answers, meta, src))
             qs.extend(parse_new_type(seg, answers, meta, src))
             # 英语一的 Part C（英译汉 5 段）排在 Reading Comprehension 的 Part B
@@ -1237,8 +1272,7 @@ def extract_paper(raw: str, file_name: str, *, doc_id: Optional[int] = None,
             qs.extend(parse_translation(seg, answers, meta, src))
         elif kind == "Writing":
             qs.extend(parse_writing(seg, answers, meta, src))
-        elif kind == "" and re.search(r"Write an essay|Write a notice|Write him/her an email",
-                                      seg, re.IGNORECASE):
+        elif kind == "" and re.search(r"Write an essay|Write a notice|Write him/her an email", seg, re.IGNORECASE):
             # OCR 丢了 Section 罗马数字，只剩 ``Section  Writing``
             qs.extend(parse_writing(seg, answers, meta, src))
         else:
@@ -1246,15 +1280,11 @@ def extract_paper(raw: str, file_name: str, *, doc_id: Optional[int] = None,
             qs.extend(_fallback_by_numbers(seg, answers, meta, src))
 
     for q in qs:
-        q.source_paper = q.source_paper or src
-        if doc_id and not q.external_id.endswith(f":{doc_id}"):
-            pass
         q.source_paper = src
     return PaperResult(meta=meta, questions=qs)
 
 
-def _fallback_by_numbers(seg: str, answers: Dict[int, str], meta: PaperMeta,
-                         src: str) -> List[EnglishQuestion]:
+def _fallback_by_numbers(seg: str, answers: Dict[int, str], meta: PaperMeta, src: str) -> List[EnglishQuestion]:
     """标题丢失时的兜底：按题号区间 + Directions 特征切分。
 
     注意 ``PartA`` 只吃 Part A 区段（否则会把新题型的 A-G 长句选项当成阅读题）。
@@ -1262,19 +1292,18 @@ def _fallback_by_numbers(seg: str, answers: Dict[int, str], meta: PaperMeta,
     out: List[EnglishQuestion] = []
     if re.search(r"Read the following text", seg[:800], re.IGNORECASE):
         out.extend(parse_cloze(seg, answers, meta, full_text=seg))
-    #阅读 A：需要 4 个 Text 标记
+    # 阅读 A：需要 4 个 Text 标记
     if len(re.findall(r"^\s*Text\s*\d", seg, re.MULTILINE)) >= 4:
         pa = re.search(r"^\s*Part\s*A", seg, re.MULTILINE)
-        seg_a = seg[pa.end():] if pa else seg
-        #若Part A 之后紧跟 Part B，则在 Part B 处截断
+        seg_a = seg[pa.end() :] if pa else seg
+        # 若Part A 之后紧跟 Part B，则在 Part B 处截断
         pb = re.search(r"^\s*Part\s*B", seg_a, re.MULTILINE)
         if pb:
             seg_a = seg_a[: pb.start()]
         out.extend(parse_reading_a(seg_a, answers, meta, src))
     elif re.search(r"following four passages", seg[:800], re.IGNORECASE):
         out.extend(parse_reading_a(seg, answers, meta, src))
-    if re.search(r"most suitable one from the list|numbered blanks?[\s\S]{0,80}extra choices",
-                 seg, re.IGNORECASE):
+    if re.search(r"most suitable one from the list|numbered blanks?[\s\S]{0,80}extra choices", seg, re.IGNORECASE):
         out.extend(parse_new_type(seg, answers, meta, src))
     if re.search(r"translate", seg[:800], re.IGNORECASE):
         out.extend(parse_translation(seg, answers, meta, src))
@@ -1318,8 +1347,7 @@ def english_quality_check(q: EnglishQuestion) -> Tuple[bool, str]:
     if len(words) < MIN_WORDS_OBJECTIVE:
         return False, "reject:英文词数不足"
     # 乱码：控制字符噪声（换行/制表是正常排版，必须排除）
-    bad = sum(1 for ch in c
-              if ch not in "\n\r\t" and unicodedata.category(ch).startswith("C"))
+    bad = sum(1 for ch in c if ch not in "\n\r\t" and unicodedata.category(ch).startswith("C"))
     if bad / max(len(c), 1) > 0.01:
         return False, "reject:控制字符噪声"
 
@@ -1343,14 +1371,19 @@ def english_quality_check(q: EnglishQuestion) -> Tuple[bool, str]:
 
 
 #: 全局闸门判定中，**对英语同样成立**的硬拦截项（"根本不是题"的信号，与语言无关）
-GATE_HARD_REJECTS = frozenset({
-    "reject:内容过短", "reject:OCR乱码", "reject:纯符号噪声",
-    "reject:答案体当题干", "reject:纯数字", "reject:纯标点",
-})
+GATE_HARD_REJECTS = frozenset(
+    {
+        "reject:内容过短",
+        "reject:OCR乱码",
+        "reject:纯符号噪声",
+        "reject:答案体当题干",
+        "reject:纯数字",
+        "reject:纯标点",
+    }
+)
 
 
-def gate_and_filter(result: PaperResult, *,
-                    use_global_gate: bool = True) -> PaperResult:
+def gate_and_filter(result: PaperResult, *, use_global_gate: bool = True) -> PaperResult:
     """跑两道闸门：全局 ``quiz_content_gate.admit`` + 英语专用检查。
 
     全局闸门对英语主观题会误杀，所以：客观题（阅读/完形/新题型）**必须**
@@ -1378,8 +1411,9 @@ def gate_and_filter(result: PaperResult, *,
     for q in result.questions:
         g_ok, g_reason = (True, "admitted")
         if admit is not None:
-            g_ok, g_reason = admit(q.content, options=q.options, answer=q.answer,
-                                   source="考研英语真题", section_type=q.section_type)
+            g_ok, g_reason = admit(
+                q.content, options=q.options, answer=q.answer, source="考研英语真题", section_type=q.section_type
+            )
         e_ok, e_reason = english_quality_check(q)
         hard_ok = g_reason not in GATE_HARD_REJECTS
         ok = e_ok and hard_ok

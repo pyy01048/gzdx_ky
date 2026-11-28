@@ -9,6 +9,7 @@
 
 使用：python services/kaoyan/supplement_answers.py [--limit N] [--resume]
 """
+
 import argparse
 import json
 import logging
@@ -19,9 +20,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from database import SessionLocal
-from models import QuizQuestion
 from sqlalchemy import func
 
+from models import QuizQuestion
 from services.model_gateway import ModelGateway
 
 # 断点状态同样不放包目录：部署包夹带过期 checkpoint 会让任务"假装已完成"。
@@ -46,7 +47,7 @@ def build_prompt(q) -> str:
         opt_text = str(options)
     known = f"（已知答案：{q.answer}）" if q.answer else ""
     return (
-        f"请为下面这道考研{ q.subject or '未知' }科目题目给出答案解析，中文简洁，80字以内，"
+        f"请为下面这道考研{q.subject or '未知'}科目题目给出答案解析，中文简洁，80字以内，"
         f"说明解题思路与正确选项理由。{known}\n"
         f"题目：{content}\n{opt_text}\n仅输出解析正文，不要输出多余说明。"
     )
@@ -59,9 +60,7 @@ def load_state():
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
     return {"done_ids": []}
 
 
@@ -79,11 +78,15 @@ def main():
     db = SessionLocal()
     gw = ModelGateway()
     try:
-        query = db.query(QuizQuestion).filter(
-            (QuizQuestion.analysis.is_(None))
-            | (QuizQuestion.analysis == "")
-            | (func.length(QuizQuestion.analysis) < 5)
-        ).order_by(QuizQuestion.id)
+        query = (
+            db.query(QuizQuestion)
+            .filter(
+                (QuizQuestion.analysis.is_(None))
+                | (QuizQuestion.analysis == "")
+                | (func.length(QuizQuestion.analysis) < 5)
+            )
+            .order_by(QuizQuestion.id)
+        )
         total = query.count()
         print(f"[C6] 待补解析题目：{total}", flush=True)
         if args.limit and args.limit < total:
@@ -126,10 +129,10 @@ def main():
             if ok % 10 == 0:
                 db.commit()
                 save_state(st)
-                print(f"[C6] 进度 {ok}/{total} 成功，失败 {fail}，耗时 {int(time.time()-t0)}s", flush=True)
+                print(f"[C6] 进度 {ok}/{total} 成功，失败 {fail}，耗时 {int(time.time() - t0)}s", flush=True)
         db.commit()
         save_state(st)
-        print(f"[C6] 完成：成功 {ok} 条，失败 {fail} 条，耗时 {int(time.time()-t0)}s", flush=True)
+        print(f"[C6] 完成：成功 {ok} 条，失败 {fail} 条，耗时 {int(time.time() - t0)}s", flush=True)
         print(f"[C6] 断点文件：{STATE_FILE}", flush=True)
     finally:
         db.close()

@@ -9,6 +9,7 @@
 用法：python scripts/sync_study_stats.py
 可重复运行（按 date 幂等 upsert），适合定时任务或每次会话后手动同步。
 """
+
 import io
 import json
 import os
@@ -31,9 +32,7 @@ def _day(dt: datetime) -> date:
 
 def sync(db) -> dict:
     # 1. 需要覆盖的日期：study_sessions 有数据的全部日期 + 今天（保证今天至少有一行快照）
-    session_dates = [
-        r[0] for r in db.query(StudySession.date).distinct().all() if r[0]
-    ]
+    session_dates = [r[0] for r in db.query(StudySession.date).distinct().all() if r[0]]
     today = date.today()
     all_dates = set(session_dates) | {today}
 
@@ -131,6 +130,7 @@ if __name__ == "__main__":
         print(f"RESULT_WRITTEN {out_path}")
     except Exception:
         import traceback
+
         with open(out_path, "w", encoding="utf-8") as f:
             traceback.print_exc(file=f)
         print(f"ERROR_WRITTEN {out_path}")

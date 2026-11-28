@@ -17,6 +17,7 @@
     python scripts/export_subject_alias_candidates.py            # 生成 + 打印 TOP 表
     python scripts/export_subject_alias_candidates.py --limit 60
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,8 +55,8 @@ def _is_public_pool(subj: str) -> bool:
     """候选右侧不许是公共课语料池：政治/数学/英语 人人必考，映射过去覆盖率会虚高。"""
     return is_public_subject(subj) or subj.replace(" ", "").startswith("公共课")
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "data", "subject_alias_candidates.json")
+
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "subject_alias_candidates.json")
 
 #: 名称尾部噪声词：只影响字面重合度，不影响学科身份
 _SUFFIX_NOISE = ("基础", "技术", "科学", "综合", "概论", "导论", "论", "学")
@@ -75,7 +76,7 @@ def stem(s: str) -> str:
 
 
 def bigrams(s: str) -> set:
-    return {s[i:i + 2] for i in range(len(s) - 1)} if len(s) > 1 else {s}
+    return {s[i : i + 2] for i in range(len(s) - 1)} if len(s) > 1 else {s}
 
 
 def prior_alias_tables():
@@ -87,7 +88,7 @@ def prior_alias_tables():
         except Exception:  # noqa: BLE001
             continue
         for k, v in (getattr(m, "SUBJECT_ALIAS", {}) or {}).items():
-            for cand in (v if isinstance(v, (list, tuple)) else [v]):
+            for cand in v if isinstance(v, list | tuple) else [v]:
                 if cand not in merged[norm(k)]:
                     merged[norm(k)].append(cand)
     return merged
@@ -107,8 +108,7 @@ def candidates_for(ps: str, supply: dict, prior: dict, topn: int = 4) -> list:
             continue
         if subj in ps_n or ps_n in subj:
             signals.append("包含")
-        if stem(subj) and (stem(subj) == ps_stem or stem(subj) in ps_stem
-                           or ps_stem in stem(subj)):
+        if stem(subj) and (stem(subj) == ps_stem or stem(subj) in ps_stem or ps_stem in stem(subj)):
             signals.append("剥后缀同名")
         jacc = len(bigrams(subj) & ps_bi) / max(len(bigrams(subj) | ps_bi), 1)
         if jacc >= 0.34:
@@ -118,16 +118,20 @@ def candidates_for(ps: str, supply: dict, prior: dict, topn: int = 4) -> list:
         if not signals:
             continue
         # 底稿 + 结构信号权重最高，纯字面相似只作参考
-        rank = (2 if "人工底稿" in signals else 0) + (1 if "包含" in signals or
-                                                     "剥后缀同名" in signals else 0)
+        rank = (2 if "人工底稿" in signals else 0) + (1 if "包含" in signals or "剥后缀同名" in signals else 0)
         prev = scored.get(subj)
         if prev is None or (rank, jacc) > (prev["rank"], prev["jacc"]):
             scored[subj] = {"rank": rank, "jacc": round(jacc, 3), "signals": signals}
     out = sorted(scored.items(), key=lambda kv: (-kv[1]["rank"], -kv[1]["jacc"]))[:topn]
-    return [{"subject": s,
-             "documents": supply[s].get("documents", 0),
-             "chunks": supply[s].get("chunks", 0),
-             "signals": v["signals"]} for s, v in out]
+    return [
+        {
+            "subject": s,
+            "documents": supply[s].get("documents", 0),
+            "chunks": supply[s].get("chunks", 0),
+            "signals": v["signals"],
+        }
+        for s, v in out
+    ]
 
 
 def main() -> int:
@@ -136,6 +140,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from database import SessionLocal
+
     from models import KaoyanMajor
 
     db = SessionLocal()
@@ -157,8 +162,7 @@ def main() -> int:
             parsed += 1
             hit = _lookup(ps, supply)
             matched += bool(hit)
-            covered += (coverage_state(int(hit.get("documents") or 0),
-                                       int(hit.get("chunks") or 0)) == "covered")
+            covered += coverage_state(int(hit.get("documents") or 0), int(hit.get("chunks") or 0)) == "covered"
             if hit:
                 continue
             gap[ps] += 1
@@ -169,45 +173,50 @@ def main() -> int:
 
         def state_of(subject: str) -> str:
             h = supply.get(_norm(subject)) or {}
-            return coverage_state(int(h.get("documents") or 0),
-                                  int(h.get("chunks") or 0))
+            return coverage_state(int(h.get("documents") or 0), int(h.get("chunks") or 0))
 
         rows = []
         for ps, n in gap.most_common():
             # 纯符号科目名（"-"、"—"）不是学科，给它配候选会把「公共课-政治」当别名塞进去
             if not _has_name_char(ps):
-                rows.append({"major_subject": ps, "majors": n,
-                             "schools": len(schools[ps]),
-                             "codes_observed": sorted(codes[ps])[:8],
-                             "candidates": [], "suggested": None,
-                             "status": "rejected_not_a_subject"})
+                rows.append(
+                    {
+                        "major_subject": ps,
+                        "majors": n,
+                        "schools": len(schools[ps]),
+                        "codes_observed": sorted(codes[ps])[:8],
+                        "candidates": [],
+                        "suggested": None,
+                        "status": "rejected_not_a_subject",
+                    }
+                )
                 continue
             cands = candidates_for(ps, supply, prior)
-            rows.append({
-                "major_subject": ps,
-                "majors": n,
-                "schools": len(schools[ps]),
-                "codes_observed": sorted(codes[ps])[:8],   # 原值，绝不生成
-                "candidates": cands,
-                "suggested": cands[0]["subject"] if cands and cands[0]["signals"] else None,
-                "suggested_state": (state_of(cands[0]["subject"])
-                                    if cands and cands[0]["signals"] else None),
-                "status": "pending",                        # 人工批准前不得启用
-            })
+            rows.append(
+                {
+                    "major_subject": ps,
+                    "majors": n,
+                    "schools": len(schools[ps]),
+                    "codes_observed": sorted(codes[ps])[:8],  # 原值，绝不生成
+                    "candidates": cands,
+                    "suggested": cands[0]["subject"] if cands and cands[0]["signals"] else None,
+                    "suggested_state": (state_of(cands[0]["subject"]) if cands and cands[0]["signals"] else None),
+                    "status": "pending",  # 人工批准前不得启用
+                }
+            )
 
         # 上限估算：若全部按 suggested 批准，覆盖能到多少（这是"人工要不要认真过表"的代价感）
         # 两个口径分开报：命中率（进了供给池就算）≠ covered（语料量达标），别混用
         resolved = sum(r["majors"] for r in rows if r["suggested"])
-        resolved_covered = sum(r["majors"] for r in rows
-                               if r.get("suggested_state") == "covered")
+        resolved_covered = sum(r["majors"] for r in rows if r.get("suggested_state") == "covered")
         ceiling_hit = (matched + resolved) / parsed if parsed else 0.0
         ceiling_cover = (covered + resolved_covered) / parsed if parsed else 0.0
 
         payload = {
             "generated_from": "kaoyan_majors × subject_supply（documents ∪ knowledge_chunks）",
             "note": "候选仅供人工逐条批准；批准前不进 major_coverage._lookup，"
-                    "不写 kaoyan_major_kb_link。codes_observed 为库内原值，未做任何补全。"
-                    "matched_rate 口径=能命中供给池；coverage_rate 口径=看板用的 covered（语料量达标）。",
+            "不写 kaoyan_major_kb_link。codes_observed 为库内原值，未做任何补全。"
+            "matched_rate 口径=能命中供给池；coverage_rate 口径=看板用的 covered（语料量达标）。",
             "majors_total": len(majors),
             "majors_with_professional": parsed,
             "matched_now": matched,
@@ -224,26 +233,38 @@ def main() -> int:
         with open(OUT, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=1)
 
-        print(f"专业 {len(majors)} 条，可解析专业课 {parsed}；"
-              f"现命中率 {matched}（{payload['matched_rate_now']:.1%}）/ "
-              f"现 covered {covered}（{payload['coverage_rate_now']:.1%}）")
-        print(f"未匹配科目名 {len(rows)} 种 / 覆盖 {payload['unmatched_majors']} 个专业；"
-              f"若全部批准 suggested → 命中率上限 {payload['match_ceiling_if_all_approved']:.1%}，"
-              f"covered 上限 {payload['coverage_ceiling_if_all_approved']:.1%}")
+        print(
+            f"专业 {len(majors)} 条，可解析专业课 {parsed}；"
+            f"现命中率 {matched}（{payload['matched_rate_now']:.1%}）/ "
+            f"现 covered {covered}（{payload['coverage_rate_now']:.1%}）"
+        )
+        print(
+            f"未匹配科目名 {len(rows)} 种 / 覆盖 {payload['unmatched_majors']} 个专业；"
+            f"若全部批准 suggested → 命中率上限 {payload['match_ceiling_if_all_approved']:.1%}，"
+            f"covered 上限 {payload['coverage_ceiling_if_all_approved']:.1%}"
+        )
         print(f"工件已写入 {OUT}\n")
         print(f"{'专业侧科目名':<22}{'专业':>4}{'院校':>5}  候选（证据）")
-        for r in rows[:args.limit]:
-            cand = "、".join(f"{c['subject']}[{c['documents']}篇/{c['chunks']}块]"
-                             f"({'|'.join(c['signals'])})" for c in r["candidates"]) or "（无候选）"
+        for r in rows[: args.limit]:
+            cand = (
+                "、".join(
+                    f"{c['subject']}[{c['documents']}篇/{c['chunks']}块]({'|'.join(c['signals'])})"
+                    for c in r["candidates"]
+                )
+                or "（无候选）"
+            )
             print(f"{r['major_subject']:<22}{r['majors']:>4}{r['schools']:>5}  {cand}")
-        no_cand = [r["major_subject"] for r in rows
-                   if not r["candidates"] and r["status"] == "pending"]
+        no_cand = [r["major_subject"] for r in rows if not r["candidates"] and r["status"] == "pending"]
         not_subject = [r for r in rows if r["status"] != "pending"]
-        print(f"\n完全无候选（需人工命名或确认确实无语料）：{len(no_cand)} 种："
-              f"{'、'.join(no_cand[:20])}{' …' if len(no_cand) > 20 else ''}")
+        print(
+            f"\n完全无候选（需人工命名或确认确实无语料）：{len(no_cand)} 种："
+            f"{'、'.join(no_cand[:20])}{' …' if len(no_cand) > 20 else ''}"
+        )
         if not_subject:
-            print(f"非学科名（不参与别名候选）：{len(not_subject)} 种："
-                  f"{'、'.join(repr(r['major_subject']) for r in not_subject[:10])}")
+            print(
+                f"非学科名（不参与别名候选）：{len(not_subject)} 种："
+                f"{'、'.join(repr(r['major_subject']) for r in not_subject[:10])}"
+            )
         return 0
     finally:
         db.close()

@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from database import SessionLocal
+
 from models import Document, KnowledgeChunk, NetdiskFile
 
 
@@ -20,9 +21,9 @@ def clean_text(text):
     if not text:
         return text
     # 移除代理对字符（\ud800-\udfff）
-    text = ''.join(c for c in text if not ('\ud800' <= c <= '\udfff'))
+    text = "".join(c for c in text if not ("\ud800" <= c <= "\udfff"))
     # 移除其他控制字符（保留换行、制表符）
-    text = ''.join(c for c in text if c == '\n' or c == '\t' or c == '\r' or c >= ' ')
+    text = "".join(c for c in text if c == "\n" or c == "\t" or c == "\r" or c >= " ")
     return text
 
 
@@ -52,7 +53,7 @@ def parse_all_documents():
 
     for i, doc in enumerate(pending_docs):
         try:
-            print(f"  [{i+1}/{len(pending_docs)}] 解析: {doc.file_name}")
+            print(f"  [{i + 1}/{len(pending_docs)}] 解析: {doc.file_name}")
 
             doc.index_status = "indexing"
             doc.parse_progress = 0.1
@@ -67,8 +68,7 @@ def parse_all_documents():
             # 质量闸门：必须在 clean_text 之前。clean_text 会把控制字符全部
             # 抹掉，而「整份二进制当文本读」的坏文件正是靠连续控制字节识别的；
             # 先清洗等于销毁证据。
-            verdict = gate_for_write(db, content_text,
-                                     path=doc.file_path or "", doc_id=doc.id)
+            verdict = gate_for_write(db, content_text, path=doc.file_path or "", doc_id=doc.id)
             if not verdict["ok"]:
                 # 拒绝时不覆盖 doc.content（老正文可能仍有用），只置 failed。
                 doc.index_status = "failed"
@@ -87,7 +87,11 @@ def parse_all_documents():
             # 分块入库。replace=True：重解析要先清掉本 doc 名下旧块，
             # 否则每跑一遍就多一整套重复 knowledge_chunks。
             chunks_count = ingest_text(
-                db, doc.id, doc.file_name, content_text, doc.subject,
+                db,
+                doc.id,
+                doc.file_name,
+                content_text,
+                doc.subject,
                 replace=True,
             )
             print(f"    生成 {chunks_count} 个分块")
@@ -127,10 +131,9 @@ def build_embeddings():
 
     db = SessionLocal()
     total_chunks = db.query(KnowledgeChunk).count()
-    chunks_with_embedding = db.query(KnowledgeChunk).filter(
-        KnowledgeChunk.embedding != None,
-        KnowledgeChunk.embedding != ""
-    ).count()
+    chunks_with_embedding = (
+        db.query(KnowledgeChunk).filter(KnowledgeChunk.embedding is not None, KnowledgeChunk.embedding != "").count()
+    )
 
     print(f"知识分块总数: {total_chunks}")
     print(f"已有向量: {chunks_with_embedding}")
@@ -152,9 +155,13 @@ def build_embeddings():
     total_built = 0
 
     while True:
-        chunks = db.query(KnowledgeChunk).filter(
-            (KnowledgeChunk.embedding == None) | (KnowledgeChunk.embedding == "")
-        ).offset(offset).limit(batch_size).all()
+        chunks = (
+            db.query(KnowledgeChunk)
+            .filter((KnowledgeChunk.embedding is None) | (KnowledgeChunk.embedding == ""))
+            .offset(offset)
+            .limit(batch_size)
+            .all()
+        )
 
         if not chunks:
             break
@@ -166,7 +173,7 @@ def build_embeddings():
 
         try:
             embeddings = generate_embeddings(texts)
-            for chunk, emb in zip(chunks, embeddings):
+            for chunk, emb in zip(chunks, embeddings, strict=False):
                 if emb:
                     chunk.embedding = str(emb)
                     chunk.embedding_model = embedder.__class__.__name__
@@ -254,16 +261,15 @@ def main():
     # 这里原本写 "ready"（该值从不存在），导致统计恒为 0。
     ready_docs = db.query(Document).filter(Document.index_status == "indexed").count()
     total_chunks = db.query(KnowledgeChunk).count()
-    chunks_with_embedding = db.query(KnowledgeChunk).filter(
-        KnowledgeChunk.embedding != None,
-        KnowledgeChunk.embedding != ""
-    ).count()
+    chunks_with_embedding = (
+        db.query(KnowledgeChunk).filter(KnowledgeChunk.embedding is not None, KnowledgeChunk.embedding != "").count()
+    )
 
     print(f"文档总数: {total_docs}")
     print(f"已解析文档: {ready_docs}")
     print(f"知识分块总数: {total_chunks}")
     print(f"已有向量分块: {chunks_with_embedding}")
-    print(f"向量覆盖率: {chunks_with_embedding/total_chunks*100:.1f}%" if total_chunks > 0 else "向量覆盖率: 0%")
+    print(f"向量覆盖率: {chunks_with_embedding / total_chunks * 100:.1f}%" if total_chunks > 0 else "向量覆盖率: 0%")
 
     db.close()
     print(f"\n完成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

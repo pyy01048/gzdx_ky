@@ -2,6 +2,7 @@
 
 只读，不修改任何数据。
 """
+
 import os
 import sqlite3
 from collections import Counter
@@ -12,7 +13,7 @@ DOC_EXT = {".pdf", ".docx", ".doc", ".ppt", ".pptx", ".md", ".txt", ".png", ".jp
 
 # 1) 磁盘文件
 disk = []
-for root, dirs, files in os.walk(KB):
+for root, _dirs, files in os.walk(KB):
     # 跳过已归档目录与缓存
     rel = os.path.relpath(root, KB)
     if rel.startswith("documents") or rel.startswith("chunks"):

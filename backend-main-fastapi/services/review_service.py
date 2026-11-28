@@ -19,7 +19,6 @@ import datetime
 import logging
 from typing import Any
 
-from models import ErrorKnowledgeLink, ErrorRecord, KnowledgePoint, ReviewRecord, ReviewSchedule, StudyEvent
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from utils.timeutil import (  # 统一 naive UTC 时间规范（P0-4）
@@ -28,7 +27,10 @@ from utils.timeutil import (  # 统一 naive UTC 时间规范（P0-4）
     utcnow,
 )
 
+from models import ErrorKnowledgeLink, ErrorRecord, KnowledgePoint, ReviewRecord, ReviewSchedule, StudyEvent
 from services import kp_mastery, taxonomy
+
+logger = logging.getLogger(__name__)
 
 # 复习结果 → 质量分（对应 SM-2 的 0-5）
 RESULT_GRADE = {
@@ -234,6 +236,8 @@ def apply_review(
         # 他人错题按不存在处理（404 而非 403，避免泄露他人数据存在性）
         if not err or (user_id is not None and err.user_id != user_id):
             raise LookupError("错题不存在")
+        if err.status == "graduated":
+            raise ValueError("错题已毕业")
 
         # accuracy 在 ErrorRecord 里是 0-1 的小数（见 orchestrator 写入口径）
         before = int(round(float(err.accuracy or 0) * 100))
@@ -301,11 +305,12 @@ def apply_review(
                 "mastery_after": payload.get("mastery_after", 0),
             },
             user_id=user_id,
+            commit=commit,
         )
     except Exception as _exc:  # noqa: BLE001
         # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
         # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-        logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
+        logger.warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     # 掌握度重算（2026-10-16 修复链路缺口）：
     # mastery 是派生列，只在 knowledge_points 被 UPDATE 时才由触发器刷新。
@@ -318,7 +323,7 @@ def apply_review(
             kp_mastery.touch_mastery(db, [item_id])
         except Exception as _exc:  # noqa: BLE001
             # 不静默：刷新失败会让"掌握度不动"复现，且极难定位
-            logging.getLogger(__name__).warning("复习后掌握度重算失败 kp=%s: %s", item_id, str(_exc)[:160])
+            logger.warning("复习后掌握度重算失败 kp=%s: %s", item_id, str(_exc)[:160])
 
     payload["review_id"] = rec.id
     payload["next_review"] = next_dt.isoformat()
@@ -361,7 +366,7 @@ def due_items(
 
     q = db.query(KnowledgePoint)
     if subject:
-        q = q.filter(KnowledgePoint.subject == taxonomy.normalize_subject(subject))
+        q = q.filter(KnowledgePoint.subject == norm_subject)
 
     conditions = [KnowledgePoint.next_review.is_(None), KnowledgePoint.next_review <= now]
     if include_new:
@@ -425,7 +430,15 @@ def _due_items_user(
     kp_ids = [r.item_id for r in sched_rows if r.item_type == "knowledge_point"]
     err_ids = [r.item_id for r in sched_rows if r.item_type == "error_record"]
     kps = {k.id: k for k in db.query(KnowledgePoint).filter(KnowledgePoint.id.in_(kp_ids)).all()} if kp_ids else {}
-    errs = {e.id: e for e in db.query(ErrorRecord).filter(ErrorRecord.id.in_(err_ids)).all()} if err_ids else {}
+    personal_mastery = kp_mastery.user_mastery(db, user_id)
+    errs = (
+        {
+            e.id: e
+            for e in db.query(ErrorRecord).filter(ErrorRecord.id.in_(err_ids), ErrorRecord.user_id == user_id).all()
+        }
+        if err_ids
+        else {}
+    )
 
     entries: list[tuple[tuple[int, int], dict[str, Any]]] = []
     for r in sched_rows:
@@ -436,7 +449,7 @@ def _due_items_user(
             kp = kps.get(r.item_id)
             if not kp or (norm_subject and taxonomy.normalize_subject(kp.subject) != norm_subject):
                 continue
-            mastery = int(kp.mastery or 0)
+            mastery = int(personal_mastery.get(kp.id, 0))
             entries.append(
                 (
                     (-days_late, mastery),
@@ -458,7 +471,11 @@ def _due_items_user(
             )
         else:
             err = errs.get(r.item_id)
-            if not err or (norm_subject and taxonomy.normalize_subject(err.subject) != norm_subject):
+            if (
+                not err
+                or err.status == "graduated"
+                or (norm_subject and taxonomy.normalize_subject(err.subject) != norm_subject)
+            ):
                 continue
             # 错题掌握度口径与错题本一致：accuracy(0~1) 折算百分制
             mastery = int(round(float(err.accuracy or 0) * 100))
@@ -511,7 +528,7 @@ def _due_items_user(
             if norm_subject:
                 q = q.filter(KnowledgePoint.subject == norm_subject)
             for kp in q.all():
-                mastery = int(kp.mastery or 0)
+                mastery = int(personal_mastery.get(kp.id, 0))
                 entries.append(
                     (
                         (-10000, mastery),
@@ -553,12 +570,12 @@ def progress_overview(db: Session, *, subject: str | None = None, user_id: int |
         q = q.filter(KnowledgePoint.subject == taxonomy.normalize_subject(subject))
     rows = q.all()
     learned = kp_mastery.learned_kp_ids(db, user_id=user_id)
+    personal_mastery = kp_mastery.user_mastery(db, user_id) if user_id is not None else None
 
     def mastery_of(k: KnowledgePoint) -> int:
-        m = int(k.mastery or 0)
-        if user_id is not None and k.id not in learned:
-            return 0
-        return m
+        if personal_mastery is not None:
+            return int(personal_mastery.get(k.id, 0))
+        return int(k.mastery or 0)
 
     total = len(rows)
     # 与 kp_mastery.tally 同口径，但均值用 mastery_of（用户口径下未学记 0）
@@ -573,7 +590,7 @@ def progress_overview(db: Session, *, subject: str | None = None, user_id: int |
     }
     for k in rows:
         m = mastery_of(k)
-        state = kp_mastery.classify_state(int(k.mastery or 0), k.id in learned)
+        state = kp_mastery.classify_state(m, k.id in learned)
         counts["total"] += 1
         counts["mastery_sum"] += m
         counts[state] += 1
@@ -640,7 +657,7 @@ def progress_overview(db: Session, *, subject: str | None = None, user_id: int |
             },
         )
         mastery = mastery_of(k)
-        state = kp_mastery.classify_state(int(k.mastery or 0), k.id in learned)
+        state = kp_mastery.classify_state(mastery, k.id in learned)
         d["total"] += 1
         d["mastery_sum"] += mastery
         d[state] += 1
@@ -697,7 +714,7 @@ def progress_overview(db: Session, *, subject: str | None = None, user_id: int |
     # 薄弱知识点 TOP10：只从**已学**知识点里挑 —— 未学的不算薄弱
     weak_top = sorted(
         (k for k in rows if k.id in learned),
-        key=lambda k: (int(k.mastery or 0), -(k.exam_frequency or 0)),
+        key=lambda k: (mastery_of(k), -(k.exam_frequency or 0)),
     )[:10]
 
     # 近 7 天复习量：按**北京自然日**切（含今天共 7 天），与 dashboard/growth 同源。
@@ -730,7 +747,7 @@ def progress_overview(db: Session, *, subject: str | None = None, user_id: int |
                 "name": k.name,
                 "subject": k.subject,
                 "chapter": k.chapter,
-                "mastery": int(k.mastery or 0),
+                "mastery": mastery_of(k),
                 "exam_frequency": k.exam_frequency or 0,
                 # 用户口径下复习次数/失误次数取本人调度行，不取全局镜像
                 "review_count": (sched_map[k.id].repetitions or 0)
@@ -739,7 +756,7 @@ def progress_overview(db: Session, *, subject: str | None = None, user_id: int |
                 "lapses": (sched_map[k.id].lapses or 0)
                 if user_id is not None and k.id in sched_map
                 else (k.lapses or 0),
-                "state": kp_mastery.classify_state(k.mastery, k.id in learned),
+                "state": kp_mastery.classify_state(mastery_of(k), k.id in learned),
             }
             for k in weak_top
         ],

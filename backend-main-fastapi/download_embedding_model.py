@@ -48,7 +48,7 @@ def download_model():
         print(f"\n✓ 模型目录已存在: {model_dir}")
         # 检查模型文件
         onnx_files = []
-        for root, dirs, files in os.walk(model_dir):
+        for root, _dirs, files in os.walk(model_dir):
             for f in files:
                 if f.endswith(".onnx"):
                     onnx_files.append(os.path.join(root, f))
@@ -66,6 +66,7 @@ def download_model():
     start = time.time()
     try:
         from fastembed import TextEmbedding
+
         model = TextEmbedding(model_name=MODEL_NAME, cache_dir=CACHE_DIR)
 
         # 测试生成向量

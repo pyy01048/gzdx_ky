@@ -105,6 +105,7 @@ def test_scan_root_refuses_and_never_archives(client, monkeypatch):
 def test_bulk_purge_refuses_without_backup(client, monkeypatch):
     """``purge`` 是不可逆物理删除：闸门必须排在它前面。"""
     from database import SessionLocal
+
     from models import Document
 
     monkeypatch.setenv("KAOYAN_ALLOW_PHYSICAL_DELETE", "1")

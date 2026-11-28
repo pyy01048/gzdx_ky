@@ -12,15 +12,17 @@
 库里可能有其他测试种下的数据，所以断言一律用「同口径重算 + 对照差值」，
 不假设全表只有我这几行；用例结束时把自己插的行删掉，避免加剧跨文件污染。
 """
+
 from __future__ import annotations
 
 import datetime as dt
 
 import pytest
 from database import SessionLocal
-from models import AnswerRecord, StudySession
 from sqlalchemy import func
 from utils import timeutil as tu
+
+from models import AnswerRecord, StudySession
 
 
 @pytest.fixture()
@@ -73,14 +75,12 @@ def test_dashboard_week_window_is_exactly_seven_beijing_days(db):
     try:
         stats = DashboardService.get_stats(db)
         in_window = int(
-            db.query(func.coalesce(func.sum(StudySession.duration), 0))
-            .filter(StudySession.date >= week_ago)
-            .scalar() or 0
+            db.query(func.coalesce(func.sum(StudySession.duration), 0)).filter(StudySession.date >= week_ago).scalar()
+            or 0
         )
         outside = int(
-            db.query(func.coalesce(func.sum(StudySession.duration), 0))
-            .filter(StudySession.date < week_ago)
-            .scalar() or 0
+            db.query(func.coalesce(func.sum(StudySession.duration), 0)).filter(StudySession.date < week_ago).scalar()
+            or 0
         )
         assert outside >= 17, "库里没有窗口外的数据，这条断言就锁不住 off-by-one"
         assert stats["week_duration"] == in_window, (

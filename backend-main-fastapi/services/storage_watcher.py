@@ -11,6 +11,7 @@ V3.0 本地存储库自动扫描与入库服务
 5. 记录已处理文件，避免重复处理
 6. 支持手动触发扫描和增量扫描
 """
+
 import hashlib
 import json
 import logging
@@ -20,10 +21,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from models import Document, KnowledgeChunk, KnowledgePoint
 from sqlalchemy.orm import Session
 from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 
+from models import Document, KnowledgeChunk, KnowledgePoint
 from services.doc_naming import apply_display_name
 from services.smart_ingest import gate_for_write
 
@@ -42,37 +43,38 @@ def clean_text(text: str) -> str:
         if 0xD800 <= code <= 0xDFFF:
             continue
         # 跳过其他控制字符（保留换行、制表符等常用空白）
-        if code < 32 and ch not in ('\n', '\t', '\r'):
+        if code < 32 and ch not in ("\n", "\t", "\r"):
             continue
         # 跳过删除字符
         if code == 0x7F:
             continue
         cleaned.append(ch)
-    result = ''.join(cleaned)
+    result = "".join(cleaned)
     # 合并多余空行
     import re
-    result = re.sub(r'\n{3,}', '\n\n', result)
+
+    result = re.sub(r"\n{3,}", "\n\n", result)
     return result
 
 
 # 支持的文件扩展名
 SUPPORTED_EXTENSIONS = {
-    '.pdf': 'pdf',
-    '.doc': 'word',
-    '.docx': 'word',
-    '.ppt': 'ppt',
-    '.pptx': 'ppt',
-    '.txt': 'text',
-    '.md': 'text',
-    '.markdown': 'text',
-    '.epub': 'epub',
-    '.mobi': 'epub',
-    '.jpg': 'image',
-    '.jpeg': 'image',
-    '.png': 'image',
-    '.bmp': 'image',
-    '.tiff': 'image',
-    '.webp': 'image',
+    ".pdf": "pdf",
+    ".doc": "word",
+    ".docx": "word",
+    ".ppt": "ppt",
+    ".pptx": "ppt",
+    ".txt": "text",
+    ".md": "text",
+    ".markdown": "text",
+    ".epub": "epub",
+    ".mobi": "epub",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".png": "image",
+    ".bmp": "image",
+    ".tiff": "image",
+    ".webp": "image",
 }
 
 # 存储库根目录
@@ -104,7 +106,7 @@ class StorageWatcher:
         """加载已处理文件记录。"""
         if PROCESSED_RECORD_FILE.exists():
             try:
-                with open(PROCESSED_RECORD_FILE, 'r', encoding='utf-8') as f:
+                with open(PROCESSED_RECORD_FILE, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
                 logger.warning(f"加载已处理文件记录失败: {e}")
@@ -113,7 +115,7 @@ class StorageWatcher:
     def _save_processed_files(self):
         """保存已处理文件记录。"""
         try:
-            with open(PROCESSED_RECORD_FILE, 'w', encoding='utf-8') as f:
+            with open(PROCESSED_RECORD_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.processed_files, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"保存已处理文件记录失败: {e}")
@@ -131,7 +133,7 @@ class StorageWatcher:
         """
         try:
             h = hashlib.md5()
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 while True:
                     chunk = f.read(8192)
                     if not chunk:
@@ -191,7 +193,7 @@ class StorageWatcher:
 
         # os.walk(topdown=True) 天然剪枝：可在目录级直接跳过隐藏目录，
         # 避免进入 .git / node_modules / __pycache__ 等无关子树。
-        skip_dirs = {'.git', '.svn', '__pycache__', 'node_modules', '.idea', '.vscode'}
+        skip_dirs = {".git", ".svn", "__pycache__", "node_modules", ".idea", ".vscode"}
 
         for dirpath, dirnames, filenames in os.walk(STORAGE_ROOT, topdown=True):
             # 就地修改 dirnames 以剪枝（os.walk 语义）
@@ -200,7 +202,7 @@ class StorageWatcher:
 
             for name in filenames:
                 # 隐藏文件不参与分类统计（与旧逻辑 `not name.startswith('.')` 保持一致）
-                if name.startswith('.'):
+                if name.startswith("."):
                     continue
                 ext = os.path.splitext(name)[1].lower()
                 ftype = SUPPORTED_EXTENSIONS.get(ext)
@@ -231,33 +233,37 @@ class StorageWatcher:
             size = 0
             if fingerprint:
                 # 指纹格式固定为 "<size>-<mtime>"，直接取前半段作为 size
-                size = int(fingerprint.split('-', 1)[0])
+                size = int(fingerprint.split("-", 1)[0])
 
             record = self.processed_files.get(file_key)
             if record is not None and not force:
                 # 指纹一致 => 未变更，跳过（不再读取文件内容）
-                if record.get('fingerprint') == fingerprint:
+                if record.get("fingerprint") == fingerprint:
                     continue
                 # 兼容旧记录（只有 MD5 hash、没有 fingerprint）：
                 # 若 size 一致则视为未变更，并顺手回填指纹，避免升级后全量重扫。
-                if not record.get('fingerprint') and record.get('size') == size:
-                    record['fingerprint'] = fingerprint
+                if not record.get("fingerprint") and record.get("size") == size:
+                    record["fingerprint"] = fingerprint
                     continue
-                modified_files.append({
-                    'path': str(file_path),
-                    'relative_path': file_key,
-                    'type': ftype,
-                    'hash': fingerprint,   # 字段名沿用 'hash'，实为 size+mtime 指纹
-                    'size': size,
-                })
+                modified_files.append(
+                    {
+                        "path": str(file_path),
+                        "relative_path": file_key,
+                        "type": ftype,
+                        "hash": fingerprint,  # 字段名沿用 'hash'，实为 size+mtime 指纹
+                        "size": size,
+                    }
+                )
             else:
-                new_files.append({
-                    'path': str(file_path),
-                    'relative_path': file_key,
-                    'type': ftype,
-                    'hash': fingerprint,
-                    'size': size,
-                })
+                new_files.append(
+                    {
+                        "path": str(file_path),
+                        "relative_path": file_key,
+                        "type": ftype,
+                        "hash": fingerprint,
+                        "size": size,
+                    }
+                )
 
         return new_files, modified_files, total_files, len(unsupported)
 
@@ -356,23 +362,21 @@ class StorageWatcher:
         Returns:
             入库结果
         """
-        file_path = Path(file_info['path'])
+        file_path = Path(file_info["path"])
         if not file_path.exists():
             return {"error": f"文件不存在: {file_path}", "success": False}
 
         try:
             # 1. 创建或更新Document记录
-            doc = self.db.query(Document).filter(
-                Document.file_path == str(file_path)
-            ).first()
+            doc = self.db.query(Document).filter(Document.file_path == str(file_path)).first()
 
             if not doc:
                 doc = Document(
                     file_name=file_path.name,
                     file_path=str(file_path),
-                    file_type=file_info.get('type', 'unknown'),
-                    size=file_info.get('size', 0),
-                    index_status='pending',
+                    file_type=file_info.get("type", "unknown"),
+                    size=file_info.get("size", 0),
+                    index_status="pending",
                     parse_progress=0,
                     created_at=utcnow(),
                     updated_at=utcnow(),
@@ -389,7 +393,7 @@ class StorageWatcher:
             try:
                 content_text = parser.parse(str(file_path))
             except Exception as e:
-                doc.index_status = 'failed'
+                doc.index_status = "failed"
                 doc.parse_progress = 0
                 self.db.commit()
                 return {
@@ -405,22 +409,21 @@ class StorageWatcher:
             # 字符，而「整份二进制当文本读」的坏文件正是靠连续控制字节的
             # 比例/连号长度来识别的；先清洗再校验等于把证据抹掉，坏文件会以
             # 「一堆无意义字母」的形态静默入库。
-            verdict = gate_for_write(self.db, content_text,
-                                     path=str(file_path), doc_id=doc.id)
+            verdict = gate_for_write(self.db, content_text, path=str(file_path), doc_id=doc.id)
             if not verdict["ok"]:
                 doc.index_status = "failed"
                 doc.parse_progress = 1.0
                 # 记下"看过且拒绝"，否则每轮扫描都重解析同一堆坏文件（解析一篇
                 # 扫描版 PDF 是几十秒级，坏文件往往是扫描件）。
-                self.processed_files[file_info['relative_path']] = {
-                    'hash': file_info['hash'],
-                    'fingerprint': file_info['hash'],
-                    'size': file_info['size'],
-                    'processed_at': utcnow().isoformat(),
-                    'doc_id': doc.id,
-                    'chunk_count': 0,
-                    'status': 'rejected',
-                    'reason': '；'.join(verdict['reasons']),
+                self.processed_files[file_info["relative_path"]] = {
+                    "hash": file_info["hash"],
+                    "fingerprint": file_info["hash"],
+                    "size": file_info["size"],
+                    "processed_at": utcnow().isoformat(),
+                    "doc_id": doc.id,
+                    "chunk_count": 0,
+                    "status": "rejected",
+                    "reason": "；".join(verdict["reasons"]),
                 }
                 self._save_processed_files()
                 self.db.commit()
@@ -438,6 +441,7 @@ class StorageWatcher:
             # 放在质量闸门**之后**：闸门靠连续控制字节的分布识别坏文件，
             # 先剔水印行会影响该统计；这里只动水印行、不碰控制字符判定。
             from services.kb_service import preclean_watermarks
+
             content_text, _wm_dropped, _wm_mixed = preclean_watermarks(content_text)
 
             # 3. 更新Document内容
@@ -459,20 +463,20 @@ class StorageWatcher:
                 logger.warning(f"文档 {doc.id} 分块入库失败: {e}")
 
             # 5. 更新Document状态
-            doc.index_status = 'indexed' if has_searchable_chunks(self.db, doc.id) else 'failed'
+            doc.index_status = "indexed" if has_searchable_chunks(self.db, doc.id) else "failed"
             doc.knowledge_point_count = chunk_count
             doc.parse_progress = 1.0
             doc.updated_at = utcnow()
 
             # 6. 记录已处理文件（fingerprint 用于下次的增量比对）
-            self.processed_files[file_info['relative_path']] = {
-                'hash': file_info['hash'],
-                'fingerprint': file_info['hash'],
-                'size': file_info['size'],
-                'processed_at': utcnow().isoformat(),
-                'doc_id': doc.id,
-                'chunk_count': chunk_count,
-                'status': 'success',
+            self.processed_files[file_info["relative_path"]] = {
+                "hash": file_info["hash"],
+                "fingerprint": file_info["hash"],
+                "size": file_info["size"],
+                "processed_at": utcnow().isoformat(),
+                "doc_id": doc.id,
+                "chunk_count": chunk_count,
+                "status": "success",
             }
             self._save_processed_files()
 
@@ -525,7 +529,7 @@ class StorageWatcher:
             return {
                 "success": True,
                 "message": "没有新文件或变更文件需要处理",
-                "scanned": scan_result.get('total_files', 0),
+                "scanned": scan_result.get("total_files", 0),
                 "processed": 0,
                 "failed": 0,
             }
@@ -538,14 +542,14 @@ class StorageWatcher:
         for i, file_info in enumerate(all_files):
             result = self.ingest_file(file_info)
             results.append(result)
-            if result.get('success'):
+            if result.get("success"):
                 success_count += 1
             else:
                 failed_count += 1
             # 每处理10个文件保存一次进度
             if (i + 1) % 10 == 0:
                 self._save_processed_files()
-                logger.info(f"入库进度: {i+1}/{len(all_files)}, 成功={success_count}, 失败={failed_count}")
+                logger.info(f"入库进度: {i + 1}/{len(all_files)}, 成功={success_count}, 失败={failed_count}")
 
         self._save_processed_files()
 
@@ -580,11 +584,11 @@ class StorageWatcher:
         type_counts = {}
 
         # 单遍遍历 + 目录剪枝；语义与旧rglob 实现一致（含 other 类型、跳过隐藏文件）
-        skip_dirs = {'.git', '.svn', '__pycache__', 'node_modules', '.idea', '.vscode'}
+        skip_dirs = {".git", ".svn", "__pycache__", "node_modules", ".idea", ".vscode"}
         for dirpath, dirnames, filenames in os.walk(STORAGE_ROOT, topdown=True):
             dirnames[:] = [d for d in dirnames if d not in skip_dirs]
             for name in filenames:
-                if name.startswith('.'):
+                if name.startswith("."):
                     continue
                 try:
                     total_size += os.stat(os.path.join(dirpath, name)).st_size
@@ -592,7 +596,7 @@ class StorageWatcher:
                     continue
                 file_count += 1
                 ext = os.path.splitext(name)[1].lower()
-                ftype = SUPPORTED_EXTENSIONS.get(ext, 'other')
+                ftype = SUPPORTED_EXTENSIONS.get(ext, "other")
                 type_counts[ftype] = type_counts.get(ftype, 0) + 1
 
         # 知识库统计

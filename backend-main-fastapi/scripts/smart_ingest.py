@@ -14,6 +14,7 @@
     python scripts/smart_ingest.py --file <路径> --vlm        # 启用 VLM 图块描述（慢）
     python scripts/smart_ingest.py --file <路径> --apply --force  # 校验不过也入库（标 need_review）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,18 +34,46 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-DOC_EXT = {".pdf", ".docx", ".doc", ".pptx", ".ppt", ".md", ".txt",
-           ".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff"}
+DOC_EXT = {
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".pptx",
+    ".ppt",
+    ".md",
+    ".txt",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".bmp",
+    ".webp",
+    ".tif",
+    ".tiff",
+}
 
 # 与 ingest_kb_bulk.py 保持一致：跳过缓存区与隔离区
 SKIP_DIRS = {"documents", "chunks", "meta", "inbox", ".git", "_trash"}
 
 # 低价值文件排除（与 ingest_kb_bulk._EXCLUDE_KW 同源）
 # 注意：不含"打印"，否则会误杀《英语一真题一键打印版》等宝贵真题
-EXCLUDE_KW = ("答题卡", "答题纸", "答题版", "机读卡", "填涂卡",
-              "签到表", "进度表", "计划表", "倒计时",
-              "课程表", "课表", "打印店", "彩印", "在线打印",
-              "封面及目录", "封面.ppt")
+EXCLUDE_KW = (
+    "答题卡",
+    "答题纸",
+    "答题版",
+    "机读卡",
+    "填涂卡",
+    "签到表",
+    "进度表",
+    "计划表",
+    "倒计时",
+    "课程表",
+    "课表",
+    "打印店",
+    "彩印",
+    "在线打印",
+    "封面及目录",
+    "封面.ppt",
+)
 # 硬保护：高价值词汇书
 EXCLUDE_KEEP = ("红宝书", "艾宾浩斯抗遗忘打卡", "抗遗忘", "词汇闪过")
 
@@ -71,28 +100,39 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="校验不通过也入库并标 need_review")
     ap.add_argument("--vlm", action="store_true", help="启用 VLM 图块描述（慢）")
     ap.add_argument("--ocr-backend", default="auto")
-    ap.add_argument("--no-kp", action="store_true",
-                    help="入库时不抽知识点（等价 SMART_INGEST_KP=0；"
-                         "默认开启，给本地模型加负载时用此关闭）")
-    ap.add_argument("--kp-workers", type=int, default=None,
-                    help="单文档内知识点抽取的 chunk 级并发度（默认 3）")
+    ap.add_argument(
+        "--no-kp",
+        action="store_true",
+        help="入库时不抽知识点（等价 SMART_INGEST_KP=0；默认开启，给本地模型加负载时用此关闭）",
+    )
+    ap.add_argument("--kp-workers", type=int, default=None, help="单文档内知识点抽取的 chunk 级并发度（默认 3）")
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--max-size-mb", type=float, default=None,
-                    help="只处理体积 ≤ 该值(MB) 的文件。大扫描件（最大 1.6GB）"
-                         "解析会把内存吃到 4GB+ 触发 swap，先跑小文件保证主体入库，"
-                         "大文件留到单独批次攻坚")
-    ap.add_argument("--skip-ingested", action="store_true",
-                    help="跳过库内已有同 stem 的文件（避免与既有导入重复）")
-    ap.add_argument("--only-ocr", action="store_true",
-                    help="只处理「需要 OCR」的文件（复用 ingest_kb_bulk 的预扫缓存）")
-    ap.add_argument("--skip-ocr", action="store_true",
-                    help="只处理「有文本层、不需 OCR」的文件")
-    ap.add_argument("--workers", type=int, default=1,
-                    help="并行 worker 数（OCR 是 CPU 密集，多进程/多线程可显著提速；"
-                         "SQLite 写入会自动串行化，不会写坏库）")
-    ap.add_argument("--timeout", type=int, default=600,
-                    help="单文件处理超时（秒）。超时视为卡死并标记 error 跳过，"
-                         "避免个别坏文件（OCR/LLM 调用挂死）拖垮整批 3584 篇入库")
+    ap.add_argument(
+        "--max-size-mb",
+        type=float,
+        default=None,
+        help="只处理体积 ≤ 该值(MB) 的文件。大扫描件（最大 1.6GB）"
+        "解析会把内存吃到 4GB+ 触发 swap，先跑小文件保证主体入库，"
+        "大文件留到单独批次攻坚",
+    )
+    ap.add_argument("--skip-ingested", action="store_true", help="跳过库内已有同 stem 的文件（避免与既有导入重复）")
+    ap.add_argument(
+        "--only-ocr", action="store_true", help="只处理「需要 OCR」的文件（复用 ingest_kb_bulk 的预扫缓存）"
+    )
+    ap.add_argument("--skip-ocr", action="store_true", help="只处理「有文本层、不需 OCR」的文件")
+    ap.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="并行 worker 数（OCR 是 CPU 密集，多进程/多线程可显著提速；SQLite 写入会自动串行化，不会写坏库）",
+    )
+    ap.add_argument(
+        "--timeout",
+        type=int,
+        default=600,
+        help="单文件处理超时（秒）。超时视为卡死并标记 error 跳过，"
+        "避免个别坏文件（OCR/LLM 调用挂死）拖垮整批 3584 篇入库",
+    )
     ap.add_argument("--json", action="store_true", help="输出 JSON 结果")
     args = ap.parse_args()
 
@@ -124,8 +164,7 @@ def main() -> int:
     if args.max_size_mb:
         _cap = args.max_size_mb * 1024 * 1024
         _before = len(targets)
-        targets = [p for p in targets
-                   if os.path.isfile(p) and os.path.getsize(p) <= _cap]
+        targets = [p for p in targets if os.path.isfile(p) and os.path.getsize(p) <= _cap]
         print(f"体积过滤（≤{args.max_size_mb}MB）: {_before} → {len(targets)}")
     if args.skip_ingested:
         # 2026-10-18 修正：项目已切 PostgreSQL，这里却还在读遗留的 sqlite
@@ -138,9 +177,7 @@ def main() -> int:
 
             sdb = SessionLocal()
             try:
-                for (fn,) in sdb.execute(
-                        _sql_text("SELECT file_name FROM documents "
-                                  "WHERE file_name IS NOT NULL")):
+                for (fn,) in sdb.execute(_sql_text("SELECT file_name FROM documents WHERE file_name IS NOT NULL")):
                     s = os.path.splitext((fn or "").strip())[0]
                     if s:
                         stems.add(s)
@@ -149,8 +186,7 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001
             print("读取已入库文件名失败（跳过去重）:", e)
         before = len(targets)
-        targets = [p for p in targets
-                   if os.path.splitext(os.path.basename(p))[0] not in stems]
+        targets = [p for p in targets if os.path.splitext(os.path.basename(p))[0] not in stems]
         print(f"跳过已入库: {before} → {len(targets)}")
     if args.limit:
         targets = targets[: args.limit]
@@ -171,8 +207,7 @@ def main() -> int:
         def _need(p: str):
             try:
                 st = os.stat(p)
-                return cache.get(f"{os.path.relpath(p, KB_ROOT)}|{st.st_size}|"
-                                 f"{int(st.st_mtime)}")
+                return cache.get(f"{os.path.relpath(p, KB_ROOT)}|{st.st_size}|{int(st.st_mtime)}")
             except OSError:
                 return None
 
@@ -191,6 +226,7 @@ def main() -> int:
     import orm_aliases
     from database import SessionLocal
     from services.smart_ingest import smart_ingest_file
+
     orm_aliases.install()
 
     def _kp_brief(r: dict) -> str:
@@ -200,17 +236,20 @@ def main() -> int:
             return ""
         if kp.get("skipped"):
             return f" KP跳过({kp.get('reason', '')[:40]})"
-        return (f" KP+{kp.get('kept', 0)}"
-                f"(块{kp.get('chunks', 0)} 抽{kp.get('extracted', 0)}"
-                f" 丢{kp.get('dropped', 0)} 败{kp.get('failed', 0)}"
-                f" {kp.get('seconds', 0)}s)")
+        return (
+            f" KP+{kp.get('kept', 0)}"
+            f"(块{kp.get('chunks', 0)} 抽{kp.get('extracted', 0)}"
+            f" 丢{kp.get('dropped', 0)} 败{kp.get('failed', 0)}"
+            f" {kp.get('seconds', 0)}s)"
+        )
 
     def _ingest_one(p: str):
         """在独立线程里跑 smart_ingest_file（自带 DB session）。"""
         sdb = SessionLocal()
         try:
             return smart_ingest_file(
-                sdb, p,
+                sdb,
+                p,
                 ocr_backend=args.ocr_backend,
                 dry_run=not args.apply,
                 force=args.force,
@@ -236,8 +275,11 @@ def main() -> int:
             fut = ex.submit(_ingest_one, p)
             return fut.result(timeout=args.timeout)
         except FuturesTimeoutError:
-            return {"file": os.path.basename(p), "status": "error",
-                    "reasons": [f"单文件超时（{args.timeout}s）疑似卡死，已跳过"]}
+            return {
+                "file": os.path.basename(p),
+                "status": "error",
+                "reasons": [f"单文件超时（{args.timeout}s）疑似卡死，已跳过"],
+            }
         finally:
             # 不能用 with（等价 shutdown(wait=True)）：一旦某个坏文件的解析线程
             # 死循环，主线程会在 __exit__ 里永久阻塞，fut.result(timeout=...)
@@ -262,12 +304,14 @@ def main() -> int:
                 stats[r.get("status", "?")] = stats.get(r.get("status", "?"), 0) + 1
                 results.append(r)
                 if not args.json:
-                    mark = {"ok": "✓", "ok-need-review": "⚠",
-                            "dry-run-ok": "·"}.get(r.get("status"), "✗")
+                    mark = {"ok": "✓", "ok-need-review": "⚠", "dry-run-ok": "·"}.get(r.get("status"), "✗")
                     rs = (" | " + "; ".join(r.get("reasons") or [])) if r.get("reasons") else ""
-                    print(f"[{i}/{len(targets)}] {mark} "
-                          f"{os.path.basename(p)[:46]} {r.get('chars')}字 "
-                          f"[{r.get('subject')}]{_kp_brief(r)}{rs}", flush=True)
+                    print(
+                        f"[{i}/{len(targets)}] {mark} "
+                        f"{os.path.basename(p)[:46]} {r.get('chars')}字 "
+                        f"[{r.get('subject')}]{_kp_brief(r)}{rs}",
+                        flush=True,
+                    )
     else:
         db = SessionLocal()
         for i, p in enumerate(targets, 1):
@@ -275,28 +319,28 @@ def main() -> int:
             stats[r.get("status", "?")] = stats.get(r.get("status", "?"), 0) + 1
             results.append(r)
             if not args.json:
-                mark = {"ok": "✓", "ok-need-review": "⚠",
-                        "dry-run-ok": "·"}.get(r.get("status"), "✗")
-                extra = f" [{r.get('subject')}] {r.get('book_name') or ''} " \
-                        f"{r.get('chapter') or ''} {r.get('content_type') or ''}"
+                mark = {"ok": "✓", "ok-need-review": "⚠", "dry-run-ok": "·"}.get(r.get("status"), "✗")
+                extra = (
+                    f" [{r.get('subject')}] {r.get('book_name') or ''} "
+                    f"{r.get('chapter') or ''} {r.get('content_type') or ''}"
+                )
                 rs = (" | " + "; ".join(r.get("reasons") or [])) if r.get("reasons") else ""
-                print(f"[{i}/{len(targets)}] {mark} {os.path.basename(p)[:50]} "
-                      f"{r.get('chars')}字{extra}{_kp_brief(r)}{rs}")
+                print(
+                    f"[{i}/{len(targets)}] {mark} {os.path.basename(p)[:50]} "
+                    f"{r.get('chars')}字{extra}{_kp_brief(r)}{rs}"
+                )
         db.close()
 
     el = time.time() - t0
-    print(f"\n=== 完成 {len(targets)} 篇，{el:.0f}s（{el / max(len(targets), 1):.1f}s/篇，"
-          f"workers={args.workers}）===")
+    print(f"\n=== 完成 {len(targets)} 篇，{el:.0f}s（{el / max(len(targets), 1):.1f}s/篇，workers={args.workers}）===")
     print("状态分布:", stats)
     # 知识点抽取可观测汇总
     kp_kept = sum((r.get("knowledge_points") or {}).get("kept", 0) for r in results)
     kp_drop = sum((r.get("knowledge_points") or {}).get("dropped", 0) for r in results)
     kp_fail = sum((r.get("knowledge_points") or {}).get("failed", 0) for r in results)
-    kp_skip = sum(1 for r in results
-                  if (r.get("knowledge_points") or {}).get("skipped"))
+    kp_skip = sum(1 for r in results if (r.get("knowledge_points") or {}).get("skipped"))
     if kp_kept or kp_drop or kp_fail or kp_skip:
-        print(f"知识点抽取: 入库 {kp_kept} · 门禁丢弃 {kp_drop} · 失败 {kp_fail}"
-              f" · 跳过 {kp_skip} 篇")
+        print(f"知识点抽取: 入库 {kp_kept} · 门禁丢弃 {kp_drop} · 失败 {kp_fail} · 跳过 {kp_skip} 篇")
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0

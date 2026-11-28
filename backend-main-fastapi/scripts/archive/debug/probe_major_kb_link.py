@@ -26,6 +26,7 @@
   python scripts/probe_major_kb_link.py
   python scripts/probe_major_kb_link.py --sample 20
 """
+
 import argparse
 import json
 import re
@@ -83,10 +84,18 @@ def decode_subjects(raw) -> list:
 # 832 条专业里 825 条都考数学+英语，任何匹配都会因它们而虚高。
 # 真正的择校价值在**专业课**（第 3 门），本探查只用专业课做匹配。
 PUBLIC_SUBJECTS = {
-    "\u653f\u6cbb", "\u82f1\u8bed", "\u82f1\u8bed\u4e00", "\u82f1\u8bed\u4e8c", "\u6570\u5b66",
-    "\u6570\u5b66\u4e00", "\u6570\u5b66\u4e8c", "\u6570\u5b66\u4e09",
-    "\u82f1\u8bed\u6216\u4fc4\u8bed", "\u82f1\u8bed\u6216\u4fc4\u8bed\u6216\u65e5\u8bed",
-    "\u65e5\u8bed", "\u4fc4\u8bed",
+    "\u653f\u6cbb",
+    "\u82f1\u8bed",
+    "\u82f1\u8bed\u4e00",
+    "\u82f1\u8bed\u4e8c",
+    "\u6570\u5b66",
+    "\u6570\u5b66\u4e00",
+    "\u6570\u5b66\u4e8c",
+    "\u6570\u5b66\u4e09",
+    "\u82f1\u8bed\u6216\u4fc4\u8bed",
+    "\u82f1\u8bed\u6216\u4fc4\u8bed\u6216\u65e5\u8bed",
+    "\u65e5\u8bed",
+    "\u4fc4\u8bed",
 }
 
 
@@ -100,23 +109,56 @@ def professional_subject(subjects):
 # 左侧：考研专业课标准名；右侧：知识库 subject 候选
 SUBJECT_ALIAS = {
     "408": ["\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840408", "408"],
-    "\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840": ["\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840408", "408"],
-    "\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840\u7efc\u5408": ["\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840408", "408"],
-    "\u8ba1\u7b97\u673a\u4e13\u4e1a\u57fa\u7840\u7efc\u5408": ["\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840408", "408"],
+    "\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840": [
+        "\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840408",
+        "408",
+    ],
+    "\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840\u7efc\u5408": [
+        "\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840408",
+        "408",
+    ],
+    "\u8ba1\u7b97\u673a\u4e13\u4e1a\u57fa\u7840\u7efc\u5408": [
+        "\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840408",
+        "408",
+    ],
     "\u4e13\u4e1a\u57fa\u7840\u7efc\u5408": ["\u8ba1\u7b97\u673a\u5b66\u79d1\u4e13\u4e1a\u57fa\u7840408", "408"],
     "\u6570\u7535": ["\u6570\u5b57\u7535\u5b50\u6280\u672f"],
     "\u6570\u5b57\u7535\u5b50": ["\u6570\u5b57\u7535\u5b50\u6280\u672f"],
     "\u6570\u5b57\u7535\u8def": ["\u6570\u5b57\u7535\u5b50\u6280\u672f"],
     "\u6570\u5b57\u7535\u8def\u4e0e\u903b\u8f91\u8bbe\u8ba1": ["\u6570\u5b57\u7535\u5b50\u6280\u672f"],
-    "\u6570\u6a21\u7535": ["\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u6a21\u7535", "\u6570\u5b57\u7535\u5b50\u6280\u672f"],
+    "\u6570\u6a21\u7535": [
+        "\u6a21\u62df\u7535\u5b50\u6280\u672f",
+        "\u6570\u6a21\u7535",
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+    ],
     "\u6a21\u7535": ["\u6a21\u62df\u7535\u5b50\u6280\u672f"],
     "\u6a21\u62df\u7535\u5b50\u6280\u672f\u57fa\u7840": ["\u6a21\u62df\u7535\u5b50\u6280\u672f"],
     "\u6570\u5b57\u7535\u5b50\u6280\u672f\u57fa\u7840": ["\u6570\u5b57\u7535\u5b50\u6280\u672f"],
-    "\u7535\u5b50\u6280\u672f\u57fa\u7840": ["\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u6a21\u7535"],
-    "\u7535\u5b50\u6280\u672f": ["\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u6a21\u7535"],
-    "\u7535\u5b50\u6280\u672f\u7efc\u5408": ["\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u6a21\u7535"],
-    "\u7535\u5b50\u79d1\u5b66\u4e0e\u6280\u672f\u7efc\u5408": ["\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u6a21\u7535"],
-    "\u6a21\u62df\u4e0e\u6570\u5b57\u7535\u5b50\u6280\u672f": ["\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u6570\u6a21\u7535"],
+    "\u7535\u5b50\u6280\u672f\u57fa\u7840": [
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u6a21\u62df\u7535\u5b50\u6280\u672f",
+        "\u6570\u6a21\u7535",
+    ],
+    "\u7535\u5b50\u6280\u672f": [
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u6a21\u62df\u7535\u5b50\u6280\u672f",
+        "\u6570\u6a21\u7535",
+    ],
+    "\u7535\u5b50\u6280\u672f\u7efc\u5408": [
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u6a21\u62df\u7535\u5b50\u6280\u672f",
+        "\u6570\u6a21\u7535",
+    ],
+    "\u7535\u5b50\u79d1\u5b66\u4e0e\u6280\u672f\u7efc\u5408": [
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u6a21\u62df\u7535\u5b50\u6280\u672f",
+        "\u6570\u6a21\u7535",
+    ],
+    "\u6a21\u62df\u4e0e\u6570\u5b57\u7535\u5b50\u6280\u672f": [
+        "\u6a21\u62df\u7535\u5b50\u6280\u672f",
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u6570\u6a21\u7535",
+    ],
     "\u7535\u5b50\u7535\u8def": ["\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u5b57\u7535\u5b50\u6280\u672f"],
     "\u7535\u8def": ["\u7535\u8def", "\u7535\u8def\u5206\u6790"],
     "\u7535\u8def\u5206\u6790": ["\u7535\u8def", "\u7535\u8def\u5206\u6790"],
@@ -127,32 +169,49 @@ SUBJECT_ALIAS = {
     "\u4fe1\u53f7\u4e0e\u7ebf\u6027\u7cfb\u7edf": ["\u4fe1\u53f7\u4e0e\u7cfb\u7edf"],
     "\u4fe1\u53f7\u4e0e\u7cfb\u7edf\u5206\u6790": ["\u4fe1\u53f7\u4e0e\u7cfb\u7edf"],
     "\u4fe1\u53f7\u7cfb\u7edf\u4e0e\u4fe1\u53f7\u5904\u7406": ["\u4fe1\u53f7\u4e0e\u7cfb\u7edf"],
-    "\u4fe1\u53f7\u7cfb\u7edf\u4e0e\u6570\u5b57\u7535\u8def": ["\u4fe1\u53f7\u4e0e\u7cfb\u7edf", "\u6570\u5b57\u7535\u5b50\u6280\u672f"],
+    "\u4fe1\u53f7\u7cfb\u7edf\u4e0e\u6570\u5b57\u7535\u8def": [
+        "\u4fe1\u53f7\u4e0e\u7cfb\u7edf",
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+    ],
     "\u901a\u4fe1\u539f\u7406": ["\u901a\u4fe1\u539f\u7406"],
     "\u901a\u4fe1\u7c7b\u4e13\u4e1a\u7efc\u5408": ["\u901a\u4fe1\u539f\u7406"],
     "\u901a\u4fe1\u4e0e\u7cfb\u7edf": ["\u4fe1\u53f7\u4e0e\u7cfb\u7edf"],
     "\u4fe1\u53f7\u4e0e\u7cfb\u7edf\u4e00": ["\u4fe1\u53f7\u4e0e\u7cfb\u7edf"],
-    "\u6570\u5b57\u7535\u5b50\u6280\u672f\u57fa\u7840\uff08\u6570\u5b57\u4e0e\u6a21\u62df\u7535\u8def\uff09": ["\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u6a21\u7535"],
-    "\u7535\u5b50\u6280\u672f\u57fa\u7840\u2160": ["\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u6a21\u62df\u7535\u5b50\u6280\u672f", "\u6570\u6a21\u7535"],
-    "\u6570\u5b57\u903b\u8f91\u4e0e\u4fe1\u53f7\u7cfb\u7edf": ["\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u4fe1\u53f7\u4e0e\u7cfb\u7edf"],
-    "\u4fe1\u53f7\u7cfb\u7edf\u4e0e\u6570\u5b57\u903b\u8f91": ["\u4fe1\u53f7\u4e0e\u7cfb\u7edf", "\u6570\u5b57\u7535\u5b50\u6280\u672f"],
-    "\u6570\u5b57\u7535\u8def\u548c\u4fe1\u53f7\u4e0e\u7cfb\u7edf": ["\u6570\u5b57\u7535\u5b50\u6280\u672f", "\u4fe1\u53f7\u4e0e\u7cfb\u7edf"],
+    "\u6570\u5b57\u7535\u5b50\u6280\u672f\u57fa\u7840\uff08\u6570\u5b57\u4e0e\u6a21\u62df\u7535\u8def\uff09": [
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u6a21\u62df\u7535\u5b50\u6280\u672f",
+        "\u6570\u6a21\u7535",
+    ],
+    "\u7535\u5b50\u6280\u672f\u57fa\u7840\u2160": [
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u6a21\u62df\u7535\u5b50\u6280\u672f",
+        "\u6570\u6a21\u7535",
+    ],
+    "\u6570\u5b57\u903b\u8f91\u4e0e\u4fe1\u53f7\u7cfb\u7edf": [
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u4fe1\u53f7\u4e0e\u7cfb\u7edf",
+    ],
+    "\u4fe1\u53f7\u7cfb\u7edf\u4e0e\u6570\u5b57\u903b\u8f91": [
+        "\u4fe1\u53f7\u4e0e\u7cfb\u7edf",
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+    ],
+    "\u6570\u5b57\u7535\u8def\u548c\u4fe1\u53f7\u4e0e\u7cfb\u7edf": [
+        "\u6570\u5b57\u7535\u5b50\u6280\u672f",
+        "\u4fe1\u53f7\u4e0e\u7cfb\u7edf",
+    ],
     "\u5fae\u673a\u63a7\u5236\u4e0e\u540e\u5904\u7406": ["\u7535\u5b50\u79d1\u5b66\u4e0e\u6280\u672f\u57fa\u7840408"],
 }
 
 
 def kb_subjects() -> set:
-    return {r[0] for r in CONN.execute(
-        "SELECT DISTINCT subject FROM documents WHERE subject IS NOT NULL")}
+    return {r[0] for r in CONN.execute("SELECT DISTINCT subject FROM documents WHERE subject IS NOT NULL")}
 
 
 def build_index():
     """返回 {归一keys: [(subject, doc_count), ...]}"""
     idx = defaultdict(list)
     cnt = defaultdict(int)
-    for r in CONN.execute(
-            "SELECT subject, COUNT(*) c FROM documents"
-            " WHERE subject IS NOT NULL GROUP BY subject"):
+    for r in CONN.execute("SELECT subject, COUNT(*) c FROM documents WHERE subject IS NOT NULL GROUP BY subject"):
         cnt[r["subject"]] = r["c"]
     for subj, c in cnt.items():
         key = _WS_RE.sub("", subj)
@@ -187,7 +246,7 @@ def match_level(subjects: list, major_name: str, idx) -> tuple:
         return "L2", sorted(set(hits2))
 
     # L3 弱信号：专业课名含知识库 subject 的关键词（或反之）
-    nm = _WS_RE.sub("", major_name)
+    _WS_RE.sub("", major_name)
     hits3 = []
     for key2, lst in idx.items():
         # 专业课名包含知识库科目（如「半导体物理与器件」⊃「半导体物理」）
@@ -230,19 +289,18 @@ def main():
     print("=" * 78)
     for lvl in ("L1", "L2", "L3", "MISS", "NOPROF"):
         n = stats[lvl]
-        print(f"  {lvl:<5s} {n:4d} 条  {n*100.0/total:5.1f}%")
+        print(f"  {lvl:<5s} {n:4d} 条  {n * 100.0 / total:5.1f}%")
     linked = stats["L1"] + stats["L2"] + stats["L3"]
-    print(f"\n  ** 可关联（L1+L2+L3）: {linked}/{total} = {linked*100.0/total:.1f}% **")
+    print(f"\n  ** 可关联（L1+L2+L3）: {linked}/{total} = {linked * 100.0 / total:.1f}% **")
     strong = stats["L1"] + stats["L2"]
-    print(f"  ** 高置信度（L1+L2）  : {strong}/{total} = {strong*100.0/total:.1f}% **")
+    print(f"  ** 高置信度（L1+L2）  : {strong}/{total} = {strong * 100.0 / total:.1f}% **")
 
     print("\n" + "=" * 78)
     print(f"抽样 {args.sample} 个专业（按 id 均匀分布）")
     print("=" * 78)
     step = max(1, total // args.sample)
-    for m, subs, lvl, hits in detail[::step][:args.sample]:
-        print(f"\n  [{m['id']}] {m['school']} / {m['name'][:26]}"
-              f"  code={m['code']} {m['degree_type'] or ''}")
+    for m, subs, lvl, hits in detail[::step][: args.sample]:
+        print(f"\n  [{m['id']}] {m['school']} / {m['name'][:26]}  code={m['code']} {m['degree_type'] or ''}")
         print(f"       初试科目: {'、'.join(subs) if subs else '<空>'}")
         print(f"       匹配={lvl}  命中知识库科目={hits if hits else '无'}")
 

@@ -1,0 +1,1699 @@
+{
+  "date": "2026-11-25T07:10:14.219Z",
+  "results": [
+    {
+      "viewport": "1440",
+      "route": "hub",
+      "url": "#/hub",
+      "h1": [
+        "下午好，质检新账号"
+      ],
+      "h1Geometry": [
+        {
+          "text": "下午好，质检新账号",
+          "top": 151,
+          "height": 29,
+          "display": "block",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "今日",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "学习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "练习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "复盘",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "择校",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "通用",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "退出登录",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "收起侧栏",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "a",
+          "className": "",
+          "label": "硕途首页",
+          "width": 26,
+          "height": 22
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-topbar__bell",
+          "label": "通知中心",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "切换到深色",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "账号菜单",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-iconbtn--ghost",
+          "label": "刷新聚合数据",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-cdown__link",
+          "label": "日期为系统估算 · 去核对",
+          "width": 128,
+          "height": 20
+        },
+        {
+          "tag": "a",
+          "className": "hub-link",
+          "label": "未设新词配额 · 去设置",
+          "width": 136,
+          "height": 32
+        },
+        {
+          "tag": "a",
+          "className": "hub-link",
+          "label": "打开完整计划",
+          "width": 110,
+          "height": 32
+        }
+      ],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "1440",
+      "route": "quiz",
+      "url": "#/quiz",
+      "h1": [
+        "历年真题，按知识点、按年份精准刷"
+      ],
+      "h1Geometry": [
+        {
+          "text": "历年真题，按知识点、按年份精准刷",
+          "top": 136,
+          "height": 40,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "今日",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "学习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "练习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item is-active",
+          "label": "刷题中心",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "真题中心",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "记忆卡片",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "单词记忆",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "复盘",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "择校",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "通用",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "退出登录",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "收起侧栏",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "a",
+          "className": "",
+          "label": "硕途首页",
+          "width": 26,
+          "height": 22
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-topbar__bell",
+          "label": "通知中心",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "切换到深色",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "账号菜单",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-btn v3-btn--outline v3-btn--sm",
+          "label": "刷新统计",
+          "width": 99,
+          "height": 36
+        },
+        {
+          "tag": "a",
+          "className": "",
+          "label": "全屏刷题",
+          "width": 99,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-btn v3-btn--primary v3-btn--sm",
+          "label": "全屏刷题",
+          "width": 99,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "历年真题",
+          "width": 100,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "教材题",
+          "width": 87,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "全部来源",
+          "width": 100,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "按知识点",
+          "width": 100,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "按年份",
+          "width": 87,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "错题库",
+          "width": 87,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "练习模式",
+          "width": 100,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "背题模式",
+          "width": 100,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "5 题",
+          "width": 51,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "10 题",
+          "width": 57,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "20 题",
+          "width": 59,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "自定义",
+          "width": 67,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "只练错题",
+          "width": 74,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "只练收藏",
+          "width": 74,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "C/C++语言1243",
+          "width": 118,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "Python程序设计30",
+          "width": 134,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "传感器技术30",
+          "width": 108,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "信号与系统3988",
+          "width": 120,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "信息与通信工程1",
+          "width": 124,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "光学30",
+          "width": 72,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "光学与工程光学29",
+          "width": 132,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "半导体物理30",
+          "width": 108,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "单片机原理30",
+          "width": 108,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "微机原理与接口技术1076",
+          "width": 165,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "控制科学与工程15",
+          "width": 130,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "操作系统1186",
+          "width": 104,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "政治3363",
+          "width": 84,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "数字信号处理464",
+          "width": 126,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "数字电子技术60",
+          "width": 120,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "数学4275",
+          "width": 83,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "数据结构1279",
+          "width": 105,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "普通物理2960",
+          "width": 108,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "模拟电子技术124",
+          "width": 124,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "测控电路30",
+          "width": 96,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "激光原理30",
+          "width": 96,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "生物医学工程30",
+          "width": 120,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电力电子技术30",
+          "width": 120,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电力系统分析62",
+          "width": 120,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电子技术基础2917",
+          "width": 129,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电机与拖动30",
+          "width": 108,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电气工程6",
+          "width": 90,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电磁场与电磁波275",
+          "width": 137,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电路2551",
+          "width": 81,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电路分析139",
+          "width": 100,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "英语1472",
+          "width": 81,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "计算机基础11",
+          "width": 104,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "计算机学科专业基础408518",
+          "width": 182,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "计算机科学与技术834",
+          "width": 150,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "计算机网络773",
+          "width": 113,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "软件工程30",
+          "width": 96,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "过程控制30",
+          "width": 96,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "通信原理1666",
+          "width": 106,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "高电压技术30",
+          "width": 108,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "力学6",
+          "width": 66,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "动力工程及工程热物理1",
+          "width": 160,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "化学工程与技术5",
+          "width": 126,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "机械工程12",
+          "width": 94,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "自动控制原理769",
+          "width": 125,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "大学计算机应用基础17",
+          "width": 153,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "数据库系统概论435",
+          "width": 138,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电工学·电子技术875",
+          "width": 140,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "电工学·电工技术920",
+          "width": 141,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "计算机组成原理313",
+          "width": 136,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "薄弱优先",
+          "width": 74,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "易错重练",
+          "width": 74,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "随机",
+          "width": 50,
+          "height": 30
+        }
+      ],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "1440",
+      "route": "words",
+      "url": "#/words",
+      "h1": [
+        "单词记忆"
+      ],
+      "h1Geometry": [
+        {
+          "text": "单词记忆",
+          "top": 136,
+          "height": 40,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "今日",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "学习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "练习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "刷题中心",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "真题中心",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "记忆卡片",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item is-active",
+          "label": "单词记忆",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "复盘",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "择校",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "通用",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "退出登录",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "收起侧栏",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "a",
+          "className": "",
+          "label": "硕途首页",
+          "width": 26,
+          "height": 22
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-topbar__bell",
+          "label": "通知中心",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "切换到深色",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "账号菜单",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "刷新单词数据",
+          "width": 42,
+          "height": 42
+        }
+      ],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "1440",
+      "route": "cards",
+      "url": "#/cards",
+      "h1": [
+        "记忆卡片"
+      ],
+      "h1Geometry": [
+        {
+          "text": "记忆卡片",
+          "top": 136,
+          "height": 40,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "今日",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "学习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "练习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "刷题中心",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "真题中心",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item is-active",
+          "label": "记忆卡片",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "单词记忆",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "复盘",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "择校",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "通用",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "退出登录",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "收起侧栏",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "a",
+          "className": "",
+          "label": "硕途首页",
+          "width": 26,
+          "height": 22
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-topbar__bell",
+          "label": "通知中心",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "切换到深色",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "账号菜单",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "刷新卡片数据",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "复习",
+          "width": 74,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "总结",
+          "width": 74,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "卡包",
+          "width": 74,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "列表",
+          "width": 74,
+          "height": 36
+        }
+      ],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "1440",
+      "route": "plan",
+      "url": "#/kaoyan/plan",
+      "h1": [
+        "考研规划"
+      ],
+      "h1Geometry": [
+        {
+          "text": "考研规划",
+          "top": 162,
+          "height": 40,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "今日",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "学习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "练习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "复盘",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "择校",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item is-active",
+          "label": "院校库",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "院校对比",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "分数分析",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "择校推荐",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "招生分布",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "区域热力",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "通知中心",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item is-active",
+          "label": "考研规划",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "学科评估",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "通用",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "退出登录",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "收起侧栏",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "a",
+          "className": "",
+          "label": "硕途首页",
+          "width": 26,
+          "height": 22
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-topbar__bell",
+          "label": "通知中心",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "切换到深色",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "账号菜单",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "院校库",
+          "width": 67,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "院校对比",
+          "width": 80,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "分数分析",
+          "width": 80,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "择校推荐",
+          "width": 80,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "招生分布",
+          "width": 80,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "区域热力",
+          "width": 80,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "通知中心",
+          "width": 80,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "考研规划",
+          "width": 80,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-seg__btn",
+          "label": "学科评估",
+          "width": 80,
+          "height": 36
+        }
+      ],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "1440",
+      "route": "diagram",
+      "url": "#/tools?tool=diagram&v=255&s=10&t=2&w=16",
+      "h1": [
+        "学习工具箱 · 复试工具箱"
+      ],
+      "h1Geometry": [
+        {
+          "text": "学习工具箱 · 复试工具箱",
+          "top": -111,
+          "height": 40,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "今日",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "学习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "知识库",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "教材目录",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "网盘联动",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item",
+          "label": "知识图谱",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "a",
+          "className": "v3-nav-item is-active",
+          "label": "复试工具箱",
+          "width": 207,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "练习",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "复盘",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "择校",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-nav-group__label",
+          "label": "通用",
+          "width": 207,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "退出登录",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "button",
+          "className": "v3-sidebar__collapse",
+          "label": "收起侧栏",
+          "width": 207,
+          "height": 38
+        },
+        {
+          "tag": "a",
+          "className": "",
+          "label": "硕途首页",
+          "width": 26,
+          "height": 22
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-topbar__bell",
+          "label": "通知中心",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "切换到深色",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "账号菜单",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn",
+          "label": "关闭工具",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip v3-chip--active",
+          "label": "控制框图（反馈）",
+          "width": 122,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "开环传递函数",
+          "width": 98,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "信号流图",
+          "width": 74,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "流水线",
+          "width": 62,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "时序图",
+          "width": 62,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "状态机",
+          "width": 62,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-chip",
+          "label": "知识结构图",
+          "width": 86,
+          "height": 30
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-iconbtn--sm",
+          "label": "缩小",
+          "width": 36,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-iconbtn--sm",
+          "label": "放大",
+          "width": 36,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-iconbtn v3-iconbtn--sm",
+          "label": "重置缩放",
+          "width": 36,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-btn v3-btn--tonal v3-btn--sm",
+          "label": "导出 SVG",
+          "width": 101,
+          "height": 36
+        },
+        {
+          "tag": "button",
+          "className": "v3-btn v3-btn--tonal v3-btn--sm",
+          "label": "导出 PNG",
+          "width": 101,
+          "height": 36
+        }
+      ],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "390",
+      "route": "hub",
+      "url": "#/hub",
+      "h1": [
+        "下午好，质检新账号"
+      ],
+      "h1Geometry": [
+        {
+          "text": "下午好，质检新账号",
+          "top": 165,
+          "height": 29,
+          "display": "block",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": [],
+      "drawer": {
+        "url": "#/hub",
+        "h1": [
+          "下午好，质检新账号"
+        ],
+        "h1Geometry": [
+          {
+            "text": "下午好，质检新账号",
+            "top": 165,
+            "height": 29,
+            "display": "block",
+            "visibility": "visible",
+            "opacity": "1"
+          }
+        ],
+        "overflow": 0,
+        "smallTargets": [],
+        "runningAnimations": 6
+      }
+    },
+    {
+      "viewport": "390",
+      "route": "quiz",
+      "url": "#/quiz",
+      "h1": [
+        "历年真题，按知识点、按年份精准刷"
+      ],
+      "h1Geometry": [
+        {
+          "text": "历年真题，按知识点、按年份精准刷",
+          "top": 128,
+          "height": 65,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "390",
+      "route": "words",
+      "url": "#/words",
+      "h1": [
+        "单词记忆"
+      ],
+      "h1Geometry": [
+        {
+          "text": "单词记忆",
+          "top": 128,
+          "height": 33,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "390",
+      "route": "cards",
+      "url": "#/cards",
+      "h1": [
+        "记忆卡片"
+      ],
+      "h1Geometry": [
+        {
+          "text": "记忆卡片",
+          "top": 128,
+          "height": 33,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "390",
+      "route": "plan",
+      "url": "#/kaoyan/plan",
+      "h1": [
+        "考研规划"
+      ],
+      "h1Geometry": [
+        {
+          "text": "考研规划",
+          "top": 162,
+          "height": 33,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    },
+    {
+      "viewport": "390",
+      "route": "diagram",
+      "url": "#/tools?tool=diagram&v=255&s=10&t=2&w=16",
+      "h1": [
+        "学习工具箱 · 复试工具箱"
+      ],
+      "h1Geometry": [
+        {
+          "text": "学习工具箱 · 复试工具箱",
+          "top": -210,
+          "height": 33,
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1"
+        }
+      ],
+      "overflow": 0,
+      "smallTargets": [],
+      "runningAnimations": 0,
+      "pageErrors": [],
+      "httpErrors": []
+    }
+  ]
+}

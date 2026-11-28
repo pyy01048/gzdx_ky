@@ -128,11 +128,7 @@ class MemoryPageIndex(PageIndex):
                 return rec.canonical_url
             if content_hash_ and rec.content_hash and rec.content_hash == content_hash_:
                 return f"content_hash:{rec.content_hash[:12]}"
-            if (
-                simhash
-                and rec.simhash
-                and hamming_distance(rec.simhash, simhash) <= self.simhash_threshold
-            ):
+            if simhash and rec.simhash and hamming_distance(rec.simhash, simhash) <= self.simhash_threshold:
                 return f"simhash:{rec.simhash}"
         return None
 
@@ -179,16 +175,12 @@ class SqlitePageIndex(PageIndex):
                 return f"canonical_url:{row.canonical_url}"
             if content_hash_:
                 row = conn.execute(
-                    select(_PAGES_TABLE.c.canonical_url)
-                    .where(_PAGES_TABLE.c.content_hash == content_hash_)
-                    .limit(1)
+                    select(_PAGES_TABLE.c.canonical_url).where(_PAGES_TABLE.c.content_hash == content_hash_).limit(1)
                 ).first()
                 if row:
                     return f"content_hash:{row.canonical_url}"
             if simhash:
-                rows = conn.execute(
-                    select(_PAGES_TABLE.c.canonical_url, _PAGES_TABLE.c.simhash).limit(500)
-                ).fetchall()
+                rows = conn.execute(select(_PAGES_TABLE.c.canonical_url, _PAGES_TABLE.c.simhash).limit(500)).fetchall()
                 for cand_url, cand_hash in rows:
                     if cand_hash and hamming_distance(cand_hash, simhash) <= self.simhash_threshold:
                         return f"simhash:{cand_url}"
@@ -286,8 +278,9 @@ class MemoryNoticeWriter(NoticeWriter):
         self.skipped: List[Dict[str, Any]] = []
         self._keys = set()
 
-    def write(self, *, job=None, title, url, notice_type, publish_date, content,
-              school_id=None, school_name=None) -> str:
+    def write(
+        self, *, job=None, title, url, notice_type, publish_date, content, school_id=None, school_name=None
+    ) -> str:
         key = (school_name or f"id:{school_id}", title)
         if key in self._keys:
             self.skipped.append({"title": title, "url": url})
@@ -322,15 +315,14 @@ class PgNoticeWriter(NoticeWriter):
         if not school_id:
             return None
         try:
-            row = self.db.execute(
-                text("SELECT name FROM kaoyan_schools WHERE id = :sid"), {"sid": school_id}
-            ).first()
+            row = self.db.execute(text("SELECT name FROM kaoyan_schools WHERE id = :sid"), {"sid": school_id}).first()
         except Exception:
             return None
         return row[0] if row else None
 
-    def write(self, *, job=None, title, url, notice_type, publish_date, content,
-              school_id=None, school_name=None) -> str:
+    def write(
+        self, *, job=None, title, url, notice_type, publish_date, content, school_id=None, school_name=None
+    ) -> str:
         resolved_name = self._school_name(school_id, school_name)
         params = {
             "title": title,

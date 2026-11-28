@@ -1,23 +1,29 @@
 """刷题路由。"""
 
 import asyncio
+import datetime
+import math
 import re
+from types import SimpleNamespace
 from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from schemas import QuizQuestionCreate, QuizQuestionUpdate, QuizSubmit
+from schemas import QuizQuestionCreate, QuizQuestionUpdate, QuizSessionCreate, QuizSessionPatch, QuizSubmit
+from services import quiz_session_service, review_service
 from services.delete_guard import require_physical_delete_enabled
+from services.personal_quiz import normalize_choice_answer
 from services.quiz_content_gate import admit as gate_admit
 from services.quiz_validator import classify, validate_question
 from services.review_scheduler import ReviewScheduler
-from sqlalchemy import Integer, func
+from services.srs import fsrs
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id, scoped  # B4 行级隔离：个人域查询按用户过滤、写入落归属
-from utils.security import current_user, require_admin
+from utils.security import current_user, optional_user, require_admin
 
 from models import (
     AnswerRecord,
@@ -46,6 +52,9 @@ from services.quiz_query import (  # noqa: E402
     answerable_expr as _answerable_expr_shared,
 )
 from services.quiz_query import (  # noqa: E402
+    question_owner_expr,
+)
+from services.quiz_query import (  # noqa: E402
     source_kind_expr as _source_kind_expr_shared,
 )
 
@@ -66,6 +75,87 @@ def _source_kind_expr(source_kind: Optional[str]):
 def _answerable_expr():
     """转发到共享「可作答」判定（is_available 为 True 或 NULL）。"""
     return _answerable_expr_shared()
+
+
+def _content_gate_expr():
+    """内容可用性门禁（T2）：出题只出 validation_status='pass' AND is_available=true 的题。
+
+    客观题（single/multiple/judge）额外校验 options 非空（NOT NULL 且文本形态非 '[]'/'null'/'{}'），
+    无选项的客观题一律排除。主观题不校验 options。该门禁叠加在既有 answerable 过滤之上，
+    不替换 ``_answerable_expr``（审计端点仍用旧口径）。
+    """
+    from sqlalchemy import and_, or_
+    from sqlalchemy import text as _text
+
+    objective_types = ("single", "multiple", "judge")
+    # 客观题必须有非空 options；非客观题（主观题）跳过 options 校验
+    objective_has_options = or_(
+        QuizQuestion.question_type.notin_(objective_types),
+        and_(
+            QuizQuestion.options.isnot(None),
+            _text("quiz_questions.options::text NOT IN ('[]','null','{}')"),
+        ),
+    )
+    return and_(
+        QuizQuestion.validation_status == "pass",
+        QuizQuestion.is_available.is_(True),
+        objective_has_options,
+    )
+
+
+def _question_owner_filter(user: Optional[User]):
+    """题目归属过滤；访客元数据端点只能看到公共题。"""
+    return question_owner_expr(user) if user is not None else QuizQuestion.owner_user_id.is_(None)
+
+
+@router.post("/sessions")
+async def create_quiz_session(
+    payload: QuizSessionCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    session = quiz_session_service.create_session(db, user, payload)
+    return quiz_session_service.serialize_session(db, session)
+
+
+@router.get("/sessions/latest")
+async def latest_quiz_session(
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    session = quiz_session_service.latest_session(db, user)
+    return quiz_session_service.serialize_session(db, session) if session else None
+
+
+@router.get("/sessions/{session_id}")
+async def get_quiz_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    session = quiz_session_service._owned_session(db, user, session_id)
+    return quiz_session_service.serialize_session(db, session)
+
+
+@router.patch("/sessions/{session_id}")
+async def patch_quiz_session(
+    session_id: int,
+    payload: QuizSessionPatch,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    session = quiz_session_service.patch_session(db, user, session_id, payload)
+    return quiz_session_service.serialize_session(db, session)
+
+
+@router.post("/sessions/{session_id}/complete")
+async def complete_quiz_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    session = quiz_session_service.complete_session(db, user, session_id)
+    return quiz_session_service.serialize_session(db, session)
 
 
 @router.get("/questions")
@@ -90,6 +180,7 @@ async def list_questions(
         True,
         description="是否只要「可作答」的题（有答案、is_available=1）。默认 True；真题浏览/审计可传 False 查看缺答案题",
     ),
+    public_only: bool = Query(False, description="仅返回公共题（owner_user_id IS NULL），用于个人题库公共候选"),
     is_retest: Optional[bool] = Query(
         None, description="M6-3：按初试/复试过滤。None=全部（向后兼容）；False=仅初试；True=仅复试"
     ),
@@ -129,6 +220,10 @@ async def list_questions(
     base = db.query(QuizQuestion)
     # M1-1f/h：默认排除 OCR 碎片题（碎片/答案串不参与刷题）——统一走共享过滤
     base = visible_quiz_filter(base, include_junk=include_junk)
+    # 普通用户全局题库只可见公共题或本人私有题；管理员保留全库管理视图。
+    base = base.filter(question_owner_expr(user))
+    if public_only:
+        base = base.filter(QuizQuestion.owner_user_id.is_(None))
     # 科目严格过滤：空白串一律视为「未指定」，避免前端传空串导致全表裸返回
     subj_norm = str(subject).strip() if subject is not None else ""
     if subj_norm:
@@ -176,14 +271,18 @@ async def list_questions(
 
     # —— 口径计数：total_count（可见全量）/ answerable_count（可作答）——
     total_count = base.count()
-    answerable_count = base.filter(_answerable_expr()).count()
+    # T2 内容可用性门禁：出题口径收紧为 validation_status='pass' AND is_available=true
+    # （客观题额外要求 options 非空）。answerable_count 随之改用门禁口径，保证
+    # total 与实际结果集数量一致，前端分页不出现「总数对不上」。
+    answerable_count = base.filter(_answerable_expr(), _content_gate_expr()).count()
 
     # —— 应用 answerable 限制，得到实际结果集 query ——
     # 刷题口径（2026-10）：默认只返回「可作答」的题（有答案，is_available=1）。
     # 无答案题（quality=C / incomplete）在真题浏览/审计场景才需要，默认不进入刷题池。
+    # T2：叠加内容可用性门禁，无答案/无选项的题一律不进入练习。
     query = base
     if answerable:
-        query = query.filter(_answerable_expr())
+        query = query.filter(_answerable_expr(), _content_gate_expr())
 
     # total 与上面两个口径计数恒等（answerable=True 时等于 answerable_count，
     # False 时等于 total_count）—— 原实现这里又发了一次 count，属于纯浪费，
@@ -201,6 +300,7 @@ async def list_questions(
                 ErrorRecord.status == "active",
                 QuizQuestion.knowledge_point.isnot(None),
                 scoped(ErrorRecord, user),  # B4：错题强化只看本人错题
+                question_owner_expr(user),  # 不得借本人错题聚合泄露他人私有题知识点
             )
             .group_by(QuizQuestion.knowledge_point)
             .order_by(func.count(ErrorRecord.id).desc())
@@ -250,6 +350,7 @@ async def list_questions(
                     paper=paper,
                     question_type=question_type,
                     mode=mode,
+                    public_only=public_only,
                 ),
                 "weakness_knowledge_points": weakness_kps,
                 "questions": [_serialize_question(q) for q in questions],
@@ -266,6 +367,7 @@ async def list_questions(
         paper=paper,
         question_type=question_type,
         mode=mode,
+        public_only=public_only,
     )
 
     # 随机模式
@@ -310,7 +412,18 @@ async def list_questions(
 def _applied_filters(**kw) -> dict:
     """归一化「本次生效的筛选」，供前端「依据明示」展示（不暴露内部实现）。"""
     out: dict = {}
-    for k in ("subject", "chapter", "source", "source_kind", "kp_id", "year", "paper", "question_type", "mode"):
+    for k in (
+        "subject",
+        "chapter",
+        "source",
+        "source_kind",
+        "kp_id",
+        "year",
+        "paper",
+        "question_type",
+        "mode",
+        "public_only",
+    ):
         v = kw.get(k)
         if v not in (None, "", 0):
             out[k] = v
@@ -319,7 +432,7 @@ def _applied_filters(**kw) -> dict:
     return out
 
 
-def _serialize_question(q):
+def _serialize_question(q: QuizQuestion) -> dict:
     """题目序列化。
 
     M0 刷题中心：新增 ``answer_type`` / ``quality`` / ``is_available``，供前端
@@ -344,6 +457,9 @@ def _serialize_question(q):
         "is_available": getattr(q, "is_available", None),
         "year": getattr(q, "year", None),
         "paper": getattr(q, "paper", None),
+        "paper_id": getattr(q, "paper_id", None),
+        "origin_document_id": getattr(q, "origin_document_id", None),
+        "origin_chunk_id": getattr(q, "origin_chunk_id", None),
         "question_no": getattr(q, "question_no", None),
         # 题干含图但图未取到 → 前端必须显式提示，避免学生对着「如图所示」干瞪眼
         "figure_missing": int(getattr(q, "figure_missing", 0) or 0),
@@ -363,7 +479,14 @@ async def get_question_detail(
       返回 ``[{id, name, role, weight}]``（role/weight 取自链路表）。
     - 只读端点，无副作用；无法访问时明确 404 而非静默返回空对象。
     """
-    question = db.query(QuizQuestion).filter(QuizQuestion.id == question_id).first()
+    question = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.id == question_id,
+            question_owner_expr(user),
+        )
+        .first()
+    )
     if not question:
         raise HTTPException(status_code=404, detail=f"题目 {question_id} 不存在")
 
@@ -392,7 +515,32 @@ async def get_question_detail(
 
     detail = _serialize_question(question)
     detail["knowledge_points"] = knowledge_points
+    from services.question_evidence import evidence_for_question
+
+    detail["evidence"] = evidence_for_question(db, question)
     return detail
+
+
+@router.get("/questions/{question_id}/evidence")
+async def get_question_evidence(
+    question_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """题目证据链摘要；任一环节缺失均为 None，未关联原卷保留原字符串。"""
+    from services.question_evidence import evidence_for_question
+
+    question = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.id == question_id,
+            question_owner_expr(user),
+        )
+        .first()
+    )
+    if not question:
+        raise HTTPException(status_code=404, detail=f"题目 {question_id} 不存在")
+    return evidence_for_question(db, question)
 
 
 @router.get("/frequency")
@@ -428,11 +576,12 @@ async def quiz_frequency(
     from services.quiz_query import visible_quiz_filter
     from sqlalchemy import distinct, func
 
+    owner = _question_owner_filter(user)
     if dimension == "paper":
         base = visible_quiz_filter(
             db.query(QuizQuestion.paper, func.count(QuizQuestion.id)),
             include_junk=include_junk,
-        ).filter(QuizQuestion.paper.isnot(None))
+        ).filter(QuizQuestion.paper.isnot(None), owner)
         # subject 口径必须与下面的 total 同源，否则「按科目筛」只对 items 生效、
         # total 却统计全部，前端会算出根本不存在的页数。
         if subject:
@@ -448,7 +597,7 @@ async def quiz_frequency(
                 include_junk=include_junk,
             )
             .join(QuestionKnowledgeLink, QuestionKnowledgeLink.question_id == QuizQuestion.id)
-            .filter(QuizQuestion.paper.isnot(None))
+            .filter(QuizQuestion.paper.isnot(None), owner)
         )
         if subject:
             kp_q = kp_q.filter(QuizQuestion.subject == subject)
@@ -465,7 +614,7 @@ async def quiz_frequency(
         # 前端要能知道，否则考频榜会显示成「一共就这 50 套」。
         total_q = visible_quiz_filter(
             db.query(func.count(distinct(QuizQuestion.paper))), include_junk=include_junk
-        ).filter(QuizQuestion.paper.isnot(None))
+        ).filter(QuizQuestion.paper.isnot(None), owner)
         if subject:
             total_q = total_q.filter(QuizQuestion.subject == subject)
         return {
@@ -479,7 +628,7 @@ async def quiz_frequency(
         rows = visible_quiz_filter(
             db.query(QuizQuestion.chapter, func.count(QuizQuestion.id)),
             include_junk=include_junk,
-        ).filter(QuizQuestion.chapter.isnot(None))
+        ).filter(QuizQuestion.chapter.isnot(None), owner)
         if subject:
             rows = rows.filter(QuizQuestion.subject == subject)
         rows = rows.group_by(QuizQuestion.chapter).order_by(func.count(QuizQuestion.id).desc()).limit(limit).all()
@@ -492,7 +641,7 @@ async def quiz_frequency(
                 include_junk=include_junk,
             )
             .join(QuestionKnowledgeLink, QuestionKnowledgeLink.question_id == QuizQuestion.id)
-            .filter(QuizQuestion.chapter.isnot(None))
+            .filter(QuizQuestion.chapter.isnot(None), owner)
         )
         if subject:
             kp_q = kp_q.filter(QuizQuestion.subject == subject)
@@ -507,7 +656,7 @@ async def quiz_frequency(
         ]
         total_q = visible_quiz_filter(
             db.query(func.count(distinct(QuizQuestion.chapter))), include_junk=include_junk
-        ).filter(QuizQuestion.chapter.isnot(None))
+        ).filter(QuizQuestion.chapter.isnot(None), owner)
         if subject:
             total_q = total_q.filter(QuizQuestion.subject == subject)
         return {
@@ -518,6 +667,9 @@ async def quiz_frequency(
         }
 
     if dimension == "kp":
+        from services import kp_mastery
+
+        personal_mastery = kp_mastery.user_mastery(db, owner_id(user))
         # 按知识点聚合考频：用现有 exam_frequency 降序，并带出真实关联题数。
         q = db.query(KnowledgePoint)
         if subject:
@@ -537,7 +689,7 @@ async def quiz_frequency(
                     include_junk=include_junk,
                 )
                 .join(QuizQuestion, QuizQuestion.id == QuestionKnowledgeLink.question_id)
-                .filter(QuestionKnowledgeLink.knowledge_point_id.in_(kp_ids))
+                .filter(QuestionKnowledgeLink.knowledge_point_id.in_(kp_ids), owner)
                 .group_by(QuestionKnowledgeLink.knowledge_point_id)
                 .all()
             )
@@ -550,7 +702,7 @@ async def quiz_frequency(
                 "kp_count": 1,
                 "subject": k.subject,
                 "chapter": k.chapter,
-                "mastery": int(k.mastery or 0),
+                "mastery": int(personal_mastery.get(k.id, 0)),
             }
             for k in kp_rows
         ]
@@ -570,6 +722,7 @@ async def papers_index(
     ),
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题；默认排除，口径同列表"),
     db: Session = Depends(get_db),
+    user: Optional[User] = Depends(optional_user),
 ):
     """真题套卷索引（对标 gitgraduate「真题专项训练体系」）。
 
@@ -582,6 +735,7 @@ async def papers_index(
     from services.quiz_query import visible_quiz_filter
     from sqlalchemy import func
 
+    owner = _question_owner_filter(user)
     query = visible_quiz_filter(
         db.query(
             QuizQuestion.paper,
@@ -590,7 +744,7 @@ async def papers_index(
             func.max(QuizQuestion.year),
         ),
         include_junk=include_junk,
-    ).filter(QuizQuestion.paper.isnot(None))
+    ).filter(QuizQuestion.paper.isnot(None), owner)
     if subject:
         query = query.filter(QuizQuestion.subject == subject)
     sk_expr = _source_kind_expr(source_kind)
@@ -602,7 +756,7 @@ async def papers_index(
     subj_query = visible_quiz_filter(
         db.query(QuizQuestion.paper, QuizQuestion.subject, func.count(QuizQuestion.id)),
         include_junk=include_junk,
-    ).filter(QuizQuestion.paper.isnot(None))
+    ).filter(QuizQuestion.paper.isnot(None), owner)
     if subject:
         subj_query = subj_query.filter(QuizQuestion.subject == subject)
     if sk_expr is not None:
@@ -638,6 +792,7 @@ async def years_index(
     ),
     include_junk: bool = Query(False, description="是否包含 OCR 碎片题；默认排除，口径同列表"),
     db: Session = Depends(get_db),
+    user: Optional[User] = Depends(optional_user),
 ):
     """年份 × 科目 聚合（对标 gitgraduate「按年份浏览」）。
 
@@ -652,7 +807,7 @@ async def years_index(
     yquery = visible_quiz_filter(
         db.query(QuizQuestion.year, QuizQuestion.subject, func.count(QuizQuestion.id)),
         include_junk=include_junk,
-    ).filter(QuizQuestion.year.isnot(None))
+    ).filter(QuizQuestion.year.isnot(None), _question_owner_filter(user))
     sk_expr = _source_kind_expr(source_kind)
     if sk_expr is not None:
         yquery = yquery.filter(sk_expr)
@@ -673,7 +828,14 @@ async def delete_question(
     user: User = Depends(current_user),  # B4 访客兜底
 ):
     """删除题目（题库管理用）。"""
-    question = db.query(QuizQuestion).filter(QuizQuestion.id == question_id).first()
+    question = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.id == question_id,
+            question_owner_expr(user),
+        )
+        .first()
+    )
     if not question:
         raise HTTPException(status_code=404, detail=f"题目 {question_id} 不存在")
     # 物理删除闸门：quiz_questions 的 DELETE 不可逆。本周曾因判重缺陷
@@ -695,7 +857,14 @@ async def update_question(
     user: User = Depends(current_user),  # B4 访客兜底
 ):
     """更新题目（局部更新：仅覆盖请求体中显式传入的字段）。"""
-    question = db.query(QuizQuestion).filter(QuizQuestion.id == question_id).first()
+    question = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.id == question_id,
+            question_owner_expr(user),
+        )
+        .first()
+    )
     if not question:
         raise HTTPException(status_code=404, detail=f"题目 {question_id} 不存在")
 
@@ -919,13 +1088,44 @@ async def submit_answer(
     """提交答案（记录答题历史，答错自动入错题本）。
 
     P0-2：主观题（answer_type='subjective' 或 question_type 为
-    essay/calc/fill）不再做字符串精确匹配判分：
+    essay/calc/fill/draw）不再做字符串精确匹配判分：
     - 若传入 self_score，则按及格线（默认 60% max_score）判定 correct；
     - 未传 self_score 时 correct=None（不判对错），needs_review=True 交前端提示。
     """
-    question = db.query(QuizQuestion).filter(QuizQuestion.id == submission.question_id).first()
+    question = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.id == submission.question_id,
+            question_owner_expr(user),
+        )
+        .first()
+    )
     if not question:
         raise HTTPException(status_code=404, detail="题目不存在")
+
+    uid = owner_id(user)
+    error = None
+    if submission.error_id is not None:
+        error = (
+            db.query(ErrorRecord)
+            .filter(ErrorRecord.id == submission.error_id, ErrorRecord.user_id == uid)
+            .with_for_update()
+            .first()
+        )
+        if not error or error.question_id != submission.question_id:
+            raise HTTPException(status_code=404, detail="错题不存在")
+        if error.status == "graduated":
+            raise HTTPException(status_code=409, detail="错题已毕业，不能再重练")
+
+    quiz_session = None
+    if submission.session_id is not None:
+        quiz_session, existing_attempt = quiz_session_service.lock_submission(
+            db, user, submission.session_id, submission.question_id
+        )
+        if existing_attempt is not None:
+            return quiz_session_service.attempt_result(existing_attempt)
+        snapshot_item = next(row for row in quiz_session.questions if row.question_id == submission.question_id)
+        question = SimpleNamespace(**snapshot_item.snapshot)
 
     # V12 置信度分级：低置信答案（LLM 生成/缺失）不参与自动判分，
     # 仅记录作答流水，返回 needs_review 交前端提示「答案待人工核对」。
@@ -934,12 +1134,12 @@ async def submit_answer(
     )
 
     # —— P0-2：主观题判定 —— #
-    # 命中主观题时不做精确字符串匹配，避免 essay/calc/fill 几乎必然判错。
+    # 命中主观题时不做精确字符串匹配，避免 essay/calc/fill/draw 几乎必然判错。
     is_subjective = str(getattr(question, "answer_type", "") or "").lower() == "subjective" or (
         question.question_type or ""
-    ).lower() in ("essay", "calc", "fill")
+    ).lower() in ("essay", "calc", "fill", "draw")
 
-    correct = False
+    correct = None
     self_score = None
     max_score = None
     if is_subjective:
@@ -947,33 +1147,73 @@ async def submit_answer(
         if submission.self_score is not None:
             self_score = float(submission.self_score)
             max_score = float(submission.max_score) if submission.max_score is not None else 10.0
-            if max_score <= 0:
-                max_score = 10.0
+            if (
+                not math.isfinite(self_score)
+                or not math.isfinite(max_score)
+                or max_score <= 0
+                or self_score < 0
+                or self_score > max_score
+            ):
+                raise HTTPException(status_code=400, detail="自评分必须为 0 到满分之间的有限数值，且满分必须大于 0")
             # 及格线默认 60% max_score
             passing = 0.6 * max_score
             correct = self_score >= passing
         else:
             correct = None  # 不判对错
     elif question.answer and not low_confidence:
-        correct = submission.my_answer.strip().upper() == question.answer.strip().upper()
+        question_type = (question.question_type or "").lower()
+        if question_type in ("single", "multiple", "judge"):
+            correct = normalize_choice_answer(
+                submission.my_answer, question_type, strict=False
+            ) == normalize_choice_answer(question.answer, question_type, strict=False)
+        else:
+            correct = submission.my_answer.strip().upper() == question.answer.strip().upper()
+
+    needs_review = low_confidence or correct is None
+    if needs_review:
+        correct = None
+
+    if error is not None:
+        error.my_answer = submission.my_answer
+        error.correct_answer = question.answer
+        if correct is not None:
+            review_result = "mastered" if correct else "forgotten"
+            review_service.apply_review(
+                db,
+                item_type="error",
+                item_id=error.id,
+                result=review_result,
+                duration=submission.cost_seconds or 0,
+                commit=False,
+                user_id=uid,
+            )
+            scheduled = fsrs.schedule(
+                db,
+                item_type="error_record",
+                item_id=error.id,
+                rating=fsrs.rating_from_result(review_result),
+                commit=False,
+                user_id=uid,
+            )
+            error.next_review = datetime.datetime.fromisoformat(scheduled["due"])
+            error.interval_days = int(scheduled["interval_days"])
 
     # 记录答题历史（用于真实正确率统计）
     record = AnswerRecord(
         question_id=question.id,
         my_answer=submission.my_answer,
         correct_answer=question.answer,
-        is_correct=correct if not low_confidence else None,
+        is_correct=None if needs_review else correct,
         subject=question.subject,
         mode=submission.mode,
         cost_seconds=submission.cost_seconds or 0,
-        user_id=owner_id(user),  # B4：归属当前用户
+        user_id=uid,  # B4：归属当前用户
     )
     db.add(record)
 
     # 答错自动加入错题本（低置信题不判错——答案本身可能不可靠；
     # P0-2：主观题未自评时 correct=None，也不入错题本）
-    error = None
-    if correct is not None and not correct and not low_confidence:
+    if correct is not None and not correct and not needs_review and submission.error_id is None:
         # 错因自动判定（信号驱动，零 LLM）：答题当下即填 error_category，
         # 让错因分布/薄弱点分析当天就有数据；用户可手动改写、也可点 AI 归因覆盖。
         try:
@@ -1001,10 +1241,40 @@ async def submit_answer(
             # V12 同族修复：新错题首入库按掌握度排首次复习（≥1 天），
             # 不再 20 分钟后即当日到期、当天全部涌入"今日复习队列"。
             next_review=ReviewScheduler.first_review_at(),
-            user_id=owner_id(user),  # B4：归属当前用户
+            user_id=uid,  # B4：归属当前用户
         )
         db.add(error)
 
+    # 个人资产状态与答题流水同事务提交；普通公共题不会因此自动加入个人题库。
+    from services.personal_quiz import record_answer_state
+
+    record_answer_state(db, uid, question, correct, needs_review)
+
+    result = {
+        "question_id": question.id,
+        "my_answer": submission.my_answer,
+        "correct": correct,
+        "needs_review": needs_review,
+        "correct_answer": question.answer,
+        "analysis": question.analysis,
+        "record_id": record.id,
+        "question_type": question.question_type,
+        "is_subjective": is_subjective,
+        "self_score": self_score,
+        "max_score": max_score,
+    }
+    if submission.client_attempt_id:
+        result["client_attempt_id"] = submission.client_attempt_id
+    if quiz_session is not None:
+        quiz_session_service.attach_attempt(
+            db,
+            user,
+            quiz_session,
+            question_id=question.id,
+            record=record,
+            result=result,
+            cost_seconds=submission.cost_seconds or 0,
+        )
     db.commit()
 
     # —— P0-2：主观题自评分写入 answer_records（若表无 self_score 列则跳过）—— #
@@ -1023,7 +1293,7 @@ async def submit_answer(
     # —— 错题 ↔ 知识点联动（2026-10）—— #
     # 此前只有「手动收录错题」(POST /api/errors) 会挂知识点，导致刷题产生的错题
     # 大量「错题孤岛」（联调实测覆盖率仅 12.5%）。此处与手动收录对齐，答错即挂考点。
-    if error is not None:
+    if error is not None and submission.error_id is None:
         try:
             from services import error_linker
 
@@ -1080,7 +1350,7 @@ async def submit_answer(
         chapter_id = _resolve_chapter_id(db, question, kp_id)
         record_answer(
             question_id=question.id,
-            is_correct=None if low_confidence else correct,
+            is_correct=None if needs_review else correct,
             duration_seconds=submission.cost_seconds or None,
             subject=question.subject,
             knowledge_point_id=kp_id,
@@ -1092,6 +1362,7 @@ async def submit_answer(
                 "question_type": question.question_type,
                 "difficulty": question.difficulty,
                 "low_confidence": bool(low_confidence),
+                "needs_review": bool(needs_review),
                 "answer_confidence": float(question.answer_confidence or 0)
                 if getattr(question, "answer_confidence", None) is not None
                 else None,
@@ -1102,19 +1373,9 @@ async def submit_answer(
 
         logging.getLogger(__name__).warning("submit_answer 埋点异常（已忽略）: %s", exc)
 
-    return {
-        "question_id": question.id,
-        "correct": correct,
-        "needs_review": low_confidence or (is_subjective and submission.self_score is None),
-        "correct_answer": question.answer,
-        "analysis": question.analysis,
-        "record_id": record.id,
-        # P0-2：主观题透传字段（前端据此展示自评/AI 批改入口）
-        "question_type": question.question_type,
-        "is_subjective": is_subjective,
-        "self_score": self_score,
-        "max_score": max_score,
-    }
+    if quiz_session is not None:
+        result["session_id"] = quiz_session.id
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -1413,7 +1674,14 @@ def grade_subjective(
     - 成功返回 ``{score, max_score, evaluation, reference_answer}``
     - LLM 失败时返回 HTTP 200 + ``score=None`` 降级提示，不报错。
     """
-    question = db.query(QuizQuestion).filter(QuizQuestion.id == request.question_id).first()
+    question = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.id == request.question_id,
+            question_owner_expr(user),
+        )
+        .first()
+    )
     if not question:
         raise HTTPException(status_code=404, detail="题目不存在")
 
@@ -1542,7 +1810,7 @@ async def _quiz_stats_payload(
     subject: Optional[str],
     source_kind: Optional[str],
     db: Session,
-    user: User = None,
+    user: Optional[User] = None,
 ) -> dict:
     """``quiz_stats`` 的真实计算体（与缓存分离，便于测试与复用）。
 
@@ -1556,10 +1824,9 @@ async def _quiz_stats_payload(
     sk_expr = _source_kind_expr(source_kind)  # 非法值 → 400
     subj_norm = str(subject).strip() if subject is not None else ""
 
-    from sqlalchemy import func
-
     def _scoped(base):
-        """套上科目/来源筛选（与 /questions 一致）。"""
+        """套上题目归属、科目/来源筛选（与 /questions 一致）。"""
+        base = base.filter(question_owner_expr(user))
         if subj_norm:
             base = base.filter(QuizQuestion.subject == subj_norm)
         if sk_expr is not None:
@@ -1591,24 +1858,27 @@ async def _quiz_stats_payload(
     total_errors = int(err_row[0] or 0)
     graduated_errors = int(err_row[1] or 0)
 
-    # 真实正确率 = 答对次数 / 答题总次数（全库口径）
+    # 真实正确率 = 答对次数 / 已判定次数；待确认记录单列，不污染分母。
     att_row = (
         db.query(
-            func.count(AnswerRecord.id),
-            func.count(case((AnswerRecord.is_correct == True, 1))),  # noqa: E712
+            func.count(case((AnswerRecord.is_correct.is_not(None), 1))),
+            func.count(case((AnswerRecord.is_correct.is_(True), 1))),  # noqa: E712
+            func.count(case((AnswerRecord.is_correct.is_(None), 1))),
         )
         .filter(scoped(AnswerRecord, user))  # B4：答题次数只看本人
         .first()
     )
     total_attempts = int(att_row[0] or 0)
     correct_attempts = int(att_row[1] or 0)
+    pending_attempts = int(att_row[2] or 0)
     accuracy_rate = round(correct_attempts / total_attempts * 100, 1) if total_attempts else 0
     # 各科目答题正确率
     subject_rows = (
         db.query(
             AnswerRecord.subject,
-            func.count(AnswerRecord.id),
-            func.sum(AnswerRecord.is_correct.cast(Integer)),
+            func.count(case((AnswerRecord.is_correct.is_not(None), 1))),
+            func.count(case((AnswerRecord.is_correct.is_(True), 1))),  # noqa: E712
+            func.count(case((AnswerRecord.is_correct.is_(None), 1))),
         )
         .filter(scoped(AnswerRecord, user))  # B4：分科正确率只看本人
         .group_by(AnswerRecord.subject)
@@ -1619,9 +1889,10 @@ async def _quiz_stats_payload(
             "subject": s or "未分类",
             "attempts": c,
             "correct": int(t or 0),
+            "pending": int(p or 0),
             "accuracy": round(int(t or 0) / c * 100, 1) if c else 0,
         }
-        for s, c, t in subject_rows
+        for s, c, t, p in subject_rows
     ]
 
     # —— 学习行为埋点口径（study_events）—— #
@@ -1642,13 +1913,16 @@ async def _quiz_stats_payload(
 
     answer_ev_q = db.query(
         func.count(StudyEvent.id),
-        func.count(case((StudyEvent.is_correct.is_(True), 1))),
+        func.count(case((StudyEvent.is_correct.is_(True), 1))),  # noqa: E712
+        func.count(case((StudyEvent.is_correct.is_(None), 1))),
     ).filter(StudyEvent.event_type == "answer")
     if owner_id(user) is not None:
         answer_ev_q = answer_ev_q.filter(StudyEvent.user_id == owner_id(user))
-    ev_answers, ev_correct = answer_ev_q.first()
+    ev_answers, ev_correct, ev_pending = answer_ev_q.first()
     answer_events_total = int(ev_answers or 0)
-    event_accuracy_rate = round(int(ev_correct or 0) / answer_events_total * 100, 1) if answer_events_total else 0
+    graded_answer_events = answer_events_total - int(ev_pending or 0)
+    pending_answer_events = int(ev_pending or 0)
+    event_accuracy_rate = round(int(ev_correct or 0) / graded_answer_events * 100, 1) if graded_answer_events else 0
 
     today_start = local_window_for_day(local_today())[0]
     today_q = db.query(
@@ -1689,15 +1963,20 @@ async def _quiz_stats_payload(
             "raw_total": "不排除任何题的原始总数 = visible_total + junk_total",
             "study_minutes": "study_events.duration_seconds 求和 / 60（真实记录）",
             "answer_events_total": "study_events 中 event_type='answer' 的流水条数",
+            "graded_answer_events": "study_events 中已判定的答题流水数（正确率分母）",
+            "pending_answer_events": "study_events 中待确认的答题流水数（不计入正确率）",
         },
         # —— 答题记录维度（全库口径）——
         "total_attempts": total_attempts,
+        "pending_attempts": pending_attempts,
         "active_errors": total_errors,
         "graduated_errors": graduated_errors,
         "accuracy_rate": accuracy_rate,
         # —— 学习行为埋点维度（study_events；与答题记录同 user_id 过滤）——
         "study_events_total": study_events_total,
         "answer_events_total": answer_events_total,
+        "graded_answer_events": graded_answer_events,
+        "pending_answer_events": pending_answer_events,
         "event_accuracy_rate": event_accuracy_rate,
         "study_minutes": study_minutes,
         "today_events": int(today_events or 0),
@@ -2256,7 +2535,10 @@ async def retest_stats(
                 )
             ),
         )
-        .filter(or_(QuizQuestion.is_junk.is_(False), QuizQuestion.is_junk.is_(None)))
+        .filter(
+            or_(QuizQuestion.is_junk.is_(False), QuizQuestion.is_junk.is_(None)),
+            question_owner_expr(user),
+        )
         .group_by(QuizQuestion.subject)
         .all()
     )
@@ -2406,7 +2688,7 @@ async def quiz_subjects(
     from services import subject_registry
     from sqlalchemy import func
 
-    data = subject_registry.list_subjects(db)["subjects"]
+    data = subject_registry.list_subjects(db, question_filter=question_owner_expr(user))["subjects"]
 
     # 口径显式化（M0-103①）：一科目同时给出三个明确命名的计数，前端不再靠猜。
     #   * raw_count        ：该科目全部题（含 OCR 碎片/junk、含已下架）
@@ -2418,7 +2700,7 @@ async def quiz_subjects(
 
     rows = (
         db.query(QuizQuestion.subject, func.count(QuizQuestion.id))
-        .filter(QuizQuestion.subject.isnot(None))
+        .filter(QuizQuestion.subject.isnot(None), question_owner_expr(user))
         .group_by(QuizQuestion.subject)
         .all()
     )
@@ -2429,6 +2711,7 @@ async def quiz_subjects(
             db.query(QuizQuestion.subject, func.count(QuizQuestion.id)),
             include_junk=False,
         )
+        .filter(question_owner_expr(user))
         .group_by(QuizQuestion.subject)
         .all()
     )
@@ -2439,7 +2722,7 @@ async def quiz_subjects(
             db.query(QuizQuestion.subject, func.count(QuizQuestion.id)),
             include_junk=False,
         )
-        .filter(answerable_expr())
+        .filter(question_owner_expr(user), answerable_expr())
         .group_by(QuizQuestion.subject)
         .all()
     )
@@ -2490,7 +2773,7 @@ async def quiz_sections(
     q = visible_quiz_filter(
         db.query(QuizQuestion.chapter, func.count(QuizQuestion.id)),
         include_junk=include_junk,
-    )
+    ).filter(question_owner_expr(user))
     if subject:
         q = q.filter(QuizQuestion.subject == subject)
     q = (
@@ -2502,7 +2785,11 @@ async def quiz_sections(
     err_rows = (
         db.query(QuizQuestion.subject, QuizQuestion.chapter, func.count(ErrorRecord.id))
         .join(ErrorRecord, ErrorRecord.question_id == QuizQuestion.id)
-        .filter(ErrorRecord.status == "active", scoped(ErrorRecord, user))  # B4：只看本人错题
+        .filter(
+            ErrorRecord.status == "active",
+            scoped(ErrorRecord, user),  # B4：只看本人错题
+            question_owner_expr(user),
+        )
         .group_by(QuizQuestion.subject, QuizQuestion.chapter)
         .all()
     )
@@ -2560,7 +2847,11 @@ async def quiz_weak_points(
             func.count(ErrorRecord.id),
         )
         .join(ErrorRecord, ErrorRecord.question_id == QuizQuestion.id)
-        .filter(ErrorRecord.status == "active", scoped(ErrorRecord, user))  # B4：只看本人错题
+        .filter(
+            ErrorRecord.status == "active",
+            scoped(ErrorRecord, user),  # B4：只看本人错题
+            question_owner_expr(user),
+        )
     )
     if subject:
         q = q.filter(QuizQuestion.subject == subject)

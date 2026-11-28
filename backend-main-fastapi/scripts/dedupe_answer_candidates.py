@@ -55,9 +55,11 @@ FROM answer_candidates
 
 
 def _dup_rows(db):
-    return db.execute(text(f"""
+    return db.execute(
+        text(f"""
         SELECT * FROM ({_RANK_SQL}) t WHERE t.rn > 1 ORDER BY question_id, source
-    """)).fetchall()
+    """)
+    ).fetchall()
 
 
 def main() -> int:
@@ -76,9 +78,11 @@ def main() -> int:
             print(f"answer_candidates 共 {total} 行，待删除冗余 {len(dups)} 行：")
             print(f"{'id':>8} {'qid':>8} {'source':<16} {'conf':>6} {'graded':>7}  answer")
             for r in dups:
-                print(f"{r[0]:>8} {r[1]:>8} {str(r[2])[:16]:<16} "
-                      f"{r[4] if r[4] is not None else '-':>6} "
-                      f"{str(r[5]):>7}  {str(r[3])[:40]}")
+                print(
+                    f"{r[0]:>8} {r[1]:>8} {str(r[2])[:16]:<16} "
+                    f"{r[4] if r[4] is not None else '-':>6} "
+                    f"{str(r[5]):>7}  {str(r[3])[:40]}"
+                )
 
         if not args.apply:
             print("\n[dry-run] 未做任何修改。确认无误后加 --apply 执行。")
@@ -98,10 +102,9 @@ def main() -> int:
 
         # 顺手把唯一索引建出来（此前因重复数据一直失败）
         try:
-            db.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_ansc_qid_src "
-                "ON answer_candidates(question_id, source)"
-            ))
+            db.execute(
+                text("CREATE UNIQUE INDEX IF NOT EXISTS uq_ansc_qid_src ON answer_candidates(question_id, source)")
+            )
             db.commit()
             print("[apply] uq_ansc_qid_src 唯一索引已建立。")
         except Exception as exc:  # noqa: BLE001

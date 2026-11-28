@@ -35,6 +35,7 @@ top1 记为「相关」当其 ``document_id`` ∈ gold。这是**弱标注**（�
     python scripts/retrieval_abstention_eval.py --db D:/tmp/kaoyan_eval_corpus.db
     python scripts/retrieval_abstention_eval.py --record-only        # 复述既有报表并入库
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,7 +63,8 @@ def build_gold(conn, cases):
         if key in gold:
             continue
         gold[key] = {
-            d[0] for d in docs
+            d[0]
+            for d in docs
             if (d[1] or "") == c["subject"]
             and any(kw in ((d[3] or "") + " " + (d[2] or "")) for kw in c["rel_keywords"])
         }
@@ -89,16 +91,18 @@ def sweep(scores, labels, grid):
     n_neg = len(labels) - n_pos
     rows = []
     for th in grid:
-        fa = sum(1 for s, y in zip(scores, labels) if y and s < th)
-        ms = sum(1 for s, y in zip(scores, labels) if (not y) and s >= th)
-        rows.append({
-            "threshold": th,
-            "abstain_rate": round(sum(1 for s in scores if s < th) / len(scores), 4),
-            "false_abstain_n": fa,
-            "false_abstain_rate": round(fa / n_pos, 4) if n_pos else None,
-            "missed_abstain_n": ms,
-            "missed_abstain_rate": round(ms / n_neg, 4) if n_neg else None,
-        })
+        fa = sum(1 for s, y in zip(scores, labels, strict=False) if y and s < th)
+        ms = sum(1 for s, y in zip(scores, labels, strict=False) if (not y) and s >= th)
+        rows.append(
+            {
+                "threshold": th,
+                "abstain_rate": round(sum(1 for s in scores if s < th) / len(scores), 4),
+                "false_abstain_n": fa,
+                "false_abstain_rate": round(fa / n_pos, 4) if n_pos else None,
+                "missed_abstain_n": ms,
+                "missed_abstain_rate": round(ms / n_neg, 4) if n_neg else None,
+            }
+        )
     return rows, n_pos, n_neg
 
 
@@ -113,8 +117,8 @@ def arm_stats(rows, relevance_threshold, accept_threshold):
     have = [c for c in rows if c["top1_score"] is not None]
     scores = [c["top1_score"] for c in have]
     labels = [c["top1_is_gold"] for c in have]
-    pos = [s for s, y in zip(scores, labels) if y]
-    neg = [s for s, y in zip(scores, labels) if not y]
+    pos = [s for s, y in zip(scores, labels, strict=False) if y]
+    neg = [s for s, y in zip(scores, labels, strict=False) if not y]
 
     extra = []
     if pos:
@@ -134,7 +138,7 @@ def arm_stats(rows, relevance_threshold, accept_threshold):
     # 而不是单一阈值高低：中间那段（弃权带）如果为空，enforce 等于永远不弃权；
     # 如果非空却全是 gold，说明弃权带里装的都是「本来答得出的题」。
     def _band(pred):
-        sub = [(s, y) for s, y in zip(scores, labels) if pred(s)]
+        sub = [(s, y) for s, y in zip(scores, labels, strict=False) if pred(s)]
         return {
             "n": len(sub),
             "gold_n": sum(1 for _, y in sub if y),
@@ -153,8 +157,10 @@ def arm_stats(rows, relevance_threshold, accept_threshold):
         "n_empty_recall": len(rows) - len(have),
         "score_scale": {
             "min": round(min(scores), 4) if scores else None,
-            "p25": _pct(scores, 25), "median": _pct(scores, 50),
-            "p75": _pct(scores, 75), "p90": _pct(scores, 90),
+            "p25": _pct(scores, 25),
+            "median": _pct(scores, 50),
+            "p75": _pct(scores, 75),
+            "p90": _pct(scores, 90),
             "max": round(max(scores), 4) if scores else None,
         },
         # 同一阈值在各学科上的实际效果差多少个数量级 —— 这是「全局阈值不成立」的直接证据
@@ -163,20 +169,26 @@ def arm_stats(rows, relevance_threshold, accept_threshold):
         "discrimination": {
             "top1_gold_hit_rate": round(sum(labels) / len(labels), 4) if labels else None,
             "any_topk_gold_hit_rate": (
-                round(sum(1 for c in have if c["any_topk_is_gold"]) / len(have), 4) if have else None),
+                round(sum(1 for c in have if c["any_topk_is_gold"]) / len(have), 4) if have else None
+            ),
             "auc_top1_score_vs_gold": auc(pos, neg),
-            "pos_median": _pct(pos, 50), "neg_median": _pct(neg, 50),
-            "n_pos": n_pos, "n_neg": n_neg,
+            "pos_median": _pct(pos, 50),
+            "neg_median": _pct(neg, 50),
+            "n_pos": n_pos,
+            "n_neg": n_neg,
         },
         "threshold_curve": curve,
         "current_threshold_effect": {
             "accept_threshold": accept_threshold,
             "would_abstain_n": sum(1 for s in scores if s < accept_threshold),
             "would_abstain_rate": (
-                round(sum(1 for s in scores if s < accept_threshold) / len(scores), 4) if scores else None),
+                round(sum(1 for s in scores if s < accept_threshold) / len(scores), 4) if scores else None
+            ),
             "false_abstain_among_answerable": (
-                round(sum(1 for s, y in zip(scores, labels) if y and s < accept_threshold) / n_pos, 4)
-                if n_pos else None),
+                round(sum(1 for s, y in zip(scores, labels, strict=False) if y and s < accept_threshold) / n_pos, 4)
+                if n_pos
+                else None
+            ),
         },
     }
 
@@ -226,10 +238,13 @@ def run_eval(db_path, out_path):
         for c in cases:
             gset = gold.get((c["subject"], tuple(c["rel_keywords"])), set())
             base = {"id": c["id"], "query": c["query"], "subject": c["subject"], "gold_count": len(gset)}
-            rr = search_service.hybrid_search_with_rerank(
-                db, c["query"], query_vec=None, limit=TOP_K, subject=c["subject"]) or []
-            rf = search_service.hybrid_search(
-                db, c["query"], query_vec=None, limit=TOP_K, subject=c["subject"]) or []
+            rr = (
+                search_service.hybrid_search_with_rerank(
+                    db, c["query"], query_vec=None, limit=TOP_K, subject=c["subject"]
+                )
+                or []
+            )
+            rf = search_service.hybrid_search(db, c["query"], query_vec=None, limit=TOP_K, subject=c["subject"]) or []
             rerank_rows.append({**base, "recall_n": len(rr), **labelled(rr, gset, c["query"])})
             rrf_rows.append({**base, "recall_n": len(rf), **labelled(rf, gset, c["query"])})
     finally:
@@ -268,13 +283,9 @@ def verdict(report):
 
     # 弃权带（relevance<=top1<accept）才是 enforce 真正会「拒答」的区间：
     # 带内为空 → enforce 永不拒答；带内全是 gold → 拒的全是本来答得出的题。
-    bands = {
-        k: v.get("decision_bands", {}).get("abstain带_relevance<=s<accept")
-        for k, v in report["arms"].items()
-    }
+    bands = {k: v.get("decision_bands", {}).get("abstain带_relevance<=s<accept") for k, v in report["arms"].items()}
     band_note = "；".join(
-        f"{k} 弃权带 {v['n']} 条（其中可答 {v['gold_n']} 条）" if v else f"{k} 无弃权带数据"
-        for k, v in bands.items()
+        f"{k} 弃权带 {v['n']} 条（其中可答 {v['gold_n']} 条）" if v else f"{k} 无弃权带数据" for k, v in bands.items()
     )
     return {
         "auc_by_arm": aucs,
@@ -284,11 +295,10 @@ def verdict(report):
         "can_set_threshold": ok,
         "reason": (
             "存在可分阈值，按 threshold_curve 选点后即可把 RETRIEVAL_GATE_MODE 切到 enforce"
-            if ok else
-            "两条分数路对 gold 的区分度都接近抛硬币（AUC < %.2f）：%s —— "
+            if ok
+            else "两条分数路对 gold 的区分度都接近抛硬币（AUC < %.2f）：%s —— "
             "阈值切在加法分/名次分上，enforce 要么永不拒答、要么只拒可答题，"
-            "所以保持 observe；要定档得先把阈值改写到归一化信号上（如学科内分位）"
-            % (MIN_AUC_FOR_ENFORCE, band_note)
+            "所以保持 observe；要定档得先把阈值改写到归一化信号上（如学科内分位）" % (MIN_AUC_FOR_ENFORCE, band_note)
         ),
     }
 
@@ -314,10 +324,12 @@ def record(report, out_path):
             primary_metric=v["best_auc"],
             n_samples=summary["arms"]["rerank"]["n_cases"],
             fingerprint=text_fingerprint([c["query"] for c in cases]),
-            notes=(f"best AUC {v['best_auc']}（rerank {v['auc_by_arm']['rerank']} / "
-                   f"rrf {v['auc_by_arm']['rrf']}），定档门槛 {v['min_auc_for_enforce']}；"
-                   f"top1 gold 命中率 rerank {summary['arms']['rerank']['discrimination']['top1_gold_hit_rate']} / "
-                   f"rrf {summary['arms']['rrf']['discrimination']['top1_gold_hit_rate']}；{v['reason']}"),
+            notes=(
+                f"best AUC {v['best_auc']}（rerank {v['auc_by_arm']['rerank']} / "
+                f"rrf {v['auc_by_arm']['rrf']}），定档门槛 {v['min_auc_for_enforce']}；"
+                f"top1 gold 命中率 rerank {summary['arms']['rerank']['discrimination']['top1_gold_hit_rate']} / "
+                f"rrf {summary['arms']['rrf']['discrimination']['top1_gold_hit_rate']}；{v['reason']}"
+            ),
             report_path=out_path,
             db=db,
         )
@@ -330,8 +342,9 @@ def record(report, out_path):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="", help="评测用库（建议传 backup API 出来的副本）")
-    ap.add_argument("--out", default=os.path.join(os.environ.get("TEMP_DIR", BASE_DIR),
-                                                  "retrieval_abstention_eval.json"))
+    ap.add_argument(
+        "--out", default=os.path.join(os.environ.get("TEMP_DIR", BASE_DIR), "retrieval_abstention_eval.json")
+    )
     ap.add_argument("--record", action="store_true", help="跑完即写一条 eval_runs")
     ap.add_argument("--record-only", action="store_true", help="只把 --out 里的既有报表写进 eval_runs")
     args = ap.parse_args()

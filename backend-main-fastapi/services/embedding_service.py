@@ -16,9 +16,9 @@ import os
 from typing import List, Optional, Tuple
 
 import numpy as np
-from models import AIProvider
 from sqlalchemy.orm import Session
 
+from models import AIProvider
 from services.dbapi_compat import wrap_conn
 
 # 离线引擎配置

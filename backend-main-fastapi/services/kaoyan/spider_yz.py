@@ -14,6 +14,7 @@
     # 全量
     python -c "from services.kaoyan.spider_yz import crawl; crawl(all_provinces=True)"
 """
+
 import json
 import logging
 import random
@@ -24,7 +25,9 @@ import urllib.request
 from pathlib import Path
 
 YZ_BASE = "https://yz.chsi.com.cn"
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
+UA = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+}
 
 # 断点续爬状态落在 data/ 运行时目录，**不放在包目录**。
 # 历史故障（2026-10-18）：部署包夹带一份全量 completed 的 checkpoint.json，
@@ -38,26 +41,60 @@ def _checkpoint_path() -> Path:
     SPIDER_STATE_DIR.mkdir(parents=True, exist_ok=True)
     return SPIDER_STATE_DIR / "yz_checkpoint.json"
 
+
 SSL_CTX = ssl.create_default_context()
 SSL_CTX.check_hostname = False
 SSL_CTX.verify_mode = ssl.CERT_NONE
 
 # 省份代码→名称
 PROVINCES = {
-    "11": "北京", "12": "天津", "13": "河北", "14": "山西", "15": "内蒙古",
-    "21": "辽宁", "22": "吉林", "23": "黑龙江", "31": "上海", "32": "江苏",
-    "33": "浙江", "34": "安徽", "35": "福建", "36": "江西", "37": "山东",
-    "41": "河南", "42": "湖北", "43": "湖南", "44": "广东", "45": "广西",
-    "46": "海南", "50": "重庆", "51": "四川", "52": "贵州", "53": "云南",
-    "54": "西藏", "61": "陕西", "62": "甘肃", "63": "青海", "64": "宁夏",
+    "11": "北京",
+    "12": "天津",
+    "13": "河北",
+    "14": "山西",
+    "15": "内蒙古",
+    "21": "辽宁",
+    "22": "吉林",
+    "23": "黑龙江",
+    "31": "上海",
+    "32": "江苏",
+    "33": "浙江",
+    "34": "安徽",
+    "35": "福建",
+    "36": "江西",
+    "37": "山东",
+    "41": "河南",
+    "42": "湖北",
+    "43": "湖南",
+    "44": "广东",
+    "45": "广西",
+    "46": "海南",
+    "50": "重庆",
+    "51": "四川",
+    "52": "贵州",
+    "53": "云南",
+    "54": "西藏",
+    "61": "陕西",
+    "62": "甘肃",
+    "63": "青海",
+    "64": "宁夏",
     "65": "新疆",
 }
 
 # 学科门类代码→名称
 SUBJECT_CATEGORIES = {
-    "01": "哲学", "02": "经济学", "03": "法学", "04": "教育学",
-    "05": "文学", "06": "历史学", "07": "理学", "08": "工学",
-    "09": "农学", "10": "医学", "11": "军事学", "12": "管理学",
+    "01": "哲学",
+    "02": "经济学",
+    "03": "法学",
+    "04": "教育学",
+    "05": "文学",
+    "06": "历史学",
+    "07": "理学",
+    "08": "工学",
+    "09": "农学",
+    "10": "医学",
+    "11": "军事学",
+    "12": "管理学",
     "13": "艺术学",
 }
 
@@ -70,7 +107,7 @@ def fetch(url, retries=3, data=None, method="GET"):
             with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as r:
                 return r.read().decode("utf-8", "ignore")
         except Exception as e:
-            print(f"  [retry {i+1}/{retries}] {url[:60]}: {e}")
+            print(f"  [retry {i + 1}/{retries}] {url[:60]}: {e}")
             time.sleep(random.uniform(2, 5))
     return ""
 
@@ -142,12 +179,11 @@ def load_checkpoint(db_session=None):
                 cp = data
         except Exception as _exc:  # noqa: BLE001
             # 不静默：保留「不阻塞主流程」语义，仅补留痕
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
     if cp.get("completed") and db_session is not None:
         try:
             from models import KaoyanSchool
+
             if db_session.query(KaoyanSchool).count() == 0:
                 logging.getLogger(__name__).warning(
                     "checkpoint 声称已完成 %d 项但院校库为空，判定过期并重置（以库为准）",
@@ -156,9 +192,7 @@ def load_checkpoint(db_session=None):
                 cp = {"completed": []}
                 save_checkpoint(cp)
         except Exception as _exc:  # noqa: BLE001
-            logging.getLogger(__name__).warning(
-                "checkpoint 自愈检查失败（不阻塞主流程）: %s", str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("checkpoint 自愈检查失败（不阻塞主流程）: %s", str(_exc)[:200])
     return cp
 
 
@@ -173,17 +207,85 @@ def save_checkpoint(cp):
 # 覆盖约 60 个关键词：机构后缀、省级行政区、校名高频词。
 KEYWORDS = [
     # —— 机构类型后缀 ——
-    "", "大学", "学院", "研究所", "科学院", "研究院", "中心", "学部", "分校", "校区",
+    "",
+    "大学",
+    "学院",
+    "研究所",
+    "科学院",
+    "研究院",
+    "中心",
+    "学部",
+    "分校",
+    "校区",
     # —— 省级行政区名（弥补部分院校名称含地名）——
-    "北京", "天津", "河北", "山西", "内蒙", "辽宁", "吉林", "黑龙江", "上海", "江苏",
-    "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "广西",
-    "海南", "重庆", "四川", "贵州", "云南", "西藏", "陕西", "甘肃", "青海", "宁夏", "新疆",
+    "北京",
+    "天津",
+    "河北",
+    "山西",
+    "内蒙",
+    "辽宁",
+    "吉林",
+    "黑龙江",
+    "上海",
+    "江苏",
+    "浙江",
+    "安徽",
+    "福建",
+    "江西",
+    "山东",
+    "河南",
+    "湖北",
+    "湖南",
+    "广东",
+    "广西",
+    "海南",
+    "重庆",
+    "四川",
+    "贵州",
+    "云南",
+    "西藏",
+    "陕西",
+    "甘肃",
+    "青海",
+    "宁夏",
+    "新疆",
     # —— 校名高频前缀/词 ——
-    "中国", "中华", "国家", "国防", "人民",
+    "中国",
+    "中华",
+    "国家",
+    "国防",
+    "人民",
     # —— 行业特征词 ——
-    "工业", "理工", "科技", "师范", "农业", "林业", "医科", "医药", "中医药", "财经",
-    "政法", "交通", "航空", "航天", "邮电", "电子", "海事", "海洋", "石油", "地质",
-    "矿业", "电力", "水利", "建筑", "民族", "外国语", "国际", "对外", "铁道", "工程",
+    "工业",
+    "理工",
+    "科技",
+    "师范",
+    "农业",
+    "林业",
+    "医科",
+    "医药",
+    "中医药",
+    "财经",
+    "政法",
+    "交通",
+    "航空",
+    "航天",
+    "邮电",
+    "电子",
+    "海事",
+    "海洋",
+    "石油",
+    "地质",
+    "矿业",
+    "电力",
+    "水利",
+    "建筑",
+    "民族",
+    "外国语",
+    "国际",
+    "对外",
+    "铁道",
+    "工程",
 ]
 
 
@@ -205,12 +307,12 @@ def fetch_schools(province_code, subject_code="08", max_pages=50, keywords=None)
         list[dict]: 去重后的院校列表，每项含 dwdm/dwmc/szss/zhx/bs/syl 等原始字段。
     """
     kw_list = list(keywords) if keywords else list(KEYWORDS)
-    merged = {}          # dwdm -> 原始 item（保序，首次出现为准）
-    no_code = []         # 无 dwdm 的兜底条目（极少数），按名称去重
+    merged = {}  # dwdm -> 原始 item（保序，首次出现为准）
+    no_code = []  # 无 dwdm 的兜底条目（极少数），按名称去重
     seen_no_code = set()
-    fail_streak = 0      # 连续失败计数，避免网络异常时死循环
+    fail_streak = 0  # 连续失败计数，避免网络异常时死循环
 
-    for i, kw in enumerate(kw_list):
+    for _i, kw in enumerate(kw_list):
         params = {
             "ssdm": province_code,
             "xxfs": "1",
@@ -260,6 +362,7 @@ def fetch_schools(province_code, subject_code="08", max_pages=50, keywords=None)
 def crawl(province_codes=None, subject_codes=None, all_provinces=False, reset_checkpoint=False):
     """C1+C2: 爬取研招网院校专业目录。"""
     from database import SessionLocal
+
     from models import KaoyanSchool
 
     db = SessionLocal()
@@ -298,7 +401,7 @@ def crawl(province_codes=None, subject_codes=None, all_provinces=False, reset_ch
                 added = 0
                 for item in schools:
                     name = item.get("dwmc", "").strip()
-                    code = item.get("dwdm")
+                    item.get("dwdm")
                     province = PROVINCES.get(pc, item.get("szss"))
                     if not name:
                         continue

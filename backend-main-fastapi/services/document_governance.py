@@ -19,8 +19,9 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from models import Document, DocumentClassifyQueue, KnowledgeChunk, KnowledgePoint, SubjectConfig
 from sqlalchemy.orm import Session
+
+from models import Document, DocumentClassifyQueue, KnowledgeChunk, KnowledgePoint, SubjectConfig
 
 logger = logging.getLogger(__name__)
 

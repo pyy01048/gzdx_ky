@@ -6,7 +6,9 @@
 - 非空 dict（如 {"0": {...}} 数字键形态）→ 取值组成数组，保留真实历史。
 - 只处理 list/None 之外的行，正常数据零改动。
 """
+
 from database import SessionLocal
+
 from models import Word
 
 db = SessionLocal()
@@ -31,7 +33,9 @@ try:
     db.commit()
     print(f"empty-dict -> []: {emptied}, dict-with-keys -> values: {converted}")
 
-    remaining = sum(1 for w in db.query(Word).all() if w.review_history is not None and not isinstance(w.review_history, list))
+    remaining = sum(
+        1 for w in db.query(Word).all() if w.review_history is not None and not isinstance(w.review_history, list)
+    )
     print(f"remaining non-list rows: {remaining}")
 finally:
     db.close()

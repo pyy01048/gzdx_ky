@@ -9,6 +9,7 @@
 
 运行: python scripts/import_english_zhenti_paired_pg.py
 """
+
 # [STATUS] 一次性数据脚本（迁入 oneoff/，docs/完善方案/04 §3.4）。执行前确认数据源与备份。
 import json
 import logging
@@ -26,7 +27,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
+from scripts._conn import dsn as DB_DSN_F
+
+DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("import_english_paired")
@@ -34,6 +37,7 @@ log = logging.getLogger("import_english_paired")
 EXT_PREFIX = "eng_zhenti"
 
 stats = Counter()
+
 
 # =========================================================
 # 文本清洗（复用）
@@ -267,9 +271,11 @@ def parse_stem_file(text):
                 current_q = None
             continue
 
-        is_option_line = bool(re.match(r"^\s*\[[A-D]\]\s*\S", stripped)) or \
-                          bool(re.match(r"^\s*[A-D][\.、]\s*\S", stripped)) or \
-                          (stripped.count("[A]") >= 1 and stripped.count("[B]") >= 1)
+        is_option_line = (
+            bool(re.match(r"^\s*\[[A-D]\]\s*\S", stripped))
+            or bool(re.match(r"^\s*[A-D][\.、]\s*\S", stripped))
+            or (stripped.count("[A]") >= 1 and stripped.count("[B]") >= 1)
+        )
         if current_q is not None and current_q in questions and is_option_line:
             questions[current_q]["lines"].append(stripped)
         else:
@@ -396,7 +402,7 @@ def parse_answer_file(text):
         block = "\n".join(lines[idx:end_idx])
         jx_pos = block.find("【解析】")
         if jx_pos >= 0:
-            analysis_text = block[jx_pos + len("【解析】"):]
+            analysis_text = block[jx_pos + len("【解析】") :]
         else:
             analysis_text = ""
         analysis_text = re.sub(r"#+\s*", "", analysis_text)

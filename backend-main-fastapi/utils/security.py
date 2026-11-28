@@ -244,8 +244,9 @@ def create_session(db: Session, request: Request, user) -> tuple:
     """登录成功后登记一行会话，返回 (sid, jti)。调用方负责 commit。"""
     import uuid
 
+    from utils.timeutil import utcnow_aware
+
     from models import AuthSession
-    from utils.timeutil import utcnow
 
     sid = uuid.uuid4().hex
     jti = uuid.uuid4().hex
@@ -254,13 +255,13 @@ def create_session(db: Session, request: Request, user) -> tuple:
             id=sid,
             user_id=user.id,
             refresh_jti=jti,
-            expires_at=utcnow() + datetime.timedelta(days=REFRESH_DAYS),
+            expires_at=utcnow_aware() + datetime.timedelta(days=REFRESH_DAYS),
             ip=client_ip(request),
             user_agent=(request.headers.get("user-agent") or "")[:300],
         )
     )
     # 顺手清理该用户已过期/已吊销 30 天以上的旧行，表不会无限膨胀
-    cutoff = utcnow() - datetime.timedelta(days=30)
+    cutoff = utcnow_aware() - datetime.timedelta(days=30)
     db.query(AuthSession).filter(
         AuthSession.user_id == user.id,
         AuthSession.expires_at < cutoff,
@@ -269,8 +270,9 @@ def create_session(db: Session, request: Request, user) -> tuple:
 
 
 def _live_session(db: Session, sid: str, user_id: int):
+    from utils.timeutil import utcnow_aware
+
     from models import AuthSession
-    from utils.timeutil import utcnow
 
     return (
         db.query(AuthSession)
@@ -278,7 +280,7 @@ def _live_session(db: Session, sid: str, user_id: int):
             AuthSession.id == sid,
             AuthSession.user_id == user_id,
             AuthSession.revoked_at.is_(None),
-            AuthSession.expires_at > utcnow(),
+            AuthSession.expires_at > utcnow_aware(),
         )
         .first()
     )
@@ -294,7 +296,7 @@ def rotate_refresh(db: Session, user, payload: dict):
     """
     import uuid
 
-    from utils.timeutil import utcnow
+    from utils.timeutil import utcnow_aware
 
     sid = payload.get("sid")
     jti = payload.get("jti")
@@ -304,13 +306,13 @@ def rotate_refresh(db: Session, user, payload: dict):
     if session is None:
         return None
     if session.refresh_jti != jti:
-        session.revoked_at = utcnow()
+        session.revoked_at = utcnow_aware()
         user.token_version = int(user.token_version or 0) + 1
         logger.warning("检测到 refresh token 重放（user_id=%s, sid=%s），已吊销全部会话", user.id, sid)
         return None
     new_jti = uuid.uuid4().hex
     session.refresh_jti = new_jti
-    session.last_used_at = utcnow()
+    session.last_used_at = utcnow_aware()
     return new_jti
 
 
@@ -318,11 +320,12 @@ def revoke_session(db: Session, sid: Optional[str]) -> None:
     """登出吊销：只断当前会话，其他设备不受影响。调用方负责 commit。"""
     if not sid:
         return
+    from utils.timeutil import utcnow_aware
+
     from models import AuthSession
-    from utils.timeutil import utcnow
 
     db.query(AuthSession).filter(AuthSession.id == sid, AuthSession.revoked_at.is_(None)).update(
-        {"revoked_at": utcnow()}, synchronize_session=False
+        {"revoked_at": utcnow_aware()}, synchronize_session=False
     )
 
 

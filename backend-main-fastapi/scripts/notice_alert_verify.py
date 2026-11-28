@@ -10,6 +10,7 @@
   3. 造几条订阅（验证订阅匹配），手动触发一次提醒扫描
   4. 打印提醒表产出 + 扫描日志（验证 Windows 时区无静默失败）
 """
+
 from __future__ import annotations
 
 import json
@@ -19,9 +20,7 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
-os.environ.setdefault(
-    "DATABASE_PATH", str(BACKEND.parents[0] / "database" / "kaoyan.db")
-)
+os.environ.setdefault("DATABASE_PATH", str(BACKEND.parents[0] / "database" / "kaoyan.db"))
 
 import sqlite3  # noqa: E402
 
@@ -82,12 +81,12 @@ def main() -> int:
         print(json.dumps(stats, ensure_ascii=False, indent=2))
 
         from services.kaoyan.notice_alert import raw_conn
+
         conn = raw_conn(db)
 
         section("3. 等级分布（真实统计）")
         for lvl, cnt in conn.execute(
-            "SELECT IFNULL(importance_level,'normal'), COUNT(*) FROM kaoyan_notices "
-            "GROUP BY 1 ORDER BY 2 DESC"
+            "SELECT IFNULL(importance_level,'normal'), COUNT(*) FROM kaoyan_notices GROUP BY 1 ORDER BY 2 DESC"
         ).fetchall():
             print(f"  {LEVEL_LABEL_CN.get(lvl, lvl):<4} {cnt:>5}")
 
@@ -177,11 +176,12 @@ def main() -> int:
             conn.execute(
                 "INSERT OR IGNORE INTO kaoyan_subscriptions (scope, school_id, school_name, "
                 "major_name, notice_type, keyword, level_min, enabled, created_at) "
-                "VALUES (?,?,?,?,?,?,?,1,?)", (*s, now_iso))
+                "VALUES (?,?,?,?,?,?,?,1,?)",
+                (*s, now_iso),
+            )
         db.commit()
-        conn = raw_conn(db)   # commit 后 fairy 失效，须重取
-        print("  订阅数:", conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_subscriptions WHERE enabled=1").fetchone()[0])
+        conn = raw_conn(db)  # commit 后 fairy 失效，须重取
+        print("  订阅数:", conn.execute("SELECT COUNT(*) FROM kaoyan_subscriptions WHERE enabled=1").fetchone()[0])
 
         # 把库内「今天发布」的若干紧急通知的 publish_date 改到今天，
         # 以便真实验证临期/新通知提醒链路（结束前会还原）
@@ -192,23 +192,22 @@ def main() -> int:
         ).fetchall()
         restore = []
         for (nid,) in touched:
-            old = conn.execute(
-                "SELECT publish_date FROM kaoyan_notices WHERE id=?", (nid,)).fetchone()[0]
+            old = conn.execute("SELECT publish_date FROM kaoyan_notices WHERE id=?", (nid,)).fetchone()[0]
             restore.append((nid, old))
             conn.execute("UPDATE kaoyan_notices SET publish_date=? WHERE id=?", (today, nid))
         db.commit()
-        conn = raw_conn(db)   # commit 后 fairy 失效，须重取
+        conn = raw_conn(db)  # commit 后 fairy 失效，须重取
         print(f"  （验证用）临时把 {len(restore)} 条紧急通知的 publish_date 置为今天，扫描后还原")
 
         result = scan_alerts(db, trigger="manual")
-        conn = raw_conn(db)   # scan_alerts 内部已 commit，须重取
+        conn = raw_conn(db)  # scan_alerts 内部已 commit，须重取
         print("\n  扫描结果: " + json.dumps(result, ensure_ascii=False))
 
         # 还原 publish_date
         for nid, old in restore:
             conn.execute("UPDATE kaoyan_notices SET publish_date=? WHERE id=?", (old, nid))
         db.commit()
-        conn = raw_conn(db)   # commit 后 fairy 失效，须重取
+        conn = raw_conn(db)  # commit 后 fairy 失效，须重取
         print(f"  （验证用）已还原 {len(restore)} 条 publish_date")
 
         section("8. 提醒表产出 kaoyan_alert_records")
@@ -228,7 +227,7 @@ def main() -> int:
 
         section("9. 二次扫描（验证不重复打扰）")
         result2 = scan_alerts(db, trigger="manual")
-        conn = raw_conn(db)   # scan_alerts 内部已 commit，须重取
+        conn = raw_conn(db)  # scan_alerts 内部已 commit，须重取
         print(f"  第二次扫描: {json.dumps(result2, ensure_ascii=False)}")
         total2 = conn.execute("SELECT COUNT(*) FROM kaoyan_alert_records").fetchone()[0]
         print(f"  提醒总记录数 {total} -> {total2}（应保持不变 =去重生效）")
@@ -252,8 +251,7 @@ def main() -> int:
             "SELECT id, ran_at, trigger, scanned, created_alerts, skipped_dup, elapsed_ms "
             "FROM kaoyan_alert_runs ORDER BY id DESC LIMIT 5"
         ).fetchall():
-            print(f"  run#{r[0]} {r[1]} trigger={r[2]} scanned={r[3]} "
-                  f"created={r[4]} dup={r[5]} {r[6]}ms")
+            print(f"  run#{r[0]} {r[1]} trigger={r[2]} scanned={r[3]} created={r[4]} dup={r[5]} {r[6]}ms")
 
         print("\n全部验证通过。")
         return 0

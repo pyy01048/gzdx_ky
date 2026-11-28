@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import MathText from '../../components/MathText'
 import {
@@ -6,6 +7,7 @@ import {
   Button,
   Card,
   CardHead,
+  Input,
   Progress,
   Select,
   Sheet,
@@ -27,6 +29,7 @@ import {
 } from '../icons'
 import { quizApi, request, wordsApi } from '../../api/client'
 import { optionText } from '../../utils/optionText'
+import { ukey } from '../../utils/userKeys'
 import {
   TYPE_LABELS,
   LETTERS,
@@ -58,6 +61,42 @@ import '../styles/study-glass.css'
  * （形如 question_pages/271_p0009.png），由后端 /media/images 挂载对外提供。
  * 已是绝对地址/站内绝对路径的原样返回，避免重复加前缀。 */
 const MEDIA_IMAGES_PREFIX = '/media/images/'
+const PENDING_PROGRESS_KEY = 'quiz-session-pending'
+
+/** 读取本地暂存的会话进度（断网/刷新后恢复作答）。 */
+function readPendingProgress(sessionId) {
+  try {
+    const pending = JSON.parse(localStorage.getItem(ukey(PENDING_PROGRESS_KEY)) || '{}')
+    return pending?.[String(sessionId)] || null
+  } catch {
+    return null
+  }
+}
+
+/** 写入本地暂存的会话进度。 */
+function writePendingProgress(sessionId, progress) {
+  try {
+    const key = ukey(PENDING_PROGRESS_KEY)
+    const pending = JSON.parse(localStorage.getItem(key) || '{}')
+    pending[String(sessionId)] = progress
+    localStorage.setItem(key, JSON.stringify(pending))
+  } catch { /* 隐私模式或存储配额不足时仍由服务端保存兜底 */ }
+}
+
+/** 清除本地暂存的会话进度（服务端保存成功后调用）。 */
+function clearPendingProgress(sessionId, revision) {
+  try {
+    const key = ukey(PENDING_PROGRESS_KEY)
+    const pending = JSON.parse(localStorage.getItem(key) || '{}')
+    const current = pending?.[String(sessionId)]
+    if (!current || (revision != null && current.revision !== revision)) return
+    delete pending[String(sessionId)]
+    if (Object.keys(pending).length) localStorage.setItem(key, JSON.stringify(pending))
+    else localStorage.removeItem(key)
+  } catch { /* 本地清理失败不阻断已成功的服务端保存 */ }
+}
+
+/** 题目配图 URL：已是绝对地址原样返回，仓内相对路径加 /media/images/ 前缀。 */
 function mediaSrc(img) {
   const raw = img?.url || img?.path || img?.src || ''
   if (!raw) return ''
@@ -91,6 +130,12 @@ function sourceTextFor(source, q) {
   return q?.content || ''
 }
 
+/**
+ * 刷题中心答题区（v3）。
+ * 单题作答（点选即判 / 多选提交 / 文本题对照自评）+ 答题卡 + 键盘快捷键
+ * + 收藏星标 + AI 生成解析（仅前端展示、不落库）。
+ * 会话级状态就近下沉在本组件，每次进入练习都是新挂载。
+ */
 export default function QuizPractice({
   session,
   records,
@@ -102,19 +147,87 @@ export default function QuizPractice({
   setTutorMode,
   submitting,
   setSubmitting,
+  submitAnswer,
+  manualChoiceSubmit = false,
+  showFavorites = true,
   onRecord,
   onToggleFav,
   onGoHome,
   onFinish,
 }) {
   const navigate = useNavigate()
+  const adaptedSubmit = typeof submitAnswer === 'function'
+  const manualChoices = manualChoiceSubmit || adaptedSubmit
   const isMobile = useMedia('(max-width: 1080px)')
   const mainRef = useRef(null)
+  const submitLock = useRef(false)
+  const pendingSubmitRef = useRef(null)
+  const finishingRef = useRef(false)
+  const attemptIdsRef = useRef({})
+  const versionRef = useRef(session.version || 1)
+  const saveSnapshotRef = useRef(null)
+  const saveQueuesRef = useRef(new Map())
+  const saveReadyRef = useRef(false)
+  const saveRevisionRef = useRef(0)
+  const durationBaseRef = useRef(session.duration_seconds || 0)
+  const activeSinceRef = useRef(document.visibilityState === 'visible' ? Date.now() : null)
+  const mountedRef = useRef(false)
+  const activeSessionRef = useRef(session)
+  activeSessionRef.current = session
+  const isCurrentRequest = useCallback((requestSession) => (
+    mountedRef.current && activeSessionRef.current === requestSession
+  ), [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  useEffect(() => {
+    submitLock.current = false
+    pendingSubmitRef.current = null
+    finishingRef.current = false
+    setFinishing(false)
+    setSubmitting(false)
+    setIdx(session.startIdx ?? session.current_index ?? 0)
+    setDrafts(session.drafts || {})
+    setTextDraft(session.text_drafts || {})
+    setSelfScores(session.self_scores || {})
+    setStuckMarked(session.marked || {})
+    versionRef.current = session.version || 1
+    durationBaseRef.current = session.duration_seconds || 0
+    activeSinceRef.current = document.visibilityState === 'visible' ? Date.now() : null
+    saveReadyRef.current = false
+    saveQueuesRef.current = new Map()
+    attemptIdsRef.current = {}
+    setSelfCheck(null)
+    setSubmitError('')
+    setSaveError('')
+    const pending = session.session_id ? readPendingProgress(session.session_id) : null
+    const pendingTime = Date.parse(pending?.saved_at || '') || 0
+    const serverTime = Date.parse(session.updated_at || '') || 0
+    if (pending && pendingTime > serverTime) {
+      setIdx(Math.max(0, Math.min(Number(pending.current_index) || 0, session.questions.length - 1)))
+      setDrafts({ ...(session.drafts || {}), ...(pending.drafts || {}) })
+      setTextDraft({ ...(session.text_drafts || {}), ...(pending.text_drafts || {}) })
+      setSelfScores({ ...(session.self_scores || {}), ...(pending.self_scores || {}) })
+      setStuckMarked({ ...(session.marked || {}), ...(pending.marked || {}) })
+      durationBaseRef.current = Math.max(session.duration_seconds || 0, Number(pending.duration_seconds) || 0)
+    }
+    setAiAnalyses({})
+    setAiGrades({})
+    setWordLoading(false)
+    setSheetOpen(false)
+  }, [session, setSubmitting])
+
   /* ---------- 练习会话（本视图独占，随挂载自然重置） ---------- */
   const [idx, setIdx] = useState(session.startIdx ?? 0)
   const [drafts, setDrafts] = useState({}) // 选择题提交前草稿
   const [textDraft, setTextDraft] = useState({}) // 文本题草稿
+  const [selfScores, setSelfScores] = useState({})
   const [selfCheck, setSelfCheck] = useState(null) // 文本题对照 {qid,myAns,correctAnswer,analysis}
+  const [submitError, setSubmitError] = useState('')
+  const [saveError, setSaveError] = useState('')
   /* AI 生成解析（复用现有 /ai/tutoring/explain，仅前端展示、不落库） */
   const [aiAnalyses, setAiAnalyses] = useState({}) // { [qid]: {content, provider, loading, error} }
   /* P0-2 AI 批改结果：{ [qid]: {score, max_score, evaluation, reference_answer, loading, error} } */
@@ -124,13 +237,15 @@ export default function QuizPractice({
   /* 仍未理解 → 盲点池（闭环：AI 产出回流学习数据主线） */
   const [stuckMarked, setStuckMarked] = useState({}) // { [qid]: true }
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [finishing, setFinishing] = useState(false)
+  const busy = submitting || finishing
   const [confirm, confirmDialog] = useConfirm()
 
   /* ================= 作答与判分 ================= */
   /* 多选仍需逐个勾选后判分；单选/判断在 toggleDraft 里点选即判。 */
   const toggleDraft = (qid, i) => {
     const q = session.questions[idx]
-    if (records[qid]) return
+    if (records[qid] || busy || submitLock.current) return
     if (isMultiQ(q)) {
       setDrafts((prev) => {
         const cur = Array.isArray(prev[qid]) ? prev[qid] : []
@@ -139,21 +254,72 @@ export default function QuizPractice({
       })
       return
     }
-    // 单选/判断：记录草稿并立即判分，点选即给反馈，不等提交
+    // 单选/判断：公共题保留点选即判；个人题库先选后提交
     setDrafts((prev) => ({ ...prev, [qid]: i }))
-    gradeChoice(q, i)
+    setSubmitError('')
+    if (!manualChoices) gradeChoice(q, i)
+  }
+
+  const sessionAttemptFields = (qid) => {
+    if (!session?.session_id || adaptedSubmit) return {}
+    if (!attemptIdsRef.current[qid]) {
+      attemptIdsRef.current[qid] = globalThis.crypto?.randomUUID?.() || `${session.session_id}-${qid}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    }
+    const errorId = Number(session.question_error_ids?.[String(qid)] || session.basis?.question_error_ids?.[String(qid)])
+    return {
+      session_id: session.session_id,
+      client_attempt_id: attemptIdsRef.current[qid],
+      ...(Number.isInteger(errorId) && errorId > 0 ? { error_id: errorId } : {}),
+    }
+  }
+
+  const gradeWithAdapter = async (q, myAns, extra = {}) => {
+    if (!adaptedSubmit || records[q.id] || busy || submitLock.current) return
+    const requestSession = activeSessionRef.current
+    submitLock.current = true
+    setSubmitting(true)
+    setSubmitError('')
+    let completion
+    try {
+      const request = submitAnswer({ question_id: Number(q.id), my_answer: myAns, ...extra })
+      completion = Promise.resolve(request).catch(() => {})
+      pendingSubmitRef.current = completion
+      const result = await request
+      if (!isCurrentRequest(requestSession)) return
+      if (!result || (typeof result.correct !== 'boolean' && result.correct !== null)) {
+        throw new Error('提交未返回判分结果，请重试')
+      }
+      const needsReview = result.correct === null || result.needs_review === true
+      applyGrade(q, needsReview ? null : result.correct, myAns, result.correct_answer ?? '', result.analysis ?? '', {
+        syncStatus: 'synced', syncError: '', needsReview,
+      })
+    } catch (err) {
+      if (isCurrentRequest(requestSession)) setSubmitError(err?.message || '提交失败，请稍后重试')
+    } finally {
+      if (pendingSubmitRef.current === completion) pendingSubmitRef.current = null
+      if (isCurrentRequest(requestSession)) {
+        submitLock.current = false
+        setSubmitting(false)
+      }
+    }
   }
 
   /* 选择题判分。sel 为下标或下标数组（多选）。 */
   const gradeChoice = async (q, sel) => {
-    if (records[q.id] || selfCheck || submitting) return
+    if (records[q.id] || selfCheck || busy || submitLock.current) return
+    const requestSession = activeSessionRef.current
     const myAns = Array.isArray(sel) ? sel.map(letterOf).join('') : letterOf(sel)
+    if (adaptedSubmit) {
+      await gradeWithAdapter(q, myAns)
+      return
+    }
     // 浏览模式（无标准答案题）：不调用判分接口、不写错题本，仅记录用户作答供自检
     if (session?.noAnswer) {
       onRecord(q.id, { selfCheckOnly: true, selected: myAns, correctAnswer: '', analysis: '' })
       toast('浏览模式：本题暂无标准答案，请对照教材/解析自检')
       return
     }
+    submitLock.current = true
     let correct = false,
       correctAnswer = q.answer,
       analysis = q.analysis
@@ -162,23 +328,35 @@ export default function QuizPractice({
       syncError: backendOk ? '本地题目未同步' : '后端暂不可用',
     }
     if (backendOk && !String(q.id).startsWith('l')) {
+      let completion
       setSubmitting(true)
       try {
-        const r = await quizApi.submit({ question_id: Number(q.id), my_answer: myAns })
-        correct = !!r.correct
+        const request = quizApi.submit({ question_id: Number(q.id), my_answer: myAns, ...sessionAttemptFields(q.id) })
+        completion = Promise.resolve(request).catch(() => {})
+        pendingSubmitRef.current = completion
+        const r = await request
+        if (!isCurrentRequest(requestSession)) return
+        const needsReview = r.correct === null || r.needs_review === true
+        correct = needsReview ? null : !!r.correct
         correctAnswer = r.correct_answer ?? correctAnswer
         analysis = r.analysis ?? analysis
-        sync = { syncStatus: 'synced', syncError: '' }
+        sync = { syncStatus: 'synced', syncError: '', needsReview }
       } catch (err) {
-        correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
-        sync.syncError = err?.message || '提交失败，请稍后重试'
+        if (!isCurrentRequest(requestSession)) return
+        setSubmitError(err?.message || '提交失败，请稍后重试')
+        return
       } finally {
-        setSubmitting(false)
+        if (pendingSubmitRef.current === completion) pendingSubmitRef.current = null
+        if (isCurrentRequest(requestSession)) {
+          setSubmitting(false)
+          submitLock.current = false
+        }
       }
     } else {
       correct = String(myAns).toUpperCase() === String(q.answer).toUpperCase()
+      submitLock.current = false
     }
-    applyGrade(q, correct, myAns, correctAnswer, analysis, sync)
+    if (isCurrentRequest(requestSession)) applyGrade(q, correct, myAns, correctAnswer, analysis, sync)
   }
 
   const applyGrade = (q, correct, selected, correctAnswer, analysis, sync = {}) => {
@@ -186,9 +364,18 @@ export default function QuizPractice({
       onRecord(q.id, { selfCheckOnly: true, selected, correctAnswer: '', analysis: '' })
       return
     }
+    const needsReview = correct === null || sync.needsReview === true
     const syncStatus = sync.syncStatus || 'synced'
     const syncError = sync.syncError || ''
-    onRecord(q.id, { correct, selected, correctAnswer, analysis, syncStatus, syncError })
+    onRecord(q.id, { correct: needsReview ? null : !!correct, needsReview, selected, correctAnswer, analysis, syncStatus, syncError })
+    if (needsReview) {
+      toast('答案待人工核对，暂不判定对错')
+      return
+    }
+    if (adaptedSubmit) {
+      toast(correct ? '回答正确' : '回答错误')
+      return
+    }
     pushRec(q.id, correct) // V10 本地作答累计（做过次数 + 最近对错）
     if (correct) {
       toast(syncStatus === 'synced' ? '回答正确' : '本地判分：回答正确（后端未同步）')
@@ -204,10 +391,10 @@ export default function QuizPractice({
     if (!session) return
     const q = session.questions[idx]
     if (records[q.id] || selfCheck) return
-    if (submitting) return
+    if (busy) return
 
-    /* ---- 多选题：勾选后提交 ---- */
-    if (isChoiceQ(q) && isMultiQ(q)) {
+    /* ---- 手动模式选择题：勾选后提交 ---- */
+    if (isChoiceQ(q) && (isMultiQ(q) || manualChoices)) {
       const sel = drafts[q.id]
       const empty = sel == null || (Array.isArray(sel) && !sel.length)
       if (empty) {
@@ -224,13 +411,25 @@ export default function QuizPractice({
       toast('请先输入你的作答，再点「对照答案」')
       return
     }
+    if (adaptedSubmit) {
+      const maxScore = Number(q.max_score) || Number(q.score) || 10
+      const rawScore = selfScores[q.id]
+      const score = Number(rawScore)
+      if (rawScore == null || String(rawScore).trim() === '' || !Number.isFinite(score) || score < 0 || score > maxScore) {
+        toast(`请填写 0–${maxScore} 的自评分`)
+        return
+      }
+      await gradeWithAdapter(q, txt, { self_score: score, max_score: maxScore })
+      return
+    }
     // 对照答案只展示本地题库内容；真正提交延迟到用户自评，避免一次作答落两条记录。
     setSelfCheck({ qid: q.id, myAns: txt, correctAnswer: q.answer, analysis: q.analysis })
   }
 
   /* 文本题自评落分：按后端契约携带 self_score，只提交一次。 */
   const selfGrade = async (correct) => {
-    if (!selfCheck || submitting || records[selfCheck.qid]) return
+    if (!selfCheck || busy || submitLock.current || records[selfCheck.qid]) return
+    const requestSession = activeSessionRef.current
     const q = session.questions.find((x) => x.id === selfCheck.qid)
     if (!q) return
     const maxScore = Number(q.max_score) || Number(q.score) || 10
@@ -242,26 +441,47 @@ export default function QuizPractice({
       syncError: backendOk ? '本地题目未同步' : '后端暂不可用',
     }
     if (backendOk && !String(q.id).startsWith('l')) {
+      let completion
+      submitLock.current = true
       setSubmitting(true)
+      setSubmitError('')
       try {
-        const r = await quizApi.submit({
+        const request = quizApi.submit({
           question_id: Number(q.id),
           my_answer: selfCheck.myAns,
           self_score: correct ? maxScore : 0,
           max_score: maxScore,
+          ...sessionAttemptFields(q.id),
         })
-        if (typeof r.correct === 'boolean') finalCorrect = r.correct
+        completion = Promise.resolve(request).catch(() => {})
+        pendingSubmitRef.current = completion
+        const r = await request
+        if (!isCurrentRequest(requestSession)) return
+        if (r.correct === null || r.needs_review === true) finalCorrect = null
+        else if (typeof r.correct === 'boolean') finalCorrect = r.correct
         correctAnswer = r.correct_answer ?? correctAnswer
         analysis = r.analysis ?? analysis
-        sync = { syncStatus: 'synced', syncError: '' }
+        sync = {
+          syncStatus: 'synced',
+          syncError: '',
+          needsReview: r.correct === null || r.needs_review === true,
+        }
       } catch (err) {
-        sync.syncError = err?.message || '提交失败，请稍后重试'
+        if (!isCurrentRequest(requestSession)) return
+        setSubmitError(err?.message || '提交失败，请稍后重试')
+        return
       } finally {
-        setSubmitting(false)
+        if (pendingSubmitRef.current === completion) pendingSubmitRef.current = null
+        if (isCurrentRequest(requestSession)) {
+          setSubmitting(false)
+          submitLock.current = false
+        }
       }
     }
-    applyGrade(q, finalCorrect, selfCheck.myAns, correctAnswer, analysis, sync)
-    setSelfCheck(null)
+    if (isCurrentRequest(requestSession)) {
+      applyGrade(q, finalCorrect, selfCheck.myAns, correctAnswer, analysis, sync)
+      setSelfCheck(null)
+    }
   }
 
   /* P0-2 主观题 AI 批改：调用 /api/quiz/grade-subjective，结果仅作为参考展示，
@@ -275,6 +495,7 @@ export default function QuizPractice({
       return
     }
     if (aiGrades[qid]?.loading) return
+    const requestSession = activeSessionRef.current
     setAiGrades((m) => ({ ...m, [qid]: { ...(m[qid] || {}), loading: true, error: '' } }))
     try {
       const maxScore = Number(q.max_score) || Number(q.score) || 10
@@ -283,6 +504,7 @@ export default function QuizPractice({
         my_answer: txt,
         max_score: maxScore,
       })
+      if (!isCurrentRequest(requestSession)) return
       setAiGrades((m) => ({
         ...m,
         [qid]: {
@@ -296,6 +518,7 @@ export default function QuizPractice({
         },
       }))
     } catch (e) {
+      if (!isCurrentRequest(requestSession)) return
       setAiGrades((m) => ({
         ...m,
         [qid]: { ...(m[qid] || {}), loading: false, error: e?.message || 'AI 批改失败，请稍后重试' },
@@ -352,15 +575,170 @@ export default function QuizPractice({
 
   const go = useCallback(
     (n) => {
-      if (!session) return
+      if (!session || finishingRef.current) return
       if (n < 0 || n >= session.questions.length) return
       setIdx(n)
       setSelfCheck(null)
+      setSubmitError('')
       window.scrollTo({ top: 0, behavior: 'smooth' })
       mainRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' })
     },
     [session],
   )
+
+  saveSnapshotRef.current = { idx, drafts, textDraft, selfScores, marked: stuckMarked }
+
+  const persistProgress = useCallback(() => {
+    if (!session?.session_id || session.status === 'completed') return Promise.resolve(true)
+    const requestSession = activeSessionRef.current
+    const elapsed = durationBaseRef.current + (activeSinceRef.current == null ? 0 : Math.floor((Date.now() - activeSinceRef.current) / 1000))
+    const body = {
+      current_index: saveSnapshotRef.current.idx,
+      version: versionRef.current,
+      drafts: saveSnapshotRef.current.drafts,
+      text_drafts: saveSnapshotRef.current.textDraft,
+      self_scores: saveSnapshotRef.current.selfScores,
+      marked: saveSnapshotRef.current.marked,
+      duration_seconds: Math.max(0, elapsed),
+    }
+    const revision = ++saveRevisionRef.current
+    writePendingProgress(session.session_id, { ...body, revision, saved_at: new Date().toISOString() })
+    const saveQueues = saveQueuesRef.current
+    const previousSave = saveQueues.get(requestSession) || Promise.resolve()
+    const saveRequest = previousSave.catch(() => {}).then(async () => {
+      if (!isCurrentRequest(requestSession)) return false
+      const markSaved = (saved, savedBody = body, savedRevision = revision) => {
+        if (!isCurrentRequest(requestSession)) return false
+        clearPendingProgress(requestSession.session_id, savedRevision)
+        versionRef.current = saved?.version || savedBody.version + 1
+        durationBaseRef.current = savedBody.duration_seconds
+        activeSinceRef.current = document.visibilityState === 'visible' ? Date.now() : null
+        setSaveError('')
+        return true
+      }
+      try {
+        const saved = await quizApi.patchSession(requestSession.session_id, body)
+        return markSaved(saved)
+      } catch (err) {
+        if (err?.status === 409) {
+          let latest
+          try {
+            latest = await quizApi.getSession(requestSession.session_id)
+          } catch (readErr) {
+            if (isCurrentRequest(requestSession)) setSaveError(`进度保存失败：${readErr?.message || '后端不可用'}。已保留在本机，将自动重试。`)
+            return false
+          }
+          if (!isCurrentRequest(requestSession)) return false
+          if (latest?.status === 'in_progress') {
+            const currentSnapshot = saveSnapshotRef.current
+            const currentRevision = saveRevisionRef.current
+            const currentElapsed = durationBaseRef.current + (activeSinceRef.current == null ? 0 : Math.floor((Date.now() - activeSinceRef.current) / 1000))
+            const merged = {
+              ...body,
+              current_index: currentSnapshot.idx,
+              version: latest.version,
+              drafts: { ...(latest.drafts || {}), ...(currentSnapshot.drafts || {}) },
+              text_drafts: { ...(latest.text_drafts || {}), ...(currentSnapshot.textDraft || {}) },
+              self_scores: { ...(latest.self_scores || {}), ...(currentSnapshot.selfScores || {}) },
+              marked: { ...(latest.marked || {}), ...(currentSnapshot.marked || {}) },
+              duration_seconds: Math.max(body.duration_seconds, currentElapsed, latest.duration_seconds || 0),
+            }
+            versionRef.current = latest.version
+            setDrafts(merged.drafts)
+            setTextDraft(merged.text_drafts)
+            setSelfScores(merged.self_scores)
+            setStuckMarked(merged.marked)
+            writePendingProgress(requestSession.session_id, { ...merged, revision: currentRevision, saved_at: new Date().toISOString() })
+            try {
+              const saved = await quizApi.patchSession(requestSession.session_id, merged)
+              return markSaved(saved, merged, currentRevision)
+            } catch (retryErr) {
+              if (isCurrentRequest(requestSession)) setSaveError(`进度保存失败：${retryErr?.message || '后端不可用'}。已保留在本机，将自动重试。`)
+              return false
+            }
+          }
+        }
+        if (isCurrentRequest(requestSession)) setSaveError(`进度保存失败：${err?.message || '后端不可用'}。已保留在本机，将自动重试。`)
+        return false
+      }
+    })
+    saveQueues.set(requestSession, saveRequest)
+    return saveRequest
+  }, [session?.session_id, session.status, isCurrentRequest])
+
+  useEffect(() => {
+    if (finishing) return
+    if (!saveReadyRef.current) { saveReadyRef.current = true; return }
+    const timer = setTimeout(persistProgress, 700)
+    return () => clearTimeout(timer)
+  }, [idx, drafts, textDraft, selfScores, stuckMarked, persistProgress, finishing])
+
+  useEffect(() => {
+    const onVisibility = () => {
+      activeSinceRef.current = document.visibilityState === 'visible' ? Date.now() : null
+      if (document.visibilityState === 'hidden' && !finishingRef.current) persistProgress()
+    }
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !finishingRef.current) persistProgress()
+    }, 15000)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('beforeunload', persistProgress)
+    window.addEventListener('pagehide', persistProgress)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('beforeunload', persistProgress)
+      window.removeEventListener('pagehide', persistProgress)
+    }
+  }, [persistProgress])
+
+  const leavePractice = useCallback(async () => {
+    const requestSession = activeSessionRef.current
+    if (busy || finishingRef.current) return
+    finishingRef.current = true
+    setFinishing(true)
+    setSubmitting(true)
+    try {
+      const saveRequest = persistProgress()
+      await pendingSubmitRef.current
+      await saveRequest
+      if (isCurrentRequest(requestSession)) onGoHome()
+    } finally {
+      if (isCurrentRequest(requestSession)) {
+        finishingRef.current = false
+        setFinishing(false)
+        setSubmitting(false)
+      }
+    }
+  }, [busy, persistProgress, isCurrentRequest, onGoHome, setSubmitting])
+
+  const finishPractice = useCallback(async () => {
+    const requestSession = activeSessionRef.current
+    if (busy || finishingRef.current) return
+    finishingRef.current = true
+    setFinishing(true)
+    setSubmitting(true)
+    try {
+      const saveRequest = persistProgress()
+      await pendingSubmitRef.current
+      if (!(await saveRequest)) return
+      if (!isCurrentRequest(requestSession)) return
+      if (requestSession?.session_id) {
+        try {
+          await quizApi.completeSession(requestSession.session_id)
+          if (!isCurrentRequest(requestSession)) return
+          clearPendingProgress(requestSession.session_id)
+        } catch { /* 报告仍可查看，进度由后续自动保存重试 */ }
+      }
+      if (isCurrentRequest(requestSession)) onFinish()
+    } finally {
+      if (isCurrentRequest(requestSession)) {
+        finishingRef.current = false
+        setFinishing(false)
+        setSubmitting(false)
+      }
+    }
+  }, [busy, persistProgress, isCurrentRequest, onFinish, setSubmitting])
 
   /* “AI 生成解析”：复用项目现有 AI 讲题路由 POST /api/ai/tutoring/explain
      （angle=solution）。该路由真实存在且已在用，生成的解析**只在前端展示、不落库**，
@@ -368,6 +746,7 @@ export default function QuizPractice({
   const generateAnalysis = useCallback(
     async (q) => {
       if (!q?.id) return
+      const requestSession = activeSessionRef.current
       const qid = q.id
       setAiAnalyses((m) => ({ ...m, [qid]: { loading: true, content: '', provider: '' } }))
       try {
@@ -379,18 +758,20 @@ export default function QuizPractice({
             source_kind: tutorMode === 'auto' ? undefined : tutorMode,
           },
         })
+        if (!isCurrentRequest(requestSession)) return
         setAiAnalyses((m) => ({
           ...m,
           [qid]: { loading: false, content: r?.content || '', provider: r?.provider || 'AI', mode: r?.mode },
         }))
       } catch (e) {
+        if (!isCurrentRequest(requestSession)) return
         setAiAnalyses((m) => ({
           ...m,
           [qid]: { loading: false, content: '', provider: '', error: e?.message || 'AI 生成解析失败' },
         }))
       }
     },
-    [tutorMode],
+    [isCurrentRequest, tutorMode],
   )
 
   /* 「仍未理解，加入盲点池」：把 AI 讲题后仍未搞懂的知识点沉淀到盲区池，
@@ -415,7 +796,7 @@ export default function QuizPractice({
   /* 键盘快捷键：A–F 选择 · Enter 提交/下一题 · ← → 切换 */
   useEffect(() => {
     const onKey = (e) => {
-      if (!session) return
+      if (!session || busy) return
       const t = e.target
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
       const q = session.questions[idx]
@@ -432,10 +813,10 @@ export default function QuizPractice({
         // 残缺选择题（无选项不可作答）按 Enter 直接跳下一题
         if (isChoiceWithoutOptions(q)) {
           if (idx + 1 < session.questions.length) go(idx + 1)
-          else onFinish()
+          else finishPractice()
         } else if (!records[q.id] && !selfCheck) doSubmit()
         else if (idx + 1 < session.questions.length) go(idx + 1)
-        else onFinish()
+        else finishPractice()
       } else if (e.key === 'ArrowLeft') go(idx - 1)
       else if (e.key === 'ArrowRight') go(idx + 1)
     }
@@ -447,6 +828,7 @@ export default function QuizPractice({
   const q = session.questions[idx]
   const total = session.questions.length
   const rec = records[q.id]
+  const needsReview = !!rec && (rec.correct === null || rec.needsReview === true)
   const memorize = session.mode === 'memorize'
   const revealed = memorize || !!rec
   const draft = drafts[q.id]
@@ -454,6 +836,7 @@ export default function QuizPractice({
   // total=0（这道题集没载到题）时进度必须是 0，不能让 NaN 流进 style.width
   const pct = total > 0 ? Math.round(((memorize ? idx + 1 : answeredCount) / total) * 100) : 0
   const favOn = !!favs[q.id]
+  const multiChoice = isMultiQ(q)
 
   const pickSheetCell = (i) => {
     go(i)
@@ -466,8 +849,10 @@ export default function QuizPractice({
         {session.questions.map((qq, i) => {
           const r = records[qq.id]
           const skipped = isChoiceWithoutOptions(qq)
+          const needsReview = !!r && (r.correct === null || r.needsReview === true)
           let cls = 'v3-quiz-sheet-cell'
           if (skipped) cls += ' is-skip'
+          else if (needsReview) cls += ' is-review'
           else if (r) cls += r.correct ? ' is-ok' : ' is-bad'
           else if (drafts[qq.id] != null || textDraft[qq.id]) cls += ' is-draft'
           if (i === idx) cls += ' is-cur'
@@ -477,7 +862,7 @@ export default function QuizPractice({
               type="button"
               className={cls}
               onClick={() => pickSheetCell(i)}
-              aria-label={`第 ${i + 1} 题${skipped ? '，无选项不可作答' : r ? (r.correct ? '，正确' : '，错误') : ''}`}
+              aria-label={`第 ${i + 1} 题${skipped ? '，无选项不可作答' : needsReview ? '，待确认' : r ? (r.correct ? '，正确' : '，错误') : ''}`}
             >
               {i + 1}
             </button>
@@ -494,6 +879,10 @@ export default function QuizPractice({
           错误
         </li>
         <li>
+          <span className="v3-quiz-dot is-review" />
+          待确认
+        </li>
+        <li>
           <span className="v3-quiz-dot is-todo" />
           未做
         </li>
@@ -502,7 +891,7 @@ export default function QuizPractice({
           无选项
         </li>
       </ul>
-      <Button block variant="ghost" className="v3-quiz-sheet-finish" onClick={onFinish}>
+      <Button block variant="ghost" className="v3-quiz-sheet-finish" disabled={busy} onClick={finishPractice}>
         {memorize ? '结束背题' : '交卷并查看报告'}
       </Button>
     </>
@@ -512,7 +901,7 @@ export default function QuizPractice({
     <div className="v3-quiz-practice v3-glasspage">
       <article ref={mainRef} className="v3-card v3-quiz-practice__main">
         <div className="v3-quiz-practice__meta">
-          <Button size="sm" variant="ghost" icon={<ChevronLeft size={15} />} onClick={onGoHome}>
+          <Button size="sm" variant="ghost" icon={<ChevronLeft size={15} />} disabled={busy} onClick={leavePractice}>
             返回题库
           </Button>
           <span className="v3-quiz-practice__title" title={session.title}>
@@ -540,15 +929,17 @@ export default function QuizPractice({
               浏览模式 · 暂不可判分
             </span>
           )}
-          <Button
-            className="v3-quiz-favbtn"
-            size="sm"
-            variant={favOn ? 'tonal' : 'ghost'}
-            icon={<Star size={15} />}
-            onClick={() => onToggleFav(q)}
-          >
-            {favOn ? '已收藏' : '收藏'}
-          </Button>
+          {showFavorites && (
+            <Button
+              className="v3-quiz-favbtn"
+              size="sm"
+              variant={favOn ? 'tonal' : 'ghost'}
+              icon={<Star size={15} />}
+              onClick={() => onToggleFav(q)}
+            >
+              {favOn ? '已收藏' : '收藏'}
+            </Button>
+          )}
         </div>
 
         {session.noAnswer && (
@@ -592,6 +983,18 @@ export default function QuizPractice({
             <MathText text={q.content} />
           </p>
 
+          {submitError && (
+            <div role="alert" className="v3-quiz-submit-error">
+              {submitError}
+            </div>
+          )}
+          {saveError && (
+            <div role="alert" className="v3-quiz-submit-error">
+              {saveError}
+              <Button size="sm" variant="text" onClick={persistProgress}>重试保存</Button>
+            </div>
+          )}
+
           {/* 题目配图：OCR/人工录入产出的 figure_crop 或原页图 */}
           {Array.isArray(q.images) && q.images.length > 0 && (
             <div className="v3-quiz-figs">
@@ -612,12 +1015,17 @@ export default function QuizPractice({
 
           {/* 选择题：点选即判 */}
           {isChoiceQ(q) && (
-            <div className="v3-quiz-options">
+            <div
+              className="v3-quiz-options"
+              role={multiChoice ? 'group' : manualChoices ? 'radiogroup' : undefined}
+              aria-label={multiChoice || manualChoices ? `${multiChoice ? '多选' : '单选'}题选项` : undefined}
+            >
               {q.options.map((o, i) => {
-                const isAns = isCorrectOption(i, rec?.correctAnswer ?? q.answer)
+                const isAns = !needsReview && isCorrectOption(i, rec?.correctAnswer ?? q.answer)
                 const picked = Array.isArray(draft) ? draft.includes(i) : draft === i
                 const wasBad =
                   revealed &&
+                  !needsReview &&
                   !isAns &&
                   (Array.isArray(rec?.selected)
                     ? rec.selected.includes(letterOf(i))
@@ -629,21 +1037,19 @@ export default function QuizPractice({
                 if (revealed) {
                   if (isAns) cls += ' is-ok'
                   else if (wasBad) cls += ' is-bad'
+                  else if (needsReview && picked) cls += ' is-review'
                   else cls += ' is-muted'
+                  cls += ' is-disabled'
                 }
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    className={cls}
-                    disabled={revealed}
-                    onClick={() => toggleDraft(q.id, i)}
-                  >
+                const content = (
+                  <>
                     <span className="v3-quiz-opt__letter">
                       {revealed && isAns ? (
                         <CheckCircle2 size={16} />
                       ) : revealed && wasBad ? (
                         <X size={16} />
+                      ) : manualChoices ? (
+                        `${letterOf(i)}.`
                       ) : (
                         letterOf(i)
                       )}
@@ -651,6 +1057,34 @@ export default function QuizPractice({
                     <span className="v3-quiz-opt__body">
                       <MathText text={stripOptLabel(o)} />
                     </span>
+                  </>
+                )
+                if (multiChoice) {
+                  return (
+                    <label key={i} className={cls}>
+                      <input
+                        className="v3-quiz-opt__input"
+                        type="checkbox"
+                        name={`question-${q.id}`}
+                        checked={!!picked}
+                        disabled={revealed}
+                        onChange={() => toggleDraft(q.id, i)}
+                      />
+                      {content}
+                    </label>
+                  )
+                }
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    className={cls}
+                    role={manualChoices ? 'radio' : undefined}
+                    aria-checked={manualChoices ? !!picked : undefined}
+                    disabled={revealed}
+                    onClick={() => toggleDraft(q.id, i)}
+                  >
+                    {content}
                   </button>
                 )
               })}
@@ -662,7 +1096,9 @@ export default function QuizPractice({
             <div className="v3-quiz-opt-none">
               <b>
                 {questionMark(q)?.label === '不可作答' ? '本题不可作答' : '本题无选项'}
-                {q.answer ? `，答案：${q.answer}` : '，且无参考答案'}
+                {adaptedSubmit
+                  ? '，暂无可显示答案'
+                  : q.answer ? `，答案：${q.answer}` : '，且无参考答案'}
               </b>
               <span>{questionMark(q)?.desc || '题库缺少该题选项内容，仅供记忆参考，不可作答。'}</span>
             </div>
@@ -676,27 +1112,58 @@ export default function QuizPractice({
                 aria-label="作答输入框"
                 placeholder="在此输入你的作答（填空 / 简答 / 计算过程 / 作图描述）…"
                 value={textDraft[q.id] || ''}
-                disabled={revealed}
-                onChange={(e) => setTextDraft((p) => ({ ...p, [q.id]: e.target.value }))}
+                disabled={revealed || busy}
+                onChange={(e) => {
+                  if (revealed || busy || finishingRef.current) return
+                  setTextDraft((p) => ({ ...p, [q.id]: e.target.value }))
+                }}
               />
               {!revealed && !selfCheck && (
                 <div className="v3-quiz-text-row">
-                  <Button variant="filled" disabled={submitting} onClick={doSubmit}>
-                    对照答案
-                  </Button>
-                  <Button
-                    variant="tonal"
-                    icon={<Sparkles size={14} />}
-                    disabled={submitting || !(textDraft[q.id] || '').trim() || !!aiGrades[q.id]?.loading}
-                    onClick={gradeAI}
-                  >
-                    {aiGrades[q.id]?.loading ? 'AI 批改中…' : 'AI 批改'}
-                  </Button>
-                  <span className="v3-quiz-keyhint">对照后展开参考答案与解析，自评时才提交并携带自评分</span>
+                  {adaptedSubmit ? (
+                    <>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={Number(q.max_score) || Number(q.score) || 10}
+                        aria-label="自评分"
+                        placeholder="自评分"
+                        value={selfScores[q.id] ?? ''}
+                        disabled={busy}
+                        onChange={(e) => {
+                          setSelfScores((p) => ({ ...p, [q.id]: e.target.value }))
+                          setSubmitError('')
+                        }}
+                      />
+                      <Button
+                        variant="filled"
+                        disabled={busy || !(textDraft[q.id] || '').trim()}
+                        onClick={doSubmit}
+                      >
+                        提交答案
+                      </Button>
+                      <span className="v3-quiz-keyhint">填写自评分后提交，服务端返回后再展示答案与解析</span>
+                    </>
+                  ) : (
+                    <>
+                      <Button variant="filled" disabled={busy} onClick={doSubmit}>
+                        对照答案
+                      </Button>
+                      <Button
+                        variant="tonal"
+                        icon={<Sparkles size={14} />}
+                        disabled={busy || !(textDraft[q.id] || '').trim() || !!aiGrades[q.id]?.loading}
+                        onClick={gradeAI}
+                      >
+                        {aiGrades[q.id]?.loading ? 'AI 批改中…' : 'AI 批改'}
+                      </Button>
+                      <span className="v3-quiz-keyhint">对照后展开参考答案与解析，自评时才提交并携带自评分</span>
+                    </>
+                  )}
                 </div>
               )}
               {/* P0-2 AI 批改结果（未判分/未自评时也直接展示在作答区下方） */}
-              {aiGrades[q.id] &&
+              {!adaptedSubmit && aiGrades[q.id] &&
                 (aiGrades[q.id].loading || aiGrades[q.id].error || aiGrades[q.id].evaluation) && (
                   <div className="v3-quiz-ai v3-quiz-ai-grade">
                     <div className="v3-quiz-ai-grade__head">
@@ -728,18 +1195,27 @@ export default function QuizPractice({
 
           {/* 揭示区：判分结果 / 背题答案 / 文本题对照 */}
           {(revealed || selfCheck) && (
-            <div className={`v3-quiz-reveal ${rec ? (rec.correct ? 'is-ok' : 'is-bad') : ''}`}>
+            <div className={`v3-quiz-reveal ${rec ? (needsReview ? 'is-review' : rec.correct ? 'is-ok' : 'is-bad') : ''}`}>
               <div className="v3-quiz-reveal__row">
                 <span>
-                  正确答案：
-                  <span className="v3-quiz-reveal__ans">{(rec?.correctAnswer ?? q.answer) || '—'}</span>
+                  {adaptedSubmit ? (
+                    <span className={`v3-quiz-reveal__ans${needsReview ? ' is-review' : ''}`}>
+                      {needsReview ? '参考答案（待核对）' : '正确答案'}：{(rec?.correctAnswer ?? q.answer) || '—'}
+                    </span>
+                  ) : (
+                    <>
+                      {needsReview ? '参考答案（待核对）' : '正确答案'}：
+                      <span className={`v3-quiz-reveal__ans${needsReview ? ' is-review' : ''}`}>{(rec?.correctAnswer ?? q.answer) || '—'}</span>
+                    </>
+                  )}
                 </span>
                 {rec && (
-                  <span className={rec.correct ? 'v3-quiz-reveal__ok' : 'v3-quiz-reveal__bad'}>
-                    · {rec.correct ? '回答正确' : `你选了 ${rec.selected || '—'}`}
-                    {rec.syncStatus === 'local'
-                      ? ` · 本地判分，后端未同步${rec.syncError ? `（${rec.syncError}）` : ''}`
-                      : (!rec.correct ? ' · 已计入错题本' : '')}
+                  <span className={needsReview ? 'v3-quiz-reveal__review' : rec.correct ? 'v3-quiz-reveal__ok' : 'v3-quiz-reveal__bad'}>
+                    {needsReview
+                      ? '· 待确认 · 答案待人工核对，暂不判定对错'
+                      : `· ${rec.correct ? '回答正确' : `你选了 ${rec.selected || '—'}`}${rec.syncStatus === 'local'
+                        ? ` · 本地判分，后端未同步${rec.syncError ? `（${rec.syncError}）` : ''}`
+                        : (!rec.correct ? ' · 已计入错题本' : '')}`}
                   </span>
                 )}
                 {selfCheck && <span>· 你的作答：{selfCheck.myAns}</span>}
@@ -824,7 +1300,7 @@ export default function QuizPractice({
               })()}
 
               {/* P0-2 AI 批改结果：仅作为参考展示，不覆盖自评流程 */}
-              {aiGrades[q.id] &&
+              {!adaptedSubmit && aiGrades[q.id] &&
                 (aiGrades[q.id].loading || aiGrades[q.id].error || aiGrades[q.id].evaluation) && (
                   <div className="v3-quiz-ai v3-quiz-ai-grade">
                     <div className="v3-quiz-ai-grade__head">
@@ -864,10 +1340,10 @@ export default function QuizPractice({
 
               {selfCheck && (
                 <div className="v3-quiz-text-row">
-                  <Button variant="filled" disabled={submitting} onClick={() => selfGrade(true)}>
+                  <Button variant="filled" disabled={busy} onClick={() => selfGrade(true)}>
                     我答对了
                   </Button>
-                  <Button variant="danger" disabled={submitting} onClick={() => selfGrade(false)}>
+                  <Button variant="danger" disabled={busy} onClick={() => selfGrade(false)}>
                     我答错了
                   </Button>
                 </div>
@@ -875,9 +1351,11 @@ export default function QuizPractice({
             </div>
           )}
 
-          {/* 未作答提示：单选/判断点选即判；多选仍需提交 */}
-          {!revealed && !selfCheck && isChoiceQ(q) && isMultiQ(q) && (
-            <p className="v3-quiz-keyhint">勾选所有正确选项后，点「提交答案」判分。</p>
+          {/* 未作答提示：单选/判断点选即判；手动模式与多选仍需提交 */}
+          {!revealed && !selfCheck && isChoiceQ(q) && (isMultiQ(q) || manualChoices) && (
+            <p className="v3-quiz-keyhint">
+              {isMultiQ(q) ? '勾选所有正确选项后，点「提交答案」判分。' : '选择答案后，点「提交答案」判分。'}
+            </p>
           )}
         </div>
 
@@ -894,11 +1372,11 @@ export default function QuizPractice({
             <Keyboard size={13} /> 快捷键：A–F 选择 · Enter 提交/下一题 · ← → 切换
           </span>
           <div className="v3-quiz-foot__btns">
-            <Button variant="ghost" icon={<Sparkles size={15} />} onClick={() => navigate('/assistant')}>
+            <Button variant="ghost" icon={<Sparkles size={15} />} disabled={busy} onClick={() => navigate('/assistant')}>
               问 AI
             </Button>
-            {!revealed && !selfCheck && isChoiceQ(q) && isMultiQ(q) && (
-              <Button variant="filled" disabled={submitting} onClick={doSubmit}>
+            {!revealed && !selfCheck && isChoiceQ(q) && (isMultiQ(q) || manualChoices) && (
+              <Button variant="filled" disabled={busy} onClick={doSubmit}>
                 提交答案
               </Button>
             )}
@@ -913,7 +1391,7 @@ export default function QuizPractice({
                   下一题
                 </Button>
               ) : (
-                <Button variant="filled" onClick={onFinish}>
+                <Button variant="filled" onClick={finishPractice}>
                   {memorize ? '完成背题' : '交卷并查看报告'}
                 </Button>
               ))}
@@ -923,7 +1401,7 @@ export default function QuizPractice({
               </Button>
             )}
             {(revealed || selfCheck) && idx + 1 >= total && (
-              <Button variant="filled" onClick={onFinish}>
+              <Button variant="filled" onClick={finishPractice}>
                 {memorize ? '完成背题' : '交卷并查看报告'}
               </Button>
             )}
@@ -943,10 +1421,13 @@ export default function QuizPractice({
 
       {isMobile && (
         <>
-          <button type="button" className="v3-quiz-sheet-fab" onClick={() => setSheetOpen(true)}>
-            <ListChecks size={16} />
-            答题卡 {answeredCount}/{total}
-          </button>
+          {createPortal(
+            <button type="button" className="v3-quiz-sheet-fab" onClick={() => setSheetOpen(true)}>
+              <ListChecks size={16} />
+              答题卡 {answeredCount}/{total}
+            </button>,
+            document.body,
+          )}
           <Sheet open={sheetOpen} title="答题卡" onClose={() => setSheetOpen(false)}>
             <div className="v3-quiz-mobile-sheet">{renderSheetContent()}</div>
           </Sheet>

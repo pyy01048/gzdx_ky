@@ -27,17 +27,19 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from core.db_session import IS_POSTGRES
-from models import Document, KnowledgeChunk
 from sqlalchemy import String, cast, func
 from sqlalchemy.orm import Session
 from utils.timeutil import utcnow_aware  # 统一 naive UTC 时间规范（P0-4）
 
+from models import Document, KnowledgeChunk
 from services.dbapi_compat import wrap_conn
 from services.doc_naming import apply_display_name
 from services.smart_ingest import gate_for_write
+
+logger = logging.getLogger(__name__)
 
 #: index_status 的**唯一合法取值**。
 #  历史上出现过 "ready"（旧导入脚本）与 "indexed"（现行）两套词表并存，
@@ -232,7 +234,7 @@ def normalize_status(db: Session, *, commit: bool = True) -> int:
     return changed
 
 
-def backfill_meta(db: Session, *, commit: bool = True, limit: Optional[int] = None) -> dict:
+def backfill_meta(db: Session, *, commit: bool = True, limit: int | None = None) -> dict:
     """补齐 doc_type / structure_level / ocr_used。"""
     from services.kb_service import detect_doc_meta
 
@@ -250,7 +252,7 @@ def backfill_meta(db: Session, *, commit: bool = True, limit: Optional[int] = No
             detect_doc_meta(db, doc)
             filled += 1
         except Exception as e:
-            print(f"  [!] 文档 {doc.id} 元信息判定失败: {e}")
+            logger.warning("文档 %s 元信息判定失败: %s", doc.id, e)
     if commit:
         db.commit()
     return {"filled": filled}
@@ -308,7 +310,7 @@ def repair_file_paths(
     db: Session,
     *,
     commit: bool = True,
-    progress: Optional[Callable[[int, int, str], None]] = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> dict:
     """把失效的 file_path 重新指回项目内的实际文件。
 
@@ -380,8 +382,8 @@ def reparse_empty(
     db: Session,
     *,
     use_ocr: bool = True,
-    limit: Optional[int] = None,
-    progress: Optional[Callable[[int, int, str], None]] = None,
+    limit: int | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> dict:
     """重新解析正文为空的文档（扫描件走 OCR）。
 
@@ -414,7 +416,7 @@ def reparse_empty(
             text = parser.parse(path) if use_ocr else parser._extract_pdf_text(path)
         except Exception as e:
             stats["failed"] += 1
-            print(f"  [!] {doc.file_name} 解析异常: {e}")
+            logger.warning("%s 解析异常: %s", doc.file_name, e)
             continue
 
         if not text or not text.strip():
@@ -432,7 +434,7 @@ def reparse_empty(
             doc.index_status = "failed"
             doc.parse_error = "质量闸门拒绝：" + "；".join(verdict["reasons"])
             db.commit()
-            print(f"  [x] {doc.file_name} 质量闸门拒绝：{'；'.join(verdict['reasons'])}")
+            logger.warning("%s 质量闸门拒绝：%s", doc.file_name, "；".join(verdict["reasons"]))
             continue
 
         doc.content = text
@@ -448,7 +450,7 @@ def reparse_empty(
             doc.index_status = "failed"
             doc.parse_error = f"分块失败: {e}"
             db.commit()
-            print(f"  [!] {doc.file_name} 分块失败: {e}")
+            logger.warning("%s 分块失败: %s", doc.file_name, e)
             continue
 
         try:
@@ -456,7 +458,7 @@ def reparse_empty(
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
+            logger.warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
         if has_searchable_chunks(db, doc.id):
             doc.index_status = "indexed"
         else:
@@ -475,8 +477,8 @@ def reparse_empty(
 def retry_failed(
     db: Session,
     *,
-    limit: Optional[int] = None,
-    progress: Optional[Callable[[int, int, str], None]] = None,
+    limit: int | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> dict:
     """重试 index_status='failed' 的文档：重新分块入库。
 
@@ -544,7 +546,7 @@ def retry_failed(
             stats["errors"] += 1
             doc.index_status = "failed"
             doc.parse_error = f"重试分块异常: {e}"
-            print(f"  [!] {doc.file_name} 重试分块异常: {e}")
+            logger.warning("%s 重试分块异常: %s", doc.file_name, e)
         db.commit()
 
     return stats
@@ -591,8 +593,8 @@ def heal(
     *,
     use_ocr: bool = True,
     do_embeddings: bool = False,
-    limit: Optional[int] = None,
-    progress: Optional[Callable[[str, dict], None]] = None,
+    limit: int | None = None,
+    progress: Callable[[str, dict], None] | None = None,
 ) -> dict:
     """按体检结果自动修复能修的项，返回修复前后对比。"""
     before = health_report(db)

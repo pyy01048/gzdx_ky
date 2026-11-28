@@ -125,6 +125,7 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     from services.ddl_compat import adapt_ddl
+
     conn.executescript(adapt_ddl(_SCHEMA_SQL, conn))
 
 
@@ -141,9 +142,7 @@ def _purge_expired(conn: sqlite3.Connection, now_iso: str) -> None:
 # --------------------------------------------------------------------------- #
 # 对外接口
 # --------------------------------------------------------------------------- #
-def get_cached(
-    query: str, subject: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+def get_cached(query: str, subject: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """命中返回缓存结构，未命中/过期/异常返回 None。"""
     global _HIT_COUNT, _MISS_COUNT
 
@@ -169,8 +168,7 @@ def get_cached(
 
                 # 1) 精确命中
                 row = conn.execute(
-                    "SELECT answer, source, created_at, query_hash "
-                    "FROM answer_cache WHERE query_hash = ? LIMIT 1;",
+                    "SELECT answer, source, created_at, query_hash FROM answer_cache WHERE query_hash = ? LIMIT 1;",
                     (qhash,),
                 ).fetchone()
                 if row is not None:

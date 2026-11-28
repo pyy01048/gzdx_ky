@@ -19,6 +19,7 @@
     python scripts/classify_no_answer_final.py
 只读。
 """
+
 from __future__ import annotations
 
 import json
@@ -33,18 +34,42 @@ DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # 问句/题型标记（与门禁 Q_MARK 对齐但更严格：要求真的可判分）
-ASK = ("？", "?", "____", "＿＿", "（ ）", "( )", "求", "试", "简述", "写出", "画出",
-       "说明", "计算", "证明", "分析", "论述", "列举", "选择", "判断", "填空", "已知")
+ASK = (
+    "？",
+    "?",
+    "____",
+    "＿＿",
+    "（ ）",
+    "( )",
+    "求",
+    "试",
+    "简述",
+    "写出",
+    "画出",
+    "说明",
+    "计算",
+    "证明",
+    "分析",
+    "论述",
+    "列举",
+    "选择",
+    "判断",
+    "填空",
+    "已知",
+)
 # 明确的可判分结构
 GRADEABLE = re.compile(r"_{3,}|＿{2,}|[（(]\s*[）)]|【答案】|答案\s*[:：]|A[.、．]|B[.、．]")
 # 段落/讲义感
 NARRATIVE = re.compile(
     r"本章|知识点|重点|难点|小结|总结|方法|步骤|例如|首先|其次|因此|从而|"
     r"所谓|也就是|需要注意|掌握|理解|定义|分类|特点|优点|缺点|应用|作用|原理|"
-    r"教材|本章内容|要求掌握|会计算|会读")
+    r"教材|本章内容|要求掌握|会计算|会读"
+)
 WATERMARK = re.compile(r"(考研|上岸|QQ群?|qq\d{6,}|微信公众号|公众号|加微信|关注我|资料)")
-ANSWER_TAIL = re.compile(r"(解\s*[:：]|答\s*[:：]|故\s*[可|能]|所以\s*[A-Z0-9]|"
-                         r"因此\s*[A-Z0-9]|由此\s*(得|可|可求))")
+ANSWER_TAIL = re.compile(
+    r"(解\s*[:：]|答\s*[:：]|故\s*[可|能]|所以\s*[A-Z0-9]|"
+    r"因此\s*[A-Z0-9]|由此\s*(得|可|可求))"
+)
 LONG_PARA = 120
 
 
@@ -130,7 +155,7 @@ def main() -> int:
     print("一、最终三分类处置建议")
     print("=" * 76)
     for k, v in final.most_common():
-        print(f"  {k}: {v}  ({v*100//len(rows)}%)")
+        print(f"  {k}: {v}  ({v * 100 // len(rows)}%)")
 
     print("\n交叉分层:")
     for lay in ["L1-真题", "L2-习题题库", "L3-讲义正文", "L4-未归类"]:
@@ -161,10 +186,17 @@ def main() -> int:
     out = os.path.join(BASE_DIR, "data", "diagnostics", "final_verdict.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
-        json.dump({"total": len(rows), "final": dict(final),
-                   "cross": {k: dict(v) for k, v in cross.items()},
-                   "reasons": {f"{a}|{b}": n for (a, b), n in reason.items()}}, f,
-                  ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "total": len(rows),
+                "final": dict(final),
+                "cross": {k: dict(v) for k, v in cross.items()},
+                "reasons": {f"{a}|{b}": n for (a, b), n in reason.items()},
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
     print(f"\n[JSON] {out}")
     con.close()
     return 0

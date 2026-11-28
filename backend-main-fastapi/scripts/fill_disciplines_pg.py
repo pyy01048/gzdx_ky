@@ -7,6 +7,7 @@
 
 幂等：按 code 唯一键查重，重复执行不产生重复。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,6 +34,7 @@ DISCIPLINES = [
     ("13", "艺术学", "学科门类", "艺术学学科门类，含艺术学理论、音乐与舞蹈学、戏剧与影视学等。"),
     ("14", "交叉学科", "学科门类", "交叉学科门类（2020年增设），含集成电路科学与工程、国家安全学等。"),
 ]
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="学科门类填充")
@@ -61,6 +63,7 @@ def main() -> int:
     finally:
         conn.close()
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

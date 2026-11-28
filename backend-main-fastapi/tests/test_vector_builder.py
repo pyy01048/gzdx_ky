@@ -12,6 +12,7 @@
   - 过短文本跳过
   - 写库失败必须 rollback（PG 事务 aborted 的连锁坑）
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -140,10 +141,12 @@ class TestBuildPgVectors:
         assert conn.upserts == []
 
     def test_正常批次写入并提交(self):
-        conn = _FakeConn(pending=[
-            (1, 10, 100, "逻辑代数的基本运算"),
-            (2, 10, 100, "卡诺图化简的依据"),
-        ])
+        conn = _FakeConn(
+            pending=[
+                (1, 10, 100, "逻辑代数的基本运算"),
+                (2, 10, 100, "卡诺图化简的依据"),
+            ]
+        )
         res = build_pg_vectors(conn, _embed, batch=10)
         assert res["inserted"] == 2
         assert res["failed"] == 0
@@ -154,10 +157,12 @@ class TestBuildPgVectors:
         assert "ON CONFLICT (chunk_id) DO UPDATE" in sql
 
     def test_过短文本被跳过且不写库(self):
-        conn = _FakeConn(pending=[
-            (1, 10, 100, "abc"),          # 3 字符 < 5 → 跳过
-            (2, 10, 100, "有效文本内容"),
-        ])
+        conn = _FakeConn(
+            pending=[
+                (1, 10, 100, "abc"),  # 3 字符 < 5 → 跳过
+                (2, 10, 100, "有效文本内容"),
+            ]
+        )
         res = build_pg_vectors(conn, _embed, batch=10)
         assert res["skipped"] == 1
         assert res["inserted"] == 1
@@ -185,10 +190,12 @@ class TestBuildPgVectors:
 
         # 注意：文本必须 >=5 字符，否则会先被"过短跳过"规则吃掉，
         # 走不到"数量不匹配"这条分支（实测踩过）
-        conn = _FakeConn(pending=[
-            (1, 10, 100, "第一段有效文本"),
-            (2, 10, 100, "第二段有效文本"),
-        ])
+        conn = _FakeConn(
+            pending=[
+                (1, 10, 100, "第一段有效文本"),
+                (2, 10, 100, "第二段有效文本"),
+            ]
+        )
         res = build_pg_vectors(conn, half, batch=10)
         assert res["failed"] == 2
         assert res["inserted"] == 0
@@ -196,6 +203,5 @@ class TestBuildPgVectors:
     def test_进度回调被调用(self):
         seen = []
         conn = _FakeConn(pending=[(1, 10, 100, "有效文本内容")])
-        build_pg_vectors(conn, _embed, batch=10,
-                         on_progress=lambda d, t: seen.append((d, t)))
+        build_pg_vectors(conn, _embed, batch=10, on_progress=lambda d, t: seen.append((d, t)))
         assert seen and seen[-1][1] == 1

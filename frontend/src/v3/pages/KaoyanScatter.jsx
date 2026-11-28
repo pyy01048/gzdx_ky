@@ -402,14 +402,14 @@ export default function KaoyanScatter() {
     }
   }, [visibleItems])
 
-  const toggleLevel = (level) => {
+  const toggleLevel = useCallback((level) => {
     setHiddenLevels((prev) => {
       const next = new Set(prev)
       if (next.has(level)) next.delete(level)
       else next.add(level)
       return next
     })
-  }
+  }, [])
 
   const yearText = data.year ?? year ?? '—'
   const headerSub = loading

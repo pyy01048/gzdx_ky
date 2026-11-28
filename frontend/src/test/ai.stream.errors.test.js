@@ -17,7 +17,7 @@ import { aiChatStream } from '../api/client'
  * ------------------------------------------------------------------ */
 
 /** 构造一个按块吐 SSE 文本的 Response 桩。 */
-function sseResponse(chunks) {
+function sseResponse(chunks, cancel = vi.fn().mockResolvedValue(undefined)) {
   let i = 0
   return {
     ok: true,
@@ -28,6 +28,7 @@ function sseResponse(chunks) {
           if (i >= chunks.length) return { done: true, value: undefined }
           return { done: false, value: new TextEncoder().encode(chunks[i++]) }
         },
+        cancel,
         releaseLock() {},
       }),
     },
@@ -35,6 +36,8 @@ function sseResponse(chunks) {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -85,16 +88,166 @@ describe('aiChatStream 错误分支（P0-5）', () => {
     expect(err.message).toContain('provider_auth')
   })
 
+  it('非 2xx 响应体挂起时 timeout 必须返回网络超时，不能误报 http_error', async () => {
+    vi.useFakeTimers()
+    const json = vi.fn(() => new Promise(() => {}))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 502, json }))
+
+    let outcome
+    aiChatStream({ messages: [] }, { timeout: 20 }).then(
+      (value) => { outcome = { value } },
+      (error) => { outcome = { error } },
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    expect(json).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(20)
+    expect(outcome?.error).toMatchObject({ code: 'network' })
+    expect(outcome?.error?.message).toContain('超时')
+  })
+
+  it('非 2xx 的 401 响应体挂起时外部取消不得广播 auth:required', async () => {
+    const controller = new AbortController()
+    const json = vi.fn(() => new Promise(() => {}))
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, json }))
+
+    const pending = aiChatStream({ messages: [] }, { signal: controller.signal, timeout: 0 })
+    await vi.waitFor(() => expect(json).toHaveBeenCalledTimes(1))
+    controller.abort()
+    const outcome = await Promise.race([
+      pending.then((value) => ({ value }), (error) => ({ error })),
+      new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 100)),
+    ])
+    expect(outcome.timedOut).not.toBe(true)
+    expect(outcome.error).toMatchObject({ code: 'aborted' })
+    expect(dispatchEvent).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'auth:required' }))
+  })
+
+  it('fetch 挂起时 timeout 必须结束请求', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+
+    let outcome
+    aiChatStream({ messages: [] }, { timeout: 20 }).then(
+      (value) => { outcome = { value } },
+      (error) => { outcome = { error } },
+    )
+    await vi.advanceTimersByTimeAsync(20)
+    expect(outcome?.error).toMatchObject({ code: 'network' })
+    expect(outcome?.error?.message).toContain('超时')
+  })
+
+  it('getReader 初始化失败时必须清理超时计时器', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => { throw new Error('reader init failed') } },
+    }))
+
+    await expect(aiChatStream({ messages: [] }, { timeout: 20 })).rejects.toMatchObject({ code: 'network' })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('TextDecoder 初始化失败时必须清理计时器并释放已取得的 reader', async () => {
+    vi.useFakeTimers()
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    const releaseLock = vi.fn()
+    vi.stubGlobal('TextDecoder', class {
+      constructor() { throw new Error('decoder init failed') }
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ cancel, releaseLock }) },
+    }))
+
+    await expect(aiChatStream({ messages: [] }, { timeout: 20 })).rejects.toMatchObject({ code: 'network' })
+    expect(vi.getTimerCount()).toBe(0)
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(releaseLock).toHaveBeenCalledTimes(1)
+  })
+
   it('正常流：逐段拼接 delta 并返回全文', async () => {
+    const cancel = vi.fn()
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([
       'data: {"type":"meta","rag":false}\n\n',
       'data: {"type":"delta","content":"你"}\n\n',
       'data: {"type":"delta","content":"好"}\n\n',
-    ])))
+    ], cancel)))
 
     const seen = []
     const r = await aiChatStream({ messages: [] }, { onDelta: (ev) => ev.content && seen.push(ev.content) })
     expect(seen).toEqual(['你', '好'])
     expect(r.text).toBe('你好')
+    expect(cancel).not.toHaveBeenCalled()
+  })
+
+  it('reader.read 挂起时外部取消必须返回 aborted 并取消底层流', async () => {
+    const controller = new AbortController()
+    const read = vi.fn(() => new Promise(() => {}))
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    const releaseLock = vi.fn()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read, cancel, releaseLock }) },
+    }))
+
+    const pending = aiChatStream({ messages: [] }, { signal: controller.signal, timeout: 0 })
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
+    controller.abort()
+    const outcome = await Promise.race([
+      pending.then((value) => ({ value }), (error) => ({ error })),
+      new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 100)),
+    ])
+    expect(outcome.timedOut).not.toBe(true)
+    expect(outcome.error).toMatchObject({ code: 'aborted' })
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(releaseLock).toHaveBeenCalledTimes(1)
+  })
+
+  it('reader.read 挂起时 timeout 必须覆盖整个流并取消底层流', async () => {
+    vi.useFakeTimers()
+    const read = vi.fn(() => new Promise(() => {}))
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    const releaseLock = vi.fn()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read, cancel, releaseLock }) },
+    }))
+
+    let outcome
+    aiChatStream({ messages: [] }, { timeout: 20 }).then(
+      (value) => { outcome = { value } },
+      (error) => { outcome = { error } },
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    expect(read).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(20)
+    expect(outcome?.error).toMatchObject({ code: 'network' })
+    expect(outcome?.error?.message).toContain('超时')
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(releaseLock).toHaveBeenCalledTimes(1)
+  })
+
+  it('SSE error 中断读取时必须取消底层流', async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    const releaseLock = vi.fn()
+    const read = vi.fn().mockResolvedValue({
+      done: false,
+      value: new TextEncoder().encode('data: {"type":"error","message":"provider unavailable"}\n\n'),
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read, cancel, releaseLock }) },
+    }))
+
+    const err = await aiChatStream({ messages: [] }, { timeout: 0 }).catch((e) => e)
+    expect(err.code).toBe('ai_stream_error')
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(releaseLock).toHaveBeenCalledTimes(1)
   })
 })

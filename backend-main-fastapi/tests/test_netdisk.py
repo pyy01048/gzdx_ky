@@ -5,6 +5,7 @@
 
 运行：pytest tests/test_netdisk.py -v
 """
+
 import datetime
 import os
 import sys
@@ -39,8 +40,8 @@ class FakeResp:
 # 错误码解析
 # --------------------------------------------------------------------------- #
 
-class TestErrnoHandling:
 
+class TestErrnoHandling:
     def test_success_passes_through(self):
         data = {"errno": 0, "list": [1, 2]}
         assert NetdiskService._check_errno(data) is data
@@ -85,8 +86,8 @@ class TestErrnoHandling:
 # 响应解析
 # --------------------------------------------------------------------------- #
 
-class TestParseJson:
 
+class TestParseJson:
     def test_non_json_raises(self):
         with pytest.raises(NetdiskError):
             NetdiskService._parse_json(FakeResp(ValueError("bad json")))
@@ -103,8 +104,8 @@ class TestParseJson:
 # device_id
 # --------------------------------------------------------------------------- #
 
-class TestDeviceId:
 
+class TestDeviceId:
     def test_generated_is_32_hex(self):
         d = _generate_device_id()
         assert len(d) == 32
@@ -125,8 +126,8 @@ class TestDeviceId:
 # 自动分类
 # --------------------------------------------------------------------------- #
 
-class TestAutoClassify:
 
+class TestAutoClassify:
     def _svc(self):
         return NetdiskService(db=None)
 
@@ -150,6 +151,7 @@ class TestAutoClassify:
 # 下载：必须带 pan.baidu.com UA
 # --------------------------------------------------------------------------- #
 
+
 class TestDownloadHeaders:
     """dlink 下载不带 `User-Agent: pan.baidu.com` 会被百度 403 —— 这是硬要求。"""
 
@@ -169,6 +171,7 @@ class TestDownloadHeaders:
         monkeypatch.setattr(svc, "get_file_info", fake_info)
 
         import asyncio
+
         out = asyncio.run(svc.get_download_url("111"))
         assert "access_token=TOKEN123" in out["download_url"]
         assert out["filename"] == "a.pdf"
@@ -187,6 +190,7 @@ class TestDownloadHeaders:
         monkeypatch.setattr(svc, "get_file_info", fake_info)
 
         import asyncio
+
         out = asyncio.run(svc.get_download_url("1"))
         assert out["download_url"].count("?") == 1
         assert "&access_token=T" in out["download_url"]
@@ -204,6 +208,7 @@ class TestDownloadHeaders:
         monkeypatch.setattr(svc, "get_file_info", fake_info)
 
         import asyncio
+
         with pytest.raises(NetdiskError):
             asyncio.run(svc.get_download_url("1"))
 
@@ -212,8 +217,8 @@ class TestDownloadHeaders:
 # token 过期判定
 # --------------------------------------------------------------------------- #
 
-class TestTokenStatus:
 
+class TestTokenStatus:
     def _svc_with(self, monkeypatch, cfg):
         svc = NetdiskService(db=None)
         monkeypatch.setattr(svc, "_get_config", lambda: cfg)
@@ -221,9 +226,14 @@ class TestTokenStatus:
 
     def _cfg(self, **over):
         base = {
-            "app_key": "k", "secret_key": "s", "app_id": "1",
-            "access_token": "t", "refresh_token": "r",
-            "expires_at": None, "device_id": "", "scope": "basic,netdisk",
+            "app_key": "k",
+            "secret_key": "s",
+            "app_id": "1",
+            "access_token": "t",
+            "refresh_token": "r",
+            "expires_at": None,
+            "device_id": "",
+            "scope": "basic,netdisk",
         }
         base.update(over)
         return base
@@ -258,6 +268,7 @@ class TestTokenStatus:
     def test_no_token_raises_auth_error(self, monkeypatch):
         svc = self._svc_with(monkeypatch, self._cfg(access_token=""))
         import asyncio
+
         with pytest.raises(NetdiskAuthError):
             asyncio.run(svc._ensure_token())
 
@@ -266,16 +277,21 @@ class TestTokenStatus:
 # 自动刷新
 # --------------------------------------------------------------------------- #
 
+
 class TestAutoRefresh:
     """接近过期应自动刷新 —— 原实现有 refresh_token 却从不使用。"""
 
     def test_refreshes_when_near_expiry(self, monkeypatch):
-        soon = (datetime.datetime.now(datetime.UTC)
-                + datetime.timedelta(seconds=60)).isoformat()
+        soon = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=60)).isoformat()
         cfg = {
-            "app_key": "k", "secret_key": "s", "app_id": "1",
-            "access_token": "OLD", "refresh_token": "R",
-            "expires_at": soon, "device_id": "", "scope": "basic,netdisk",
+            "app_key": "k",
+            "secret_key": "s",
+            "app_id": "1",
+            "access_token": "OLD",
+            "refresh_token": "R",
+            "expires_at": soon,
+            "device_id": "",
+            "scope": "basic,netdisk",
         }
         svc = NetdiskService(db=None)
         monkeypatch.setattr(svc, "_get_config", lambda: dict(cfg))
@@ -290,17 +306,22 @@ class TestAutoRefresh:
         monkeypatch.setattr(svc, "refresh_access_token", fake_refresh)
 
         import asyncio
+
         token = asyncio.run(svc._ensure_token())
         assert called["n"] == 1, "接近过期时应触发刷新"
         assert token == "NEW", "刷新后应返回新 token"
 
     def test_no_refresh_when_fresh(self, monkeypatch):
-        far = (datetime.datetime.now(datetime.UTC)
-               + datetime.timedelta(days=20)).isoformat()
+        far = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=20)).isoformat()
         cfg = {
-            "app_key": "k", "secret_key": "s", "app_id": "1",
-            "access_token": "GOOD", "refresh_token": "R",
-            "expires_at": far, "device_id": "", "scope": "basic,netdisk",
+            "app_key": "k",
+            "secret_key": "s",
+            "app_id": "1",
+            "access_token": "GOOD",
+            "refresh_token": "R",
+            "expires_at": far,
+            "device_id": "",
+            "scope": "basic,netdisk",
         }
         svc = NetdiskService(db=None)
         monkeypatch.setattr(svc, "_get_config", lambda: dict(cfg))
@@ -314,6 +335,7 @@ class TestAutoRefresh:
         monkeypatch.setattr(svc, "refresh_access_token", fake_refresh)
 
         import asyncio
+
         token = asyncio.run(svc._ensure_token())
         assert called["n"] == 0, "token 还很久才过期，不该刷新"
         assert token == "GOOD"
@@ -321,14 +343,20 @@ class TestAutoRefresh:
     def test_expired_without_refresh_token_raises(self, monkeypatch):
         past = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)).isoformat()
         cfg = {
-            "app_key": "k", "secret_key": "s", "app_id": "1",
-            "access_token": "OLD", "refresh_token": "",
-            "expires_at": past, "device_id": "", "scope": "basic,netdisk",
+            "app_key": "k",
+            "secret_key": "s",
+            "app_id": "1",
+            "access_token": "OLD",
+            "refresh_token": "",
+            "expires_at": past,
+            "device_id": "",
+            "scope": "basic,netdisk",
         }
         svc = NetdiskService(db=None)
         monkeypatch.setattr(svc, "_get_config", lambda: dict(cfg))
 
         import asyncio
+
         with pytest.raises(NetdiskAuthError) as ei:
             asyncio.run(svc._ensure_token())
         assert "重新授权" in ei.value.errmsg
@@ -337,6 +365,7 @@ class TestAutoRefresh:
 # --------------------------------------------------------------------------- #
 # HTTP 状态码映射（2026-10-18 登录后卡死事故的回归）
 # --------------------------------------------------------------------------- #
+
 
 class TestHttpErrorMapping:
     """授权失效必须映射为 409，绝不是 401。
@@ -349,6 +378,7 @@ class TestHttpErrorMapping:
 
     def test_auth_error_maps_to_409_not_401(self):
         from routers.platform.netdisk import _netdisk_http_error
+
         err = _netdisk_http_error(NetdiskAuthError(-6, "invalid access_token"))
         assert err.status_code == 409
         assert err.detail["action"] == "reauthorize"
@@ -356,16 +386,19 @@ class TestHttpErrorMapping:
 
     def test_auth_errno_maps_to_409_not_401(self):
         from routers.platform.netdisk import _netdisk_http_error
+
         err = _netdisk_http_error(NetdiskError(-6, "no permission"))
         assert err.status_code == 409
         assert err.detail["action"] == "reauthorize"
 
     def test_not_found_errno_still_404(self):
         from routers.platform.netdisk import _netdisk_http_error
+
         err = _netdisk_http_error(NetdiskError(-9, "file not found"))
         assert err.status_code == 404
 
     def test_generic_errno_still_502(self):
         from routers.platform.netdisk import _netdisk_http_error
+
         err = _netdisk_http_error(NetdiskError(31023, "upload failed"))
         assert err.status_code == 502

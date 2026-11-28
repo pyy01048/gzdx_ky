@@ -9,6 +9,7 @@
 2. 真实注册的 ``http_exception_handler`` 把含 SQL 的 detail 拦下换成中性文案
    （直接调用已注册的处理器，绕过路由，避免被 SPA fallback 吞掉）。
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -26,8 +27,11 @@ def _invoke(status: int, detail):
 
     handler = fastapi_app.exception_handlers[StarletteHTTPException]
     scope = {
-        "type": "http", "method": "GET", "path": "/__test",
-        "headers": [], "query_string": b"",
+        "type": "http",
+        "method": "GET",
+        "path": "/__test",
+        "headers": [],
+        "query_string": b"",
     }
     request = Request(scope)
 
@@ -38,9 +42,7 @@ def _invoke(status: int, detail):
 
 
 def test_sanitize_pure_function():
-    safe, redacted = sanitize_error_detail(
-        'duplicate key value violates unique constraint "x_pkey"'
-    )
+    safe, redacted = sanitize_error_detail('duplicate key value violates unique constraint "x_pkey"')
     assert redacted is True
     assert "constraint" not in safe and "subject" not in safe
 

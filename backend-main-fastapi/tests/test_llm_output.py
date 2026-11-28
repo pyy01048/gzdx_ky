@@ -35,7 +35,6 @@ REAL_ANSWER = (
 
 
 class TestChainOfThoughtDetection:
-
     def test_real_cot_detected(self):
         assert looks_like_chain_of_thought(REAL_COT), "真实思维链必须被识别"
 
@@ -43,8 +42,13 @@ class TestChainOfThoughtDetection:
         assert not looks_like_chain_of_thought(REAL_ANSWER), "干净答案不能误判"
 
     def test_first_person_openers(self):
-        for opener in ("首先，我需要分析", "用户要求我回答", "让我想想这个问题",
-                       "The user is asking", "I need to figure out"):
+        for opener in (
+            "首先，我需要分析",
+            "用户要求我回答",
+            "让我想想这个问题",
+            "The user is asking",
+            "I need to figure out",
+        ):
             assert looks_like_chain_of_thought(opener + "……"), f"{opener} 应判为思维链"
 
     def test_overlong_text_is_cot(self):
@@ -59,7 +63,6 @@ class TestChainOfThoughtDetection:
 
 
 class TestExtractAnswer:
-
     def test_prefers_content(self):
         """content 干净时直接用 content，忽略 thinking。"""
         msg = {"content": REAL_ANSWER, "thinking": "很长的推理" * 50}
@@ -98,7 +101,6 @@ class TestExtractAnswer:
 
 
 class TestBuildPayload:
-
     def test_omits_think_by_default(self):
         """默认不能带 think 字段 —— 传 false 会触发事故。"""
         p = build_payload("qwen3:4b", "问题")

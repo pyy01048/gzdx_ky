@@ -21,6 +21,7 @@
 
 红线：纯新增模块，不修改既有服务行为；所有既有调用点保持不变。
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,7 +30,7 @@ import re
 import shutil
 import tempfile
 from collections import Counter
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from sqlalchemy import func, or_
 
@@ -43,8 +44,20 @@ from services.doc_naming import apply_display_name
 # 会在全量入库时 100% 抛 TypeError。这里把扩展名归一为合法枚举值，超出枚举的
 # 图片/矢量扩展名（jpeg/bmp/webp/tif/tiff…）兜底回 'other'，避免违反枚举约束。
 _DOC_FORMAT_VALUES = {
-    "pdf", "txt", "doc", "docx", "md", "image", "pptx", "ppt",
-    "xlsx", "html", "json", "jpg", "png", "other",
+    "pdf",
+    "txt",
+    "doc",
+    "docx",
+    "md",
+    "image",
+    "pptx",
+    "ppt",
+    "xlsx",
+    "html",
+    "json",
+    "jpg",
+    "png",
+    "other",
 }
 
 
@@ -82,9 +95,9 @@ def _like_escape(value: str) -> str:
 
 def _trunc_copy_dir() -> str:
     """老导入器留下的截断副本目录（正文只存了前 5000 字，不能当去重目标）。"""
-    return os.path.abspath(os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "data", "storage", "documents"))
+    return os.path.abspath(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "storage", "documents")
+    )
 
 
 def _find_existing_doc(db, model, path: str):
@@ -96,9 +109,7 @@ def _find_existing_doc(db, model, path: str):
     刚改过名的那一行，同一份文件再长出一份 Document + 一整套重复分块
     （实测库里已有 444 组这种膨胀）。
     """
-    doc = (db.query(model)
-           .filter(model.file_path == os.path.abspath(path))
-           .order_by(model.id).first())
+    doc = db.query(model).filter(model.file_path == os.path.abspath(path)).order_by(model.id).first()
     if doc is not None:
         return doc
 
@@ -107,8 +118,10 @@ def _find_existing_doc(db, model, path: str):
     cands = (
         db.query(model)
         .filter(
-            or_(model.file_path.like(f"%/{tail}", escape="\\"),
-                model.file_path.like(f"%{_like_escape(os.sep)}{tail}", escape="\\")),
+            or_(
+                model.file_path.like(f"%/{tail}", escape="\\"),
+                model.file_path.like(f"%{_like_escape(os.sep)}{tail}", escape="\\"),
+            ),
             model.index_status == "indexed",
             model.knowledge_point_count > 0,
         )
@@ -138,6 +151,7 @@ def _path_tail(p: str) -> str:
         return ""
     return "/".join(segs[-2:]) if len(segs) >= 2 else segs[-1]
 
+
 # --------------------------------------------------------------------------- #
 # 0. 配置
 # --------------------------------------------------------------------------- #
@@ -149,10 +163,10 @@ VLM_MODEL = os.environ.get("SMART_INGEST_VLM_MODEL", "qwen2.5vl:7b")
 VLM_TIMEOUT = float(os.environ.get("SMART_INGEST_VLM_TIMEOUT", "180"))
 
 #: 入库校验阈值
-MIN_TEXT_LEN = 30              # 正文下限
-MAX_MOJIBAKE_RATIO = 0.10      # 替换符占比上限
-DEDUP_SIM_THRESHOLD = 0.97     # 向量去重阈值（0.97 极高，避免误杀）
-DEDUP_SAMPLE_CHARS = 1200      # 去重取样长度
+MIN_TEXT_LEN = 30  # 正文下限
+MAX_MOJIBAKE_RATIO = 0.10  # 替换符占比上限
+DEDUP_SIM_THRESHOLD = 0.97  # 向量去重阈值（0.97 极高，避免误杀）
+DEDUP_SAMPLE_CHARS = 1200  # 去重取样长度
 
 #: --- 二进制残留闸门（阈值按真库 2081 篇正文>=300 字的文档实测定，见下方注释）---
 #: 不可读字节比例触发线：超过就至少要打复核标记。
@@ -194,7 +208,7 @@ MAJOR_DIRECTION = {
 # --------------------------------------------------------------------------- #
 # 1. 图像预处理（纠偏 / 去黑边 / 去噪 / 轻量放大）
 # --------------------------------------------------------------------------- #
-def preprocess_image(src_path: str, out_dir: Optional[str] = None) -> Dict[str, Any]:
+def preprocess_image(src_path: str, out_dir: Optional[str] = None) -> dict[str, Any]:
     """教材扫描件/照片的预处理。
 
     步骤（OpenCV，纯 CPU）：
@@ -207,8 +221,7 @@ def preprocess_image(src_path: str, out_dir: Optional[str] = None) -> Dict[str, 
     Returns:
         {ok, path, angle, cropped, scaled, error}
     """
-    out = {"ok": False, "path": src_path, "angle": 0.0,
-           "cropped": False, "scaled": False, "error": None}
+    out = {"ok": False, "path": src_path, "angle": 0.0, "cropped": False, "scaled": False, "error": None}
     try:
         import cv2
         import numpy as np
@@ -249,7 +262,7 @@ def preprocess_image(src_path: str, out_dir: Optional[str] = None) -> Dict[str, 
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 1))
         work = cv2.dilate(work, kernel, iterations=1)
         cnts, _ = cv2.findContours(work, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        angles: List[float] = []
+        angles: list[float] = []
         for c in cnts:
             if cv2.contourArea(c) < 500:
                 continue
@@ -265,7 +278,10 @@ def preprocess_image(src_path: str, out_dir: Optional[str] = None) -> Dict[str, 
                 h, w = gray.shape
                 M = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
                 gray = cv2.warpAffine(
-                    gray, M, (w, h), flags=cv2.INTER_CUBIC,
+                    gray,
+                    M,
+                    (w, h),
+                    flags=cv2.INTER_CUBIC,
                     borderMode=cv2.BORDER_REPLICATE,
                 )
                 out["angle"] = round(angle, 3)
@@ -275,8 +291,7 @@ def preprocess_image(src_path: str, out_dir: Optional[str] = None) -> Dict[str, 
         short = min(h, w)
         if short and short < 1000:
             scale = min(1600 / short, 3.0)
-            gray = cv2.resize(gray, (int(w * scale), int(h * scale)),
-                              interpolation=cv2.INTER_CUBIC)
+            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
             out["scaled"] = True
 
         # --- 输出 ---
@@ -300,16 +315,21 @@ def preprocess_image(src_path: str, out_dir: Optional[str] = None) -> Dict[str, 
 # --------------------------------------------------------------------------- #
 # 2. 分流识别（文字 OCR / 公式 / 图块）
 # --------------------------------------------------------------------------- #
-def recognize_image(path: str, *, preprocess: bool = True,
-                    ocr_backend: str = "auto") -> Dict[str, Any]:
+def recognize_image(path: str, *, preprocess: bool = True, ocr_backend: str = "auto") -> dict[str, Any]:
     """图片分流识别：文字块走 OCR，公式块走 formula_service，图块可选走 VLM。
 
     Returns:
         {text, engine, ocr_used, latex_list, formula_flags, figure_desc, blocks, error}
     """
-    res: Dict[str, Any] = {
-        "text": "", "engine": "", "ocr_used": "", "latex_list": [],
-        "formula_flags": 0, "figure_desc": [], "blocks": [], "error": None,
+    res: dict[str, Any] = {
+        "text": "",
+        "engine": "",
+        "ocr_used": "",
+        "latex_list": [],
+        "formula_flags": 0,
+        "figure_desc": [],
+        "blocks": [],
+        "error": None,
     }
     src = path
     if preprocess:
@@ -356,9 +376,7 @@ def recognize_image(path: str, *, preprocess: bool = True,
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logger.warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
     return res
 
@@ -401,8 +419,7 @@ def _describe_figure(image_path: str) -> Optional[str]:
 _IMG_REF = re.compile(r"!\[([^\]]{0,80})\]\([^)]*\)")
 _ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u202a-\u202e\ufeff]")
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_NOISE_LINE = re.compile(
-    r"^\s*!?\[\s*(未能识别到文本内容|图片|image|img)\s*\]?\s*$", re.I)
+_NOISE_LINE = re.compile(r"^\s*!?\[\s*(未能识别到文本内容|图片|image|img)\s*\]?\s*$", re.I)
 #: **占位/错误文本**——解析器与OCR 层在失败时返回的是一句人话（如
 #: `"[扫描版 PDF OCR 失败: No module named 'PIL']"`、`"[WinError 2] ..."`），
 #: 而不是抛异常。旧逻辑只挡了`[解析失败`，且早期版本用「枚举错误短语 +
@@ -420,7 +437,8 @@ _PLACEHOLDER_KW = re.compile(
     r"失败|错误|异常|无法|未能|未找到|不支持"
     r"|error|failed|failure|exception|traceback|winerror|modulenotfound|importerror"
     r"|no module named|cannot|unable to|not found|timeout|refused|denied",
-    re.I)
+    re.I,
+)
 #: 占位串的形态：**以 `[` 开头**（不要求 `]` 在末尾）。
 #: 真实样本两种形态都有：
 #:   `[扫描版 PDF OCR 失败: [WinError -536870904] Windows Error 0xe0000008]`  ← `]` 在末尾
@@ -451,8 +469,7 @@ def strip_surrogates(text: str) -> str:
         return text.encode("utf-8", "ignore").decode("utf-8")
 
 
-def clean_text(text: str, *, drop_page_no: bool = True,
-               drop_watermark: bool = True) -> str:
+def clean_text(text: str, *, drop_page_no: bool = True, drop_watermark: bool = True) -> str:
     """文本清洗：去图片引用 / 零宽字符 / 控制字符 / 噪声行 / 页码 / 水印。"""
     if not text:
         return ""
@@ -466,7 +483,7 @@ def clean_text(text: str, *, drop_page_no: bool = True,
         return alt if len(alt) <= 40 else ""
 
     s = _IMG_REF.sub(_img, s)
-    lines: List[str] = []
+    lines: list[str] = []
     for ln in s.split("\n"):
         if _NOISE_LINE.match(ln):
             continue
@@ -503,8 +520,7 @@ def is_placeholder_text(text: str) -> bool:
 
     def _hit(s: str) -> bool:
         s = s.strip()
-        return bool(s) and len(s) <= PLACEHOLDER_MAX_LEN \
-            and _BRACKETED_RE.match(s) and _PLACEHOLDER_KW.search(s)
+        return bool(s) and len(s) <= PLACEHOLDER_MAX_LEN and _BRACKETED_RE.match(s) and _PLACEHOLDER_KW.search(s)
 
     # 整篇就是一句占位串
     if _hit(t):
@@ -522,12 +538,13 @@ def is_placeholder_text(text: str) -> bool:
 _BOOK_RE = re.compile(r"[《【]([^》】]{2,40})[》】]")
 _AUTHOR_RE = re.compile(
     r"([\u4e00-\u9fa5]{2,4})\s*(?:编著|主编|著|编)\b|"
-    r"(?:主编|编著|作者)\s*[:：]?\s*([\u4e00-\u9fa5]{2,4})")
+    r"(?:主编|编著|作者)\s*[:：]?\s*([\u4e00-\u9fa5]{2,4})"
+)
 _EDITION_RE = re.compile(r"第\s*([一二三四五六七八九十\d]{1,3})\s*版")
 _CHAPTER_RE = re.compile(r"第\s*([一二三四五六七八九十\d]{1,3})\s*章[\s　]*([^\n]{0,40})")
 _SECTION_RE = re.compile(r"第\s*([一二三四五六七八九十\d]{1,3})\s*节[\s　]*([^\n]{0,40})")
 
-_CONTENT_TYPE_RULES: List[Tuple[str, Tuple[str, ...]]] = [
+_CONTENT_TYPE_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("考研真题", ("真题", "考研试题", "入学考试", "统考")),
     ("课后习题", ("课后", "习题", "思考题", "练习题")),
     ("例题", ("例题", "例", "【例")),
@@ -537,8 +554,7 @@ _CONTENT_TYPE_RULES: List[Tuple[str, Tuple[str, ...]]] = [
 
 
 #: 书名里的来源/营销噪声，命中即丢弃
-_BOOK_NAME_NOISE = re.compile(
-    r"公众号|整理自|免费分享|水印|QQ群|加群|领取|网盘|链接|淘宝|店铺")
+_BOOK_NAME_NOISE = re.compile(r"公众号|整理自|免费分享|水印|QQ群|加群|领取|网盘|链接|淘宝|店铺")
 
 
 def _pick_book_name_from_text(head: str) -> str:
@@ -570,7 +586,7 @@ def _pick_book_name_from_text(head: str) -> str:
     return ""
 
 
-def extract_metadata(file_name: str, text: str, path: str = "") -> Dict[str, Any]:
+def extract_metadata(file_name: str, text: str, path: str = "") -> dict[str, Any]:
     """从文件名 + 正文抽取结构化标签，用于知识地图与检索过滤。
 
     `path` 可选：给完整文件路径时，学科判定会**优先采信路径里的学科目录名**
@@ -667,8 +683,7 @@ def is_self_produced(path: str) -> bool:
 #: PDF/Word 文本层正常存在的排版/分隔符，**不能**当二进制残留：
 #: \t \n \v \f \r 和 0x1C-0x1F（文件/分组分隔符）、0x85（NEL）。
 #: 实测正常文档里这几类各有几千处（占正文 2%+），计入就会误杀 9% 的好文档。
-_CTRL_IS_WHITESPACE = frozenset({0x09, 0x0A, 0x0B, 0x0C, 0x0D,
-                                 0x1C, 0x1D, 0x1E, 0x1F, 0x85})
+_CTRL_IS_WHITESPACE = frozenset({0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x1C, 0x1D, 0x1E, 0x1F, 0x85})
 
 
 def _is_unreadable(ch: str) -> bool:
@@ -696,8 +711,7 @@ def ctrl_stats(text: str):
     return cnt, mx
 
 
-def find_content_duplicate(db, model, text: str, *, exclude_id: Optional[int] = None,
-                           head_chars: int = 64):
+def find_content_duplicate(db, model, text: str, *, exclude_id: Optional[int] = None, head_chars: int = 64):
     """按**正文全等**找已有的 Document，返回 ``(id, file_path)`` 或 None。
 
     为什么必须有它：所有入库入口原本只按 `file_path` 认同一份文件，而同一本讲义
@@ -717,8 +731,9 @@ def find_content_duplicate(db, model, text: str, *, exclude_id: Optional[int] = 
     # PG 的 text 类型禁止绑定含 NUL 的参数（DataError）。库内已存内容必然无 NUL
     # （PG 存不进去），故比对前把 NUL 从样本里剥掉不影响正确性；SQLite 无影响。
     t = t.replace("\x00", "")
-    q = (db.query(model.id, model.file_path, model.content)
-         .filter(func.substr(model.content, 1, head_chars) == t[:head_chars]))
+    q = db.query(model.id, model.file_path, model.content).filter(
+        func.substr(model.content, 1, head_chars) == t[:head_chars]
+    )
     if exclude_id is not None:
         q = q.filter(model.id != exclude_id)
     for cid, cpath, ccontent in q.all():
@@ -727,17 +742,27 @@ def find_content_duplicate(db, model, text: str, *, exclude_id: Optional[int] = 
     return None
 
 
-def validate_for_ingest(text: str, subject: str = "", db=None,
-                        *, check_dedup: bool = True,
-                        path: str = "", exclude_doc_id: Optional[int] = None) -> Dict[str, Any]:
+def validate_for_ingest(
+    text: str,
+    subject: str = "",
+    db=None,
+    *,
+    check_dedup: bool = True,
+    path: str = "",
+    exclude_doc_id: Optional[int] = None,
+) -> dict[str, Any]:
     """入库前质量校验 + 向量去重。
 
     Returns:
         {ok, reasons, review_flag, dedup_hit, dedup_doc_id, dedup_sim, stats}
     """
-    out: Dict[str, Any] = {
-        "ok": True, "reasons": [], "review_flag": "auto_pass",
-        "dedup_hit": False, "dedup_doc_id": None, "dedup_sim": 0.0,
+    out: dict[str, Any] = {
+        "ok": True,
+        "reasons": [],
+        "review_flag": "auto_pass",
+        "dedup_hit": False,
+        "dedup_doc_id": None,
+        "dedup_sim": 0.0,
         "stats": {},
     }
     t = (text or "").strip()
@@ -794,21 +819,22 @@ def validate_for_ingest(text: str, subject: str = "", db=None,
             cjk_share = cjk / n
             word_share = sum(len(w) for w in re.findall("[A-Za-z]{4,}", t)) / n
             out["stats"]["word_ratio"] = round(word_share, 4)
-            unusable = (cjk_share < UNREADABLE_CJK_MAX and word_share < UNREADABLE_WORD_MAX)
+            unusable = cjk_share < UNREADABLE_CJK_MAX and word_share < UNREADABLE_WORD_MAX
             if unusable and hard_run >= MIN_CTRL_RUN and hard_ctrl / n > MAX_CTRL_RATIO:
                 out["ok"] = False
                 out["review_flag"] = "auto_reject"
                 out["reasons"].append(
                     f"二进制残留(不可读字节 {hard_ctrl}/{n}={hard_ctrl / n:.1%}，最长连号 {hard_run}；"
-                    f"中文 {cjk_share:.1%}、英文词 {word_share:.1%})，正文不可读")
+                    f"中文 {cjk_share:.1%}、英文词 {word_share:.1%})，正文不可读"
+                )
             elif out["review_flag"] == "auto_pass":
                 out["review_flag"] = "need_review"
-                out["reasons"].append(
-                    f"含 {hard_ctrl} 个不可读字节（最长连号 {hard_run}），正文可读，建议复核")
+                out["reasons"].append(f"含 {hard_ctrl} 个不可读字节（最长连号 {hard_run}），正文可读，建议复核")
 
     # **正文全等去重**：确定性、无需模型服务，是各入口都能用的那道闸。
     if db is not None and n >= MIN_FINGERPRINT_CHARS:
         from models import Document
+
         hit = find_content_duplicate(db, Document, t, exclude_id=exclude_doc_id)
         if hit:
             out["dedup_hit"] = True
@@ -841,8 +867,7 @@ def validate_for_ingest(text: str, subject: str = "", db=None,
     return out
 
 
-def gate_for_write(db, text: str, *, path: str = "", subject: str = "",
-                   doc_id=None) -> Dict[str, Any]:
+def gate_for_write(db, text: str, *, path: str = "", subject: str = "", doc_id=None) -> dict[str, Any]:
     """所有入库入口在写 `Document.content` / 切分分块**之前**必须过的一道闸。
 
     和 :func:`validate_for_ingest` 的区别只在固定参数：
@@ -854,11 +879,10 @@ def gate_for_write(db, text: str, *, path: str = "", subject: str = "",
     用户/日志，不允许"照样入库"。`doc_id` 传正在重新解析的那篇自己，避免
     它跟自己判重。
     """
-    return validate_for_ingest(text, subject, db, check_dedup=False,
-                               path=path, exclude_doc_id=doc_id)
+    return validate_for_ingest(text, subject, db, check_dedup=False, path=path, exclude_doc_id=doc_id)
 
 
-def _dedup_check(db, text: str, subject: str) -> Optional[Tuple[int, float]]:
+def _dedup_check(db, text: str, subject: str) -> Optional[tuple[int, float]]:
     """用本地 BGE 向量在 knowledge_chunks_vec 里找最相似分块。
 
     Returns: (document_id, cosine_similarity) 或 None
@@ -877,16 +901,15 @@ def _dedup_check(db, text: str, subject: str) -> Optional[Tuple[int, float]]:
     q = q / qn
 
     conn = wrap_conn(db.connection().connection)
-    sql = ("SELECT document_id, embedding, dim FROM knowledge_chunks_vec "
-           "WHERE embedding IS NOT NULL AND dim = ?")
-    params: List[Any] = [len(q)]
+    sql = "SELECT document_id, embedding, dim FROM knowledge_chunks_vec WHERE embedding IS NOT NULL AND dim = ?"
+    params: list[Any] = [len(q)]
     if subject:
         sql += " AND subject = ?"
         params.append(subject)
     sql += " LIMIT 20000"
 
     best_doc, best_sim = None, 0.0
-    for doc_id, blob, dim in conn.execute(sql, params):
+    for doc_id, blob, _dim in conn.execute(sql, params):
         try:
             v = np.frombuffer(blob, dtype=np.float32)
         except Exception:
@@ -918,7 +941,7 @@ def smart_ingest_file(
     extract_kp: Optional[bool] = None,
     classify_chunks: Optional[bool] = None,
     use_llm_labels: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """跑完整智能入库管线（教材/讲义/真题/课件/扫描件通用）。
 
     Args:
@@ -936,11 +959,20 @@ def smart_ingest_file(
     """
     path = os.path.abspath(path)
     ext = os.path.splitext(path)[1].lower()
-    out: Dict[str, Any] = {
-        "file": os.path.basename(path), "status": "failed", "chars": 0,
-        "subject": "", "book_name": "", "chapter": "", "content_type": "",
-        "dedup_hit": False, "review_flag": "auto_pass", "reasons": [],
-        "engine": "", "ocr_used": "", "doc_id": None,
+    out: dict[str, Any] = {
+        "file": os.path.basename(path),
+        "status": "failed",
+        "chars": 0,
+        "subject": "",
+        "book_name": "",
+        "chapter": "",
+        "content_type": "",
+        "dedup_hit": False,
+        "review_flag": "auto_pass",
+        "reasons": [],
+        "engine": "",
+        "ocr_used": "",
+        "doc_id": None,
         "knowledge_points": {},
         "chunk_labels": {},
     }
@@ -956,8 +988,7 @@ def smart_ingest_file(
         latex_list, fig_desc = r["latex_list"], r["figure_desc"]
         # 图片路径的 OCR 失败原因原先被丢弃（只看字数），这里显式透出
         if r.get("error") and not text:
-            out["reasons"].append(f"OCR 失败({r.get('ocr_used') or '无后端'}): "
-                                  f"{str(r['error'])[:150]}")
+            out["reasons"].append(f"OCR 失败({r.get('ocr_used') or '无后端'}): {str(r['error'])[:150]}")
     else:
         # PDF / Office：优先文本层；无文本层（扫描件）走 OCR
         from services.document_parser import DocumentParser
@@ -1009,8 +1040,7 @@ def smart_ingest_file(
     # 是最准的学科信号。只传 basename 时，`1000题：学习打卡表（新思想）.pdf`
     # 这类文件名不含科目词的资料只能靠正文兜底，实测被判成数学。
     meta = extract_metadata(os.path.basename(path), text, path=path)
-    out.update({k: meta.get(k, "") for k in
-                ("subject", "book_name", "chapter", "content_type")})
+    out.update({k: meta.get(k, "") for k in ("subject", "book_name", "chapter", "content_type")})
     out["major"] = meta.get("major", "")
     out["section"] = meta.get("section", "")
 
@@ -1019,8 +1049,7 @@ def smart_ingest_file(
     # knowledge_chunks_vec 镜像表 + SQLite 风格占位符，在 PG 上必然失败（2026-10-18
     # 实测：异常被吞但事务已挂，后续 INSERT 全部连带失败）。批量扫描按 gate_for_write
     # 同一口径关它——正文全等去重（纯 SQL）保留，足够拦重复导入。
-    v = validate_for_ingest(text, subject=meta.get("subject", ""), db=db,
-                            check_dedup=False)
+    v = validate_for_ingest(text, subject=meta.get("subject", ""), db=db, check_dedup=False)
     out["dedup_hit"] = v["dedup_hit"]
     out["review_flag"] = v["review_flag"]
     out["reasons"].extend(v["reasons"])
@@ -1037,7 +1066,6 @@ def smart_ingest_file(
     # --- 入库 ---
     try:
         from models import Document
-
         from services import kb_service
 
         # --- 幂等保护：同一文件路径已入库则复用旧 Document，不再新建 ---
@@ -1062,9 +1090,7 @@ def smart_ingest_file(
             doc.content = text
             doc.source_format = _norm_doc_format(ext)
             doc.subject = meta.get("subject", "") or doc.subject
-            doc.doc_type = kb_service.classify_doc_type(
-                os.path.basename(path), ext.lstrip(".")
-            )
+            doc.doc_type = kb_service.classify_doc_type(os.path.basename(path), ext.lstrip("."))
             doc.index_status = "indexed"
             doc.ocr_used = bool(out["ocr_used"])
             doc.structure_level = _norm_structure_level("document")
@@ -1076,8 +1102,7 @@ def smart_ingest_file(
                 size=os.path.getsize(path),
                 content=text,
                 subject=meta.get("subject", ""),
-                doc_type=kb_service.classify_doc_type(os.path.basename(path),
-                                                      ext.lstrip(".")),
+                doc_type=kb_service.classify_doc_type(os.path.basename(path), ext.lstrip(".")),
                 index_status="indexed",
                 ocr_used=bool(out["ocr_used"]),
                 structure_level=_norm_structure_level("document"),
@@ -1092,8 +1117,8 @@ def smart_ingest_file(
         # 直接复用既有分块即可。仅当复用文档还没有任何分块（上次入库被中断/失败）时才重切。
         if doc is not None and kb_service.has_searchable_chunks(db, doc.id):
             from models import KnowledgeChunk
-            n_chunks = db.query(KnowledgeChunk).filter(
-                KnowledgeChunk.document_id == doc.id).count()
+
+            n_chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.id).count()
             out["reused_skip_ingest"] = True
         else:
             n_chunks = kb_service.ingest_document(db, doc, replace=True)
@@ -1101,8 +1126,7 @@ def smart_ingest_file(
         # 否则又会多一篇「UI 说已入库、检索搜不到」的文档。
         # 同步回填 chunk_count（2026-10-18 体检发现该字段从未回填、全部漂移为 0）。
         doc.chunk_count = n_chunks
-        doc.index_status = "indexed" if kb_service.has_searchable_chunks(
-            db, doc.id) else "failed"
+        doc.index_status = "indexed" if kb_service.has_searchable_chunks(db, doc.id) else "failed"
         db.commit()
         out["doc_id"] = doc.id
         out["chunks"] = n_chunks
@@ -1124,8 +1148,11 @@ def smart_ingest_file(
                 )
             except Exception as e:  # noqa: BLE001
                 out["knowledge_points"] = {
-                    "skipped": True, "reason": f"知识点抽取异常: {e}"[:200],
-                    "kept": 0, "dropped": 0, "failed": 1,
+                    "skipped": True,
+                    "reason": f"知识点抽取异常: {e}"[:200],
+                    "kept": 0,
+                    "dropped": 0,
+                    "failed": 1,
                 }
                 logger.warning("知识点抽取失败 doc#%s: %s", doc.id, e)
 
@@ -1136,7 +1163,9 @@ def smart_ingest_file(
         if classify_chunks:
             try:
                 out["chunk_labels"] = chunk_classifier.classify_document(
-                    db, doc.id, use_llm=use_llm_labels,
+                    db,
+                    doc.id,
+                    use_llm=use_llm_labels,
                 )
             except Exception as e:  # noqa: BLE001
                 out["chunk_labels"] = {"ok": False, "message": f"打标异常: {e}"[:200]}
@@ -1154,16 +1183,15 @@ def smart_ingest_file(
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
         out["status"] = "error"
         out["reasons"].append(f"入库失败: {type(e).__name__}: {e}")
     return out
 
 
-def _ocr_pdf_pages(path: str, ocr_backend: str,
-                   max_pages: Optional[int] = None) -> Tuple[str, List[str], List[str], str]:
+def _ocr_pdf_pages(
+    path: str, ocr_backend: str, max_pages: Optional[int] = None
+) -> tuple[str, list[str], list[str], str]:
     """扫描件 PDF：逐页渲染成图 → 走图片分流识别 → 汇总。
 
     逐页处理可避免大 PDF 一次性渲染导致内存溢出（参考方案的"按页切片"）。
@@ -1180,11 +1208,11 @@ def _ocr_pdf_pages(path: str, ocr_backend: str,
         text 为空串表示**没有任何一页识别成功**（调用方须判失败，
         绝不能把错误信息当正文）。
     """
-    texts: List[str] = []
-    latex_all: List[str] = []
-    figs: List[str] = []
+    texts: list[str] = []
+    latex_all: list[str] = []
+    figs: list[str] = []
     engine = ""
-    page_errors: List[str] = []
+    page_errors: list[str] = []
     n_pages = 0
     n_ok = 0
     try:
@@ -1212,7 +1240,7 @@ def _ocr_pdf_pages(path: str, ocr_backend: str,
                 page = pdf[i]
                 # --- 自适应渲染 scale：不超过 PDF_MAX_SIDE_PX ---
                 try:
-                    pw, ph = page.get_size()          # 单位 pt(1/72in)
+                    pw, ph = page.get_size()  # 单位 pt(1/72in)
                 except Exception:
                     pw = ph = 0.0
                 scale = PDF_RENDER_DPI / 72.0
@@ -1229,8 +1257,8 @@ def _ocr_pdf_pages(path: str, ocr_backend: str,
                     pil = bitmap.to_pil()
                 except Exception as e_pil:  # noqa: BLE001
                     raise RuntimeError(
-                        f"PDF 渲染需要 Pillow(pillow)，当前不可用: {e_pil}。"
-                        f"请执行 pip install pillow") from e_pil
+                        f"PDF 渲染需要 Pillow(pillow)，当前不可用: {e_pil}。请执行 pip install pillow"
+                    ) from e_pil
                 p = os.path.join(tmpdir, f"p{i:04d}.png")
                 pil.save(p)
                 page = None  # 及时释放上一页位图
@@ -1241,8 +1269,8 @@ def _ocr_pdf_pages(path: str, ocr_backend: str,
                 else:
                     # 单页识别为空：记录后端与原因，继续下一页
                     page_errors.append(
-                        f"第{i + 1}页无文字({r.get('ocr_used') or '无后端'}"
-                        f": {(r.get('error') or '未识别到文字')[:60]})")
+                        f"第{i + 1}页无文字({r.get('ocr_used') or '无后端'}: {(r.get('error') or '未识别到文字')[:60]})"
+                    )
                 latex_all.extend(r["latex_list"])
                 figs.extend(r["figure_desc"])
                 if not engine and r["ocr_used"]:
@@ -1257,26 +1285,28 @@ def _ocr_pdf_pages(path: str, ocr_backend: str,
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
         # 清理渲染出的页面 PNG 临时目录：原先 mkdtemp 后从不删除，
         # 全量入库（数千篇 × 每篇上百页）会在临时目录堆积数十 GB。
         if tmpdir:
             try:
                 shutil.rmtree(tmpdir, ignore_errors=True)
             except Exception as _exc2:  # noqa: BLE001
-                logging.getLogger(__name__).warning(
-                    '清理 PDF 渲染临时目录失败 %s: %s', tmpdir, str(_exc2)[:200]
-                )
+                logging.getLogger(__name__).warning("清理 PDF 渲染临时目录失败 %s: %s", tmpdir, str(_exc2)[:200])
 
     n_pages = n
     if not texts:
-        logger.error("扫描件 PDF 全部 %d 页均未识别到文字: %s | 前几条: %s",
-                     n_pages, os.path.basename(path), page_errors[:3])
+        logger.error(
+            "扫描件 PDF 全部 %d 页均未识别到文字: %s | 前几条: %s", n_pages, os.path.basename(path), page_errors[:3]
+        )
     else:
-        logger.info("扫描件 PDF %s: %d/%d 页识别成功, engine=%s, 共 %d 字",
-                    os.path.basename(path), n_ok, n_pages, engine,
-                    sum(len(t) for t in texts))
+        logger.info(
+            "扫描件 PDF %s: %d/%d 页识别成功, engine=%s, 共 %d 字",
+            os.path.basename(path),
+            n_ok,
+            n_pages,
+            engine,
+            sum(len(t) for t in texts),
+        )
     # 关键：**不再**把错误信息拼进正文。失败就是失败，返回空串。
     return "\n".join(texts), latex_all, figs, engine

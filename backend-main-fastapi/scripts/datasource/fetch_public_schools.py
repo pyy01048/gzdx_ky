@@ -7,14 +7,19 @@
 用法: python fetch_public_schools.py
 输出: public_schools.json
 """
+
 import json
 import re
 import ssl
 import urllib.request
 from pathlib import Path
 
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
-SSL_CTX = ssl.create_default_context(); SSL_CTX.check_hostname = False; SSL_CTX.verify_mode = ssl.CERT_NONE
+UA = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+}
+SSL_CTX = ssl.create_default_context()
+SSL_CTX.check_hostname = False
+SSL_CTX.verify_mode = ssl.CERT_NONE
 URL = "https://yz.chsi.com.cn/kyzx/kp/202509/20250918/2293427403.html"
 OUT = Path(__file__).parent / "public_schools.json"
 
@@ -25,8 +30,10 @@ def main():
     rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S)
     out = []
     for r in rows:
-        cells = [re.sub(r"<[^>]+>", "", c).replace("&nbsp;", " ").strip()
-                 for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", r, re.S)]
+        cells = [
+            re.sub(r"<[^>]+>", "", c).replace("&nbsp;", " ").strip()
+            for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", r, re.S)
+        ]
         if len(cells) >= 2 and cells[0] and cells[0] != "单位名称":
             out.append({"name": cells[0], "province": cells[1]})
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")

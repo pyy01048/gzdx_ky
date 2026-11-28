@@ -118,7 +118,6 @@ def govern_schools(db) -> Dict[str, Any]:
 def empty_chapter_stats(db) -> Dict[str, Any]:
     """与 /api/taxonomy/tree 同口径的空章节统计（大纲骨架 vs 实际 KP 章节）。"""
     from models import KnowledgePoint
-
     from services import taxonomy
 
     taxonomy.load_configured_subjects(db)

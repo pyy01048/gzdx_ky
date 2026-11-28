@@ -7,6 +7,7 @@
 「疑似真矛盾」= L2 独有组（题干非精确相同）且组内答案**互不包含**。
 输出 data/diagnostics/l2_adjudicate.json，供逐组人工裁决。
 """
+
 from __future__ import annotations
 
 import json
@@ -36,10 +37,7 @@ def sim(a: str, b: str) -> float:
 def main() -> int:
     conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT id, content, answer, analysis, is_junk, source, subject "
-        "FROM quiz_questions"
-    ).fetchall()
+    rows = conn.execute("SELECT id, content, answer, analysis, is_junk, source, subject FROM quiz_questions").fetchall()
     conn.close()
     meta = {r["id"]: r for r in rows}
 
@@ -87,39 +85,42 @@ def main() -> int:
         if len(answers) < 2:
             continue
         if len({s for _q, s, _a in g}) < len(g):
-            continue                      # L1 已覆盖
-        if any(x in y or y in x for x in answers
-               for y in answers if y != x):
-            continue                      # 互为子串 → 详略差异
+            continue  # L1 已覆盖
+        if any(x in y or y in x for x in answers for y in answers if y != x):
+            continue  # 互为子串 → 详略差异
         real.append(g)
 
     print(f"[export] L2 疑似真矛盾组 = {len(real)}")
     out = []
     for i, g in enumerate(real, 1):
         g = sorted(g, key=lambda x: x[0])
-        base = g[0]
+        g[0]
         items = []
         for qid, s, a in g:
             m = meta[qid]
-            items.append({
-                "id": qid,
-                "stem": (m["content"] or "")[:80],
-                "ans": (m["answer"] or "")[:60],
-                "ans_norm_len": len(a),
-                "analysis": (m["analysis"] or "")[:100],
-                "source": m["source"] or "",
-                "subject": m["subject"] or "",
-            })
-        out.append({
-            "组号": f"L{i:02d}",
-            "idA": items[0]["id"],
-            "idB": items[1]["id"] if len(items) > 1 else None,
-            "全部id": [x["id"] for x in items],
-            "题干": items[0]["stem"],
-            "相似度": round(sim(g[0][1], g[1][1]), 4) if len(g) > 1 else None,
-            "归一化题干长度": [len(x[1]) for x in g],
-            "选项": items,
-        })
+            items.append(
+                {
+                    "id": qid,
+                    "stem": (m["content"] or "")[:80],
+                    "ans": (m["answer"] or "")[:60],
+                    "ans_norm_len": len(a),
+                    "analysis": (m["analysis"] or "")[:100],
+                    "source": m["source"] or "",
+                    "subject": m["subject"] or "",
+                }
+            )
+        out.append(
+            {
+                "组号": f"L{i:02d}",
+                "idA": items[0]["id"],
+                "idB": items[1]["id"] if len(items) > 1 else None,
+                "全部id": [x["id"] for x in items],
+                "题干": items[0]["stem"],
+                "相似度": round(sim(g[0][1], g[1][1]), 4) if len(g) > 1 else None,
+                "归一化题干长度": [len(x[1]) for x in g],
+                "选项": items,
+            }
+        )
 
     path = str(_REPO / "backend-main-fastapi" / "data" / "diagnostics" / "l2_adjudicate.json")
     with open(path, "w", encoding="utf-8") as f:
@@ -127,6 +128,7 @@ def main() -> int:
 
     # 学科分布
     from collections import Counter
+
     subj = Counter()
     for grp in out:
         for it in grp["选项"]:
@@ -138,21 +140,25 @@ def main() -> int:
     for grp in out:
         for it in grp["选项"]:
             s = it["source"]
-            src["知识库" if s.startswith("知识库") else
-                ("真题" if "真题" in s else ("课件/讲义" if any(
-                    k in s for k in ("课件", "讲义", "教案")) else "其他"))] += 1
+            src[
+                "知识库"
+                if s.startswith("知识库")
+                else (
+                    "真题"
+                    if "真题" in s
+                    else ("课件/讲义" if any(k in s for k in ("课件", "讲义", "教案")) else "其他")
+                )
+            ] += 1
     print(f"[export] 来源分布（按条）: {dict(src.most_common())}")
     print(f"[saved] {path}")
 
     # 文本表格
     for grp in out:
         ids = "/".join(str(x) for x in grp["全部id"])
-        print(f"\n### {grp['组号']}  ids={ids}  sim={grp['相似度']}  "
-              f"题干长={grp['归一化题干长度']}")
+        print(f"\n### {grp['组号']}  ids={ids}  sim={grp['相似度']}  题干长={grp['归一化题干长度']}")
         print(f"  题干: {grp['题干']}")
         for it in grp["选项"]:
-            print(f"  #{it['id']} ans={it['ans']!r} subj={it['subject']!r} "
-                  f"src={it['source']!r}")
+            print(f"  #{it['id']} ans={it['ans']!r} subj={it['subject']!r} src={it['source']!r}")
             if it["analysis"]:
                 print(f"        analysis: {it['analysis'][:90]!r}")
     return 0

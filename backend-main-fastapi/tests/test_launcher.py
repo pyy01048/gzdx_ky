@@ -3,6 +3,7 @@
 批处理"中文行吞掉下一行"的那个坑没法直接写单测，所以把**判定逻辑**全搬进
 Python，这里锁住的是搬运过程中有没有搬错。
 """
+
 from __future__ import annotations
 
 import sys

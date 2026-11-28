@@ -23,8 +23,9 @@ MODULES = {"word", "card", "wrongbook", "task", "question", "realexam"}
 def seeded(db_schema):  # noqa: ARG001
     """写入可识别的到期数据（唯一前缀），用完即删，别污染同库其他用例。"""
     from database import SessionLocal
-    from models import ErrorRecord, Flashcard, Task, Word
     from utils.timeutil import local_today
+
+    from models import ErrorRecord, Flashcard, Task, Word
 
     tag = "d03rollup"
     db = SessionLocal()

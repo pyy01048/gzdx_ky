@@ -13,6 +13,7 @@
     python scripts/build_kaoyan_reforms_pg.py --dry-run
     python scripts/build_kaoyan_reforms_pg.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -147,10 +148,23 @@ def main() -> None:
             continue
         seen_hashes.add(detail_hash)
 
-        records.append((
-            school_id or 0, school_name or "", nid, notice_type or "", title,
-            year, ctype, detail, keywords, 0.8, url or "", source or "", detail_hash,
-        ))
+        records.append(
+            (
+                school_id or 0,
+                school_name or "",
+                nid,
+                notice_type or "",
+                title,
+                year,
+                ctype,
+                detail,
+                keywords,
+                0.8,
+                url or "",
+                source or "",
+                detail_hash,
+            )
+        )
         type_counter[ctype] += 1
 
     print(f"生成改革记录数: {len(records)}")

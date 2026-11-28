@@ -15,6 +15,7 @@
     python scripts/backfill_school_level.py            # 预览
     python scripts/backfill_school_level.py --apply    # 写库（先备份）
 """
+
 from __future__ import annotations
 
 import os
@@ -79,9 +80,7 @@ def main() -> int:
     for n in S985:
         prio[norm(n)] = "985"
 
-    rows = cur.execute(
-        "SELECT id, name FROM kaoyan_schools WHERE level IS NULL OR level = ''"
-    ).fetchall()
+    rows = cur.execute("SELECT id, name FROM kaoyan_schools WHERE level IS NULL OR level = ''").fetchall()
     hits, misses = [], []
     for sid, name in rows:
         lv = prio.get(norm(name))
@@ -93,6 +92,7 @@ def main() -> int:
     print(f"数据库: {DB_PATH}")
     print(f"NULL level 学校行数: {len(rows)}（含同名重复行）")
     from collections import Counter
+
     by_lv = Counter(lv for _, _, lv in hits)
     # 名单外且不在任何名单 → 定义上即双非（非985/非211/非双一流）。
     # 前提已验证：三份名单完整、反向校验零漏配（见脚本末注释），可放心定级。
@@ -112,20 +112,12 @@ def main() -> int:
         con.backup(dest)  # WAL 安全备份
     print(f"已备份 → {bak}")
 
-    cur.executemany(
-        "UPDATE kaoyan_schools SET level = ? WHERE id = ?", [(lv, sid) for sid, _, lv in hits]
-    )
-    cur.executemany(
-        "UPDATE kaoyan_schools SET level = '双非' WHERE id = ?", [(sid,) for sid, _ in shuangfei]
-    )
+    cur.executemany("UPDATE kaoyan_schools SET level = ? WHERE id = ?", [(lv, sid) for sid, _, lv in hits])
+    cur.executemany("UPDATE kaoyan_schools SET level = '双非' WHERE id = ?", [(sid,) for sid, _ in shuangfei])
     con.commit()
 
-    dist = cur.execute(
-        "SELECT level, COUNT(*) FROM kaoyan_schools GROUP BY level ORDER BY 2 DESC"
-    ).fetchall()
-    total_null = cur.execute(
-        "SELECT COUNT(*) FROM kaoyan_schools WHERE level IS NULL OR level = ''"
-    ).fetchone()[0]
+    dist = cur.execute("SELECT level, COUNT(*) FROM kaoyan_schools GROUP BY level ORDER BY 2 DESC").fetchall()
+    total_null = cur.execute("SELECT COUNT(*) FROM kaoyan_schools WHERE level IS NULL OR level = ''").fetchone()[0]
     print("更新后 level 分布:", dist)
     print(f"仍为 NULL: {total_null}")
     con.close()

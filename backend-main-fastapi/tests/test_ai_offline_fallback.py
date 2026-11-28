@@ -19,9 +19,10 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import AIProvider  # noqa: E402
 from routers.ai.ai import _classify_ai_error, _reason_from_text  # noqa: E402
 from services.ai_service import AIService  # noqa: E402
+
+from models import AIProvider  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { netdiskApi } from '../../api/client'
 import {
   getTokenStatus, fetchRemoteFiles, getAuthUrl, exchangeToken, logoutPan, getQuarkView,
@@ -196,6 +196,7 @@ function FilePreview({ file, onClose }) {
   )
 }
 
+/** 网盘联动主组件（Aurora v3）：百度 OAuth 文件浏览器 + 夸克 Web 视图嵌入。 */
 export default function Pan() {
   const { isAdmin } = useAuth()
   /* ---- 视图状态机：select 平台选择 / baidu 文件浏览器 / quark Web 视图 ---- */

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """``services/crawl/queue.py`` 单测：内存队列 + SQLite 内存库（不碰 PostgreSQL）。"""
+
 from __future__ import annotations
 
 import os

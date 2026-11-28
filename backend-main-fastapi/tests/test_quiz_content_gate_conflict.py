@@ -12,6 +12,7 @@
     python -m pytest tests/test_quiz_content_gate_conflict.py -v
     python tests/test_quiz_content_gate_conflict.py
 """
+
 from __future__ import annotations
 
 import os
@@ -107,9 +108,11 @@ def test_stem_normalization_detects_conflict_with_ocr_junk():
 def test_stem_normalization_detects_conflict_with_blank_variants():
     """`____` / `＿＿` / `（ ）` 填空位统一后应视为同题干。"""
     idx = _idx((STEM_WITH_BLANK, "电压"))
-    for variant in ("放大电路中，为了稳定静态工作点应引入＿＿＿＿负反馈电路？",
-                    "放大电路中，为了稳定静态工作点应引入______负反馈电路？",
-                    "放大电路中，为了稳定静态工作点应引入﹏﹏负反馈电路？"):
+    for variant in (
+        "放大电路中，为了稳定静态工作点应引入＿＿＿＿负反馈电路？",
+        "放大电路中，为了稳定静态工作点应引入______负反馈电路？",
+        "放大电路中，为了稳定静态工作点应引入﹏﹏负反馈电路？",
+    ):
         conflict, _ = detect_answer_conflict(variant, "电流", idx)
         assert conflict, variant
 
@@ -149,9 +152,7 @@ def test_short_stem_not_indexed():
 
 def test_empty_answer_rows_not_indexed():
     idx = _idx((STEM, None), (STEM, "  "))
-    assert STEM.lower().replace(" ", "") not in idx or not idx.get(
-        normalize_dedup(STEM)
-    )
+    assert STEM.lower().replace(" ", "") not in idx or not idx.get(normalize_dedup(STEM))
     conflict, _ = detect_answer_conflict(STEM, "任意", idx)
     assert not conflict
 
@@ -221,8 +222,7 @@ def test_gate_off_bypasses_conflict(monkeypatch=None):
 # 极简 runner（无 pytest 时）
 # --------------------------------------------------------------------------- #
 def _run_all() -> int:
-    fns = [(n, f) for n, f in sorted(globals().items())
-           if n.startswith("test_") and callable(f)]
+    fns = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_") and callable(f)]
     failed = []
     for name, fn in fns:
         try:

@@ -5,26 +5,26 @@
 import os
 import shutil
 
-print('\n' + '=' * 60)
-print('创建分发包')
-print('=' * 60 + '\n')
+print("\n" + "=" * 60)
+print("创建分发包")
+print("=" * 60 + "\n")
 
-dist_package_dir = '发布包'
+dist_package_dir = "发布包"
 if os.path.exists(dist_package_dir):
     shutil.rmtree(dist_package_dir)
 os.makedirs(dist_package_dir)
 
-exe_name = '文档水印去除工具.exe'
-if os.path.exists(f'dist/{exe_name}'):
-    shutil.copy(f'dist/{exe_name}', dist_package_dir)
-    print(f'✓ 复制: {exe_name}')
+exe_name = "文档水印去除工具.exe"
+if os.path.exists(f"dist/{exe_name}"):
+    shutil.copy(f"dist/{exe_name}", dist_package_dir)
+    print(f"✓ 复制: {exe_name}")
 
-if os.path.exists('README.md'):
-    shutil.copy('README.md', dist_package_dir)
-    print('✓ 复制: README.md')
+if os.path.exists("README.md"):
+    shutil.copy("README.md", dist_package_dir)
+    print("✓ 复制: README.md")
 
-usage_file = os.path.join(dist_package_dir, '使用说明.txt')
-with open(usage_file, 'w', encoding='utf-8') as f:
+usage_file = os.path.join(dist_package_dir, "使用说明.txt")
+with open(usage_file, "w", encoding="utf-8") as f:
     f.write("""文档水印去除工具 - 使用说明
 =====================================
 
@@ -67,15 +67,15 @@ with open(usage_file, 'w', encoding='utf-8') as f:
 【技术支持】
 如有问题，请查看README.md文件
 """)
-print('✓ 创建: 使用说明.txt')
+print("✓ 创建: 使用说明.txt")
 
-example_dir = os.path.join(dist_package_dir, '示例文件')
+example_dir = os.path.join(dist_package_dir, "示例文件")
 os.makedirs(example_dir, exist_ok=True)
 
-with open(os.path.join(example_dir, '将文件放到这里.txt'), 'w', encoding='utf-8') as f:
-    f.write('将要去除水印的文件放到此目录，然后运行程序选择批量处理模式\n')
+with open(os.path.join(example_dir, "将文件放到这里.txt"), "w", encoding="utf-8") as f:
+    f.write("将要去除水印的文件放到此目录，然后运行程序选择批量处理模式\n")
 
-print(f'\n✓ 分发包已创建: {os.path.abspath(dist_package_dir)}')
-print('\n' + '=' * 60)
-print('打包流程完成!')
-print('=' * 60)
+print(f"\n✓ 分发包已创建: {os.path.abspath(dist_package_dir)}")
+print("\n" + "=" * 60)
+print("打包流程完成!")
+print("=" * 60)

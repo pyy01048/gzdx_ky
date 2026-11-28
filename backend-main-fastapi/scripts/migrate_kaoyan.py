@@ -2,6 +2,7 @@
 """建表迁移：创建考研择校数据中心的6张表。
 用法: python scripts/migrate_kaoyan.py
 """
+
 import os
 import sys
 
@@ -11,12 +12,19 @@ from database import Base, engine
 
 # 导入所有模型确保表被注册
 
-TABLES = ["kaoyan_schools", "kaoyan_colleges", "kaoyan_majors",
-          "kaoyan_admissions", "kaoyan_scorelines", "kaoyan_subjects"]
+TABLES = [
+    "kaoyan_schools",
+    "kaoyan_colleges",
+    "kaoyan_majors",
+    "kaoyan_admissions",
+    "kaoyan_scorelines",
+    "kaoyan_subjects",
+]
 
 
 def main():
     from sqlalchemy import inspect
+
     insp = inspect(engine)
     existing = set(insp.get_table_names())
     created = []
@@ -25,9 +33,7 @@ def main():
             created.append(t)
     if created:
         # 只创建不存在的表
-        Base.metadata.create_all(engine, tables=[
-            Base.metadata.tables[t] for t in created
-        ])
+        Base.metadata.create_all(engine, tables=[Base.metadata.tables[t] for t in created])
         print(f"已创建表: {', '.join(created)}")
     else:
         print("所有表已存在，无需迁移")
@@ -37,6 +43,7 @@ def main():
     from core.models import Discipline
     from database import SessionLocal
     from services.kaoyan.seed_txkyer import SEED_SUBJECTS
+
     db = SessionLocal()
     try:
         existing_codes = {s.code for s in db.query(Discipline).all()}

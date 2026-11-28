@@ -6,6 +6,7 @@
 
 重置后该账号所有已登录会话失效，下次登录强制改密。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,8 +22,9 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(os.path.join(BACKEND, ".env"))
 
 from database import Base, SessionLocal, engine  # noqa: E402
-from models import User  # noqa: E402
 from utils.security import ROLE_ADMIN, hash_password  # noqa: E402
+
+from models import User  # noqa: E402
 
 
 def main() -> int:
@@ -40,8 +42,14 @@ def main() -> int:
             if not args.admin:
                 print(f"用户 {args.username} 不存在；要新建管理员请加 --admin", file=sys.stderr)
                 return 1
-            user = User(username=args.username, role=ROLE_ADMIN, display_name="管理员",
-                        password_hash="", is_active=True, token_version=0)
+            user = User(
+                username=args.username,
+                role=ROLE_ADMIN,
+                display_name="管理员",
+                password_hash="",
+                is_active=True,
+                token_version=0,
+            )
             db.add(user)
         user.password_hash = hash_password(temp)
         user.must_change_password = True

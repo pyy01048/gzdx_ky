@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """只读：产出两份 CSV 清单（seed 假数据行 / 被过度隔离的真实题），并核对网盘 connected 假状态。"""
+
 import csv
 import os
 import sqlite3
@@ -18,24 +19,36 @@ cur = conn.cursor()
 # ---------- 1) seed 假数据行 ----------
 # main.py::_init_sample_data 写入的固定题干/标题，按原文匹配，不做模糊推断。
 SEED_TITLES = [
-    "数学高等数学第一章复习", "英语阅读理解精读 2 篇", "政治马原原理梳理",
-    "数据结构链表练习", "数学线性代数复习", "英语单词背诵 200 个", "政治毛中特框架整理",
+    "数学高等数学第一章复习",
+    "英语阅读理解精读 2 篇",
+    "政治马原原理梳理",
+    "数据结构链表练习",
+    "数学线性代数复习",
+    "英语单词背诵 200 个",
+    "政治毛中特框架整理",
 ]
 SEED_STEMS = [
-    "设函数 f(x) 在 x=0 处连续", "The word 'ubiquitous' in the passage",
-    "马克思主义哲学区别于旧哲学的最显著特征", "下列关于线性表的说法正确的是",
+    "设函数 f(x) 在 x=0 处连续",
+    "The word 'ubiquitous' in the passage",
+    "马克思主义哲学区别于旧哲学的最显著特征",
+    "下列关于线性表的说法正确的是",
 ]
 rows = []
 for t in SEED_TITLES:
     for r in cur.execute("SELECT id, title, subject, status, completed_at, created_at FROM tasks WHERE title=?", (t,)):
         rows.append(["tasks", r[0], r[1], r[2], f"status={r[3]} completed_at={r[4]}", r[5] or ""])
 for s in SEED_STEMS:
-    for r in cur.execute("SELECT id, substr(content,1,60), subject, source, created_at FROM quiz_questions WHERE content LIKE ?", (s + "%",)):
+    for r in cur.execute(
+        "SELECT id, substr(content,1,60), subject, source, created_at FROM quiz_questions WHERE content LIKE ?",
+        (s + "%",),
+    ):
         rows.append(["quiz_questions", r[0], r[1], r[2], f"source={r[3]}", r[4] or ""])
 er_cols = [c[1] for c in cur.execute("PRAGMA table_info(error_records)")]
 try:
-    for r in cur.execute("SELECT id, content, subject, error_reason, created_at FROM error_records "
-                         "WHERE content LIKE '%ubiquitous%' OR content LIKE '%设函数 f(x)%'"):
+    for r in cur.execute(
+        "SELECT id, content, subject, error_reason, created_at FROM error_records "
+        "WHERE content LIKE '%ubiquitous%' OR content LIKE '%设函数 f(x)%'"
+    ):
         rows.append(["error_records", r[0], r[1][:60], r[2], f"reason={r[3]}", r[4] or ""])
 except Exception as exc:
     print("  error_records 查询跳过:", exc, "| 列:", er_cols)
@@ -53,8 +66,9 @@ for x in rows:
     print("   ", x[0], x[1], str(x[2])[:44])
 
 # ---------- 2) 被过度隔离、但今天闸门判非 JUNK 的行 ----------
-allq = cur.execute("SELECT id, content, answer, source, question_type, options, is_junk, "
-                   "is_available, subject FROM quiz_questions").fetchall()
+allq = cur.execute(
+    "SELECT id, content, answer, source, question_type, options, is_junk, is_available, subject FROM quiz_questions"
+).fetchall()
 over = []
 for r in allq:
     if r[6] == 1:
@@ -66,7 +80,7 @@ with open(p2, "w", newline="", encoding="utf-8-sig") as f:
     w = csv.writer(f)
     w.writerow(["id", "当前判定", "原因", "subject", "题干前80字", "source", "is_available", "处置建议"])
     w.writerows(over)
-print(f"\n[2] 过度隔离（is_junk=1 但闸门判 {('A','B','C')}）共 {len(over)} 条 → {p2}")
+print(f"\n[2] 过度隔离（is_junk=1 但闸门判 {('A', 'B', 'C')}）共 {len(over)} 条 → {p2}")
 from collections import Counter
 
 print("    等级分布:", Counter(o[1] for o in over))
@@ -79,18 +93,22 @@ for o in over[:6]:
 print("\n[3] platform_configs 的连接状态（凭证为空却 connected=True 即为假状态）")
 for r in cur.execute("SELECT platform_name, sync_enabled, extra FROM platform_configs"):
     import json
+
     try:
         e = json.loads(r[2] or "{}")
     except Exception:
         e = {"_raw": (r[2] or "")[:40]}
-    print(f"   {r[0]:<18} sync_enabled={r[1]} connected={e.get('connected')} "
-          f"app_key_len={len(e.get('app_key') or '')}")
+    print(f"   {r[0]:<18} sync_enabled={r[1]} connected={e.get('connected')} app_key_len={len(e.get('app_key') or '')}")
 ap_cols = [c[1] for c in cur.execute("PRAGMA table_info(ai_providers)")]
 key_col = "api_key" if "api_key" in ap_cols else None
 print("   ai_providers 列:", ap_cols)
 if key_col:
-    print("   ai_providers 里带 key 的行数:",
-          cur.execute(f"SELECT count(*) FROM ai_providers WHERE {key_col} IS NOT NULL AND trim({key_col})<>''").fetchall())
+    print(
+        "   ai_providers 里带 key 的行数:",
+        cur.execute(
+            f"SELECT count(*) FROM ai_providers WHERE {key_col} IS NOT NULL AND trim({key_col})<>''"
+        ).fetchall(),
+    )
 
 after = os.stat(DB)
 assert (after.st_mtime, after.st_size) == (before.st_mtime, before.st_size), "探针动了生产库！"

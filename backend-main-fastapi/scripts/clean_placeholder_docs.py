@@ -18,6 +18,7 @@
     python scripts/clean_placeholder_docs.py --apply           # 备份+ 删除
     python scripts/clean_placeholder_docs.py --apply --no-backup
 """
+
 from __future__ import annotations
 
 import argparse
@@ -89,6 +90,7 @@ def main() -> int:
         print(f"占位毒化文档（可安全删除）: {len(poisoned)} 篇")
         if poisoned:
             from collections import Counter as _C
+
             print("分类:", dict(_C(classify(c) for _, _, c in poisoned)))
             print("字数分布:", Counter(len(c.strip()) for _, _, c in poisoned).most_common(8))
             for i, fn, c in poisoned[:10]:
@@ -100,29 +102,25 @@ def main() -> int:
 
         if not args.no_backup:
             bp = backup_database(conn)
-            print(f"\n已备份(WAL 安全)→ {bp}  "
-                  f"({os.path.getsize(bp) / 1024 / 1024:.1f} MB)")
+            print(f"\n已备份(WAL 安全)→ {bp}  ({os.path.getsize(bp) / 1024 / 1024:.1f} MB)")
 
         ids = [i for i, _, _ in poisoned]
         conn.execute("BEGIN")
-        conn.executemany("DELETE FROM documents WHERE id = ?",
-                         [(i,) for i in ids])
+        conn.executemany("DELETE FROM documents WHERE id = ?", [(i,) for i in ids])
         conn.commit()
 
-        #清理孤儿分块
+        # 清理孤儿分块
         orphan = conn.execute(
-            "SELECT COUNT(*) FROM knowledge_chunks WHERE document_id NOT IN "
-            "(SELECT id FROM documents)").fetchone()[0]
+            "SELECT COUNT(*) FROM knowledge_chunks WHERE document_id NOT IN (SELECT id FROM documents)"
+        ).fetchone()[0]
         if orphan:
             # 物理删除闸门：knowledge_chunks 物理删除不可逆。孤儿判定
             # 若因外键/事务问题误判，会连带清空正常分块，必须显式放行。
             require_physical_delete_enabled("knowledge_chunks")
-            conn.execute("DELETE FROM knowledge_chunks WHERE document_id NOT IN "
-                         "(SELECT id FROM documents)")
+            conn.execute("DELETE FROM knowledge_chunks WHERE document_id NOT IN (SELECT id FROM documents)")
             conn.commit()
         print(f"已删除 documents {len(ids)} 篇；顺带清理孤儿分块 {orphan} 条")
-        print("剩余 documents:",
-              conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0])
+        print("剩余 documents:", conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0])
     finally:
         conn.close()
     return 0

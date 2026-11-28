@@ -39,9 +39,7 @@ _OPT_LABEL_RE = re.compile(r"(?:^|[\s，,。；;：:、（(\[\]【】])[A-F]\s*[
 #: 宽松标签：无分隔符紧贴汉字（「A斯密特触发器」「D555定时器」）。
 #: OCR/纯文本卷面里这种写法极常见，若只认严格标签会把「选项就在题干里」
 #: 误判成「源文档无选项」。
-_OPT_LABEL_LOOSE_RE = re.compile(
-    r"(?:^|[\s，,。；;：:、（(\[\]【】])([A-F])(?=\s*[、.．)）]|[一-鿿0-9])"
-)
+_OPT_LABEL_LOOSE_RE = re.compile(r"(?:^|[\s，,。；;：:、（(\[\]【】])([A-F])(?=\s*[、.．)）]|[一-鿿0-9])")
 
 #: 空格分隔的孤立字母标签（PDF/OCR 常见：「占空比为（） A B C D」）。
 #: 仅当出现 >=3 个且按 A→B→C 递增时才算选项，避免把公式里的 A、B 当选项。
@@ -98,9 +96,7 @@ def label_count(text: str) -> int:
 
 def build_doc_index(db: sqlite3.Connection) -> list[tuple[str, str, str]]:
     """返回 [(file_name, content, file_type)]，供题目回源。"""
-    rows = db.execute(
-        "SELECT file_name, content, file_type FROM documents WHERE length(content) > 0"
-    ).fetchall()
+    rows = db.execute("SELECT file_name, content, file_type FROM documents WHERE length(content) > 0").fetchall()
     return [(r["file_name"] or "", r["content"] or "", r["file_type"] or "") for r in rows]
 
 
@@ -125,7 +121,7 @@ def find_source_doc(index, source: str, stem: str, content: str):
                 if i >= 0:
                     for fn, t, ft in index:
                         if t is cands[0]:
-                            return fn, ft, t[i: i + 500]
+                            return fn, ft, t[i : i + 500]
                     return "", "", ""
 
     # 2) 兜底：全库按题干汉字键搜
@@ -133,10 +129,10 @@ def find_source_doc(index, source: str, stem: str, content: str):
         key = cn_key(content, n)
         if len(key) < n:
             continue
-        for (fn, t, ft) in index:
+        for fn, t, ft in index:
             i = t.find(key)
             if i >= 0:
-                return fn, ft, t[i: i + 500]
+                return fn, ft, t[i : i + 500]
     return "", "", ""
 
 
@@ -242,14 +238,16 @@ def main() -> int:
     }
     manifest.pop("可见可答题会从")
     for r, opts in b_cls:
-        manifest["条目"].append({
-            "id": r["id"],
-            "题干": r["content"],
-            "options": opts,
-            "answer": r["answer"],
-            "subject": r["subject"],
-            "source": r["source"],
-        })
+        manifest["条目"].append(
+            {
+                "id": r["id"],
+                "题干": r["content"],
+                "options": opts,
+                "answer": r["answer"],
+                "subject": r["subject"],
+                "source": r["source"],
+            }
+        )
     path = os.path.join(OUT_DIR, "bclass_options_manifest.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
@@ -257,9 +255,10 @@ def main() -> int:
 
     # ---------- A 类抽样回源 ----------
     index = build_doc_index(db)
+
     # 分层抽样：.txt / .pdf 两通道，各占一半；真题: / 知识库: 两入库通道各占一半
     def chan(src: str) -> str:
-        s = (src or "")
+        s = src or ""
         if s.startswith("真题:"):
             return "真题"
         if s.startswith("知识库:"):
@@ -292,7 +291,7 @@ def main() -> int:
         sec = ""
         if seg:
             full = None
-            for (fn, t, ft) in index:
+            for fn, t, _ft in index:
                 if fn == doc_name:
                     full = t
                     break
@@ -302,11 +301,18 @@ def main() -> int:
                 sec = sec_type_at(full, pos) if pos >= 0 else ""
         cat, why = classify_a(r, "", seg, sec)
         stats[cat] = stats.get(cat, 0) + 1
-        details.append({
-            "id": r["id"], "cat": cat, "why": why, "sec": sec,
-            "doc": doc_name, "src_label": label_count(seg),
-            "题干": r["content"][:60], "答案": r["answer"],
-        })
+        details.append(
+            {
+                "id": r["id"],
+                "cat": cat,
+                "why": why,
+                "sec": sec,
+                "doc": doc_name,
+                "src_label": label_count(seg),
+                "题干": r["content"][:60],
+                "答案": r["answer"],
+            }
+        )
         print(f"\n  #{r['id']} [{cat}] sec={sec!r} 源选项标签={label_count(seg)} doc={doc_name[:34]}")
         print(f"      {why}")
         print(f"      题干: {r['content'][:64]}")
@@ -321,8 +327,7 @@ def main() -> int:
 
     # ---------- 附：8 组「如图X所示」题现状（team-lead 上一轮【五】遗留）----------
     fig_rows = db.execute(
-        "SELECT id, content, options, answer, is_junk FROM quiz_questions"
-        " WHERE is_junk=0 AND content LIKE '%如图%'"
+        "SELECT id, content, options, answer, is_junk FROM quiz_questions WHERE is_junk=0 AND content LIKE '%如图%'"
     ).fetchall()
     fig_dep = [r for r in fig_rows if _FIGURE_DEP_RE.search(r["content"] or "")]
     print("\n" + "=" * 70)

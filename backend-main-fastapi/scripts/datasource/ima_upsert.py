@@ -27,6 +27,7 @@ Guarantees:
     resume exactly where this one stopped.
   * Touches ONLY the staging DB - never D:/平台/database/kaoyan.db.
 """
+
 import json
 import sqlite3
 import sys
@@ -130,9 +131,7 @@ def main() -> None:
     conn = _connect()
     try:
         for src in sys.argv[1:]:
-            payload = json.load(sys.stdin) if src == "-" else json.load(
-                open(src, "r", encoding="utf-8")
-            )
+            payload = json.load(sys.stdin) if src == "-" else json.load(open(src, "r", encoding="utf-8"))
             written, total = upsert_file(payload, conn)
             print(
                 "OK scope=%s offset=%s path=%r items=%d db_total=%d"

@@ -15,6 +15,7 @@
 红线：本脚本**从不删除 chunk**，只在 `--prune-orphans` 下删除"其 chunk 已不存在"的
 镜像行；不重算向量（vec 覆盖率只报告，补齐请走 `scripts/` 的向量重建链路）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,16 +50,20 @@ def audit(db) -> dict:
         comparable = [(kc[i], mir[i]) for i in mir if i in kc and kc[i]]
         drift = sum(1 for a, b in comparable if a != b)
         # 镜像里挂具体学科、chunk 表却已判「其他」= 弃权未生效
-        abstain_leak = sum(1 for i in mir
-                           if kc.get(i) == "其他" and mir[i] not in ("", "其他"))
+        abstain_leak = sum(1 for i in mir if kc.get(i) == "其他" and mir[i] not in ("", "其他"))
         orphans = sum(1 for i in mir if i not in kc)
         missing = sum(1 for i in kc if i not in mir)
         n = len(comparable) or 1
-        res[tbl] = {"rows": len(mir), "comparable": len(comparable),
-                    "drift": drift, "drift_rate": round(drift / n, 4),
-                    "abstain_leak": abstain_leak, "orphans": orphans,
-                    "missing": missing,
-                    "coverage": round(len(mir) / (len(kc) or 1), 4)}
+        res[tbl] = {
+            "rows": len(mir),
+            "comparable": len(comparable),
+            "drift": drift,
+            "drift_rate": round(drift / n, 4),
+            "abstain_leak": abstain_leak,
+            "orphans": orphans,
+            "missing": missing,
+            "coverage": round(len(mir) / (len(kc) or 1), 4),
+        }
     return res
 
 
@@ -67,17 +72,18 @@ def print_audit(a: dict) -> None:
     for k, v in a.items():
         if k == "chunks":
             continue
-        print(f"  {k}: 行 {v['rows']}  可比 {v['comparable']}  "
-              f"学科漂移 {v['drift']} ({v['drift_rate']:.2%})  "
-              f"弃权未同步 {v['abstain_leak']}  孤儿 {v['orphans']}  "
-              f"未入镜像 {v['missing']}  覆盖率 {v['coverage']:.2%}")
+        print(
+            f"  {k}: 行 {v['rows']}  可比 {v['comparable']}  "
+            f"学科漂移 {v['drift']} ({v['drift_rate']:.2%})  "
+            f"弃权未同步 {v['abstain_leak']}  孤儿 {v['orphans']}  "
+            f"未入镜像 {v['missing']}  覆盖率 {v['coverage']:.2%}"
+        )
 
 
 def prune_orphans(db) -> dict:
     out = {}
     for tbl, key in MIRROR_TABLES:
-        stmt = text(f"DELETE FROM {tbl} WHERE NOT EXISTS "
-                    f"(SELECT 1 FROM knowledge_chunks kc WHERE kc.id = {tbl}.{key})")
+        stmt = text(f"DELETE FROM {tbl} WHERE NOT EXISTS (SELECT 1 FROM knowledge_chunks kc WHERE kc.id = {tbl}.{key})")
         try:
             r = db.execute(stmt)
             db.commit()
@@ -92,11 +98,11 @@ def prune_orphans(db) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="检索镜像学科同步与一致性体检")
     ap.add_argument("--dry-run", action="store_true", help="只体检，不写库")
-    ap.add_argument("--prune-orphans", action="store_true",
-                    help="删除 chunk 已不存在的镜像行（默认不删）")
+    ap.add_argument("--prune-orphans", action="store_true", help="删除 chunk 已不存在的镜像行（默认不删）")
     args = ap.parse_args()
 
     from database import SessionLocal
+
     db = SessionLocal()
     try:
         print("=== 同步前体检 ===")

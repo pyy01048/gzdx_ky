@@ -14,6 +14,7 @@
 下拉框选择，最容易错。三者冲突时显式留证（`evidence` 里写明提升/降级），
 不做静默覆盖。
 """
+
 from __future__ import annotations
 
 import json

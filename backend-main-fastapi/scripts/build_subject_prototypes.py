@@ -13,6 +13,7 @@ bge 模型不可用时**直接拒绝构建**：`knowledge_chunks_vec` 里哈希�
     python scripts/build_subject_prototypes.py --per-subject 100 --force
     python scripts/build_subject_prototypes.py --dry-run      # 只看种子分布
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,13 +29,12 @@ sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
 SEED = 42
-MIN_CHUNK_CHARS = 200      # 短块（OCR 碎片/目录行）不做种子
-MAX_CHUNK_CHARS = 4000     # 超长块截断编码，质心取前段语义
+MIN_CHUNK_CHARS = 200  # 短块（OCR 碎片/目录行）不做种子
+MAX_CHUNK_CHARS = 4000  # 超长块截断编码，质心取前段语义
 
 
-MANUAL_SEEDS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                 "data", "manual_seeds.json")
-MANUAL_MIN_CHARS = 120   # 人工教材段质量有保证，不受库内 200 字噪声门禁约束
+MANUAL_SEEDS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "manual_seeds.json")
+MANUAL_MIN_CHARS = 120  # 人工教材段质量有保证，不受库内 200 字噪声门禁约束
 
 
 def _load_manual_seeds() -> dict[str, list[str]]:
@@ -42,6 +42,7 @@ def _load_manual_seeds() -> dict[str, list[str]]:
     if not os.path.exists(MANUAL_SEEDS_PATH):
         return {}
     import json
+
     with open(MANUAL_SEEDS_PATH, encoding="utf-8") as f:
         raw = json.load(f)
     return {k: [t for t in v if len(t) >= MANUAL_MIN_CHARS] for k, v in raw.items()}
@@ -58,9 +59,10 @@ def collect_seeds(db, per_subject: int) -> dict[str, list[str]]:
       严格 = 文档标签 × chunk 关键词判定**双一致**且高置信（首选，最干净）；
       宽松 = 仅文档级标签一致 + 过乱码/碎片门禁（严格不足 MIN_STRICT 的科用它填充）。
     """
-    from models import Document, KnowledgeChunk
     from services.chunk_classifier import _normalize_subject, subject_candidates
     from services.kb_service import classify_subject_confidence, is_parse_failure
+
+    from models import Document, KnowledgeChunk
 
     MIN_STRICT = 10
     manual = _load_manual_seeds()
@@ -74,16 +76,12 @@ def collect_seeds(db, per_subject: int) -> dict[str, list[str]]:
         doc_subj = _normalize_subject(doc.subject or "")
         if not doc_subj or doc_subj not in cands:
             continue
-        chunks = (
-            db.query(KnowledgeChunk)
-            .filter(KnowledgeChunk.document_id == doc.id)
-            .all()
-        )
+        chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.id).all()
         texts = [c.text or "" for c in chunks if len(c.text or "") >= MIN_CHUNK_CHARS]
         if not texts:
             continue
         rng.shuffle(texts)
-        for t in texts[:20]:            # 单文档最多吃 20 块，防一份大教材垄断质心
+        for t in texts[:20]:  # 单文档最多吃 20 块，防一份大教材垄断质心
             if is_parse_failure(t):
                 continue
             try:
@@ -102,9 +100,9 @@ def collect_seeds(db, per_subject: int) -> dict[str, list[str]]:
 
     seeds: dict[str, list[str]] = {}
     for subj in set(strict) | set(loose) | set(manual):
-        if subj not in cands:      # 非候选学科不建质心（softmax 会摊薄有效科的分数）
+        if subj not in cands:  # 非候选学科不建质心（softmax 会摊薄有效科的分数）
             continue
-        pool = list(manual.get(subj, []))          # 人工教材段优先且不受 20/篇上限
+        pool = list(manual.get(subj, []))  # 人工教材段优先且不受 20/篇上限
         pool.extend(strict.get(subj, []))
         if len(pool) < MIN_STRICT:
             extra = loose.get(subj, [])
@@ -118,9 +116,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="构建学科原型质心（仅 bge 真模型）")
     ap.add_argument("--per-subject", type=int, default=60, help="每科种子块上限")
     ap.add_argument("--force", action="store_true", help="覆盖已有质心")
-    ap.add_argument("--subjects", default="",
-                    help="只重建这些学科（逗号分隔）。改判文档学科后只有对应质心被污染，"
-                         "全量 --force 会顺带动到域内科的既有基准，故按科重建。")
+    ap.add_argument(
+        "--subjects",
+        default="",
+        help="只重建这些学科（逗号分隔）。改判文档学科后只有对应质心被污染，"
+        "全量 --force 会顺带动到域内科的既有基准，故按科重建。",
+    )
     ap.add_argument("--dry-run", action="store_true", help="只统计种子分布，不写库")
     args = ap.parse_args()
 
@@ -133,7 +134,9 @@ def main() -> int:
 
     # 新表可能还没被服务器启动 create_all 过，幂等补建
     from database import Base, SessionLocal, engine
+
     from models import SubjectPrototype
+
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
@@ -178,6 +181,7 @@ def main() -> int:
             row.vector = centroid.astype(np.float32).tobytes()
             row.n_samples = len(texts)
             import datetime
+
             row.built_at = datetime.datetime.now(datetime.timezone.utc)
             if existing is None:
                 db.add(row)

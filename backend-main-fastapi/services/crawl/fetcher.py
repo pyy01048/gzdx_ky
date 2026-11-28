@@ -32,9 +32,7 @@ except Exception:  # pragma: no cover - 环境异常时的降级
 
 __all__ = ["FetchResult", "PoliteFetcher", "clear_robots_cache", "DEFAULT_USER_AGENT"]
 
-DEFAULT_USER_AGENT = (
-    "KaoyanStudyBot/1.0 (personal study use; non-commercial; contact: local-operator)"
-)
+DEFAULT_USER_AGENT = "KaoyanStudyBot/1.0 (personal study use; non-commercial; contact: local-operator)"
 
 #: 单页体积上限 20MB
 MAX_PAGE_BYTES = 20 * 1024 * 1024
@@ -163,9 +161,7 @@ class PoliteFetcher:
         self.max_retries = int(max_retries)
         self.user_agent = user_agent
         self.max_bytes = int(max_bytes)
-        self._client_factory = client_factory or (
-            lambda: _make_client(self.timeout, self.user_agent)
-        )
+        self._client_factory = client_factory or (lambda: _make_client(self.timeout, self.user_agent))
         self._sleep = sleep or _sleep
         self._rng = rng or random.Random()
 
@@ -240,8 +236,13 @@ class PoliteFetcher:
             client = self._client_factory()
         except Exception as exc:  # pragma: no cover
             return FetchResult(
-                url=url, final_url=url, status=0, html="", content_type="",
-                elapsed=time.monotonic() - started, error=f"client_error: {exc}",
+                url=url,
+                final_url=url,
+                status=0,
+                html="",
+                content_type="",
+                elapsed=time.monotonic() - started,
+                error=f"client_error: {exc}",
                 retryable=True,
             )
         try:
@@ -261,36 +262,73 @@ class PoliteFetcher:
             elapsed = time.monotonic() - started
 
             if status == 429:
-                return FetchResult(url=url, final_url=final_url, status=status, html="",
-                                   content_type=content_type, elapsed=elapsed,
-                                   error="http_429", retryable=True)
+                return FetchResult(
+                    url=url,
+                    final_url=final_url,
+                    status=status,
+                    html="",
+                    content_type=content_type,
+                    elapsed=elapsed,
+                    error="http_429",
+                    retryable=True,
+                )
             if 400 <= status < 500:
-                return FetchResult(url=url, final_url=final_url, status=status, html="",
-                                   content_type=content_type, elapsed=elapsed,
-                                   error=f"http_{status}", retryable=False)
+                return FetchResult(
+                    url=url,
+                    final_url=final_url,
+                    status=status,
+                    html="",
+                    content_type=content_type,
+                    elapsed=elapsed,
+                    error=f"http_{status}",
+                    retryable=False,
+                )
             if status >= 500:
-                return FetchResult(url=url, final_url=final_url, status=status, html="",
-                                   content_type=content_type, elapsed=elapsed,
-                                   error=f"http_{status}", retryable=True)
+                return FetchResult(
+                    url=url,
+                    final_url=final_url,
+                    status=status,
+                    html="",
+                    content_type=content_type,
+                    elapsed=elapsed,
+                    error=f"http_{status}",
+                    retryable=True,
+                )
             if status >= 200:
                 too_large = len(raw) > self.max_bytes
                 if too_large:
                     raw = raw[: self.max_bytes]
                 if binary:
                     return FetchResult(
-                        url=url, final_url=final_url, status=status, html="",
-                        content_type=content_type, elapsed=elapsed,
-                        content=raw, error="too_large" if too_large else "",
+                        url=url,
+                        final_url=final_url,
+                        status=status,
+                        html="",
+                        content_type=content_type,
+                        elapsed=elapsed,
+                        content=raw,
+                        error="too_large" if too_large else "",
                     )
                 html = _decode(raw, content_type)
                 return FetchResult(
-                    url=url, final_url=final_url, status=status, html=html,
-                    content_type=content_type, elapsed=elapsed,
+                    url=url,
+                    final_url=final_url,
+                    status=status,
+                    html=html,
+                    content_type=content_type,
+                    elapsed=elapsed,
                     error="too_large" if too_large else "",
                 )
-            return FetchResult(url=url, final_url=final_url, status=status, html="",
-                               content_type=content_type, elapsed=elapsed,
-                               error=f"http_{status}", retryable=False)
+            return FetchResult(
+                url=url,
+                final_url=final_url,
+                status=status,
+                html="",
+                content_type=content_type,
+                elapsed=elapsed,
+                error=f"http_{status}",
+                retryable=False,
+            )
         finally:
             close = getattr(client, "close", None)
             if callable(close):
@@ -303,16 +341,37 @@ class PoliteFetcher:
         name = type(exc).__name__
         msg = str(exc)
         if httpx is not None and isinstance(exc, getattr(httpx, "TimeoutException", ())):
-            return FetchResult(url=url, final_url=url, status=0, html="", content_type="",
-                               elapsed=time.monotonic() - started, error="timeout",
-                               retryable=True)
+            return FetchResult(
+                url=url,
+                final_url=url,
+                status=0,
+                html="",
+                content_type="",
+                elapsed=time.monotonic() - started,
+                error="timeout",
+                retryable=True,
+            )
         if httpx is not None and isinstance(exc, getattr(httpx, "HTTPError", ())):
-            return FetchResult(url=url, final_url=url, status=0, html="", content_type="",
-                               elapsed=time.monotonic() - started,
-                               error=f"request_error: {name}", retryable=True)
-        return FetchResult(url=url, final_url=url, status=0, html="", content_type="",
-                           elapsed=time.monotonic() - started,
-                           error=f"request_error: {name}: {msg}"[:200], retryable=True)
+            return FetchResult(
+                url=url,
+                final_url=url,
+                status=0,
+                html="",
+                content_type="",
+                elapsed=time.monotonic() - started,
+                error=f"request_error: {name}",
+                retryable=True,
+            )
+        return FetchResult(
+            url=url,
+            final_url=url,
+            status=0,
+            html="",
+            content_type="",
+            elapsed=time.monotonic() - started,
+            error=f"request_error: {name}: {msg}"[:200],
+            retryable=True,
+        )
 
     def fetch(self, url: str, *, respect_robots: bool = True, binary: bool = False) -> FetchResult:
         """抓一个页面。
@@ -323,14 +382,26 @@ class PoliteFetcher:
         """
         started = time.monotonic()
         if not url or not str(url).lower().startswith(("http://", "https://")):
-            return FetchResult(url=str(url or ""), final_url=str(url or ""), status=0,
-                               html="", content_type="", elapsed=time.monotonic() - started,
-                               error="invalid_url")
+            return FetchResult(
+                url=str(url or ""),
+                final_url=str(url or ""),
+                status=0,
+                html="",
+                content_type="",
+                elapsed=time.monotonic() - started,
+                error="invalid_url",
+            )
 
         if respect_robots and not self._robots_allows(url):
-            return FetchResult(url=url, final_url=url, status=0, html="", content_type="",
-                               elapsed=time.monotonic() - started,
-                               error="robots_disallowed")
+            return FetchResult(
+                url=url,
+                final_url=url,
+                status=0,
+                html="",
+                content_type="",
+                elapsed=time.monotonic() - started,
+                error="robots_disallowed",
+            )
 
         attempts = self.max_retries + 1
         last: Optional[FetchResult] = None
@@ -341,7 +412,7 @@ class PoliteFetcher:
                 return result
             if attempt < attempts - 1:
                 # 指数退避 1s / 2s / 4s + 抖动
-                self._sleep(float(2 ** attempt) + self._rng.uniform(0, 0.5))
+                self._sleep(float(2**attempt) + self._rng.uniform(0, 0.5))
         assert last is not None
         return last
 
@@ -357,7 +428,7 @@ def _header(resp, name: str) -> str:
 
 def _response_bytes(resp) -> bytes:
     content = getattr(resp, "content", None)
-    if isinstance(content, (bytes, bytearray)):
+    if isinstance(content, bytes | bytearray):
         return bytes(content)
     text = getattr(resp, "text", None)
     if isinstance(text, str):

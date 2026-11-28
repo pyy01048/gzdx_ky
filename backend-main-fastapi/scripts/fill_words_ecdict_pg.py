@@ -102,7 +102,6 @@ def normalize_phonetic(phonetic: str) -> str:
         "ɜ": "ɜ",
         "æ": "æ",
         "ɑ": "ɑ",
-        "ɒ": "ɒ",
         "ː": "ː",
         "ˈ": "ˈ",
         "'": "'",
@@ -292,8 +291,7 @@ def main():
 
     # 更新 deck word_count
     cur.execute(
-        "UPDATE word_decks SET word_count = "
-        "(SELECT count(*) FROM words WHERE deck_id = %s) WHERE id = %s",
+        "UPDATE word_decks SET word_count = (SELECT count(*) FROM words WHERE deck_id = %s) WHERE id = %s",
         (deck_id, deck_id),
     )
     print("已更新 deck word_count")

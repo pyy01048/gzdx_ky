@@ -18,6 +18,7 @@
   3. 默认 dry-run，加 ``--apply`` 才落库；落库前用 SQLite backup() 备份。
   4. 找不到源文件的记录保持原样，写入报告供人工处置。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,8 +44,7 @@ def build_tree(kb_root: str) -> dict[str, list[str]]:
 def plan_repairs(conn: sqlite3.Connection, tree: dict[str, list[str]]) -> dict:
     """产出修复计划，不写库。"""
     rows = conn.execute(
-        "SELECT id, file_name, file_path FROM documents "
-        "WHERE file_path IS NOT NULL AND file_path <> ''"
+        "SELECT id, file_name, file_path FROM documents WHERE file_path IS NOT NULL AND file_path <> ''"
     ).fetchall()
 
     fixable, missing, already_ok = [], [], 0
@@ -56,12 +56,12 @@ def plan_repairs(conn: sqlite3.Connection, tree: dict[str, list[str]]) -> dict:
         if not hits:
             missing.append({"id": doc_id, "file_name": name, "old_path": path})
         elif len(hits) == 1:
-            fixable.append({"id": doc_id, "file_name": name,
-                            "old_path": path, "new_path": hits[0]})
+            fixable.append({"id": doc_id, "file_name": name, "old_path": path, "new_path": hits[0]})
         else:
             # 多处命中：不猜，交人工
-            missing.append({"id": doc_id, "file_name": name, "old_path": path,
-                            "reason": "同名多处", "candidates": hits[:5]})
+            missing.append(
+                {"id": doc_id, "file_name": name, "old_path": path, "reason": "同名多处", "candidates": hits[:5]}
+            )
 
     return {
         "total_with_path": len(rows),
@@ -119,8 +119,7 @@ def main() -> int:
                 print(f"       新 {it['new_path']}")
 
         if args.report:
-            Path(args.report).write_text(
-                json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+            Path(args.report).write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"\n  报告已写入：{args.report}")
 
         if not args.apply:
@@ -138,8 +137,7 @@ def main() -> int:
         fixed = failed = 0
         for it in plan["fixable"]:
             try:
-                conn.execute("UPDATE documents SET file_path = ? WHERE id = ?",
-                             (it["new_path"], it["id"]))
+                conn.execute("UPDATE documents SET file_path = ? WHERE id = ?", (it["new_path"], it["id"]))
                 conn.commit()
                 fixed += 1
             except sqlite3.Error as exc:
@@ -152,8 +150,7 @@ def main() -> int:
         # 复核：修复后仍断链的数量
         left = 0
         for _id, _n, p in conn.execute(
-            "SELECT id, file_name, file_path FROM documents "
-            "WHERE file_path IS NOT NULL AND file_path <> ''"
+            "SELECT id, file_name, file_path FROM documents WHERE file_path IS NOT NULL AND file_path <> ''"
         ):
             if not os.path.exists(p):
                 left += 1

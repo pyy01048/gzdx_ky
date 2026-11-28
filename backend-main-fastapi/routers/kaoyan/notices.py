@@ -21,13 +21,13 @@ P5（2026-10-19）：已读/加星为 per-user 状态，落 ``notice_user_states
   POST /batch-star           批量加星
   POST /backfill-important   将关键类型默认加星（一次性，可选）
 """
+
 from __future__ import annotations
 
 from typing import List, Optional
 
 from database import SessionLocal
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import User
 from pydantic import BaseModel, Field
 from services.dbapi_compat import wrap_conn
 from services.kaoyan.notice_read import (
@@ -50,6 +50,8 @@ from sqlalchemy.orm import Session
 from utils.scope import owner_id
 from utils.security import current_user, require_admin
 from utils.timeutil import naive_utc_iso
+
+from models import User
 
 router = APIRouter(prefix="/api/notices", tags=["通知已读"])
 
@@ -185,9 +187,7 @@ def list_notices(
     if urgent_only:
         where.append("importance_level = 'urgent'")
     elif important_only:
-        where.append(
-            "importance_level IN (%s)" % ",".join("?" * len(IMPORTANT_LEVELS))
-        )
+        where.append("importance_level IN (%s)" % ",".join("?" * len(IMPORTANT_LEVELS)))
         args += list(IMPORTANT_LEVELS)
     if school_id is not None:
         where.append("school_id = ?")
@@ -200,8 +200,7 @@ def list_notices(
     # 总数 + 当前条件下的未读数（一次查询取两个标量，避免额外往返；
     # 未读按当前用户计——per-user LEFT JOIN notice_user_states，见 _state_join）
     stats_row = conn.execute(
-        "SELECT COUNT(*) AS total,"
-        f" SUM(CASE WHEN {read_pred} THEN 1 ELSE 0 END) AS unread{from_sql}{where_sql}",
+        f"SELECT COUNT(*) AS total, SUM(CASE WHEN {read_pred} THEN 1 ELSE 0 END) AS unread{from_sql}{where_sql}",
         join_args + args,
     ).fetchone()
     total = int(stats_row["total"] or 0)
@@ -259,13 +258,17 @@ def list_notices(
 # --------------------------------------------------------------------------- #
 @router.post("/{notice_id}/read")
 def mark_notice_read(
-    notice_id: int, body: ReadBody, db: Session = Depends(get_db),
+    notice_id: int,
+    body: ReadBody,
+    db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
     """单条标记已读 / 取消已读（前端点击通知即调用）。"""
-    exists = wrap_conn(db.connection().connection).execute(
-        "SELECT 1 FROM kaoyan_notices WHERE id = ?", [notice_id]
-    ).fetchone()
+    exists = (
+        wrap_conn(db.connection().connection)
+        .execute("SELECT 1 FROM kaoyan_notices WHERE id = ?", [notice_id])
+        .fetchone()
+    )
     if not exists:
         raise HTTPException(404, f"通知不存在: {notice_id}")
     result = mark_read(db, notice_ids=[notice_id], is_read=body.is_read, user_id=owner_id(user))
@@ -273,9 +276,7 @@ def mark_notice_read(
 
 
 @router.post("/batch-read")
-def batch_mark_read(
-    body: BatchReadBody, db: Session = Depends(get_db), user: User = Depends(current_user)
-):
+def batch_mark_read(body: BatchReadBody, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """批量标记已读。
 
     示例：某院校全部已读 → ``{"school_id": 3}``
@@ -302,13 +303,17 @@ def batch_mark_read(
 # --------------------------------------------------------------------------- #
 @router.post("/{notice_id}/star")
 def star_notice(
-    notice_id: int, body: StarBody, db: Session = Depends(get_db),
+    notice_id: int,
+    body: StarBody,
+    db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
     """单条加星 / 取消加星（落当前用户 notice_user_states）。"""
-    exists = wrap_conn(db.connection().connection).execute(
-        "SELECT 1 FROM kaoyan_notices WHERE id = ?", [notice_id]
-    ).fetchone()
+    exists = (
+        wrap_conn(db.connection().connection)
+        .execute("SELECT 1 FROM kaoyan_notices WHERE id = ?", [notice_id])
+        .fetchone()
+    )
     if not exists:
         raise HTTPException(404, f"通知不存在: {notice_id}")
     result = set_starred(db, [notice_id], is_starred=body.is_starred, user_id=owner_id(user))
@@ -316,9 +321,7 @@ def star_notice(
 
 
 @router.post("/batch-star")
-def batch_star(
-    body: BatchStarBody, db: Session = Depends(get_db), user: User = Depends(current_user)
-):
+def batch_star(body: BatchStarBody, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """批量加星 / 取消加星。"""
     try:
         result = set_starred(db, body.notice_ids, is_starred=body.is_starred, user_id=owner_id(user))
@@ -328,9 +331,7 @@ def batch_star(
 
 
 @router.post("/backfill-important", dependencies=[Depends(require_admin)])
-def backfill_important_stars(
-    db: Session = Depends(get_db), user: User = Depends(current_user)
-):
+def backfill_important_stars(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """把「重要」通知默认加星，一次性操作（幂等，可重复调用）。
 
     重要判定与列表/统计**完全同源**：优先 ``importance_level IN
@@ -351,9 +352,8 @@ def backfill_important_stars(
         imp_args: list = list(IMPORTANT_LEVELS)
         basis = "importance_level"
     else:
-        imp_where = (
-            "COALESCE(NULLIF(CAST(notice_type AS TEXT), ''), '公告') IN (%s)"
-            % ",".join("?" * len(IMPORTANT_TYPES))
+        imp_where = "COALESCE(NULLIF(CAST(notice_type AS TEXT), ''), '公告') IN (%s)" % ",".join(
+            "?" * len(IMPORTANT_TYPES)
         )
         imp_args = list(IMPORTANT_TYPES)
         basis = "notice_type"
@@ -361,8 +361,7 @@ def backfill_important_stars(
     if user_id is None:
         # 旧行为（共享单租户列）
         cur = conn.execute(
-            "UPDATE kaoyan_notices SET is_starred = TRUE, starred_at = ?"
-            f" WHERE is_starred = FALSE AND {imp_where}",
+            f"UPDATE kaoyan_notices SET is_starred = TRUE, starred_at = ? WHERE is_starred = FALSE AND {imp_where}",
             [now] + imp_args,
         )
     else:

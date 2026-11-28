@@ -10,18 +10,18 @@
 3. **只用专业课（第 3 门）匹配，绝不用数学/英语/政治**。
    825/832 条专业都考数学+英语，公共课人人必考，拿它匹配必然虚高到 98%+，
    零信息量——这是本脚本第一版的实测教训。
-4. 库内 `exam_subjects` 存的是**用' | ' 拼接的 JSON 字符串**（不是 JSON 数组），
-   必须 json.loads 后再按 `|` 切分。
+4. 库内 `exam_subjects` 可能是竖线文本或科目对象数组，
+   统一交给 services.major_coverage.decode_subjects 解析。
 
 用法
 ----
     python scripts/build_major_kb_link.py            # dry-run，只报告
     python scripts/build_major_kb_link.py --apply    # 写库（先 backup() 再写）
 """
+
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sqlite3
@@ -33,9 +33,13 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 
 # 路径按本文件位置推导（P0-B2：拆除机器专属绝对路径绑定）
-_REPO = Path(__file__).resolve().parents[2]
+_BACKEND = Path(__file__).resolve().parents[1]
+_REPO = _BACKEND.parent
 DB = str(_REPO / "database" / "kaoyan.db")
 BACKUP_DIR = str(_REPO / "data" / "backups")
+
+sys.path.insert(0, str(_BACKEND))
+from services.major_coverage import decode_subjects
 
 # 专业课别名表（L2 用）。本次只跑 L1，此表保留供后续人工审核后启用。
 SUBJECT_ALIAS: dict[str, list[str]] = {
@@ -62,12 +66,20 @@ SUBJECT_ALIAS: dict[str, list[str]] = {
 
 # 公共课：人人必考，不能用于匹配（否则匹配率虚高到 98%）
 PUBLIC_SUBJECTS = {
-    "政治", "英语", "英语一", "英语二", "数学", "数学一", "数学二", "数学三",
-    "英语或俄语", "英语或俄语或日语", "日语", "俄语",
+    "政治",
+    "英语",
+    "英语一",
+    "英语二",
+    "数学",
+    "数学一",
+    "数学二",
+    "数学三",
+    "英语或俄语",
+    "英语或俄语或日语",
+    "日语",
+    "俄语",
 }
 
-_CODE_RE = re.compile(r"[（(]\s*\d{3,5}\s*[）)]")
-_NOISE_RE = re.compile(r"[（(][^）)]*[）)]")
 _WS_RE = re.compile(r"\s+")
 
 SCHEMA_SQL = """
@@ -90,37 +102,6 @@ CREATE INDEX IF NOT EXISTS idx_mkb_major   ON kaoyan_major_kb_link (major_id);
 CREATE INDEX IF NOT EXISTS idx_mkb_school  ON kaoyan_major_kb_link (school_id);
 CREATE INDEX IF NOT EXISTS idx_mkb_subject ON kaoyan_major_kb_link (subject_name);
 """
-
-
-def decode_subjects(raw) -> list[str]:
-    """把 kaoyan_majors.exam_subjects 解析成科目名列表。
-
-    库内格式陷阱：存的是 **一个用 ' | ' 拼接的 JSON 字符串**，例如
-    '"(301)数学（一） | (201)英语（一） | (802)通信类专业综合"'。
-    """
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw)
-    except Exception:
-        return []
-    if isinstance(data, str):
-        data = [data]
-    if not isinstance(data, list):
-        return []
-    flat: list[str] = []
-    for item in data:
-        for seg in re.split(r"\s*\|\s*", str(item)):
-            if seg.strip():
-                flat.append(seg)
-    out: list[str] = []
-    for seg in flat:
-        seg = _CODE_RE.sub("", seg).strip()   # 剥 (301) 科目代码前缀
-        seg = _NOISE_RE.sub("", seg).strip()  # 剥（含..）等括注
-        seg = _WS_RE.sub("", seg)
-        if seg:
-            out.append(seg)
-    return out
 
 
 def professional_subject(subjects: list[str]) -> str | None:
@@ -153,8 +134,7 @@ def build_index(conn) -> dict[str, list[tuple[int, str]]]:
     """
     idx: dict[str, list[tuple[int, str]]] = defaultdict(list)
     rows = conn.execute(
-        "SELECT id, subject, file_name FROM documents WHERE subject IS NOT NULL "
-        "AND TRIM(subject) <> ''"
+        "SELECT id, subject, file_name FROM documents WHERE subject IS NOT NULL AND TRIM(subject) <> ''"
     ).fetchall()
     for did, subj, name in rows:
         key = _WS_RE.sub("", str(subj))
@@ -180,15 +160,17 @@ def collect_candidates(conn, idx) -> tuple[list[dict], Counter]:
             continue
         key = _WS_RE.sub("", ps)
         if key in idx:
-            links.append({
-                "major_id": mid,
-                "school_id": sid,
-                "school_name": sname or "",
-                "major_name": mname or "",
-                "major_code": mcode,
-                "subject_name": ps,
-                "kb_doc_count": len(idx[key]),
-            })
+            links.append(
+                {
+                    "major_id": mid,
+                    "school_id": sid,
+                    "school_name": sname or "",
+                    "major_name": mname or "",
+                    "major_code": mcode,
+                    "subject_name": ps,
+                    "kb_doc_count": len(idx[key]),
+                }
+            )
             stat["L1"] += 1
         else:
             stat["非L1"] += 1
@@ -216,13 +198,13 @@ def main() -> int:
         print("匹配统计（仅专业课）")
         print("=" * 70)
         print(f"  专业总数              {total}")
-        print(f"  L1 精确命中           {stat['L1']}  ({stat['L1']/total*100:.1f}%)")
+        print(f"  L1 精确命中           {stat['L1']}  ({stat['L1'] / total * 100:.1f}%)")
         print(f"  非 L1（本次不落）     {stat['非L1']}")
         print(f"  无专业课              {stat['无专业课']}")
 
         # 供给缺口：有多少专业考的科目在知识库完全没有对应 subject
         missing: Counter = Counter()
-        for mid, sid, sname, mname, mcode, raw in conn.execute(
+        for _mid, _sid, _sname, _mname, _mcode, raw in conn.execute(
             "SELECT m.id, m.school_id, s.name, m.name, m.code, m.exam_subjects "
             "FROM kaoyan_majors m LEFT JOIN kaoyan_schools s ON s.id = m.school_id"
         ):
@@ -242,8 +224,9 @@ def main() -> int:
         print()
         print("L1 关联按专业课分布 TOP15")
         for k, v in by_subject.most_common(15):
-            print(f"  {k:24s} {v:4d} 专业 / {idx[_WS_RE.sub('', k)][0] is not None} "
-                  f"{len(idx[_WS_RE.sub('', k)])} 篇文档")
+            print(
+                f"  {k:24s} {v:4d} 专业 / {idx[_WS_RE.sub('', k)][0] is not None} {len(idx[_WS_RE.sub('', k)])} 篇文档"
+            )
 
         if not args.apply:
             print()
@@ -262,8 +245,18 @@ def main() -> int:
             "(major_id, school_id, school_name, major_name, major_code, "
             " subject_name, match_level, match_type, kb_doc_count, confidence) "
             "VALUES (?,?,?,?,?,?,'L1','exact',?,1.0)",
-            [(r["major_id"], r["school_id"], r["school_name"], r["major_name"],
-              r["major_code"], r["subject_name"], r["kb_doc_count"]) for r in links],
+            [
+                (
+                    r["major_id"],
+                    r["school_id"],
+                    r["school_name"],
+                    r["major_name"],
+                    r["major_code"],
+                    r["subject_name"],
+                    r["kb_doc_count"],
+                )
+                for r in links
+            ],
         )
         conn.commit()
         n = conn.execute("SELECT COUNT(*) FROM kaoyan_major_kb_link").fetchone()[0]

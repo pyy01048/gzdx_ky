@@ -97,6 +97,7 @@ def _seed(db_schema):
                     school_id=9001,
                     major_id=9101,
                     year=2024,
+                    data_source="school_official",
                     enroll_count=30,
                     retest_count=45,
                     admit_count=30,
@@ -108,6 +109,7 @@ def _seed(db_schema):
                     school_id=9001,
                     major_id=9101,
                     year=2025,
+                    data_source="school_official",
                     enroll_count=30,
                     retest_count=42,
                     admit_count=30,
@@ -320,7 +322,7 @@ def test_analysis_heatmap_averages_are_not_row_multiplied():
 def test_analysis_scatter_exposes_public_school_id():
     r = client.get("/api/kaoyan/analysis/scatter", params={"year": 2025})
     assert r.status_code == 200
-    rows = r.json()["items"]
+    rows = [row for row in r.json()["items"] if row["id"] == 9001]
     assert len(rows) == 1
     assert rows[0]["id"] == 9001
     assert rows[0]["name"] == "测试大学A"
@@ -332,7 +334,16 @@ def test_public_admission_details_are_anonymized():
     r = client.get("/api/kaoyan/schools/9001/admissions/details")
     assert r.status_code == 200
     rows = r.json()
-    assert rows == [{"year": 2025, "major_name": "电子信息", "score_total": 440}]
+    assert rows == [
+        {
+            "year": 2025,
+            "major_name": "电子信息",
+            "score_total": 440,
+            "record_kind": "unverified",
+            "source_type": "unverified",
+            "verification_status": "unverified",
+        }
+    ]
     assert all(not ({"id", "exam_no", "name", "data_source"} & row.keys()) for row in rows)
 
     by_name = client.get("/api/kaoyan/schools/9001/admissions/details", params={"name": "测试考生"})
@@ -351,10 +362,11 @@ def test_auto_adjust_buckets():
         assert r.status_code == 200
         d = r.json()
         assert d["buckets"][expect_bucket], f"score={score} 应命中 {expect_bucket}"
-        hit = d["buckets"][expect_bucket][0]
-        assert hit["school_id"] == 9001
+        hit = next(item for item in d["buckets"][expect_bucket] if item["school_id"] == 9001)
         assert hit["reasons"], "每档必须有数据化理由"
-        assert 0 < hit["confidence"] < 1
+        assert 0 < hit["score_position"] < 1
+        assert 0 < hit["evidence_confidence"] <= 1
+        assert "confidence" not in hit
 
 
 def test_auto_adjust_validation():

@@ -32,8 +32,9 @@ from types import SimpleNamespace
 
 import pytest
 from database import SessionLocal
-from models import ErrorRecord, Flashcard, QuizQuestion, Task, Word
 from utils.timeutil import local_today, utcnow
+
+from models import ErrorRecord, Flashcard, QuizQuestion, Task, Word
 
 #: 测试主体 ID（与 utils.security.stub_principal 一致，conftest 已建 users 行）
 UID = 0

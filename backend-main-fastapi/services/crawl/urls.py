@@ -96,9 +96,7 @@ def canonicalize_url(url: str) -> str:
         port = None
     if ":" in host:  # IPv6
         host = f"[{host}]"
-    if port is not None and not (
-        (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
-    ):
+    if port is not None and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
         host = f"{host}:{port}"
     netloc = userinfo + host
 
@@ -110,11 +108,7 @@ def canonicalize_url(url: str) -> str:
     # --- query -------------------------------------------------------------
     query = ""
     if parts.query:
-        pairs = [
-            (k, v)
-            for k, v in parse_qsl(parts.query, keep_blank_values=True)
-            if not _is_tracking(k)
-        ]
+        pairs = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not _is_tracking(k)]
         if pairs:
             pairs.sort(key=lambda kv: (kv[0], kv[1]))
             query = urlencode(pairs)
@@ -145,7 +139,7 @@ def _tokenize(text: str) -> list[str]:
             if len(chunk) == 1:
                 tokens.append(chunk)
             else:
-                tokens.extend(chunk[i:i + 2] for i in range(len(chunk) - 1))
+                tokens.extend(chunk[i : i + 2] for i in range(len(chunk) - 1))
         else:
             tokens.append(chunk)
     return tokens

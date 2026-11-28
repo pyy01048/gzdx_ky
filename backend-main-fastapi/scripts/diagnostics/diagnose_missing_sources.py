@@ -6,6 +6,7 @@ r"""按文件名在项目内实际存储目录中找回"丢失"的源文件。
 （backend-main-fastapi/data/storage/documents/...）。
 本脚本建立 文件名 → 实际路径 索引，据此回填 file_path。
 """
+
 import os
 import sys
 from collections import defaultdict
@@ -14,8 +15,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import BASE_DIR, SessionLocal
-from models import Document
 from sqlalchemy import func
+
+from models import Document
 
 STORAGE_ROOTS = [
     os.path.join(BASE_DIR, "data", "storage", "documents"),
@@ -42,9 +44,11 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        docs = db.query(Document).filter(
-            (Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0)
-        ).all()
+        docs = (
+            db.query(Document)
+            .filter((Document.content.is_(None)) | (func.length(func.trim(Document.content)) == 0))
+            .all()
+        )
         print(f"待找回的空正文文档 {len(docs)} 篇\n")
 
         found = miss = 0

@@ -94,6 +94,9 @@ class QuizQuestion(BigIntPKMixin, TimestampMixin, Base):
     # —— 真题属性 —— #
     year: Mapped[int | None] = mapped_column(Integer, comment="真题年份；真题时必填")
     paper: Mapped[str | None] = mapped_column(String(100), comment="试卷标识，如 2026全国卷")
+    paper_id: Mapped[int | None] = mapped_column(
+        ForeignKey("papers.id", ondelete="SET NULL"), comment="精确关联的原卷 ID；NULL 表示仅保留原始字符串"
+    )
     source_paper: Mapped[str | None] = mapped_column(String(200), comment="来源试卷名")
     source_page: Mapped[int | None] = mapped_column(Integer, comment="来源页码")
     question_no: Mapped[int | None] = mapped_column(Integer, comment="卷内题号")

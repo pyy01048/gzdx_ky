@@ -15,8 +15,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path.cwd()))
 
 from database import SessionLocal  # noqa: E402
-from models import User  # noqa: E402
 from utils.security import hash_password  # noqa: E402
+
+from models import User  # noqa: E402
 
 pw = sys.stdin.readline().strip()
 if len(pw) < 8:

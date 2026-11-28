@@ -50,6 +50,7 @@ for el in r.elements:  # 结构化元素
     print(el.order, el.kind, el.text or el.latex)
 ```
 """
+
 from __future__ import annotations
 
 import os
@@ -309,7 +310,7 @@ def _text_from_ocr(ocr_blocks, bbox: Tuple[float, float, float, float]) -> str:
         return ""
     x1, y1, x2, y2 = bbox
     inside = []
-    for txt, ob, sc in ocr_blocks:
+    for txt, ob, _sc in ocr_blocks:
         ox1, oy1, ox2, oy2 = ob
         if ox2 <= ox1 or oy2 <= oy1:
             continue  # 无坐标，跳过（无法归属）
@@ -519,7 +520,7 @@ def compose_page_text(
 
         elements: List[PageElement] = []
         seen_boxes: set = set()
-        formula_budget = max_formulas if max_formulas > 0 else 10 ** 9
+        formula_budget = max_formulas if max_formulas > 0 else 10**9
         formula_used = 0
 
         for cid, score, bbox in boxes:
@@ -532,19 +533,27 @@ def compose_page_text(
 
             if cid in FORMULA_CLASSES:
                 if formula_used >= formula_budget:
-                    elements.append(PageElement(
-                        kind="formula" if cid == CLS_INLINE_FORMULA else "display_formula",
-                        bbox=bbox, label=label, score=score, ok=False,
-                        reason="超出本页识别预算", source="skipped",
-                    ))
+                    elements.append(
+                        PageElement(
+                            kind="formula" if cid == CLS_INLINE_FORMULA else "display_formula",
+                            bbox=bbox,
+                            label=label,
+                            score=score,
+                            ok=False,
+                            reason="超出本页识别预算",
+                            source="skipped",
+                        )
+                    )
                     continue
                 formula_used += 1
                 kind = "formula" if cid == CLS_INLINE_FORMULA else "display_formula"
                 el = PageElement(kind=kind, bbox=bbox, label=label, score=score, source="formula_onnx")
                 try:
                     x1, y1, x2, y2 = (int(round(v)) for v in bbox)
-                    x1 = max(0, x1 - 3); y1 = max(0, y1 - 3)
-                    x2 = min(pw, x2 + 3); y2 = min(ph, y2 + 3)
+                    x1 = max(0, x1 - 3)
+                    y1 = max(0, y1 - 3)
+                    x2 = min(pw, x2 + 3)
+                    y2 = min(ph, y2 + 3)
                     if x2 > x1 and y2 > y1:
                         r = rec.recognize_image(img.crop((x1, y1, x2, y2))) if hasattr(rec, "recognize_image") else None
                         if r is None:
@@ -568,15 +577,27 @@ def compose_page_text(
                     if txt:
                         src = "ocr"
                 if txt:
-                    elements.append(PageElement(
-                        kind="text", bbox=bbox, text=txt, label=label,
-                        score=score, source=src,
-                    ))
+                    elements.append(
+                        PageElement(
+                            kind="text",
+                            bbox=bbox,
+                            text=txt,
+                            label=label,
+                            score=score,
+                            source=src,
+                        )
+                    )
             elif cid == CLS_TABLE:
-                elements.append(PageElement(
-                    kind="table", bbox=bbox, label=label, score=score,
-                    text="", source="layout",
-                ))
+                elements.append(
+                    PageElement(
+                        kind="table",
+                        bbox=bbox,
+                        label=label,
+                        score=score,
+                        text="",
+                        source="layout",
+                    )
+                )
 
         elements = assign_reading_order(elements)
         res.elements = elements

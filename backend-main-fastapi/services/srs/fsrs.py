@@ -17,9 +17,10 @@ import datetime
 import math
 from typing import Any, Optional
 
-from models import ReviewSchedule
 from sqlalchemy.orm import Session
 from utils.timeutil import to_naive_utc, utcnow
+
+from models import ReviewSchedule
 
 # FSRS-4.5 默认参数
 W = [

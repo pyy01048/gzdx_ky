@@ -331,16 +331,16 @@ export default function Notebook() {
     ? (notebook.find((n) => String(n.id) === String(showDetail.id)) || showDetail)
     : null
 
-  const resetFilters = () => {
+  const resetFilters = useCallback(() => {
     setFilter('all')
     setSubject('all')
     setQ('')
     setTagFilter('')
-  }
+  }, [])
 
-  const toggleSelect = (id) => {
+  const toggleSelect = useCallback((id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
+  }, [])
 
   /* 统一本地改写的字段映射；云端同步失败时仍更新本地视图（并在显式操作时提示）。 */
   const patchError = async (id, patch, { notify = false } = {}) => {
@@ -361,12 +361,12 @@ export default function Notebook() {
     return !syncErr
   }
 
-  const openAdd = () => {
+  const openAdd = useCallback(() => {
     setEditingId(null)
     setForm(EMPTY_FORM)
     setFormTab('edit')
     setShowAdd(true)
-  }
+  }, [])
 
   const beginEdit = (n) => {
     setShowDetail(null)
@@ -476,7 +476,7 @@ export default function Notebook() {
     toastOk(correct ? '已标记答对，错题毕业' : '已记录答错，明天再复习')
   }
 
-  const startReview = () => {
+  const startReview = useCallback(() => {
     const dueList = notebook.filter((n) => isDueToday(n, today))
     if (dueList.length === 0) return toastWarn('今日没有待复习的错题')
     setReviewQueue(dueList)
@@ -486,15 +486,15 @@ export default function Notebook() {
     setReviewStats({ again: 0, hard: 0, good: 0, easy: 0, startTime: Date.now() })
     setReviewMode(true)
     setFilter('active')
-  }
+  }, [notebook, today])
 
-  const exitReview = () => {
+  const exitReview = useCallback(() => {
     setReviewMode(false)
     setReviewQueue([])
     setReviewIdx(0)
     setShowAnswer(false)
     setGrading(false)
-  }
+  }, [])
 
   const reviewWithGrade = async (grade) => {
     if (grading) return
@@ -801,13 +801,13 @@ export default function Notebook() {
     }
   }
 
-  const openDetail = (n) => {
+  const openDetail = useCallback((n) => {
     setShowDetail(n)
     setDetailShowAnswer(false)
     setAiFollowup({ input: '', busy: false, history: [] })
-  }
+  }, [])
 
-  const goDetail = (delta) => {
+  const goDetail = useCallback((delta) => {
     if (!liveDetail) return
     const idx = list.findIndex((n) => String(n.id) === String(liveDetail.id))
     if (idx < 0) return
@@ -816,16 +816,16 @@ export default function Notebook() {
     setShowDetail(next)
     setDetailShowAnswer(false)
     setAiFollowup({ input: '', busy: false, history: [] })
-  }
+  }, [liveDetail, list])
 
   const detailIdx = liveDetail ? list.findIndex((n) => String(n.id) === String(liveDetail.id)) : -1
 
-  const resetSummary = () => {
+  const resetSummary = useCallback(() => {
     setReviewSummary(null)
     setReviewQueue([])
     setReviewIdx(0)
     setShowAnswer(false)
-  }
+  }, [])
 
   return (
     <div className="v3-stack v3-nb v3-glasspage">

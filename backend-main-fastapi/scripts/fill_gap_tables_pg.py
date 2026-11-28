@@ -17,18 +17,18 @@
     python scripts/fill_gap_tables_pg.py --apply    # 写库
     python scripts/fill_gap_tables_pg.py --only subjects,papers   # 只跑部分模块
 """
+
 from __future__ import annotations
 
 import argparse
 import sys
 from collections import Counter
 from datetime import datetime, timezone
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-import sys
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts._conn import dsn
@@ -96,17 +96,17 @@ CORE_SUBJECTS = {
 
 # 科目 → 学科门类 code 映射（subject_discipline_links）
 SUBJECT_DISCIPLINE_MAP = {
-    "政治": "03",            # 法学（马克思主义理论）
-    "英语": "05",            # 文学（外国语言文学）
-    "数学": "07",            # 理学（数学）
-    "数据结构": "08",        # 工学（计算机科学与技术）
+    "政治": "03",  # 法学（马克思主义理论）
+    "英语": "05",  # 文学（外国语言文学）
+    "数学": "07",  # 理学（数学）
+    "数据结构": "08",  # 工学（计算机科学与技术）
     "操作系统": "08",
     "计算机网络": "08",
     "计算机基础": "08",
-    "模拟电子技术": "08",    # 工学（电子科学与技术）
+    "模拟电子技术": "08",  # 工学（电子科学与技术）
     "数字电子技术": "08",
     "电路": "08",
-    "自动控制原理": "08",    # 工学（控制科学与工程）
+    "自动控制原理": "08",  # 工学（控制科学与工程）
     "通信原理": "08",
     "数字信号处理": "08",
     "电磁场与电磁波": "08",
@@ -131,8 +131,15 @@ KAOYAN_SUBJECTS = set(CORE_SUBJECTS.keys())
 
 # 题型默认分值（与 paper_builder.DEFAULT_SCORES 对齐）
 DEFAULT_SCORES = {
-    "single": 2, "multiple": 4, "judge": 2, "fill": 3,
-    "calc": 10, "essay": 15, "draw": 10, "proof": 10, "other": 5,
+    "single": 2,
+    "multiple": 4,
+    "judge": 2,
+    "fill": 3,
+    "calc": 10,
+    "essay": 15,
+    "draw": 10,
+    "proof": 10,
+    "other": 5,
 }
 
 
@@ -252,7 +259,7 @@ def fill_papers(cur, apply: bool) -> dict:
         subject = g["subject"]
         year = g["year"]
         paper_title = g["paper"]
-        qcnt = g["qcnt"]
+        g["qcnt"]
 
         # 幂等：title 已存在则跳过（mock 卷与真题卷 title 不同，不会误判）
         cur.execute("SELECT id FROM papers WHERE title = %s", (paper_title,))
@@ -370,11 +377,12 @@ def fill_exam_blueprints(cur, apply: bool) -> int:
     skipped = 0
     # 按 paper 聚合
     from collections import defaultdict
+
     papers_map = defaultdict(list)
     for r in rows:
         papers_map[r["paper_id"]].append(r)
 
-    for paper_id, items in papers_map.items():
+    for _paper_id, items in papers_map.items():
         paper = items[0]["paper"]
         subject = items[0]["subject"]
         subject_id = items[0]["subject_id"]
@@ -433,7 +441,7 @@ def fill_code_tags(cur, apply: bool) -> int:
 
     tag_set = {}
     for p in problems:
-        for tag in (p["tags"] or []):
+        for tag in p["tags"] or []:
             tag_set.setdefault(tag, 0)
             tag_set[tag] += 1
 
@@ -448,8 +456,10 @@ def fill_code_tags(cur, apply: bool) -> int:
         if tag in tag_id_map:
             continue
         if apply:
-            cur.execute("INSERT INTO code_tags (name, category, created_at) VALUES (%s, %s, %s) RETURNING id",
-                        (tag, "algorithm", now()))
+            cur.execute(
+                "INSERT INTO code_tags (name, category, created_at) VALUES (%s, %s, %s) RETURNING id",
+                (tag, "algorithm", now()),
+            )
             tag_id = cur.fetchone()["id"]
         else:
             tag_id = None
@@ -461,7 +471,7 @@ def fill_code_tags(cur, apply: bool) -> int:
     links = 0
     for p in problems:
         pid = p["id"]
-        for tag in (p["tags"] or []):
+        for tag in p["tags"] or []:
             tid = tag_id_map.get(tag)
             if not tid:
                 continue
@@ -534,7 +544,7 @@ def fill_question_images(cur, apply: bool) -> int:
     skipped = 0
     for q in questions:
         qid = q["id"]
-        for img in (q["images"] or []):
+        for img in q["images"] or []:
             # 幂等：同 question_id + image_path 已存在则跳过
             cur.execute(
                 "SELECT id FROM question_images WHERE question_id = %s AND image_path = %s",

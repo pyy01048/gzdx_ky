@@ -1,0 +1,104 @@
+{
+  "date": "2026-11-26T18:03:16.423Z",
+  "checks": [],
+  "scenarios": [
+    {
+      "name": "desktop-empty-to-practice",
+      "viewport": "1440x900",
+      "checks": [
+        "新号诚实空态与三个真实入口",
+        "建库表单清理首尾空格并立即展示",
+        "自建题写入个人资产并规范化选项",
+        "未掌握/已掌握筛选与手动状态切换",
+        "练习响应与页面提交前均不泄露答案和解析",
+        "提交等待期间不揭示，服务端返回后揭示并更新掌握状态",
+        "完成练习后进入结果页"
+      ],
+      "metrics": {
+        "overflow": 0,
+        "viewport": 1440,
+        "root_client_width": 1440,
+        "root_scroll_width": 1440,
+        "body_client_width": 1440,
+        "body_scroll_width": 1440,
+        "body_background": "rgb(246, 244, 239)",
+        "root_background": "rgb(248, 250, 253)",
+        "shell_width": null,
+        "h1": [
+          "我的题库"
+        ]
+      },
+      "errors": []
+    },
+    {
+      "name": "mobile-submit-failure",
+      "viewport": "390x844",
+      "checks": [
+        "移动端题库列表无横向溢出",
+        "移动端答题卡入口完整可见且可打开",
+        "移动端提交失败仅显示错误，不猜答案、不更新掌握状态"
+      ],
+      "metrics": {
+        "list": {
+          "overflow": 0,
+          "viewport": 390,
+          "root_client_width": 390,
+          "root_scroll_width": 390,
+          "body_client_width": 390,
+          "body_scroll_width": 390,
+          "body_background": "rgb(246, 244, 239)",
+          "root_background": "rgb(248, 250, 253)",
+          "shell_width": null,
+          "h1": [
+            "我的题库"
+          ]
+        },
+        "practice": {
+          "overflow": 0,
+          "viewport": 390,
+          "root_client_width": 390,
+          "root_scroll_width": 390,
+          "body_client_width": 390,
+          "body_scroll_width": 390,
+          "body_background": "rgb(246, 244, 239)",
+          "root_background": "rgb(248, 250, 253)",
+          "shell_width": null,
+          "h1": [
+            "我的题库"
+          ]
+        },
+        "floating": {
+          "sheetFabBox": {
+            "x": 258.3125,
+            "y": 648,
+            "width": 115.6875,
+            "height": 44
+          },
+          "aiOrbBox": {
+            "x": 320,
+            "y": 704,
+            "width": 52,
+            "height": 52
+          },
+          "scrolledSheetFabBox": {
+            "x": 258.3125,
+            "y": 648,
+            "width": 115.6875,
+            "height": 44
+          },
+          "scrolledAiOrbBox": {
+            "x": 320,
+            "y": 704,
+            "width": 52,
+            "height": 52
+          },
+          "scrollState": {
+            "windowY": 199,
+            "internalScrollTops": []
+          }
+        }
+      },
+      "errors": []
+    }
+  ]
+}

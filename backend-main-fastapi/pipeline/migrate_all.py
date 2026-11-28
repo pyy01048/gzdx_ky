@@ -30,6 +30,7 @@
     python -m pipeline.migrate_all --only documents     # 只迁指定表
     python -m pipeline.migrate_all --skip-chunks        # 跳过大表（chunks 6 万行）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -150,36 +151,57 @@ def _q(name: str) -> str:
 # --------------------------------------------------------------------------- #
 ENUM_MAP: dict[str, dict[str, str]] = {
     "degree_type": {
-        "专硕": "professional", "学硕": "academic",
-        "专业学位": "professional", "学术学位": "academic",
+        "专硕": "professional",
+        "学硕": "academic",
+        "专业学位": "professional",
+        "学术学位": "academic",
     },
     "prep_stage": {
-        "基础": "basic", "基础阶段": "basic",
-        "强化": "intensive", "强化阶段": "intensive",
-        "冲刺": "sprint", "冲刺阶段": "sprint",
-        "复试": "retest", "复试阶段": "retest",
+        "基础": "basic",
+        "基础阶段": "basic",
+        "强化": "intensive",
+        "强化阶段": "intensive",
+        "冲刺": "sprint",
+        "冲刺阶段": "sprint",
+        "复试": "retest",
+        "复试阶段": "retest",
     },
     "review_result": {
-        "fuzzy": "hard", "模糊": "hard",
-        "mastered": "easy", "会": "good",
-        "forgotten": "again", "不会": "again",
+        "fuzzy": "hard",
+        "模糊": "hard",
+        "mastered": "easy",
+        "会": "good",
+        "forgotten": "again",
+        "不会": "again",
     },
     "mastery_level": {
-        "new": "not_mastered", "未学": "not_mastered",
-        "weak": "learning", "薄弱": "learning",
+        "new": "not_mastered",
+        "未学": "not_mastered",
+        "weak": "learning",
+        "薄弱": "learning",
         "mastered": "reviewing",
     },
     "answer_source": {
-        "真题解析": "source_extract", "题库": "bank",
-        "教材": "source_extract", "AI": "llm_generated",
+        "真题解析": "source_extract",
+        "题库": "bank",
+        "教材": "source_extract",
+        "AI": "llm_generated",
     },
     "classify_source": {
-        "keyword": "keyword", "模型": "llm", "向量": "vector",
+        "keyword": "keyword",
+        "模型": "llm",
+        "向量": "vector",
     },
-    "question_type": {"选择": "single", "填空": "fill", "判断": "judge",
-                      "简答": "essay", "计算": "calc", "作图": "draw", "画图": "draw"},
-    "content_category": {"教材": "textbook", "例题": "example", "真题": "exam",
-                         "方法": "method", "词汇": "glossary"},
+    "question_type": {
+        "选择": "single",
+        "填空": "fill",
+        "判断": "judge",
+        "简答": "essay",
+        "计算": "calc",
+        "作图": "draw",
+        "画图": "draw",
+    },
+    "content_category": {"教材": "textbook", "例题": "example", "真题": "exam", "方法": "method", "词汇": "glossary"},
     "quality_grade": {"优秀": "A", "良好": "B", "合格": "C"},
     "importance_level": {"紧急": "urgent", "重要": "important", "一般": "normal"},
 }
@@ -221,10 +243,7 @@ ENUM_FALLBACK: dict[str, str] = {
 def _load_enum_labels(pg: psycopg.Connection) -> dict[str, set[str]]:
     labels: dict[str, set[str]] = {}
     with pg.cursor() as cur:
-        cur.execute(
-            "SELECT t.typname, e.enumlabel FROM pg_type t "
-            "JOIN pg_enum e ON e.enumtypid = t.oid"
-        )
+        cur.execute("SELECT t.typname, e.enumlabel FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid")
         for typname, label in cur.fetchall():
             labels.setdefault(typname, set()).add(label)
     return labels
@@ -248,7 +267,7 @@ def _to_bool(v: Any) -> bool | None:
         return None
     if isinstance(v, bool):
         return v
-    if isinstance(v, (int, float)):
+    if isinstance(v, int | float):
         return bool(v)
     s = str(v).strip().lower()
     if s in {"1", "true", "t", "yes", "y", "是"}:
@@ -262,7 +281,7 @@ def _to_json(v: Any) -> Any:
     """SQLite 里的 JSON 列多为 TEXT，转成 Python 对象供 psycopg Json 包装。"""
     if v is None:
         return None
-    if isinstance(v, (dict, list)):
+    if isinstance(v, dict | list):
         return v
     s = str(v).strip()
     if not s:
@@ -280,8 +299,7 @@ def _to_dt(v: Any) -> Any:
     if isinstance(v, datetime):
         return v
     s = str(v).strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f",
-                "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
         try:
             return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
         except ValueError:
@@ -346,7 +364,7 @@ class Migrator:
     # ---- 辅助：拿 SQLite 表的列名 ----
     @staticmethod
     def sqlite_cols(conn: sqlite3.Connection, table: str) -> set[str]:
-        return {r[1] for r in conn.execute(f'PRAGMA table_info({_q(table)})')}
+        return {r[1] for r in conn.execute(f"PRAGMA table_info({_q(table)})")}
 
     def pg_cols(self, table: str) -> dict[str, tuple[str, str, bool]]:
         """返回 {列名: (data_type, udt_name, 是否可空)}，带缓存。
@@ -426,12 +444,9 @@ class Migrator:
         if total == 0:
             return {"src": src, "total": 0, "inserted": 0, "skipped": 0}
 
-        rows = sconn.execute(
-            f"SELECT {','.join(_q(c) for c in common)} FROM {_q(src)}"
-        ).fetchall()
+        rows = sconn.execute(f"SELECT {','.join(_q(c) for c in common)} FROM {_q(src)}").fetchall()
         if self.dry_run:
-            return {"src": src, "dst": dst, "total": total, "inserted": 0,
-                    "dry_run": True, "columns": common}
+            return {"src": src, "dst": dst, "total": total, "inserted": 0, "dry_run": True, "columns": common}
 
         inserted = 0
         skipped = 0
@@ -469,10 +484,12 @@ class Migrator:
         # 逐行执行（ON CONFLICT DO NOTHING 保证可重入）
         with self.pg.cursor() as cur:
             for i in range(0, len(stmts), BATCH):
-                chunk = stmts[i:i + BATCH]
+                chunk = stmts[i : i + BATCH]
                 for cols, vals in chunk:
-                    sql = (f"INSERT INTO {_q(dst)} ({','.join(_q(c) for c in cols)}) "
-                           f"VALUES ({','.join(['%s'] * len(cols))}) ON CONFLICT DO NOTHING")
+                    sql = (
+                        f"INSERT INTO {_q(dst)} ({','.join(_q(c) for c in cols)}) "
+                        f"VALUES ({','.join(['%s'] * len(cols))}) ON CONFLICT DO NOTHING"
+                    )
                     try:
                         with cur.connection.transaction():
                             cur.execute(sql, vals)
@@ -483,15 +500,21 @@ class Migrator:
                             errors.append(f"id={vals[0] if vals else '?'}: {str(exc)[:200]}")
                 self.pg.commit()
                 self._pk_cache.pop(dst, None)  # 失效缓存
-        return {"src": src, "dst": dst, "total": total, "inserted": inserted,
-                "skipped": skipped, "errors_sample": errors,
-                "fk_nulled": fk_nulled}
+        return {
+            "src": src,
+            "dst": dst,
+            "total": total,
+            "inserted": inserted,
+            "skipped": skipped,
+            "errors_sample": errors,
+            "fk_nulled": fk_nulled,
+        }
 
     # ---- 行值转换 ----
     def _convert_row(self, dst: str, cols: list[str], row: tuple, errors: list[str]) -> list | None:
         meta = self.pg_cols(dst)
         out: list[Any] = []
-        for col, val in zip(cols, row):
+        for col, val in zip(cols, row, strict=False):
             d_type, udt, nullable = meta.get(col, ("text", "text", True))
             try:
                 out.append(self._convert_value(dst, col, val, d_type, udt, nullable))
@@ -500,8 +523,7 @@ class Migrator:
                 return None
         return out
 
-    def _convert_value(self, dst: str, col: str, val: Any,
-                       d_type: str, udt: str, nullable: bool) -> Any:
+    def _convert_value(self, dst: str, col: str, val: Any, d_type: str, udt: str, nullable: bool) -> Any:
         # —— 布尔列：按 PG 实际类型判定，不靠列名硬猜 ——
         if d_type == "boolean":
             b = _to_bool(val)
@@ -521,8 +543,16 @@ class Migrator:
             if j is None:
                 # NOT NULL 的 JSON 列兜底：数组类列给 []，对象类列给 {}
                 if not nullable:
-                    if col in {"tags", "reference_books", "exam_subjects", "source_ids",
-                               "question_types", "chapters", "review_history", "validation_errors"}:
+                    if col in {
+                        "tags",
+                        "reference_books",
+                        "exam_subjects",
+                        "source_ids",
+                        "question_types",
+                        "chapters",
+                        "review_history",
+                        "validation_errors",
+                    }:
                         return Json([])
                     return Json({})
                 return None
@@ -534,8 +564,17 @@ class Migrator:
                 return datetime.now(timezone.utc)
             return dt
         # —— 数值类 ——
-        if d_type in {"smallint", "integer", "bigint", "real", "double precision",
-                      "numeric", "smallserial", "serial", "bigserial"}:
+        if d_type in {
+            "smallint",
+            "integer",
+            "bigint",
+            "real",
+            "double precision",
+            "numeric",
+            "smallserial",
+            "serial",
+            "bigserial",
+        }:
             if val is None or (isinstance(val, str) and val.strip() == ""):
                 return 0 if not nullable else None
             return val
@@ -588,9 +627,21 @@ def migrate_documents(m: Migrator, sconn: sqlite3.Connection) -> dict:
     ).fetchall()
     inserted = skipped = 0
     downgrades: list[dict] = []
-    fmt_map = {"pdf": "pdf", "txt": "txt", "doc": "doc", "docx": "docx", "md": "md",
-               "image": "image", "pptx": "pptx", "ppt": "ppt", "xlsx": "xlsx",
-               "html": "html", "json": "json", "jpg": "jpg", "png": "png"}
+    fmt_map = {
+        "pdf": "pdf",
+        "txt": "txt",
+        "doc": "doc",
+        "docx": "docx",
+        "md": "md",
+        "image": "image",
+        "pptx": "pptx",
+        "ppt": "ppt",
+        "xlsx": "xlsx",
+        "html": "html",
+        "json": "json",
+        "jpg": "jpg",
+        "png": "png",
+    }
     DOC_TYPES = {"raw", "note", "index"}
     CCATS = {"textbook", "example", "exam", "method", "glossary", "other"}
     STAGES = {"初试", "复试"}
@@ -598,15 +649,39 @@ def migrate_documents(m: Migrator, sconn: sqlite3.Connection) -> dict:
     ISTATUS = {"pending", "indexing", "indexed", "failed", "skipped"}
     with m.pg.cursor() as cur:
         for r in rows:
-            (did, fname, fpath, size, ftype, content, subject, doc_type, ccat,
-             slevel, istatus, progress, kpcount, ocr, stage, ssource, ima_id,
-             folder, ctype, created) = r
+            (
+                did,
+                fname,
+                fpath,
+                size,
+                ftype,
+                content,
+                subject,
+                doc_type,
+                ccat,
+                slevel,
+                istatus,
+                progress,
+                kpcount,
+                ocr,
+                stage,
+                ssource,
+                ima_id,
+                folder,
+                ctype,
+                created,
+            ) = r
             body = _clean_text((content or "").strip())
             if not body:
                 skipped += 1
-                downgrades.append({"table": "documents", "id": did,
-                                   "reason": "content 为空，会被 ck_documents_canonical 拒绝",
-                                   "action": "skip"})
+                downgrades.append(
+                    {
+                        "table": "documents",
+                        "id": did,
+                        "reason": "content 为空，会被 ck_documents_canonical 拒绝",
+                        "action": "skip",
+                    }
+                )
                 continue
             dt = doc_type if doc_type in DOC_TYPES else "raw"
             cc = ccat if ccat in CCATS else None
@@ -627,22 +702,45 @@ def migrate_documents(m: Migrator, sconn: sqlite3.Connection) -> dict:
                                %s::doc_type,%s::content_category,%s::exam_stage,%s::structure_level,
                                %s::index_status,%s,%s,0,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT DO NOTHING""",
-                        (did, _clean_text(fname) or "未命名文档", fpath, size,
-                         fmt_map.get((ftype or "").lower(), "other"), body, body,
-                         m.resolve_subject(subject), subject, dt, cc, st, sl, ist,
-                         progress if isinstance(progress, (int, float)) and 0 <= progress <= 1 else 0,
-                         kpcount or 0, bool(ocr), ssource, ima_id, folder, ctype,
-                         _to_dt(created) or datetime.now(timezone.utc)),
+                        (
+                            did,
+                            _clean_text(fname) or "未命名文档",
+                            fpath,
+                            size,
+                            fmt_map.get((ftype or "").lower(), "other"),
+                            body,
+                            body,
+                            m.resolve_subject(subject),
+                            subject,
+                            dt,
+                            cc,
+                            st,
+                            sl,
+                            ist,
+                            progress if isinstance(progress, int | float) and 0 <= progress <= 1 else 0,
+                            kpcount or 0,
+                            bool(ocr),
+                            ssource,
+                            ima_id,
+                            folder,
+                            ctype,
+                            _to_dt(created) or datetime.now(timezone.utc),
+                        ),
                     )
                 inserted += 1
             except Exception as exc:  # noqa: BLE001
                 skipped += 1
                 if len(downgrades) < 60:
-                    downgrades.append({"table": "documents", "id": did,
-                                       "reason": str(exc)[:180], "action": "error"})
+                    downgrades.append({"table": "documents", "id": did, "reason": str(exc)[:180], "action": "error"})
         m.pg.commit()
-    return {"src": "documents", "dst": "documents", "total": len(rows),
-            "inserted": inserted, "skipped": skipped, "downgrades": downgrades}
+    return {
+        "src": "documents",
+        "dst": "documents",
+        "total": len(rows),
+        "inserted": inserted,
+        "skipped": skipped,
+        "downgrades": downgrades,
+    }
 
 
 def migrate_quiz_questions(m: Migrator, sconn: sqlite3.Connection) -> dict:
@@ -659,10 +757,39 @@ def migrate_quiz_questions(m: Migrator, sconn: sqlite3.Connection) -> dict:
     allowed_q = {"single", "multiple", "judge", "fill", "calc", "essay", "draw", "proof", "other"}
     with m.pg.cursor() as cur:
         for r in rows:
-            (qid, content, options, answer, analysis, subject, chapter, kp, difficulty,
-             source, qtype, created, year, atype, avail, junk, retest,
-             asrc, figmiss, conf, aigen, verified, paper, spaper, spage, qno,
-             extid, vgroup, quality, maxscore, rubric) = r
+            (
+                qid,
+                content,
+                options,
+                answer,
+                analysis,
+                subject,
+                chapter,
+                kp,
+                difficulty,
+                source,
+                qtype,
+                created,
+                year,
+                atype,
+                avail,
+                junk,
+                retest,
+                asrc,
+                figmiss,
+                conf,
+                aigen,
+                verified,
+                paper,
+                spaper,
+                spage,
+                qno,
+                extid,
+                vgroup,
+                quality,
+                maxscore,
+                rubric,
+            ) = r
             src = str(source or "")
             if src.startswith("真题:"):
                 kind = "past_exam"
@@ -673,14 +800,19 @@ def migrate_quiz_questions(m: Migrator, sconn: sqlite3.Connection) -> dict:
             final_year = year if isinstance(year, int) and 1980 <= year <= 2100 else _year_from_text(src)
             if kind == "past_exam" and final_year is None:
                 kind = "chapter_exercise"
-                downgrades.append({"table": "quiz_questions", "id": qid,
-                                   "reason": "source 前缀为真题但无法确定年份",
-                                   "action": "past_exam→chapter_exercise", "source": src[:80]})
+                downgrades.append(
+                    {
+                        "table": "quiz_questions",
+                        "id": qid,
+                        "reason": "source 前缀为真题但无法确定年份",
+                        "action": "past_exam→chapter_exercise",
+                        "source": src[:80],
+                    }
+                )
             qt = (qtype or "").strip().lower()
             if qt not in allowed_q:
                 qt = "other"
             opts_val = None
-            opt_count = None
             if qt in {"single", "multiple", "judge"}:
                 try:
                     raw = json.loads(options) if isinstance(options, str) and options.strip() else options
@@ -695,7 +827,7 @@ def migrate_quiz_questions(m: Migrator, sconn: sqlite3.Connection) -> dict:
                             norm.append({"key": chr(65 + i), "text": it})
                     if 2 <= len(norm) <= 10:
                         opts_val = Json(norm)
-                        opt_count = len(norm)
+                        len(norm)
             at = (atype or "").strip().lower()
             if at not in {"objective", "subjective"}:
                 at = "objective" if qt in {"single", "multiple", "judge", "fill"} else "subjective"
@@ -711,8 +843,9 @@ def migrate_quiz_questions(m: Migrator, sconn: sqlite3.Connection) -> dict:
             asrc_val = None
             if asrc:
                 s = str(asrc).strip()
-                asrc_val = s if s in m.enum_labels.get("answer_source", set()) \
-                    else ENUM_MAP.get("answer_source", {}).get(s)
+                asrc_val = (
+                    s if s in m.enum_labels.get("answer_source", set()) else ENUM_MAP.get("answer_source", {}).get(s)
+                )
             try:
                 with cur.connection.transaction():
                     cur.execute(
@@ -727,24 +860,57 @@ def migrate_quiz_questions(m: Migrator, sconn: sqlite3.Connection) -> dict:
                                %s,%s,%s::question_type,%s::answer_type,%s,%s,%s,%s::confidence_level,
                                %s::quality_grade,%s,%s,%s::answer_source,%s,%s,%s,%s)
                        ON CONFLICT DO NOTHING""",
-                        (qid, _clean_text(content) or "", opts_val, answer, analysis,
-                         rubric, maxscore if isinstance(maxscore, (int, float)) else None,
-                         subject, chapter, kp, d, kind, src, spaper, spage, qno, extid, vgroup,
-                         qt, at, bool(avail) if avail is not None else True, bool(junk),
-                         bool(retest), cl, qg, bool(aigen), bool(verified), asrc_val,
-                         int(figmiss) if isinstance(figmiss, (int, bool)) else 0,
-                         final_year, paper,
-                         _to_dt(created) or datetime.now(timezone.utc)),
+                        (
+                            qid,
+                            _clean_text(content) or "",
+                            opts_val,
+                            answer,
+                            analysis,
+                            rubric,
+                            maxscore if isinstance(maxscore, int | float) else None,
+                            subject,
+                            chapter,
+                            kp,
+                            d,
+                            kind,
+                            src,
+                            spaper,
+                            spage,
+                            qno,
+                            extid,
+                            vgroup,
+                            qt,
+                            at,
+                            bool(avail) if avail is not None else True,
+                            bool(junk),
+                            bool(retest),
+                            cl,
+                            qg,
+                            bool(aigen),
+                            bool(verified),
+                            asrc_val,
+                            int(figmiss) if isinstance(figmiss, int | bool) else 0,
+                            final_year,
+                            paper,
+                            _to_dt(created) or datetime.now(timezone.utc),
+                        ),
                     )
                 inserted += 1
             except Exception as exc:  # noqa: BLE001
                 skipped += 1
                 if len(downgrades) < 80:
-                    downgrades.append({"table": "quiz_questions", "id": qid,
-                                       "reason": str(exc)[:200], "action": "error"})
+                    downgrades.append(
+                        {"table": "quiz_questions", "id": qid, "reason": str(exc)[:200], "action": "error"}
+                    )
         m.pg.commit()
-    return {"src": "quiz_questions", "dst": "quiz_questions", "total": len(rows),
-            "inserted": inserted, "skipped": skipped, "downgrades": downgrades}
+    return {
+        "src": "quiz_questions",
+        "dst": "quiz_questions",
+        "total": len(rows),
+        "inserted": inserted,
+        "skipped": skipped,
+        "downgrades": downgrades,
+    }
 
 
 def migrate_knowledge_points(m: Migrator, sconn: sqlite3.Connection) -> dict:
@@ -763,21 +929,48 @@ def migrate_knowledge_points(m: Migrator, sconn: sqlite3.Connection) -> dict:
     ES = {"smart_ingest", "batch", "manual"}
     with m.pg.cursor() as cur:
         for r in rows:
-            (kid, name, subject, chapter, parent_id, mastery, freq, desc, created, doc_id,
-             qtypes, difficulty, rcount, lastrev, ease, interval, lapses,
-             qcount, scid, scidx, esrc, ssrc) = r
+            (
+                kid,
+                name,
+                subject,
+                chapter,
+                parent_id,
+                mastery,
+                freq,
+                desc,
+                created,
+                doc_id,
+                qtypes,
+                difficulty,
+                rcount,
+                lastrev,
+                ease,
+                interval,
+                lapses,
+                qcount,
+                scid,
+                scidx,
+                esrc,
+                ssrc,
+            ) = r
             if parent_id == kid:
                 skipped += 1
-                downgrades.append({"table": "knowledge_points", "id": kid,
-                                   "reason": "parent_id 自引用", "action": "skip"})
+                downgrades.append(
+                    {"table": "knowledge_points", "id": kid, "reason": "parent_id 自引用", "action": "skip"}
+                )
                 continue
             # 外键预检：父文档/分块不存在则置 NULL，避免整行被拒
             safe_doc = doc_id if (doc_id is None or doc_id in doc_pks) else None
             safe_chunk = scid if (scid is None or scid in chunk_pks) else None
             if doc_id is not None and safe_doc is None:
-                downgrades.append({"table": "knowledge_points", "id": kid,
-                                   "reason": f"document_id={doc_id} 在 PG 不存在",
-                                   "action": "document_id→NULL"})
+                downgrades.append(
+                    {
+                        "table": "knowledge_points",
+                        "id": kid,
+                        "reason": f"document_id={doc_id} 在 PG 不存在",
+                        "action": "document_id→NULL",
+                    }
+                )
             esrc_val = esrc if esrc in ES else None
             try:
                 with cur.connection.transaction():
@@ -791,26 +984,47 @@ def migrate_knowledge_points(m: Migrator, sconn: sqlite3.Connection) -> dict:
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                                %s::extract_source,%s)
                        ON CONFLICT DO NOTHING""",
-                        (kid, _clean_text(name) or "", subject, m.resolve_subject(subject),
-                         chapter, parent_id,
-                         freq if isinstance(freq, int) and 0 <= freq <= 5 else 0,
-                         desc, _to_dt(created) or datetime.now(timezone.utc), safe_doc,
-                         Json(_to_json(qtypes)) if _to_json(qtypes) is not None else Json([]),
-                         difficulty if isinstance(difficulty, int) and 1 <= difficulty <= 5 else 3,
-                         rcount or 0, _to_dt(lastrev),
-                         ease if isinstance(ease, (int, float)) and 1.3 <= ease <= 3.5 else 2.5,
-                         interval or 0, lapses or 0, qcount or 0, safe_chunk, scidx,
-                         esrc_val, ssrc),
+                        (
+                            kid,
+                            _clean_text(name) or "",
+                            subject,
+                            m.resolve_subject(subject),
+                            chapter,
+                            parent_id,
+                            freq if isinstance(freq, int) and 0 <= freq <= 5 else 0,
+                            desc,
+                            _to_dt(created) or datetime.now(timezone.utc),
+                            safe_doc,
+                            Json(_to_json(qtypes)) if _to_json(qtypes) is not None else Json([]),
+                            difficulty if isinstance(difficulty, int) and 1 <= difficulty <= 5 else 3,
+                            rcount or 0,
+                            _to_dt(lastrev),
+                            ease if isinstance(ease, int | float) and 1.3 <= ease <= 3.5 else 2.5,
+                            interval or 0,
+                            lapses or 0,
+                            qcount or 0,
+                            safe_chunk,
+                            scidx,
+                            esrc_val,
+                            ssrc,
+                        ),
                     )
                 inserted += 1
             except Exception as exc:  # noqa: BLE001
                 skipped += 1
                 if len(downgrades) < 60:
-                    downgrades.append({"table": "knowledge_points", "id": kid,
-                                       "reason": str(exc)[:200], "action": "error"})
+                    downgrades.append(
+                        {"table": "knowledge_points", "id": kid, "reason": str(exc)[:200], "action": "error"}
+                    )
         m.pg.commit()
-    return {"src": "knowledge_points", "dst": "knowledge_points", "total": len(rows),
-            "inserted": inserted, "skipped": skipped, "downgrades": downgrades}
+    return {
+        "src": "knowledge_points",
+        "dst": "knowledge_points",
+        "total": len(rows),
+        "inserted": inserted,
+        "skipped": skipped,
+        "downgrades": downgrades,
+    }
 
 
 def migrate_chunks(m: Migrator, sconn: sqlite3.Connection) -> dict:
@@ -832,8 +1046,7 @@ def migrate_chunks(m: Migrator, sconn: sqlite3.Connection) -> dict:
     CS = m.enum_labels.get("classify_source", set())
     with m.pg.cursor() as cur:
         for r in rows:
-            (cid, doc_id, doc_name, cidx, text, subject, pstart, pend,
-             summary, l2, l3, cconf, csrc, created) = r
+            (cid, doc_id, doc_name, cidx, text, subject, pstart, pend, summary, l2, l3, cconf, csrc, created) = r
             body = _clean_text(text or "")
             if not body.strip():
                 skipped += 1
@@ -843,7 +1056,7 @@ def migrate_chunks(m: Migrator, sconn: sqlite3.Connection) -> dict:
                 nulled_fk += 1
             l3_val = l3 if l3 in L3 else None
             csrc_val = csrc if csrc in CS else ENUM_MAP.get("classify_source", {}).get(str(csrc or ""))
-            cf = cconf if isinstance(cconf, (int, float)) and 0 <= cconf <= 1 else None
+            cf = cconf if isinstance(cconf, int | float) and 0 <= cconf <= 1 else None
             try:
                 with cur.connection.transaction():
                     cur.execute(
@@ -854,24 +1067,50 @@ def migrate_chunks(m: Migrator, sconn: sqlite3.Connection) -> dict:
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::l3_content_type,
                                %s,%s::classify_source,%s,%s)
                        ON CONFLICT DO NOTHING""",
-                        (cid, safe_doc, doc_name, cidx or 0, body, body,
-                         _clean_text(summary), subject, pstart, pend, l2, l3_val,
-                         cf, csrc_val, len(body),
-                         _to_dt(created) or datetime.now(timezone.utc)),
+                        (
+                            cid,
+                            safe_doc,
+                            doc_name,
+                            cidx or 0,
+                            body,
+                            body,
+                            _clean_text(summary),
+                            subject,
+                            pstart,
+                            pend,
+                            l2,
+                            l3_val,
+                            cf,
+                            csrc_val,
+                            len(body),
+                            _to_dt(created) or datetime.now(timezone.utc),
+                        ),
                     )
                 inserted += 1
             except Exception as exc:  # noqa: BLE001
                 skipped += 1
                 if len(downgrades) < 40:
-                    downgrades.append({"table": "knowledge_chunks", "id": cid,
-                                       "reason": str(exc)[:200], "action": "error"})
+                    downgrades.append(
+                        {"table": "knowledge_chunks", "id": cid, "reason": str(exc)[:200], "action": "error"}
+                    )
         m.pg.commit()
     if nulled_fk:
-        downgrades.append({"table": "knowledge_chunks", "action": "fk_nulled",
-                           "count": nulled_fk,
-                           "reason": "document_id 对应文档未迁入（content 为空被跳过），置 NULL"})
-    return {"src": "knowledge_chunks", "dst": "knowledge_chunks", "total": len(rows),
-            "inserted": inserted, "skipped": skipped, "downgrades": downgrades}
+        downgrades.append(
+            {
+                "table": "knowledge_chunks",
+                "action": "fk_nulled",
+                "count": nulled_fk,
+                "reason": "document_id 对应文档未迁入（content 为空被跳过），置 NULL",
+            }
+        )
+    return {
+        "src": "knowledge_chunks",
+        "dst": "knowledge_chunks",
+        "total": len(rows),
+        "inserted": inserted,
+        "skipped": skipped,
+        "downgrades": downgrades,
+    }
 
 
 SPECIAL = {
@@ -887,13 +1126,15 @@ SPECIAL = {
 # --------------------------------------------------------------------------- #
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="SQLite → PostgreSQL 全量直搬")
-    p.add_argument("--database-url", default=None,
-                   help="缺省走 pipeline.config.pg_database_url()：DATABASE_URL > .env 的 PG_* 分项")
+    p.add_argument(
+        "--database-url",
+        default=None,
+        help="缺省走 pipeline.config.pg_database_url()：DATABASE_URL > .env 的 PG_* 分项",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--only", default=None, help="只迁指定表（逗号分隔）")
     p.add_argument("--skip-chunks", action="store_true", help="跳过 knowledge_chunks（大表）")
-    p.add_argument("--reset", action="store_true",
-                   help="迁移前清空本次覆盖的全部目标表（TRUNCATE），保证幂等")
+    p.add_argument("--reset", action="store_true", help="迁移前清空本次覆盖的全部目标表（TRUNCATE），保证幂等")
     args = p.parse_args(argv)
     db_url = args.database_url or pg_database_url()
 
@@ -907,8 +1148,11 @@ def main(argv: list[str] | None = None) -> int:
     with psycopg.connect(db_url) as pg:
         m = Migrator(pg, dry_run=args.dry_run)
         if args.reset and not args.dry_run:
-            targets = [dst for src, dst in TABLES
-                       if (not only or src in only) and not (args.skip_chunks and src == "knowledge_chunks")]
+            targets = [
+                dst
+                for src, dst in TABLES
+                if (not only or src in only) and not (args.skip_chunks and src == "knowledge_chunks")
+            ]
             with pg.cursor() as cur:
                 # CASCADE 处理外键引用；RESTART IDENTITY 让序列从 1 重来，
                 # 但因为保留原 id 显式插入，序列需在迁移后手动校正（见 setval）
@@ -932,8 +1176,10 @@ def main(argv: list[str] | None = None) -> int:
             if "downgrades" in res:
                 m.report["downgrades"].extend(res.pop("downgrades"))
             flag = "!" if res.get("skipped") else " "
-            print(f"  [{flag}] {src:<28} {res.get('inserted', 0):>7} / {res.get('total', 0):>7} "
-                  f"({res['seconds']}s)" + (f"  skipped={res.get('skipped')}" if res.get("skipped") else ""))
+            print(
+                f"  [{flag}] {src:<28} {res.get('inserted', 0):>7} / {res.get('total', 0):>7} "
+                f"({res['seconds']}s)" + (f"  skipped={res.get('skipped')}" if res.get("skipped") else "")
+            )
 
     sconn.close()
     # 序列校正：保留原 id 显式插入后，BIGSERIAL 序列仍停在起点，

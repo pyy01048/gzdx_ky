@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """``services/crawl/urls.py`` 单测：URL 规范化 / 内容哈希 / SimHash。"""
+
 from __future__ import annotations
 
 import os

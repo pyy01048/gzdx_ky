@@ -10,6 +10,7 @@ import {
   FileText, Flag, RefreshCw, Rocket, School, Tag,
 } from '../icons'
 import '../styles/admin-ops-v3.css'
+import MdViewer from '../ui/MdViewer'
 
 /* ============================================================================
    数据管理 · 采集中心（Aurora v3）
@@ -195,8 +196,26 @@ export default function KaoyanImport() {
     }
   }, [lastResult])
 
-  const resultPreview = resultText.slice(0, 1500)
   const resultTruncated = resultText.length > 1500
+
+  /* 结构化字段卡片：把后端结果体拆成 key-value 行，复杂值用 MdViewer 渲染 JSON 代码块 */
+  const resultFields = useMemo(() => {
+    if (!lastResult?.ok) return []
+    const body = lastResult.data?.results?.[0] ?? lastResult.data
+    if (body == null) return []
+    if (typeof body !== 'object') return [{ key: '结果', value: String(body), complex: false }]
+    return Object.entries(body).map(([key, val]) => {
+      if (val == null) return { key, value: String(val), complex: false }
+      if (typeof val === 'object') {
+        try {
+          return { key, value: JSON.stringify(val, null, 2), complex: true }
+        } catch {
+          return { key, value: String(val), complex: false }
+        }
+      }
+      return { key, value: String(val), complex: false }
+    })
+  }, [lastResult])
 
   const copyResult = async () => {
     if (!resultText) return
@@ -352,9 +371,26 @@ export default function KaoyanImport() {
           />
           {lastResult.ok ? (
             <>
-              <pre className="v3-ki-result__pre">{resultPreview || '（后端未返回结果体）'}</pre>
+              {resultFields.length ? (
+                <dl className="v3-ki-result__fields">
+                  {resultFields.map((f) => (
+                    <div className="v3-ki-result__field" key={f.key}>
+                      <dt>{f.key}</dt>
+                      <dd>
+                        {f.complex ? (
+                          <MdViewer source={'```json\n' + f.value + '\n```'} />
+                        ) : (
+                          <span>{f.value}</span>
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <div className="v3-ki-result__pre">（后端未返回结果体）</div>
+              )}
               {resultTruncated && (
-                <div className="v3-ops-caption">仅展示前 1500 字符，点击「复制结果」可获取完整 JSON。</div>
+                <div className="v3-ops-caption">结果较长，点击「复制结果」可获取完整 JSON。</div>
               )}
             </>
           ) : (

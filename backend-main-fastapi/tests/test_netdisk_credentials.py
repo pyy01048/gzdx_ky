@@ -21,6 +21,7 @@ has_api_key），本文件末尾一并钉住落库形态。
 
 运行：pytest tests/test_netdisk_credentials.py -v
 """
+
 import json
 import os
 import sys
@@ -31,11 +32,12 @@ import base64
 
 import pytest
 from database import SessionLocal, engine
-from models import AIProvider, NetdiskFile, PlatformConfig
 from services.netdisk_service import NetdiskService
 from sqlalchemy import orm as sa_orm
 from sqlalchemy import text
 from utils import secret_codec as sc
+
+from models import AIProvider, NetdiskFile, PlatformConfig
 
 
 def _b64(raw: bytes) -> str:
@@ -44,7 +46,7 @@ def _b64(raw: bytes) -> str:
 
 APPKEY = "SENTINEL-APPKEY-8f2b"
 SECRET = "SENTINEL-SECRETKEY-3c7a"
-ATOKEN = "SENTINEL-ACCESS-" + "t" * 48   # 接近真实 access_token 的长度
+ATOKEN = "SENTINEL-ACCESS-" + "t" * 48  # 接近真实 access_token 的长度
 RTOKEN = "SENTINEL-REFRESH-9d41"
 AIKEY = "SENTINEL-AIKEY-sk-0f3c9a"
 
@@ -54,8 +56,7 @@ def _raw_row(platform="baidu_netdisk"):
     with engine.connect() as conn:
         return conn.execute(
             text(
-                "SELECT token, app_key, secret_key, CAST(extra AS TEXT) "
-                "FROM platform_configs WHERE platform_name = :p"
+                "SELECT token, app_key, secret_key, CAST(extra AS TEXT) FROM platform_configs WHERE platform_name = :p"
             ),
             {"p": platform},
         ).fetchone()
@@ -71,11 +72,7 @@ def baidu_cfg(db_schema):  # noqa: ARG001 - db_schema 只保证测试库已建�
     db = SessionLocal()
 
     def _live():
-        return (
-            db.query(PlatformConfig)
-            .filter(PlatformConfig.platform_name == "baidu_netdisk")
-            .first()
-        )
+        return db.query(PlatformConfig).filter(PlatformConfig.platform_name == "baidu_netdisk").first()
 
     row = _live()
     snapshot = None
@@ -117,11 +114,7 @@ def _read_back():
     """
     db = SessionLocal()
     try:
-        return (
-            db.query(PlatformConfig)
-            .filter(PlatformConfig.platform_name == "baidu_netdisk")
-            .first()
-        )
+        return db.query(PlatformConfig).filter(PlatformConfig.platform_name == "baidu_netdisk").first()
     finally:
         db.close()
 
@@ -130,7 +123,6 @@ def _read_back():
 # 3. 落库形态：密文
 # --------------------------------------------------------------------------- #
 class TestCiphertextAtRest:
-
     def test_credential_columns_are_sealed(self, baidu_cfg):
         baidu_cfg.token = ATOKEN
         baidu_cfg.app_key = APPKEY
@@ -163,9 +155,7 @@ class TestCiphertextAtRest:
         """迁移前的明文行不能读成密文：无 enc:v1: 前缀即原样返回，下次写入自动升级。"""
         db = _db_of(baidu_cfg)
         db.execute(
-            text(
-                "UPDATE platform_configs SET token = :t WHERE platform_name = 'baidu_netdisk'"
-            ),
+            text("UPDATE platform_configs SET token = :t WHERE platform_name = 'baidu_netdisk'"),
             {"t": "LEGACY-PLAINTEXT-TOKEN"},
         )
         db.commit()
@@ -201,12 +191,9 @@ def ai_provider(db_schema):  # noqa: ARG001 - db_schema 只保证测试库已建
 
 
 class TestAiProviderKeyAtRest:
-
     def _raw_key(self, provider_id):
         with engine.connect() as conn:
-            return conn.execute(
-                text("SELECT api_key FROM ai_providers WHERE id = :i"), {"i": provider_id}
-            ).scalar()
+            return conn.execute(text("SELECT api_key FROM ai_providers WHERE id = :i"), {"i": provider_id}).scalar()
 
     def test_api_key_is_sealed_on_write(self, ai_provider):
         ai_provider.api_key = AIKEY
@@ -238,7 +225,6 @@ class TestAiProviderKeyAtRest:
 # 1 & 2. 传输层：凭据不出接口
 # --------------------------------------------------------------------------- #
 class TestCredentialsNeverLeave:
-
     def _assert_no_secret(self, payload):
         """整份响应文本级扫描 —— 提升顶层、嵌套 extra、序列化遗漏都躲不掉。"""
         blob = json.dumps(payload, ensure_ascii=False)
@@ -339,9 +325,7 @@ class TestCredentialsNeverLeave:
 
         monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
         monkeypatch.setattr(svc, "_save_token", lambda data: None)
-        monkeypatch.setattr(
-            svc, "_get_config", lambda: {"app_key": APPKEY, "secret_key": SECRET}
-        )
+        monkeypatch.setattr(svc, "_get_config", lambda: {"app_key": APPKEY, "secret_key": SECRET})
 
         import asyncio
 
@@ -355,7 +339,6 @@ class TestCredentialsNeverLeave:
 # 4. 下载地址：dlink / M3U8 不下发，取流统一走后端代理
 # --------------------------------------------------------------------------- #
 class TestDownloadPathsAreProxied:
-
     def _mkfile(self, db):
         row = NetdiskFile(
             file_name="信号与系统冲刺.pdf",
@@ -375,6 +358,7 @@ class TestDownloadPathsAreProxied:
         db = _db_of(baidu_cfg)
         file_row = self._mkfile(db)
         try:
+
             async def fake_list(self, path="/", page=1, num=50):
                 return {
                     "list": [
@@ -434,7 +418,6 @@ class TestDownloadPathsAreProxied:
 # 加密原语本身
 # --------------------------------------------------------------------------- #
 class TestCodec:
-
     def test_roundtrip_and_seal_idempotent(self):
         once = sc.seal(ATOKEN)
         assert sc.unseal(once) == ATOKEN
@@ -452,7 +435,7 @@ class TestCodec:
     def test_wrong_key_fails_loud(self):
         sealed = sc.seal(ATOKEN)
         other = os.environ.get(sc.SECRET_ENV_VAR)
-        os.environ[sc.SECRET_ENV_VAR] = _b64(b"k" * 32)   # 另一把合法 32 字节钥
+        os.environ[sc.SECRET_ENV_VAR] = _b64(b"k" * 32)  # 另一把合法 32 字节钥
         sc.reset_key_cache()
         try:
             with pytest.raises(sc.SecretDecodeError):
@@ -475,7 +458,7 @@ class TestCodec:
             sc.unseal("enc:v1:!!!not-base64!!!")
 
     def test_env_key_is_32_bytes(self):
-        os.environ[sc.SECRET_ENV_VAR] = _b64(b"x" * 16)   # 合法 base64、非法长度
+        os.environ[sc.SECRET_ENV_VAR] = _b64(b"x" * 16)  # 合法 base64、非法长度
         sc.reset_key_cache()
         try:
             with pytest.raises(ValueError):

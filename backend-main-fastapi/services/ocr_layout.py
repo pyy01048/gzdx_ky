@@ -17,6 +17,7 @@
       }, ...
     ]
 """
+
 from __future__ import annotations
 
 import re
@@ -24,15 +25,17 @@ from typing import Any, Dict, List, Optional
 
 # 题号模式：数字题号 / （1） / 第1题
 QNO_PATTERNS = [
-    re.compile(r"^[（(]?\s*(\d{1,3})\s*[）)、.．]\s*"),          # 1. / 1、 / （1）
-    re.compile(r"^第\s*(\d{1,3})\s*题\s*"),                      # 第1题
+    re.compile(r"^[（(]?\s*(\d{1,3})\s*[）)、.．]\s*"),  # 1. / 1、 / （1）
+    re.compile(r"^第\s*(\d{1,3})\s*题\s*"),  # 第1题
 ]
 
 # 大题标题模式：一、选择题 / （一）填空题 等（作为 section 标记，不单独成题）
 SECTION_PATTERNS = [
-    re.compile(r"^[（(]?\s*([一二三四五六七八九十]{1,3})\s*[）)、.．]\s*"
-               r"(选择题|单项选择|多项选择|不定项|填空题|判断题|计算题|简答题|解答题|"
-               r"名词解释|综合题|问答题|分析题|证明题|应用题)"),
+    re.compile(
+        r"^[（(]?\s*([一二三四五六七八九十]{1,3})\s*[）)、.．]\s*"
+        r"(选择题|单项选择|多项选择|不定项|填空题|判断题|计算题|简答题|解答题|"
+        r"名词解释|综合题|问答题|分析题|证明题|应用题)"
+    ),
     re.compile(r"^[（(]?\s*([一二三四五六七八九十]{1,3})\s*[）)、.．]\s*.*(每题|共\d+分|每小题)"),
 ]
 
@@ -53,11 +56,11 @@ def _box_top(box: Any) -> float:
     if not box:
         return 0.0
     try:
-        if len(box) >= 2 and isinstance(box[0], (int, float)):
+        if len(box) >= 2 and isinstance(box[0], int | float):
             if len(box) >= 4:
-                return float(box[1])          # [x, y, w, h]
-            return float(box[1])              # [x, y]
-        ys = [float(p[1]) for p in box if isinstance(p, (list, tuple)) and len(p) >= 2]
+                return float(box[1])  # [x, y, w, h]
+            return float(box[1])  # [x, y]
+        ys = [float(p[1]) for p in box if isinstance(p, list | tuple) and len(p) >= 2]
         return min(ys) if ys else 0.0
     except Exception:
         return 0.0
@@ -68,9 +71,9 @@ def _box_left(box: Any) -> float:
     if not box:
         return 0.0
     try:
-        if len(box) >= 2 and isinstance(box[0], (int, float)):
-            return float(box[0])              # [x, y] 或 [x, y, w, h]
-        xs = [float(p[0]) for p in box if isinstance(p, (list, tuple)) and len(p) >= 2]
+        if len(box) >= 2 and isinstance(box[0], int | float):
+            return float(box[0])  # [x, y] 或 [x, y, w, h]
+        xs = [float(p[0]) for p in box if isinstance(p, list | tuple) and len(p) >= 2]
         return min(xs) if xs else 0.0
     except Exception:
         return 0.0
@@ -93,8 +96,7 @@ def _match_qno(text: str) -> Optional[int]:
                 return int(m.group(1))
             except ValueError:
                 cn = m.group(1)
-                digits = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
-                          "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+                digits = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
                 return digits.get(cn, 0)
     return None
 
@@ -193,7 +195,7 @@ def cut_questions_from_blocks(
         m = OPT_PREFIX.match(text)
         if m and not (_match_qno(text) is not None and text[0] not in "ABCDEFGH"):
             opt_letter = m.group(1).upper()
-            cur["option_blocks"].append(f"{opt_letter}. {text[m.end():].strip()}")
+            cur["option_blocks"].append(f"{opt_letter}. {text[m.end() :].strip()}")
         else:
             cur["stem_blocks"].append(text)
         cur["raw_blocks"].append({"text": text, "box": b.get("box"), "score": b.get("score")})
@@ -222,6 +224,7 @@ def cut_questions(result: Any, min_qno: int = 1) -> List[Dict[str, Any]]:
 if __name__ == "__main__":
     # 自测样例（无坐标模拟）
     import json
+
     sample = [
         {"text": "一、选择题（每题2分）", "box": [[0, 0], [200, 0], [200, 30], [0, 30]]},
         {"text": "1. 数字电路中，TTL与非门多余的输入端应如何处理？", "box": [[0, 40], [300, 40], [300, 70], [0, 70]]},

@@ -22,6 +22,7 @@ P2-M5 代码上机 OJ：轻量级判题引擎
 - RE (Runtime Error): 运行时错误
 - SE (System Error): 系统错误
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,12 +51,45 @@ CODE_JUDGE_ENABLED = os.getenv("CODE_JUDGE_ENABLED", "0") == "1"
 
 # 危险模块（静态检测，命中即拒绝执行）
 _BLOCKED_IMPORTS = (
-    "os", "sys", "subprocess", "socket", "shutil", "pathlib", "importlib",
-    "ctypes", "pickle", "pty", "fcntl", "multiprocessing", "threading",
-    "signal", "resource", "platform", "tempfile", "shlex", "builtins",
-    "inspect", "traceback", "pdb", "code", "codeop", "runpy", "pkgutil",
-    "site", "requests", "urllib", "http", "ftplib", "smtplib", "telnetlib",
-    "ssl", "asyncio", "aiohttp", "webbrowser", "xmlrpc", "jsonpickle",
+    "os",
+    "sys",
+    "subprocess",
+    "socket",
+    "shutil",
+    "pathlib",
+    "importlib",
+    "ctypes",
+    "pickle",
+    "pty",
+    "fcntl",
+    "multiprocessing",
+    "threading",
+    "signal",
+    "resource",
+    "platform",
+    "tempfile",
+    "shlex",
+    "builtins",
+    "inspect",
+    "traceback",
+    "pdb",
+    "code",
+    "codeop",
+    "runpy",
+    "pkgutil",
+    "site",
+    "requests",
+    "urllib",
+    "http",
+    "ftplib",
+    "smtplib",
+    "telnetlib",
+    "ssl",
+    "asyncio",
+    "aiohttp",
+    "webbrowser",
+    "xmlrpc",
+    "jsonpickle",
 )
 
 # 危险调用（静态检测，命中即拒绝执行）
@@ -107,6 +141,7 @@ def _posix_limits():
             resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
             resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
             resource.setrlimit(resource.RLIMIT_NPROC, (32, 32))
+
         return _apply_limits
     except Exception:
         return None
@@ -178,7 +213,7 @@ def judge_python_code(
         }
 
     # 步骤 2：逐测试点执行
-    for i, tc in enumerate(testcases):
+    for _i, tc in enumerate(testcases):
         testcase_result = _run_single_testcase(code, tc["input"], tc["expected_output"], time_limit_ms)
         results.append(testcase_result)
 

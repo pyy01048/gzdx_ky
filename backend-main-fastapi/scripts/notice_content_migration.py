@@ -19,6 +19,7 @@
   `ensure_alert_schema()` 在**每次 API 请求**都会跑，把带备份的迁移放进请求
   路径会让用户请求触发一次全库备份。迁移是低频运维动作，应该显式执行。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,11 +36,25 @@ NEW_COLUMN = ("content", "TEXT")
 
 # 通知中心前端 + 7 个已读 API 明确消费的列；加列后必须逐列确认仍在
 PROTECTED_COLUMNS = [
-    "id", "school_id", "school_name", "title", "notice_type", "publish_date",
-    "url", "source", "fetched_at",
-    "importance_level", "importance_score", "importance_reason",
-    "deadline_date", "events_json", "classified_at",
-    "is_read", "is_starred", "read_at", "starred_at",
+    "id",
+    "school_id",
+    "school_name",
+    "title",
+    "notice_type",
+    "publish_date",
+    "url",
+    "source",
+    "fetched_at",
+    "importance_level",
+    "importance_score",
+    "importance_reason",
+    "deadline_date",
+    "events_json",
+    "classified_at",
+    "is_read",
+    "is_starred",
+    "read_at",
+    "starred_at",
 ]
 
 
@@ -72,22 +87,21 @@ def verify_backup(path: str) -> tuple:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(kaoyan_notices)")]
         rows = conn.execute("SELECT COUNT(*) FROM kaoyan_notices").fetchone()[0]
         has_new = NEW_COLUMN[0] in cols
-        return (integ == "ok" and rows > 0,
-                f"integrity={integ} columns={len(cols)} rows={rows} "
-                f"{NEW_COLUMN[0]}={'present' if has_new else 'absent'}")
+        return (
+            integ == "ok" and rows > 0,
+            f"integrity={integ} columns={len(cols)} rows={rows} {NEW_COLUMN[0]}={'present' if has_new else 'absent'}",
+        )
     finally:
         conn.close()
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--apply", action="store_true",
-                    help="真正执行 ALTER TABLE（默认只 dry-run）")
+    ap.add_argument("--apply", action="store_true", help="真正执行 ALTER TABLE（默认只 dry-run）")
     args = ap.parse_args()
 
     print("=" * 78)
-    print("  kaoyan_notices 增加 content 列 —— 迁移"
-          + ("（APPLY 模式）" if args.apply else "（DRY-RUN，只读）"))
+    print("  kaoyan_notices 增加 content 列 —— 迁移" + ("（APPLY 模式）" if args.apply else "（DRY-RUN，只读）"))
     print("=" * 78)
 
     conn = _connect(DB_PATH)
@@ -149,13 +163,11 @@ def main() -> int:
         print("  [3/3] 验证迁移结果…")
         cols_after = [r[1] for r in conn.execute("PRAGMA table_info(kaoyan_notices)")]
         rows_after = conn.execute("SELECT COUNT(*) FROM kaoyan_notices").fetchone()[0]
-        null_cnt = conn.execute(
-            f"SELECT COUNT(*) FROM kaoyan_notices WHERE {name} IS NULL").fetchone()[0]
+        null_cnt = conn.execute(f"SELECT COUNT(*) FROM kaoyan_notices WHERE {name} IS NULL").fetchone()[0]
         integ = conn.execute("PRAGMA integrity_check").fetchone()[0]
 
         print(f"        列数: {len(cols_before)} → {len(cols_after)}")
-        print(f"        行数: {rows_before} → {rows_after}"
-              f" {'✅' if rows_after == rows_before else '❌ 行数变了！'}")
+        print(f"        行数: {rows_before} → {rows_after} {'✅' if rows_after == rows_before else '❌ 行数变了！'}")
         print(f"        新增列 `{name}` 在位: {name in cols_after}")
         print(f"        {name} 为 NULL 的行: {null_cnt}（预期 = 全部行，纯新增列无数据）")
         print(f"        integrity_check: {integ}")
@@ -163,11 +175,9 @@ def main() -> int:
         lost = [c for c in cols_before if c not in cols_after]
         print(f"        丢失列: {lost if lost else '无 ✅'}")
 
-        ok2 = (name in cols_after and rows_after == rows_before
-               and not lost and integ == "ok")
+        ok2 = name in cols_after and rows_after == rows_before and not lost and integ == "ok"
         print()
-        print(f"  [{'DONE ✅' if ok2 else 'FAIL ❌'}] 迁移"
-              f"{'成功' if ok2 else '未通过验证，请从备份恢复'}")
+        print(f"  [{'DONE ✅' if ok2 else 'FAIL ❌'}] 迁移{'成功' if ok2 else '未通过验证，请从备份恢复'}")
         print(f"  备份路径（如需回滚）: {bpath}")
         return 0 if ok2 else 4
     finally:

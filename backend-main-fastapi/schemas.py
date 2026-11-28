@@ -1,7 +1,7 @@
 """Pydantic 请求/响应模型。"""
 
 import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -214,13 +214,94 @@ class QuizSubmit(BaseModel):
     # P0-2：主观题自评（不传时行为完全不变）
     self_score: Optional[float] = None
     max_score: Optional[float] = None
+    session_id: Optional[int] = Field(None, gt=0)
+    client_attempt_id: Optional[str] = Field(None, max_length=100)
+    error_id: Optional[int] = Field(None, gt=0)
+
+
+class QuizSessionCreate(BaseModel):
+    question_ids: List[int] = Field(..., min_length=1, max_length=200)
+    title: Optional[str] = Field(None, max_length=300)
+    mode: Optional[str] = Field(None, max_length=30)
+    no_answer: bool = False
+    basis: Optional[dict[str, Any]] = None
+    filters: dict[str, Any] = Field(default_factory=dict)
+    knowledge_point_ids: List[int] = Field(default_factory=list)
+    start_index: int = Field(0, ge=0)
+
+
+class QuizSessionPatch(BaseModel):
+    current_index: Optional[int] = Field(None, ge=0)
+    duration_seconds: Optional[int] = Field(None, ge=0)
+    drafts: Optional[dict[str, Any]] = None
+    text_drafts: Optional[dict[str, Any]] = None
+    self_scores: Optional[dict[str, Any]] = None
+    marked: Optional[dict[str, Any]] = None
+    version: Optional[int] = Field(None, ge=1)
 
 
 class QuizSubmitResult(BaseModel):
     question_id: int
-    correct: bool
+    correct: Optional[bool]
+    needs_review: bool = False
     correct_answer: Optional[str] = None
     analysis: Optional[str] = None
+
+
+# =========================================================================== #
+# 个人题库
+# =========================================================================== #
+class PersonalQuizOption(BaseModel):
+    key: str
+    text: str
+
+
+PersonalQuizOptions = Optional[List[Union[str, PersonalQuizOption]]]
+PersonalQuizQuestionType = Literal["single", "multiple", "judge", "fill", "essay", "calc", "draw"]
+
+
+class PersonalQuizSetCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+
+
+class PersonalQuizSetUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+
+
+class PersonalQuizSetItemCreate(BaseModel):
+    question_id: int = Field(..., gt=0)
+
+
+class PersonalQuizQuestionCreate(BaseModel):
+    content: str = Field(..., min_length=1)
+    options: PersonalQuizOptions = None
+    answer: str = Field(..., min_length=1)
+    analysis: Optional[str] = None
+    subject: Optional[str] = None
+    chapter: Optional[str] = None
+    knowledge_point: Optional[str] = None
+    difficulty: int = Field(default=3, ge=1, le=5)
+    question_type: PersonalQuizQuestionType = "single"
+    bank_id: Optional[int] = Field(default=None, gt=0)
+
+
+class PersonalQuizQuestionUpdate(BaseModel):
+    content: Optional[str] = Field(None, min_length=1)
+    options: PersonalQuizOptions = None
+    answer: Optional[str] = None
+    analysis: Optional[str] = None
+    subject: Optional[str] = None
+    chapter: Optional[str] = None
+    knowledge_point: Optional[str] = None
+    difficulty: Optional[int] = Field(None, ge=1, le=5)
+    question_type: Optional[PersonalQuizQuestionType] = None
+    bank_id: Optional[int] = Field(default=None, gt=0)
+
+
+class PersonalQuizMasteryUpdate(BaseModel):
+    mastery_state: Literal["unmastered", "mastered"]
 
 
 # =========================================================================== #

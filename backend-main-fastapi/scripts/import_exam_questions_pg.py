@@ -31,6 +31,7 @@ extract_from_text 本身只做了一处增量：SECTION_RE 小节词表补齐语
 「分析计算题 / 计算分析题 / 解答题」三个非选择题小节名（否则选择题区不闭合）。
 质量门与去重逻辑不受影响。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -176,8 +177,7 @@ def _load_env_file() -> dict:
 
 def build_pg_url() -> tuple[str, str]:
     """返回 (sqlalchemy url, 脱敏展示串)。进程环境变量优先于 .env。"""
-    cfg = {**_load_env_file(),
-           **{k: v for k, v in os.environ.items() if k.startswith("PG_")}}
+    cfg = {**_load_env_file(), **{k: v for k, v in os.environ.items() if k.startswith("PG_")}}
     url = (
         f"postgresql+psycopg://{cfg.get('PG_USER', 'kaoyan')}:"
         f"{cfg.get('PG_PASSWORD', '')}@{cfg.get('PG_HOST', '127.0.0.1')}:"
@@ -196,9 +196,7 @@ def build_pg_url() -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 def content_fingerprint(stem: str, options: list) -> str:
     """题干 + 选项文本指纹，用于跨文档去重。"""
-    raw = stem.strip() + "|" + "|".join(
-        (o["text"] if isinstance(o, dict) else str(o)).strip() for o in options
-    )
+    raw = stem.strip() + "|" + "|".join((o["text"] if isinstance(o, dict) else str(o)).strip() for o in options)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
@@ -226,11 +224,8 @@ def _options_texts(raw) -> list:
 def load_existing_fingerprints(conn) -> set:
     """已入库题目的指纹集合（题干+选项）。"""
     got: set = set()
-    for content, options in conn.execute(
-        text("SELECT content, options FROM quiz_questions")
-    ):
-        got.add(content_fingerprint(content or "",
-                                    [{"text": t} for t in _options_texts(options)]))
+    for content, options in conn.execute(text("SELECT content, options FROM quiz_questions")):
+        got.add(content_fingerprint(content or "", [{"text": t} for t in _options_texts(options)]))
     return got
 
 
@@ -245,42 +240,47 @@ def build_plan(conn, doc_limit: int) -> tuple[list, list]:
     plan: list = []
     skipped: list = []
     for row in conn.execute(text(DOC_FILTER_SQL), {"limit": doc_limit}):
-        doc_id, file_name, subject, content = (
-            row.id, row.file_name, row.subject, row.content or ""
-        )
+        doc_id, file_name, subject, content = (row.id, row.file_name, row.subject, row.content or "")
         # 判据是文件名后缀而非内容：PDF 碎片文本层与规整 TXT 层形态完全不同（实测）
         # 本批候选全为 .docx（内联标签文本层），先归一化再抽取。
         is_pdf = (file_name or "").lower().endswith(".pdf")
-        stats: ExtractStats = extract_from_text(
-            normalize_exam_text(content), chapter_hint="", is_pdf_layer=is_pdf
-        )
+        stats: ExtractStats = extract_from_text(normalize_exam_text(content), chapter_hint="", is_pdf_layer=is_pdf)
 
         # ---- 门禁 1：抽取率过低 → 文本层结构不可用 ----
         rate = stats.extracted / max(stats.blocks_seen, 1)
         if stats.extracted < MIN_EXTRACTED or rate < MIN_EXTRACT_RATE:
-            skipped.append({
-                "doc_id": doc_id, "file_name": file_name,
-                "extracted": stats.extracted, "blocks_seen": stats.blocks_seen,
-                "rate": round(rate, 4),
-                "reason": "抽取率过低（文本层换行不可靠）",
-            })
+            skipped.append(
+                {
+                    "doc_id": doc_id,
+                    "file_name": file_name,
+                    "extracted": stats.extracted,
+                    "blocks_seen": stats.blocks_seen,
+                    "rate": round(rate, 4),
+                    "reason": "抽取率过低（文本层换行不可靠）",
+                }
+            )
             continue
 
         # ---- 门禁 2：准确率自检（用户红线 99%）----
         # 题干与选项错配、答案不在选项内 → 说明块切分错误，直接拒绝整篇
-        bad = [q for q in stats.questions
-               if not q.answer
-               or not set(q.answer) <= {o["key"] for o in q.options}
-               or len(q.stem) > 400]
+        bad = [
+            q
+            for q in stats.questions
+            if not q.answer or not set(q.answer) <= {o["key"] for o in q.options} or len(q.stem) > 400
+        ]
         mismatch_rate = len(bad) / max(len(stats.questions), 1)
         if mismatch_rate > MAX_ANSWER_MISMATCH:
-            skipped.append({
-                "doc_id": doc_id, "file_name": file_name,
-                "extracted": stats.extracted, "blocks_seen": stats.blocks_seen,
-                "rate": round(rate, 4), "mismatch_rate": round(mismatch_rate, 4),
-                "reason": (f"准确率不达标"
-                           f"（错配 {mismatch_rate:.1%} > {MAX_ANSWER_MISMATCH:.0%}）"),
-            })
+            skipped.append(
+                {
+                    "doc_id": doc_id,
+                    "file_name": file_name,
+                    "extracted": stats.extracted,
+                    "blocks_seen": stats.blocks_seen,
+                    "rate": round(rate, 4),
+                    "mismatch_rate": round(mismatch_rate, 4),
+                    "reason": (f"准确率不达标（错配 {mismatch_rate:.1%} > {MAX_ANSWER_MISMATCH:.0%}）"),
+                }
+            )
             continue
 
         # ---- 门禁 3：内容指纹去重（跨文档 + 篇内）----
@@ -294,44 +294,55 @@ def build_plan(conn, doc_limit: int) -> tuple[list, list]:
                 dup_cnt += 1
                 continue
             existing.add(fp)
-            rows.append({
+            rows.append(
+                {
+                    "doc_id": doc_id,
+                    "content": q.stem,
+                    "options": q.options,
+                    "answer": q.answer,
+                    "analysis": q.analysis,
+                    "subject": subject,
+                    "chapter": q.chapter or None,
+                    "year": q.year,
+                    "source_paper": q.source_paper or None,
+                    "source_label": (file_name or "")[:200],
+                }
+            )
+        plan.append(
+            {
                 "doc_id": doc_id,
-                "content": q.stem,
-                "options": q.options,
-                "answer": q.answer,
-                "analysis": q.analysis,
+                "file_name": file_name,
                 "subject": subject,
-                "chapter": q.chapter or None,
-                "year": q.year,
-                "source_paper": q.source_paper or None,
-                "source_label": (file_name or "")[:200],
-            })
-        plan.append({
-            "doc_id": doc_id, "file_name": file_name, "subject": subject,
-            "extracted": stats.extracted, "blocks_seen": stats.blocks_seen,
-            "rate": round(rate, 4), "mismatch_rate": round(mismatch_rate, 4),
-            "dup_skipped": dup_cnt, "multi_answer": multi_cnt,
-            "rows": rows,
-            "samples": [
-                {"stem": q.stem[:80], "answer": q.answer,
-                 "options": {o["key"]: o["text"][:40] for o in q.options}}
-                for q in stats.questions[:3]
-            ],
-        })
-        print(f"  {stats.extracted:>4} 题 / 新增 {len(rows):>4}"
-              f"（去重弃 {dup_cnt}，错配 {mismatch_rate:.1%}）  {file_name[:44]}")
+                "extracted": stats.extracted,
+                "blocks_seen": stats.blocks_seen,
+                "rate": round(rate, 4),
+                "mismatch_rate": round(mismatch_rate, 4),
+                "dup_skipped": dup_cnt,
+                "multi_answer": multi_cnt,
+                "rows": rows,
+                "samples": [
+                    {"stem": q.stem[:80], "answer": q.answer, "options": {o["key"]: o["text"][:40] for o in q.options}}
+                    for q in stats.questions[:3]
+                ],
+            }
+        )
+        print(
+            f"  {stats.extracted:>4} 题 / 新增 {len(rows):>4}"
+            f"（去重弃 {dup_cnt}，错配 {mismatch_rate:.1%}）  {file_name[:44]}"
+        )
     return plan, skipped
 
 
 def self_check(r: dict) -> bool:
     """入库前逐题完整性自检（与抽取器 is_valid 同口径，缺一即拒）。"""
     opts = r["options"]
-    return (len(r["content"].strip()) >= 6
-            and len(opts) >= 2
-            and all(isinstance(o, dict) and o.get("key") and str(o.get("text", "")).strip()
-                    for o in opts)
-            and bool(r["answer"])
-            and set(r["answer"]) <= {o["key"] for o in opts})
+    return (
+        len(r["content"].strip()) >= 6
+        and len(opts) >= 2
+        and all(isinstance(o, dict) and o.get("key") and str(o.get("text", "")).strip() for o in opts)
+        and bool(r["answer"])
+        and set(r["answer"]) <= {o["key"] for o in opts}
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -347,19 +358,21 @@ def apply_plan(eng, plan: list) -> tuple[int, int]:
                 n = 0
                 for r in p["rows"]:
                     if not self_check(r):
-                        raise ValueError(
-                            f"完整性自检未过：{r['content'][:40]!r}")
-                    conn.execute(text(INSERT_SQL), {
-                        "content": r["content"],
-                        "options": json.dumps(r["options"], ensure_ascii=False),
-                        "answer": r["answer"],
-                        "analysis": r["analysis"],
-                        "subject": r["subject"],
-                        "chapter": r["chapter"],
-                        "year": r["year"],
-                        "source_paper": r["source_paper"],
-                        "source_label": r["source_label"],
-                    })
+                        raise ValueError(f"完整性自检未过：{r['content'][:40]!r}")
+                    conn.execute(
+                        text(INSERT_SQL),
+                        {
+                            "content": r["content"],
+                            "options": json.dumps(r["options"], ensure_ascii=False),
+                            "answer": r["answer"],
+                            "analysis": r["analysis"],
+                            "subject": r["subject"],
+                            "chapter": r["chapter"],
+                            "year": r["year"],
+                            "source_paper": r["source_paper"],
+                            "source_label": r["source_label"],
+                        },
+                    )
                     n += 1
             inserted += n
             print(f"  + {n:>4} 题  {p['file_name'][:44]}")
@@ -375,15 +388,23 @@ def backup_quiz_questions(eng) -> tuple[str, int]:
     target = DB_ROOT / f"quiz_questions_pg_backup_{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
     n = 0
     with eng.connect() as conn:
-        cols = ["id", "content", "options", "answer", "analysis", "subject",
-                "question_type", "answer_source", "answer_confidence",
-                "source_label", "is_available", "is_junk"]
+        cols = [
+            "id",
+            "content",
+            "options",
+            "answer",
+            "analysis",
+            "subject",
+            "question_type",
+            "answer_source",
+            "answer_confidence",
+            "source_label",
+            "is_available",
+            "is_junk",
+        ]
         with target.open("w", encoding="utf-8") as fh:
-            for row in conn.execute(text(
-                    "SELECT " + ",".join(cols) + " FROM quiz_questions ORDER BY id")):
-                fh.write(json.dumps(
-                    {c: getattr(row, c) for c in cols},
-                    ensure_ascii=False, default=str) + "\n")
+            for row in conn.execute(text("SELECT " + ",".join(cols) + " FROM quiz_questions ORDER BY id")):
+                fh.write(json.dumps({c: getattr(row, c) for c in cols}, ensure_ascii=False, default=str) + "\n")
                 n += 1
     return str(target), n
 
@@ -394,37 +415,46 @@ def backup_quiz_questions(eng) -> tuple[str, int]:
 def verify(eng, tag: str) -> dict:
     out: dict = {}
     with eng.connect() as conn:
-        out["total"] = conn.execute(
-            text("SELECT count(*) FROM quiz_questions")).scalar()
-        out["by_subject"] = dict(conn.execute(text(
-            "SELECT coalesce(nullif(subject,''),'未分类'), count(*) "
-            "FROM quiz_questions GROUP BY 1 ORDER BY 2 DESC")).all())
-        out["usable"] = conn.execute(text("""
+        out["total"] = conn.execute(text("SELECT count(*) FROM quiz_questions")).scalar()
+        out["by_subject"] = dict(
+            conn.execute(
+                text(
+                    "SELECT coalesce(nullif(subject,''),'未分类'), count(*) "
+                    "FROM quiz_questions GROUP BY 1 ORDER BY 2 DESC"
+                )
+            ).all()
+        )
+        out["usable"] = conn.execute(
+            text("""
             SELECT count(*) FROM quiz_questions
             WHERE question_type IN ('single','multiple','judge')
               AND options IS NOT NULL AND jsonb_typeof(options) = 'array'
               AND jsonb_array_length(options) >= 2
               AND coalesce(trim(answer), '') <> ''
-              AND is_available AND NOT is_junk""")).scalar()
+              AND is_available AND NOT is_junk""")
+        ).scalar()
         # 重复率：同指纹（题干+选项全同）行数
         fps: dict = {}
-        for content, options in conn.execute(
-                text("SELECT content, options FROM quiz_questions")):
-            fps.setdefault(content_fingerprint(content or "",
-                                               [{"text": t} for t in _options_texts(options)]),
-                           0)
-            fps[content_fingerprint(content or "",
-                                    [{"text": t} for t in _options_texts(options)])] += 1
+        for content, options in conn.execute(text("SELECT content, options FROM quiz_questions")):
+            fps.setdefault(content_fingerprint(content or "", [{"text": t} for t in _options_texts(options)]), 0)
+            fps[content_fingerprint(content or "", [{"text": t} for t in _options_texts(options)])] += 1
         dup_rows = sum(c for c in fps.values() if c > 1)
         out["dup_rows"] = dup_rows
         out["dup_rate"] = round(dup_rows / out["total"], 4) if out["total"] else 0.0
         out["samples"] = [
-            {"id": r.id, "subject": r.subject, "content": r.content[:80],
-             "answer": r.answer,
-             "options": {o["key"]: o["text"][:40] for o in (r.options or [])[:4]}}
-            for r in conn.execute(text(
-                "SELECT id, subject, content, answer, options FROM quiz_questions "
-                "WHERE options IS NOT NULL ORDER BY id LIMIT 3"))
+            {
+                "id": r.id,
+                "subject": r.subject,
+                "content": r.content[:80],
+                "answer": r.answer,
+                "options": {o["key"]: o["text"][:40] for o in (r.options or [])[:4]},
+            }
+            for r in conn.execute(
+                text(
+                    "SELECT id, subject, content, answer, options FROM quiz_questions "
+                    "WHERE options IS NOT NULL ORDER BY id LIMIT 3"
+                )
+            )
         ]
     print(f"\n{'=' * 66}\n落库复核（{tag}）\n{'=' * 66}")
     print(f"  quiz_questions 总数：{out['total']}（可刷 {out['usable']}）")
@@ -442,8 +472,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="真题选择题入库（PostgreSQL 版）")
     ap.add_argument("--apply", action="store_true", help="真实写库（默认 dry-run）")
     ap.add_argument("--report", default="", help="JSON 计划报告输出路径")
-    ap.add_argument("--limit", type=int, default=DEFAULT_DOC_LIMIT,
-                    help=f"最多处理文档数（默认 {DEFAULT_DOC_LIMIT}）")
+    ap.add_argument("--limit", type=int, default=DEFAULT_DOC_LIMIT, help=f"最多处理文档数（默认 {DEFAULT_DOC_LIMIT}）")
     args = ap.parse_args()
 
     url, masked = build_pg_url()
@@ -464,8 +493,7 @@ def main() -> int:
         print(f"\n  待入库（去重后）：{total_new} 题，来自 {len(plan)} 篇文档")
         print(f"  跳过文档：{len(skipped)} 篇")
         for s in skipped[:6]:
-            print(f"    × {s['file_name'][:44]}"
-                  f"（抽 {s['extracted']}/{s['blocks_seen']}，{s['reason']}）")
+            print(f"    × {s['file_name'][:44]}（抽 {s['extracted']}/{s['blocks_seen']}，{s['reason']}）")
 
         print("\n-- 样例题（每篇前 3 题，dry-run 供人工核验）--")
         for p in plan:
@@ -477,12 +505,20 @@ def main() -> int:
 
         if args.report:
             Path(args.report).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.report).write_text(json.dumps({
-                "mode": "apply" if args.apply else "dry-run",
-                "target_db": masked,
-                "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "plan": plan, "skipped_docs": skipped,
-            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            Path(args.report).write_text(
+                json.dumps(
+                    {
+                        "mode": "apply" if args.apply else "dry-run",
+                        "target_db": masked,
+                        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "plan": plan,
+                        "skipped_docs": skipped,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
             print(f"\n  计划报告：{args.report}")
 
     if not args.apply:

@@ -8,6 +8,7 @@
     D:/Anaconda/python.exe scripts/verify_quiz_practiceable.py
 退出码 0 = 全部通过，1 = 有问题。
 """
+
 from __future__ import annotations
 
 import os
@@ -24,9 +25,10 @@ PAT_SHELL = re.compile(r"^\s*(答案|参考答案|解析)\s*[：:．.]?\s*$")
 
 def main() -> int:
     from database import SessionLocal
-    from models import QuizQuestion
     from services import quiz_query as qq
     from sqlalchemy import text
+
+    from models import QuizQuestion
 
     db = SessionLocal()
     problems = []
@@ -72,20 +74,24 @@ def main() -> int:
         print("=" * 64)
         print("分科可练量")
         print("=" * 64)
-        print(f'  {"科目":<22}{"全部":>7}{"可见":>7}{"可答":>7}{"可练":>7}')
-        rows = db.execute(text("""
+        print(f"  {'科目':<22}{'全部':>7}{'可见':>7}{'可答':>7}{'可练':>7}")
+        rows = db.execute(
+            text("""
             select coalesce(subject,'(未标)') s, count(*) n,
               sum(case when coalesce(is_junk,0)=0 then 1 else 0 end) v,
               sum(case when coalesce(is_junk,0)=0 and coalesce(is_available,1)=1 then 1 else 0 end) a
             from quiz_questions group by 1 order by n desc
-        """)).fetchall()
-        prac_by_subj = dict(
-            db.execute(text("""
+        """)
+        ).fetchall()
+        dict(
+            db.execute(
+                text("""
                 select coalesce(subject,'(未标)') s, count(*) n from (
                   select q.id from quiz_questions q
                     join knowledge_chunks_dummy_dummy_dummy_dummy_dummy x on 1=0
                 ) group by 1
-            """)).fetchall()
+            """)
+            ).fetchall()
         ) if False else {}
         # 分科可练量直接用 Python 侧逐条判定，避免复杂 SQL
         per = {}
@@ -97,8 +103,7 @@ def main() -> int:
         # 解析覆盖
         no_ana = sum(1 for r in prac_q.all() if not (r.analysis or "").strip())
         print()
-        print(f"  可练题中无解析: {no_ana} / {prac}  ({no_ana / prac * 100:.0f}%)"
-              if prac else "  可练题为 0")
+        print(f"  可练题中无解析: {no_ana} / {prac}  ({no_ana / prac * 100:.0f}%)" if prac else "  可练题为 0")
 
         print()
         print("=" * 64)

@@ -13,6 +13,7 @@
 若将来再有人把 ``route_result`` 改回 ``route``（或本地路径再次静默失败），
 ``engine_used`` 就不会是 ``"local"``，本测试立即变红。
 """
+
 import asyncio
 import os
 import sys
@@ -33,9 +34,11 @@ from services.ai_router import AIRouter  # noqa: E402
 # ai_service 是 MagicMock：hybrid 检索(异步)/同步检索(同步)/chat(异步) 都被替换。
 # ============================================================================ #
 
+
 def _patch_cache(monkeypatch, *, hit=None):
     """把 answer_cache 的读写换成假实现；hit=None 表示未命中。"""
     import services.answer_cache as ac_mod
+
     monkeypatch.setattr(ac_mod, "get_cached", lambda query, subject=None: hit)
     monkeypatch.setattr(ac_mod, "set_cached", lambda *a, **k: None)
 
@@ -67,8 +70,12 @@ def _patch_enhance(monkeypatch, *, queries=None, hyde=None, rerank_impl=None):
 
 def _fake_chunk(cid, text):
     return {
-        "score": 0.8, "source": "知识分块", "title": "讲义" + str(cid),
-        "content": text, "doc_id": 1, "chunk_id": cid,
+        "score": 0.8,
+        "source": "知识分块",
+        "title": "讲义" + str(cid),
+        "content": text,
+        "doc_id": 1,
+        "chunk_id": cid,
     }
 
 
@@ -149,11 +156,15 @@ def test_chat_rag_rewrite_failure_uses_original_query(monkeypatch):
         raise RuntimeError("改写炸了")
 
     monkeypatch.setattr(re_mod, "rewrite_query", _boom)
+
     async def _hyde_none(q, subject=None):
         return None
+
     monkeypatch.setattr(re_mod, "hyde_document", _hyde_none)
+
     async def _rerank_pass(c, query, top_k=5):
         return list(c)[:top_k]
+
     monkeypatch.setattr(re_mod, "rerank", _rerank_pass)
 
     ai = _make_ai_service(chat_side_effect=_GOOD, hybrid_hits=[_fake_chunk(1, "x")])
@@ -190,12 +201,17 @@ def test_chat_rag_rerank_failure_keeps_original_order(monkeypatch):
 
     async def _rewrite(q, subject=None):
         return [q]
+
     monkeypatch.setattr(re_mod, "rewrite_query", _rewrite)
+
     async def _hyde(q, subject=None):
         return None
+
     monkeypatch.setattr(re_mod, "hyde_document", _hyde)
+
     async def _rerank_boom(candidates, query, top_k=5):
         raise RuntimeError("rerank炸了")
+
     monkeypatch.setattr(re_mod, "rerank", _rerank_boom)
 
     router = AIRouter(db=None)
@@ -211,10 +227,12 @@ def test_chat_rag_cache_read_write_failure_is_silent(monkeypatch):
 
     def _boom_read(query, subject=None):
         raise RuntimeError("读缓存炸了")
+
     monkeypatch.setattr(ac_mod, "get_cached", _boom_read)
 
     def _boom_write(*a, **k):
         raise RuntimeError("写缓存炸了")
+
     monkeypatch.setattr(ac_mod, "set_cached", _boom_write)
 
     _patch_enhance(monkeypatch, queries=["卡诺图"])
@@ -315,10 +333,10 @@ def test_force_local_uses_local_engine(monkeypatch):
 
     result = asyncio.run(
         router.chat_with_router(
-            question="什么是卡诺图？",          # 命中“卡诺图”→识别为数字电子技术
+            question="什么是卡诺图？",  # 命中“卡诺图”→识别为数字电子技术
             ai_service=ai_service,
             context=None,
-            force_engine="local",               # 即前端 request.force_local=True
+            force_engine="local",  # 即前端 request.force_local=True
         )
     )
 

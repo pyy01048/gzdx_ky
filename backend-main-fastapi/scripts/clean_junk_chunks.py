@@ -29,6 +29,7 @@
     python scripts/clean_junk_chunks.py --show-samples 30     # dry-run，多看样本
     python scripts/clean_junk_chunks.py --apply              # 真删（自动先备份）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -176,13 +177,42 @@ _MIN_KEEP_CHARS = 200
 # 关键：水印本身是中文（"观畴考研""微信公众号"），所以不能用「是否含中日韩字符」
 # 来区分水和正文——必须用词元白名单。
 _TAIL_SEGMENTS: tuple[str, ...] = (
-    "微信公众号", "公众号", "观畴考研", "学长", "合工大电物院", "考研资料",
-    "你的考研专家", "东坡哥", "haidongpo3", "电子与通信工程考研",
-    "中国大学MOOC", "大学MOOC", "MOOC", "慕课",
-    "二维码", "扫码", "淘宝", "认准", "店铺",
-    "仅供学习交流", "请勿转载", "侵权", "加QQ", "微信同号", "vx",
-    "考研", "资料", "获取", "关注", "更多",
-    "QQ", "qq", "vx", "VX", "v信", "威信",
+    "微信公众号",
+    "公众号",
+    "观畴考研",
+    "学长",
+    "合工大电物院",
+    "考研资料",
+    "你的考研专家",
+    "东坡哥",
+    "haidongpo3",
+    "电子与通信工程考研",
+    "中国大学MOOC",
+    "大学MOOC",
+    "MOOC",
+    "慕课",
+    "二维码",
+    "扫码",
+    "淘宝",
+    "认准",
+    "店铺",
+    "仅供学习交流",
+    "请勿转载",
+    "侵权",
+    "加QQ",
+    "微信同号",
+    "vx",
+    "考研",
+    "资料",
+    "获取",
+    "关注",
+    "更多",
+    "QQ",
+    "qq",
+    "vx",
+    "VX",
+    "v信",
+    "威信",
 )
 
 _SPAM_PUNCT = set(" \t\r\n。．.，,、；;：:！!？?（）()【】[]《》<>\"'“”‘’-—_/\\|*#@~·…")
@@ -371,8 +401,9 @@ def find_junk_ids(conn: sqlite3.Connection, *, high_freq: int) -> tuple[list[int
         if is_junk:
             junk_ids.append(cid)
             reasons[reason] = reasons.get(reason, 0) + 1
-            samples.append((cid, doc_id, (doc_name or "")[:36],
-                            len(text or ""), (text or "").replace("\n", "\\n")[:58]))
+            samples.append(
+                (cid, doc_id, (doc_name or "")[:36], len(text or ""), (text or "").replace("\n", "\\n")[:58])
+            )
     return junk_ids, reasons, hi_groups, truncates
 
 
@@ -415,41 +446,45 @@ def selftest() -> int:
     """
     cases: list[tuple[str, str, str]] = [
         # (说明, 文本, 期望: 'delete' 删 / 'keep' 留 / 'truncate' 截尾)
-        ("纯引流水印",
-         "料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院",
-         "delete"),
-        ("MOOC水印重复",
-         "大学MOOC中国大学MOOC中国大学MOOC中国大学MOOC中国大学MOOC中国大学MOOC",
-         "delete"),
-        ("编码乱码",
-         "bZeHz.z sVfYoH,2M t HtUNYLiwH ) VrV0?UsL .Z6xX ew![!yo!wrwh:",
-         "delete"),
-        ("纯符号点号",
-         "\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n",
-         "delete"),
+        (
+            "纯引流水印",
+            "料，学长QQ：764312801合工大电物院初试、复试专业课资料，学长QQ：764312801合工大电物院",
+            "delete",
+        ),
+        ("MOOC水印重复", "大学MOOC中国大学MOOC中国大学MOOC中国大学MOOC中国大学MOOC中国大学MOOC", "delete"),
+        ("编码乱码", "bZeHz.z sVfYoH,2M t HtUNYLiwH ) VrV0?UsL .Z6xX ew![!yo!wrwh:", "delete"),
+        ("纯符号点号", "\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.\n", "delete"),
         ("空白", "   \n  \n ", "delete"),
-        ("正常正文无水印",
-         "肖克莱互补对称输出电路的静态工作点计算方法是：先求出静态基极电流，"
-         "再求集电极电压。这是最典型的甲乙类功率放大电路的静态分析。",
-         "keep"),
+        (
+            "正常正文无水印",
+            "肖克莱互补对称输出电路的静态工作点计算方法是：先求出静态基极电流，"
+            "再求集电极电压。这是最典型的甲乙类功率放大电路的静态分析。",
+            "keep",
+        ),
         # 实测踩坑：真实考研英语阅读原文里全是 FPGA/EMPROM 这类缩写，
         # 全量统计混排词能到 59/119，跟乱码一个量级。判据必须只看前几个词。
-        ("真实英语阅读原文（含FPGA/EMPROM缩写，绝不能误杀）",
-         "ere of the FluMist nasal spraytype, which is not 18 for pregnant women, "
-         "peop le should avoid this vaccine. The EMPROM read ROM contains FPGA "
-         "FPGA CPLD GAL PAL configuration data and the DocumentSummaryInformation "
-         "block. Root Entry DocumentSummaryInformation WordDocument TableData.",
-         "keep"),
-        ("真实英文技术文档",
-         "The TTL gate output stage uses a push-pull configuration with "
-         "complementary transistors to drive the load capacitor.",
-         "keep"),
-        ("含水印但中文量大（必须留，绝不能删）",
-         "状态下，其关态和开态，分别指三极管的。A.截止状态和饱和状态B.截止状态和放大状态"
-         "C.放大状态和饱和状态D.饱和状态和截止状态13、n沟道增强型mos管开态是指"
-         "（），关态是指（A、截止区B、可变电阻区C、饱和区D、放大区"
-         "观畴考研，你身边的考研专家东坡哥微信:haidongpo3QQ:3428047568",
-         "keep"),
+        (
+            "真实英语阅读原文（含FPGA/EMPROM缩写，绝不能误杀）",
+            "ere of the FluMist nasal spraytype, which is not 18 for pregnant women, "
+            "peop le should avoid this vaccine. The EMPROM read ROM contains FPGA "
+            "FPGA CPLD GAL PAL configuration data and the DocumentSummaryInformation "
+            "block. Root Entry DocumentSummaryInformation WordDocument TableData.",
+            "keep",
+        ),
+        (
+            "真实英文技术文档",
+            "The TTL gate output stage uses a push-pull configuration with "
+            "complementary transistors to drive the load capacitor.",
+            "keep",
+        ),
+        (
+            "含水印但中文量大（必须留，绝不能删）",
+            "状态下，其关态和开态，分别指三极管的。A.截止状态和饱和状态B.截止状态和放大状态"
+            "C.放大状态和饱和状态D.饱和状态和截止状态13、n沟道增强型mos管开态是指"
+            "（），关态是指（A、截止区B、可变电阻区C、饱和区D、放大区"
+            "观畴考研，你身边的考研专家东坡哥微信:haidongpo3QQ:3428047568",
+            "keep",
+        ),
     ]
 
     print("=" * 68)
@@ -484,8 +519,12 @@ def main() -> int:
     ap.add_argument("--db", default=DB_PATH)
     ap.add_argument("--apply", action="store_true", help="真正写库")
     ap.add_argument("--selftest", action="store_true", help="只跑判据自检（不碰数据库）")
-    ap.add_argument("--high-freq", type=int, default=HIGH_FREQ_THRESHOLD,
-                    help=f"同 text 出现 >= N 次即判垃圾（默认 {HIGH_FREQ_THRESHOLD}）")
+    ap.add_argument(
+        "--high-freq",
+        type=int,
+        default=HIGH_FREQ_THRESHOLD,
+        help=f"同 text 出现 >= N 次即判垃圾（默认 {HIGH_FREQ_THRESHOLD}）",
+    )
     ap.add_argument("--show-samples", type=int, default=20)
     ap.add_argument("--backup", default=None)
     args = ap.parse_args()
@@ -500,16 +539,16 @@ def main() -> int:
     conn = sqlite3.connect(args.db)
     try:
         before = stats(conn)
-        junk_ids, reasons, hi_groups, truncates = find_junk_ids(
-            conn, high_freq=args.high_freq
-        )
+        junk_ids, reasons, hi_groups, truncates = find_junk_ids(conn, high_freq=args.high_freq)
         n = len(junk_ids)
 
         print("=" * 72)
         print("垃圾块清理" + ("（DRY-RUN，不写库）" if not args.apply else "（APPLY）"))
         print("=" * 72)
-        print(f"  扫描判据：引流特征 {len(_SPAM_PATTERNS)} 条 | "
-              f"正常字符占比<{_GARBAGE_RATIO} | 无实义字符 | 同text出现>={args.high_freq}次")
+        print(
+            f"  扫描判据：引流特征 {len(_SPAM_PATTERNS)} 条 | "
+            f"正常字符占比<{_GARBAGE_RATIO} | 无实义字符 | 同text出现>={args.high_freq}次"
+        )
         print()
         print("  清理前行数：")
         for k, v in before.items():
@@ -536,10 +575,10 @@ def main() -> int:
             ph = ",".join("?" * min(args.show_samples, n))
             for r in conn.execute(
                 f"SELECT id, document_id, doc_name, length(text), substr(text,1,58) "
-                f"FROM knowledge_chunks WHERE id IN ({ph})", junk_ids[: args.show_samples]
+                f"FROM knowledge_chunks WHERE id IN ({ph})",
+                junk_ids[: args.show_samples],
             ):
-                print(f"    id={r[0]:<7} doc={r[1]:<6} len={str(r[3]):<6} "
-                      f"{str(r[4])[:44]!r}")
+                print(f"    id={r[0]:<7} doc={r[1]:<6} len={str(r[3]):<6} {str(r[4])[:44]!r}")
         print()
 
         if not args.apply:
@@ -561,9 +600,7 @@ def main() -> int:
         # --- 1) 截尾：保留正文，去掉尾部水印（同步 FTS 内容）---
         trunc_done = 0
         for cid, body in truncates:
-            cur_upd = conn.execute(
-                "UPDATE knowledge_chunks SET text=? WHERE id=?", (body, cid)
-            )
+            cur_upd = conn.execute("UPDATE knowledge_chunks SET text=? WHERE id=?", (body, cid))
             if cur_upd.rowcount:
                 try:
                     conn.execute(
@@ -583,14 +620,10 @@ def main() -> int:
             ph = ",".join("?" * n)
             for t in DEP_TABLES:
                 try:
-                    dep_done[t] = conn.execute(
-                        f"DELETE FROM {t} WHERE chunk_id IN ({ph})", junk_ids
-                    ).rowcount
+                    dep_done[t] = conn.execute(f"DELETE FROM {t} WHERE chunk_id IN ({ph})", junk_ids).rowcount
                 except sqlite3.Error as e:
                     dep_done[t] = f"SKIP({e})"
-            deleted = conn.execute(
-                f"DELETE FROM knowledge_chunks WHERE id IN ({ph})", junk_ids
-            ).rowcount
+            deleted = conn.execute(f"DELETE FROM knowledge_chunks WHERE id IN ({ph})", junk_ids).rowcount
         else:
             deleted = 0
         conn.commit()

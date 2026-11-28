@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """V11：retrieval_enhance rerank 优先走 8140 bge 微服务的测试。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,14 +23,18 @@ def _cands():
 
 def test_rerank_uses_bge_when_available(monkeypatch):
     """bge 返回分数时，rerank 用 bge 结果排序，且不调用 LLM 打分。"""
+
     async def fake_bge(cands, q):
         return {0: 0.9, 1: 0.1}
+
     monkeypatch.setattr(re_, "_bge_rerank_scores", fake_bge)
 
     llm_called = {"n": 0}
+
     async def fake_llm(cands, q):
         llm_called["n"] += 1
         return {0: 5}
+
     monkeypatch.setattr(re_, "_llm_scores", fake_llm)
 
     out = asyncio.run(re_.rerank(_cands(), "什么是卡诺图", top_k=2))
@@ -39,8 +44,10 @@ def test_rerank_uses_bge_when_available(monkeypatch):
 
 def test_rerank_falls_back_to_llm_when_bge_down(monkeypatch):
     """bge 不可用(None) → 回退 LLM 打分。"""
+
     async def fake_bge(cands, q):
         return None
+
     monkeypatch.setattr(re_, "_bge_rerank_scores", fake_bge)
     monkeypatch.setattr(re_, "_llm_scores", AsyncMock(return_value={0: 2, 1: 9}))
 

@@ -13,6 +13,7 @@
     python scripts/backfill_hash_subject.py            # dry-run，打印计划
     python scripts/backfill_hash_subject.py --apply    # 落库
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,13 +49,15 @@ def sha256_of(path: Path) -> int | None:
 
 def backfill_documents(db, apply: bool) -> list[tuple[str, str]]:
     print("\n== 1) documents.content_hash / size 回填 ==")
-    rows = db.execute(text(
-        "select id, file_path, file_name, content_hash, size from documents "
-        "where content_hash is null or size is null order by id"
-    )).all()
+    rows = db.execute(
+        text(
+            "select id, file_path, file_name, content_hash, size from documents "
+            "where content_hash is null or size is null order by id"
+        )
+    ).all()
     print(f"  待回填 {len(rows)} 行")
 
-    plan: list[tuple[int, str, int]] = []   # (doc_id, hash, size)
+    plan: list[tuple[int, str, int]] = []  # (doc_id, hash, size)
     missing: list[str] = []
     for doc_id, fp, fname, _h, _sz in rows:
         p = Path(fp) if fp else None
@@ -76,22 +79,24 @@ def backfill_documents(db, apply: bool) -> list[tuple[str, str]]:
         print(f"    ... 共 {len(missing)} 条")
 
     if apply and plan:
-        db.execute(text(
-            "update documents set content_hash=:h, size=:s where id=:i"
-        ), [{"h": h, "s": s, "i": i} for i, h, s in plan])
+        db.execute(
+            text("update documents set content_hash=:h, size=:s where id=:i"),
+            [{"h": h, "s": s, "i": i} for i, h, s in plan],
+        )
         db.commit()
         print(f"  [APPLIED] 已写入 {len(plan)} 行")
     elif plan:
         print("  [DRY-RUN] 未落库（--apply 执行）")
 
     # 副本检测：hash 相同
-    dup_by_hash = db.execute(text("""
+    dup_by_hash = db.execute(
+        text("""
         select content_hash, count(*), string_agg(id::text, ',') from documents
         where content_hash is not null group by 1 having count(*)>1 order by 2 desc
-    """)).all()
+    """)
+    ).all()
     print(f"\n  副本检测 · 同 hash 组数: {len(dup_by_hash)}")
-    names = {r[0]: r[1] for r in db.execute(text(
-        "select id, file_name from documents"))}
+    names = {r[0]: r[1] for r in db.execute(text("select id, file_name from documents"))}
     for h, n, ids in dup_by_hash[:15]:
         sample = [names.get(int(i), "?") for i in ids.split(",")]
         print(f"    x{n} ids={ids} files={sample}")
@@ -121,15 +126,15 @@ def backfill_subject_id(db, apply: bool) -> None:
             by_name[name].append(sid)
 
     # 已有外键的题目，核对文本是否一致（只报告）
-    mismatch = db.execute(text("""
+    mismatch = db.execute(
+        text("""
         select count(*) from quiz_questions q join subjects s on s.id=q.subject_id
         where q.subject is not null and q.subject<>s.name and q.subject<>s.code
-    """)).scalar()
+    """)
+    ).scalar()
     print(f"  已有外键但文本与科目不一致: {mismatch} 行（不动，仅报告）")
 
-    rows = db.execute(text(
-        "select id, subject from quiz_questions where subject_id is null"
-    )).all()
+    rows = db.execute(text("select id, subject from quiz_questions where subject_id is null")).all()
     plan: list[tuple[int, int]] = []
     ambiguous: list[tuple[int, str]] = []
     unmatched: list[tuple[int, str]] = []
@@ -148,17 +153,17 @@ def backfill_subject_id(db, apply: bool) -> None:
         else:
             unmatched.append((qid, subj))
 
-    print(f"  待回填 {len(rows)} 行 → 可回填 {len(plan)}，"
-          f"歧义(同名多科目) {len(ambiguous)}，无匹配 {len(unmatched)}")
+    print(f"  待回填 {len(rows)} 行 → 可回填 {len(plan)}，歧义(同名多科目) {len(ambiguous)}，无匹配 {len(unmatched)}")
     for qid, s in ambiguous[:8]:
         print(f"    [歧义] qid={qid} subject={s!r}")
     for qid, s in unmatched[:8]:
         print(f"    [无匹配] qid={qid} subject={s!r}")
 
     if apply and plan:
-        db.execute(text(
-            "update quiz_questions set subject_id=:s where id=:i and subject_id is null"
-        ), [{"s": s, "i": i} for i, s in plan])
+        db.execute(
+            text("update quiz_questions set subject_id=:s where id=:i and subject_id is null"),
+            [{"s": s, "i": i} for i, s in plan],
+        )
         db.commit()
         print(f"  [APPLIED] 已写入 {len(plan)} 行")
     elif plan:

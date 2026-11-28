@@ -15,6 +15,7 @@
   python scripts/fix_legacy_level_label.py# dry-run
   python scripts/fix_legacy_level_label.py --apply --verify
 """
+
 import argparse
 import os
 import sqlite3
@@ -34,7 +35,7 @@ LEGACY_MAP = {
     "一本": "双非",
     "二本": "双非",
     "三本": "双非",
-    "重点": "双非",      # 老「重点大学」已并入 211
+    "重点": "双非",  # 老「重点大学」已并入 211
     "普通一本": "双非",
 }
 
@@ -46,7 +47,7 @@ def backup_db(tag: str) -> str:
     src = sqlite3.connect(DB)
     out = sqlite3.connect(dst)
     try:
-        src.backup(out)          # WAL 模式必须用 backup() API
+        src.backup(out)  # WAL 模式必须用 backup() API
     finally:
         out.close()
         src.close()
@@ -66,14 +67,13 @@ def main():
     print("level 取值现状")
     print("=" * 70)
     for r in conn.execute(
-            "SELECT COALESCE(level,'<NULL>') lv, COUNT(*) c FROM kaoyan_schools"
-            " GROUP BY 1 ORDER BY c DESC"):
+        "SELECT COALESCE(level,'<NULL>') lv, COUNT(*) c FROM kaoyan_schools GROUP BY 1 ORDER BY c DESC"
+    ):
         flag = "" if (r["lv"] in ALLOWED or r["lv"] == "<NULL>") else "  <-- 旧口径/非法"
         print(f"    {r['lv']:<10s} {r['c']:>4d}{flag}")
 
     plan = []
-    for r in conn.execute(
-            "SELECT id, name, level FROM kaoyan_schools WHERE level IS NOT NULL"):
+    for r in conn.execute("SELECT id, name, level FROM kaoyan_schools WHERE level IS NOT NULL"):
         lv = (r["level"] or "").strip()
         if lv in LEGACY_MAP:
             plan.append((r["id"], r["name"], lv, LEGACY_MAP[lv]))
@@ -91,23 +91,20 @@ def main():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     n = 0
     for sid, _name, _old, new in plan:
-        n += conn.execute(
-            "UPDATE kaoyan_schools SET level=?, updated_at=? WHERE id=?",
-            (new, now, sid)).rowcount
+        n += conn.execute("UPDATE kaoyan_schools SET level=?, updated_at=? WHERE id=?", (new, now, sid)).rowcount
     conn.commit()
     print(f"实际写入 {n} 条")
 
     if args.verify:
         print("\n[修复后 level 分布]")
         for r in conn.execute(
-                "SELECT COALESCE(level,'<NULL>') lv, COUNT(*) c"
-                " FROM kaoyan_schools GROUP BY 1 ORDER BY c DESC"):
+            "SELECT COALESCE(level,'<NULL>') lv, COUNT(*) c FROM kaoyan_schools GROUP BY 1 ORDER BY c DESC"
+        ):
             print(f"    {r['lv']:<10s} {r['c']:>4d}")
         illegal = conn.execute(
-            "SELECT COALESCE(level,'<NULL>') lv, COUNT(*) c FROM kaoyan_schools"
-            " GROUP BY 1").fetchall()
-        bad = [r["lv"] for r in illegal
-               if r["lv"] != "<NULL>" and r["lv"] not in ALLOWED]
+            "SELECT COALESCE(level,'<NULL>') lv, COUNT(*) c FROM kaoyan_schools GROUP BY 1"
+        ).fetchall()
+        bad = [r["lv"] for r in illegal if r["lv"] != "<NULL>" and r["lv"] not in ALLOWED]
         print(f"\n    白名单外取值: {bad if bad else '无'}")
     conn.close()
 

@@ -21,6 +21,7 @@
     user_confirmed=0.95；阈值：used_for_grading >= 0.7，
     参与自动判分需 >= 0.7 且来源非纯 LLM 生成（详见 service 层）。
 """
+
 from __future__ import annotations
 
 import logging
@@ -108,6 +109,7 @@ def ensure_answer_confidence_schema(conn: sqlite3.Connection) -> dict:
     created: List[str] = []
     try:
         from services.ddl_compat import adapt_ddl, is_sqlite
+
         if is_sqlite(conn):
             conn.execute("PRAGMA busy_timeout = 30000")
         for stmt in SCHEMA_SQL:

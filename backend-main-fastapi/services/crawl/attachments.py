@@ -55,11 +55,11 @@ DEFAULT_MAX_BYTES = 20 * 1024 * 1024
 PARSEABLE_EXT = frozenset({"pdf"})
 
 #: 附件状态
-STATUS_STORED = "stored"          # 已存盘，未解析（非 PDF 或未启用解析）
-STATUS_PARSED = "parsed"          # 已解析并落库
+STATUS_STORED = "stored"  # 已存盘，未解析（非 PDF 或未启用解析）
+STATUS_PARSED = "parsed"  # 已解析并落库
 STATUS_PARSE_SKIPPED = "parse_skipped"  # 解析器不可用 / 未启用
-STATUS_PARSE_FAILED = "parse_failed"    # 解析报错
-STATUS_FAILED = "failed"          # 下载失败
+STATUS_PARSE_FAILED = "parse_failed"  # 解析报错
+STATUS_FAILED = "failed"  # 下载失败
 
 
 def storage_root(root: Optional[str] = None) -> str:
@@ -85,8 +85,8 @@ class AttachmentRecord:
     filename: str
     ext: str
     status: str = STATUS_STORED
-    path: str = ""          # 落盘绝对路径
-    rel_path: str = ""      # 相对 storage root 的路径
+    path: str = ""  # 落盘绝对路径
+    rel_path: str = ""  # 相对 storage root 的路径
     size: int = 0
     sha256: str = ""
     document_id: Optional[int] = None

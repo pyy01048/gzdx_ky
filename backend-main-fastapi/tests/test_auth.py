@@ -117,6 +117,7 @@ def auth_app(app_module, db_schema, monkeypatch):  # noqa: ARG001
     """
     from core.models.schools import AuditLog
     from database import SessionLocal
+
     from models import AuthEvent, User
 
     s0 = SessionLocal()
@@ -207,6 +208,7 @@ def test_password_hash_is_salted_pbkdf2_and_never_plaintext():
 
 def test_bootstrap_admin_is_idempotent_and_forces_password_change(auth_app):
     from database import SessionLocal
+
     from models import User
 
     s = SessionLocal()
@@ -251,6 +253,34 @@ def _cookie_value(resp, name: str) -> str:
         if ck.lower().startswith(f"{name}="):
             return ck.split(";", 1)[0].split("=", 1)[1]
     raise AssertionError(f"响应未下发 cookie {name}")
+
+
+def test_login_session_timestamps_use_timestamptz(auth_app):
+    from database import SessionLocal
+
+    from models import AuthSession
+
+    c = TestClient(auth_app)
+    assert _login(c).status_code == 200
+    s = SessionLocal()
+    try:
+        row = s.query(AuthSession).one()
+        assert row.created_at.tzinfo is not None
+        assert row.last_used_at.tzinfo is not None
+        assert row.expires_at.tzinfo is not None
+        columns = s.execute(
+            text("""
+            SELECT count(*)
+              FROM information_schema.columns
+             WHERE table_schema = current_schema()
+               AND table_name = 'auth_sessions'
+               AND column_name IN ('created_at', 'last_used_at', 'expires_at', 'revoked_at')
+               AND data_type = 'timestamp with time zone'
+        """)
+        ).scalar_one()
+        assert columns == 4
+    finally:
+        s.close()
 
 
 def test_change_password_revokes_old_tokens(auth_app):

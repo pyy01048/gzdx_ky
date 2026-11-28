@@ -7,6 +7,7 @@
 "库挂了还能把库救回来"这条路径。所以判定逻辑全部做成纯函数 + 临时文件，
 零数据库依赖。
 """
+
 from __future__ import annotations
 
 import json
@@ -107,7 +108,7 @@ class TestParseEnvKv(unittest.TestCase):
         self.assertNotIn("comment", got)
 
     def test_quotes_stripped(self):
-        got = sm.parse_env_kv('PG_PASSWORD="abc"\nPG_USER=\'u\'')
+        got = sm.parse_env_kv("PG_PASSWORD=\"abc\"\nPG_USER='u'")
         self.assertEqual(got["PG_PASSWORD"], "abc")
         self.assertEqual(got["PG_USER"], "u")
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { request } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
@@ -71,6 +71,7 @@ function StatTile({ icon, label, value, unit, hint }) {
   )
 }
 
+/** 复试代码题库主组件（Aurora v3）：知识点全景 / 题库列表 / 考频分析三 Tab。 */
 export default function CodeBank() {
   /* 访客只读（2026-11-20）：题库浏览免登录；「添加科目」是管理写操作，
      访客一律换成登录引导，避免点了才吃 401 被踢去登录页。 */

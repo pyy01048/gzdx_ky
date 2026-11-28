@@ -8,6 +8,7 @@
     python scripts/report_quiz_mislabel.py                 # 数字/模拟全量扫描
     python scripts/report_quiz_mislabel.py --limit 5000 --min-conf 0.90
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,9 +34,10 @@ def main() -> int:
     args = ap.parse_args()
 
     from database import SessionLocal
-    from models import QuizQuestion
     from services.quiz_classifier_v2 import classify_batch_v2
     from sqlalchemy import func
+
+    from models import QuizQuestion
 
     db = SessionLocal()
     try:
@@ -48,30 +50,32 @@ def main() -> int:
             .limit(args.limit)
             .all()
         )
-        qs = [{"content": r.content, "options": r.options if isinstance(r.options, list) else None}
-              for r in rows]
+        qs = [{"content": r.content, "options": r.options if isinstance(r.options, list) else None} for r in rows]
         decs = classify_batch_v2(qs, db=db, use_llm=False)
         report = []
-        for r, d in zip(rows, decs):
-            if (d.subject.confidence >= args.min_conf
-                    and d.subject.value and d.subject.value != r.subject):
-                report.append({
-                    "id": r.id,
-                    "library_subject": r.subject,
-                    "predicted_subject": d.subject.value,
-                    "confidence": round(d.subject.confidence, 4),
-                    "source": d.subject.source,
-                    "document_id": getattr(r, "document_id", None),
-                    "source_name": getattr(r, "source", None),
-                    "content": (r.content or "")[:120],
-                })
+        for r, d in zip(rows, decs, strict=False):
+            if d.subject.confidence >= args.min_conf and d.subject.value and d.subject.value != r.subject:
+                report.append(
+                    {
+                        "id": r.id,
+                        "library_subject": r.subject,
+                        "predicted_subject": d.subject.value,
+                        "confidence": round(d.subject.confidence, 4),
+                        "source": d.subject.source,
+                        "document_id": getattr(r, "document_id", None),
+                        "source_name": getattr(r, "source", None),
+                        "content": (r.content or "")[:120],
+                    }
+                )
         os.makedirs(os.path.dirname(args.out), exist_ok=True)
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=1)
         print(f"扫描 {len(rows)} 题，疑似错标 {len(report)} 题 → {args.out}")
         for it in report[:12]:
-            print(f"  库内={it['library_subject']} 预测={it['predicted_subject']}"
-                  f"({it['confidence']:.2f}) id={it['id']} | {it['content'][:46]}")
+            print(
+                f"  库内={it['library_subject']} 预测={it['predicted_subject']}"
+                f"({it['confidence']:.2f}) id={it['id']} | {it['content'][:46]}"
+            )
         return 0
     finally:
         db.close()

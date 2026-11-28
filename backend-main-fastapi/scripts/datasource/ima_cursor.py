@@ -8,6 +8,7 @@ offset ranges that can be crawled in parallel.
 Usage:
     python ima_cursor.py 0 50 100 150 ...
 """
+
 import base64
 import sys
 

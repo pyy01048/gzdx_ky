@@ -16,6 +16,7 @@
 
 运行: python scripts/import_math_zhenti_pg.py
 """
+
 # [DONE 2026-10] 考研数学真题导入。回滚：按 EXT_PREFIX 删除对应记录。
 import glob
 import json
@@ -35,7 +36,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
+from scripts._conn import dsn as DB_DSN_F
+
+DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("import_math_zhenti")
@@ -283,7 +286,7 @@ def extract_options_from_text(text):
         if idx != -1 and idx < opt_region_end:
             opt_region_end = idx
     # 选项区文本
-    opt_region = text[first_opt_pos: opt_region_end]
+    text[first_opt_pos:opt_region_end]
     # 从选项区提取每个选项
     opt_list = []
     for mi in range(best_start, best_end):

@@ -10,6 +10,7 @@
 
 纯函数测试：不碰数据库、不需要 mineru、不需要真实 PDF。
 """
+
 from __future__ import annotations
 
 from services.ingest_pipeline import bind_question_images

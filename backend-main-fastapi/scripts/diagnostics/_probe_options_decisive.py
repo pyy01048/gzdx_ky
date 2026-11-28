@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """决定性复测：options 单元格的 sqlite 类型 + 形状分布（把两次矛盾的数字钉死）。"""
+
 import json
 import os
 import sqlite3
@@ -22,7 +23,7 @@ for qid, opts in rows:
     if opts is None:
         shape["NULL"] += 1
         continue
-    if isinstance(opts, (bytes, bytearray)):
+    if isinstance(opts, bytes | bytearray):
         try:
             opts = opts.decode("utf-8")
             shape["bytes→解码后参与统计"] += 0

@@ -5,6 +5,7 @@ V3.0 数据库性能优化模块
 - 连接池优化
 - 常用查询预编译
 """
+
 import logging
 import time
 from collections import OrderedDict
@@ -64,7 +65,7 @@ class LRUCache:
 
 # 全局缓存实例
 _query_cache = LRUCache(max_size=2000, ttl=30)  # 查询缓存30秒
-_stats_cache = LRUCache(max_size=500, ttl=300)   # 统计缓存5分钟
+_stats_cache = LRUCache(max_size=500, ttl=300)  # 统计缓存5分钟
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +76,7 @@ def cached(cache_instance: LRUCache = _query_cache, ttl: int = None):
 
     注意：被装饰的函数第一个参数必须是db（Session），缓存key会忽略db。
     """
+
     def decorator(func: Callable):
         @wraps(func)
         def wrapper(db: Session, *args, **kwargs):
@@ -95,7 +97,9 @@ def cached(cache_instance: LRUCache = _query_cache, ttl: int = None):
             # 存入缓存
             cache_instance.set(cache_key, result, ttl)
             return result
+
         return wrapper
+
     return decorator
 
 
@@ -107,7 +111,6 @@ MISSING_INDEXES = [
     ("words", "ix_words_status", "status"),
     ("words", "ix_words_due_date", "due_date"),
     ("words", "ix_words_status_due", "status, due_date"),
-
     # quiz_questions表：刷题查询常用
     # 2026-10-14 PG 迁移修正：`source` 列已按 ADR-003 更名为 `source_label`
     # （来源正交双列 source_kind / source_label），索引定义同步改写，
@@ -115,27 +118,21 @@ MISSING_INDEXES = [
     ("quiz_questions", "ix_quiz_source", "source_label"),
     ("quiz_questions", "ix_quiz_type", "question_type"),
     ("quiz_questions", "ix_quiz_difficulty", "difficulty"),
-
     # knowledge_chunks表：RAG检索常用
     ("knowledge_chunks", "ix_chunks_created_at", "created_at"),
     ("knowledge_chunks", "ix_chunks_subject_doc", "subject, document_id"),
-
     # documents表：文档查询常用
     ("documents", "ix_documents_created_at", "created_at"),
     # 说明（2026-10-24 优化）：index_status 已有既有索引 idx_documents_status 覆盖，
     # 不再重复创建 ix_documents_status（消除冗余索引与启动期竞态）。
-
     # 课表/番茄钟索引已随功能移除（2026-09），pomodoro_sessions 表已删除，
     # 残留定义会在启动时产生告警，已从 MISSING_INDEXES 移除。
-
     # tasks表：任务查询常用
     ("tasks", "ix_tasks_status", "status"),
     ("tasks", "ix_tasks_due_date", "due_date"),
     ("tasks", "ix_tasks_status_due", "status, due_date"),
-
     # error_records表：错题查询常用（掌握度字段为 accuracy，非 mastery）
     ("error_records", "ix_error_status", "status"),
-
     # flashcards表：记忆卡片查询常用（SM-2 调度字段为 next_review / mastery）
     ("flashcards", "ix_flashcards_mastery", "mastery"),
     ("flashcards", "ix_flashcards_next_review", "next_review"),
@@ -157,9 +154,7 @@ def create_missing_indexes(db: Session):
     created_count = 0
     for table_name, index_name, columns in MISSING_INDEXES:
         try:
-            db.execute(text(
-                f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns})"
-            ))
+            db.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns})"))
             created_count += 1
         except Exception as e:  # noqa: BLE001
             # 单条失败不应连带整批：回滚到 savepoint，继续处理后续索引
@@ -197,8 +192,7 @@ def optimize_sqlite_connection(db: Session):
         pg_settings = [
             ("SET statement_timeout = '30000ms'", "语句超时 30s，防慢查询拖垮连接池"),
             ("SET lock_timeout = '10000ms'", "锁等待超时 10s，避免长时间阻塞"),
-            ("SET idle_in_transaction_session_timeout = '120000ms'",
-             "空闲事务超时 2min，防连接泄漏"),
+            ("SET idle_in_transaction_session_timeout = '120000ms'", "空闲事务超时 2min，防连接泄漏"),
         ]
         for sql, desc in pg_settings:
             try:
@@ -239,8 +233,9 @@ def get_study_stats_cached(db: Session) -> Dict[str, Any]:
     注意：番茄钟（pomodoro_sessions）模块已移除，学习时长统计
     以 study_sessions 表为准，此处不再统计番茄钟次数。
     """
-    from models import ErrorRecord, QuizQuestion, StudySession, Task, Word
     from sqlalchemy import func
+
+    from models import ErrorRecord, QuizQuestion, StudySession, Task, Word
 
     stats = {
         "total_tasks": db.query(func.count(Task.id)).scalar() or 0,
@@ -258,15 +253,23 @@ def get_study_stats_cached(db: Session) -> Dict[str, Any]:
 @cached(_query_cache, ttl=60)
 def get_due_words_cached(db: Session, limit: int = 50) -> List[Any]:
     """缓存的到期单词查询（60秒缓存）。"""
-    from models import Word
     from utils.timeutil import local_today
+
+    from models import Word
+
     today = local_today()
     # 与 GET /api/words/due 口径一致：复习队列排除未学新词（not_mastered），
     # 新词走"学习"流程；否则 4172 个新词全部涌入队列（实测失真）。
-    return db.query(Word).filter(
-        Word.status.in_(["learning", "reviewing"]),
-        Word.due_date <= today,
-    ).order_by(Word.due_date.asc()).limit(limit).all()
+    return (
+        db.query(Word)
+        .filter(
+            Word.status.in_(["learning", "reviewing"]),
+            Word.due_date <= today,
+        )
+        .order_by(Word.due_date.asc())
+        .limit(limit)
+        .all()
+    )
 
 
 def invalidate_word_cache():
@@ -297,10 +300,12 @@ class QueryTimer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         elapsed = (time.time() - self.start) * 1000
         if elapsed > self.threshold_ms:
-            self.slow_queries.append({
-                "time": time.time(),
-                "elapsed_ms": elapsed,
-            })
+            self.slow_queries.append(
+                {
+                    "time": time.time(),
+                    "elapsed_ms": elapsed,
+                }
+            )
             logger.warning(f"慢查询: {elapsed:.1f}ms")
         return False
 
@@ -312,7 +317,7 @@ def bulk_insert_with_chunks(db: Session, objects: List[Any], chunk_size: int = 1
     """分块批量插入，避免单次插入过多导致性能问题。"""
     total = len(objects)
     for i in range(0, total, chunk_size):
-        chunk = objects[i:i + chunk_size]
+        chunk = objects[i : i + chunk_size]
         db.bulk_save_objects(chunk)
         db.commit()
         logger.debug(f"批量插入: {i + len(chunk)}/{total}")
@@ -323,7 +328,7 @@ def bulk_update_with_chunks(db: Session, model: Any, updates: List[Dict], chunk_
     """分块批量更新。"""
     total = len(updates)
     for i in range(0, total, chunk_size):
-        chunk = updates[i:i + chunk_size]
+        chunk = updates[i : i + chunk_size]
         for update in chunk:
             obj_id = update.pop("id", None)
             if obj_id:

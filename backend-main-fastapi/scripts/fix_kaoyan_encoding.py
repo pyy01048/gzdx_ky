@@ -49,9 +49,7 @@ BACKEND = os.path.dirname(HERE)
 if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
 
-DB_PATH = os.environ.get("KAOYAN_DB") or os.path.join(
-    os.path.dirname(BACKEND), "database", "kaoyan.db"
-)
+DB_PATH = os.environ.get("KAOYAN_DB") or os.path.join(os.path.dirname(BACKEND), "database", "kaoyan.db")
 
 _COMPACT = {"ensure_ascii": False, "separators": (",", ":")}
 
@@ -87,7 +85,7 @@ def normalize_text(value):
                 decoded = json.loads(s)
             except Exception:
                 break
-            if isinstance(decoded, (list, dict)):
+            if isinstance(decoded, list | dict):
                 out = json.dumps(decoded, **_COMPACT)
                 if out != value:
                     return out
@@ -146,9 +144,7 @@ def _column_types(con, table) -> dict:
 
 def _table_exists(con, table) -> bool:
     try:
-        return con.execute(
-            "select 1 from sqlite_master where type='table' and name=?", (table,)
-        ).fetchone() is not None
+        return con.execute("select 1 from sqlite_master where type='table' and name=?", (table,)).fetchone() is not None
     except sqlite3.Error:
         return False
 
@@ -167,7 +163,7 @@ def scan(con: sqlite3.Connection):
                 rows = con.execute(
                     f'select "{pk}", "{col}" from "{table}" '
                     f"where typeof(\"{col}\")='text' "
-                    f"and \"{col}\" is not null and \"{col}\" != ''"
+                    f'and "{col}" is not null and "{col}" != \'\''
                 ).fetchall()
             except sqlite3.Error:
                 continue
@@ -192,14 +188,15 @@ def main() -> int:
     if args.selftest:
         cases = [
             # (raw, is_json, want)
-            ('"(302)\\u6570\\u5b66\\uff08\\u4e8c\\uff09 | (204)\\u82f1\\u8bed\\uff08\\u4e8c\\uff09"', True,
-             '"(302)数学（二） | (204)英语（二）"'),
+            (
+                '"(302)\\u6570\\u5b66\\uff08\\u4e8c\\uff09 | (204)\\u82f1\\u8bed\\uff08\\u4e8c\\uff09"',
+                True,
+                '"(302)数学（二） | (204)英语（二）"',
+            ),
             # 已被写成裸文本的 JSON 列 → 必须包回合法 JSON
-            ("(302)数学（二） | (204)英语（二）", True,
-             '"(302)数学（二） | (204)英语（二）"'),
+            ("(302)数学（二） | (204)英语（二）", True, '"(302)数学（二） | (204)英语（二）"'),
             # 已是合规 JSON 字符串 → 幂等
-            ('"(302)数学（二） | (204)英语（二）"', True,
-             '"(302)数学（二） | (204)英语（二）"'),
+            ('"(302)数学（二） | (204)英语（二）"', True, '"(302)数学（二） | (204)英语（二）"'),
             # JSON 数组含转义 → 还原
             ('["\\u56feA","B"]', True, '["图A","B"]'),
             # JSON 数组已干净 → 不动

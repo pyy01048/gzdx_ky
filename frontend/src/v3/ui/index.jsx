@@ -67,6 +67,7 @@ function spawnRipple(e) {
   window.setTimeout(() => span.remove(), 700)
 }
 
+/** 主按钮，支持 variant/size/icon/loading/ripple 动效。 */
 export function Button({
   variant = 'filled',
   size,
@@ -96,6 +97,7 @@ export function Button({
   )
 }
 
+/** 图标按钮，带 tooltip 与 ripple 动效。 */
 export function IconButton({
   label,
   size,
@@ -204,16 +206,17 @@ export function Avatar({ name = '', size, className = '', src, ...props }) {
 /* -------------------------------------------------------------------------- */
 /* Form controls                                                              */
 /* -------------------------------------------------------------------------- */
+/** 表单字段容器：label + 控件 + hint/error。点 label 文字会转发点击到自定义下拉。 */
 export function Field({ label, hint, error, htmlFor, children, className = '' }) {
   /* W5-1：label 的 for 只能代理原生表单控件。自定义下拉是 button，
      点标题文字不会打开面板 —— 这里手动转发一次点击，保持既有的标签点按习惯。 */
-  const onLabelClick = (e) => {
+  const onLabelClick = useCallback((e) => {
     const ctl = e.currentTarget.querySelector?.('.v3-xsel')
     if (ctl && !ctl.contains(e.target)) {
       e.preventDefault()
       ctl.click()
     }
-  }
+  }, [])
   return (
     <label className={cx('v3-field', className)} htmlFor={htmlFor} onClick={onLabelClick}>
       {label ? <span className="v3-label">{label}</span> : null}
@@ -685,11 +688,12 @@ export function Switch({ checked, onChange, label, ...props }) {
 }
 
 /* Segmented control with a sliding indicator */
+/** 分段控制器，带滑动指示条。 */
 export function Segmented({ options = [], value, onChange, className = '', ariaLabel = '视图切换' }) {
   const wrapRef = useRef(null)
   const btnRefs = useRef(new Map())
   const [indicator, setIndicator] = useState({ left: 4, width: 0, ready: false })
-  const normalized = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o))
+  const normalized = useMemo(() => options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o)), [options])
 
   const sync = useCallback(() => {
     const el = btnRefs.current.get(value)
@@ -926,7 +930,7 @@ export function ToastHost() {
       liveSubs.delete(live)
     }
   }, [])
-  const dismiss = (id) => setItems((prev) => prev.filter((x) => x.id !== id))
+  const dismiss = useCallback((id) => setItems((prev) => prev.filter((x) => x.id !== id)), [])
   return createPortal(
     <div className="v3-toast-host v3-portal">
       {/* 常驻 live region：没有 Toast 时也存在于 DOM 中 */}
@@ -1268,28 +1272,28 @@ export function Pager({
   const pages = Math.max(1, Number(totalPages) || Math.ceil((Number(total) || 0) / size) || 1)
   const cur = Math.min(Math.max(1, Number(page) || 1), pages)
 
-  const scrollToTop = () => {
+  const scrollToTop = useCallback(() => {
     if (containerRef?.current) focusAndScroll(containerRef.current, 96)
-  }
+  }, [containerRef])
 
-  const goto = (p) => {
+  const goto = useCallback((p) => {
     const next = Math.min(Math.max(1, p), pages)
     if (next === cur || disabled) return
     onChange?.(next)
     scrollToTop()
-  }
+  }, [pages, cur, disabled, onChange, scrollToTop])
 
-  const pickPageSize = (e) => {
+  const pickPageSize = useCallback((e) => {
     const n = Math.min(Math.max(1, Number(e.target.value) || size), PAGER_MAX_PAGE_SIZE)
     if (n === size) return
     onPageSizeChange?.(n)
     scrollToTop()
-  }
+  }, [size, onPageSizeChange, scrollToTop])
 
-  const numbers = pageWindow(cur, pages)
-  const sizeChoices = [...new Set([...pageSizeOptions, size])]
+  const numbers = useMemo(() => pageWindow(cur, pages), [cur, pages])
+  const sizeChoices = useMemo(() => [...new Set([...pageSizeOptions, size])]
     .filter((n) => n >= 1 && n <= PAGER_MAX_PAGE_SIZE)
-    .sort((a, b) => a - b)
+    .sort((a, b) => a - b), [pageSizeOptions, size])
 
   if (pages <= 1 && !onPageSizeChange) return null
 

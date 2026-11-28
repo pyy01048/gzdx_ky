@@ -48,6 +48,7 @@ E3 空题
     python scripts/clean_quiz_media_quality.py --apply          # 真清洗（自动先备份）
     python scripts/clean_quiz_media_quality.py --selftest       # 只跑判据自检
 """
+
 from __future__ import annotations
 
 import argparse
@@ -77,9 +78,7 @@ DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 NO_OPT_SQL = "(options IS NULL OR TRIM(options)='' OR options='[]' OR options='null')"
 
 #: 识别图缺失判定（与 quiz_health_check.py 的 C7 同源）
-_FIGURE_REF_RE = re.compile(
-    r"如下\s*图|如图|图中|见图|如图所示|所示|【图|图\s*\d|图[a-zA-Z]|[（(]\s*图"
-)
+_FIGURE_REF_RE = re.compile(r"如下\s*图|如图|图中|见图|如图所示|所示|【图|图\s*\d|图[a-zA-Z]|[（(]\s*图")
 
 #: 优先规则（最先执行）。分两类，都必须抢在基础规则之前：
 #:  1) 页眉页脚页码。否则基础规则里的 ``公众号\s*[:：]\s*[\w\u4e00-\u9fff]{0,20}``
@@ -107,7 +106,7 @@ _EXTRA_SPAN_PATTERNS: tuple[str, ...] = (
     r"观畴考研[，,、]?",
     r"电子与通信工程考研[，,、！!]?",
     r"电子通信考研[，,、！!]?",
-    r"(?:子)?与通信工程[，,、！!]?",       # 被分页截断的 "…与通信工程" 残片
+    r"(?:子)?与通信工程[，,、！!]?",  # 被分页截断的 "…与通信工程" 残片
     r"你身边的考研专家[！!，,。]?",
     r"东坡哥[，,、]?",
     r"haidongpo\d*",
@@ -124,14 +123,22 @@ _EXTRA_SPAN_PATTERNS: tuple[str, ...] = (
 )
 
 _SPAN_RES: tuple[re.Pattern, ...] = tuple(
-    re.compile(p)
-    for p in (_PRIORITY_SPAN_PATTERNS + _EXTRA_SPAN_PATTERNS + _SPAN_PATTERNS)
+    re.compile(p) for p in (_PRIORITY_SPAN_PATTERNS + _EXTRA_SPAN_PATTERNS + _SPAN_PATTERNS)
 )
 
 #: 行内快速预筛标记（含题库实测变体；不含裸数字，避免误伤数理正文）。
 _FAST_MARKERS: frozenset[str] = frozenset(_BASE_FAST_MARKERS) | {
-    "水木", "电子通信考研", "东坡哥", "亮亮", "交流区", "小红书",
-    "OCR", "页", "SECCO", "你身边的考研专家", "B站",
+    "水木",
+    "电子通信考研",
+    "东坡哥",
+    "亮亮",
+    "交流区",
+    "小红书",
+    "OCR",
+    "页",
+    "SECCO",
+    "你身边的考研专家",
+    "B站",
 }
 
 #: 整行丢弃阈值：抹掉水印后，实义字符少于该值即视为纯水印行。
@@ -270,7 +277,7 @@ def parse_abcd_options(content: str | None) -> list[str] | None:
     pos = [found[lab].start() for lab in "ABCD"]
     if pos != sorted(pos):
         return None
-    if pos[3] - pos[0] > 2000:            # 跨度太大 → 大概率是正文里的字母，非选项
+    if pos[3] - pos[0] > 2000:  # 跨度太大 → 大概率是正文里的字母，非选项
         return None
     opts: list[str] = []
     for idx, lab in enumerate("ABCD"):
@@ -290,9 +297,7 @@ def _do_backup(db_path: str) -> str:
     from services.backup_service import DB_PATH as _REAL_DB, create_backup  # noqa
 
     if os.path.abspath(db_path) != os.path.abspath(_REAL_DB):
-        raise RuntimeError(
-            f"拒绝对非真库执行备份/写入：--db={db_path} != 真库 {_REAL_DB}"
-        )
+        raise RuntimeError(f"拒绝对非真库执行备份/写入：--db={db_path} != 真库 {_REAL_DB}")
     return create_backup()
 
 
@@ -310,7 +315,8 @@ def _image_storage_evidence(conn: sqlite3.Connection) -> dict[str, Any]:
         if name == "quiz_questions":
             img_cols += [c for c in cols if any(k in c.lower() for k in ("img", "image", "figure", "pic"))]
     img_tables = [
-        r[0] for r in conn.execute(
+        r[0]
+        for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND "
             "(name LIKE '%image%' OR name LIKE '%img%' OR name LIKE '%figure%')"
         )
@@ -320,16 +326,27 @@ def _image_storage_evidence(conn: sqlite3.Connection) -> dict[str, Any]:
 
 def plan(conn: sqlite3.Connection) -> dict[str, Any]:
     """扫描全表，产出待改清单（只读，不写库）。"""
-    content_changes: list[tuple[int, str]] = []        # (id, new_content)
-    options_changes: list[tuple[int, str]] = []        # (id, new_options_json)
-    junk_ids: list[int] = []                           # ⑥ 水印占满 → is_junk=1
-    incomplete_ids: list[int] = []                     # E3 清洗后为空 → incomplete
-    figure_ids: list[int] = []                         # E2 引用图但无图存储
-    option_filled: list[tuple[int, str, list[str]]] = []   # ⑤ 解析成功
-    option_manual: list[dict[str, Any]] = []               # ⑤ 待人工
+    content_changes: list[tuple[int, str]] = []  # (id, new_content)
+    options_changes: list[tuple[int, str]] = []  # (id, new_options_json)
+    junk_ids: list[int] = []  # ⑥ 水印占满 → is_junk=1
+    incomplete_ids: list[int] = []  # E3 清洗后为空 → incomplete
+    figure_ids: list[int] = []  # E2 引用图但无图存储
+    option_filled: list[tuple[int, str, list[str]]] = []  # ⑤ 解析成功
+    option_manual: list[dict[str, Any]] = []  # ⑤ 待人工
 
-    for (qid, content, options, subject, qtype, source, is_junk,
-         question_no, source_paper, source_page, year) in conn.execute(
+    for (
+        qid,
+        content,
+        options,
+        subject,
+        qtype,
+        source,
+        is_junk,
+        question_no,
+        source_paper,
+        source_page,
+        year,
+    ) in conn.execute(
         "SELECT id, content, options, subject, question_type, source, is_junk, "
         "question_no, source_paper, source_page, year FROM quiz_questions"
     ):
@@ -366,19 +383,23 @@ def plan(conn: sqlite3.Connection) -> dict[str, Any]:
             figure_ids.append(qid)
 
         # ⑤ 真题综合补选项
-        if subject == "真题综合" and (
-            options is None or str(options).strip() in ("", "null", "[]")
-        ):
+        if subject == "真题综合" and (options is None or str(options).strip() in ("", "null", "[]")):
             parsed = parse_abcd_options(content or "")
             if parsed:
                 option_filled.append((qid, json.dumps(parsed, ensure_ascii=False), parsed))
             else:
-                option_manual.append({
-                    "id": qid, "question_type": qtype, "source": source,
-                    "question_no": question_no, "source_paper": source_paper,
-                    "source_page": source_page, "year": year,
-                    "content_head": (content or "")[:120],
-                })
+                option_manual.append(
+                    {
+                        "id": qid,
+                        "question_type": qtype,
+                        "source": source,
+                        "question_no": question_no,
+                        "source_paper": source_paper,
+                        "source_page": source_page,
+                        "year": year,
+                        "content_head": (content or "")[:120],
+                    }
+                )
 
     return {
         "content_changes": content_changes,
@@ -426,7 +447,11 @@ def selftest() -> int:
         ("截断微信公", "微信公", "drop"),
         ("页码OCR", "--- 第7页(OCR) ---", "drop"),
         ("小红书号", "小红书 小红书号：4152858007", "drop"),
-        ("混合：水印+正文", "观畴考研，你身边的考研专家东坡哥微信:haidongpo3QQ:3428047568水木观畴月考-数字电路2023年5月满分：150", "keep"),
+        (
+            "混合：水印+正文",
+            "观畴考研，你身边的考研专家东坡哥微信:haidongpo3QQ:3428047568水木观畴月考-数字电路2023年5月满分：150",
+            "keep",
+        ),
         ("混合：选项尾巴带水印", "D.放大区 观畴考研，你身边的考研专家 东坡哥微信:haidongpo3 QQ:3428047568", "keep"),
         ("正常题目", "8位DAC转换器，数字01000001转换后的电压值为（ ）V。A.0.05 B.0.10", "keep"),
         ("数理正文含第X章", "分析第2章课后习题，写出Y1、Y2的逻辑函数式并化简。", "keep"),
@@ -473,8 +498,10 @@ def selftest() -> int:
     print(f"  [{'✓' if c2 else '✗ FAIL'}] 不可解析应返回 None → {p2}")
     failed += (0 if c1 else 1) + (0 if c2 else 1)
 
-    print(f"\n  通过 {len(cases) + len(opt_cases) + 2 - failed} / {len(cases) + len(opt_cases) + 2}"
-          f" → " + ("PASS" if failed == 0 else f"FAIL ({failed})"))
+    print(
+        f"\n  通过 {len(cases) + len(opt_cases) + 2 - failed} / {len(cases) + len(opt_cases) + 2}"
+        f" → " + ("PASS" if failed == 0 else f"FAIL ({failed})")
+    )
     return 0 if failed == 0 else 1
 
 
@@ -509,15 +536,17 @@ def main() -> int:
         for k, v in before.items():
             print(f"    {k:<22} {v}")
         print()
-        print(f"  ⑥ 题面水印命中     = {len(p['content_changes'])} 行"
-              f"（其中清洗后成 junk 的整题 = {len(p['junk_ids'])}）")
+        print(
+            f"  ⑥ 题面水印命中     = {len(p['content_changes'])} 行（其中清洗后成 junk 的整题 = {len(p['junk_ids'])}）"
+        )
         print(f"  ⑥ 选项水印命中     = {len(p['options_changes'])} 行")
-        print(f"  E2 识别图缺失      = {len(p['figure_ids'])} 行"
-              f"（题库图片列 {p['image_evidence']['quiz_image_columns'] or '无'}"
-              f" / 图片表 {p['image_evidence']['image_tables'] or '无'}）")
+        print(
+            f"  E2 识别图缺失      = {len(p['figure_ids'])} 行"
+            f"（题库图片列 {p['image_evidence']['quiz_image_columns'] or '无'}"
+            f" / 图片表 {p['image_evidence']['image_tables'] or '无'}）"
+        )
         print(f"  E3 空题            = {len(p['incomplete_ids'])} 行")
-        print(f"  ⑤ 真题综合补选项   = 自动补出 {len(p['option_filled'])} 题，"
-              f"待人工 {len(p['option_manual'])} 题")
+        print(f"  ⑤ 真题综合补选项   = 自动补出 {len(p['option_filled'])} 题，待人工 {len(p['option_manual'])} 题")
         print()
 
         if args.show_samples:
@@ -567,14 +596,19 @@ def main() -> int:
             print(">>> DRY-RUN 结束，未做任何改动。确认无误后加 --apply（自动先备份）。")
             return 0
 
-        if not (p["content_changes"] or p["options_changes"] or p["junk_ids"]
-                or p["incomplete_ids"] or p["figure_ids"] or p["option_filled"]):
+        if not (
+            p["content_changes"]
+            or p["options_changes"]
+            or p["junk_ids"]
+            or p["incomplete_ids"]
+            or p["figure_ids"]
+            or p["option_filled"]
+        ):
             print(">>> 无需清洗。")
             return 0
 
         bk = _do_backup(args.db)
-        print(f">>> 备份完成（create_backup）：{bk} "
-              f"({os.path.getsize(bk) / 1e6:.1f} MB)")
+        print(f">>> 备份完成（create_backup）：{bk} ({os.path.getsize(bk) / 1e6:.1f} MB)")
 
         cur = conn.cursor()
         # ⑥ 题面
@@ -597,20 +631,16 @@ def main() -> int:
                 (qid,),
             ).rowcount
         # E2 图缺失：新增附加列 figure_missing（不动 quality 分级）
-        has_fm = any(r[1] == "figure_missing"
-                     for r in cur.execute("PRAGMA table_info(quiz_questions)"))
+        has_fm = any(r[1] == "figure_missing" for r in cur.execute("PRAGMA table_info(quiz_questions)"))
         if p["figure_ids"] and not has_fm:
-            cur.execute(
-                "ALTER TABLE quiz_questions ADD COLUMN figure_missing INTEGER NOT NULL DEFAULT 0"
-            )
+            cur.execute("ALTER TABLE quiz_questions ADD COLUMN figure_missing INTEGER NOT NULL DEFAULT 0")
             print(">>> 已新增附加列 quiz_questions.figure_missing（不覆盖 quality 分级）")
             has_fm = True
         n_f = 0
         if has_fm:
             for qid in p["figure_ids"]:
                 n_f += cur.execute(
-                    "UPDATE quiz_questions SET figure_missing=1 "
-                    "WHERE id=? AND is_junk=0 AND figure_missing=0",
+                    "UPDATE quiz_questions SET figure_missing=1 WHERE id=? AND is_junk=0 AND figure_missing=0",
                     (qid,),
                 ).rowcount
         # ⑤ 补选项
@@ -632,8 +662,12 @@ def main() -> int:
                 rep = json.load(fh)
             rep["after"] = after
             rep["applied"] = {
-                "content_rows": n_c, "options_rows": n_o, "junk": n_j,
-                "incomplete": n_i, "missing_image": n_f, "options_autofilled": n_p,
+                "content_rows": n_c,
+                "options_rows": n_o,
+                "junk": n_j,
+                "incomplete": n_i,
+                "missing_image": n_f,
+                "options_autofilled": n_p,
                 "backup": bk,
             }
             with open(args.report_json, "w", encoding="utf-8") as fh:

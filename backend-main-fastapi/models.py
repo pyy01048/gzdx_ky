@@ -1,6 +1,22 @@
-"""SQLAlchemy ORM 模型定义。"""
+"""SQLAlchemy ORM 模型定义。
+
+集中声明本后端全部持久化表的 ORM 投影（约 80 个模型）。表结构与字段定义以
+``core/sql/`` 下的权威 DDL 为准，本文件仅提供业务侧读写入口；除显式注释外，
+不在此处变更列/约束/索引——结构演进走 ``core/sql/`` 分片迁移。
+
+约定：
+- 时间戳默认走 :func:`_utcnow`（timezone-aware UTC），避免 ``datetime.utcnow``
+  已弃用警告与 naive/aware 混用。
+- JSONB 列优先使用 :class:`NullSafeJSON`（选项数组规整）或 :class:`RawJSON`
+  （任意结构），不要直接用 ``JSON``，否则 None 会被序列化成 JSON 标量 'null'。
+- 用户隔离表统一以 ``user_id`` 列 + 索引实现行级隔离（B4），见各模型注释。
+"""
+
+from __future__ import annotations
 
 import datetime
+from enum import Enum
+from typing import Any, Callable
 
 from core.pg_enum_aware import PgEnumAware
 from database import Base
@@ -8,6 +24,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -51,10 +68,10 @@ class NullSafeJSON(TypeDecorator):
     impl = postgresql.JSONB
     cache_ok = True
 
-    def bind_processor(self, dialect):
+    def bind_processor(self, dialect) -> Callable[[Any], Any]:
         impl_processor = self.impl_instance.bind_processor(dialect)
 
-        def process(value):
+        def process(value: Any) -> Any:
             if value is None:
                 return None  # SQL NULL，不走 JSON 序列化
             # 容错：把「字符串形态的 JSON」解成真结构。
@@ -143,10 +160,10 @@ class RawJSON(TypeDecorator):
     impl = postgresql.JSONB
     cache_ok = True
 
-    def bind_processor(self, dialect):
+    def bind_processor(self, dialect) -> Callable[[Any], Any]:
         impl_processor = self.impl_instance.bind_processor(dialect)
 
-        def process(value):
+        def process(value: Any) -> Any:
             if value is None:
                 return None  # SQL NULL，不走 JSON 序列化
             return impl_processor(value) if impl_processor else value
@@ -154,7 +171,7 @@ class RawJSON(TypeDecorator):
         return process
 
 
-def _utcnow():
+def _utcnow() -> datetime.datetime:
     """timezone-aware 当前 UTC 时间（替代已弃用的 datetime.utcnow）。"""
     return datetime.datetime.now(datetime.timezone.utc)
 
@@ -163,6 +180,8 @@ def _utcnow():
 # 考研目标
 # --------------------------------------------------------------------------- #
 class Goal(Base):
+    """考研目标：用户填报的目标院校/专业/分数与每日学习量目标。"""
+
     __tablename__ = "goals"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -242,6 +261,8 @@ class ReviewSchedule(Base):
 
 
 class Task(Base):
+    """用户任务：支持多科目/子模块/起止日期/循环/提醒/进度条（W3 重做）。"""
+
     __tablename__ = "tasks"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -323,9 +344,20 @@ class TaskModuleDict(Base):
 # 题目
 # --------------------------------------------------------------------------- #
 class QuizQuestion(Base):
+    """题库主表：题干/选项/答案/解析 + 来源留痕 + 质量与校验门状态。"""
+
     __tablename__ = "quiz_questions"
 
     id = Column(Integer, primary_key=True, index=True)
+    # NULL=公共题；非 NULL=用户私有题。删除用户时必须级联删除私有题，
+    # 不能 SET NULL，否则私有题会意外变成公共题。
+    owner_user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="题目所有者；NULL 表示公共题",
+    )
     content = Column(Text, nullable=False, comment="题干")
     options = Column(NullSafeJSON, nullable=True, comment="选项 JSON")
     # 题目配图：OCR/人工录入产出的图片引用数组，元素可为 URL/相对路径/对象
@@ -334,10 +366,40 @@ class QuizQuestion(Base):
     answer = Column(Text, nullable=True, comment="正确答案")
     analysis = Column(Text, nullable=True, comment="解析")
     subject = Column(String(50), nullable=True, index=True, comment="科目")
+    # 权威考试科目外键（040 已有列）；与字符串 subject 展示标签正交。
+    subject_id = Column(
+        BigInteger,
+        ForeignKey("subjects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="权威考试科目 ID；不是招生学科",
+    )
     chapter = Column(String(200), nullable=True, comment="章节")
     knowledge_point = Column(String(200), nullable=True, comment="知识点")
     difficulty = Column(Integer, default=3, comment="难度 1-5")
     source_label = Column(String(200), nullable=True, comment="来源：真题/模拟/自建/ai:variant")
+    # 证据链落点：只保存明确 ID，不按标题模糊猜测来源或原卷。
+    origin_document_id = Column(
+        Integer,
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="来源文档 ID",
+    )
+    origin_chunk_id = Column(
+        Integer,
+        ForeignKey("knowledge_chunks.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="来源知识分块 ID",
+    )
+    paper_id = Column(
+        Integer,
+        ForeignKey("papers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="精确关联的原卷 ID；未明确关联时保留 paper 字符串并为 NULL",
+    )
     # ADR-003：来源正交双列。source_kind 为权威归位列（DB 早已有之，此处补映射）；
     # 业务侧旧属性名 source 通过 orm_aliases 同义指向 source_label。
     source_kind = Column(
@@ -423,6 +485,144 @@ class QuizQuestion(Base):
     created_at = Column(DateTime, default=_utcnow)
 
 
+class QuizSession(Base):
+    """测验会话：一次刷题/模考的顶层状态（题目列表、草稿、统计、生命周期）。"""
+
+    __tablename__ = "quiz_sessions"
+    __table_args__ = ({"extend_existing": True},)
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True)
+    mode = Column(String(30), nullable=False, default="free_practice", server_default="free_practice")
+    subject_id = Column(BigInteger, nullable=True)
+    textbook_id = Column(BigInteger, nullable=True)
+    chapter_id = Column(BigInteger, nullable=True)
+    section_id = Column(BigInteger, nullable=True)
+    knowledge_point_ids = Column(RawJSON, nullable=False, default=list, server_default="[]")
+    filters = Column(RawJSON, nullable=False, default=dict, server_default="{}")
+    title = Column(String(300), nullable=False, default="普通刷题", server_default="普通刷题")
+    no_answer = Column(Boolean, nullable=False, default=False, server_default="false")
+    basis = Column(RawJSON, nullable=True)
+    current_index = Column(Integer, nullable=False, default=0, server_default="0")
+    version = Column(Integer, nullable=False, default=1, server_default="1")
+    drafts = Column(RawJSON, nullable=False, default=dict, server_default="{}")
+    text_drafts = Column(RawJSON, nullable=False, default=dict, server_default="{}")
+    self_scores = Column(RawJSON, nullable=False, default=dict, server_default="{}")
+    marked = Column(RawJSON, nullable=False, default=dict, server_default="{}")
+    total_questions = Column(Integer, nullable=False, default=0, server_default="0")
+    answered_count = Column(Integer, nullable=False, default=0, server_default="0")
+    correct_count = Column(Integer, nullable=False, default=0, server_default="0")
+    duration_seconds = Column(Integer, nullable=False, default=0, server_default="0")
+    status = Column(String(20), nullable=False, default="in_progress", server_default="in_progress")
+    started_at = Column(DateTime, nullable=False, default=_utcnow, server_default="now()")
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=_utcnow, server_default="now()")
+    updated_at = Column(DateTime, nullable=False, default=_utcnow, server_default="now()", onupdate=_utcnow)
+    questions = relationship(
+        "QuizSessionQuestion", order_by="QuizSessionQuestion.position", cascade="all, delete-orphan"
+    )
+    attempts = relationship("QuizAttempt", order_by="QuizAttempt.id", cascade="all, delete-orphan")
+
+
+class QuizSessionQuestion(Base):
+    """会话题目项：会话内某 position 上的题目快照（position 与 question_id 双唯一）。"""
+
+    __tablename__ = "quiz_session_questions"
+    __table_args__ = (
+        UniqueConstraint("session_id", "position", name="uq_quiz_session_question_position"),
+        UniqueConstraint("session_id", "question_id", name="uq_quiz_session_question"),
+        {"extend_existing": True},
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    session_id = Column(BigInteger, ForeignKey("quiz_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True)
+    question_id = Column(Integer, ForeignKey("quiz_questions.id", ondelete="RESTRICT"), nullable=False, index=True)
+    position = Column(Integer, nullable=False)
+    snapshot = Column(RawJSON, nullable=False)
+
+
+class QuizAttempt(Base):
+    """单题作答记录：一次会话内某题的答案/正误/评分/用时快照。"""
+
+    __tablename__ = "quiz_attempts"
+    __table_args__ = (
+        UniqueConstraint("session_id", "question_id", name="uq_quiz_attempt_session_question"),
+        UniqueConstraint("user_id", "client_attempt_id", name="uq_quiz_attempt_client"),
+        {"extend_existing": True},
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    session_id = Column(BigInteger, ForeignKey("quiz_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_id = Column(Integer, ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True)
+    client_attempt_id = Column(String(100), nullable=True)
+    answer_record_id = Column(Integer, ForeignKey("answer_records.id"), nullable=True, index=True)
+    user_answer = Column(Text, nullable=True)
+    is_correct = Column(Boolean, nullable=True)
+    score = Column(Float, nullable=True)
+    quality = Column(SmallInteger, nullable=False, default=3, server_default="3")
+    answered_at = Column(DateTime, nullable=False, default=_utcnow, server_default="now()")
+    time_spent_seconds = Column(Integer, nullable=True)
+    feedback = Column(Text, nullable=True)
+    ai_comment = Column(Text, nullable=True)
+    self_rating = Column(String(20), nullable=True)
+    mastery_before = Column(SmallInteger, nullable=True)
+    mastery_after = Column(SmallInteger, nullable=True)
+
+
+# --------------------------------------------------------------------------- #
+# 个人题库（204）：题目是用户资产，题库成员与掌握状态均按用户隔离
+# --------------------------------------------------------------------------- #
+class QuizQuestionSet(Base):
+    """个人题库（204）：用户自建的题目集合，成员与掌握状态均按用户隔离。"""
+
+    __tablename__ = "quiz_question_sets"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True, comment="归属用户"
+    )
+    name = Column(String(200), nullable=False, comment="题库名称")
+    description = Column(Text, nullable=True, comment="题库描述")
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class QuizQuestionSetItem(Base):
+    """题库成员：题集与题目的多对多关联（复合主键 + 唯一约束）。"""
+
+    __tablename__ = "quiz_question_set_items"
+
+    set_id = Column(
+        BigInteger, ForeignKey("quiz_question_sets.id", ondelete="CASCADE"), nullable=False, primary_key=True
+    )
+    question_id = Column(
+        Integer, ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=False, primary_key=True, index=True
+    )
+    added_at = Column(DateTime, default=_utcnow)
+
+    __table_args__ = (UniqueConstraint("set_id", "question_id", name="uq_qqsi_set_question"),)
+
+
+class QuizQuestionState(Base):
+    """题目掌握状态：用户对某题的掌握档位与真实作答统计（按用户隔离）。"""
+
+    __tablename__ = "quiz_question_states"
+
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, primary_key=True)
+    question_id = Column(
+        Integer, ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=False, primary_key=True, index=True
+    )
+    mastery_state = Column(String(20), nullable=False, default="unmastered", comment="unmastered/mastered")
+    last_result = Column(Boolean, nullable=True, comment="最近一次真实作答结果；未自评/低置信可为空")
+    attempts = Column(Integer, nullable=False, default=0, comment="真实作答次数")
+    last_answered_at = Column(DateTime, nullable=True, comment="最近作答时间")
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "question_id", name="uq_qqs_user_question"),)
+
+
 # --------------------------------------------------------------------------- #
 # 题目-知识点链路
 # --------------------------------------------------------------------------- #
@@ -446,6 +646,93 @@ class QuestionKnowledgeLink(Base):
 
 
 # --------------------------------------------------------------------------- #
+# 题目证据链（211）：明确关联 + 来源/置信度/核验状态
+# --------------------------------------------------------------------------- #
+class QuestionEvidenceLink(Base):
+    """题目到证据节点的显式关联；缺失目标保持 NULL，不做模糊回填。"""
+
+    __tablename__ = "question_evidence_links"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    question_id = Column(
+        Integer,
+        ForeignKey("quiz_questions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="题目 ID",
+    )
+    knowledge_point_id = Column(
+        Integer,
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    knowledge_chunk_id = Column(
+        Integer,
+        ForeignKey("knowledge_chunks.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    document_id = Column(
+        Integer,
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    textbook_id = Column(
+        BigInteger,
+        ForeignKey("textbooks.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    paper_id = Column(Integer, ForeignKey("papers.id", ondelete="CASCADE"), nullable=True, index=True)
+    # 同一教材可限定到院校/专业/考试科目；未确定的作用域必须留空。
+    school_id = Column(Integer, ForeignKey("kaoyan_schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    major_id = Column(Integer, ForeignKey("kaoyan_majors.id", ondelete="CASCADE"), nullable=True, index=True)
+    subject_id = Column(BigInteger, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=True, index=True)
+    page_start = Column(Integer, nullable=True, comment="真实起始页码；未知为 NULL")
+    page_end = Column(Integer, nullable=True, comment="真实结束页码；未知为 NULL")
+    source = Column(String(100), nullable=False, default="manual", comment="证据来源标识")
+    confidence = Column(Float, nullable=True, comment="证据置信度 0-1；不复用答案置信度")
+    verification_status = Column(
+        String(20), nullable=False, default="unverified", comment="核验状态：verified/unverified/rejected"
+    )
+    evidence_metadata = Column(
+        "metadata", RawJSON, nullable=False, default=dict, server_default="{}", comment="原始依据与补充信息"
+    )
+    verified_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=_utcnow, server_default="now()")
+    updated_at = Column(DateTime, nullable=False, default=_utcnow, server_default="now()", onupdate=_utcnow)
+
+
+class Textbook(Base):
+    """教材目录的最小 ORM 投影（权威 schema 见 090）。"""
+
+    __tablename__ = "textbooks"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    title = Column(String(300), nullable=False)
+    authors = Column(Text, nullable=False, default="", comment="作者")
+    subject_id = Column(BigInteger, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
+    source = Column(String(100), nullable=False, default="manual_catalog")
+    confidence = Column(PgEnumAware("confidence_level", 20), nullable=False, default="medium")
+    is_active = Column(Boolean, nullable=False, default=True)
+
+
+class TextbookDocument(Base):
+    """教材实体文档关联；教材页码只能来自该文档的真实 chunk/page。"""
+
+    __tablename__ = "textbook_documents"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    textbook_id = Column(BigInteger, ForeignKey("textbooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    doc_role = Column(String(30), nullable=False, default="body", server_default="body")
+    created_at = Column(DateTime, nullable=False, default=_utcnow, server_default="now()")
+
+
+# --------------------------------------------------------------------------- #
 # 错题记录
 # --------------------------------------------------------------------------- #
 class AnswerRecord(Base):
@@ -460,7 +747,7 @@ class AnswerRecord(Base):
     question_id = Column(Integer, ForeignKey("quiz_questions.id"), nullable=True, index=True)
     my_answer = Column(Text, nullable=True, comment="我的答案")
     correct_answer = Column(Text, nullable=True, comment="正确答案")
-    is_correct = Column(Boolean, default=False, comment="是否答对")
+    is_correct = Column(Boolean, nullable=True, comment="是否答对；NULL 表示待确认")
     subject = Column(String(50), nullable=True, index=True, comment="科目")
     mode = Column(String(50), nullable=True, comment="答题模式")
     cost_seconds = Column(Integer, default=0, comment="用时（秒）")
@@ -470,6 +757,8 @@ class AnswerRecord(Base):
 
 
 class ErrorRecord(Base):
+    """错题记录：含错因分类、SM-2 调度状态与快照字段（按用户隔离）。"""
+
     __tablename__ = "error_records"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -522,6 +811,8 @@ class ErrorRecord(Base):
 # 学习记录
 # --------------------------------------------------------------------------- #
 class StudySession(Base):
+    """学习会话：某日某科目的学习时长记录（仪表盘学习时长统计的数据源）。"""
+
     __tablename__ = "study_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -695,6 +986,8 @@ class PhasePlan(Base):
 # AI 服务商配置
 # --------------------------------------------------------------------------- #
 class AIProvider(Base):
+    """AI 服务商配置：API Key 密文落库，含降级优先级与启用开关。"""
+
     __tablename__ = "ai_providers"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -715,6 +1008,8 @@ class AIProvider(Base):
 # 平台配置
 # --------------------------------------------------------------------------- #
 class PlatformConfig(Base):
+    """平台配置：第三方平台凭据（密文落库）与同步开关。"""
+
     __tablename__ = "platform_configs"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -735,6 +1030,8 @@ class PlatformConfig(Base):
 # 网盘文件
 # --------------------------------------------------------------------------- #
 class NetdiskFile(Base):
+    """网盘文件缓存：文件元数据与播放进度。"""
+
     __tablename__ = "netdisk_files"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -936,7 +1233,24 @@ class Flashcard(Base):
 # --------------------------------------------------------------------------- #
 # 文档记录
 # --------------------------------------------------------------------------- #
+class ContentKind(str, Enum):
+    """文档内容四分类（R5）：入库前按此分流，非学习资料不进知识库主链路。
+
+    - lecture: 讲义/教材/笔记等学习资料（默认，存量兼容）
+    - structured_data: 结构化数据（分数线/招生目录/题库等）
+    - engineering_artifact: 工程产物（配置/日志/二进制元数据等，不进主链路）
+    - lfs_pointer: Git LFS 指针文件（auto_reject，不进主链路）
+    """
+
+    lecture = "lecture"
+    structured_data = "structured_data"
+    engineering_artifact = "engineering_artifact"
+    lfs_pointer = "lfs_pointer"
+
+
 class Document(Base):
+    """文档主表：文件元数据 + 解析状态 + 内容四分类（R5）与多维度标签。"""
+
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -1002,12 +1316,25 @@ class Document(Base):
     is_junk = Column(
         Boolean, nullable=False, default=False, index=True, server_default="false", comment="违禁/废弃文档标记"
     )
+    # —— R5 内容四分类：入库前按 content_kind 分流，非学习资料不进知识库主链路 —— #
+    # nullable + server_default='lecture' 保证存量兼容（NULL 视为 lecture）；
+    # 不加 NOT NULL 约束，避免破坏性迁移。
+    content_kind = Column(
+        String(30),
+        nullable=True,
+        default="lecture",
+        server_default="lecture",
+        index=True,
+        comment="内容四分类：lecture/structured_data/engineering_artifact/lfs_pointer",
+    )
 
 
 # --------------------------------------------------------------------------- #
 # RAG 知识分块（knowledge_chunks）
 # --------------------------------------------------------------------------- #
 class KnowledgeChunk(Base):
+    """RAG 知识分块：文档切片后的文本块，含三层标签与分类置信度。"""
+
     __tablename__ = "knowledge_chunks"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -1116,6 +1443,8 @@ class EvalRun(Base):
 # SFT 训练对话样例（sft_examples）
 # --------------------------------------------------------------------------- #
 class SFTExample(Base):
+    """SFT 训练对话样例：system/user/assistant 三段式，按学科与 split 划分。"""
+
     __tablename__ = "sft_examples"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -1131,6 +1460,8 @@ class SFTExample(Base):
 # 自定义快捷链接
 # --------------------------------------------------------------------------- #
 class CustomLink(Base):
+    """用户自定义快捷链接。"""
+
     __tablename__ = "custom_links"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -1148,6 +1479,8 @@ class CustomLink(Base):
 # 学习统计
 # --------------------------------------------------------------------------- #
 class StudyStats(Base):
+    """每日学习统计：总时长/分科时长/任务与错题计数（按用户隔离）。"""
+
     __tablename__ = "study_stats"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -1241,6 +1574,10 @@ class Paper(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(200), nullable=False, comment="试卷标题")
     subject = Column(String(50), nullable=True, index=True, comment="科目")
+    subject_id = Column(BigInteger, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
+    year = Column(Integer, nullable=True, index=True, comment="真题年份")
+    paper_type = Column(String(50), nullable=True, comment="卷种标签")
+    is_mock = Column(Boolean, nullable=False, default=False, server_default="false", comment="是否模拟卷")
     description = Column(Text, nullable=True, comment="试卷说明")
     rules = Column(JSON, nullable=True, comment="组卷规则快照")
     total_score = Column(Integer, default=0, comment="总分")
@@ -1453,6 +1790,54 @@ class KaoyanScoreLine(Base):
     )
 
 
+class Subject(Base):
+    """备考/初试考试科目权威表（不是 kaoyan_subjects 招生学科）。"""
+
+    __tablename__ = "subjects"
+    id = Column(BigInteger, primary_key=True, index=True)
+    code = Column(String(32), nullable=False, unique=True, comment="稳定科目代码")
+    name = Column(String(100), nullable=False, comment="考试科目名称")
+    short_name = Column(String(50), nullable=True)
+    category = Column(PgEnumAware("subject_category", 30), nullable=False, default="professional")
+    parent_id = Column(BigInteger, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
+    exam_overlap = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    is_custom = Column(Boolean, nullable=False, default=False)
+    legacy_names = Column(NullSafeJSON, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class Discipline(Base):
+    """研究生招生学科权威表；08 工科边界以 code 前缀判定。"""
+
+    __tablename__ = "disciplines"
+    id = Column(BigInteger, primary_key=True, index=True)
+    code = Column(String(20), nullable=False, unique=True, index=True, comment="招生学科代码")
+    name = Column(String(100), nullable=False)
+    category = Column(String(50), nullable=True, comment="学科门类")
+    parent_code = Column(String(20), nullable=True)
+    exam_overlap = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class SubjectDisciplineLink(Base):
+    """考试科目 ↔ 招生学科多对多映射。"""
+
+    __tablename__ = "subject_discipline_links"
+    id = Column(BigInteger, primary_key=True)
+    subject_id = Column(BigInteger, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    discipline_id = Column(BigInteger, ForeignKey("disciplines.id", ondelete="CASCADE"), nullable=False)
+    is_primary = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    __table_args__ = (UniqueConstraint("subject_id", "discipline_id", name="uq_subject_discipline"),)
+
+
 class KaoyanSubject(Base):
     """择校数据中心·学科分类"""
 
@@ -1466,6 +1851,34 @@ class KaoyanSubject(Base):
     description = Column(Text, nullable=True, comment="学科简介")
     sort_order = Column(Integer, default=0, comment="排序")
     created_at = Column(DateTime, default=_utcnow)
+
+
+class KaoyanMajorSubjectLink(Base):
+    """招生专业初试科目公共目录；不持有题目或学校外键。"""
+
+    __tablename__ = "kaoyan_major_subject_links"
+    id = Column(BigInteger, primary_key=True, index=True)
+    major_id = Column(
+        BigInteger,
+        ForeignKey("kaoyan_majors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="招生专业；经 major.school_id 关联院校",
+    )
+    subject_id = Column(
+        BigInteger,
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="仅精确匹配的考试科目；NULL 不进入题库链路",
+    )
+    exam_subject_code = Column(String(32), nullable=True)
+    exam_subject_name = Column(String(200), nullable=True)
+    source = Column(RawJSON, nullable=False, default=dict, comment="原 JSON 与匹配溯源")
+    match_status = Column(String(20), nullable=False, default="matched")
+    confidence = Column(Float, nullable=False, default=1.0)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 # --------------------------------------------------------------------------- #
@@ -1682,6 +2095,8 @@ class SubjectConfig(Base):
 # 用户与角色（doc 11 F11-01）
 # --------------------------------------------------------------------------- #
 class User(Base):
+    """用户主表：账号/角色/状态机/软删除/邮箱与登录审计字段。"""
+
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -1737,13 +2152,62 @@ class EmailToken(Base):
 
 
 class Role(Base):
-    """RBAC 角色（116）：admin / doc_admin / user。"""
+    """RBAC 角色（116）：admin / doc_admin / user / alumni。
+
+    角色值常量挂在类上供代码引用（如 ``user.role == Role.alumni``），
+    与 ``roles`` 表的 ``role`` 列正交：类常量是 Python 字符串，列是 ORM 属性。
+    """
 
     __tablename__ = "roles"
 
     role = Column(String(16), primary_key=True)
     label = Column(String(64), nullable=False)
     description = Column(Text, nullable=True)
+
+    # 角色值常量（C-MODELS@1）：供代码侧 ``Role.alumni`` 等符号引用，
+    # 与 users.role 字符串列直接比较。alumni = 已上岸用户（无管理端权限）。
+    admin = "admin"
+    doc_admin = "doc_admin"
+    user = "user"
+    alumni = "alumni"
+
+
+class ExperienceCard(Base):
+    """已上岸经验卡（R6/N-04）：alumni 提交、管理员审核、审核通过进 RAG。
+
+    依据字段 ≥5 项（content/methodology/evidence_json + school_id/major_id/year/score）；
+    审核状态机 pending→approved/pending→rejected 不可逆；
+    UNIQUE(author_id, school_id, year) 防止同校同年重复提交。
+    """
+
+    __tablename__ = "experience_cards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    author_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True, comment="提交人（alumni）ID"
+    )
+    school_id = Column(
+        Integer, ForeignKey("kaoyan_schools.id", ondelete="SET NULL"), nullable=True, index=True, comment="院校 ID"
+    )
+    major_id = Column(Integer, nullable=True, index=True, comment="专业 ID（未关联具体专业时为空）")
+    year = Column(Integer, nullable=False, index=True, comment="上岸年份")
+    score = Column(Integer, nullable=True, comment="初试总分")
+    content = Column(Text, nullable=False, comment="经验正文")
+    methodology = Column(Text, nullable=False, comment="方法论/备考策略")
+    evidence_json = Column(RawJSON, nullable=True, comment="依据结构（≥5 项字段，JSONB）")
+    status = Column(
+        String(20),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True,
+        comment="审核状态：pending/approved/rejected",
+    )
+    created_at = Column(DateTime, default=_utcnow)
+    approved_at = Column(DateTime, nullable=True, comment="审核通过时间")
+    approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, comment="审核管理员 ID")
+
+    __table_args__ = (UniqueConstraint("author_id", "school_id", "year", name="uq_experience_card_author_school_year"),)
 
 
 class RolePermission(Base):
@@ -1787,10 +2251,12 @@ class AuthSession(Base):
     id = Column(String(36), primary_key=True, comment="会话 ID（uuid4 hex），token 的 sid 声明")
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     refresh_jti = Column(String(36), nullable=False, unique=True, comment="当前有效 refresh token 的 jti（一次性）")
-    created_at = Column(DateTime, default=_utcnow)
-    last_used_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
-    expires_at = Column(DateTime, nullable=False, comment="会话过期时间（= refresh 有效期）")
-    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("now()"))
+    last_used_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow, server_default=text("now()")
+    )
+    expires_at = Column(DateTime(timezone=True), nullable=False, comment="会话过期时间（= refresh 有效期）")
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
     ip = Column(String(64), nullable=True)
     user_agent = Column(String(300), nullable=True)
 
@@ -1978,3 +2444,33 @@ class DocumentClassifyQueue(Base):
     resolved_subject = Column(String(100), nullable=True, comment="人工裁定的科目")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+
+# --------------------------------------------------------------------------- #
+# AI 答疑回答反馈（R4：有用 / 无用 / 纠错三键）
+# --------------------------------------------------------------------------- #
+class AiAnswerFeedback(Base):
+    """AI 答疑回答的用户反馈记录。
+
+    answer_id 为前端生成的 UUID/时间戳字符串，不做 FK（不依赖 answers 表存在），
+    UNIQUE(answer_id, user_id) 防同一用户对同一回答重复反馈。
+    """
+
+    __tablename__ = "ai_answer_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    answer_id = Column(String(64), nullable=False, index=True, comment="AI 回答 ID（前端生成）")
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True, comment="反馈用户 ID"
+    )
+    feedback_type = Column(String(20), nullable=False, comment="反馈类型：helpful/unhelpful/correction")
+    correction_text = Column(Text, nullable=True, comment="纠错文本（仅 feedback_type=correction 时有值）")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("now()"))
+
+    __table_args__ = (
+        UniqueConstraint("answer_id", "user_id", name="uq_ai_answer_feedback_answer_user"),
+        CheckConstraint(
+            "feedback_type IN ('helpful', 'unhelpful', 'correction')",
+            name="ck_ai_answer_feedback_type",
+        ),
+    )

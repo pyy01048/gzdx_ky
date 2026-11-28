@@ -14,6 +14,7 @@
   python scripts/merge_duplicate_schools.py --apply        # 真库执行
   python scripts/merge_duplicate_schools.py --apply --verify
 """
+
 import argparse
 import os
 import shutil
@@ -48,7 +49,7 @@ def backup_db(src_path: str, tag: str, out_dir: str = BACKUP_DIR) -> str:
     src = sqlite3.connect(src_path)
     out = sqlite3.connect(dst)
     try:
-        src.backup(out)          # WAL 模式必须用 backup() API，cp 会丢未合并 WAL
+        src.backup(out)  # WAL 模式必须用 backup() API，cp 会丢未合并 WAL
     finally:
         out.close()
         src.close()
@@ -94,19 +95,28 @@ def check(conn, stage: str) -> dict:
         "kaoyan_admissions": g("SELECT COUNT(*) FROM kaoyan_admissions"),
         "orphan_school": g(
             "SELECT COUNT(*) FROM kaoyan_colleges t WHERE t.school_id IS NOT NULL"
-            " AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.school_id)")
-        + g("SELECT COUNT(*) FROM kaoyan_majors t WHERE t.school_id IS NOT NULL"
-            " AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.school_id)")
-        + g("SELECT COUNT(*) FROM kaoyan_admissions t WHERE t.school_id IS NOT NULL"
-            " AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.school_id)")
-        + g("SELECT COUNT(*) FROM school_aliases t WHERE t.school_id IS NOT NULL"
-            " AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.school_id)"),
+            " AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.school_id)"
+        )
+        + g(
+            "SELECT COUNT(*) FROM kaoyan_majors t WHERE t.school_id IS NOT NULL"
+            " AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.school_id)"
+        )
+        + g(
+            "SELECT COUNT(*) FROM kaoyan_admissions t WHERE t.school_id IS NOT NULL"
+            " AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.school_id)"
+        )
+        + g(
+            "SELECT COUNT(*) FROM school_aliases t WHERE t.school_id IS NOT NULL"
+            " AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.school_id)"
+        ),
         "orphan_college": g(
             "SELECT COUNT(*) FROM kaoyan_majors m WHERE m.college_id IS NOT NULL"
-            " AND NOT EXISTS(SELECT 1 FROM kaoyan_colleges c WHERE c.id=m.college_id)"),
+            " AND NOT EXISTS(SELECT 1 FROM kaoyan_colleges c WHERE c.id=m.college_id)"
+        ),
         "orphan_major": g(
             "SELECT COUNT(*) FROM kaoyan_admissions a WHERE a.major_id IS NOT NULL"
-            " AND NOT EXISTS(SELECT 1 FROM kaoyan_majors m WHERE m.id=a.major_id)"),
+            " AND NOT EXISTS(SELECT 1 FROM kaoyan_majors m WHERE m.id=a.major_id)"
+        ),
     }
 
 
@@ -114,10 +124,8 @@ def report(m: dict) -> None:
     print(f"  [{m['stage']}]")
     print(f"     kaoyan_schools   = {m['kaoyan_schools']}")
     print(f"     school_aliases   = {m['school_aliases']}")
-    print(f"     colleges/majors/admissions = "
-          f"{m['kaoyan_colleges']}/{m['kaoyan_majors']}/{m['kaoyan_admissions']}")
-    print(f"     孤儿引用(school/college/major) = "
-          f"{m['orphan_school']}/{m['orphan_college']}/{m['orphan_major']}")
+    print(f"     colleges/majors/admissions = {m['kaoyan_colleges']}/{m['kaoyan_majors']}/{m['kaoyan_admissions']}")
+    print(f"     孤儿引用(school/college/major) = {m['orphan_school']}/{m['orphan_college']}/{m['orphan_major']}")
 
 
 def run_merge(conn) -> None:
@@ -128,8 +136,7 @@ def run_merge(conn) -> None:
 def intros(conn) -> dict:
     out = {}
     for sid in (16, 76, 155, 190, 217, 668):
-        r = conn.execute("SELECT intro FROM kaoyan_schools WHERE id=?",
-                         (sid,)).fetchone()
+        r = conn.execute("SELECT intro FROM kaoyan_schools WHERE id=?", (sid,)).fetchone()
         out[sid] = len(r[0] or "") if r else -1
     return out
 
@@ -148,10 +155,12 @@ def main():
     intro_before = intros(conn)
     report(before)
     print("\n  intro 长度（合并前）:")
-    for keep_id, dup_id, kn, dn in PAIRS:
-        print(f"     {kn:<20s} 实体id={keep_id}: {intro_before[keep_id]:>4d} 字"
-              f"   空壳id={dup_id}: "
-              f"{intro_before.get(dup_id, conn.execute('SELECT LENGTH(intro) FROM kaoyan_schools WHERE id=?', (dup_id,)).fetchone()[0] or 0):>4d} 字")
+    for keep_id, dup_id, kn, _dn in PAIRS:
+        print(
+            f"     {kn:<20s} 实体id={keep_id}: {intro_before[keep_id]:>4d} 字"
+            f"   空壳id={dup_id}: "
+            f"{intro_before.get(dup_id, conn.execute('SELECT LENGTH(intro) FROM kaoyan_schools WHERE id=?', (dup_id,)).fetchone()[0] or 0):>4d} 字"
+        )
     conn.close()
 
     print("\n" + "=" * 74)
@@ -171,7 +180,7 @@ def main():
         intro_after = intros(tconn)
         report(after)
         print("\n  intro 长度（演练后）:")
-        for keep_id, dup_id, kn, dn in PAIRS:
+        for keep_id, dup_id, kn, _dn in PAIRS:
             print(f"     {kn:<20s} id={keep_id}: {intro_after[keep_id]:>4d} 字")
 
         # 断言
@@ -183,7 +192,7 @@ def main():
         for k in ("orphan_school", "orphan_college", "orphan_major"):
             if after[k] != 0:
                 errs.append(f"{k} 应为 0，实为 {after[k]}")
-        for keep_id, shell_id in INTRO_FROM_SHELL.items():
+        for keep_id, _shell_id in INTRO_FROM_SHELL.items():
             if intro_after[keep_id] < 1:
                 errs.append(f"id={keep_id} 的 intro 丢了！应为 {intro_after[keep_id]} 字")
         for keep_id in (16, 76, 155, 190, 217, 668):
@@ -225,16 +234,23 @@ def main():
     intro_real = intros(conn)
     report(real)
     print("\n  intro 长度（真库合并后）:")
-    for keep_id, dup_id, kn, dn in PAIRS:
+    for keep_id, dup_id, kn, _dn in PAIRS:
         print(f"     {kn:<20s} id={keep_id}: {intro_real[keep_id]:>4d} 字")
     conn.close()
 
     print("\n" + "=" * 74)
     print("前后对比")
     print("=" * 74)
-    for k in ("kaoyan_schools", "school_aliases", "kaoyan_colleges",
-              "kaoyan_majors", "kaoyan_admissions",
-              "orphan_school", "orphan_college", "orphan_major"):
+    for k in (
+        "kaoyan_schools",
+        "school_aliases",
+        "kaoyan_colleges",
+        "kaoyan_majors",
+        "kaoyan_admissions",
+        "orphan_school",
+        "orphan_college",
+        "orphan_major",
+    ):
         b, a = before[k], real[k]
         print(f"  {k:<22s} {b:>6d} -> {a:<6d}{'  <-- 变化' if b != a else ''}")
 

@@ -1,18 +1,24 @@
 # -*- coding: utf-8 -*-
 """测量修复后 tree 响应大小 + 验证每个知识点在树中可达（只读）。"""
-import sys, io, asyncio, json
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+import asyncio
+import io
+import json
+import sys
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 sys.path.insert(0, r"D:\平台\backend-main-fastapi")
 from database import SessionLocal
 from routers.taxonomy import structure_tree
+
 from models import KnowledgePoint
 
 db = SessionLocal()
 try:
     resp = asyncio.run(structure_tree(db=db))
-    raw = json.dumps(resp, ensure_ascii=False).encode('utf-8')
-    print(f"tree response size: {len(raw)/1024:.1f} KB ({len(raw)} bytes)")
+    raw = json.dumps(resp, ensure_ascii=False).encode("utf-8")
+    print(f"tree response size: {len(raw) / 1024:.1f} KB ({len(raw)} bytes)")
 
     tree = resp["tree"]
     total = sum(s["knowledge_point_count"] for s in tree)

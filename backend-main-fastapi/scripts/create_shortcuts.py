@@ -26,10 +26,13 @@ def _desktop_dir() -> str:
     # 1. 让 PowerShell 走 .NET 的 Shell API（最可靠）
     try:
         import subprocess
+
         r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command",
-             "[Environment]::GetFolderPath('Desktop')"],
-            capture_output=True, text=True, timeout=30, errors="ignore",
+            ["powershell", "-NoProfile", "-Command", "[Environment]::GetFolderPath('Desktop')"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            errors="ignore",
         )
         p = r.stdout.strip()
         if p and os.path.isdir(p):
@@ -40,11 +43,19 @@ def _desktop_dir() -> str:
     # 2. 注册表里的 User Shell Folders（可能含 %USERPROFILE% 变量）
     try:
         import subprocess
+
         r = subprocess.run(
-            ["reg", "query",
-             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
-             "/v", "Desktop"],
-            capture_output=True, text=True, timeout=30, errors="ignore",
+            [
+                "reg",
+                "query",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+                "/v",
+                "Desktop",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            errors="ignore",
         )
         for line in r.stdout.splitlines():
             if "Desktop" in line and "REG_" in line:
@@ -96,8 +107,10 @@ $sc.WindowStyle = 1
 $sc.Save()
 """
     import subprocess
-    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                       capture_output=True, text=True, timeout=60, errors="ignore")
+
+    r = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, timeout=60, errors="ignore"
+    )
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip()[:200] or "PowerShell 执行失败")
     return lnk
@@ -105,7 +118,7 @@ $sc.Save()
 
 def _remove() -> int:
     n = 0
-    for key, (name, *_rest) in SHORTCUTS.items():
+    for _key, (name, *_rest) in SHORTCUTS.items():
         lnk = os.path.join(DESKTOP, f"{name}.lnk")
         if os.path.exists(lnk):
             os.remove(lnk)

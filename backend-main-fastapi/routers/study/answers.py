@@ -1,4 +1,5 @@
 """答案交叉校验路由（A6）：前缀 /api/answers。"""
+
 from __future__ import annotations
 
 from typing import List, Optional
@@ -29,9 +30,7 @@ def cross_check(req: CrossCheckRequest, db: Session = Depends(get_db)):
     """单题交叉校验：题库答案 vs 真题2-gram检索 vs LLM 生成，写 answer_candidates。"""
     ensure_module_a_schema(db)
     try:
-        result = answer_cross_check.cross_check_question(
-            db, req.question_id, prefer=req.prefer
-        )
+        result = answer_cross_check.cross_check_question(db, req.question_id, prefer=req.prefer)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return result
@@ -42,9 +41,7 @@ def cross_check_batch(req: CrossCheckBatchRequest, db: Session = Depends(get_db)
     """批量交叉校验（不指定 question_ids 时取未校验/置信度非 high 的题）。"""
     ensure_module_a_schema(db)
     try:
-        result = answer_cross_check.check_batch(
-            db, question_ids=req.question_ids, limit=req.limit, prefer=req.prefer
-        )
+        result = answer_cross_check.check_batch(db, question_ids=req.question_ids, limit=req.limit, prefer=req.prefer)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result

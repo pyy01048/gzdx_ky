@@ -16,6 +16,7 @@
     python scripts/rename_docs_dryrun.py --limit 200     # 先小样本看口径
     python scripts/rename_docs_dryrun.py --out D:\\x.csv
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,9 +63,17 @@ def scan(docs, taken: Set[str], chunk_cnt):
     for d in docs:
         name = d["file_name"] or ""
         got = propose(name, d["content"])
-        base = {"id": d["id"], "subject": d["subject"] or "", "current": name,
-                "proposed": "", "anchor": "", "basis": "", "verbatim": "",
-                "chunks": chunk_cnt.get(d["id"], 0), "on_disk": disk_hit(d["file_path"])}
+        base = {
+            "id": d["id"],
+            "subject": d["subject"] or "",
+            "current": name,
+            "proposed": "",
+            "anchor": "",
+            "basis": "",
+            "verbatim": "",
+            "chunks": chunk_cnt.get(d["id"], 0),
+            "on_disk": disk_hit(d["file_path"]),
+        }
         reason = got.get("reason") or ""
         if reason:
             stat[reason[:40]] += 1
@@ -76,14 +85,29 @@ def scan(docs, taken: Set[str], chunk_cnt):
         proposed = got["proposed"]
         if proposed.lower() in taken:
             stat["collision：库内已有同名"] += 1
-            rows.append({**base, "proposed": proposed, "anchor": got["anchor"],
-                         "basis": got["basis"], "verbatim": got["verbatim"],
-                         "reason": "collision：库内已有同名，交人判定后再动"})
+            rows.append(
+                {
+                    **base,
+                    "proposed": proposed,
+                    "anchor": got["anchor"],
+                    "basis": got["basis"],
+                    "verbatim": got["verbatim"],
+                    "reason": "collision：库内已有同名，交人判定后再动",
+                }
+            )
             continue
         taken.add(proposed.lower())
         stat["改名"] += 1
-        rows.append({**base, "proposed": proposed, "anchor": got["anchor"],
-                     "basis": got["basis"], "verbatim": got["verbatim"], "reason": ""})
+        rows.append(
+            {
+                **base,
+                "proposed": proposed,
+                "anchor": got["anchor"],
+                "basis": got["basis"],
+                "verbatim": got["verbatim"],
+                "reason": "",
+            }
+        )
     return rows, stat
 
 
@@ -96,33 +120,48 @@ def main() -> int:
     con = sqlite3.connect(f"file:{LIVE_DB}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
 
-    sql = ("SELECT id, file_name, subject, file_path, COALESCE(content,'') AS content "
-           "FROM documents")
+    sql = "SELECT id, file_name, subject, file_path, COALESCE(content,'') AS content FROM documents"
     if args.limit:
         sql += f" LIMIT {int(args.limit)}"
     t0 = time.time()
     docs = con.execute(sql).fetchall()
-    taken = {str(r["file_name"]).lower()
-             for r in con.execute("SELECT file_name FROM documents")}
-    chunk_cnt = {r["document_id"]: r["n"] for r in con.execute(
-        "SELECT document_id, COUNT(*) n FROM knowledge_chunks GROUP BY document_id")}
+    taken = {str(r["file_name"]).lower() for r in con.execute("SELECT file_name FROM documents")}
+    chunk_cnt = {
+        r["document_id"]: r["n"]
+        for r in con.execute("SELECT document_id, COUNT(*) n FROM knowledge_chunks GROUP BY document_id")
+    }
     rows, stat = scan(docs, taken, chunk_cnt)
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", newline="", encoding="utf-8-sig") as fh:
-        w = csv.DictWriter(fh, fieldnames=["id", "subject", "current", "proposed", "anchor",
-                                           "basis", "verbatim", "chunks", "on_disk", "reason"])
+        w = csv.DictWriter(
+            fh,
+            fieldnames=[
+                "id",
+                "subject",
+                "current",
+                "proposed",
+                "anchor",
+                "basis",
+                "verbatim",
+                "chunks",
+                "on_disk",
+                "reason",
+            ],
+        )
         w.writeheader()
         w.writerows(rows)
 
     picks = [r for r in rows if r["proposed"] and not r["reason"]]
     drift = sum(r["chunks"] for r in picks)
-    print(f"扫描文档 {len(docs)} 篇（用时 {time.time()-t0:.1f}s）→ 建议改名 {len(picks)} 篇")
+    print(f"扫描文档 {len(docs)} 篇（用时 {time.time() - t0:.1f}s）→ 建议改名 {len(picks)} 篇")
     for k, v in stat.most_common():
         if k != "改名":
             print(f"  不改（{v}）：{k}")
-    print(f"改名涉及 knowledge_chunks {drift} 行（回写阶段同事务写穿 doc_name）；"
-          f"原文不在盘 {sum(1 for r in picks if r['on_disk'] != 'yes')} 篇")
+    print(
+        f"改名涉及 knowledge_chunks {drift} 行（回写阶段同事务写穿 doc_name）；"
+        f"原文不在盘 {sum(1 for r in picks if r['on_disk'] != 'yes')} 篇"
+    )
     print(f"CSV：{args.out}")
 
     print("\n样例（前 20 条建议）：")

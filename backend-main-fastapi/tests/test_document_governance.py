@@ -27,6 +27,7 @@ TABLE_HEAD = "| 科目 | 分值 | 题型 |\n|---|---|---|\n| 数学 | 150 | 解�
 @pytest.fixture()
 def seed(db_schema):
     from database import SessionLocal
+
     from models import Document, KnowledgeChunk, SubjectConfig
 
     db = SessionLocal()
@@ -136,8 +137,9 @@ class TestSummaryClean:
 class TestReindex:
     def test_failed_with_content_reindexed(self, seed):
         from database import SessionLocal
-        from models import Document, KnowledgeChunk
         from services.document_governance import reindex_failed
+
+        from models import Document, KnowledgeChunk
 
         db = SessionLocal()
         try:
@@ -156,8 +158,9 @@ class TestReindex:
 class TestHeadingKps:
     def test_extract_trace_and_idempotent(self, seed):
         from database import SessionLocal
-        from models import Document, KnowledgePoint
         from services.document_governance import extract_heading_kps
+
+        from models import Document, KnowledgePoint
 
         db = SessionLocal()
         try:
@@ -183,8 +186,9 @@ class TestHeadingKps:
 class TestClassify:
     def test_alias_and_queue(self, seed):
         from database import SessionLocal
-        from models import Document, DocumentClassifyQueue
         from services.document_governance import classify_subjects
+
+        from models import Document, DocumentClassifyQueue
 
         db = SessionLocal()
         try:
@@ -233,8 +237,9 @@ class TestClassify:
 class TestListOutput:
     def test_summary_cleaned_and_structured_flag(self, admin_client, seed):
         from database import SessionLocal
-        from models import Document
         from services.document_governance import extract_heading_kps
+
+        from models import Document
 
         r = admin_client.get("/api/documents", params={"page_size": 100})
         assert r.status_code == 200

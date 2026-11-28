@@ -226,8 +226,7 @@ def supervise() -> int:
                         probe_fails += 1
                         if probe_fails >= PROBE_FAIL_LIMIT:
                             _log(
-                                f"外层探活：{host}:{port} 连续 {probe_fails} 次不健康"
-                                f"（进程在但不服务），杀掉子进程重启"
+                                f"外层探活：{host}:{port} 连续 {probe_fails} 次不健康（进程在但不服务），杀掉子进程重启"
                             )
                             killed_for_health = True
                             _terminate(child)

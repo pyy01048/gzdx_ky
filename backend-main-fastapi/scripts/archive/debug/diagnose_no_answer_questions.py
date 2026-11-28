@@ -18,6 +18,7 @@
     python scripts/diagnose_no_answer_questions.py --json-out data/diagnostics/no_answer_profile.json
 只读：不写 quiz_questions，不删任何数据。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -96,7 +97,7 @@ def align_probe(content: str, doc_candidates: list) -> dict:
             if idx < 0:
                 continue
             key = key2
-        window = body[idx: idx + 900]
+        window = body[idx : idx + 900]
         ans_sig = re.search(r"(参考答案|答案[:：]|【答案】|故\s*选|解[:：])", window)
         return {
             "hit": True,
@@ -111,8 +112,9 @@ def align_probe(content: str, doc_candidates: list) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sample", type=int, default=10, help="每层抽样条数")
-    ap.add_argument("--align-only", type=int, default=0,
-                    help="对前 N 条 C 类题做知识库对齐探测（较慢，读 documents.content）")
+    ap.add_argument(
+        "--align-only", type=int, default=0, help="对前 N 条 C 类题做知识库对齐探测（较慢，读 documents.content）"
+    )
     ap.add_argument("--json-out", default="")
     args = ap.parse_args()
 
@@ -130,13 +132,12 @@ def main() -> int:
     print(f"无答案且未隔离的题数: {len(rows)}\n")
 
     # ---------------- 分层画像 ----------------
-    profile = defaultdict(Counter)      # layer -> counter
-    buckets = defaultdict(list)         # (layer, completeness) -> rows
+    profile = defaultdict(Counter)  # layer -> counter
+    buckets = defaultdict(list)  # (layer, completeness) -> rows
     layer_tot = Counter()
     layer_reason = Counter()
     for r in rows:
-        g, why = classify((r["id"], r["content"], r["answer"], r["source"],
-                           r["question_type"], r["options"]))
+        g, why = classify((r["id"], r["content"], r["answer"], r["source"], r["question_type"], r["options"]))
         if g != "C":  # 门禁重判后不是 C 的（历史漂移）
             profile["__gate_" + g][why] += 1
             continue
@@ -154,14 +155,16 @@ def main() -> int:
     print(hdr)
     tot = Counter()
     for lay in ["L1-真题", "L2-习题题库", "L3-讲义正文", "L4-未归类"]:
-        b = {k[1]: len(v) for k, v in buckets.items() if k[0] == lay}
+        {k[1]: len(v) for k, v in buckets.items() if k[0] == lay}
         cs = Counter()
         for k, v in buckets.items():
             if k[0] == lay:
                 cs[k[1]] += len(v)
-        print(f"{lay:<14}{cs.get('完整',0):>8}{cs.get('图缺',0):>8}{cs.get('残缺',0):>8}{layer_tot.get(lay,0):>8}")
+        print(f"{lay:<14}{cs.get('完整', 0):>8}{cs.get('图缺', 0):>8}{cs.get('残缺', 0):>8}{layer_tot.get(lay, 0):>8}")
         tot.update(cs)
-    print(f"{'合计':<14}{tot.get('完整',0):>8}{tot.get('图缺',0):>8}{tot.get('残缺',0):>8}{sum(layer_tot.values()):>8}")
+    print(
+        f"{'合计':<14}{tot.get('完整', 0):>8}{tot.get('图缺', 0):>8}{tot.get('残缺', 0):>8}{sum(layer_tot.values()):>8}"
+    )
     gate_drift = {k: dict(v) for k, v in profile.items() if k.startswith("__gate_")}
     if gate_drift:
         print(f"\n[门禁重判漂移] {gate_drift}")
@@ -211,14 +214,12 @@ def main() -> int:
                 break
             i += 1
         samples[f"{lay}|{comp}"] = [
-            {k: r[k] for k in ("id", "source", "subject", "chapter", "question_type",
-                               "question_no", "content")}
+            {k: r[k] for k in ("id", "source", "subject", "chapter", "question_type", "question_no", "content")}
             for r in picked
         ]
         for r in picked:
             c = (r["content"] or "").replace("\n", " ⏎ ")
-            print(f"\n[id={r['id']}] type={r['question_type']} subj={r['subject']} "
-                  f"chapter={r['chapter']}")
+            print(f"\n[id={r['id']}] type={r['question_type']} subj={r['subject']} chapter={r['chapter']}")
             print(f"  source: {r['source']}")
             print(f"  题干({len(r['content'] or '')}字): {c[:400]}")
 
@@ -249,22 +250,28 @@ def main() -> int:
                 if stem and (stem[:12] in base or base[:12] in stem):
                     cands.append((d["file_name"], d["content"]))
             res = align_probe(r["content"], cands)
-            key = f"{lay}|{'答案同窗' if res.get('answer_signal') else '仅题干命中' if res.get('hit') else '文档未命中'}"
+            key = (
+                f"{lay}|{'答案同窗' if res.get('answer_signal') else '仅题干命中' if res.get('hit') else '文档未命中'}"
+            )
             align_stat[key] += 1
             if len(align_detail) < 40:
-                align_detail.append({
-                    "id": r["id"], "layer": lay, "completeness": comp,
-                    "source": r["source"], "doc_matched": len(cands),
-                    "probe": {k: v for k, v in res.items() if k != "window"},
-                    "window_head": (res.get("window") or "")[:260],
-                })
+                align_detail.append(
+                    {
+                        "id": r["id"],
+                        "layer": lay,
+                        "completeness": comp,
+                        "source": r["source"],
+                        "doc_matched": len(cands),
+                        "probe": {k: v for k, v in res.items() if k != "window"},
+                        "window_head": (res.get("window") or "")[:260],
+                    }
+                )
         print("\n对齐探测汇总:")
         for k, n in align_stat.most_common():
             print(f"  {k}: {n}")
         print("\n明细样本（前 40 条）:")
         for d in align_detail:
-            print(f"\n[id={d['id']}] {d['layer']}/{d['completeness']} docs={d['doc_matched']} "
-                  f"probe={d['probe']}")
+            print(f"\n[id={d['id']}] {d['layer']}/{d['completeness']} docs={d['doc_matched']} probe={d['probe']}")
             if d["window_head"]:
                 print(f"   窗口: {d['window_head']}")
 
@@ -272,8 +279,7 @@ def main() -> int:
     print("\n" + "=" * 78)
     print("六、可补答案候选量估算")
     print("=" * 78)
-    fillable = sum(len(v) for (l, c), v in buckets.items()
-                   if c == "完整" and l in ("L1-真题", "L2-习题题库"))
+    fillable = sum(len(v) for (l, c), v in buckets.items() if c == "完整" and l in ("L1-真题", "L2-习题题库"))
     clearn = sum(len(v) for (l, c), v in buckets.items() if c != "完整")
     lecture = sum(len(v) for (l, c), v in buckets.items() if l == "L3-讲义正文" and c == "完整")
     print(f"  高可靠可补（真题/习题 + 题干完整）: {fillable}")
@@ -284,16 +290,23 @@ def main() -> int:
         out = os.path.join(BASE_DIR, args.json_out)
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as f:
-            json.dump({
-                "total_no_answer_visible": len(rows),
-                "layer_totals": dict(layer_tot),
-                "completeness": dict(tot),
-                "reasons": {f"{a}|{b}|{c}": n for (a, b, c), n in layer_reason.items()},
-                "fillable": fillable, "needs_review": lecture, "cleanup": clearn,
-                "align_stat": dict(align_stat),
-                "align_detail": align_detail,
-                "samples": samples,
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(
+                {
+                    "total_no_answer_visible": len(rows),
+                    "layer_totals": dict(layer_tot),
+                    "completeness": dict(tot),
+                    "reasons": {f"{a}|{b}|{c}": n for (a, b, c), n in layer_reason.items()},
+                    "fillable": fillable,
+                    "needs_review": lecture,
+                    "cleanup": clearn,
+                    "align_stat": dict(align_stat),
+                    "align_detail": align_detail,
+                    "samples": samples,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
         print(f"\n[JSON 已写出] {out}")
 
     con.close()

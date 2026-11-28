@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """只读探针：低 id 行与 goals 行的来历 + 闸门判定的存量交叉表。绝不写库。"""
+
 import os
 import sqlite3
 
@@ -12,12 +13,14 @@ print("=== goals 全行（判定倒计时是不是假日期）===")
 cols = [c[1] for c in cur.execute("PRAGMA table_info(goals)")]
 print("  columns:", cols)
 for r in cur.execute("SELECT * FROM goals"):
-    print("  ", dict(zip(cols, r)))
+    print("  ", dict(zip(cols, r, strict=False)))
 
 print()
 print("=== quiz_questions id<=12（seed 伪题是否还在）===")
-for r in cur.execute("SELECT id, substr(replace(content,char(10),' '),1,50), source, subject, is_junk, "
-                     "quality, is_available, created_at FROM quiz_questions ORDER BY id LIMIT 12"):
+for r in cur.execute(
+    "SELECT id, substr(replace(content,char(10),' '),1,50), source, subject, is_junk, "
+    "quality, is_available, created_at FROM quiz_questions ORDER BY id LIMIT 12"
+):
     print("  ", r)
 
 print()
@@ -34,8 +37,7 @@ import sys
 sys.path.insert(0, os.path.join(os.getcwd(), "scripts"))
 from quiz_quality_gate import classify  # noqa: E402
 
-rows = cur.execute("SELECT id, content, answer, source, question_type, options, is_junk "
-                   "FROM quiz_questions").fetchall()
+rows = cur.execute("SELECT id, content, answer, source, question_type, options, is_junk FROM quiz_questions").fetchall()
 tab = {}
 newly_junk, stale_junk = [], []
 for r in rows:
@@ -57,10 +59,16 @@ if stale_junk[:8]:
 
 print()
 print("=== 空题干 / 无选项但声称选择题 ===")
-print("  content 为空或<6:", cur.execute(
-    "SELECT count(*) FROM quiz_questions WHERE content IS NULL OR length(trim(content))<6").fetchall())
-print("  纯 seed 长度=6 且无答案:", cur.execute(
-    "SELECT count(*) FROM quiz_questions WHERE length(content)=6 AND (answer IS NULL OR trim(answer)='')").fetchall())
+print(
+    "  content 为空或<6:",
+    cur.execute("SELECT count(*) FROM quiz_questions WHERE content IS NULL OR length(trim(content))<6").fetchall(),
+)
+print(
+    "  纯 seed 长度=6 且无答案:",
+    cur.execute(
+        "SELECT count(*) FROM quiz_questions WHERE length(content)=6 AND (answer IS NULL OR trim(answer)='')"
+    ).fetchall(),
+)
 
 after = os.stat(DB)
 assert (after.st_mtime, after.st_size) == (before.st_mtime, before.st_size), "探针动了生产库！"

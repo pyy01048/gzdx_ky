@@ -33,9 +33,9 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal  # noqa: E402
-from models import KaoyanAdmission  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
+from models import KaoyanAdmission  # noqa: E402
 from pipeline.notice_admission_crawler import (  # noqa: E402
     TITLE_NO,
     TITLE_OK,
@@ -188,13 +188,18 @@ def _upsert(db, sid: int, year: int, src: str, ntype: str, data: dict):
     return row.id
 
 
+def _mask_exam_no(value: str | None) -> str | None:
+    number = str(value or "").strip()
+    return f"***{number[-4:]}" if number else None
+
+
 def _insert_details(db, nid: int, sid: int, year: int, admission_id: int, rows: list) -> int:
     inserted = 0
     for idx, r in enumerate(rows or []):
         n = (r.get("name") or "").strip()
         if not n:
             continue
-        db.execute(
+        result = db.execute(
             text(
                 "INSERT INTO kaoyan_admission_details "
                 "(admission_id, school_id, year, exam_no, name, major_name, "
@@ -207,8 +212,8 @@ def _insert_details(db, nid: int, sid: int, year: int, admission_id: int, rows: 
                 "admission_id": admission_id,
                 "school_id": sid,
                 "year": year,
-                "exam_no": (r.get("exam_no") or "")[:40] or None,
-                "name": n[:60],
+                "exam_no": _mask_exam_no(r.get("exam_no")),
+                "name": "匿名考生",
                 "major_name": (r.get("major") or "")[:120] or None,
                 "score_initial": r.get("initial"),
                 "score_retest": r.get("retest"),
@@ -216,7 +221,8 @@ def _insert_details(db, nid: int, sid: int, year: int, admission_id: int, rows: 
                 "data_source": f"notice:{nid}:d{idx}",
             },
         )
-        inserted += 1
+        if result.rowcount > 0:
+            inserted += 1
     return inserted
 
 
@@ -361,17 +367,18 @@ def run(
                 print(f"[ERR] {sname} #{nid}: {type(exc).__name__}: {str(exc)[:90]}")
                 polite()
 
-        os.makedirs(REPORT_DIR, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-        rpath = os.path.join(REPORT_DIR, f"general_run_{ts}.json")
-        with open(rpath, "w", encoding="utf-8") as f:
-            json.dump(rep, f, ensure_ascii=False, indent=2)
         print("\n== 汇总 ==")
         print(
             f"候选 {rep['cand']} | 已入库 {rep['inserted']}（明细 {rep['details']}）| "
             f"空 {rep['empty']} | 错误 {rep['err']} | 学校 {len(rep['schools'])}"
         )
-        print(f"问题清单：{rpath}")
+        if not dry_run:
+            os.makedirs(REPORT_DIR, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+            rpath = os.path.join(REPORT_DIR, f"general_run_{ts}.json")
+            with open(rpath, "w", encoding="utf-8") as f:
+                json.dump(rep, f, ensure_ascii=False, indent=2)
+            print(f"\n问题清单：{rpath}")
         if rep["problems"]:
             for p in rep["problems"][:15]:
                 print("  -", p["school"], f"#{p['notice']}", p.get("issue", "")[:80])

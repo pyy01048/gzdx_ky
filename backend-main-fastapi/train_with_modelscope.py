@@ -8,6 +8,7 @@ import time
 # 设置ModelScope（国内访问稳定）
 os.environ["MODELSCOPE_CACHE"] = os.path.expanduser("~/.cache/modelscope/hub")
 
+
 def download_model(model_name="Qwen/Qwen2.5-4B-Instruct"):
     """使用ModelScope下载模型。"""
     print("=" * 60)
@@ -16,6 +17,7 @@ def download_model(model_name="Qwen/Qwen2.5-4B-Instruct"):
 
     try:
         from modelscope import snapshot_download
+
         print("开始下载模型（约8GB，可能需要10-30分钟）...")
         start_time = time.time()
 
@@ -27,7 +29,7 @@ def download_model(model_name="Qwen/Qwen2.5-4B-Instruct"):
         elapsed = time.time() - start_time
         print("\n✓ 模型下载完成！")
         print(f"  模型路径: {model_dir}")
-        print(f"  下载耗时: {elapsed/60:.1f} 分钟")
+        print(f"  下载耗时: {elapsed / 60:.1f} 分钟")
 
         # 列出模型文件
         print("\n模型文件:")
@@ -42,6 +44,7 @@ def download_model(model_name="Qwen/Qwen2.5-4B-Instruct"):
     except Exception as e:
         print(f"✗ 模型下载失败: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -61,6 +64,7 @@ def start_training(model_dir):
     # 临时修改模型名称为本地路径
     import lora_finetune
     from lora_finetune import train_lora
+
     original_model_name = lora_finetune.MODEL_NAME
     lora_finetune.MODEL_NAME = model_dir
 

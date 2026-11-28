@@ -12,6 +12,7 @@
     python scripts/diagnostics/db_stats_check.py            # 只读体检
     python scripts/diagnostics/db_stats_check.py --analyze  # 体检 + ANALYZE
 """
+
 from __future__ import annotations
 
 import argparse

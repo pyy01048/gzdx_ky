@@ -52,23 +52,27 @@ const STAGES = [
   { key: 'merging', label: '合并权重' },
 ]
 
+/** 将数值格式化为中文千分位；空值或非有限数返回「—」。 */
 const fmtNum = (v) => {
   if (v === null || v === undefined || v === '') return '—'
   const n = Number(v)
   return Number.isFinite(n) ? n.toLocaleString('zh-CN') : '—'
 }
 
+/** 格式化 epoch 进度为「cur / total」；无总数返回「—」。 */
 const fmtEpoch = (cur, total) => {
   if (!total) return '—'
   return `${cur ?? 0} / ${total}`
 }
 
+/** 将 Date 格式化为「HH:mm:ss」；空值返回「—」。 */
 const fmtClock = (date) => (
   date
     ? date.toLocaleTimeString('zh-CN', { hour12: false })
     : '—'
 )
 
+/** 校验 LoRA 配置：返回字段错误映射，空对象表示全部合法。 */
 function validateConfig(cfg) {
   const errs = {}
   const intInRange = (v, min, max) => Number.isInteger(v) && v >= min && v <= max
@@ -82,6 +86,11 @@ function validateConfig(cfg) {
   return errs
 }
 
+/**
+ * 模型训练管理页（Aurora v3）。
+ * LoRA 微调任务的启动、轮询监控、取消与文档识别入口；
+ * 所有指标直接来自 /api/model-training/training/status，不做任何演示值兜底。
+ */
 export default function ModelTraining() {
   const navigate = useNavigate()
   const [status, setStatus] = useState(null)
@@ -146,11 +155,11 @@ export default function ModelTraining() {
     }
   }, [loadStatus])
 
-  const refreshStatus = async () => {
+  const refreshStatus = useCallback(async () => {
     const ok = await loadStatus()
     if (ok) toastOk('训练状态已刷新')
     else toastErr('刷新失败，请检查后端服务后重试')
-  }
+  }, [loadStatus])
 
   const openConfig = useCallback(() => {
     setShowConfig(true)
@@ -163,12 +172,12 @@ export default function ModelTraining() {
     }, 80)
   }, [])
 
-  const toggleConfig = () => {
+  const toggleConfig = useCallback(() => {
     if (showConfig) setShowConfig(false)
     else openConfig()
-  }
+  }, [showConfig, openConfig])
 
-  const updateConfig = (key, value) => {
+  const updateConfig = useCallback((key, value) => {
     setConfig((prev) => ({ ...prev, [key]: value }))
     setFieldErrors((prev) => {
       if (!prev[key]) return prev
@@ -176,12 +185,12 @@ export default function ModelTraining() {
       delete next[key]
       return next
     })
-  }
+  }, [])
 
-  const resetConfig = () => {
+  const resetConfig = useCallback(() => {
     setConfig(DEFAULT_CONFIG)
     setFieldErrors({})
-  }
+  }, [])
 
   const statusValue = status?.status || ''
   const meta = STATUS_META[statusValue] || {
@@ -199,14 +208,14 @@ export default function ModelTraining() {
     if (el) el.scrollTop = el.scrollHeight
   }, [status?.logs, logFollow])
 
-  const onLogScroll = () => {
+  const onLogScroll = useCallback(() => {
     const el = logRef.current
     if (!el) return
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24
     setLogFollow(nearBottom)
-  }
+  }, [])
 
-  const copyLogs = async () => {
+  const copyLogs = useCallback(async () => {
     if (!logs.length) return
     try {
       await navigator.clipboard.writeText(logs.join('\n'))
@@ -214,9 +223,9 @@ export default function ModelTraining() {
     } catch {
       toastErr('复制失败，请手动选择日志内容')
     }
-  }
+  }, [logs])
 
-  const submitConfig = (e) => {
+  const submitConfig = useCallback((e) => {
     e.preventDefault()
     const errs = validateConfig(config)
     setFieldErrors(errs)
@@ -226,9 +235,9 @@ export default function ModelTraining() {
     }
     setStartError('')
     setConfirmStart(true)
-  }
+  }, [config])
 
-  const startTraining = async () => {
+  const startTraining = useCallback(async () => {
     setStarting(true)
     setStartError('')
     try {
@@ -254,9 +263,9 @@ export default function ModelTraining() {
     } finally {
       setStarting(false)
     }
-  }
+  }, [config, loadStatus])
 
-  const cancelTraining = async () => {
+  const cancelTraining = useCallback(async () => {
     setCancelling(true)
     try {
       const result = await trainingApi.cancel()
@@ -270,7 +279,7 @@ export default function ModelTraining() {
     } finally {
       setCancelling(false)
     }
-  }
+  }, [loadStatus])
 
   const stageIndex = { preparing: 0, training: 1, merging: 2, completed: 3 }[statusValue]
 

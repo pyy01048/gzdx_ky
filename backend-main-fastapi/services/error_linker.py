@@ -19,6 +19,10 @@ import datetime
 import logging
 from typing import Any
 
+from sqlalchemy import and_, func, not_, or_
+from sqlalchemy.orm import Session
+from utils.timeutil import local_day_window, utcnow  # 统一 naive UTC 时间规范（P0-4）
+
 from models import (
     Document,
     ErrorKnowledgeLink,
@@ -28,11 +32,7 @@ from models import (
     QuestionKnowledgeLink,
     ReviewRecord,
 )
-from sqlalchemy import and_, func, not_, or_
-from sqlalchemy.orm import Session
-from utils.timeutil import local_day_window, utcnow  # 统一 naive UTC 时间规范（P0-4）
-
-from services import kp_cleaner, taxonomy
+from services import kp_cleaner, kp_mastery, taxonomy
 
 
 def _now() -> datetime.datetime:
@@ -174,7 +174,7 @@ def _named_hits(
             # 名字越长、考频越高、同章越可信
             bonus = 8 if (chapter and kp.chapter == chapter) else 0
             hits.append((kp, len(name) * 10 + (kp.exam_frequency or 0) + bonus))
-    hits.sort(key=lambda x: -x[1])
+    hits.sort(key=lambda x: x[1], reverse=True)
     return hits
 
 
@@ -220,7 +220,7 @@ def _keyword_hits(
                     bonus += 8
                 hits.append((kp, 5 + len(t) + bonus + (kp.exam_frequency or 0)))
                 break
-    hits.sort(key=lambda x: -x[1])
+    hits.sort(key=lambda x: x[1], reverse=True)
     return hits
 
 
@@ -445,7 +445,7 @@ def unlink(db: Session, link_id: int, *, commit: bool = True) -> bool:
     return True
 
 
-def mastery_state_condition(state: str):
+def mastery_state_condition(state: str) -> Any | None:
     """把三态名（unlearned/weak/mastered）翻译成 SQLAlchemy 过滤条件。
 
     与 ``services/kp_mastery.error_mastery_state`` **逐条对齐**（同一阈值
@@ -548,7 +548,7 @@ def error_stats(db: Session, *, subject: str | None = None, user_id: int | None 
     }
 
 
-def knowledge_points_of_error(db: Session, error_id: int) -> list[dict[str, Any]]:
+def knowledge_points_of_error(db: Session, error_id: int, *, user_id: int | None = None) -> list[dict[str, Any]]:
     """错题关联的知识点（**按实际链路展示，不再只是启发式关联**）。
 
     修复背景（docx/22 F3「知识点关联硬编码且关联错」）：
@@ -574,17 +574,19 @@ def knowledge_points_of_error(db: Session, error_id: int) -> list[dict[str, Any]
     if not err:
         return []
 
-    learned = kp_mastery.learned_kp_ids(db)
+    learned = kp_mastery.learned_kp_ids(db, user_id=user_id)
+    personal_mastery = kp_mastery.user_mastery(db, user_id) if user_id is not None else None
     out: list[dict[str, Any]] = []
     seen: set[int] = set()
 
     def _kp_dict(kp: KnowledgePoint) -> dict[str, Any]:
-        state = kp_mastery.classify_state(kp.mastery, kp.id in learned)
+        mastery = int(personal_mastery.get(kp.id, 0) if personal_mastery is not None else (kp.mastery or 0))
+        state = kp_mastery.classify_state(mastery, kp.id in learned)
         return {
             "name": kp.name,
             "subject": kp.subject,
             "chapter": kp.chapter,
-            "mastery": int(kp.mastery or 0),
+            "mastery": mastery,
             "state": state,
             "state_label": kp_mastery.STATE_LABELS.get(state, state),
             "question_types": (kp.question_types if kp else None)
@@ -665,14 +667,18 @@ def related_errors(
     db: Session,
     knowledge_point_id: int,
     *,
+    user_id: int,
     limit: int = 20,
     only_active: bool = True,
 ) -> list[dict[str, Any]]:
-    """某知识点下的所有错题（错题本按考点聚类）。"""
+    """当前用户在某知识点下的错题（错题本按考点聚类）。"""
     q = (
         db.query(ErrorRecord)
         .join(ErrorKnowledgeLink, ErrorKnowledgeLink.error_id == ErrorRecord.id)
-        .filter(ErrorKnowledgeLink.knowledge_point_id == knowledge_point_id)
+        .filter(
+            ErrorKnowledgeLink.knowledge_point_id == knowledge_point_id,
+            ErrorRecord.user_id == user_id,
+        )
     )
     if only_active:
         q = q.filter(ErrorRecord.status == "active")
@@ -725,17 +731,19 @@ def weak_knowledge_points(
         q = q.filter(KnowledgePoint.subject == taxonomy.normalize_subject(subject))
     q = q.group_by(KnowledgePoint.id)
     rows = q.all()
+    personal_mastery = kp_mastery.user_mastery(db, user_id) if user_id is not None else {}
 
     out = []
     for r in rows:
-        score = (r.error_count or 0) * 2 + (r.exam_frequency or 0) - int(r.mastery or 0) / 20
+        mastery = int(personal_mastery.get(r.id, 0) if user_id is not None else (r.mastery or 0))
+        score = (r.error_count or 0) * 2 + (r.exam_frequency or 0) - mastery / 20
         out.append(
             {
                 "knowledge_point_id": r.id,
                 "name": r.name,
                 "subject": r.subject,
                 "chapter": r.chapter,
-                "mastery": int(r.mastery or 0),
+                "mastery": mastery,
                 "exam_frequency": r.exam_frequency or 0,
                 "question_types": r.question_types or taxonomy.question_types_of(r.subject),
                 "error_count": r.error_count,

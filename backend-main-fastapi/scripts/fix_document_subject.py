@@ -20,6 +20,7 @@
     python scripts/fix_document_subject.py            # 预览
     python scripts/fix_document_subject.py --apply     # 写库（先备份）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,8 +37,7 @@ DB_PATH = os.environ.get("DATABASE_PATH", "").strip() or os.path.join(
     os.path.dirname(BASE_DIR), "database", "kaoyan.db"
 )
 REPO_ROOT = os.path.dirname(BASE_DIR)
-AUDIT_JSON = os.path.join(REPO_ROOT, "tools", "datasource",
-                          "document_subject_fix_audit.json")
+AUDIT_JSON = os.path.join(REPO_ROOT, "tools", "datasource", "document_subject_fix_audit.json")
 
 #: 精确修复规则（按 file_name 模式匹配）
 DOC_RULES: list[dict] = [
@@ -67,19 +67,20 @@ def _collect(cur: sqlite3.Cursor) -> list[dict]:
     out: list[dict] = []
     for rule in DOC_RULES:
         rows = cur.execute(
-            "SELECT id, file_name, subject FROM documents "
-            "WHERE file_name LIKE ? AND subject = ?",
+            "SELECT id, file_name, subject FROM documents WHERE file_name LIKE ? AND subject = ?",
             (rule["file_like"], rule["from_subject"]),
         ).fetchall()
         for did, fname, old in rows:
-            out.append({
-                "id": did,
-                "file_name": fname,
-                "old_subject": old,
-                "new_subject": rule["to_subject"],
-                "subject_source": rule["subject_source"],
-                "rule": rule["name"],
-            })
+            out.append(
+                {
+                    "id": did,
+                    "file_name": fname,
+                    "old_subject": old,
+                    "new_subject": rule["to_subject"],
+                    "subject_source": rule["subject_source"],
+                    "rule": rule["name"],
+                }
+            )
     return out
 
 
@@ -95,19 +96,22 @@ def main() -> int:
 
     col_exists = _has_column(cur)
     candidates = _collect(cur)
-    fixed_ids = {r[0] for r in cur.execute(
-        "SELECT id FROM documents WHERE subject_source = 'corrected_source_rule'")} \
-        if col_exists else set()
+    fixed_ids = (
+        {r[0] for r in cur.execute("SELECT id FROM documents WHERE subject_source = 'corrected_source_rule'")}
+        if col_exists
+        else set()
+    )
     effective = [d for d in candidates if d["id"] not in fixed_ids]
 
     print(f"数据库: {DB_PATH}")
-    print(f"待修文档（规则命中）：{len(candidates)} 条；"
-          f"已修过跳过 {len(candidates) - len(effective)}；本次实际 {len(effective)}")
+    print(
+        f"待修文档（规则命中）：{len(candidates)} 条；"
+        f"已修过跳过 {len(candidates) - len(effective)}；本次实际 {len(effective)}"
+    )
     print(f"subject_source 列：{'已存在' if col_exists else '待 --apply 时创建'}\n")
 
     # 全库 documents 科目分布（前 → 预估后）
-    before = {r[0]: r[1] for r in cur.execute(
-        "SELECT subject, COUNT(*) FROM documents GROUP BY subject")}
+    before = {r[0]: r[1] for r in cur.execute("SELECT subject, COUNT(*) FROM documents GROUP BY subject")}
     after = dict(before)
     for d in effective:
         after[d["old_subject"]] = after.get(d["old_subject"], 0) - 1
@@ -129,8 +133,7 @@ def main() -> int:
     # ---- 备份 ----
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_docsubjectfix_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+    bak = os.path.join(bak_dir, f"kaoyan_pre_docsubjectfix_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     print(f"\n已备份 → {bak}")
@@ -149,16 +152,19 @@ def main() -> int:
             continue
         cur.execute(
             "UPDATE documents SET subject = ?, subject_source = ? WHERE id = ?",
-            (d["new_subject"], d["subject_source"], d["id"]))
-        audit.append({
-            "document_id": d["id"],
-            "file_name": d["file_name"],
-            "old_subject": old,
-            "new_subject": d["new_subject"],
-            "subject_source": d["subject_source"],
-            "rule": d["rule"],
-            "fixed_at": now,
-        })
+            (d["new_subject"], d["subject_source"], d["id"]),
+        )
+        audit.append(
+            {
+                "document_id": d["id"],
+                "file_name": d["file_name"],
+                "old_subject": old,
+                "new_subject": d["new_subject"],
+                "subject_source": d["subject_source"],
+                "rule": d["rule"],
+                "fixed_at": now,
+            }
+        )
     con.commit()
 
     # 未改动文档补 original（幂等：只补 NULL）
@@ -174,22 +180,22 @@ def main() -> int:
         except Exception:
             prev = {}
     batches = prev.get("batches", []) if isinstance(prev, dict) else []
-    batches.append({
-        "applied_at": now,
-        "db_path": DB_PATH,
-        "backup": bak,
-        "fixed_count": len(audit),
-        "entries": audit,
-    })
+    batches.append(
+        {
+            "applied_at": now,
+            "db_path": DB_PATH,
+            "backup": bak,
+            "fixed_count": len(audit),
+            "entries": audit,
+        }
+    )
     with open(AUDIT_JSON, "w", encoding="utf-8") as f:
         json.dump({"batches": batches}, f, ensure_ascii=False, indent=2)
 
-    after_now = {r[0]: r[1] for r in cur.execute(
-        "SELECT subject, COUNT(*) FROM documents GROUP BY subject")}
+    after_now = {r[0]: r[1] for r in cur.execute("SELECT subject, COUNT(*) FROM documents GROUP BY subject")}
     print("\n===== documents 修复完成 =====")
     print(f"本批修复 {len(audit)} 条")
-    print(f"documents 科目分布后：政治 {after_now.get('政治', 0)}、"
-          f"模电 {after_now.get('模拟电子技术', 0)}")
+    print(f"documents 科目分布后：政治 {after_now.get('政治', 0)}、模电 {after_now.get('模拟电子技术', 0)}")
     print(f"审计日志 → {AUDIT_JSON}")
     con.close()
     return 0

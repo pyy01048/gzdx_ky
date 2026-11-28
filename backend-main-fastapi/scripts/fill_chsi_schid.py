@@ -9,6 +9,7 @@
     python scripts/fill_chsi_schid.py            # dry-run，只统计
     python scripts/fill_chsi_schid.py --apply    # 写库
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,12 +31,11 @@ SEARCH_URL = "https://yz.chsi.com.cn/sch/search.do"
 TIMEOUT = int(os.environ.get("SCHID_TIMEOUT", "15"))
 WORKERS = int(os.environ.get("SCHID_WORKERS", "6"))
 
-_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 _ITEM_RE = re.compile(
     r'<a class="name[^"]*" href="/sch/schoolInfo--schId-(\d+)\.dhtml"[^>]*>\s*'
-    r'([^<]+?)\s*</a>',
+    r"([^<]+?)\s*</a>",
     re.S,
 )
 
@@ -43,10 +43,13 @@ _ITEM_RE = re.compile(
 def _fetch(url: str, timeout: int = TIMEOUT) -> str:
     import urllib.request
 
-    req = urllib.request.Request(url, headers={
-        "User-Agent": _UA,
-        "Accept": "text/html,application/xhtml+xml",
-    })
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": _UA,
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
@@ -103,9 +106,7 @@ def main() -> int:
     con.execute("PRAGMA busy_timeout=60000")
     cur = con.cursor()
 
-    rows = cur.execute(
-        "SELECT id, name, official_url, tags FROM kaoyan_schools ORDER BY id"
-    ).fetchall()
+    rows = cur.execute("SELECT id, name, official_url, tags FROM kaoyan_schools ORDER BY id").fetchall()
     if args.limit:
         rows = rows[: args.limit]
 
@@ -150,8 +151,7 @@ def main() -> int:
         upd = 0
         for item in ok:
             sid = item["id"]
-            row = cur.execute("SELECT tags FROM kaoyan_schools WHERE id=?",
-                              (sid,)).fetchone()
+            row = cur.execute("SELECT tags FROM kaoyan_schools WHERE id=?", (sid,)).fetchone()
             data = {}
             if row and row[0]:
                 try:
@@ -161,8 +161,7 @@ def main() -> int:
                 except (json.JSONDecodeError, TypeError):
                     data = {}
             data["yz_schid"] = item["schId"]
-            cur.execute("UPDATE kaoyan_schools SET tags=? WHERE id=?",
-                        (json.dumps(data, ensure_ascii=False), sid))
+            cur.execute("UPDATE kaoyan_schools SET tags=? WHERE id=?", (json.dumps(data, ensure_ascii=False), sid))
             upd += 1
         con.commit()
         print(f"已写库 {upd} 所")

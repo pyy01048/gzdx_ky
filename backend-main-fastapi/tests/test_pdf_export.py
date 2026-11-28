@@ -7,6 +7,7 @@
 3. 筛选参数（subject / status）可叠加，不 5xx；
 4. 响应头带 RFC 5987 中文文件名（filename*=UTF-8''...）。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -52,10 +53,13 @@ class TestWordsPdfExport:
         _assert_pdf(resp)
 
 
-@pytest.mark.parametrize("path", [
-    "/api/errors/export-pdf",
-    "/api/words/export-pdf",
-])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/errors/export-pdf",
+        "/api/words/export-pdf",
+    ],
+)
 def test_pdf_export_is_registered_in_contract(path):
     """新接口必须登记在 test_api_contract.NON_JSON_GET_PATHS，否则契约测试会误报。"""
     import os

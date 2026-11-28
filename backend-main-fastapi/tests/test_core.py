@@ -1,4 +1,4 @@
-﻿"""
+"""
 核心逻辑单元测试
 - SM-2 间隔重复算法
 - FTS 查询预处理
@@ -7,6 +7,7 @@
 
 运行方式：pytest tests/ -v
 """
+
 import datetime
 import os
 import sys
@@ -28,6 +29,7 @@ from utils.response import (
 # --------------------------------------------------------------------------- #
 # SM-2 算法测试
 # --------------------------------------------------------------------------- #
+
 
 class TestSM2Algorithm:
     """SM-2 间隔重复算法测试"""
@@ -97,6 +99,7 @@ class TestSM2Algorithm:
 # 艾宾浩斯算法测试
 # --------------------------------------------------------------------------- #
 
+
 class TestEbinghaus:
     """艾宾浩斯复习曲线测试"""
 
@@ -104,15 +107,13 @@ class TestEbinghaus:
         """第一次复习间隔 20 分钟"""
         result = ReviewScheduler.ebinghaus_next_review(0)
         assert result is not None
-        expected = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-                    + datetime.timedelta(minutes=20))
+        expected = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(minutes=20)
         assert abs((result - expected).total_seconds()) < 5
 
     def test_last_interval(self):
         """超过最大间隔后，30 天后复习"""
         result = ReviewScheduler.ebinghaus_next_review(100)
-        expected = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-                    + datetime.timedelta(days=30))
+        expected = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(days=30)
         assert abs((result - expected).total_seconds()) < 5
 
 
@@ -126,6 +127,7 @@ class TestEbinghaus:
 # ≥1 天的首间隔，新内容不当日到期。
 # --------------------------------------------------------------------------- #
 
+
 class TestErrorFirstReview:
     """ReviewScheduler.first_review_at：新错题首次复习排程。"""
 
@@ -136,8 +138,7 @@ class TestErrorFirstReview:
     def _assert_days_later(self, accuracy, days):
         result = ReviewScheduler.first_review_at(accuracy)
         expected = self._now() + datetime.timedelta(days=days)
-        assert abs((result - expected).total_seconds()) < 5, (
-            f"accuracy={accuracy!r} 应排在 {days} 天后，实际 {result}")
+        assert abs((result - expected).total_seconds()) < 5, f"accuracy={accuracy!r} 应排在 {days} 天后，实际 {result}"
 
     def test_unknown_mastery_one_day(self):
         """未评估（None/0）→ SM-2 标准首间隔 1 天，不当日到期。"""
@@ -176,18 +177,28 @@ class TestErrorCreationSchedulesFirstReview:
 
     def test_manual_add_schedules_first_review(self, client, db_schema):
         """POST /api/errors：新错题 next_review 必须在 ~1 天后，不是 20 分钟后。"""
-        r = client.post("/api/errors", json={
-            "content": "首排程测试题", "correct_answer": "B",
-            "subject": "数学", "status": "active",
-        })
+        r = client.post(
+            "/api/errors",
+            json={
+                "content": "首排程测试题",
+                "correct_answer": "B",
+                "subject": "数学",
+                "status": "active",
+            },
+        )
         assert r.status_code == 200, r.text
         from database import SessionLocal
+
         from models import ErrorRecord
 
         db = SessionLocal()
         try:
-            err = db.query(ErrorRecord).filter(
-                ErrorRecord.content == "首排程测试题").order_by(ErrorRecord.id.desc()).first()
+            err = (
+                db.query(ErrorRecord)
+                .filter(ErrorRecord.content == "首排程测试题")
+                .order_by(ErrorRecord.id.desc())
+                .first()
+            )
             assert err is not None and err.next_review is not None
             now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
             # DB 列是 TIMESTAMPTZ，psycopg 回读为 **aware** datetime；项目内部
@@ -197,14 +208,14 @@ class TestErrorCreationSchedulesFirstReview:
             if nr.tzinfo is not None:
                 nr = nr.astimezone(datetime.timezone.utc).replace(tzinfo=None)
             delta_days = (nr - now).total_seconds() / 86400
-            assert 0.9 <= delta_days <= 1.1, (
-                f"新错题首间隔应约 1 天，实际 {delta_days:.3f} 天")
+            assert 0.9 <= delta_days <= 1.1, f"新错题首间隔应约 1 天，实际 {delta_days:.3f} 天"
         finally:
             db.close()
 
     def test_quiz_wrong_answer_schedules_first_review(self, client, db_schema):
         """POST /api/quiz/submit 答错自动入册：next_review ~1 天后。"""
         from database import SessionLocal
+
         from models import ErrorRecord, QuizQuestion
 
         db = SessionLocal()
@@ -215,7 +226,9 @@ class TestErrorCreationSchedulesFirstReview:
             q = QuizQuestion(
                 content="首排程刷题测试题",
                 options=[{"key": "A", "text": "甲"}, {"key": "B", "text": "乙"}],
-                answer="B", subject="数学", question_type="single",
+                answer="B",
+                subject="数学",
+                question_type="single",
             )
             db.add(q)
             db.commit()
@@ -223,14 +236,12 @@ class TestErrorCreationSchedulesFirstReview:
         finally:
             db.close()
 
-        r = client.post("/api/quiz/submit", json={
-            "question_id": qid, "my_answer": "A", "mode": "practice"})
+        r = client.post("/api/quiz/submit", json={"question_id": qid, "my_answer": "A", "mode": "practice"})
         assert r.status_code == 200, r.text
 
         db = SessionLocal()
         try:
-            err = db.query(ErrorRecord).filter(
-                ErrorRecord.question_id == qid).order_by(ErrorRecord.id.desc()).first()
+            err = db.query(ErrorRecord).filter(ErrorRecord.question_id == qid).order_by(ErrorRecord.id.desc()).first()
             assert err is not None and err.next_review is not None
             now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
             # DB 列是 TIMESTAMPTZ，psycopg 回读为 **aware** datetime；项目内部
@@ -240,8 +251,7 @@ class TestErrorCreationSchedulesFirstReview:
             if nr.tzinfo is not None:
                 nr = nr.astimezone(datetime.timezone.utc).replace(tzinfo=None)
             delta_days = (nr - now).total_seconds() / 86400
-            assert 0.9 <= delta_days <= 1.1, (
-                f"刷题新错题首间隔应约 1 天，实际 {delta_days:.3f} 天")
+            assert 0.9 <= delta_days <= 1.1, f"刷题新错题首间隔应约 1 天，实际 {delta_days:.3f} 天"
         finally:
             db.close()
 
@@ -249,6 +259,7 @@ class TestErrorCreationSchedulesFirstReview:
 # --------------------------------------------------------------------------- #
 # 分页响应测试
 # --------------------------------------------------------------------------- #
+
 
 class TestPaginatedResponse:
     """分页响应工具测试"""
@@ -285,38 +296,47 @@ class TestPaginatedResponse:
 # 响应约定：时间格式（#19）
 # --------------------------------------------------------------------------- #
 
+
 class TestUtcZTimeFormat:
     """naive UTC 串补 ``Z`` —— 不补，前端 ``new Date()`` 会按本地时间解析，
     北京用户看什么时间都早 8 小时。"""
 
-    @pytest.mark.parametrize("value", [
-        "2026-10-16T16:00:00",
-        "2026-10-16T16:00:00.123456",
-        "2026-10-16T16:00",
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "2026-10-16T16:00:00",
+            "2026-10-16T16:00:00.123456",
+            "2026-10-16T16:00",
+        ],
+    )
     def test_naive_iso_gets_z(self, value):
         assert to_utc_z(value) == value + "Z"
 
-    @pytest.mark.parametrize("value", [
-        "2026-10-16T16:00:00Z",
-        "2026-10-16T16:00:00+08:00",
-        "2026-10-16T16:00:00-05:00",
-        "2026-10-16",               # 纯日期：本来就不该带时区
-        "2026-10-16 16:00:00",      # 展示串：补 Z 等于谎报它是 UTC
-        "T16:00:00",
-        "not-a-date",
-        "",
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "2026-10-16T16:00:00Z",
+            "2026-10-16T16:00:00+08:00",
+            "2026-10-16T16:00:00-05:00",
+            "2026-10-16",  # 纯日期：本来就不该带时区
+            "2026-10-16 16:00:00",  # 展示串：补 Z 等于谎报它是 UTC
+            "T16:00:00",
+            "not-a-date",
+            "",
+        ],
+    )
     def test_other_shapes_untouched(self, value):
         assert to_utc_z(value) == value
 
     def test_stamp_is_recursive_and_only_touches_values(self):
-        stamped = stamp_utc_z({
-            "created_at": "2026-10-16T16:00:00",
-            "day": "2026-10-16",
-            "items": ["2026-10-16T16:00:00", 5, None, {"last_review": "2026-10-16T16:00:00"}],
-            "count": 3,
-        })
+        stamped = stamp_utc_z(
+            {
+                "created_at": "2026-10-16T16:00:00",
+                "day": "2026-10-16",
+                "items": ["2026-10-16T16:00:00", 5, None, {"last_review": "2026-10-16T16:00:00"}],
+                "count": 3,
+            }
+        )
         assert stamped["created_at"] == "2026-10-16T16:00:00Z"
         assert stamped["day"] == "2026-10-16"
         assert stamped["items"][0] == "2026-10-16T16:00:00Z"
@@ -332,6 +352,7 @@ class TestUtcZTimeFormat:
 # --------------------------------------------------------------------------- #
 # 响应约定：分页（#19）
 # --------------------------------------------------------------------------- #
+
 
 class _FakeQuery:
     """只实现 paginate_query 用到的那段 Query API。"""
@@ -354,14 +375,16 @@ class _FakeQuery:
 
     def all(self):
         end = None if self.limit_value is None else self.offset_value + self.limit_value
-        return self.rows[self.offset_value:end]
+        return self.rows[self.offset_value : end]
 
 
 class TestPageParamsAndPaginate:
-
     def test_page_params_carry_offset_and_limit(self):
         assert page_params(page=3, page_size=50) == {
-            "page": 3, "page_size": 50, "offset": 100, "limit": 50,
+            "page": 3,
+            "page_size": 50,
+            "offset": 100,
+            "limit": 50,
         }
 
     def test_page_size_cap_applies(self):
@@ -380,8 +403,11 @@ class TestPageParamsAndPaginate:
         显式化（老实现直接把 ORM 对象塞进 items，渲染时才炸）。"""
         resp = paginate_query(_FakeQuery([1, 2]), page=1, page_size=10, serialize=lambda r: {"n": r})
         assert resp.dict() == {
-            "items": [{"n": 1}, {"n": 2}], "total": 2,
-            "page": 1, "page_size": 10, "total_pages": 1,
+            "items": [{"n": 1}, {"n": 2}],
+            "total": 2,
+            "page": 1,
+            "page_size": 10,
+            "total_pages": 1,
         }
 
     def test_offset_window(self):
@@ -394,24 +420,28 @@ class TestPageParamsAndPaginate:
 # FTS 查询预处理测试
 # --------------------------------------------------------------------------- #
 
+
 class TestFTSQuery:
     """FTS 查询预处理测试"""
 
     def test_empty_query(self):
         """空查询返回空字符串"""
         from services.search_service import _fts_query
+
         result = _fts_query("")
         assert result == '""'
 
     def test_single_word(self):
         """单个词"""
         from services.search_service import _fts_query
+
         result = _fts_query("数学")
         assert '"数学"' in result
 
     def test_multiple_words(self):
         """多个词用 OR 连接"""
         from services.search_service import _fts_query
+
         result = _fts_query("数学 英语")
         assert "OR" in result
         assert '"数学"' in result
@@ -420,6 +450,7 @@ class TestFTSQuery:
     def test_special_chars_removed(self):
         """特殊控制字符被移除"""
         from services.search_service import _fts_query
+
         result = _fts_query("test\x00query")
         assert "\x00" not in result
 

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import EChart from '../../components/EChart'
 import { readMigrated, ukey } from '../../utils/userKeys'
@@ -53,17 +53,30 @@ function levelTone(level) {
   return undefined
 }
 
-const initialSelected = () => {
-  try {
-    const ids = readMigrated(CMP_KEY, [])
-    return (Array.isArray(ids) ? ids : []).map((id) => ({ id, name: '' }))
-  } catch {
-    return []
+const selectedFromSearchParams = (searchParams) => {
+  const raw = searchParams.get('ids')
+  let ids
+  if (raw !== null) {
+    ids = raw.split(',').map((value) => value.trim()).filter(Boolean)
+  } else {
+    try { ids = readMigrated(CMP_KEY, []) } catch { ids = [] }
   }
+  return [...new Set((Array.isArray(ids) ? ids : []).map(String))]
+    .map((id) => ({ id, name: '' }))
+}
+
+const subjectFromSearchParams = (searchParams) => (
+  searchParams.has('subject_code') ? searchParams.get('subject_code') || '' : '0854'
+)
+
+const yearFromSearchParams = (searchParams) => {
+  const year = Number(searchParams.get('year'))
+  return Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : null
 }
 
 export default function KaoyanCompare() {
-  const [selected, setSelected] = useState(initialSelected)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [selected, setSelected] = useState(() => selectedFromSearchParams(searchParams))
   const [allSchools, setAllSchools] = useState([])
   const [keyword, setKeyword] = useState('')
   const [showCandidates, setShowCandidates] = useState(false)
@@ -72,15 +85,37 @@ export default function KaoyanCompare() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [libLoaded, setLibLoaded] = useState(false)
-  const [selectedYear, setSelectedYear] = useState(null)
+  const [selectedYear, setSelectedYear] = useState(() => yearFromSearchParams(searchParams))
+  const [subjectCode, setSubjectCode] = useState(() => subjectFromSearchParams(searchParams))
 
   const searchRef = useRef(null)
   const compareSeq = useRef(0)
+  const urlSignatureRef = useRef(searchParams.toString())
+  const restoringUrlRef = useRef(false)
+  const deepLinkRequestedRef = useRef(searchParams.has('ids'))
+  const deepLinkComparedRef = useRef(false)
   const mode = useThemeMode()
   const isMobile = useMedia('(max-width: 760px)')
   const isDark = mode === 'dark'
 
   useClickOutside(searchRef, () => setShowCandidates(false))
+
+  useEffect(() => {
+    const signature = searchParams.toString()
+    if (urlSignatureRef.current === signature) return
+    urlSignatureRef.current = signature
+    restoringUrlRef.current = true
+    deepLinkRequestedRef.current = searchParams.has('ids')
+    deepLinkComparedRef.current = false
+    compareSeq.current += 1
+    setSelected(selectedFromSearchParams(searchParams))
+    setSubjectCode(subjectFromSearchParams(searchParams))
+    setSelectedYear(yearFromSearchParams(searchParams))
+    setResult({ items: [] })
+    setCompared(false)
+    setError(null)
+    setLoading(false)
+  }, [searchParams])
 
   // 拉全量院校（page_size 上限 200，循环翻页；失败不阻断按 ID 对比）
   useEffect(() => {
@@ -145,6 +180,7 @@ export default function KaoyanCompare() {
 
   // 新结果默认最新年；用户仍选结果中存在的年份时保留选择。
   const activeYear = availableYears.includes(selectedYear) ? selectedYear : availableYears[0] ?? null
+  const lineMetricLabel = subjectCode.trim() ? '专业最低线' : '最低院线'
 
   const compareRows = useMemo(() => (result.items || []).map((item) => {
     const score = (item.recent_scores || []).find((entry) => sameYear(entry, activeYear)) || null
@@ -160,7 +196,7 @@ export default function KaoyanCompare() {
     }
   }), [result, activeYear])
 
-  const commitSelection = (next) => {
+  const commitSelection = useCallback((next) => {
     compareSeq.current += 1
     setSelected(next)
     setResult({ items: [] })
@@ -168,9 +204,9 @@ export default function KaoyanCompare() {
     setCompared(false)
     setError(null)
     setLoading(false)
-  }
+  }, [])
 
-  const addSchool = (s) => {
+  const addSchool = useCallback((s) => {
     if (selected.length >= MAX_CMP) {
       toastWarn(`最多对比 ${MAX_CMP} 所院校`)
       return false
@@ -180,12 +216,12 @@ export default function KaoyanCompare() {
     setKeyword('')
     setShowCandidates(false)
     return true
-  }
+  }, [selected, commitSelection])
 
-  const removeSchool = (id) => {
+  const removeSchool = useCallback((id) => {
     commitSelection(selected.filter((x) => String(x.id) !== String(id)))
     setShowCandidates(false)
-  }
+  }, [selected, commitSelection])
 
   // 支持名称模糊匹配、数字 ID，以及一次输入多个（逗号 / 空格分隔）
   const addByIds = () => {
@@ -244,17 +280,20 @@ export default function KaoyanCompare() {
     setKeyword('')
   }
 
-  const compareNow = () => {
+  const compareNow = useCallback(() => {
     if (selected.length < 2) {
       toast('请至少选择 2 所院校')
       return
     }
+    deepLinkComparedRef.current = true
     const seq = compareSeq.current + 1
     compareSeq.current = seq
     setLoading(true)
     setError(null)
     setCompared(false)
-    kaoyanApi.compare(selected.map((s) => s.id).join(','))
+    kaoyanApi.compare(selected.map((s) => s.id).join(','), {
+      subject_code: subjectCode.trim() || undefined,
+    })
       .then((data) => {
         if (seq !== compareSeq.current) return
         setResult(data || { items: [] })
@@ -268,7 +307,32 @@ export default function KaoyanCompare() {
       .finally(() => {
         if (seq === compareSeq.current) setLoading(false)
       })
-  }
+  }, [selected, subjectCode])
+
+  useEffect(() => {
+    if (!deepLinkRequestedRef.current || deepLinkComparedRef.current || selected.length < 2) return
+    compareNow()
+  }, [searchParams, selected.length, compareNow])
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams)
+    const ids = selected.map((s) => s.id).join(',')
+    const year = activeYear ?? selectedYear
+    if (ids) next.set('ids', ids)
+    else next.delete('ids')
+    if (subjectCode.trim()) next.set('subject_code', subjectCode.trim())
+    else next.delete('subject_code')
+    if (year) next.set('year', String(year))
+    else next.delete('year')
+    const signature = next.toString()
+    if (restoringUrlRef.current) {
+      if (signature === searchParams.toString()) restoringUrlRef.current = false
+      return
+    }
+    if (signature === searchParams.toString()) return
+    urlSignatureRef.current = signature
+    setSearchParams(next)
+  }, [selected, subjectCode, activeYear, selectedYear, searchParams, setSearchParams])
 
   const radarOption = useMemo(() => {
     if (!compareRows.length) return null
@@ -288,7 +352,7 @@ export default function KaoyanCompare() {
       },
       radar: {
         indicator: [
-          { name: '最低院线', max: radarMax(compareRows.map((row) => row.totalLine), 450, 50) },
+          { name: lineMetricLabel, max: radarMax(compareRows.map((row) => row.totalLine), 450, 50) },
           { name: '拟招人数', max: radarMax(compareRows.map((row) => row.enrollCount), 500, 100) },
           { name: '录取均分', max: radarMax(compareRows.map((row) => row.admitAvgScore), 420, 20) },
         ],
@@ -343,7 +407,7 @@ export default function KaoyanCompare() {
           <Empty
             icon={<School size={26} />}
             title="院校库还没有数据"
-            text="先到「院校库」导入院校与分数线数据，之后就能在这里横向对比最低院线、拟招人数与录取均分。"
+            text={`先到「院校库」导入院校与分数线数据，之后就能在这里横向对比${lineMetricLabel}、拟招人数与录取均分。`}
             action={<Link className="v3-btn v3-btn--tonal" to="/kaoyan/schools">前往院校库</Link>}
           />
         </Card>
@@ -389,7 +453,7 @@ export default function KaoyanCompare() {
         <CardHead
           icon={<ListChecks size={17} />}
           title="对比清单"
-          sub="选择 2–5 所院校，按所选同年横向对比最低院线、拟招人数与录取均分"
+          sub="选择 2–5 所院校，锁定同一专业代码与同年，横向对比专业最低线、拟招人数与录取均分"
           actions={<Badge tone={selected.length >= MAX_CMP ? 'warning' : 'primary'}>{selected.length} / {MAX_CMP} 所</Badge>}
         />
 
@@ -448,6 +512,22 @@ export default function KaoyanCompare() {
         </div>
 
         <div className="kyv3-compare-controls">
+          <label>
+            专业代码
+            <Input
+              aria-label="专业代码"
+              value={subjectCode}
+              placeholder="0854"
+              onChange={(e) => {
+                setSubjectCode(e.target.value)
+                compareSeq.current += 1
+                setResult({ items: [] })
+                setSelectedYear(null)
+                setCompared(false)
+                setError(null)
+              }}
+            />
+          </label>
           <Button onClick={compareNow} disabled={!canCompare} loading={loading}>
             {loading ? '对比中…' : `开始对比（已选 ${selected.length}）`}
           </Button>
@@ -469,21 +549,21 @@ export default function KaoyanCompare() {
           <Empty
             icon={<ListChecks size={26} />}
             title="先选 2–5 所院校"
-            text="在院校库列表勾选「对比」后点底部「开始对比」，或直接在上方搜索院校名称添加。对比会展示最低院线、拟招人数与录取均分三项可信指标。"
+            text={`在院校库列表勾选「对比」后点底部「开始对比」，或直接在上方搜索院校名称添加。对比会展示${lineMetricLabel}、拟招人数与录取均分三项可信指标。`}
             action={<Link className="v3-btn v3-btn--tonal" to="/kaoyan/schools">去院校库挑选</Link>}
           />
           <div className="kyv3-guide-metrics">
             <div>
-              <b>最低院线</b>
+              <b>{lineMetricLabel}</b>
               <span>看门槛下限，已剔除管理类联考专业</span>
             </div>
             <div>
               <b>拟招人数</b>
-              <span>看招生规模，取当年各专业计划数之和</span>
+              <span>看招生规模，取当年该专业代码下各方向计划数之和</span>
             </div>
             <div>
               <b>录取均分</b>
-              <span>看实际竞争强度，取各专业录取均分均值</span>
+              <span>看实际竞争强度，按录取人数加权</span>
             </div>
           </div>
         </Card>
@@ -528,7 +608,7 @@ export default function KaoyanCompare() {
           <Card className="kyv3-radar-card">
             <div className="kyv3-radar-head">
               <h2>三项指标雷达 · 同年对比</h2>
-              <p>{activeYear} 年：最低院线看门槛下限，拟招人数看规模，录取均分看实际竞争强度</p>
+              <p>{activeYear} 年：{lineMetricLabel}看门槛下限，拟招人数看规模，录取均分看实际竞争强度</p>
             </div>
             {radarOption ? (
               <EChart
@@ -538,15 +618,16 @@ export default function KaoyanCompare() {
               />
             ) : null}
             <p className="kyv3-radar-note">
-              最低院线 = 该校当年普通专业院线的最低总分。已剔除 MBA / MPA / MPAcc 等管理类联考专业
-              （考 199 综合、总分仅 300，不剔除会让所有院校都显示同一条国家线）；它反映门槛下限，不代表具体专业难度。
+              {subjectCode.trim()
+                ? `${subjectCode.trim()} 专业最低线 = 该校当年该专业代码下各方向院线的最低总分；录取均分按录取人数加权。它反映专业汇总门槛，不代表某个具体研究方向的难度。`
+                : '最低院线 = 该校当年普通专业院线的最低总分。已剔除 MBA / MPA / MPAcc 等管理类联考专业；它反映门槛下限，不代表具体专业难度。'}
             </p>
           </Card>
 
           <Card className="kyv3-compare-table-card">
             <div className="kyv3-compare-title">同年逐校对比</div>
             <div className="kyv3-compare-sub">
-              {activeYear} 年拟招人数为各专业计划招生数之和；录取均分为各专业录取均分的平均值
+              {activeYear} 年{subjectCode.trim() ? ` ${subjectCode.trim()} 专业汇总：` : '：'}拟招人数为匹配专业计划招生数之和；录取均分按录取人数加权
             </div>
             <div className="v3-table-wrap kyv3-compare-table-wrap">
               <table className="v3-table">
@@ -556,7 +637,7 @@ export default function KaoyanCompare() {
                     <th>层级</th>
                     <th>省份</th>
                     <th>年份</th>
-                    <th>最低院线</th>
+                    <th>{lineMetricLabel}</th>
                     <th>拟招人数</th>
                     <th>录取均分</th>
                   </tr>
@@ -565,7 +646,10 @@ export default function KaoyanCompare() {
                   {compareRows.map((row) => (
                     <tr key={row.id}>
                       <td>
-                        <Link to={`/kaoyan/schools/${row.id}`} className="kyv3-compare-school">
+                        <Link
+                          to={`/kaoyan/schools/${row.id}${subjectCode.trim() ? `?subject_code=${encodeURIComponent(subjectCode.trim())}` : ''}`}
+                          className="kyv3-compare-school"
+                        >
                           {row.name}
                         </Link>
                       </td>

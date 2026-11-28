@@ -27,6 +27,7 @@
   python scripts/backfill_degree_type.py             # dry-run
   python scripts/backfill_degree_type.py --apply --verify
 """
+
 import argparse
 import os
 import sqlite3
@@ -70,11 +71,23 @@ PROF_PREFIX3 = {
 # 凡不在专业学位名单内、且落在合法学科门类内的一律是学术学位。
 ACAD_PREFIX3 = {
     # 理学门类 07（含 0701数学…0711系统科学…0774电子科学与技术）
-    "070", "071", "072", "073", "074", "075", "076", "077",
+    "070",
+    "071",
+    "072",
+    "073",
+    "074",
+    "075",
+    "076",
+    "077",
     # 工学门类 0801-0840
-    "080", "081", "082", "083", "084",
+    "080",
+    "081",
+    "082",
+    "083",
+    "084",
     # 工学门类 2024 新增学术学位（集成电路 0873、低空技术与工程 0899）
-    "087", "089",
+    "087",
+    "089",
     # 军事学
     "110",
     # 管理学（学术学位 1201-1206；125x 才是专业学位）
@@ -110,7 +123,7 @@ def backup_db(tag: str) -> str:
     src = sqlite3.connect(DB)
     out = sqlite3.connect(dst)
     try:
-        src.backup(out)          # WAL 模式必须用 backup() API，cp 会丢数据
+        src.backup(out)  # WAL 模式必须用 backup() API，cp 会丢数据
     finally:
         out.close()
         src.close()
@@ -125,9 +138,7 @@ def main():
 
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT id, code, name, degree_type, exam_subjects FROM kaoyan_majors"
-    ).fetchall()
+    rows = conn.execute("SELECT id, code, name, degree_type, exam_subjects FROM kaoyan_majors").fetchall()
 
     plan, skipped = [], Counter()
     skip_samples = {}
@@ -135,8 +146,7 @@ def main():
         dt, why = classify(r["code"])
         if dt is None:
             skipped[why] += 1
-            skip_samples.setdefault(why, []).append(
-                f"{r['code'] or '<空>'} {r['name'][:28]}")
+            skip_samples.setdefault(why, []).append(f"{r['code'] or '<空>'} {r['name'][:28]}")
             continue
         if (r["degree_type"] or "").strip() == dt:
             continue
@@ -145,8 +155,7 @@ def main():
     print("=" * 76)
     print("degree_type 回填计划")
     print("=" * 76)
-    print(f"\n总专业 {len(rows)} 条；可判定 "
-          f"{len(rows) - sum(skipped.values())} 条；已有值需改 {len(plan)} 条")
+    print(f"\n总专业 {len(rows)} 条；可判定 {len(rows) - sum(skipped.values())} 条；已有值需改 {len(plan)} 条")
     print("\n[判定分布]（码段判定，非名称猜测）")
     dist = Counter(p[4] for p in plan)
     for k, v in dist.most_common():
@@ -168,8 +177,7 @@ def main():
     if args.verify:
         print("\n[抽样核对 20 条]")
         for p in plan[:20]:
-            print(f"    {p[0]:<5d} {str(p[1]):<9s} {p[2][:30]:<32s} "
-                  f"{p[3]:<8s} -> {p[4]}")
+            print(f"    {p[0]:<5d} {str(p[1]):<9s} {p[2][:30]:<32s} {p[3]:<8s} -> {p[4]}")
 
     if not args.apply:
         print("\n>>> dry-run。加 --apply 执行。")
@@ -177,11 +185,10 @@ def main():
 
     bak = backup_db("degreetype")
     print(f"\n已备份：{bak}")
-    now = datetime.now()
+    datetime.now()
     n = 0
     for mid, _c, _nm, _old, dt, _w in plan:
-        cur = conn.execute(
-            "UPDATE kaoyan_majors SET degree_type=? WHERE id=?", (dt, mid))
+        cur = conn.execute("UPDATE kaoyan_majors SET degree_type=? WHERE id=?", (dt, mid))
         n += cur.rowcount
     conn.commit()
     print(f"实际写入 {n} 条")
@@ -190,9 +197,9 @@ def main():
         print("\n[修复后填充率]")
         for col in ("degree_type", "research_direction", "reference_books"):
             c = conn.execute(
-                f"SELECT COUNT(*) FROM kaoyan_majors WHERE {col} IS NOT NULL"
-                " AND TRIM(" + col + ")<>''").fetchone()[0]
-            print(f"    {col:22s} {c}/832  ({c*100.0/832:.1f}%)")
+                f"SELECT COUNT(*) FROM kaoyan_majors WHERE {col} IS NOT NULL AND TRIM(" + col + ")<>''"
+            ).fetchone()[0]
+            print(f"    {col:22s} {c}/832  ({c * 100.0 / 832:.1f}%)")
         print("\n[校验：已写入的 degree_type 是否全部合法]")
         bad = conn.execute(
             "SELECT COUNT(*) FROM kaoyan_majors WHERE degree_type IS NOT NULL"
@@ -201,16 +208,12 @@ def main():
         print(f"    非法值: {bad}")
         print("\n[校验：学硕应当考数学（一）占比高]")
         for dt in ("学硕", "专硕"):
-            tot = conn.execute(
-                "SELECT COUNT(*) FROM kaoyan_majors WHERE degree_type=?", (dt,)
-            ).fetchone()[0]
+            tot = conn.execute("SELECT COUNT(*) FROM kaoyan_majors WHERE degree_type=?", (dt,)).fetchone()[0]
             m1 = 0
-            for (v,) in conn.execute(
-                "SELECT exam_subjects FROM kaoyan_majors WHERE degree_type=?", (dt,)
-            ):
+            for (v,) in conn.execute("SELECT exam_subjects FROM kaoyan_majors WHERE degree_type=?", (dt,)):
                 if v and "数学（一）" in str(v):
                     m1 += 1
-            pct = f"{m1*100.0/tot:.1f}%" if tot else "n/a"
+            pct = f"{m1 * 100.0 / tot:.1f}%" if tot else "n/a"
             print(f"    {dt}: {tot} 条，考数学（一）{m1} 条 = {pct}")
     conn.close()
 

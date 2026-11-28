@@ -1,124 +1,253 @@
-/* 全站唯一导航源：顶栏下拉 / 移动端抽屉 / 面包屑 / 相关功能 / Ctrl+K 命令面板 / 设置页界面自定义
-   全部从这里派生。新增页面只改这一处。 */
+/* 全站唯一导航源：routeTree 单一事实源。
+   顶栏下拉 / 移动端抽屉 / 面包屑 / 相关功能 / Ctrl+K 命令面板 / 设置页界面自定义
+   全部从 routeTree 派生。新增页面只改这一处。 */
 import { Home, Folder, Book, FileText, Target } from '../components/Icon'
 
-export const MODULES = [
-  {
-    key: 'today', title: '今日', icon: Home, items: [
-      /* W2 融合（2026-11-23）：原「今日中枢(/hub)」与「仪表盘总览(/)」重复展示
-         今日专注/答题/正确率/连续打卡/热力/待复习/薄弱点，已合并为单页今日中枢。
-         / 与 /hub 指向同一页面（App.jsx GuestHome 与 /hub 路由都渲染 Hub），
-         导航只留一个入口，旧路径仍可直达。 */
-      { to: '/', label: '今日中枢', exact: true, desc: '首页 · 跨模块聚合 · 先做什么', kw: ['hub', 'dashboard', '中枢', '今日', '首页', '主页', '聚合', '仪表盘', 'jinri', 'zhongshu', 'home', 'yibiaopan'] },
-      { to: '/tasks', label: '任务打卡', desc: '今日任务与打卡', kw: ['task', '任务', '待办', 'todo', 'renwu', 'daka'] },
-      { to: '/planner', label: '学习计划', desc: '规划与连续打卡', kw: ['planner', '计划', '规划', 'jihua', 'plan'] },
-      { to: '/profile', label: '学习画像', desc: '学习数据与薄弱点', kw: ['profile', '画像', 'huaxiang'] },
-    ],
-  },
-  {
-    key: 'learn', title: '学习', icon: Folder, items: [
-      /* W2 融合：学习文库 + 文档知识库并成一个「知识库」入口（两套后端不动，
-         /documents 旧路径重定向到 /library?view=documents）。 */
-      { to: '/library', label: '知识库', desc: '学习文库 · 文档知识库 · 资料与图谱', public: true, kw: ['library', 'knowledge', '文库', '知识库', '文档', '资料', 'wenku', 'ima', 'document'] },
-      { to: '/textbooks', label: '教材目录', desc: '教材章节目录', public: true, kw: ['textbook', '教材', 'jiaocai', '目录'] },
-      { to: '/pan', label: '网盘联动', desc: '云盘与同步', kw: ['pan', '网盘', '云盘', 'wangpan', 'cloud'] },
-      { to: '/knowledge', label: '知识图谱', desc: '科目→章节→知识点纵览与掌握度', public: true, kw: ['knowledge', '知识图谱', '知识地图', '考点', 'zhishi', 'map', 'kbmap'] },
-      { to: '/tools', label: '复试工具箱', desc: '代码上机 · 进制计算器 · 外部工具目录', public: true, kw: ['tools', '工具箱', '复试', '工具', '进制', '计算器', 'codebank', 'oj', 'gongju', 'binji', 'jisuanqi'] },
-    ],
-  },
-  {
-    key: 'practice', title: '练习', icon: Book, items: [
-      { to: '/quiz', label: '刷题中心', desc: '题库与错题强化', kw: ['quiz', '刷题', 'shuati', 'test'] },
-      { to: '/exam', label: '真题中心', desc: '按年份/卷种做真题与整卷模考', public: true, kw: ['exam', '真题', 'zhenti', '模考', 'paper'] },
-      { to: '/cards', label: '记忆卡片', desc: 'Anki 式间隔复习', kw: ['card', '卡片', 'kapian', 'flash'] },
-      { to: '/words', label: '单词记忆', desc: '单词背诵与发音', kw: ['word', '单词', 'danci', 'vocab'] },
-      /* W2：复试代码题库(/codebank)退出「练习」导航，并入「学习 → 复试工具箱」统一入口；
-         路由保留且访客可读，旧书签不 404。 */
-    ],
-  },
-  {
-    key: 'review', title: '复盘', icon: FileText, items: [
-      /* dogfood ISSUE-010：原「错题库」（/quiz?tab=review）入口已移除 ——
-         与「错题复盘 / 错题本」三个入口高度重叠，且落地页面包屑显示「刷题中心」、
-         名称与落点不一致。该能力仍可从「练习 → 刷题中心」的错题强化 tab 进入。 */
-      { to: '/error-review', label: '错题复盘', desc: '错因分布 · 薄弱知识点 · AI 归因分析', kw: ['error', 'review', '错题', '复盘', 'cuoti', 'fupan'] },
-      { to: '/notebook', label: '错题本', desc: '错题录入 · 间隔复习（拍照 OCR 收录）', kw: ['notebook', '错题本', 'cuoti', 'error'] },
-      { to: '/insights', label: '学习统计', desc: '答题量与正确率趋势', kw: ['insight', '统计', 'tongji', 'stats'] },
-      { to: '/favorites', label: '我的收藏', desc: '收藏的题目与资料', kw: ['favorite', '收藏', 'shoucang', 'star'] },
-      { to: '/timeline', label: '学习轨迹', desc: '按时间回看学习记录', kw: ['timeline', '轨迹', 'guiji', 'history'] },
-    ],
-  },
-  {
-    key: 'school', title: '择校', icon: Target, items: [
-      /* 学生端保留完整择校决策路径；采集与导入仍只归管理端。 */
-      { to: '/kaoyan', label: '院校库', exact: true, desc: '全国院校 · 专业 · 通知', public: true, kw: ['kaoyan', '择校', 'zexiao', '院校', 'yuanxiao', 'schools'] },
-      { to: '/kaoyan/compare', label: '院校对比', desc: '同年分数与招生数据横向比较', public: true, kw: ['compare', '对比', 'duibi', '院校对比'] },
-      { to: '/kaoyan/analysis', label: '分数分析', desc: '近五年分数线与招生趋势', public: true, kw: ['analysis', '分析', '趋势', '分数线', 'fenxi', 'qushi'] },
-      { to: '/kaoyan/recommend', label: '择校推荐', desc: '按分数与目标筛选院校', public: true, kw: ['recommend', '推荐', 'tuijian', '智能择校'] },
-      { to: '/kaoyan/scatter', label: '招生分布', desc: '招生规模与录取均分散点', public: true, kw: ['scatter', '散点', '招生', 'sandi', 'zhaosheng'] },
-      { to: '/kaoyan/map', label: '区域热力', desc: '按省份比较院校与录取数据', public: true, kw: ['map', '地图', '热力', '省份', 'ditu', 'reli'] },
-      { to: '/kaoyan/notices', label: '通知中心', desc: '简章/复试/报名/初试 · 改考雷达', public: true, kw: ['notice', '通知', '公告', '简章', 'tongzhi', 'gonggao'] },
-      { to: '/kaoyan/plan', label: '考研规划', desc: '18 节点关键日程与阶段规划', public: true, kw: ['plan', '规划', '日程', '时间节点', 'guihua'] },
-      { to: '/kaoyan/school-eval', label: '学科评估', desc: '教育部第四轮学科评估 · 双一流 · 按学科选校', public: true, kw: ['eval', '评估', '学科', '双一流', 'pinggu', 'xueke', 'rank', '排名'] },
-    ],
-  },
+/* 分组元数据（顺序 = 顶栏顺序） */
+const GROUPS = [
+  { key: 'today', title: '今日', icon: Home },
+  { key: 'learn', title: '学习', icon: Folder },
+  { key: 'practice', title: '练习', icon: Book },
+  { key: 'review', title: '复盘', icon: FileText },
+  { key: 'school', title: '择校', icon: Target },
 ]
 
-export const NAV_OTHER = [
-  /* W2：毛玻璃交互实验室退出「其他」导航（它是主题动效演示，不是学习功能），
-     入口改挂在 设置 → 外观与数据（外观主题/界面自定义）里；/glass 路由与页面保留可达。 */
-  { to: '/assistant', label: 'AI 助手', desc: '问答与 RAG 检索', kw: ['assistant', 'ai', '助手', '问答', 'zhushou', 'chat'] },
-  { to: '/settings', label: '设置', desc: '偏好、管理入口与数据管理', kw: ['setting', '设置', '偏好', '管理', 'shezhi', 'config'] },
-]
+/* routeTree 节点构造助手：title 从 h1 派生，减少重复 */
+function node(label, h1, parent, group, opts = {}) {
+  const hh = h1 || label
+  return {
+    label,
+    h1: hh,
+    title: opts.title || `${hh} · 硕途考研`,
+    parent: parent ?? null,
+    group: group || null,
+    public: opts.public ?? false,
+    roles: opts.roles ?? [],
+    lazy: opts.lazy ?? null,
+    kw: opts.kw ?? [],
+    desc: opts.desc ?? '',
+    exact: opts.exact ?? false,
+    legacy: opts.legacy ?? null,
+    redirect: opts.redirect ?? null,
+    nav: opts.nav ?? false,
+    children: [],
+  }
+}
 
-/* 管理端页面：只在 /admin 命名空间（左侧栏）出现，学生端导航与命令面板不可见。
-   legacy 是改版前的路径，App 据此生成重定向，旧书签不 404。 */
+/* routeTree: 全站唯一路由源。覆盖全部 85 路由 + 3 新路由（/alumni /contribute /admin/experiences）。
+   parent 字段表达父子关系，children 由 parent 反向派生（构建时一次性计算）。
+   lazy 字段是 dynamic import，构建时确定，无运行时副作用。 */
+export const routeTree = {
+  // ── 今日分组 ──
+  '/': node('今日中枢', '今日中枢', null, 'today', { public: true, exact: true, nav: true, desc: '首页 · 跨模块聚合 · 先做什么', kw: ['hub', 'dashboard', '中枢', '今日', '首页', '主页', '聚合', '仪表盘', 'jinri', 'zhongshu', 'home', 'yibiaopan'], lazy: () => import('../v3/pages/Hub') }),
+  '/hub': node('今日中枢', '今日中枢', '/', 'today', { public: true, desc: '今日中枢（与 / 同页）', kw: ['hub'], lazy: () => import('../v3/pages/Hub') }),
+  '/tasks': node('任务打卡', null, '/', 'today', { nav: true, desc: '今日任务与打卡', kw: ['task', '任务', '待办', 'todo', 'renwu', 'daka'], lazy: () => import('../v3/pages/Tasks') }),
+  '/planner': node('学习计划', null, '/', 'today', { nav: true, desc: '规划与连续打卡', kw: ['planner', '计划', '规划', 'jihua', 'plan'], lazy: () => import('../v3/pages/Planner') }),
+  '/profile': node('学习画像', null, '/', 'today', { nav: true, desc: '学习数据与薄弱点', kw: ['profile', '画像', 'huaxiang'], lazy: () => import('../v3/pages/LearnerProfile') }),
+
+  // ── 学习分组 ──
+  '/library': node('知识库', null, null, 'learn', { public: true, nav: true, desc: '学习文库 · 文档知识库 · 资料与图谱', kw: ['library', 'knowledge', '文库', '知识库', '文档', '资料', 'wenku', 'ima', 'document'], lazy: () => import('../v3/pages/KnowledgeHome') }),
+  '/textbooks': node('教材目录', null, null, 'learn', { public: true, nav: true, desc: '教材章节目录', kw: ['textbook', '教材', 'jiaocai', '目录'], lazy: () => import('../v3/pages/Textbooks') }),
+  '/pan': node('网盘联动', null, null, 'learn', { nav: true, desc: '云盘与同步', kw: ['pan', '网盘', '云盘', 'wangpan', 'cloud'], lazy: () => import('../v3/pages/Pan') }),
+  '/knowledge': node('知识图谱', '知识地图', null, 'learn', { public: true, nav: true, desc: '科目→章节→知识点纵览与掌握度', kw: ['knowledge', '知识图谱', '知识地图', '考点', 'zhishi', 'map', 'kbmap'], lazy: () => import('../v3/pages/KbMap') }),
+  '/knowledge/:id': node('知识点详情', null, '/knowledge', 'learn', { public: true, lazy: () => import('../v3/pages/KnowledgeArticle') }),
+  '/tools': node('复试工具箱', '学习工具箱', null, 'learn', { public: true, nav: true, desc: '代码上机 · 进制计算器 · 外部工具目录', kw: ['tools', '工具箱', '复试', '工具', '进制', '计算器', 'codebank', 'oj', 'gongju', 'binji', 'jisuanqi'], lazy: () => import('../v3/pages/Tools') }),
+
+  // ── 练习分组 ──
+  '/quiz': node('刷题中心', null, null, 'practice', { nav: true, desc: '题库与错题强化', kw: ['quiz', '刷题', 'shuati', 'test'], lazy: () => import('../v3/pages/Quiz') }),
+  '/personal-question-bank': node('我的题库', null, null, 'practice', { nav: true, desc: '个人题库 · 自建题 · 掌握状态', kw: ['personal', 'question-bank', '我的题库', '个人题库', 'tiku'], lazy: () => import('../v3/pages/PersonalQuestionBank') }),
+  '/exam': node('真题中心', null, null, 'practice', { public: true, nav: true, desc: '按年份/卷种做真题与整卷模考', kw: ['exam', '真题', 'zhenti', '模考', 'paper'], lazy: () => import('../v3/pages/ExamCenter') }),
+  '/exam/year/:year': node('真题练习', null, '/exam', 'practice', { lazy: () => import('../v3/pages/Quiz') }),
+  '/exam/paper/:paper': node('真题练习', null, '/exam', 'practice', { lazy: () => import('../v3/pages/Quiz') }),
+  '/exam/:year/:paper': node('真题练习', null, '/exam', 'practice', { lazy: () => import('../v3/pages/Quiz') }),
+  '/exam/:year/:paper/:qno': node('真题练习', null, '/exam', 'practice', { lazy: () => import('../v3/pages/Quiz') }),
+  '/exam-mock': node('模考中心', null, null, 'practice', { desc: '蓝图 → 发起 → 答题 → 交卷 → 报告', kw: ['mock', '模考'], lazy: () => import('../v3/pages/ExamMock') }),
+  '/cards': node('记忆卡片', null, null, 'practice', { nav: true, desc: 'Anki 式间隔复习', kw: ['card', '卡片', 'kapian', 'flash'], lazy: () => import('../v3/pages/Cards') }),
+  '/words': node('单词记忆', null, null, 'practice', { nav: true, desc: '单词背诵与发音', kw: ['word', '单词', 'danci', 'vocab'], lazy: () => import('../v3/pages/Words') }),
+
+  // ── 复盘分组 ──
+  '/error-review': node('错题复盘', null, null, 'review', { nav: true, desc: '错因分布 · 薄弱知识点 · AI 归因分析', kw: ['error', 'review', '错题', '复盘', 'cuoti', 'fupan'], lazy: () => import('../v3/pages/ErrorReview') }),
+  '/error-review/:id': node('错题详情', null, '/error-review', 'review', { lazy: () => import('../v3/pages/ErrorDetail') }),
+  '/notebook': node('错题本', null, null, 'review', { nav: true, desc: '错题录入 · 间隔复习（拍照 OCR 收录）', kw: ['notebook', '错题本', 'cuoti', 'error'], lazy: () => import('../v3/pages/Notebook') }),
+  '/insights': node('学习统计', null, null, 'review', { nav: true, desc: '答题量与正确率趋势', kw: ['insight', '统计', 'tongji', 'stats'], lazy: () => import('../v3/pages/Insights') }),
+  '/favorites': node('我的收藏', null, null, 'review', { nav: true, desc: '收藏的题目与资料', kw: ['favorite', '收藏', 'shoucang', 'star'], lazy: () => import('../v3/pages/Favorites') }),
+  '/timeline': node('学习轨迹', null, null, 'review', { nav: true, desc: '按时间回看学习记录', kw: ['timeline', '轨迹', 'guiji', 'history'], lazy: () => import('../v3/pages/LearningTimeline') }),
+
+  // ── 择校分组 ──
+  '/kaoyan': node('院校库', null, null, 'school', { public: true, exact: true, nav: true, desc: '全国院校 · 专业 · 通知', kw: ['kaoyan', '择校', 'zexiao', '院校', 'yuanxiao', 'schools'], lazy: () => import('../v3/pages/KaoyanSchools') }),
+  '/kaoyan/guide': node('择校数据中心', null, '/kaoyan', 'school', { public: true, lazy: () => import('../v3/pages/KaoyanGuide') }),
+  '/kaoyan/notices': node('通知中心', null, '/kaoyan', 'school', { public: true, nav: true, desc: '简章/复试/报名/初试 · 改考雷达', kw: ['notice', '通知', '公告', '简章', 'tongzhi', 'gonggao'], lazy: () => import('../v3/pages/NoticeCenter') }),
+  '/kaoyan/schools': node('院校库', null, '/kaoyan', 'school', { public: true, lazy: () => import('../v3/pages/KaoyanSchools') }),
+  '/kaoyan/schools/:id': node('院校详情', null, '/kaoyan/schools', 'school', { public: true, lazy: () => import('../v3/pages/KaoyanSchoolDetail') }),
+  '/kaoyan/majors/:id': node('专业详情', null, '/kaoyan', 'school', { public: true, lazy: () => import('../v3/pages/KaoyanMajorDetail') }),
+  '/kaoyan/compare': node('院校对比', null, '/kaoyan', 'school', { public: true, nav: true, desc: '同年分数与招生数据横向比较', kw: ['compare', '对比', 'duibi', '院校对比'], lazy: () => import('../v3/pages/KaoyanCompare') }),
+  '/kaoyan/analysis': node('分数分析', null, '/kaoyan', 'school', { public: true, nav: true, desc: '近五年分数线与招生趋势', kw: ['analysis', '分析', '趋势', '分数线', 'fenxi', 'qushi'], lazy: () => import('../v3/pages/KaoyanAnalysis') }),
+  '/kaoyan/map': node('区域热力', null, '/kaoyan', 'school', { public: true, nav: true, desc: '按省份比较院校与录取数据', kw: ['map', '地图', '热力', '省份', 'ditu', 'reli'], lazy: () => import('../v3/pages/KaoyanMap') }),
+  '/kaoyan/scatter': node('招生分布', null, '/kaoyan', 'school', { public: true, nav: true, desc: '招生规模与录取均分散点', kw: ['scatter', '散点', '招生', 'sandi', 'zhaosheng'], lazy: () => import('../v3/pages/KaoyanScatter') }),
+  '/kaoyan/recommend': node('择校推荐', null, '/kaoyan', 'school', { public: true, nav: true, desc: '按分数与目标筛选院校', kw: ['recommend', '推荐', 'tuijian', '智能择校'], lazy: () => import('../v3/pages/KaoyanRecommend') }),
+  '/kaoyan/recommend/:schoolId': node('推荐依据详情', null, '/kaoyan/recommend', 'school', { public: true, lazy: () => import('../v3/pages/KaoyanRecommendDetail') }),
+  '/kaoyan/school-eval': node('学科评估', '工学学科评估', '/kaoyan', 'school', { public: true, nav: true, desc: '教育部第四轮学科评估 · 双一流 · 按学科选校', kw: ['eval', '评估', '学科', '双一流', 'pinggu', 'xueke', 'rank', '排名'], lazy: () => import('../v3/pages/KaoyanSchoolEval') }),
+  '/kaoyan/plan': node('考研规划', null, '/kaoyan', 'school', { public: true, nav: true, desc: '18 节点关键日程与阶段规划', kw: ['plan', '规划', '日程', '时间节点', 'guihua'], lazy: () => import('../v3/pages/PlanPage') }),
+  '/kaoyan/growth': node('成长体系', null, '/kaoyan', 'school', { lazy: () => import('../v3/pages/GrowthPage') }),
+  '/kaoyan/assistant': node('择校 AI 助手', null, '/kaoyan', 'school', { lazy: () => import('../v3/pages/KaoyanAssistant') }),
+
+  // ── 上岸经验（新路由） ──
+  '/alumni': node('上岸经验', null, null, 'school', { public: true, nav: true, desc: '已上岸学长学姐的经验卡', kw: ['alumni', '上岸', '经验', 'shangyan', 'jingyan'], lazy: () => import('../v3/pages/Alumni') }),
+  '/contribute': node('经验投稿', null, null, 'school', { roles: ['alumni'], nav: true, desc: 'alumni 投递结构化经验卡', kw: ['contribute', '投稿', '投稿经验', 'touga'], lazy: () => import('../v3/pages/Contribute') }),
+
+  // ── 通用入口（NAV_OTHER） ──
+  '/assistant': node('AI 助手', null, null, 'other', { nav: true, desc: '问答与 RAG 检索', kw: ['assistant', 'ai', '助手', '问答', 'zhushou', 'chat'], lazy: () => import('../v3/pages/Assistant') }),
+  '/assistant/answers/:id': node('AI 回答详情', null, '/assistant', 'other', { lazy: () => import('../v3/pages/AssistantAnswer') }),
+  '/settings': node('设置', null, null, 'other', { nav: true, desc: '偏好、管理入口与数据管理', kw: ['setting', '设置', '偏好', '管理', 'shezhi', 'config'], lazy: () => import('../v3/pages/Settings') }),
+
+  // ── 管理后台 ──
+  '/admin': node('管理后台', null, null, 'admin', { roles: ['admin'] }),
+  '/admin/overview': node('数据中心', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/data-center', desc: '数据域计数与接口体检', kw: ['data', '数据中心', '接口', 'shuju'], lazy: () => import('../v3/pages/DataCenter') }),
+  '/admin/users': node('用户管理', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/users', desc: '账号 · 角色 · 重置密码', kw: ['user', '用户', '账号', 'yonghu', 'users'], lazy: () => import('../v3/pages/UserAdmin') }),
+  '/admin/subjects': node('科目管理', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/subjects', desc: '科目 · 章节 · 题型', kw: ['subject', '科目', 'kemu'], lazy: () => import('../v3/pages/SubjectManager') }),
+  '/admin/quiz-bank': node('题库管理', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/quiz-bank', desc: '真题地图 · 章节刷题', kw: ['bank', '题库', 'tiku'], lazy: () => import('../v3/pages/QuizBank') }),
+  '/admin/quiz-review': node('题库复核', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/quiz-review', desc: '隔离题修复上架 · 低置信确认', kw: ['review', '复核', '错题', '隔离', 'fuhe'], lazy: () => import('../v3/pages/QuizReview') }),
+  '/admin/quality': node('数据质量', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/quality', desc: '识别口径与语料体检', kw: ['quality', '评测', '质量', 'zhiliang', 'eval'], lazy: () => import('../v3/pages/QualityDashboard') }),
+  '/admin/schools': node('院校数据管理', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/kaoyan/import', desc: '定向采集 · 国家线回填 · 公告采集', kw: ['import', '导入', '院校数据', 'daoru', 'notice', '公告'], lazy: () => import('../v3/pages/KaoyanImport') }),
+  '/admin/crawl-sources': node('院校采集源', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/crawl-sources', desc: '选择参与采集的院校 · 数据源目录', kw: ['crawl', '采集', '爬取', 'caiji', 'paqu'], lazy: () => import('../v3/pages/KaoyanCrawlSources') }),
+  '/admin/kb-import': node('知识库导入', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/kb-import', desc: '按类型导入知识图谱与题库', kw: ['import', '导入', '知识库', 'daoru'], lazy: () => import('../v3/pages/KnowledgeBaseImport') }),
+  '/admin/model': node('模型训练', null, '/admin', 'admin', { roles: ['admin'], nav: true, legacy: '/model-training', desc: '答疑模型 LoRA 训练', kw: ['train', 'lora', '模型', '训练', 'xunlian'], lazy: () => import('../v3/pages/ModelTraining') }),
+  '/admin/caliber': node('数据口径与接口体检', null, '/admin', 'admin', { roles: ['admin'], desc: '今日中枢的调试/对账信息', kw: ['caliber', '口径', '体检'], lazy: () => import('../v3/pages/Caliber') }),
+  '/admin/experiences': node('经验卡审核', null, '/admin', 'admin', { roles: ['admin'], nav: true, desc: '审核 alumni 提交的经验卡', kw: ['experience', '经验卡', '审核', 'shenhe'], lazy: () => import('../v3/pages/AdminExperiences') }),
+
+  // ── 认证 / 壳外 ──
+  '/login': node('登录', '把考研的每一步，放在同一张地图上。', null, 'auth', { public: true, title: '登录 · 硕途考研', lazy: () => import('../v3/pages/Login') }),
+  '/force-change-password': node('首次登录 · 修改密码', null, null, 'auth', { public: true, lazy: () => import('../v3/pages/ForceChangePassword') }),
+  '/verify-email': node('邮箱验证', null, null, 'auth', { public: true, lazy: () => import('../v3/pages/VerifyEmail') }),
+  '/reset-password': node('重置密码', null, null, 'auth', { public: true, lazy: () => import('../v3/pages/ResetPassword') }),
+  '/onboarding': node('初始化引导', null, null, 'auth', { lazy: () => import('../v3/pages/Onboarding') }),
+  '/403': node('无权访问', null, null, 'auth', { public: true, lazy: () => import('../v3/pages/Forbidden') }),
+
+  // ── 沉浸式全屏 ──
+  '/studio/quiz': node('刷题全屏', null, null, 'immersive', { lazy: () => import('../immersive/QuizStudio') }),
+  '/studio/subject/:subject': node('科目复习全屏', null, null, 'immersive', { lazy: () => import('../immersive/SubjectReview') }),
+
+  // ── 可达但不在导航的页面（重定向 / 旧路径兼容） ──
+  '/glass': node('毛玻璃实验室', null, null, 'misc', { public: true, lazy: () => import('../v3/pages/GlassLab') }),
+  '/codebank': node('复试代码题库', null, null, 'misc', { public: true, lazy: () => import('../v3/pages/CodeBank') }),
+  '/documents': node('文档知识库', null, null, 'misc', { public: true, redirect: '/library?view=documents' }),
+  '/panorama': node('知识点全景', null, null, 'misc', { redirect: '/knowledge' }),
+  '/kbmap': node('知识地图', null, null, 'misc', { redirect: '/knowledge' }),
+  '/exam-frequency': node('真题频率', null, null, 'misc', { redirect: '/knowledge' }),
+  '/analysis': node('分析', null, null, 'misc', { redirect: '/' }),
+  '/errors': node('错题', null, null, 'misc', { redirect: '/error-review' }),
+  '/cuoti': node('错题', null, null, 'misc', { redirect: '/error-review' }),
+  '/data-quality': node('数据质量', null, null, 'misc', { redirect: '/admin/quality' }),
+}
+
+// 派生 children：从 parent 反向计算
+for (const [path, n] of Object.entries(routeTree)) {
+  if (n.parent && routeTree[n.parent]) {
+    routeTree[n.parent].children.push(path)
+  }
+}
+
+/* ── 从 routeTree 派生所有现有导出（保持导出名与签名不变，消费方零改动） ── */
+
 export const ADMIN_ROOT = '/admin'
-export const NAV_ADMIN = [
-  { to: '/admin/overview', legacy: '/data-center', label: '数据中心', desc: '数据域计数与接口体检', kw: ['data', '数据中心', '接口', 'shuju'] },
-  /* 用户管理：账号 · 角色 · 禁用 · 重置密码。此前只存在于设置页「账号与安全」
-     分区内且 ?tab= 深链接不生效，管理员找不到入口——纳入管理后台导航。 */
-  { to: '/admin/users', legacy: '/users', label: '用户管理', desc: '账号 · 角色 · 重置密码', kw: ['user', '用户', '账号', 'yonghu', 'users'] },
-  { to: '/admin/subjects', legacy: '/subjects', label: '科目管理', desc: '科目 · 章节 · 题型', kw: ['subject', '科目', 'kemu'] },
-  { to: '/admin/quiz-bank', legacy: '/quiz-bank', label: '题库管理', desc: '真题地图 · 章节刷题', kw: ['bank', '题库', 'tiku'] },
-  { to: '/admin/quiz-review', legacy: '/quiz-review', label: '题库复核', desc: '隔离题修复上架 · 低置信确认', kw: ['review', '复核', '错题', '隔离', 'fuhe'] },
-  { to: '/admin/quality', legacy: '/quality', label: '数据质量', desc: '识别口径与语料体检', kw: ['quality', '评测', '质量', 'zhiliang', 'eval'] },
-  { to: '/admin/schools', legacy: '/kaoyan/import', label: '院校数据管理', desc: '定向采集 · 国家线回填 · 公告采集', kw: ['import', '导入', '院校数据', 'daoru', 'notice', '公告'] },
-  { to: '/admin/crawl-sources', legacy: '/crawl-sources', label: '院校采集源', desc: '选择参与采集的院校 · 数据源目录', kw: ['crawl', '采集', '爬取', 'caiji', 'paqu'] },
-  { to: '/admin/kb-import', legacy: '/kb-import', label: '知识库导入', desc: '按类型导入知识图谱与题库', kw: ['import', '导入', '知识库', 'daoru'] },
-  { to: '/admin/model', legacy: '/model-training', label: '模型训练', desc: '答疑模型 LoRA 训练', kw: ['train', 'lora', '模型', '训练', 'xunlian'] },
-].map((e) => ({ ...e, roles: ['admin'] }))
 
-export const ADMIN_LEGACY_REDIRECTS = NAV_ADMIN.map((e) => [e.legacy, e.to])
+// MODULES: 顶栏分组导航（today/learn/practice/review/school）
+export const MODULES = GROUPS.map((g) => ({
+  key: g.key,
+  title: g.title,
+  icon: g.icon,
+  items: Object.entries(routeTree)
+    .filter(([p, n]) => n.group === g.key && n.nav && !n.redirect)
+    .map(([p, n]) => ({
+      to: p,
+      label: n.label,
+      exact: n.exact || false,
+      desc: n.desc,
+      kw: n.kw,
+      public: n.public,
+    })),
+}))
 
+// NAV_OTHER: 通用入口（AI 助手 / 设置）
+export const NAV_OTHER = Object.entries(routeTree)
+  .filter(([p, n]) => n.group === 'other' && n.nav)
+  .map(([p, n]) => ({ to: p, label: n.label, desc: n.desc, kw: n.kw, public: n.public }))
+
+// NAV_ADMIN: 管理后台导航（带 roles=['admin'] 与 legacy 重定向）
+export const NAV_ADMIN = Object.entries(routeTree)
+  .filter(([p, n]) => n.group === 'admin' && n.nav)
+  .map(([p, n]) => ({
+    to: p,
+    legacy: n.legacy,
+    label: n.label,
+    desc: n.desc,
+    kw: n.kw,
+    roles: n.roles,
+  }))
+
+export const ADMIN_LEGACY_REDIRECTS = NAV_ADMIN.filter((e) => e.legacy).map((e) => [e.legacy, e.to])
 export const NAV_MODULES = MODULES
 
-/* P1（F-06）：路由元信息单一事实源。document.title 与各页 H1 身份都从这里派生，
-   不再散落在 6 个页面里各写一份；MobileNav 的 Tab 文案也取 h1，保证「文案=落点」。 */
-export const ROUTE_META = {
-  '/': { title: '今日中枢 · 硕途考研', h1: '今日中枢' },
-  '/hub': { title: '今日中枢 · 硕途考研', h1: '今日中枢' },
-  '/kaoyan': { title: '院校库 · 硕途考研', h1: '院校库' },
-  '/kaoyan/schools': { title: '院校库 · 硕途考研', h1: '院校库' },
-  '/kaoyan/guide': { title: '择校数据中心 · 硕途考研', h1: '择校数据中心' },
-  '/kaoyan/plan': { title: '考研规划 · 硕途考研', h1: '考研规划' },
-  '/knowledge': { title: '知识地图 · 硕途考研', h1: '知识地图' },
-  '/quiz': { title: '刷题中心 · 硕途考研', h1: '刷题中心' },
-  '/exam': { title: '真题中心 · 硕途考研', h1: '真题中心' },
-  '/error-review': { title: '错题复盘 · 硕途考研', h1: '错题复盘' },
-  '/error-review/:id': { title: '错题详情 · 硕途考研', h1: '错题详情' },
-  '/assistant': { title: 'AI 助手 · 硕途考研', h1: 'AI 助手' },
-  '/assistant/answers/:id': { title: 'AI 回答详情 · 硕途考研', h1: 'AI 回答详情' },
-  '/kaoyan/recommend/:schoolId': { title: '推荐依据详情 · 硕途考研', h1: '推荐依据详情' },
-  '/words': { title: '单词记忆 · 硕途考研', h1: '单词记忆' },
-  '/cards': { title: '记忆卡片 · 硕途考研', h1: '记忆卡片' },
-  '/library': { title: '知识库 · 硕途考研', h1: '知识库' },
-  '/tools': { title: '学习工具箱 · 硕途考研', h1: '学习工具箱' },
-  '/login': { title: '登录 · 硕途考研', h1: '把考研的每一步，放在同一张地图上。' },
-  '/force-change-password': { title: '首次登录 · 修改密码 · 硕途考研', h1: '首次登录 · 修改密码' },
-  '/onboarding': { title: '初始化引导 · 硕途考研', h1: '初始化引导' },
-  '/reset-password': { title: '重置密码 · 硕途考研', h1: '重置密码' },
-  '/verify-email': { title: '邮箱验证 · 硕途考研', h1: '邮箱验证' },
+// ROUTE_META: 路由元信息（document.title 与 H1），从 routeTree 派生
+export const ROUTE_META = {}
+for (const [path, n] of Object.entries(routeTree)) {
+  if (n.redirect) continue
+  ROUTE_META[path] = { title: n.title, h1: n.h1 }
+}
+
+// CRUMB_BY_PATH: 面包屑名称映射（精确匹配）
+const CRUMB_BY_PATH = new Map(
+  Object.entries(routeTree)
+    .filter(([p, n]) => !p.includes(':') && !p.includes('?'))
+    .map(([p, n]) => [p, n.label])
+)
+
+// CRUMB_PREFIX: 面包屑前缀匹配（动态参数路由 + /kaoyan/guide 特殊处理）
+const CRUMB_PREFIX = [
+  ...Object.entries(routeTree)
+    .filter(([p]) => p.includes('/:'))
+    .map(([p, n]) => [p.substring(0, p.indexOf('/:')) + '/', n.label]),
+  ['/kaoyan/guide', '择校数据中心'],
+].sort((a, b) => b[0].length - a[0].length)
+
+/* crumbs(pathname): 从 routeTree 派生完整面包屑链（根 → L1 分组 → L2 列表 → L3 详情）。
+   纯函数，幂等。未登记路由返回 [{to:'/',label:'硕途'}]。 */
+const ROOT_CRUMB = { to: '/', label: '硕途' }
+
+function matchRoutePattern(pattern, pathname) {
+  const pp = pattern.split('/')
+  const pa = pathname.split('/')
+  if (pp.length !== pa.length) return false
+  for (let i = 0; i < pp.length; i++) {
+    if (pp[i].startsWith(':')) continue
+    if (pp[i] !== pa[i]) return false
+  }
+  return true
+}
+
+function matchRoutePath(pathname) {
+  if (routeTree[pathname]) return pathname
+  const paths = Object.keys(routeTree).sort((a, b) => b.length - a.length)
+  for (const p of paths) {
+    if (p.includes(':') && matchRoutePattern(p, pathname)) return p
+  }
+  return null
+}
+
+export function crumbs(pathname) {
+  const matched = matchRoutePath(pathname)
+  if (!matched) return [ROOT_CRUMB]
+  const chain = []
+  let path = matched
+  while (path && routeTree[path]) {
+    const n = routeTree[path]
+    chain.unshift({ to: path, label: path === '/' ? ROOT_CRUMB.label : n.label })
+    path = n.parent
+  }
+  if (chain.length === 0 || chain[0].to !== '/') {
+    chain.unshift(ROOT_CRUMB)
+  }
+  return chain
 }
 
 /** 路由元信息读取：未登记的路由回落到面包屑名（仍只有一个 title 出口）。 */
@@ -129,8 +258,7 @@ export function routeMeta(pathname) {
   return { title: `${name} · 硕途考研`, h1: name }
 }
 
-/* 移动端底部 Tab：与桌面侧栏分组用同一套词（P1-1：全平台 ≤5 个相同导航词）。
-   P1（F-05）：带 group，壳层用与 Sidebar 相同的 visibleModulesFor 做访客过滤。 */
+// MOBILE_TABS: 移动端底部 Tab（与桌面侧栏分组用同一套词）
 export const MOBILE_TABS = [
   { to: '/', group: 'today', icon: Home },
   { to: '/knowledge', group: 'learn', icon: Folder },
@@ -139,10 +267,9 @@ export const MOBILE_TABS = [
   { to: '/kaoyan', group: 'school', icon: Target },
 ].map((t) => ({ ...t, label: routeMeta(t.to).h1 }))
 
-/* 访客的「今日」落点被 GuestHome 重定向到院校库（登录用户仍是今日中枢）。 */
 export const GUEST_TAB_LANDING = { '/': '/kaoyan' }
 
-/* 命令面板与面包屑用的扁平清单（分组顺序 = 顶栏顺序，其后通用入口、管理页） */
+// ALL_ENTRIES: 命令面板与面包屑用的扁平清单
 export const ALL_ENTRIES = [
   ...MODULES.flatMap((m) => m.items.map((it) => ({ ...it, group: m.title }))),
   ...NAV_OTHER.map((it) => ({ ...it, group: '通用' })),
@@ -152,38 +279,9 @@ export const ALL_ENTRIES = [
 export const isAdminPath = (to) => to === ADMIN_ROOT || to.startsWith(`${ADMIN_ROOT}/`)
 export const entriesFor = (isAdmin) => (isAdmin ? ALL_ENTRIES : ALL_ENTRIES.filter((e) => !isAdminPath(e.to)))
 
-const CRUMB_BY_PATH = new Map(ALL_ENTRIES.filter((e) => !e.to.includes('?')).map((e) => [e.to, e.label]))
-CRUMB_BY_PATH.set(ADMIN_ROOT, '管理后台')
-CRUMB_BY_PATH.set('/admin/caliber', '数据口径与接口体检')
-/* W2 融合后不再占用导航、但路由仍可达的页面补面包屑（旧链接直达时标题不回落） */
-CRUMB_BY_PATH.set('/hub', '今日中枢')
-CRUMB_BY_PATH.set('/glass', '毛玻璃实验室')
-CRUMB_BY_PATH.set('/codebank', '复试代码题库')
-CRUMB_BY_PATH.set('/documents', '文档知识库')
-/* 择校子页面不在顶栏导航里，补上面包屑名称，避免一律回落到「页面」 */
-CRUMB_BY_PATH.set('/kaoyan/schools', '院校库')
-CRUMB_BY_PATH.set('/kaoyan/compare', '院校对比')
-CRUMB_BY_PATH.set('/kaoyan/analysis', '分数分析')
-CRUMB_BY_PATH.set('/kaoyan/map', '区域择校热力图')
-CRUMB_BY_PATH.set('/kaoyan/scatter', '招生人数分布')
-CRUMB_BY_PATH.set('/kaoyan/recommend', '智能择校推荐')
-CRUMB_BY_PATH.set('/kaoyan/growth', '成长体系')
-CRUMB_BY_PATH.set('/kaoyan/assistant', '择校 AI 助手')
-CRUMB_BY_PATH.set('/kaoyan/school-eval', '工学学科评估')
-CRUMB_BY_PATH.set('/assistant', 'AI 助手')
-/* 面包屑父级：管理端页面挂在「管理后台」下 */
 export function crumbParent(path) {
   return path !== ADMIN_ROOT && isAdminPath(path) ? { to: ADMIN_ROOT, label: '管理后台' } : null
 }
-const CRUMB_PREFIX = [
-  ['/kaoyan/schools/', '院校详情'],
-  ['/kaoyan/recommend/', '推荐依据详情'],
-  ['/error-review/', '错题详情'],
-  ['/assistant/answers/', 'AI 回答详情'],
-  ['/knowledge/', '知识点详情'],
-  ['/exam/', '真题中心'],
-  ['/kaoyan/guide', '择校数据中心'],
-]
 
 export function crumbName(path) {
   const hit = CRUMB_BY_PATH.get(path)
@@ -195,7 +293,6 @@ export function crumbName(path) {
 export const RELATED = {
   '/tasks': ['/knowledge', '/planner', '/error-review'],
   '/knowledge': ['/library', '/quiz', '/error-review'],
-  /* W2：文档知识库已并入「知识库」页内视图，文库的相关功能不再自指 /documents */
   '/library': ['/knowledge', '/quiz', '/textbooks'],
   '/quiz': ['/error-review', '/knowledge', '/cards'],
   '/admin/quiz-bank': ['/quiz', '/knowledge', '/error-review'],
@@ -213,10 +310,9 @@ export const RELATED = {
   '/admin/subjects': ['/admin/quiz-bank', '/knowledge', '/settings'],
 }
 
-/* 择校模块内 Tab：与顶栏「择校」下拉同源 */
+// KAOYAN_TABS: 择校模块内 Tab（与顶栏「择校」下拉同源）
 export const KAOYAN_TABS = MODULES.find((m) => m.key === 'school').items.map((it) => ({ value: it.to, label: it.label }))
 
-/* 按设置页「界面自定义」的偏好过滤/排序顶栏分组与「其他」入口 */
 export function visibleModules(layout) {
   const hidden = new Set(layout?.navHidden || [])
   const order = layout?.navOrder || []
@@ -230,8 +326,6 @@ export function visibleOther(layout) {
   return NAV_OTHER.filter((n) => !hidden.has(n.to))
 }
 
-/* 访客模式（2026-10-19）：只保留标了 public 的条目，分组内无公开项则整组隐藏。
-   登录用户不受影响（isGuest=false 原样返回）。 */
 export function visibleModulesFor(modules, isGuest) {
   if (!isGuest) return modules
   return modules

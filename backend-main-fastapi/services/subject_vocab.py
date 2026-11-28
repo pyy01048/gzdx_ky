@@ -23,6 +23,7 @@
 3. **拿不准就不归一**：``真题综合``、``网络补充`` 留在 NOT_ALIASED 并写明实测原因 ——
    猜进任何一个学科池就是把覆盖数变成假数。
 """
+
 from __future__ import annotations
 
 from sqlalchemy import func
@@ -51,9 +52,7 @@ NOT_ALIASED = {
         "经济类联考综合/心理学专业基础」等；按 document_id 关联即可，"
         "折进任何单一学科都是虚报"
     ),
-    "网络补充": (
-        "是来源标签而不是学科：唯一 1 篇的块实际归在「计算机学科专业基础408」"
-    ),
+    "网络补充": ("是来源标签而不是学科：唯一 1 篇的块实际归在「计算机学科专业基础408」"),
 }
 
 
@@ -102,17 +101,10 @@ def alignment_rows(db: Session) -> list[dict]:
     """
     from models import Document, KnowledgeChunk
 
-    doc_counts = dict(
-        db.query(Document.subject, func.count(Document.id))
-        .group_by(Document.subject).all()
-    )
-    chunk_subjects = {
-        (s or "").strip()
-        for (s,) in db.query(KnowledgeChunk.subject).distinct().all()
-    }
+    doc_counts = dict(db.query(Document.subject, func.count(Document.id)).group_by(Document.subject).all())
+    chunk_subjects = {(s or "").strip() for (s,) in db.query(KnowledgeChunk.subject).distinct().all()}
     chunk_counts = dict(
-        db.query(KnowledgeChunk.subject, func.count(KnowledgeChunk.id))
-        .group_by(KnowledgeChunk.subject).all()
+        db.query(KnowledgeChunk.subject, func.count(KnowledgeChunk.id)).group_by(KnowledgeChunk.subject).all()
     )
 
     rows: list[dict] = []
@@ -154,19 +146,19 @@ def alignment_rows(db: Session) -> list[dict]:
             # 那等于把一个没人认领的标签洗成合法学科，覆盖率跟着变假。
             kind = "unknown_mapping"
             reason = "词表未登记：既无别名映射，也没写明为何不归一，需人工判定"
-        rows.append({
-            "subject": label,
-            "documents": int(n or 0),
-            "own_chunks": int(own_chunks or 0),
-            "documents_with_chunks": int(docs_with_chunks or 0),
-            "not_indexed": int(pending),
-            "targets": list(targets),
-            "target_chunks": [
-                {"subject": t, "chunks": int(chunk_counts.get(t, 0) or 0)} for t in targets
-            ],
-            "kind": kind,
-            "reason": reason,
-        })
+        rows.append(
+            {
+                "subject": label,
+                "documents": int(n or 0),
+                "own_chunks": int(own_chunks or 0),
+                "documents_with_chunks": int(docs_with_chunks or 0),
+                "not_indexed": int(pending),
+                "targets": list(targets),
+                "target_chunks": [{"subject": t, "chunks": int(chunk_counts.get(t, 0) or 0)} for t in targets],
+                "kind": kind,
+                "reason": reason,
+            }
+        )
     return rows
 
 
@@ -176,18 +168,13 @@ def summary(db: Session) -> dict:
 
     rows = alignment_rows(db)
     return {
-        "document_subjects": (
-            db.query(func.count(func.distinct(Document.subject))).scalar() or 0
-        ),
+        "document_subjects": (db.query(func.count(func.distinct(Document.subject))).scalar() or 0),
         "unaligned_labels": len(rows),
         "unaligned_documents": sum(r["documents"] for r in rows),
         # 只有「别名/合并口径」这两类能靠接口层归一连上语料；
         # not_aliased 要逐篇人工判定，unknown_mapping 是没人认领的写法，
         # 两者都不许自动折叠。
-        "foldable_documents": sum(
-            r["documents"] for r in rows
-            if r["kind"] in ("alias_folded", "combined_expanded")
-        ),
+        "foldable_documents": sum(r["documents"] for r in rows if r["kind"] in ("alias_folded", "combined_expanded")),
         "not_indexed_documents": sum(r["not_indexed"] for r in rows),
         # 口径：非 indexed 含 pending / indexing / failed，统称「还没可检索的块」，
         # 不写成 never_parsed —— failed 的那些解析过，只是没过质量闸门。

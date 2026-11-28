@@ -34,6 +34,7 @@
     python scripts/clean_documents_empty.py --apply         # 写库（自动先备份）
     python scripts/clean_documents_empty.py --selftest
 """
+
 from __future__ import annotations
 
 import argparse
@@ -58,21 +59,19 @@ def classify(index_status: str | None, chunk_count: int, is_empty: bool) -> str:
     if not is_empty:
         return "ok"
     if chunk_count > 0:
-        return "empty_with_chunks"      # 正文缺失但仍有可检索分块
+        return "empty_with_chunks"  # 正文缺失但仍有可检索分块
     if index_status == "failed":
-        return "empty_failed"           # 已经标失败，无需再动
+        return "empty_failed"  # 已经标失败，无需再动
     if index_status == "indexed":
-        return "empty_mislabeled"       # 谎报已索引 → 应改判 failed
-    return "empty_other"                # pending/其它
+        return "empty_mislabeled"  # 谎报已索引 → 应改判 failed
+    return "empty_other"  # pending/其它
 
 
 def _do_backup(db_path: str) -> str:
     from services.backup_service import DB_PATH as _REAL_DB, create_backup  # noqa
 
     if os.path.abspath(db_path) != os.path.abspath(_REAL_DB):
-        raise RuntimeError(
-            f"拒绝对非真库执行备份/写入：--db={db_path} != 真库 {_REAL_DB}"
-        )
+        raise RuntimeError(f"拒绝对非真库执行备份/写入：--db={db_path} != 真库 {_REAL_DB}")
     return create_backup()
 
 
@@ -89,22 +88,24 @@ def scan(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         """
     ).fetchall()
     out: list[dict[str, Any]] = []
-    for (did, fname, ftype, size, status, ocr, subject, folder, fpath, prog, nchunk) in rows:
-        out.append({
-            "id": did,
-            "file_name": fname,
-            "file_type": ftype,
-            "size": size,
-            "index_status": status,
-            "ocr_used": bool(ocr),
-            "subject": subject,
-            "folder_path": folder,
-            "file_path": fpath,
-            "parse_progress": prog,
-            "chunk_count": nchunk,
-            "class": classify(status, nchunk, True),
-            "has_local_file": bool(fpath) and os.path.isfile(fpath),
-        })
+    for did, fname, ftype, size, status, ocr, subject, folder, fpath, prog, nchunk in rows:
+        out.append(
+            {
+                "id": did,
+                "file_name": fname,
+                "file_type": ftype,
+                "size": size,
+                "index_status": status,
+                "ocr_used": bool(ocr),
+                "subject": subject,
+                "folder_path": folder,
+                "file_path": fpath,
+                "parse_progress": prog,
+                "chunk_count": nchunk,
+                "class": classify(status, nchunk, True),
+                "has_local_file": bool(fpath) and os.path.isfile(fpath),
+            }
+        )
     return out
 
 
@@ -144,8 +145,7 @@ def selftest() -> int:
         print(f"  [{'✓' if ok else '✗ FAIL'}] {desc}  期望={expect} 实际={got}")
         if not ok:
             failed += 1
-    print(f"\n  通过 {len(cases) - failed}/{len(cases)} → "
-          + ("PASS" if failed == 0 else f"FAIL ({failed})"))
+    print(f"\n  通过 {len(cases) - failed}/{len(cases)} → " + ("PASS" if failed == 0 else f"FAIL ({failed})"))
     return 0 if failed == 0 else 1
 
 
@@ -188,9 +188,11 @@ def main() -> int:
         print()
         if args.show_samples:
             print(f"  样例（前 {args.show_samples} 条）：")
-            for d in docs[:args.show_samples]:
-                print(f"   · #{d['id']:<5} [{d['class']:<18}] {d['file_name'][:52]}"
-                      f"  type={d['file_type']} size={d['size']} chunks={d['chunk_count']}")
+            for d in docs[: args.show_samples]:
+                print(
+                    f"   · #{d['id']:<5} [{d['class']:<18}] {d['file_name'][:52]}"
+                    f"  type={d['file_type']} size={d['size']} chunks={d['chunk_count']}"
+                )
             print()
 
         if args.report_json:
@@ -223,8 +225,7 @@ def main() -> int:
         n = 0
         for did in mark_ids:
             n += cur.execute(
-                "UPDATE documents SET index_status='failed' "
-                "WHERE id=? AND index_status='indexed'",
+                "UPDATE documents SET index_status='failed' WHERE id=? AND index_status='indexed'",
                 (did,),
             ).rowcount
         conn.commit()

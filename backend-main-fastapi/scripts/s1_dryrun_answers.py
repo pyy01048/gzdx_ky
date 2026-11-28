@@ -35,9 +35,7 @@ PRECISION_JSON = os.path.join(OUT_DIR, "alignment_precision.json")
 # ---------------------------------------------------------------- 切分后的洁净度检查
 
 # 任何残留的题库标记都必须清掉（切分后 answer 里不应出现）
-LEFTOVER_MARK = re.compile(
-    r"【答案】|【解析】|【详解】|【参考答案】|【分析】|查看答案|下一题"
-)
+LEFTOVER_MARK = re.compile(r"【答案】|【解析】|【详解】|【参考答案】|【分析】|查看答案|下一题")
 # 答案里出现"题号+题面"= 串题
 NEXT_STEM = re.compile(r"\n\s*\d{1,3}\s*[．.、]\s*[^\n]{4,}")
 # —— 串题的第二种形态：整段被压成单行，题号/大题标题/答案标记都黏在一起 ——
@@ -63,15 +61,15 @@ NARRATIVE_LEAD = re.compile(
     r"本题|上述|按照|利用)"
 )
 # 结论型答案至少应含一个等号或明确的集合/符号表达
-CONCLUSION_HINT = re.compile(
-    r"[=＝]|∑|Π|[（(]\s*\d+\s*,\s*\d+|[A-Za-z]\s*[′']?\s*[A-Za-z]"
-)
+CONCLUSION_HINT = re.compile(r"[=＝]|∑|Π|[（(]\s*\d+\s*,\s*\d+|[A-Za-z]\s*[′']?\s*[A-Za-z]")
 
 MAX_ANSWER_LEN = 200
 
 # 题干与答案的相关性校验：中文技术题答案至少应与题干共享若干实词
-_STOP = set("的是和与或及在对于下列如图所示已知试求问答题解一个可以采用"
-            "进行其中因为所以则就都而且不我们要它该此其如果需要将".split())
+_STOP = set(
+    "的是和与或及在对于下列如图所示已知试求问答题解一个可以采用"
+    "进行其中因为所以则就都而且不我们要它该此其如果需要将".split()
+)
 _TOKEN = re.compile(r"[A-Za-z]{2,}|[一-鿿]{2,6}|\d+")
 
 
@@ -241,8 +239,8 @@ def main() -> None:
     detail = []
     for r in probe:
         q = con.execute(
-            "SELECT id, source, content, answer, analysis, subject, chapter, is_junk "
-            "FROM quiz_questions WHERE id = ?", (r["id"],),
+            "SELECT id, source, content, answer, analysis, subject, chapter, is_junk FROM quiz_questions WHERE id = ?",
+            (r["id"],),
         ).fetchone()
         if q is None:
             L.append(f"[#{r['id']}] !! 题库中已不存在")
@@ -262,9 +260,11 @@ def main() -> None:
         stat["junk"] += 1 if q["is_junk"] else 0
         stat["dup"] += 1 if r["id"] in dup_ids else 0
 
-        L.append(f"[#{r['id']}]  {'✅ 可写库' if ok else '⚠️ 需人工'}"
-                 f"{'  [重复]' if r['id'] in dup_ids else ''}"
-                 f"{'  [is_junk=1]' if q['is_junk'] else ''}")
+        L.append(
+            f"[#{r['id']}]  {'✅ 可写库' if ok else '⚠️ 需人工'}"
+            f"{'  [重复]' if r['id'] in dup_ids else ''}"
+            f"{'  [is_junk=1]' if q['is_junk'] else ''}"
+        )
         L.append(f"  source(题来源)     : {q['source']}")
         L.append(f"  source_answer_doc  : {r['hit']}   ← 答案取自这份文档")
         L.append(f"  subject / chapter  : {q['subject']} / {q['chapter']}")
@@ -272,20 +272,31 @@ def main() -> None:
         L.append(f"  content 检查       : {'OK' if not c_issues else ' / '.join(c_issues)}")
         L.append(f"  answer 原样(对齐抽到): {raw_ans[:200]}")
         L.append(f"  answer 清洗后(将写入): {clean}")
-        L.append(f"  answer 检查        : {'OK' if not a_issues else ' / '.join(a_issues)}"
-                 f"   (题干/答案实词重合={rel}{'，公式型已豁免' if formulaic else ''})")
+        L.append(
+            f"  answer 检查        : {'OK' if not a_issues else ' / '.join(a_issues)}"
+            f"   (题干/答案实词重合={rel}{'，公式型已豁免' if formulaic else ''})"
+        )
         L.append("")
 
-        detail.append({
-            "id": r["id"], "source": q["source"], "source_answer_doc": r["hit"],
-            "subject": q["subject"], "chapter": q["chapter"], "is_junk": q["is_junk"],
-            "is_dup": r["id"] in dup_ids, "relevance": rel,
-            "formulaic": formulaic,
-            "answer_raw": raw_ans, "answer_clean": clean,
-            "answer_issues": a_issues, "content_issues": c_issues,
-            "content_unchanged": (q["content"] or "")[:300],
-            "ok": ok,
-        })
+        detail.append(
+            {
+                "id": r["id"],
+                "source": q["source"],
+                "source_answer_doc": r["hit"],
+                "subject": q["subject"],
+                "chapter": q["chapter"],
+                "is_junk": q["is_junk"],
+                "is_dup": r["id"] in dup_ids,
+                "relevance": rel,
+                "formulaic": formulaic,
+                "answer_raw": raw_ans,
+                "answer_clean": clean,
+                "answer_issues": a_issues,
+                "content_issues": c_issues,
+                "content_unchanged": (q["content"] or "")[:300],
+                "ok": ok,
+            }
+        )
 
     L.append("=" * 78)
     L.append("### 2. 干跑汇总")
@@ -312,8 +323,12 @@ def main() -> None:
     with open(os.path.join(OUT_DIR, "s1_dryrun_answers.txt"), "w", encoding="utf-8") as f:
         f.write(text)
     with open(os.path.join(OUT_DIR, "s1_dryrun_answers.json"), "w", encoding="utf-8") as f:
-        json.dump({"stat": dict(stat), "dup_groups": {k: v for k, v in dup_ans.items()},
-                   "rows": detail}, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {"stat": dict(stat), "dup_groups": {k: v for k, v in dup_ans.items()}, "rows": detail},
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
     print(text)
 
 

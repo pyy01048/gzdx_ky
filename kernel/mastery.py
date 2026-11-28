@@ -10,6 +10,7 @@
 to_display_4state 提供六态→四态回显（与 services/kp_mastery.py 的
 unlearned/learning/weak/mastered 标签一致）。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,8 +30,7 @@ MASTERY_MAP_4TO6: Mapping[str, Tuple[str, ...]] = {
 }
 
 #: 六态 → 四态回显（UI 继续显示旧口径）
-_TO_4STATE = {S0: "unlearned", S1: "learning", S2: "weak",
-              S3: "mastered", S4: "mastered", S5: "mastered"}
+_TO_4STATE = {S0: "unlearned", S1: "learning", S2: "weak", S3: "mastered", S4: "mastered", S5: "mastered"}
 
 #: 升降级允许的证据事件类型（source 权重：硬证据 > self_report）
 PROMOTE_EVENTS: Mapping[Tuple[str, str], FrozenSet[str]] = {
@@ -47,12 +47,11 @@ _SELF_REPORT_ONLY_BLOCKED = True
 @dataclass(frozen=True)
 class EvidenceEvent:
     event_id: str
-    type: str                 # v2.0 事件码（event_store.EVENT_MAP 值域）
-    source: str = "fsrs_review"   # quiz_result/fsrs_review/dictation/compliance/self_report/...
+    type: str  # v2.0 事件码（event_store.EVENT_MAP 值域）
+    source: str = "fsrs_review"  # quiz_result/fsrs_review/dictation/compliance/self_report/...
 
     def is_hard(self) -> bool:
-        return self.source in ("quiz_result", "fsrs_review", "dictation",
-                               "compliance")
+        return self.source in ("quiz_result", "fsrs_review", "dictation", "compliance")
 
 
 class MasteryError(ValueError):
@@ -64,16 +63,13 @@ def promote(state: str, evidence_event: Optional[EvidenceEvent]) -> str:
     if state not in _RANK:
         raise MasteryError(f"非法掌握态: {state!r}")
     if _RANK[state] == len(STATES_6) - 1:
-        return state    # S5 顶格不再升
+        return state  # S5 顶格不再升
     if evidence_event is None:
         raise MasteryError("升降级必须携带证据事件（规范 §3.3），拒绝无证据升级")
     allowed = PROMOTE_EVENTS.get((state, STATES_6[_RANK[state] + 1]))
     if evidence_event.type not in (allowed or frozenset()):
-        raise MasteryError(
-            f"事件类型 {evidence_event.type!r} 不支持 {state}→"
-            f"{STATES_6[_RANK[state] + 1]} 升级")
-    if _SELF_REPORT_ONLY_BLOCKED and not evidence_event.is_hard() \
-            and evidence_event.source == "self_report":
+        raise MasteryError(f"事件类型 {evidence_event.type!r} 不支持 {state}→{STATES_6[_RANK[state] + 1]} 升级")
+    if _SELF_REPORT_ONLY_BLOCKED and not evidence_event.is_hard() and evidence_event.source == "self_report":
         raise MasteryError("self_report 不能作为升级证据")
     return STATES_6[_RANK[state] + 1]
 
@@ -109,4 +105,4 @@ def from_4state(state4: str, *, has_hint_evidence: bool = False) -> str:
         return cand[0]
     if state4 == "learning":
         return S2 if has_hint_evidence else S1
-    return cand[0]   # mastered → S3（最低档回显，保守估算）
+    return cand[0]  # mastered → S3（最低档回显，保守估算）

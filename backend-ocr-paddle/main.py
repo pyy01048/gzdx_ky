@@ -5,14 +5,14 @@ PaddleOCR PP-OCRv5 独立微服务
 参考项目：https://github.com/tgtgwin/PaddleOCRFastAPI2
 """
 
+import base64
 import io
 import os
 import time
-import base64
 from typing import List, Optional
 
 import uvicorn
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -43,7 +43,9 @@ _SERVICE_TOKEN = os.getenv("COMPUTE_SERVICE_TOKEN", "").strip()
 async def _require_service_token(request, call_next):
     if _SERVICE_TOKEN and request.url.path != "/health":
         import hmac
+
         from fastapi.responses import JSONResponse
+
         if not hmac.compare_digest(request.headers.get("x-service-token", ""), _SERVICE_TOKEN):
             return JSONResponse({"detail": "invalid service token"}, status_code=401)
     return await call_next(request)
@@ -66,6 +68,7 @@ def get_ocr():
     _ocr_loading = True
     try:
         from paddleocr import PaddleOCR
+
         # PP-OCRv5 模型配置
         _ocr = PaddleOCR(
             use_angle_cls=True,
@@ -76,10 +79,7 @@ def get_ocr():
         return _ocr
     except ImportError:
         _ocr_loading = False
-        raise HTTPException(
-            status_code=500,
-            detail="PaddleOCR 未安装，请执行: pip install paddlepaddle paddleocr"
-        )
+        raise HTTPException(status_code=500, detail="PaddleOCR 未安装，请执行: pip install paddlepaddle paddleocr")
     except Exception as e:
         _ocr_loading = False
         raise HTTPException(status_code=500, detail=f"OCR 模型加载失败: {str(e)}")
@@ -88,8 +88,9 @@ def get_ocr():
 def image_to_base64(image) -> str:
     """将 PIL Image 或 numpy 数组转为 base64 字符串。"""
     try:
-        from PIL import Image
         import numpy as np
+        from PIL import Image
+
         if isinstance(image, np.ndarray):
             image = Image.fromarray(image)
         buffer = io.BytesIO()
@@ -106,8 +107,9 @@ def process_image(file_content: bytes, filename: str) -> OCRResult:
 
     try:
         # 读取图片
-        from PIL import Image
         import numpy as np
+        from PIL import Image
+
         image = Image.open(io.BytesIO(file_content))
         image_np = np.array(image)
 
@@ -120,7 +122,7 @@ def process_image(file_content: bytes, filename: str) -> OCRResult:
             for line in result[0]:
                 if line and len(line) >= 2:
                     text = line[1][0] if line[1] else ""
-                    confidence = line[1][1] if line[1] and len(line[1]) > 1 else 0
+                    line[1][1] if line[1] and len(line[1]) > 1 else 0
                     if text:
                         texts.append(text)
 
@@ -128,6 +130,7 @@ def process_image(file_content: bytes, filename: str) -> OCRResult:
         annotated_base64 = ""
         try:
             from PIL import ImageDraw
+
             annotated = image.copy()
             draw = ImageDraw.Draw(annotated)
             if result and result[0]:
@@ -164,8 +167,8 @@ def process_pdf(file_content: bytes, filename: str) -> OCRResult:
 
     try:
         import fitz  # PyMuPDF
-        from PIL import Image
         import numpy as np
+        from PIL import Image
 
         doc = fitz.open(stream=file_content, filetype="pdf")
         all_texts = []
@@ -194,6 +197,7 @@ def process_pdf(file_content: bytes, filename: str) -> OCRResult:
             try:
                 annotated = image.copy()
                 from PIL import ImageDraw
+
                 draw = ImageDraw.Draw(annotated)
                 if result and result[0]:
                     for line in result[0]:
@@ -298,12 +302,14 @@ async def ocr_batch(files: List[UploadFile] = File(...)):
             result = process_pdf(content, filename)
         else:
             result = process_image(content, filename)
-        results.append({
-            "filename": filename,
-            "result": result.result,
-            "detail_time": result.detail_time,
-            "error": result.error,
-        })
+        results.append(
+            {
+                "filename": filename,
+                "result": result.result,
+                "detail_time": result.detail_time,
+                "error": result.error,
+            }
+        )
 
     return {"total": len(results), "results": results}
 

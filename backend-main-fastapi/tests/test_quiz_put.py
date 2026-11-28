@@ -13,9 +13,30 @@
 2. PUT 不存在的 id 返回 404；
 3. GET /api/quiz/questions?question_type=xxx 只返回对应题型。
 """
+
 from __future__ import annotations
 
 import pytest
+from database import SessionLocal
+from sqlalchemy import text
+
+
+def _mark_validation_pass(question_id: int) -> None:
+    """T2 内容可用性门禁：出题接口只返回 validation_status='pass' 的题。
+
+    trg_quiz_questions_gate 触发器在 INSERT 时因 subject_id IS NULL 等条件设
+    validation_status='warn'。这里用 SQL 直接置 pass（UPDATE validation_status
+    不触发该触发器），让题能被 GET /api/quiz/questions 召回。
+    """
+    db = SessionLocal()
+    try:
+        db.execute(
+            text("UPDATE quiz_questions SET validation_status = 'pass' WHERE id = :qid"),
+            {"qid": question_id},
+        )
+        db.commit()
+    finally:
+        db.close()
 
 
 @pytest.fixture
@@ -36,6 +57,7 @@ def fresh_single_question(client):
     r = client.post("/api/quiz/questions", json=payload)
     assert r.status_code == 200, r.text
     qid = r.json()["id"]
+    _mark_validation_pass(qid)
     try:
         yield qid
     finally:
@@ -51,6 +73,10 @@ def test_put_updates_only_sent_fields(client, fresh_single_question):
         json={"analysis": "新解析-已更新", "difficulty": 5},
     )
     assert r.status_code == 200, r.text
+    # PUT 更新 analysis 触发 trg_quiz_questions_gate 重新计算 validation_status，
+    # 因 subject_id IS NULL 会回退为 'warn'，T2 门禁过滤后 GET 列表读不到题。
+    # 这里重新置 pass 模拟校验门通过。
+    _mark_validation_pass(qid)
     body = r.json()
 
     # 已传字段：新值生效
@@ -99,7 +125,8 @@ def test_get_filter_by_question_type(client):
         "/api/quiz/questions",
         json={
             "content": "QA-FILTER 判断题：地球是圆的。",
-            "answer": "对",
+            "options": ["对", "错"],
+            "answer": "A",
             "analysis": "QA",
             "subject": "QA-FILTER",
             "difficulty": 1,
@@ -109,11 +136,10 @@ def test_get_filter_by_question_type(client):
     )
     assert r.status_code == 200, r.text
     judge_id = r.json()["id"]
+    _mark_validation_pass(judge_id)
     try:
         # single 过滤：不应包含这道 judge 题
-        r_single = client.get(
-            "/api/quiz/questions", params={"question_type": "single", "page_size": 200}
-        )
+        r_single = client.get("/api/quiz/questions", params={"question_type": "single", "page_size": 200})
         assert r_single.status_code == 200, r_single.text
         single_items = r_single.json()["questions"]
         assert judge_id not in [q["id"] for q in single_items]

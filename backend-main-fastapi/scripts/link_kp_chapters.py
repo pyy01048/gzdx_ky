@@ -12,6 +12,7 @@
     python scripts/link_kp_chapters.py            # dry-run，只输出匹配统计与样例
     python scripts/link_kp_chapters.py --apply    # 落库（只更新 chapter_id/chapter）
 """
+
 from __future__ import annotations
 
 import os
@@ -24,8 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import psycopg  # noqa: E402
 from pipeline.config import pg_database_url  # noqa: E402
 
-CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7,
-          "八": 8, "九": 9, "十": 10}
+CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
 # 政治模块关键词 → 章节标题关键词（chapters：马原/毛中特与习思想/史纲/思修/形势）
 POLITICS_RULES = [
@@ -38,7 +38,7 @@ POLITICS_RULES = [
 
 _NUM_FULL = re.compile(r"第\s*([0-9一二三四五六七八九十]+)\s*章")
 _SEC_FULL = re.compile(r"第\s*([0-9一二三四五六七八九十]+)\s*节")
-_SUB_NUM = re.compile(r"^(\d+)(?:\.\d+)+")          # 1.2.6 → 章 1
+_SUB_NUM = re.compile(r"^(\d+)(?:\.\d+)+")  # 1.2.6 → 章 1
 _NOISE_RE = re.compile(r"^[\s0-9.。,，、;；:：!！?？\-—~×xXoOIll]+$")
 
 
@@ -72,19 +72,19 @@ def parse_kp_chapter(raw: str) -> dict:
     m = _NUM_FULL.search(t)
     if m:
         num = cn2int(m.group(1))
-        core = t[m.end():]
+        core = t[m.end() :]
     elif _SEC_FULL.search(t):
         # 第X节 → 章号未知，交给标题核；剥前缀
         m2 = _SEC_FULL.search(t)
-        core = t[m2.end():]
+        core = t[m2.end() :]
     else:
         m3 = _SUB_NUM.match(t)
         if m3:
-            return {"num": int(m3.group(1)), "core": t[m3.end():], "subnum": True, "noise": False}
+            return {"num": int(m3.group(1)), "core": t[m3.end() :], "subnum": True, "noise": False}
         m4 = re.match(r"^([0-9一二三四五六七八九十]+)[、.．]", t)
         if m4:
             num = cn2int(m4.group(1))
-            core = t[m4.end():]
+            core = t[m4.end() :]
     core = core.strip("。 ，,、;；:：-—()（）·.．")
     if _NOISE_RE.match(core) or (len(core) < 4 and num is None):
         core = ""
@@ -96,18 +96,18 @@ def chapter_core(title: str) -> tuple[int | None, str]:
     t = _norm(title)
     m = _NUM_FULL.search(t)
     if m:
-        return cn2int(m.group(1)), t[m.end():]
+        return cn2int(m.group(1)), t[m.end() :]
     m = re.match(r"^ch0*(\d+)", t)
     if m:
-        return int(m.group(1)), t[m.end():].strip("·.．")
+        return int(m.group(1)), t[m.end() :].strip("·.．")
     return None, t
 
 
 def bigram_sim(a: str, b: str) -> float:
     if len(a) < 2 or len(b) < 2:
         return 1.0 if (a and b and (a in b or b in a)) else 0.0
-    ga = {a[i:i + 2] for i in range(len(a) - 1)}
-    gb = {b[i:i + 2] for i in range(len(b) - 1)}
+    ga = {a[i : i + 2] for i in range(len(a) - 1)}
+    gb = {b[i : i + 2] for i in range(len(b) - 1)}
     if not ga or not gb:
         return 0.0
     inter = len(ga & gb)
@@ -121,10 +121,9 @@ def main() -> int:
         cur.execute("""SELECT s.name, s.id, c.id, c.title FROM subject_chapters c
                        JOIN subjects s ON c.subject_id = s.id WHERE c.is_active ORDER BY s.name, c.sort_order""")
         chapters_by_subject: dict[str, list] = {}
-        for sname, sid, cid, title in cur.fetchall():
+        for sname, _sid, cid, title in cur.fetchall():
             n, core = chapter_core(title)
-            chapters_by_subject.setdefault(sname, []).append(
-                {"id": cid, "num": n, "core": _norm(core), "title": title})
+            chapters_by_subject.setdefault(sname, []).append({"id": cid, "num": n, "core": _norm(core), "title": title})
 
         cur.execute("""SELECT id, subject, COALESCE(chapter,'') FROM knowledge_points
                        WHERE chapter_id IS NULL ORDER BY id""")
@@ -147,9 +146,12 @@ def main() -> int:
 
             # —— 政治模块关键词 ——
             if subject == "政治" and info["core"]:
-                hits = {c["id"]: c for c in chs
-                        for pat, key in POLITICS_RULES
-                        if re.search(pat, info["core"]) and key in c["title"]}
+                hits = {
+                    c["id"]: c
+                    for c in chs
+                    for pat, key in POLITICS_RULES
+                    if re.search(pat, info["core"]) and key in c["title"]
+                }
                 if len(hits) == 1:
                     c = next(iter(hits.values()))
                     updates.append((kid, c["id"], c["title"]))
@@ -204,7 +206,8 @@ def main() -> int:
         if apply and updates:
             cur.executemany(
                 "UPDATE knowledge_points SET chapter_id=%s, chapter=%s WHERE id=%s",
-                [(cid, title, kid) for kid, cid, title in updates])
+                [(cid, title, kid) for kid, cid, title in updates],
+            )
             conn.commit()
             print(f"已落库 {cur.rowcount} 条")
         else:

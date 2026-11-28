@@ -29,6 +29,7 @@
   python scripts/plan_merge_duplicate_schools.py# 输出方案 + SQL 草案
   python scripts/plan_merge_duplicate_schools.py --sql     # 只打印 SQL
 """
+
 import argparse
 import os
 import sqlite3
@@ -58,7 +59,7 @@ def backup_db(tag: str) -> str:
     src = sqlite3.connect(DB)
     out = sqlite3.connect(dst)
     try:
-        src.backup(out)          # WAL 模式必须用 backup() API
+        src.backup(out)  # WAL 模式必须用 backup() API
     finally:
         out.close()
         src.close()
@@ -99,7 +100,7 @@ COMMIT;
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sql", action="store_true", help="只打印 SQL 草案")
-    args = ap.parse_args()
+    ap.parse_args()
 
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
@@ -110,33 +111,34 @@ def main():
     all_clean = True
     for keep_id, dup_id, keep_name, dup_name in PAIRS:
         counts = {}
-        for t in ("kaoyan_colleges", "kaoyan_majors",
-                  "kaoyan_admissions", "school_aliases"):
-            counts[t] = conn.execute(
-                f"SELECT COUNT(*) FROM {t} WHERE school_id=?", (dup_id,)
-            ).fetchone()[0]
+        for t in ("kaoyan_colleges", "kaoyan_majors", "kaoyan_admissions", "school_aliases"):
+            counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t} WHERE school_id=?", (dup_id,)).fetchone()[0]
         empty = all(v == 0 for v in counts.values())
         all_clean &= empty
 
-        keep = conn.execute(
-            "SELECT * FROM kaoyan_schools WHERE id=?", (keep_id,)).fetchone()
-        dup = conn.execute(
-            "SELECT * FROM kaoyan_schools WHERE id=?", (dup_id,)).fetchone()
+        keep = conn.execute("SELECT * FROM kaoyan_schools WHERE id=?", (keep_id,)).fetchone()
+        dup = conn.execute("SELECT * FROM kaoyan_schools WHERE id=?", (dup_id,)).fetchone()
 
         print(f"\n【{keep_name}】")
-        print(f"  实体 id={keep_id}: level={keep['level']} "
-              f"intro={len(keep['intro'] or '')}字 "
-              f"官网={'有' if keep['official_url'] else '无'} "
-              f"source={keep['data_source']}")
-        print(f"  空壳 id={dup_id}: level={dup['level']} "
-              f"intro={len(dup['intro'] or '')}字 "
-              f"官网={'有' if dup['official_url'] else '无'} "
-              f"source={dup['data_source']}")
-        print(f"  空壳引用计数: colleges={counts['kaoyan_colleges']} "
-              f"majors={counts['kaoyan_majors']} "
-              f"admissions={counts['kaoyan_admissions']} "
-              f"aliases={counts['school_aliases']}"
-              f"{'  → 0 引用，可安全删除' if empty else '  → ⚠ 有引用，需人工处理'}")
+        print(
+            f"  实体 id={keep_id}: level={keep['level']} "
+            f"intro={len(keep['intro'] or '')}字 "
+            f"官网={'有' if keep['official_url'] else '无'} "
+            f"source={keep['data_source']}"
+        )
+        print(
+            f"  空壳 id={dup_id}: level={dup['level']} "
+            f"intro={len(dup['intro'] or '')}字 "
+            f"官网={'有' if dup['official_url'] else '无'} "
+            f"source={dup['data_source']}"
+        )
+        print(
+            f"  空壳引用计数: colleges={counts['kaoyan_colleges']} "
+            f"majors={counts['kaoyan_majors']} "
+            f"admissions={counts['kaoyan_admissions']} "
+            f"aliases={counts['school_aliases']}"
+            f"{'  → 0 引用，可安全删除' if empty else '  → ⚠ 有引用，需人工处理'}"
+        )
 
     print("\n" + "=" * 78)
     if all_clean:
@@ -176,8 +178,7 @@ def main():
 """)
 
     # 输出可直接执行的 SQL 文件（供 team-lead 审核后跑）
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "_merge_duplicate_schools.sql")
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_merge_duplicate_schools.sql")
     with open(out, "w", encoding="utf-8") as f:
         f.write("-- 6 组重复院校合并 SQL（草案，需审核后手动执行）\n")
         f.write(f"-- 生成时间: {datetime.now():%Y-%m-%d %H:%M:%S}\n")

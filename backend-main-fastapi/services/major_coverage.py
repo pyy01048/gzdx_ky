@@ -3,11 +3,12 @@
 
 口径与 scripts/build_major_kb_link.py 的 L1 完全一致：只按**专业课名与
 documents.subject 精确相等**匹配，绝不用数学/英语/政治这类人人必考的公共课
-（拿它匹配覆盖率会虚高到 98%，等于没信息量）。这里复制而非 import 那个脚本：
-脚本在模块级重配置 stdout 编码，服务进程不该带这个副作用。
+（拿它匹配覆盖率会虚高到 98%，等于没信息量）。解析逻辑由本服务统一提供，
+建链脚本直接复用；服务进程不触发脚本顶层 stdout 重配置副作用。
 
 不做的事：不猜"专业代码 → 学科"的映射。语料里没有的科目就如实报未覆盖。
 """
+
 from __future__ import annotations
 
 import json
@@ -24,8 +25,18 @@ _NOISE_RE = re.compile(r"[（(][^）)]*[）)]")
 
 #: 公共课：人人必考，用于匹配等于没匹配
 PUBLIC_SUBJECTS = {
-    "政治", "英语", "英语一", "英语二", "数学", "数学一", "数学二", "数学三",
-    "英语或俄语", "英语或俄语或日语", "日语", "俄语",
+    "政治",
+    "英语",
+    "英语一",
+    "英语二",
+    "数学",
+    "数学一",
+    "数学二",
+    "数学三",
+    "英语或俄语",
+    "英语或俄语或日语",
+    "日语",
+    "俄语",
 }
 
 #: 弃权/未打标学科没有覆盖语义（chunk 打标把垃圾块判成"其他"）
@@ -38,8 +49,10 @@ _VACUOUS = {"其他", "其它", "未知", "未分类", "真题综合"}
 _PUB_MATH_RE = re.compile(r"^(?:自命题)?数学(?:[一二三123]|[（(][一二三][）)])?$")
 _LANG = "(?:英语|日语|俄语|德语|外国语)"
 _PUB_LANG_RE = re.compile(r"^(?:自命题)?" + _LANG + r"(?:或(?:自命题)?" + _LANG + r")*$")
-_PUB_POL_RE = re.compile(r"^(?:自命题)?(?:思想政治理论|思想道德修养与法律基础|"
-                         r"毛泽东思想和中国特色社会主义理论体系概论)$")
+_PUB_POL_RE = re.compile(
+    r"^(?:自命题)?(?:思想政治理论|思想道德修养与法律基础|"
+    r"毛泽东思想和中国特色社会主义理论体系概论)$"
+)
 
 #: 覆盖分档：只描述"库里有多少篇"，不评价"够不够刷题"
 MIN_DOCUMENTS = 5
@@ -52,11 +65,12 @@ def _norm(s) -> str:
 def decode_subjects(raw) -> list:
     """把 kaoyan_majors.exam_subjects 解析成科目名列表。
 
-    库内格式陷阱：可能是 ' | ' 拼接的 JSON 字符串，也可能已是 JSON 数组。
+    库内格式陷阱：可能是 ' | ' 拼接的 JSON 字符串，也可能已是 JSON 数组；
+    数组元素可能是字符串，也可能是 {code, name} / {name, label} 对象。
     """
     if not raw:
         return []
-    if isinstance(raw, (list, dict)):
+    if isinstance(raw, list | dict):
         data = raw
     else:
         try:
@@ -65,12 +79,16 @@ def decode_subjects(raw) -> list:
             data = raw
     if isinstance(data, str):
         data = [data]
+    elif isinstance(data, dict):
+        data = [data]
     if not isinstance(data, list):
         return []
     out = []
     for item in data:
+        if isinstance(item, dict):
+            item = item.get("name") or item.get("label") or ""
         for seg in re.split(r"\s*\|\s*", str(item)):
-            seg = _CODE_RE.sub("", seg).strip()   # 剥 (301) 科目代码前缀
+            seg = _CODE_RE.sub("", seg).strip()  # 剥 (301) 科目代码前缀
             seg = _NOISE_RE.sub("", seg).strip()  # 剥（含..）等括注
             seg = _norm(seg)
             if seg:
@@ -127,19 +145,24 @@ def subject_supply(db: Session) -> Dict[str, dict]:
     from models import Document, KnowledgeChunk
 
     supply: Dict[str, dict] = {}
-    for subj, n in (db.query(Document.subject, func.count(Document.id))
-                      .filter(Document.subject.isnot(None))
-                      .group_by(Document.subject).all()):
+    for subj, n in (
+        db.query(Document.subject, func.count(Document.id))
+        .filter(Document.subject.isnot(None))
+        .group_by(Document.subject)
+        .all()
+    ):
         k = _norm(subj)
         if not k or k in _VACUOUS:
             continue
         supply.setdefault(k, {"documents": 0, "chunks": 0, "_conf": 0.0})
         supply[k]["documents"] += int(n or 0)
 
-    for subj, n, avg in (db.query(KnowledgeChunk.subject, func.count(KnowledgeChunk.id),
-                                  func.avg(KnowledgeChunk.classify_confidence))
-                           .filter(KnowledgeChunk.subject.isnot(None))
-                           .group_by(KnowledgeChunk.subject).all()):
+    for subj, n, avg in (
+        db.query(KnowledgeChunk.subject, func.count(KnowledgeChunk.id), func.avg(KnowledgeChunk.classify_confidence))
+        .filter(KnowledgeChunk.subject.isnot(None))
+        .group_by(KnowledgeChunk.subject)
+        .all()
+    ):
         k = _norm(subj)
         if not k or k in _VACUOUS:
             continue
@@ -148,8 +171,7 @@ def subject_supply(db: Session) -> Dict[str, dict]:
         e["_conf"] += float(avg or 0.0) * int(n or 0)
 
     for k, e in list(supply.items()):
-        e["avg_confidence"] = (round(e.pop("_conf") / e["chunks"], 4)
-                               if e["chunks"] else None)
+        e["avg_confidence"] = round(e.pop("_conf") / e["chunks"], 4) if e["chunks"] else None
     return supply
 
 
@@ -170,19 +192,25 @@ def coverage_for(raw_exam_subjects, supply: Dict[str, dict]) -> dict:
     }
 
 
-def school_coverage(db: Session, supply: Dict[str, dict], school_ids) -> Dict[int, Counter]:
-    """按院校聚合专业覆盖计数：school_id → Counter(majors/covered/thin/unindexed/uncovered)。
-
-    majors 只数"有专业课"的专业（只考公共课的不计入分母，否则覆盖率被稀释）。
-    """
+def school_coverage(
+    db: Session,
+    supply: Dict[str, dict],
+    school_ids,
+    subject_code: Optional[str] = None,
+) -> Dict[int, Counter]:
+    """按院校聚合专业覆盖计数；传专业代码时只统计匹配专业。"""
     from models import KaoyanMajor
 
     ids = [int(i) for i in school_ids if i is not None]
     if not ids:
         return {}
     out: Dict[int, Counter] = {}
-    rows = (db.query(KaoyanMajor.school_id, KaoyanMajor.exam_subjects)
-              .filter(KaoyanMajor.school_id.in_(ids)).all())
+    major_q = db.query(KaoyanMajor.school_id, KaoyanMajor.exam_subjects).filter(KaoyanMajor.school_id.in_(ids))
+    if subject_code:
+        code = str(subject_code).strip().upper()
+        condition = KaoyanMajor.code.like(f"{code}%") if len(code) <= 4 else KaoyanMajor.code == code
+        major_q = major_q.filter(condition)
+    rows = major_q.all()
     for sid, raw in rows:
         c = out.setdefault(int(sid), Counter())
         ps = professional_subject(decode_subjects(raw))
@@ -211,7 +239,7 @@ def coverage_summary(db: Session, supply: Dict[str, dict]) -> dict:
 
     total = with_prof = covered = thin = unindexed = 0
     gaps: Counter = Counter()
-    for raw, in db.query(KaoyanMajor.exam_subjects).all():
+    for (raw,) in db.query(KaoyanMajor.exam_subjects).all():
         total += 1
         ps = professional_subject(decode_subjects(raw))
         if not ps:

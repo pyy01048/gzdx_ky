@@ -17,27 +17,25 @@ from services.learning_analytics_service import LearningAnalyticsService
 from services.study_event_service import learning_summary
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
+from utils.security import current_user
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 
 def _optional_user_id(request: Request, db: Session):
-    """可选登录态：有 token 就按用户收窄，没有/失效则保持匿名全库口径。
+    """无 token 保持匿名口径；携带 token 时必须验证为用户，失效时返回 401。"""
+    from utils.security import ACCESS_COOKIE, _bearer, decode_token, load_token_user
 
-    学习统计的资产表（tasks/flashcards/words/error_records）都带 ``user_id``，
-    此前 analytics 一律全库计数——多用户下"我的学习数据"会算进别人的。
-    这里不强制登录（保留脚本/巡检的匿名调用），只在带 token 时按人过滤。
-    """
-    try:
-        from utils.security import ACCESS_COOKIE, _bearer, decode_token, load_token_user
-
-        token = _bearer(request) or request.cookies.get(ACCESS_COOKIE)
-        if not token:
-            return None
-        user = load_token_user(db, decode_token(token, "access"))
-        return getattr(user, "id", None)
-    except Exception:  # noqa: BLE001 - 可选登录态解析失败不能影响统计
+    token = _bearer(request) or request.cookies.get(ACCESS_COOKIE)
+    if not token:
         return None
+    try:
+        user = load_token_user(db, decode_token(token, "access"))
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="未登录或登录已过期") from exc
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录或登录已过期")
+    return getattr(user, "id", None)
 
 
 # ---------------------------------------------------------------------------
@@ -74,11 +72,15 @@ class EssayGradeRequest(BaseModel):
 
 
 @router.post("/errors/{error_id}/analyze")
-async def analyze_error(error_id: int, db: Session = Depends(get_db)):
-    """AI分析单道错题，生成错误原因、详细解析、知识点链接和变式题建议。"""
+async def analyze_error(
+    error_id: int,
+    user=Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """AI分析本人单道错题，生成错误原因、详细解析、知识点链接和变式题建议。"""
     service = LearningAnalyticsService(db)
     try:
-        result = await service.analyze_error(error_id)
+        result = await service.analyze_error(error_id, user_id=user.id)
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -88,6 +90,7 @@ async def analyze_error(error_id: int, db: Session = Depends(get_db)):
 
 @router.get("/weak-points")
 async def get_weak_points(
+    request: Request,
     subject: str | None = None,
     limit: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -97,9 +100,10 @@ async def get_weak_points(
     考点名单来自 ``services/error_linker.weak_points_view``，与仪表盘 D-10、
     学习画像 TOP10、今日洞察是同一份；`subject` 为空时给出全学科名单。
     """
+    uid = _optional_user_id(request, db)
     service = LearningAnalyticsService(db)
     try:
-        result = service.diagnose_weak_points(subject=subject, limit=limit)
+        result = service.diagnose_weak_points(subject=subject, limit=limit, user_id=uid)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"考点诊断失败: {str(e)}") from e
@@ -116,10 +120,10 @@ async def get_learning_traces(
     额外附带 ``study_events`` 行为流水汇总（真实耗时 / 答题事件 / 连续天数），
     与业务表台账互为补充：台账回答"完成了多少"，埋点回答"实际学了多久"。
     """
+    uid = _optional_user_id(request, db)
     service = LearningAnalyticsService(db)
     try:
-        result = service.get_learning_traces(days=days)
-        uid = _optional_user_id(request, db) if request is not None else None
+        result = service.get_learning_traces(days=days, user_id=uid)
         result["study_events"] = learning_summary(db, user_id=uid, days=days)
         return result
     except Exception as e:
@@ -138,8 +142,8 @@ async def get_study_summary(
     ``study_events`` 行为流水（真实学习分钟、答题事件、活跃天数、连续天数）。
     带登录 token 时按用户过滤；匿名调用保持全库口径（兼容巡检脚本）。
     """
+    uid = _optional_user_id(request, db)
     try:
-        uid = _optional_user_id(request, db) if request is not None else None
         return learning_summary(db, user_id=uid, days=days or None)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"学习数据汇总失败: {str(e)}") from e
@@ -147,15 +151,17 @@ async def get_study_summary(
 
 @router.post("/report")
 async def generate_study_report(
+    http_request: Request,
     request: StudyReportRequest,
     db: Session = Depends(get_db),
 ):
     """生成学习报告（周报/月报），包含AI总结、学习数据、薄弱考点和学习建议。"""
     if request.report_type not in ["weekly", "monthly"]:
         raise HTTPException(status_code=400, detail="report_type 应为 weekly 或 monthly")
+    uid = _optional_user_id(http_request, db)
     service = LearningAnalyticsService(db)
     try:
-        result = await service.generate_study_report(report_type=request.report_type)
+        result = await service.generate_study_report(report_type=request.report_type, user_id=uid)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"学习报告生成失败: {str(e)}") from e
@@ -188,11 +194,11 @@ async def get_analytics_overview(request: Request, db: Session = Depends(get_db)
     业务表台账（任务 / 答题 / 错题）与 ``study_events`` 行为流水并用：
     台账缺失时（例如尚未回填历史数据）不会把"实际学过"直接显示成 0。
     """
+    uid = _optional_user_id(request, db)
     service = LearningAnalyticsService(db)
     try:
-        uid = _optional_user_id(request, db)
-        traces = service.get_learning_traces(days=7)
-        diagnosis = service.diagnose_weak_points(limit=5)
+        traces = service.get_learning_traces(days=7, user_id=uid)
+        diagnosis = service.diagnose_weak_points(limit=5, user_id=uid)
         events = learning_summary(db, user_id=uid, days=7)
         return {
             # 连续天数：台账优先，台账为 0 时回退到埋点流水

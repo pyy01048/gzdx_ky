@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 """验证 due_words 增强（只读）。"""
-import sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+import io
+import sys
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 sys.path.insert(0, r"D:\平台\backend-main-fastapi")
 from database import SessionLocal
-from models import User
 from routers.words import due_words
+
+from models import User
 
 db = SessionLocal()
 try:

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { useAuth } from '../../auth/AuthContext'
@@ -27,6 +27,7 @@ const num = (value, digits = 1) => {
   return value == null || value === '' || !Number.isFinite(n) ? '—' : n.toFixed(digits)
 }
 
+/** 从 URL search 还原推荐请求参数；score 非法时返回 null 以触发引导态。 */
 export function recommendParamsFromSearch(searchParams) {
   const score = Number(searchParams.get('score'))
   if (!Number.isInteger(score) || score <= 0 || score > 500) return null
@@ -137,7 +138,7 @@ export default function KaoyanRecommendDetail() {
     (admissions.items || []).filter((row) => !result?.year || Number(row.year) === Number(result.year))
   ), [admissions.items, result?.year])
 
-  const setGoal = async () => {
+  const setGoal = useCallback(async () => {
     if (!user) return
     const current = ++goalSeq.current
     setGoalBusy(true)
@@ -154,7 +155,7 @@ export default function KaoyanRecommendDetail() {
     } finally {
       if (current === goalSeq.current) setGoalBusy(false)
     }
-  }
+  }, [user, schoolId, params?.score, item?.name, school?.name])
 
   if (!params || !validSchool) {
     return (

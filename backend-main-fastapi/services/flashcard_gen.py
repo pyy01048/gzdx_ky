@@ -5,12 +5,14 @@
 无定义时退化为「科目｜章节」并附考频信息，保证每张卡背面有可复习内容。
 默认跳过已有关联（knowledge_point_id 已存在）的卡片，避免重复生成。
 """
+
 from types import SimpleNamespace
 from typing import Optional
 
-from models import Flashcard, KnowledgePoint
 from sqlalchemy.orm import Session
 from utils.scope import scoped
+
+from models import Flashcard, KnowledgePoint
 
 
 def _scoped_uid(model, user_id: Optional[int]):

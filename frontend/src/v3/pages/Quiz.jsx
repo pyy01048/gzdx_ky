@@ -31,7 +31,7 @@ import '../styles/quiz-container.css'
  * 纯函数/存储工具集中维护于 quizShared.js，此处转供以保持既有导入面不变。
  * ===================================================================== */
 export default function Quiz() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const routeParams = useParams()
   const urlSubject = searchParams.get('subject') || ''
   /* 真题深链：/exam/:year/:paper/:qno —— 刷新/分享都能回到同一套卷、同一题 */
@@ -44,6 +44,7 @@ export default function Quiz() {
      存在 kp_id 时按知识点拉题，否则保持原有 subject/chapter 降级逻辑不变。 */
   const urlKpId = searchParams.get('kp_id') || ''
   const urlKpName = searchParams.get('kp_name') || ''
+  const urlSessionId = Number(searchParams.get('session_id')) || null
 
   /* ---------- M0 刷题中心：来源大类（真题 / 教材题 分页隔离） ---------- */
   /* 默认 'exam'：真题与教材题**不混在一个列表里**；用户显式切到 'all' 才混合。 */
@@ -66,6 +67,43 @@ export default function Quiz() {
   const [basis, setBasis] = useState(null)
   const [records, setRecords] = useState({})        // 已判分 {qid:{correct,selected,correctAnswer,analysis}}
   const startedFromRef = useRef(null)               // 记录会话来源，便于「再练一次」
+  const restoredSessionRef = useRef(null)
+
+  /** 从后端恢复刷题会话：把保存的 records/basis/questions 重新装入并跳到练习视图。
+   *  @param {object} data - getSession 返回的会话快照
+   *  @returns {boolean} 是否恢复成功 */
+  const restoreSession = useCallback((data) => {
+    if (!data?.session_id || !Array.isArray(data.questions) || !data.questions.length) return false
+    const savedErrorLinks = Object.fromEntries(
+      Object.entries(data.basis?.question_error_ids || {})
+        .filter(([qid, errorId]) => Number(errorId) > 0 && data.question_ids?.some((id) => String(id) === String(qid)))
+        .map(([qid, errorId]) => [qid, Number(errorId)]),
+    )
+    const next = {
+      ...data,
+      question_error_ids: savedErrorLinks,
+      mode: data.mode === 'memorize' ? 'memorize' : 'practice',
+      startIdx: data.current_index || 0,
+    }
+    const nextRecords = Object.fromEntries(Object.entries(data.records || {}).map(([qid, record]) => [qid, {
+      ...record,
+      selected: record.user_answer ?? record.my_answer ?? '',
+      syncStatus: 'synced',
+      syncError: '',
+    }]))
+    setSession(next)
+    setRecords(nextRecords)
+    setBasis(data.basis || null)
+    startedFromRef.current = { title: next.title, questions: next.questions, mode: next.mode }
+    restoredSessionRef.current = next.session_id
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      params.set('session_id', String(next.session_id))
+      return params
+    }, { replace: true })
+    setView('practice')
+    return true
+  }, [setSearchParams])
 
   /* ---------- 收藏 / 知识点筛选标识 / 讲题模式（跨视图共享） ---------- */
   const [favs, setFavs] = useState(loadFavs)
@@ -74,8 +112,8 @@ export default function Quiz() {
   const [kpEmpty, setKpEmpty] = useState(null)
   const [tutorMode, setTutorMode] = useState('auto')
 
-  /* 收藏切换 */
-  const toggleFav = (q) => {
+  /** 收藏切换：把题目加入或移出本地收藏快照并持久化 */
+  const toggleFav = useCallback((q) => {
     setFavs((prev) => {
       const next = { ...prev }
       if (next[q.id]) delete next[q.id]
@@ -83,7 +121,7 @@ export default function Quiz() {
       saveFavs(next)
       return next
     })
-  }
+  }, [])
 
   /* 判分结果写回（QuizPractice → 容器，供 Result 复盘消费） */
   const onRecord = useCallback((qid, entry) => {
@@ -91,27 +129,72 @@ export default function Quiz() {
   }, [])
 
   /* ================= 会话开始 ================= */
-  const beginSession = useCallback((title, questions, modeUsed, startIdx = 0, noAnswer = false, basisInfo = null) => {
+  /** 创建并进入一场练习会话：本地占位 → 后端 createSession → 装入并切到练习视图。
+   *  @param {string} title - 会话标题
+   *  @param {Array} questions - 题目列表（已 normQ 归一化）
+   *  @param {string} [modeUsed] - practice | memorize
+   *  @param {number} [startIdx=0] - 起始题下标
+   *  @param {boolean} [noAnswer=false] - 浏览模式（无标准答案，不判分）
+   *  @param {object} [basisInfo=null] - 会话来源元数据，用于复盘与重练 */
+  const beginSession = useCallback(async (title, questions, modeUsed, startIdx = 0, noAnswer = false, basisInfo = null) => {
     if (!questions || !questions.length) { toast('当前筛选条件下暂无题目'); return }
     const si = Math.max(0, Math.min(startIdx, questions.length - 1))
-    setSession({ title, questions, mode: modeUsed || mode, noAnswer, startIdx: si })
-    /* 依据明示：本次练习的来源/科目/知识点/可作答口径，练习页顶部原样展示 */
-    setBasis(basisInfo)
+    const sessionBasis = basisInfo ? { ...basisInfo } : null
+    if (sessionBasis?.kind === 'error_review') {
+      sessionBasis.question_error_ids = Object.fromEntries(
+        questions.map((q) => [String(q.id), q.error_id]).filter(([, errorId]) => Number(errorId) > 0),
+      )
+    }
+    const localSession = {
+      session_id: null, title, questions, mode: modeUsed || mode, noAnswer, startIdx: si,
+      current_index: si, version: 1, drafts: {}, text_drafts: {}, self_scores: {}, marked: {},
+      duration_seconds: 0, records: {}, basis: sessionBasis,
+      question_error_ids: sessionBasis?.question_error_ids || {},
+    }
+    let next = localSession
+    try {
+      const saved = await quizApi.createSession({
+        question_ids: questions.map((q) => Number(q.id)),
+        title, mode: modeUsed || mode, no_answer: noAnswer,
+        basis: sessionBasis, filters: sessionBasis || {}, knowledge_point_ids: [], start_index: si,
+      })
+      if (!saved?.session_id || !Array.isArray(saved.questions) || !saved.questions.length) throw new Error('会话响应不完整')
+      next = {
+        ...saved,
+        startIdx: si,
+        question_error_ids: Object.fromEntries(
+          Object.entries(saved.basis?.question_error_ids || {}).filter(([qid]) => saved.question_ids?.some((id) => String(id) === String(qid))),
+        ),
+      }
+    } catch (e) {
+      if (sessionBasis?.kind === 'error_review' || sessionBasis?.kind === 'engineering08') throw e
+      toast(`已进入练习，但进度暂无法保存：${e?.message || '后端不可用'}`)
+    }
+    setSession(next)
+    setBasis(sessionBasis)
     setRecords({})
     startedFromRef.current = { title, questions, mode: modeUsed || mode }
+    if (next.session_id) {
+      restoredSessionRef.current = next.session_id
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev)
+        params.set('session_id', String(next.session_id))
+        return params
+      }, { replace: true })
+    }
     setView('practice')
     window.scrollTo({ top: 0 })
-  }, [mode])
+  }, [mode, setSearchParams])
 
-  /* 按筛选条件向后端拉题并开始（真题/教材题分区 · 知识点精确 · 章节 · 整科）。
+  /** 按筛选条件向后端拉题并开始（真题/教材题分区 · 知识点精确 · 章节 · 整科）。
 
-     统一口径（M0）：所有入口只走这**一个** quizApi.questions 调用，参数收敛为
-     `subject / source_kind / answerable / kp_id / chapter / question_type / year / paper / mode`。
-     source_kind 由顶部「历年真题 / 教材题 / 全部来源」Tab 决定（真题与教材题默认分离）。
+      统一口径（M0）：所有入口只走这**一个** quizApi.questions 调用，参数收敛为
+      `subject / source_kind / answerable / kp_id / chapter / question_type / year / paper / mode`。
+      source_kind 由顶部「历年真题 / 教材题 / 全部来源」Tab 决定（真题与教材题默认分离）。
 
-     科目严格隔离（双保险）：后端已按 subject 精确过滤，这里再做一次**前端一致性校验**——
-     凡返回题目 subject 与请求 subject 不一致的（历史脏数据/关联串科目）直接剔除并提示，
-     杜绝「切到数电却刷出政治题」的混用。 */
+      科目严格隔离（双保险）：后端已按 subject 精确过滤，这里再做一次**前端一致性校验**——
+      凡返回题目 subject 与请求 subject 不一致的（历史脏数据/关联串科目）直接剔除并提示，
+      杜绝「切到数电却刷出政治题」的混用。 */
   const startWithFilter = useCallback(async ({ subject, chapter, question_type, kp_id, kp_name, title, source_kind }) => {
     setSubmitting(true)
     const sk = source_kind !== undefined ? source_kind : sourceKind
@@ -196,7 +279,7 @@ export default function Quiz() {
         totalCount: totalCount || qs.length,
         dropped,
       }
-      beginSession(title, qs, mode, 0, noAnswer, basisInfo)
+      await beginSession(title, qs, mode, 0, noAnswer, basisInfo)
     } catch (e) {
       setBackendOk(false)
       /* 后端不可用时不启动会话。以前这里塞两道本地演示题（LOCAL_FALLBACK）：
@@ -228,6 +311,21 @@ export default function Quiz() {
     return () => { alive = false }
   }, [])
 
+  useEffect(() => {
+    if (!urlSessionId || restoredSessionRef.current === urlSessionId) return
+    restoredSessionRef.current = urlSessionId
+    let alive = true
+    ;(async () => {
+      try {
+        const data = await quizApi.getSession(urlSessionId)
+        if (alive && !restoreSession(data)) toast('该刷题会话已结束或不存在')
+      } catch (e) {
+        if (alive) toast(`刷题进度恢复失败：${e?.message || '后端不可用'}`)
+      }
+    })()
+    return () => { alive = false }
+  }, [urlSessionId, restoreSession])
+
   /* 真题深链：/exam/2024/数学一/3 直接载入整套并定位第 3 题。
      数据仍走 /api/quiz/questions 的 year/paper 过滤，不另造一套真题数据源。 */
   useEffect(() => {
@@ -253,7 +351,7 @@ export default function Quiz() {
         const qs = rows.map(normQ)
         const startIdx = Math.max(0, Math.min((parseInt(urlQno, 10) || 1) - 1, qs.length - 1))
         const title = [urlYear && `${urlYear} 年`, urlPaper].filter(Boolean).join(' · ')
-        beginSession(title || '真题套卷', qs, mode, startIdx, false, {
+        await beginSession(title || '真题套卷', qs, mode, startIdx, false, {
           title, subject: null, chapter: null, kpName: null,
           sourceKind: 'exam', sourceKindLabel: '历年真题',
           noAnswer: false, loaded: qs.length,
@@ -287,10 +385,31 @@ export default function Quiz() {
   }, [])
 
   /* ---------- 视图切换 ---------- */
-  const goHome = () => { setView('home'); setSession(null); window.scrollTo({ top: 0 }) }
-  const finishSession = () => { setView('result'); window.scrollTo({ top: 0 }) }
-  /* 清除知识点筛选：清标识 + 清空态 + 回首页（与拆分前两个入口的点击效果一致） */
-  const clearKpFilter = () => { setKpFilter(null); setKpEmpty(null); goHome() }
+  /** 返回首页：清空当前会话与 session_id 深链，回到题库首页 */
+  const goHome = useCallback(() => {
+    setView('home')
+    setSession(null)
+    restoredSessionRef.current = null
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      params.delete('session_id')
+      return params
+    }, { replace: true })
+    window.scrollTo({ top: 0 })
+  }, [setSearchParams])
+
+  /** 结束当前会话：进入复盘报告视图 */
+  const finishSession = useCallback(() => {
+    setView('result')
+    window.scrollTo({ top: 0 })
+  }, [])
+
+  /** 清除知识点筛选：清标识 + 清空态 + 回首页（与拆分前两个入口的点击效果一致） */
+  const clearKpFilter = useCallback(() => {
+    setKpFilter(null)
+    setKpEmpty(null)
+    goHome()
+  }, [goHome])
 
   return (
     <>
@@ -309,6 +428,7 @@ export default function Quiz() {
         onBeginSession={beginSession}
         onStartWithFilter={startWithFilter}
         onClearKp={clearKpFilter}
+        onContinueSession={restoreSession}
       />
       {view === 'practice' && session && (
         <QuizPractice

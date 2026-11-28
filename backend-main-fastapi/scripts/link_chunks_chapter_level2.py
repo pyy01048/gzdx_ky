@@ -42,6 +42,7 @@
     python scripts/link_chunks_chapter_level2.py --dry-run --propagate   # 含继承，精度下降
     python scripts/link_chunks_chapter_level2.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -60,10 +61,26 @@ from pipeline.config import pg_database_url  # noqa: E402
 # ---------------------------------------------------------------- 基础工具
 
 CN_DIGIT = {
-    "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
-    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
-    "十一": 11, "十二": 12, "十三": 13, "十四": 14, "十五": 15,
-    "十六": 16, "十七": 17, "十八": 18, "十九": 19, "二十": 20,
+    "一": 1,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+    "十一": 11,
+    "十二": 12,
+    "十三": 13,
+    "十四": 14,
+    "十五": 15,
+    "十六": 16,
+    "十七": 17,
+    "十八": 18,
+    "十九": 19,
+    "二十": 20,
 }
 
 #: 全角数字 → 半角（康华光讲义里大量使用）
@@ -76,9 +93,7 @@ RE_CHAPTER = re.compile(
     re.IGNORECASE,
 )
 #: 小节编号：行首 3.1 / 3.1.2（只取前两段）
-RE_SECTION = re.compile(
-    r"(?:^|\n)[ \t]*([0-9]{1,2})\.([0-9]{1,2})(?![0-9.])[ \t]*([^\s0-9])"
-)
+RE_SECTION = re.compile(r"(?:^|\n)[ \t]*([0-9]{1,2})\.([0-9]{1,2})(?![0-9.])[ \t]*([^\s0-9])")
 #: 第 N 节（仅作校准用，不单独定章）
 RE_JIE = re.compile(r"第\s*([0-9]{1,2}|[一二三四五六七八九十]{1,3})\s*节")
 
@@ -105,7 +120,7 @@ def is_cjk(ch: str) -> bool:
 
 def heading_fragment(text: str, start: int, maxlen: int = 30) -> str:
     """截取标记后的标题片段（到标点/换行为止）。"""
-    frag = text[start:start + maxlen]
+    frag = text[start : start + maxlen]
     out = []
     for ch in frag:
         if ch in TITLE_STOP:
@@ -131,7 +146,7 @@ def title_score(heading: str, title: str) -> int:
 
 def looks_like_title(text: str, pos: int) -> bool:
     """编号后是否是一段像标题的汉字（≥2 个连续汉字，且不是题号/图表）。"""
-    seg = text[pos:pos + 24]
+    seg = text[pos : pos + 24]
     seg = seg.lstrip(" \t")
     if not seg or seg[0] in BAD_HEAD_CHARS or not is_cjk(seg[0]):
         return False
@@ -219,17 +234,15 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--sample", type=int, default=10)
     ap.add_argument("--debug-doc", type=int, default=0, help="打印指定文档的挂接明细")
-    ap.add_argument("--propagate", action="store_true",
-                    help="允许文档内向后继承（默认关闭：OCR 题库顺序错乱时会被污染）")
+    ap.add_argument(
+        "--propagate", action="store_true", help="允许文档内向后继承（默认关闭：OCR 题库顺序错乱时会被污染）"
+    )
     args = ap.parse_args()
     if not args.dry_run and not args.apply:
         ap.error("必须指定 --dry-run 或 --apply")
 
     with psycopg.connect(pg_database_url(), autocommit=False) as pg, pg.cursor() as cur:
-        cur.execute(
-            "SELECT id, subject_id, code, title FROM subject_chapters "
-            "WHERE is_active IS NOT FALSE"
-        )
+        cur.execute("SELECT id, subject_id, code, title FROM subject_chapters WHERE is_active IS NOT FALSE")
         chapters = ChapterIndex(cur.fetchall())
         print(f"章节索引：{sum(len(v) for v in chapters.by_no.values())} 条")
 
@@ -255,9 +268,9 @@ def main() -> int:
         cur_doc = None
         offset: int | None = 0
         doc_name = ""
-        doc_markers: list[tuple[int, int, str]] = []   # (chunk_id, chapter_id, rule)
-        doc_rows: list[tuple[int, int | None]] = []     # (chunk_id, own chapter)
-        file_chapter: int | None = None                 # 文件名强匹配到的章节
+        doc_markers: list[tuple[int, int, str]] = []  # (chunk_id, chapter_id, rule)
+        doc_rows: list[tuple[int, int | None]] = []  # (chunk_id, own chapter)
+        file_chapter: int | None = None  # 文件名强匹配到的章节
 
         def flush_doc() -> None:
             """文档扫完后统一决策。
@@ -269,10 +282,7 @@ def main() -> int:
             if not doc_rows:
                 return
             prop = args.propagate and len({m[1] for m in doc_markers}) >= 2
-            use_file = (
-                file_chapter is not None
-                and all(ch is None or ch == file_chapter for _c, ch in doc_rows)
-            )
+            use_file = file_chapter is not None and all(ch is None or ch == file_chapter for _c, ch in doc_rows)
             if use_file:
                 for cid, ch in doc_rows:
                     if ch is None:
@@ -294,9 +304,11 @@ def main() -> int:
                 per_rule[rule] += 1
                 per_doc[cur_doc] += 1
             if args.debug_doc and cur_doc == args.debug_doc:
-                print(f"\n[debug] doc {cur_doc} markers={len(doc_markers)} "
-                      f"file_chapter={chapters.by_id[file_chapter][1] if file_chapter else '-'} "
-                      f"prop={prop}")
+                print(
+                    f"\n[debug] doc {cur_doc} markers={len(doc_markers)} "
+                    f"file_chapter={chapters.by_id[file_chapter][1] if file_chapter else '-'} "
+                    f"prop={prop}"
+                )
                 for cid, ch, rule, snip in debug_rows:
                     tag = chapters.by_id[ch][1] if ch else "-"
                     assigned = updates.get(cid)
@@ -306,16 +318,14 @@ def main() -> int:
                         rule = assigned[1]
                     print(f"  {mark}{cid:<6} [{rule or 'prop':9s}] {tag}  | {snip[:36]}")
 
-        for cid, doc_id, idx, sid, existing_chapter, fname, text in rows:
+        for cid, doc_id, _idx, sid, existing_chapter, fname, text in rows:
             if doc_id != cur_doc:
                 flush_doc()
                 cur_doc = doc_id
                 doc_name = fname or ""
                 offset = doc_local_offset(doc_name, sid, chapters) if sid else None
                 file_chapter = None
-                if sid and chapters.eligible(sid) and not any(
-                    tok in doc_name for tok in BAD_FILENAME_TOKENS
-                ):
+                if sid and chapters.eligible(sid) and not any(tok in doc_name for tok in BAD_FILENAME_TOKENS):
                     hit = chapters.match_title(sid, doc_name)
                     if hit and hit[1] >= 2 and hit[2]:
                         file_chapter = hit[0]
@@ -426,17 +436,22 @@ def main() -> int:
 
         print("\n=== 命中统计 ===")
         print(f"待处理 NULL 块：{total_null}")
-        for k in ("chapter_hit", "section_hit", "filename",
-                  "chapter_reject", "section_reject",
-                  "section_out_of_range", "section_weak_title", "jie_seen",
-                  "subject_skipped"):
+        for k in (
+            "chapter_hit",
+            "section_hit",
+            "filename",
+            "chapter_reject",
+            "section_reject",
+            "section_out_of_range",
+            "section_weak_title",
+            "jie_seen",
+            "subject_skipped",
+        ):
             print(f"  {k:22s} {stats.get(k, 0) if k != 'filename' else per_rule.get(k, 0)}")
         print(f"  {'propagate':22s} {per_rule.get('propagate', 0)}")
         gain = len(updates) / max(1, total_null)
-        print(f"可挂接块数：{len(updates)}  "
-              f"（占剩余未挂 {gain:.2%}，占总块 {len(updates) / max(1, total):.2%}）")
-        print(f"预计总覆盖率：{(linked_now + len(updates)) / max(1, total):.2%}  "
-              f"({linked_now + len(updates)}/{total})")
+        print(f"可挂接块数：{len(updates)}  （占剩余未挂 {gain:.2%}，占总块 {len(updates) / max(1, total):.2%}）")
+        print(f"预计总覆盖率：{(linked_now + len(updates)) / max(1, total):.2%}  ({linked_now + len(updates)}/{total})")
 
         print("\n=== 命中 top 文档 ===")
         doc_names = {r[1]: r[5] for r in rows}
@@ -462,6 +477,7 @@ def main() -> int:
 
         # ---- 写库前强制备份
         from services.backup_service import create_backup
+
         path = create_backup()
         print(f"\n[backup] {path}")
 
@@ -469,10 +485,9 @@ def main() -> int:
         items = [(ch, cid) for cid, (ch, _rule, _x) in updates.items()]
         total_written = 0
         for i in range(0, len(items), BATCH):
-            chunk = items[i:i + BATCH]
+            chunk = items[i : i + BATCH]
             cur.executemany(
-                "UPDATE knowledge_chunks SET chapter_id=%s, updated_at=now() "
-                "WHERE id=%s AND chapter_id IS NULL",
+                "UPDATE knowledge_chunks SET chapter_id=%s, updated_at=now() WHERE id=%s AND chapter_id IS NULL",
                 chunk,
             )
             total_written += cur.rowcount

@@ -7,10 +7,11 @@
 
 新增用法（推荐）::
 
-    python scripts/execute_core_sql.py --status        # 只读：已登记/待执行/checksum 漂移
+    python scripts/execute_core_sql.py --status        # 查看账本状态（会补齐账本表）
     python scripts/execute_core_sql.py --all-pending   # 执行所有未入账脚本
     python scripts/execute_core_sql.py --all-pending --dry-run
     python scripts/execute_core_sql.py --baseline      # 存量库收编：只登记不执行
+    python scripts/execute_core_sql.py --all-pending --reconcile-audited-drift
 
 行为约定：
     * 账本为空且库中已有业务表 → ``--all-pending`` 自动降级为 baseline 并明确提示
@@ -51,14 +52,21 @@ def _print_result(result, dry_run: bool) -> None:
         for v in result.baselined:
             print(f"    + {v}")
         print("[!] 提示：baseline 假设这些脚本在目标库已执行过；如有疑问请核对后手工补跑。")
-        return
     if result.applied:
         print(f"[✓] 执行完成{tag}：{len(result.applied)} 个脚本")
         for v in result.applied:
             print(f"    + {v}")
+    if result.reconciled:
+        print(f"[✓] 已审计账本校正{tag}：{len(result.reconciled)} 个脚本")
+        for v in result.reconciled:
+            print(f"    ~ {v}")
     if result.skipped:
         print(f"[=] 已入账跳过：{len(result.skipped)} 个")
-    if not result.applied and not result.skipped:
+    if result.manual_required:
+        print(f"[!] 手工数据脚本未自动执行：{len(result.manual_required)} 个")
+        for v in result.manual_required:
+            print(f"    - {v}")
+    if not result.applied and not result.skipped and not result.reconciled and not result.manual_required:
         print("[✓] 无待执行脚本")
 
 
@@ -136,6 +144,7 @@ def main(argv: list[str] | None = None) -> int:
                 applied_by="push_update" if os.environ.get("DEPLOY_TS") else "manual",
                 force_baseline="--baseline" in argv,
                 dry_run=dry_run,
+                reconcile_audited_drift="--reconcile-audited-drift" in argv,
             )
         except ChecksumMismatch as exc:
             print(str(exc))

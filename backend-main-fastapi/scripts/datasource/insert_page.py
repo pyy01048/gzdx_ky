@@ -14,6 +14,7 @@ payload.json shape:
 Each invocation commits immediately so that full results are never held
 in memory across pages. Idempotent via INSERT OR REPLACE on media_id.
 """
+
 import json
 import sqlite3
 import sys
@@ -76,10 +77,7 @@ def main() -> None:
             )
             inserted += 1
         conn.commit()
-        print(
-            f"OK folder_path={folder_path!r} inserted/updated={inserted} "
-            f"total_rows={count_rows(cur)}"
-        )
+        print(f"OK folder_path={folder_path!r} inserted/updated={inserted} total_rows={count_rows(cur)}")
     finally:
         conn.close()
 

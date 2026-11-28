@@ -27,10 +27,12 @@ A3 RAG 检索门控（services/retrieval_gate.py）
 
 每轮打点落库 retrieval_gate_logs。
 """
+
 from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -43,8 +45,12 @@ RERANKER_RELEVANCE_THRESHOLD = 0.50
 RETRIEVAL_ACCEPT_TOP1_THRESHOLD = 0.60
 COMPLEX_RELEVANCE_THRESHOLD = 0.35
 COMPLEX_ACCEPT_TOP1_THRESHOLD = 0.45
-RETRIEVAL_GATE_MODE = "observe"  # observe | enforce
-MAX_RETRY_DEPTH = 1              # 每个 query 最多重试 1 轮（HyDE 或 step_back）
+# observe 灰度（收集 would_abstain 率）/ enforce 硬拦截；可通过环境变量切换
+# 取值仅 observe / enforce，其余一律回退 observe（避免误配直接硬拒答）
+RETRIEVAL_GATE_MODE = os.environ.get("RETRIEVAL_GATE_MODE", "observe").strip().lower() or "observe"
+if RETRIEVAL_GATE_MODE not in ("observe", "enforce"):
+    RETRIEVAL_GATE_MODE = "observe"
+MAX_RETRY_DEPTH = 1  # 每个 query 最多重试 1 轮（HyDE 或 step_back）
 
 _ABSTAIN_TEMPLATE = (
     "当前资料未覆盖【{gap}】，无法据此可靠回答。\n"
@@ -145,7 +151,7 @@ def evaluate_gate(
 # --------------------------------------------------------------------------- #
 # 重试改写（reason_codes 驱动，不随机重试）
 # --------------------------------------------------------------------------- #
-def _chat_gateway(question: str, *, subject: Optional[str], task: str, system_prompt: str, db) -> str:
+def _chat_gateway(question: str, *, subject: Optional[str], task: str, system_prompt: str, db: Any) -> str:
     from services.model_gateway import get_gateway
 
     res = get_gateway().chat(
@@ -160,62 +166,122 @@ def _chat_gateway(question: str, *, subject: Optional[str], task: str, system_pr
     return (res.get("answer") or "").strip()
 
 
-def hyde_rewrite(query: str, *, subject: Optional[str] = None, db=None) -> str:
+def _rewrite_with_gateway(
+    query: str,
+    *,
+    subject: Optional[str],
+    db: Any,
+    prompt: str,
+) -> str:
+    """通用查询改写：用给定 prompt 调用网关，结果过短或为空时回退原查询。"""
+    ans = _chat_gateway(
+        query,
+        subject=subject,
+        task="qa_academic",
+        system_prompt=prompt,
+        db=db,
+    )
+    return ans if ans and len(ans) >= 8 else query
+
+
+def hyde_rewrite(query: str, *, subject: Optional[str] = None, db: Any = None) -> str:
     """HyDE：生成假设答案，再以假设答案为检索查询。"""
     prompt = (
         "请针对下面这个问题，先写出你假设的、内容完整的参考答案（不必保证正确，"
         "但必须包含解题关键词、公式、专有名词），然后原样输出该参考答案文本：\n" + query
     )
-    ans = _chat_gateway(
-        query,
-        subject=subject,
-        task="qa_academic",
-        system_prompt=prompt,
-        db=db,
-    )
-    return ans if ans and len(ans) >= 8 else query
+    return _rewrite_with_gateway(query, subject=subject, db=db, prompt=prompt)
 
 
-def step_back_rewrite(query: str, *, subject: Optional[str] = None, db=None) -> str:
+def step_back_rewrite(query: str, *, subject: Optional[str] = None, db: Any = None) -> str:
     """step_back：回溯更宽泛概念（泛化查询，提高召回）。"""
     prompt = (
         "请把下面这个问题抽象为更宽泛、更基础的概念性问题（保留原问题的学科与核心概念，"
         "去掉具体数字/年份/选项），只输出改写后的宽泛问题：\n" + query
     )
-    ans = _chat_gateway(
-        query,
-        subject=subject,
-        task="qa_academic",
-        system_prompt=prompt,
-        db=db,
-    )
-    return ans if ans and len(ans) >= 8 else query
+    return _rewrite_with_gateway(query, subject=subject, db=db, prompt=prompt)
 
 
 # --------------------------------------------------------------------------- #
 # 拒答话术（节点式，先给可答部分 + 引用，再说明缺口）
 # --------------------------------------------------------------------------- #
+# reason_codes → 可读标签映射（前端展示 + 重试策略驱动，不随机重试）
+_REASON_CODE_LABELS: Dict[str, str] = {
+    "empty_recall": "召回为空",
+    "low_relevance": "相关度不足",
+    "below_accept": "未达放行阈值",
+    "reranker_down": "重排器不可用",
+}
+
+
+def _format_reason_codes(reason_codes: Optional[List[str]]) -> str:
+    """把 reason_codes 列表格式化为可读标签串（供话术嵌入前端展示）。"""
+    if not reason_codes:
+        return ""
+    labels = [_REASON_CODE_LABELS.get(rc, rc) for rc in reason_codes if rc]
+    return "、".join(labels) if labels else ""
+
+
 def build_abstain_message(
     query: str,
     *,
     partial: str = "",
-    citations: List[str] = None,
+    citations: Optional[List[str]] = None,
     gap: str = "相关资料缺失或不足",
     suggestion: str = "该知识点的教材/真题解析资料",
+    reason_codes: Optional[List[str]] = None,
 ) -> str:
-    return _ABSTAIN_TEMPLATE.format(
+    """拒答话术（节点式，先给可答部分 + 引用，再说明缺口 + 原因码）。
+
+    `reason_codes` 列表以可读标签嵌入话术末尾，供前端展示与重试策略驱动。
+    保持返回字符串以兼容现有调用方（routers/ai/ai.py 直接作为 system prompt 返回）。
+    结构化拒答（话术 + 原因码）请用 `build_abstain_response`。
+    """
+    msg = _ABSTAIN_TEMPLATE.format(
         gap=gap,
         partial=partial or "暂无可靠依据",
         citations="、".join(citations or ["（无引用）"]),
         suggestion=suggestion,
     )
+    label_str = _format_reason_codes(reason_codes)
+    if label_str:
+        msg += f"\n（原因码：{label_str}）"
+    return msg
+
+
+def build_abstain_response(
+    query: str,
+    *,
+    reason_codes: List[str],
+    partial: str = "",
+    citations: Optional[List[str]] = None,
+    gap: str = "相关资料缺失或不足",
+    suggestion: str = "该知识点的教材/真题解析资料",
+) -> Dict[str, Any]:
+    """结构化拒答（enforce 模式下 abstain 时返回）：话术 + 原因码。
+
+    返回 ``{"message": str, "reason_codes": list, "mode": "enforce"}``，
+    供前端按原因码渲染差异化提示与重试入口。
+    """
+    return {
+        "message": build_abstain_message(
+            query,
+            partial=partial,
+            citations=citations,
+            gap=gap,
+            suggestion=suggestion,
+            reason_codes=reason_codes,
+        ),
+        "reason_codes": list(reason_codes or []),
+        "mode": RETRIEVAL_GATE_MODE,
+    }
 
 
 # --------------------------------------------------------------------------- #
 # 落库
 # --------------------------------------------------------------------------- #
 def log_gate(
-    db,
+    db: Any,
     *,
     query: str,
     is_complex: bool,
@@ -262,18 +328,16 @@ def log_gate(
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
 
 # --------------------------------------------------------------------------- #
 # 主入口：检索 + 门控 + 重试 + 落库
 # --------------------------------------------------------------------------- #
 def gate_and_retrieve(
-    db,
+    db: Any,
     query: str,
-    query_vec=None,
+    query_vec: Any = None,
     limit: int = 6,
     subject: Optional[str] = None,
     is_complex: Optional[bool] = None,
@@ -322,12 +386,22 @@ def gate_and_retrieve(
     )
 
     abstain_message = ""
+    abstain_response: Optional[Dict[str, Any]] = None
     if gate["decision"] == "abstain" or (gate["decision"] == "accept" and gate.get("would_abstain")):
         abstain_message = build_abstain_message(
             query,
             partial=results[0].get("content", "")[:200] if results else "",
             citations=[(results[0].get("document_title") or "")[:50]] if results else [],
+            reason_codes=gate.get("reason_codes") or [],
         )
+        # enforce 模式下 abstain 时返回结构化拒答（话术 + 原因码）供前端展示
+        if RETRIEVAL_GATE_MODE == "enforce" and gate["decision"] == "abstain":
+            abstain_response = build_abstain_response(
+                query,
+                reason_codes=gate.get("reason_codes") or [],
+                partial=results[0].get("content", "")[:200] if results else "",
+                citations=[(results[0].get("document_title") or "")[:50]] if results else [],
+            )
 
     return {
         "query": query,
@@ -339,6 +413,7 @@ def gate_and_retrieve(
         "retry_used": retry_used,
         "retry_query": gate.get("retry_query"),
         "abstain_message": abstain_message,
+        "abstain_response": abstain_response,
         "latency_ms": latency_ms,
     }
 

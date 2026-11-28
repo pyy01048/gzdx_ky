@@ -6,6 +6,7 @@ V3.0 检索算法优化模块
 - 批量检索
 - 增量索引更新
 """
+
 import logging
 import re
 import time
@@ -35,6 +36,7 @@ class SearchCache:
     def _make_key(self, query: str, top_k: int = 5, subject: str = None, use_vector: bool = True) -> str:
         """生成缓存key。"""
         import hashlib
+
         key_str = f"{query}|{top_k}|{subject or 'all'}|{use_vector}"
         return hashlib.md5(key_str.encode()).hexdigest()
 
@@ -53,7 +55,7 @@ class SearchCache:
 
         self.cache.move_to_end(key)
         self.hit_count += 1
-        logger.debug(f"检索缓存命中 (命中率: {self.hit_count/(self.hit_count+self.miss_count)*100:.1f}%)")
+        logger.debug(f"检索缓存命中 (命中率: {self.hit_count / (self.hit_count + self.miss_count) * 100:.1f}%)")
         return value
 
     def set(self, query: str, results: List[Dict], top_k: int = 5, subject: str = None, use_vector: bool = True):
@@ -104,18 +106,129 @@ class QueryPreprocessor:
 
     # 停用词
     STOP_WORDS = {
-        "的", "了", "是", "在", "我", "有", "和", "就", "不", "人", "都", "一", "一个",
-        "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好",
-        "自己", "这", "那", "这个", "那个", "什么", "怎么", "如何", "为什么", "请问",
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could", "should",
-        "may", "might", "must", "shall", "can", "need", "dare", "ought", "used",
-        "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into",
-        "through", "during", "before", "after", "above", "below", "between", "out",
-        "off", "over", "under", "again", "further", "then", "once", "here", "there",
-        "when", "where", "why", "how", "all", "any", "both", "each", "few", "more",
-        "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same",
-        "so", "than", "too", "very", "just", "because", "if", "or", "and", "but",
+        "的",
+        "了",
+        "是",
+        "在",
+        "我",
+        "有",
+        "和",
+        "就",
+        "不",
+        "人",
+        "都",
+        "一",
+        "一个",
+        "上",
+        "也",
+        "很",
+        "到",
+        "说",
+        "要",
+        "去",
+        "你",
+        "会",
+        "着",
+        "没有",
+        "看",
+        "好",
+        "自己",
+        "这",
+        "那",
+        "这个",
+        "那个",
+        "什么",
+        "怎么",
+        "如何",
+        "为什么",
+        "请问",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "can",
+        "need",
+        "dare",
+        "ought",
+        "used",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        "out",
+        "off",
+        "over",
+        "under",
+        "again",
+        "further",
+        "then",
+        "once",
+        "here",
+        "there",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "any",
+        "both",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "because",
+        "if",
+        "or",
+        "and",
+        "but",
     }
 
     # 同义词扩展
@@ -149,8 +262,8 @@ class QueryPreprocessor:
         original = query.strip()
 
         # 1. 清洗（去除多余空格、标点）
-        cleaned = re.sub(r'\s+', ' ', original)
-        cleaned = re.sub(r'[^\w\s\u4e00-\u9fff]', ' ', cleaned)
+        cleaned = re.sub(r"\s+", " ", original)
+        cleaned = re.sub(r"[^\w\s\u4e00-\u9fff]", " ", cleaned)
         cleaned = cleaned.strip()
 
         # 2. 分词（简单分词）
@@ -187,12 +300,12 @@ class QueryPreprocessor:
         """简单分词（中文2-gram + 英文单词）。"""
         tokens = []
         # 英文单词
-        for w in re.findall(r'[a-zA-Z0-9]+', text):
+        for w in re.findall(r"[a-zA-Z0-9]+", text):
             tokens.append(w.lower())
         # 中文2-gram
-        cjk = re.sub(r'[^\u4e00-\u9fff]', '', text)
+        cjk = re.sub(r"[^\u4e00-\u9fff]", "", text)
         for i in range(len(cjk) - 1):
-            tokens.append(cjk[i:i + 2])
+            tokens.append(cjk[i : i + 2])
         # 中文单字（长度为1的中文）
         if len(cjk) == 1:
             tokens.append(cjk)
@@ -262,14 +375,16 @@ def optimized_search(
 
         if use_rerank:
             results = hybrid_search_with_rerank(
-                db, search_query,
+                db,
+                search_query,
                 query_vec=None,  # 向量在调用方生成
                 limit=top_k,
                 subject=subject or query_info["subject"],
             )
         else:
             results = hybrid_search(
-                db, search_query,
+                db,
+                search_query,
                 query_vec=None,
                 limit=top_k,
                 subject=subject or query_info["subject"],
@@ -307,18 +422,22 @@ class IncrementalIndexUpdater:
         """增量更新FTS索引。"""
         try:
             from services.search_service import ensure_fts_table
+
             conn = wrap_conn(self.db.connection().connection)
             ensure_fts_table(conn)
 
             if chunk_ids:
                 # 只更新指定的分块
                 placeholders = ",".join("?" * len(chunk_ids))
-                conn.execute(f"""
+                conn.execute(
+                    f"""
                     INSERT OR REPLACE INTO knowledge_chunks_fts (chunk_id, document_id, subject, content)
                     SELECT id, document_id, subject, content
                     FROM knowledge_chunks
                     WHERE id IN ({placeholders})
-                """, chunk_ids)
+                """,
+                    chunk_ids,
+                )
             else:
                 # 全量同步（增量方式：只同步新增的）
                 conn.execute("""
@@ -373,12 +492,14 @@ class SearchPerformanceMonitor:
         self.total_time += search_time
 
         if search_time > 1.0:  # 超过1秒记为慢检索
-            self.slow_searches.append({
-                "query": query[:100],
-                "time": search_time,
-                "result_count": result_count,
-                "timestamp": time.time(),
-            })
+            self.slow_searches.append(
+                {
+                    "query": query[:100],
+                    "time": search_time,
+                    "result_count": result_count,
+                    "timestamp": time.time(),
+                }
+            )
             if len(self.slow_searches) > 100:
                 self.slow_searches = self.slow_searches[-100:]
 

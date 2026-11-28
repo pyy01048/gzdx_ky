@@ -12,6 +12,7 @@
     python scripts/diagnose_l2_similarity.py
     python scripts/diagnose_l2_similarity.py --threshold 0.92
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,9 +45,7 @@ def main() -> int:
 
     conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT id, content, answer, is_junk FROM quiz_questions"
-    ).fetchall()
+    rows = conn.execute("SELECT id, content, answer, is_junk FROM quiz_questions").fetchall()
     conn.close()
 
     print(f"[L2] 阈值 = {th}")
@@ -94,8 +93,10 @@ def main() -> int:
         if len(grp) > 1:
             groups.append(grp)
 
-    print(f"[L2] 命中组 = {len(groups)} 组，涉及 "
-          f"{sum(len(g) for g in groups)} 条（冗余 {sum(len(g)-1 for g in groups)} 条）")
+    print(
+        f"[L2] 命中组 = {len(groups)} 组，涉及 "
+        f"{sum(len(g) for g in groups)} 条（冗余 {sum(len(g) - 1 for g in groups)} 条）"
+    )
 
     # 组内答案是否真的冲突；以及该组是否已被 L1（精确同题干）覆盖
     conflict_groups, same_answer_groups, l1_coverable = 0, 0, 0
@@ -117,8 +118,7 @@ def main() -> int:
     print(f"[L2] 其中答案互相冲突的组 = {conflict_groups}")
     print(f"[L2] 其中答案一致的组   = {same_answer_groups}（这类不是 L2 要找的目标）")
     print(f"[L2] 含精确同题干、L1 已能覆盖的组 = {l1_coverable}")
-    print(f"[L2] → **L2 独有（相似但非精确、且答案不同）= "
-          f"{conflict_groups - l1_coverable} 组**")
+    print(f"[L2] → **L2 独有（相似但非精确、且答案不同）= {conflict_groups - l1_coverable} 组**")
     print(f"[L2] 组内归一化题干长度分布 = {dict(sorted(stem_len_hist.items()))}（分桶/字）")
 
     # 抽样：展示 L2 独有的前 10 组，供人工判断区分度
@@ -130,7 +130,7 @@ def main() -> int:
         if len(answers) < 2:
             continue
         if len({s for _q, s, _a in g}) < len(g):
-            continue                       # L1 已覆盖，不属 L2 独有
+            continue  # L1 已覆盖，不属 L2 独有
         if shown >= 10:
             break
         shown += 1
@@ -151,8 +151,7 @@ def main() -> int:
             continue
         if len({s for _q, s, _a in g}) < len(g):
             continue
-        joined_ok = any(
-            any(x in y or y in x for y in answers if y != x) for x in answers)
+        joined_ok = any(any(x in y or y in x for y in answers if y != x) for x in answers)
         if joined_ok:
             contain += 1
         else:
@@ -168,9 +167,11 @@ def main() -> int:
         for qid, a in real_samples:
             print(f"    #{qid} → {a[:40]}")
 
-    verdict = ("L2 实用：命中量小、可作为人工复核线索" if len(groups) <= 50 else
-               f"L2 存疑：命中 {len(groups)} 组，0.86 在此题库区分度不足，"
-               "建议调高阈值或改用其他判据")
+    verdict = (
+        "L2 实用：命中量小、可作为人工复核线索"
+        if len(groups) <= 50
+        else f"L2 存疑：命中 {len(groups)} 组，0.86 在此题库区分度不足，建议调高阈值或改用其他判据"
+    )
     print(f"\n[结论] {verdict}")
     return 0
 

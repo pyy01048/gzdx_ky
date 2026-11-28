@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-p = r'D:\平台\backend-main-fastapi\services\circuit_vision.py'
-s = open(p, encoding='utf-8').read()
+p = r"D:\平台\backend-main-fastapi\services\circuit_vision.py"
+s = open(p, encoding="utf-8").read()
 
 # 1) 替换 _looks_like_garbage 实现
 old_g = '''    @staticmethod
@@ -88,7 +88,7 @@ assert old_g in s, "old garbage block not found"
 s = s.replace(old_g, new_g)
 
 # 2) 修 _cross_check：从 "R1=10kΩ" 这种标签里提取首位号
-old_cc = '''        known_designators = {c.get("designator", "") for c in components}
+old_cc = """        known_designators = {c.get("designator", "") for c in components}
         # 位号正则：R1, C10, Q2, U1, D1, Vcc 等（Vcc/GND 是节点不是元件，跳过）
         refdes_re = re.compile(r"^([RCLDQUJVFSW]|RT|CN|JP|K)\\d{1,4}[A-Z]?$")
         extras: List[Dict[str, Any]] = []
@@ -107,9 +107,9 @@ old_cc = '''        known_designators = {c.get("designator", "") for c in compon
                     "confidence": "low",
                     "source": "ocr_only",
                 })
-        return components + extras'''
+        return components + extras"""
 
-new_cc = '''        known_designators = {c.get("designator", "") for c in components}
+new_cc = """        known_designators = {c.get("designator", "") for c in components}
         # 位号正则：从 "R1=10kΩ"、"C1 100µF"、"Q1" 这类标签开头提取 R1/C1/Q1
         refdes_extract = re.compile(r"^\\s*([RCLDQUJVFSW]|RT|CN|JP|K)\\d{1,4}[A-Z]?")
         extras: List[Dict[str, Any]] = []
@@ -136,10 +136,10 @@ new_cc = '''        known_designators = {c.get("designator", "") for c in compon
                 "source": "ocr_only",
                 "raw_label": lab,
             })
-        return components + extras'''
+        return components + extras"""
 
 assert old_cc in s, "old cross_check block not found"
 s = s.replace(old_cc, new_cc)
 
-open(p, 'w', encoding='utf-8').write(s)
+open(p, "w", encoding="utf-8").write(s)
 print("patched ok")

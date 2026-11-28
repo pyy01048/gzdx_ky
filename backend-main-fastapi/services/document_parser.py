@@ -87,9 +87,7 @@ class DocumentParser:
                                 parts.append(page.get("text") or "")
                             return "\n".join(parts).strip()
                     except Exception as exc:  # noqa: BLE001 - 失败必须回退
-                        logging.getLogger(__name__).warning(
-                            "MinerU 解析失败，回退旧 PDF 管线: %s", str(exc)[:200]
-                        )
+                        logging.getLogger(__name__).warning("MinerU 解析失败，回退旧 PDF 管线: %s", str(exc)[:200])
                 return self._parse_pdf(file_path)
             if ext in (".docx",):
                 return self._parse_docx(file_path)
@@ -158,7 +156,7 @@ class DocumentParser:
                         # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
                         # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
                         logging.getLogger(__name__).warning(
-                            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
+                            "%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200]
                         )
             if slide_texts:
                 parts.append(f"--- 第{idx}页 ---")
@@ -238,9 +236,7 @@ class DocumentParser:
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
         # 引擎2：pdfplumber
         try:
@@ -282,7 +278,7 @@ class DocumentParser:
                         img.save(tmp_path)
                         text = ocr.recognize(tmp_path)
                         if text.strip():
-                            parts.append(f"--- 第{i+1}页(OCR) ---")
+                            parts.append(f"--- 第{i + 1}页(OCR) ---")
                             parts.append(text)
                     finally:
                         try:

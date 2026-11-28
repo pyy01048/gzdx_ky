@@ -71,20 +71,30 @@ const IDLE = {
   Flame: 'flicker',
 }
 
+/**
+ * 渲染一个带动画配方的旧版图标。
+ * 从 props 中分离 className / data-motion / data-idle，合并默认动画配方后透传给底层图标组件。
+ */
 function legacyIcon(name, props) {
   const C = Legacy[name]
   if (!C) return null
-  const { className = '', ...rest } = props
+  const {
+    className = '',
+    'data-motion': dataMotion,
+    'data-idle': dataIdle,
+    ...rest
+  } = props
   return (
     <C
       {...rest}
       className={`v3-icon ${className}`.trim()}
-      data-motion={rest['data-motion'] || MOTION[name] || 'draw'}
-      data-idle={rest['data-idle'] || IDLE[name] || undefined}
+      data-motion={dataMotion || MOTION[name] || 'draw'}
+      data-idle={dataIdle || IDLE[name] || undefined}
     />
   )
 }
 
+/** 工厂函数：为名为 name 的旧版图标生成一个带 displayName 的动画图标组件 */
 function make(name) {
   function AnimatedIcon(props) {
     return legacyIcon(name, props)
@@ -97,6 +107,7 @@ function make(name) {
 /* New glyphs                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/** 新图标基座：统一 24×24 viewBox、currentcolor 描边、动画配方 data-motion 与闲置动画 data-idle */
 function Base({ size = 20, className = '', strokeWidth = 2, motion = 'draw', idle, children, ...props }) {
   return (
     <svg

@@ -9,6 +9,7 @@
 - 每次翻译后立即写库，失败重试 2 次
 - 幂等：DROP+CREATE（本脚本是初始化脚本）
 """
+
 from __future__ import annotations
 
 import json
@@ -24,7 +25,6 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 WORDROOT_JSON = DATA_DIR / "ECDICT-master" / "wordroot.txt"
 
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -74,7 +74,7 @@ def ollama_batch_translate(texts: list[str]) -> list[str]:
     """
     if not texts:
         return []
-    lines = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
+    lines = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
     prompt = (
         "你是英语词根词典翻译助手。把下列英语词根/词缀含义逐条翻译成简洁的中文。\n"
         "要求：\n"
@@ -82,18 +82,18 @@ def ollama_batch_translate(texts: list[str]) -> list[str]:
         "2. 输出必须与输入顺序一致，每行一条\n"
         f"待翻译:\n{lines}\n\n中文翻译:\n"
     )
-    payload = json.dumps({
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.1, "num_predict": 256},
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 256},
+        }
+    ).encode("utf-8")
 
     for attempt in range(3):
         try:
-            req = urllib.request.Request(
-                OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"}
-            )
+            req = urllib.request.Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=180) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 out = (data.get("response", "") or "").strip()
@@ -103,7 +103,7 @@ def ollama_batch_translate(texts: list[str]) -> list[str]:
             # 解析输出：按行拆分，取每行第一个中文字符以后的内容作为翻译
             out_lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
             results: list[str] = []
-            for i, t in enumerate(texts):
+            for i, _t in enumerate(texts):
                 if i < len(out_lines):
                     # 去掉可能的前缀编号（如 "1. " 或 "1:"）
                     ln = re.sub(r"^\s*\d+[\.:、)]\s*", "", out_lines[i])
@@ -175,17 +175,19 @@ def main() -> None:
         if not morpheme.strip():
             continue
 
-        entries.append({
-            "morpheme": morpheme,
-            "variants": variants,
-            "type": type_,
-            "subtype": subtype,
-            "origin": origin,
-            "meaning": meaning,
-            "explanation": explanation,
-            "examples": examples,
-            "meaning_cn": "",
-        })
+        entries.append(
+            {
+                "morpheme": morpheme,
+                "variants": variants,
+                "type": type_,
+                "subtype": subtype,
+                "origin": origin,
+                "meaning": meaning,
+                "explanation": explanation,
+                "examples": examples,
+                "meaning_cn": "",
+            }
+        )
 
         if meaning and len(meaning) <= 120:
             pending.append((len(entries) - 1, meaning))
@@ -197,16 +199,16 @@ def main() -> None:
     done = 0
     missing_cn = []
     for b in range(total_batches):
-        chunk = pending[b * BATCH_SIZE: (b + 1) * BATCH_SIZE]
+        chunk = pending[b * BATCH_SIZE : (b + 1) * BATCH_SIZE]
         texts = [m for _, m in chunk]
         results = ollama_batch_translate(texts)
-        for (idx, _), cn in zip(chunk, results):
+        for (idx, _), cn in zip(chunk, results, strict=False):
             entries[idx]["meaning_cn"] = cn
             if not cn:
                 missing_cn.append(entries[idx]["morpheme"])
         done += len(chunk)
         ok = len([r for r in results if r])
-        print(f"  批 {b+1}/{total_batches}: 翻译 {len(chunk)} 条, 成功 {ok} 条 ({done}/{len(pending)})")
+        print(f"  批 {b + 1}/{total_batches}: 翻译 {len(chunk)} 条, 成功 {ok} 条 ({done}/{len(pending)})")
         time.sleep(0.3)
 
     print(f"翻译完成，缺中文含义 {len(missing_cn)} 条")

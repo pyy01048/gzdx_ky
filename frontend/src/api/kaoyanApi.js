@@ -7,16 +7,19 @@ export const kaoyanApi = {
   schools: (params) => request('/kaoyan/schools', { params }),
   // 热度榜 TOP N（对标 txkyer 首页热度榜；热度为后端派生代理指标）
   hot: (params) => request('/kaoyan/analysis/hot', { params }),
-  schoolDetail: (id) => request('/kaoyan/schools/' + id),
-  schoolMajors: (id) => request('/kaoyan/schools/' + id + '/majors'),
+  schoolDetail: (id, params) => request('/kaoyan/schools/' + id, { params }),
+  schoolMajors: (id, params) => request('/kaoyan/schools/' + id + '/majors', { params }),
+  // P1: 工科08专业实体详情；可选 school_id/subject_id 用于深链范围校验
+  majorDetail: (id, params, options = {}) =>
+    request('/kaoyan/majors/' + encodeURIComponent(id), { ...options, params }),
   // M3-4: 招生计划聚合（院系→专业→拟招人数→考试科目，单次调用）
   schoolEnrollmentPlan: (id, params) => request('/kaoyan/schools/' + id + '/enrollment-plan', { params }),
   schoolScores: (id, params) => request('/kaoyan/schools/' + id + '/scores', { params }),
-  schoolAdmissions: (id) => request('/kaoyan/schools/' + id + '/admissions'),
+  schoolAdmissions: (id, params) => request('/kaoyan/schools/' + id + '/admissions', { params }),
   // V14: 逐人录取分数明细（txkyer 择校宝 2026 拟录取分析 / 公告名单 OCR）
   schoolAdmissionDetails: (id, params) => request('/kaoyan/schools/' + id + '/admissions/details', { params }),
   trend: (params) => request('/kaoyan/analysis/trend', { params }),
-  compare: (schoolIds) => request('/kaoyan/analysis/compare', { params: { school_ids: schoolIds } }),
+  compare: (schoolIds, params = {}) => request('/kaoyan/analysis/compare', { params: { school_ids: schoolIds, ...params } }),
   // V10: 全局通知流（搜索/类型过滤/分页）
   noticesFeed: (params) => request('/kaoyan/notices/feed', { params }),
   // V10: 改考雷达（列表/统计/扫描）

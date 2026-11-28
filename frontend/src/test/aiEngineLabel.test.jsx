@@ -108,9 +108,12 @@ describe('C3：AI 入口互引与登录页低成本方案', () => {
     /* /assistant 来自 NAV_OTHER，/kaoyan/assistant 由 C3 在命令面板 entries 追加 */
     const nav = source('src/nav/navConfig.js')
     const shell = source('src/v3/shell/index.jsx')
-    expect(nav).toMatch(/to: '\/assistant'[^\n]*kw: \[[^\]]*'ai'/)
-    expect(shell).toMatch(/to: '\/kaoyan\/assistant'[^\n]*kw: \[[^\]]*'ai'/)
-    expect(shell).toMatch(/\.\.\.NAV_OTHER\.map/)
+    /* T9 routeTree 重构后：/assistant 在 routeTree 中定义且 kw 含 'ai' */
+    expect(nav).toMatch(/\/assistant'.*?kw:\s*\[[^\]]*'ai'/s)
+    /* /kaoyan/assistant 的 label 含 'AI'，命令面板按 label+kw 搜索可命中 */
+    expect(nav).toMatch(/\/kaoyan\/assistant'.*?AI/s)
+    /* T10 CommandPalette 从 routeTree 单一源派生，不再硬编码 NAV_OTHER.map */
+    expect(shell).toMatch(/Object\.entries\(routeTree\)/)
   })
 
   it('登录页方案②：卡片不可点击且注明需登录，主视觉卡不含 AI 字样', () => {

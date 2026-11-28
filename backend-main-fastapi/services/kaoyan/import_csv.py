@@ -10,6 +10,7 @@ CSV 格式（表头）：
     cd backend-main-fastapi
     python -m services.kaoyan.import_csv <csv文件路径>
 """
+
 import csv
 import json
 import sys
@@ -75,11 +76,12 @@ def import_csv_file(filepath, report_path=None):
     if filepath.suffix.lower() in (".xlsx", ".xls"):
         try:
             import openpyxl
+
             wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
             ws = wb.active
             headers = [str(c.value) if c.value else "" for c in next(ws.iter_rows(min_row=1, max_row=1))]
             for r in ws.iter_rows(min_row=2, values_only=True):
-                row = dict(zip(headers, r))
+                row = dict(zip(headers, r, strict=False))
                 rows.append(row)
         except ImportError:
             print("需要安装 openpyxl 才能导入 Excel: pip install openpyxl", file=sys.stderr)
@@ -114,9 +116,13 @@ def import_csv_file(filepath, report_path=None):
 
             # 院校（按名称+省份去重）
             province = str(row.get("province", "")).strip() or None
-            school = db.query(KaoyanSchool).filter(
-                KaoyanSchool.name == name,
-            ).first()
+            school = (
+                db.query(KaoyanSchool)
+                .filter(
+                    KaoyanSchool.name == name,
+                )
+                .first()
+            )
             if not school:
                 school = KaoyanSchool(
                     name=name,
@@ -137,18 +143,26 @@ def import_csv_file(filepath, report_path=None):
                 college_name = str(row.get("college", "")).strip()
                 college = None
                 if college_name:
-                    college = db.query(KaoyanCollege).filter(
-                        KaoyanCollege.school_id == school.id,
-                        KaoyanCollege.name == college_name,
-                    ).first()
+                    college = (
+                        db.query(KaoyanCollege)
+                        .filter(
+                            KaoyanCollege.school_id == school.id,
+                            KaoyanCollege.name == college_name,
+                        )
+                        .first()
+                    )
                     if not college:
                         college = KaoyanCollege(school_id=school.id, name=college_name)
                         db.add(college)
                         db.flush()
-                major = db.query(KaoyanMajor).filter(
-                    KaoyanMajor.school_id == school.id,
-                    KaoyanMajor.name == major_name,
-                ).first()
+                major = (
+                    db.query(KaoyanMajor)
+                    .filter(
+                        KaoyanMajor.school_id == school.id,
+                        KaoyanMajor.name == major_name,
+                    )
+                    .first()
+                )
                 if not major:
                     major = KaoyanMajor(
                         school_id=school.id,
@@ -166,11 +180,15 @@ def import_csv_file(filepath, report_path=None):
             admit_avg = _to_float(row.get("admit_avg_score"))
             if enroll or retest or admit or admit_avg:
                 # 去重：同校同年同专业只保留一条
-                existing_adm = db.query(KaoyanAdmission).filter(
-                    KaoyanAdmission.school_id == school.id,
-                    KaoyanAdmission.year == year,
-                    KaoyanAdmission.major_id == major.id if major else None,
-                ).first()
+                existing_adm = (
+                    db.query(KaoyanAdmission)
+                    .filter(
+                        KaoyanAdmission.school_id == school.id,
+                        KaoyanAdmission.year == year,
+                        KaoyanAdmission.major_id == major.id if major else None,
+                    )
+                    .first()
+                )
                 if not existing_adm:
                     retest_ratio = None
                     if retest and admit:
@@ -178,45 +196,53 @@ def import_csv_file(filepath, report_path=None):
                             retest_ratio = round(retest / admit, 2)
                         except ZeroDivisionError:
                             retest_ratio = None
-                    db.add(KaoyanAdmission(
-                        school_id=school.id,
-                        major_id=major.id if major else None,
-                        year=year,
-                        enroll_count=enroll,
-                        retest_count=retest,
-                        admit_count=admit,
-                        admit_avg_score=admit_avg,
-                        retest_ratio=retest_ratio,
-                        data_source=f"csv导入:{filepath.name}",
-                    ))
+                    db.add(
+                        KaoyanAdmission(
+                            school_id=school.id,
+                            major_id=major.id if major else None,
+                            year=year,
+                            enroll_count=enroll,
+                            retest_count=retest,
+                            admit_count=admit,
+                            admit_avg_score=admit_avg,
+                            retest_ratio=retest_ratio,
+                            data_source=f"csv导入:{filepath.name}",
+                        )
+                    )
 
             # 分数线
             retest_line = _to_int(row.get("retest_line"))
             total_line = _to_int(row.get("total_line"))
             if retest_line or total_line:
-                existing_sl = db.query(KaoyanScoreline).filter(
-                    KaoyanScoreline.school_id == school.id,
-                    KaoyanScoreline.year == year,
-                    KaoyanScoreline.major_id == major.id if major else None,
-                ).first()
+                existing_sl = (
+                    db.query(KaoyanScoreline)
+                    .filter(
+                        KaoyanScoreline.school_id == school.id,
+                        KaoyanScoreline.year == year,
+                        KaoyanScoreline.major_id == major.id if major else None,
+                    )
+                    .first()
+                )
                 if not existing_sl:
-                    db.add(KaoyanScoreline(
-                        school_id=school.id,
-                        major_id=major.id if major else None,
-                        year=year,
-                        total_line=total_line,
-                        politics_line=_to_int(row.get("politics_line")),
-                        english_line=_to_int(row.get("english_line")),
-                        math_line=_to_int(row.get("math_line")),
-                        major_line=_to_int(row.get("major_line")),
-                        retest_line=retest_line,
-                        line_type="校线",
-                    ))
+                    db.add(
+                        KaoyanScoreline(
+                            school_id=school.id,
+                            major_id=major.id if major else None,
+                            year=year,
+                            total_line=total_line,
+                            politics_line=_to_int(row.get("politics_line")),
+                            english_line=_to_int(row.get("english_line")),
+                            math_line=_to_int(row.get("math_line")),
+                            major_line=_to_int(row.get("major_line")),
+                            retest_line=retest_line,
+                            line_type="校线",
+                        )
+                    )
 
             added += 1
             if (idx + 1) % BATCH == 0:
                 db.commit()
-                print(f"  已处理 {idx+1}/{len(valid_rows)}")
+                print(f"  已处理 {idx + 1}/{len(valid_rows)}")
 
         db.commit()
         print(f"\n导入完成: 成功 {added} 条，跳过 {skipped} 条")
@@ -245,14 +271,14 @@ def import_csv_file(filepath, report_path=None):
 
 def import_from_csv(db_session, csv_path, target_table="all", encoding="utf-8-sig", skip_errors=True):
     """供API调用的CSV导入函数。
-    
+
     Args:
         db_session: 数据库会话
         csv_path: CSV文件路径
         target_table: 目标表（schools/majors/scorelines/admissions/all）
         encoding: 文件编码
         skip_errors: 是否跳过错误行
-    
+
     Returns:
         dict: {success, imported, skipped, errors}
     """

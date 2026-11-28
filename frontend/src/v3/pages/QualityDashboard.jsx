@@ -26,9 +26,11 @@ const KINDS = [
   { value: 'corpus_probe', label: '语料体检' },
 ]
 
+/** 将 0–1 的比率格式化为百分比字符串；非法值返回「—」。 */
 const pct = (v) => (v === null || v === undefined || Number.isNaN(Number(v))
   ? '—'
   : `${(Number(v) * 100).toFixed(1)}%`)
+/** 将数值格式化为中文千分位；非法值返回「—」。 */
 const num = (v) => (v === null || v === undefined || Number.isNaN(Number(v))
   ? '—'
   : Number(v).toLocaleString('zh-CN'))
@@ -41,6 +43,7 @@ const METRIC_LABEL = {
   pollute: ['域外污染率', 'low'],
 }
 
+/** 根据指标方向（越高越好 / 越低越好）与阈值返回语义色调。 */
 function toneFor(metricKey, v) {
   if (v === null || v === undefined) return 'outline'
   const higherBetter = (METRIC_LABEL[metricKey] || [])[1] !== 'low'
@@ -49,6 +52,7 @@ function toneFor(metricKey, v) {
   return good ? 'success' : bad ? 'danger' : 'warning'
 }
 
+/** 将 ISO 字符串格式化为「YYYY-MM-DD HH:mm」；非法值原样返回。 */
 const fmtDateTime = (iso) => {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -59,6 +63,7 @@ const fmtDateTime = (iso) => {
   })
 }
 
+/** 取 ISO 字符串的「MM-DD HH:mm」片段；空值返回「—」。 */
 const shortTime = (iso) => (iso ? String(iso).slice(5, 16).replace('T', ' ') : '—')
 
 const HISTORY_KIND = Object.fromEntries(KINDS.map((k) => [k.value, k.label]))
@@ -73,6 +78,10 @@ const ALIGN_KIND = {
 /* 固定 0–100% 纵轴的自绘趋势图：
    仅靠 ../ui 与 ../icons，不引入图表库；点用 HTML 定位，折线用 SVG，
    避免非等比拉伸把线宽和圆点压扁。 */
+/**
+ * 自绘趋势图：纵轴固定 0–100%，按运行时间正序绘制主指标折线与面积。
+ * 仅依赖 ../ui 与 ../icons，不引入图表库；空值点断开折线。
+ */
 function TrendChart({ runs }) {
   const gid = useId().replace(/:/g, '')
   const areaId = `quality-area-${gid}`
@@ -178,6 +187,7 @@ function TrendChart({ runs }) {
   )
 }
 
+/** 运行详情：按 run.id 拉取完整指标 JSON，loading/error/ok 三态展示。 */
 function RunDetail({ run }) {
   const [full, setFull] = useState(null)
   const [state, setState] = useState('loading')
@@ -240,6 +250,9 @@ function RunDetail({ run }) {
   )
 }
 
+/** 评测与数据质量页（/admin/quality）。
+ *  所有数字来自 eval_runs 与库内聚合，前端不做估算；
+ *  识别样本指标与语料全库规模分开展示，避免误读。 */
 export default function QualityDashboard() {
   const [kind, setKind] = useState('recognition_policy')
   const [runs, setRuns] = useState([])
@@ -305,11 +318,11 @@ export default function QualityDashboard() {
     return () => { alive = false }
   }, [policyId])
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const [mainOk, alignOk] = await Promise.all([load(), loadAlign()])
     if (mainOk && alignOk) toastOk('质量数据已刷新')
     else toastErr('部分质量数据刷新失败，请检查后端服务')
-  }
+  }, [load, loadAlign])
 
   const byKind = useMemo(() => runs.filter((r) => r.kind === kind), [runs, kind])
   const trend = useMemo(() => byKind.slice().reverse(), [byKind])
@@ -324,19 +337,25 @@ export default function QualityDashboard() {
     || (status === 'loading' && !policyRun)
     || (policy.status === 'idle' && !!policyRun)
 
-  const policyHint = (okText) => {
+  const policyHint = useCallback((okText) => {
     if (policy.status === 'loading') return '正在读取生产口径…'
     if (policy.status === 'error') return '口径明细加载失败'
     return okText
-  }
+  }, [policy.status])
 
-  const corpusSubs = Array.isArray(corpus?.subjects) ? corpus.subjects : []
+  const corpusSubs = useMemo(
+    () => (Array.isArray(corpus?.subjects) ? corpus.subjects : []),
+    [corpus],
+  )
   const maxChunks = Math.max(1, ...corpusSubs.map((s) => Number(s.chunks) || 0))
   const totalChunks = Number(corpus?.total_chunks) || 0
 
   const policyRows = policy.status === 'ok' ? Object.entries(policy.metrics?.policies || {}) : []
   const rejectedRows = policy.status === 'ok' ? Object.entries(policy.metrics?.rejected || {}) : []
-  const alignRows = Array.isArray(align?.rows) ? align.rows : []
+  const alignRows = useMemo(
+    () => (Array.isArray(align?.rows) ? align.rows : []),
+    [align],
+  )
 
   return (
     <div className="v3-admin-page">

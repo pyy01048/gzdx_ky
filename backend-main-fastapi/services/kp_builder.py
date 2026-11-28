@@ -66,12 +66,14 @@ def parse_834_outline(text: str) -> list[dict[str, Any]]:
             body = (parts[i + 1] or "").strip().rstrip("。．").strip()
             if len(body) < 4:
                 continue
-            out.append({
-                "module": module,
-                "verb": verb,
-                "requirement": body,
-                "name": _condense(body),
-            })
+            out.append(
+                {
+                    "module": module,
+                    "verb": verb,
+                    "requirement": body,
+                    "name": _condense(body),
+                }
+            )
     return out
 
 
@@ -148,13 +150,15 @@ def knowledge_points_from_chapter_files(docs: list[Any]) -> list[dict[str, Any]]
         if not chapter:
             chapter = kp_cleaner.map_chapter(body, name, subj, getattr(d, "content", "") or "")
 
-        out.append({
-            "name": body,
-            "subject": subj,
-            "chapter": chapter,
-            "document_id": getattr(d, "id", None),
-            "source": "chapter_file",
-        })
+        out.append(
+            {
+                "name": body,
+                "subject": subj,
+                "chapter": chapter,
+                "document_id": getattr(d, "id", None),
+                "source": "chapter_file",
+            }
+        )
     return out
 
 
@@ -174,14 +178,17 @@ def knowledge_points_from_questions(questions: list[dict[str, Any]]) -> list[dic
             continue
         subj = taxonomy.normalize_subject(q.get("subject"))
         key = (subj, phrase)
-        item = agg.setdefault(key, {
-            "name": phrase,
-            "subject": subj,
-            "chapter": q.get("chapter"),
-            "question_types": [],
-            "question_count": 0,
-            "source": "exam",
-        })
+        item = agg.setdefault(
+            key,
+            {
+                "name": phrase,
+                "subject": subj,
+                "chapter": q.get("chapter"),
+                "question_types": [],
+                "question_count": 0,
+                "source": "exam",
+            },
+        )
         qt = q.get("question_type") or ""
         if qt and qt not in item["question_types"]:
             item["question_types"].append(qt)
@@ -213,11 +220,7 @@ def upsert_knowledge_points(db, items: list[dict[str, Any]], *, commit: bool = T
             continue
 
         subj = taxonomy.normalize_subject(it.get("subject"))
-        exists = (
-            db.query(KnowledgePoint)
-            .filter(KnowledgePoint.subject == subj, KnowledgePoint.name == name)
-            .first()
-        )
+        exists = db.query(KnowledgePoint).filter(KnowledgePoint.subject == subj, KnowledgePoint.name == name).first()
         qtypes = it.get("question_types") or []
         if not qtypes:
             qtypes = taxonomy.question_types_of(subj)
@@ -246,19 +249,21 @@ def upsert_knowledge_points(db, items: list[dict[str, Any]], *, commit: bool = T
 
             from utils.timeutil import utcnow
 
-            db.add(KnowledgePoint(
-                name=name,
-                subject=subj,
-                chapter=it.get("chapter"),
-                description=it.get("description") or it.get("requirement"),
-                question_types=qtypes,
-                document_id=it.get("document_id"),
-                difficulty=int(it.get("difficulty") or 3),
-                exam_frequency=int(it.get("exam_frequency") or 0),
-                question_count=int(it.get("question_count") or 0),
-                mastery=0,
-                next_review=utcnow() + datetime.timedelta(days=1),
-            ))
+            db.add(
+                KnowledgePoint(
+                    name=name,
+                    subject=subj,
+                    chapter=it.get("chapter"),
+                    description=it.get("description") or it.get("requirement"),
+                    question_types=qtypes,
+                    document_id=it.get("document_id"),
+                    difficulty=int(it.get("difficulty") or 3),
+                    exam_frequency=int(it.get("exam_frequency") or 0),
+                    question_count=int(it.get("question_count") or 0),
+                    mastery=0,
+                    next_review=utcnow() + datetime.timedelta(days=1),
+                )
+            )
             created += 1
 
     if commit:

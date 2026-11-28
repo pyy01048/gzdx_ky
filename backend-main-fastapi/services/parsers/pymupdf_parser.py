@@ -63,8 +63,26 @@ RUNNING_TEXT_MAX = 60
 RUNNING_TEXT_MIN_PAGES = 2
 #: 罗马数字页码
 _ROMAN = {
-    "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
-    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
+    "I",
+    "II",
+    "III",
+    "IV",
+    "V",
+    "VI",
+    "VII",
+    "VIII",
+    "IX",
+    "X",
+    "XI",
+    "XII",
+    "XIII",
+    "XIV",
+    "XV",
+    "XVI",
+    "XVII",
+    "XVIII",
+    "XIX",
+    "XX",
 }
 #: 同一张图在同一位置出现在这么多页 → 判为水印/模板图
 WATERMARK_MIN_PAGES = 3
@@ -86,12 +104,7 @@ def _union(a: Rect, b: Rect) -> Rect:
 
 def _near(a: Rect, b: Rect, gap: float) -> bool:
     """两个矩形是否重叠或间距在 ``gap`` 内。"""
-    return not (
-        a[2] + gap < b[0]
-        or b[2] + gap < a[0]
-        or a[3] + gap < b[1]
-        or b[3] + gap < a[1]
-    )
+    return not (a[2] + gap < b[0] or b[2] + gap < a[0] or a[3] + gap < b[1] or b[3] + gap < a[1])
 
 
 def merge_rects(rects: Iterable[Sequence[float]], gap: float = MERGE_GAP) -> List[Rect]:
@@ -385,10 +398,7 @@ class PyMuPDFParser:
                 raise RuntimeError(f"PDF 已加密，无法解析: {os.path.basename(pdf_path)}")
             total = int(doc.page_count)
             indices = resolve_page_indices(total, max_pages, page_numbers)
-            pages = [
-                self._parse_page(doc, idx, real_out, images_dir)
-                for idx in indices
-            ]
+            pages = [self._parse_page(doc, idx, real_out, images_dir) for idx in indices]
         finally:
             doc.close()
 
@@ -461,9 +471,7 @@ class PyMuPDFParser:
         blocks.extend(self._extract_images(doc, page, page_no, out_dir, images_dir, order))
         order += sum(1 for b in blocks if b.block_type == BLOCK_FIGURE)
         image_bboxes = [b.bbox for b in blocks if b.block_type == BLOCK_FIGURE and b.bbox]
-        figure_blocks = self._extract_vector_figures(
-            page, page_no, out_dir, images_dir, image_bboxes
-        )
+        figure_blocks = self._extract_vector_figures(page, page_no, out_dir, images_dir, image_bboxes)
         for fig in figure_blocks:
             fig.reading_order = order
             order += 1
@@ -484,9 +492,7 @@ class PyMuPDFParser:
         )
 
     # -- 内嵌位图 --------------------------------------------------------- #
-    def _extract_images(
-        self, doc, page, page_no: int, out_dir: str, images_dir: str, order: int
-    ) -> List[ParsedBlock]:
+    def _extract_images(self, doc, page, page_no: int, out_dir: str, images_dir: str, order: int) -> List[ParsedBlock]:
         out: List[ParsedBlock] = []
         seen_xrefs = set()
         page_height = float(page.rect.height)
@@ -580,9 +586,7 @@ class PyMuPDFParser:
             return []
         page_area = float(page.rect.width) * float(page.rect.height)
         page_height = float(page.rect.height)
-        regions = filter_figure_regions(
-            merge_rects(rects), page_area=page_area
-        )
+        regions = filter_figure_regions(merge_rects(rects), page_area=page_area)
         out: List[ParsedBlock] = []
         for i, bbox in enumerate(regions, start=1):
             if _band_of(bbox, page_height):

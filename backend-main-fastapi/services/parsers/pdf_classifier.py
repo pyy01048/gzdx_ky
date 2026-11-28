@@ -94,9 +94,7 @@ def _text_char_count(page) -> int:
     return len("".join(raw.split()))
 
 
-def page_char_counts(
-    pdf_path: str, *, pages: Optional[Iterable[int]] = None
-) -> Dict[int, int]:
+def page_char_counts(pdf_path: str, *, pages: Optional[Iterable[int]] = None) -> Dict[int, int]:
     """统计每页文字层字符数。
 
     :param pdf_path: PDF 路径
@@ -110,11 +108,7 @@ def page_char_counts(
         if getattr(doc, "needs_pass", False):
             raise RuntimeError(f"PDF 已加密，无法读取文字层: {os.path.basename(pdf_path)}")
         total = int(doc.page_count)
-        wanted = (
-            list(range(1, total + 1))
-            if pages is None
-            else [int(p) for p in pages]
-        )
+        wanted = list(range(1, total + 1)) if pages is None else [int(p) for p in pages]
         out: Dict[int, int] = {}
         for page_no in wanted:
             if page_no < 1 or page_no > total:

@@ -16,6 +16,7 @@
 
 运行: python scripts/import_408ai_tutor_pg.py
 """
+
 # [STATUS] 一次性数据脚本（迁入 oneoff/，docs/完善方案/04 §3.4）。执行前确认数据源与备份。
 import json
 import os
@@ -29,7 +30,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 BANK_ROOT = os.path.join(PROJECT_ROOT, "..", "data_sources", "408-ai-tutor", "408-ai-tutor-main", "question_banks")
 
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -95,9 +95,7 @@ def main():
             subject_id, subject = SUBJECT_MAP[bank]
             sqlite = sqlite3.connect(db_path)
             sqlite.row_factory = sqlite3.Row
-            rows = sqlite.execute(
-                "SELECT * FROM questions WHERE answer IS NOT NULL AND answer != ''"
-            ).fetchall()
+            rows = sqlite.execute("SELECT * FROM questions WHERE answer IS NOT NULL AND answer != ''").fetchall()
             sqlite.close()
             print(f"{bank}: 有答案 {len(rows)} 题")
 

@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """V14 场景化讲题回归：explain 三视角 + 追问（无 LLM 走降级包，云端即可测）。"""
+
 from __future__ import annotations
 
 import pytest
 from database import Base, SessionLocal, engine
 from main import app
-from models import QuizQuestion
 from tests.asgi_client import ASGIClient
+
+from models import QuizQuestion
 
 client = ASGIClient(app)
 
@@ -23,10 +25,17 @@ def _seed():
 
         db.execute(_text("DELETE FROM quiz_questions WHERE id = 8801"))
         db.commit()
-        db.add(QuizQuestion(id=8801, content="TTL 与非门多余输入端？",
-                            options='{"A":"接地","B":"接高电平"}', answer="B",
-                            analysis="多余端接高电平不影响逻辑功能",
-                            knowledge_point="TTL 门电路", subject="数电"))
+        db.add(
+            QuizQuestion(
+                id=8801,
+                content="TTL 与非门多余输入端？",
+                options='{"A":"接地","B":"接高电平"}',
+                answer="B",
+                analysis="多余端接高电平不影响逻辑功能",
+                knowledge_point="TTL 门电路",
+                subject="数电",
+            )
+        )
         db.commit()
     finally:
         db.close()
@@ -34,8 +43,7 @@ def _seed():
 
 @pytest.mark.parametrize("angle", ["why_wrong", "solution", "method"])
 def test_explain_three_angles(angle):
-    r = client.post("/api/ai/tutoring/explain",
-                    json={"question_id": 8801, "angle": angle, "my_answer": "A"})
+    r = client.post("/api/ai/tutoring/explain", json={"question_id": 8801, "angle": angle, "my_answer": "A"})
     assert r.status_code == 200
     d = r.json()
     assert d["question_id"] == 8801
@@ -54,27 +62,27 @@ def test_explain_404_and_followup(monkeypatch):
         return {"content": "（测试桩）追问：第2步为什么这样？", "provider": "test-stub", "route": "stub"}
 
     monkeypatch.setattr("services.ai_service.AIService.chat", _stub_chat)
-    r = client.post("/api/ai/tutoring/followup", json={
-        "question_id": 8801, "message": "第2步为什么这样？",
-        "history": [{"role": "user", "content": "讲一下"},
-                    {"role": "assistant", "content": "好"}]})
+    r = client.post(
+        "/api/ai/tutoring/followup",
+        json={
+            "question_id": 8801,
+            "message": "第2步为什么这样？",
+            "history": [{"role": "user", "content": "讲一下"}, {"role": "assistant", "content": "好"}],
+        },
+    )
     assert r.status_code == 200 and r.json()["content"]
 
 
 def test_stuck_records_to_blind_spot():
     """AI 讲题「仍未理解」→ 盲点池闭环：gap_type=not_understood，按用户隔离可查。"""
-    r = client.post("/api/ai/tutoring/stuck", json={
-        "question_id": 8801, "note": "第2步没懂", "angle": "solution"})
+    r = client.post("/api/ai/tutoring/stuck", json={"question_id": 8801, "note": "第2步没懂", "angle": "solution"})
     assert r.status_code == 200
     d = r.json()
     assert d["status"] == "recorded"
     assert d["stuck_id"] > 0
 
     gaps = client.get("/api/blind-spot/gaps", params={"status": "all"}).json()
-    matched = [
-        g for g in gaps
-        if g.get("gap_type") == "not_understood" and "第2步没懂" in (g.get("question") or "")
-    ]
+    matched = [g for g in gaps if g.get("gap_type") == "not_understood" and "第2步没懂" in (g.get("question") or "")]
     assert matched, f"盲点池中应存在 not_understood 记录：{gaps[:3]}"
 
     # 不存在的题目 → 404
@@ -84,15 +92,11 @@ def test_stuck_records_to_blind_spot():
 
 def test_weekly_topics_aggregation():
     """周会议题聚合（多人计数视图）：按 subject+gap_type 统计，只返回计数不泄露他人文本。"""
-    r = client.post("/api/ai/tutoring/stuck", json={
-        "question_id": 8801, "note": "周会聚合验证", "angle": "solution"})
+    r = client.post("/api/ai/tutoring/stuck", json={"question_id": 8801, "note": "周会聚合验证", "angle": "solution"})
     assert r.status_code == 200
 
     topics = client.get("/api/blind-spot/weekly-topics", params={"days": 7}).json()
-    matched = [
-        t for t in topics
-        if t.get("subject") == "数电" and t.get("gap_type") == "not_understood"
-    ]
+    matched = [t for t in topics if t.get("subject") == "数电" and t.get("gap_type") == "not_understood"]
     assert matched, f"周会议题应包含 not_understood 聚合：{topics[:3]}"
     topic = matched[0]
     assert topic["open_count"] >= 1

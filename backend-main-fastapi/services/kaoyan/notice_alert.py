@@ -12,6 +12,7 @@
    不依赖 zoneinfo 数据库，因此绝对不会再出现
    ``No time zone found with key Asia/Shanghai``。
 """
+
 from __future__ import annotations
 
 import json
@@ -141,10 +142,13 @@ _FALLBACK_RULES: Dict[str, Any] = {
     "type_weight": {"调剂": 30, "复试": 25, "录取": 28, "简章": 15, "目录": 15},
     "default_type_weight": 0,
     "keyword_rules": [
-        {"level": "urgent", "score": 45, "reason": "关键节点",
-         "keywords": ["复试", "拟录取", "调剂", "报名截止", "考试时间"]},
-        {"level": "important", "score": 20, "reason": "政策文件",
-         "keywords": ["招生简章", "专业目录", "参考书目"]},
+        {
+            "level": "urgent",
+            "score": 45,
+            "reason": "关键节点",
+            "keywords": ["复试", "拟录取", "调剂", "报名截止", "考试时间"],
+        },
+        {"level": "important", "score": 20, "reason": "政策文件", "keywords": ["招生简章", "专业目录", "参考书目"]},
     ],
     "date_extraction": {
         "enabled": True,
@@ -158,8 +162,13 @@ _FALLBACK_RULES: Dict[str, Any] = {
         },
         "deadline_suffixes": ["截止", "之前", "前"],
     },
-    "alert": {"deadline_within_days": 21, "new_notice_within_days": 7,
-              "subscription_feed_days": 3, "daily_hour": 7, "daily_minute": 40},
+    "alert": {
+        "deadline_within_days": 21,
+        "new_notice_within_days": 7,
+        "subscription_feed_days": 3,
+        "daily_hour": 7,
+        "daily_minute": 40,
+    },
 }
 
 
@@ -238,12 +247,10 @@ def classify_importance(
         # 命中了纯排除词（说明是被排除的组合，如「招生录取」）则整条规则不算
         if any(e in title for e in excludes):
             continue
-        if any((_safe_re(p) or re.compile("(?!)")).search(title)
-               for p in excludes_re if _safe_re(p)):
+        if any((_safe_re(p) or re.compile("(?!)")).search(title) for p in excludes_re if _safe_re(p)):
             continue
         matched.extend(matched_in_rule)
-        reasons.append(f"命中「{reason}」({'/'.join(matched_in_rule[:3])}) "
-                       f"{'+%.0f' % score if score else ''}")
+        reasons.append(f"命中「{reason}」({'/'.join(matched_in_rule[:3])}) {'+%.0f' % score if score else ''}")
         if score >= 10 and LEVEL_ORDER.get(level, 0) > LEVEL_ORDER.get(best_level, 0):
             best_level = level
         # force_level=true 的规则直接定档并短路（如「纯博士通知降为普通」）
@@ -260,7 +267,7 @@ def classify_importance(
         # max_score（默认 1）= 同一条规则最多计几次分，
         # 避免长标题把分数刷爆。
         gain = score * max(1, int(kr.get("max_score", 1)))
-        #非紧急规则（重要/普通）的加分设上限：多条重要规则叠加也**不该**升到紧急。
+        # 非紧急规则（重要/普通）的加分设上限：多条重要规则叠加也**不该**升到紧急。
         # 例：「专业目录初试科目调整」同时命中「招生政策」(+22) 与「科目调整」(+18)
         # 累计 40 恰好等于紧急阈值，会把政策变更误报成急件 —— 必须挡住。
         if level != LEVEL_URGENT:
@@ -293,8 +300,19 @@ def classify_importance(
 # --------------------------------------------------------------------------- #
 # 中文数字 → 阿拉伯（覆盖常见写法，够用即可，不追求全量）
 _CN_NUM = {
-    "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7,
-    "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+    "十一": 11,
+    "十二": 12,
 }
 
 # 日期短语：带年份 / 纯月日 / 中文数字月日
@@ -327,9 +345,7 @@ def _to_int(token: Optional[str]) -> Optional[int]:
 # 逐个补等于永远在追。剥掉后 ``date_text``/``context`` 也不含不可见字符，
 # 前端不会渲染出空白占位。
 _INVISIBLE_RE = re.compile(
-    "[\u200b\u200c\u200d\u200e\u200f\u2060\ufeff\u00ad\u180e"
-    "\u202a\u202b\u202c\u202d\u202e"
-    "\u2066\u2067\u2068\u2069]"
+    "[\u200b\u200c\u200d\u200e\u200f\u2060\ufeff\u00ad\u180e\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069]"
 )
 
 
@@ -357,9 +373,7 @@ def _guess_year(text: str, ref_year: Optional[int]) -> int:
 
 # 日期区间连接词：「10月5日至10月25日」「10月5日-25日」「10月5日—25日」
 # 区间的**起点不是截止日**（是"开始"），只有终点才是。
-_RANGE_JOIN_RE = re.compile(
-    r"\s*(?:至|到|—|–|-|~|～)\s*(?=\d{1,2}\s*月|[一二三四五六七八九十]{1,3}\s*月)"
-)
+_RANGE_JOIN_RE = re.compile(r"\s*(?:至|到|—|–|-|~|～)\s*(?=\d{1,2}\s*月|[一二三四五六七八九十]{1,3}\s*月)")
 
 # 日期**之后**的后缀型截止表述：「9月20日前完成」「10月25日前寄到」
 # 中文里"X前Y"的截止语义在日期之后，只看日期前的上下文会漏。
@@ -371,8 +385,7 @@ _RANGE_JOIN_RE = re.compile(
 _SUFFIX_AFTER_RE = re.compile(r"^\s*之?前\s*\S")
 
 # 往年/已结束标记：命中则说明该日期描述的是**过去周期**，不能当待办截止
-_PAST_MARKERS = ("去年", "往年", "上一年", "上年度", "已结束", "已截止", "已关闭",
-                 "现已截止", "已过期")
+_PAST_MARKERS = ("去年", "往年", "上一年", "上年度", "已结束", "已截止", "已关闭", "现已截止", "已过期")
 
 # 「已于2025年9月25日截止」——截止语义跨在日期两侧（前"已于"、后"截止"），
 # 单纯在 before 或 after 里找「已截止」匹配不到，需要组合判定。
@@ -425,10 +438,10 @@ def extract_dates(
         # 取日期前 26 字作为语义上下文
         ctx_start = max(0, start - 26)
         before = text[ctx_start:start]
-        after = text[m.end():m.end() + 12]
+        after = text[m.end() : m.end() + 12]
         date_text = m.group(0)
 
-        #年份优先级：日期自带的年份 > 上下文最近出现的年份 > 参考年 > 当前年
+        # 年份优先级：日期自带的年份 > 上下文最近出现的年份 > 参考年 > 当前年
         if m.group("year"):
             year = int(m.group("year"))
         else:
@@ -463,7 +476,7 @@ def extract_dates(
         # ---- 修正1：区间起点不是截止日 ----
         # 「网上报名时间为10月5日至10月25日」：10月5日是**开始**，10月25日才是截止。
         # 若不区分，会把开始日当成 deadline，用户提前 20 天就收到"即将截止"的假警报。
-        is_range_start = bool(_RANGE_JOIN_RE.match(text[m.end():]))
+        is_range_start = bool(_RANGE_JOIN_RE.match(text[m.end() :]))
 
         # ---- 修正2：截止语义在日期**之后**（「9月20日前完成」）----
         # 只看 before 会漏掉这类句式，补一次 after 探测。
@@ -510,14 +523,16 @@ def extract_dates(
         if key in seen:
             continue
         seen.add(key)
-        found.append({
-            "kind": kind,
-            "label": label,
-            "date": parsed.isoformat(),
-            "date_text": date_text,
-            "is_deadline": is_deadline,
-            "context": text[ctx_start:m.end() + 10].strip().replace("\n", " ")[:120],
-        })
+        found.append(
+            {
+                "kind": kind,
+                "label": label,
+                "date": parsed.isoformat(),
+                "date_text": date_text,
+                "is_deadline": is_deadline,
+                "context": text[ctx_start : m.end() + 10].strip().replace("\n", " ")[:120],
+            }
+        )
 
     # deadline 优先排前，再按日期升序
     found.sort(key=lambda d: (0 if d["is_deadline"] else 1, d["date"]))
@@ -695,8 +710,7 @@ def _migrate_subscriptions(conn) -> None:
         return
     try:
         row = conn.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' "
-            "AND name='kaoyan_subscriptions'"
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='kaoyan_subscriptions'"
         ).fetchone()
     except Exception:  # noqa: BLE001 - 目录表不存在即视为无需迁移
         return
@@ -705,14 +719,12 @@ def _migrate_subscriptions(conn) -> None:
     sql = row[0] or ""
     cols = table_columns(conn, "kaoyan_subscriptions")
     need = []
-    for name in ("school_id", "school_name", "major_name", "notice_type", "keyword",
-                 "level_min"):
+    for name in ("school_id", "school_name", "major_name", "notice_type", "keyword", "level_min"):
         info = cols.get(name)
         # 期望：school_id NOT NULL DEFAULT 0；其余 TEXT NOT NULL DEFAULT ''
         if info is not None and not info[3]:  # info[3] == notnull
             need.append(name)
-    uniq_ok = "school_name" in sql.split("UNIQUE(", 1)[1].split(")", 1)[0] \
-        if "UNIQUE(" in sql else False
+    uniq_ok = "school_name" in sql.split("UNIQUE(", 1)[1].split(")", 1)[0] if "UNIQUE(" in sql else False
     if not need and uniq_ok:
         return
 
@@ -727,6 +739,7 @@ def _migrate_subscriptions(conn) -> None:
         """
     )
     from services.ddl_compat import adapt_ddl
+
     conn.executescript(adapt_ddl(_DDL, conn))
     conn.execute(
         "INSERT OR IGNORE INTO kaoyan_subscriptions (id, scope, school_id, school_name, "
@@ -776,8 +789,11 @@ def classify_and_store(db, notice_id: int) -> Optional[Dict[str, Any]]:
     conn = raw_conn(db)
     cols = table_columns(conn, "kaoyan_notices")
     has_content = "content" in cols
-    sel = ("SELECT id, title, notice_type, publish_date"
-           + (", content" if has_content else "") + " FROM kaoyan_notices WHERE id = ?")
+    sel = (
+        "SELECT id, title, notice_type, publish_date"
+        + (", content" if has_content else "")
+        + " FROM kaoyan_notices WHERE id = ?"
+    )
     row = conn.execute(sel, (notice_id,)).fetchone()
     if not row:
         return None
@@ -793,8 +809,15 @@ def classify_and_store(db, notice_id: int) -> Optional[Dict[str, Any]]:
     conn.execute(
         "UPDATE kaoyan_notices SET importance_level=?, importance_score=?, "
         "importance_reason=?, deadline_date=?, events_json=?, classified_at=? WHERE id=?",
-        (cls["level"], cls["score"], "；".join(cls["reasons"])[:500],
-         deadline, json.dumps(dates, ensure_ascii=False), now_iso, nid),
+        (
+            cls["level"],
+            cls["score"],
+            "；".join(cls["reasons"])[:500],
+            deadline,
+            json.dumps(dates, ensure_ascii=False),
+            now_iso,
+            nid,
+        ),
     )
     db.commit()
     return {"notice_id": nid, **cls, "dates": dates, "deadline_date": deadline}
@@ -811,8 +834,7 @@ def backfill_all(db, limit: int = 0, log_every: int = 300) -> Dict[str, Any]:
         args.append(limit)
     rows = conn.execute(sql, args).fetchall()
     rules = load_rules()
-    stats = {"total": len(rows), "urgent": 0, "important": 0, "normal": 0,
-             "with_deadline": 0, "with_dates": 0}
+    stats = {"total": len(rows), "urgent": 0, "important": 0, "normal": 0, "with_deadline": 0, "with_dates": 0}
     now_iso = naive_utc_iso()
     for i, (nid, title, ntype, pub) in enumerate(rows, 1):
         ref = parse_date_loose(pub)
@@ -827,8 +849,15 @@ def backfill_all(db, limit: int = 0, log_every: int = 300) -> Dict[str, Any]:
         conn.execute(
             "UPDATE kaoyan_notices SET importance_level=?, importance_score=?, "
             "importance_reason=?, deadline_date=?, events_json=?, classified_at=? WHERE id=?",
-            (cls["level"], cls["score"], "；".join(cls["reasons"])[:500],
-             deadline, json.dumps(dates, ensure_ascii=False), now_iso, nid),
+            (
+                cls["level"],
+                cls["score"],
+                "；".join(cls["reasons"])[:500],
+                deadline,
+                json.dumps(dates, ensure_ascii=False),
+                now_iso,
+                nid,
+            ),
         )
         if i % log_every == 0:
             db.commit()
@@ -850,9 +879,16 @@ def _load_subscriptions(db) -> List[Dict[str, Any]]:
         "FROM kaoyan_subscriptions WHERE enabled = TRUE"
     ).fetchall()
     return [
-        {"id": r[0], "scope": r[1], "school_id": r[2], "school_name": r[3],
-         "major_name": r[4], "notice_type": r[5], "keyword": r[6],
-         "level_min": r[7] or "normal"}
+        {
+            "id": r[0],
+            "scope": r[1],
+            "school_id": r[2],
+            "school_name": r[3],
+            "major_name": r[4],
+            "notice_type": r[5],
+            "keyword": r[6],
+            "level_min": r[7] or "normal",
+        }
         for r in rows
     ]
 
@@ -863,8 +899,9 @@ def notice_matches_subscription(notice: Dict[str, Any], sub: Dict[str, Any]) -> 
     ``level_min`` 作为「噪音过滤」：等级低于订阅门槛的通知不推送，
     避免用户订阅了「某校」却被上百条普通公告刷屏。
     """
-    if LEVEL_ORDER.get(notice.get("importance_level") or LEVEL_NORMAL, 1) < \
-       LEVEL_ORDER.get(sub.get("level_min") or LEVEL_NORMAL, 1):
+    if LEVEL_ORDER.get(notice.get("importance_level") or LEVEL_NORMAL, 1) < LEVEL_ORDER.get(
+        sub.get("level_min") or LEVEL_NORMAL, 1
+    ):
         return False
     scope = sub["scope"]
     if scope == "school":
@@ -873,8 +910,7 @@ def notice_matches_subscription(notice: Dict[str, Any], sub: Dict[str, Any]) -> 
         return bool(sub.get("school_name")) and sub["school_name"] == notice.get("school_name")
     if scope == "major":
         kw = (sub.get("major_name") or "").strip()
-        return bool(kw) and (kw in (notice.get("title") or "") or
-                            kw in (notice.get("school_name") or ""))
+        return bool(kw) and (kw in (notice.get("title") or "") or kw in (notice.get("school_name") or ""))
     if scope == "notice_type":
         return bool(sub.get("notice_type")) and sub["notice_type"] == notice.get("notice_type")
     if scope == "keyword":
@@ -897,12 +933,21 @@ def _notice_rows_since(db, since: date, limit: int = 4000) -> List[Dict[str, Any
     ).fetchall()
     out = []
     for r in rows:
-        out.append({
-            "id": r[0], "school_id": r[1], "school_name": r[2], "title": r[3],
-            "notice_type": r[4], "publish_date": r[5], "url": r[6],
-            "importance_level": r[7] or LEVEL_NORMAL, "importance_score": r[8] or 0,
-            "deadline_date": r[9], "events_json": r[10],
-        })
+        out.append(
+            {
+                "id": r[0],
+                "school_id": r[1],
+                "school_name": r[2],
+                "title": r[3],
+                "notice_type": r[4],
+                "publish_date": r[5],
+                "url": r[6],
+                "importance_level": r[7] or LEVEL_NORMAL,
+                "importance_score": r[8] or 0,
+                "deadline_date": r[9],
+                "events_json": r[10],
+            }
+        )
     return out
 
 
@@ -915,10 +960,7 @@ def purge_orphan_alerts(db) -> int:
     """
     try:
         conn = raw_conn(db)
-        cur = conn.execute(
-            "DELETE FROM kaoyan_alert_records WHERE notice_id NOT IN "
-            "(SELECT id FROM kaoyan_notices)"
-        )
+        cur = conn.execute("DELETE FROM kaoyan_alert_records WHERE notice_id NOT IN (SELECT id FROM kaoyan_notices)")
         n = cur.rowcount or 0
         if n:
             db.commit()
@@ -989,7 +1031,7 @@ def scan_alerts(db, trigger: str = "manual", now: Optional[datetime] = None) -> 
         scanned += 1
         pub = parse_date_loose(n["publish_date"])
         level = n["importance_level"] or LEVEL_NORMAL
-        label = LEVEL_LABEL_CN.get(level, "普通")
+        LEVEL_LABEL_CN.get(level, "普通")
 
         # --- 1) 临期截止 ---
         dl = parse_date_loose(n["deadline_date"])
@@ -1008,28 +1050,37 @@ def scan_alerts(db, trigger: str = "manual", now: Optional[datetime] = None) -> 
         # --- 2) 新发布的高等级通知 ---
         if pub and (today - pub).days <= new_days and level in (LEVEL_URGENT,):
             when = "今天" if pub == today else pub.isoformat()
-            candidates.append((
-                n["id"], "new_urgent",
-                f"【紧急·{when}发布】{n['school_name'] or ''}｜{n['title']}",
-            ))
+            candidates.append(
+                (
+                    n["id"],
+                    "new_urgent",
+                    f"【紧急·{when}发布】{n['school_name'] or ''}｜{n['title']}",
+                )
+            )
 
         # --- 3) 订阅命中 ---
         if subs and pub and (today - pub).days <= feed_days and (today - pub).days >= 0:
             if any(notice_matches_subscription(n, s) for s in subs):
-                candidates.append((
-                    n["id"], "subscribed_new",
-                    f"【订阅更新·{(today - pub).days}天内】{n['school_name'] or ''}｜{n['title']}",
-                ))
+                candidates.append(
+                    (
+                        n["id"],
+                        "subscribed_new",
+                        f"【订阅更新·{(today - pub).days}天内】{n['school_name'] or ''}｜{n['title']}",
+                    )
+                )
 
     # --- 4) 重要级（仅当用户有订阅，平衡噪音）---
     if subs:
         for n in notices:
             pub = parse_date_loose(n["publish_date"])
             if pub and (today - pub).days <= new_days and n["importance_level"] == LEVEL_IMPORTANT:
-                candidates.append((
-                    n["id"], "new_important",
-                    f"【重要·{pub.isoformat()}】{n['school_name'] or ''}｜{n['title']}",
-                ))
+                candidates.append(
+                    (
+                        n["id"],
+                        "new_important",
+                        f"【重要·{pub.isoformat()}】{n['school_name'] or ''}｜{n['title']}",
+                    )
+                )
 
     # --- 去重落库 ---
     # created_at / ran_at 是 UTC 时间戳列；「哪一天提醒的」另走 alert_date
@@ -1057,10 +1108,19 @@ def scan_alerts(db, trigger: str = "manual", now: Optional[datetime] = None) -> 
             "INSERT INTO kaoyan_alert_records (notice_id, alert_kind, alert_date, title, "
             "school_name, notice_type, importance_level, deadline_date, days_left, message, "
             "acked, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,?)",
-            (notice_id, kind, today.isoformat(),
-             (n or {}).get("title"), (n or {}).get("school_name"),
-             (n or {}).get("notice_type"), (n or {}).get("importance_level"),
-             dl.isoformat() if dl else None, days_left, msg, now_iso),
+            (
+                notice_id,
+                kind,
+                today.isoformat(),
+                (n or {}).get("title"),
+                (n or {}).get("school_name"),
+                (n or {}).get("notice_type"),
+                (n or {}).get("importance_level"),
+                dl.isoformat() if dl else None,
+                days_left,
+                msg,
+                now_iso,
+            ),
         )
         created += 1
 
@@ -1069,14 +1129,29 @@ def scan_alerts(db, trigger: str = "manual", now: Optional[datetime] = None) -> 
         f"INSERT INTO kaoyan_alert_runs (ran_at, {runs_trigger_column(conn)}, "
         "scanned, created_alerts, "
         "skipped_dup, elapsed_ms, detail) VALUES (?,?,?,?,?,?,?)",
-        (now_iso, trigger, scanned, created, dup, elapsed,
-         json.dumps({"today": today.isoformat(), "subs": len(subs),
-                     "candidates": len(candidates)}, ensure_ascii=False)),
+        (
+            now_iso,
+            trigger,
+            scanned,
+            created,
+            dup,
+            elapsed,
+            json.dumps(
+                {"today": today.isoformat(), "subs": len(subs), "candidates": len(candidates)}, ensure_ascii=False
+            ),
+        ),
     )
     db.commit()
-    result = {"trigger": trigger, "today": today.isoformat(), "scanned": scanned,
-              "candidates": len(candidates), "created": created, "skipped_dup": dup,
-              "elapsed_ms": elapsed, "subscriptions": len(subs),
-              "purged_orphan": purged}
+    result = {
+        "trigger": trigger,
+        "today": today.isoformat(),
+        "scanned": scanned,
+        "candidates": len(candidates),
+        "created": created,
+        "skipped_dup": dup,
+        "elapsed_ms": elapsed,
+        "subscriptions": len(subs),
+        "purged_orphan": purged,
+    }
     logger.info("[通知提醒扫描] %s", json.dumps(result, ensure_ascii=False))
     return result

@@ -23,13 +23,15 @@
    - POST /api/memory/distill
    - POST /api/memory/profile
 """
+
 from __future__ import annotations
 
 import pytest
 from database import SessionLocal
 from main import app
-from models import MemoryFact, MemorySynthesis, MemoryTrace, QuizQuestion
 from tests.asgi_client import ASGIClient
+
+from models import MemoryFact, MemorySynthesis, MemoryTrace, QuizQuestion
 
 client = ASGIClient(app)
 
@@ -44,8 +46,11 @@ def _make_subjective_question(db, subject="数学"):
         answer="微积分是研究变化的数学工具。",
         analysis="从极限、导数、积分展开。",
         subject=subject,
-        chapter="QA-高数", knowledge_point="QA-微积分",
-        difficulty=3, source="自建", question_type="essay",
+        chapter="QA-高数",
+        knowledge_point="QA-微积分",
+        difficulty=3,
+        source="自建",
+        question_type="essay",
         answer_type="subjective",
     )
     db.add(q)
@@ -145,9 +150,15 @@ def test_distill_grading_weakness():
     try:
         qid = _make_subjective_question(db)
         memory_service.record_grading_trace(
-            user_id=TEST_USER_ID, question_id=qid, subject="数学",
-            question_content="题", my_answer="不会",
-            score=3.0, max_score=10.0, evaluation="概念不清", db=db,
+            user_id=TEST_USER_ID,
+            question_id=qid,
+            subject="数学",
+            question_content="题",
+            my_answer="不会",
+            score=3.0,
+            max_score=10.0,
+            evaluation="概念不清",
+            db=db,
         )
         result = memory_service.distill_facts(db, user_id=TEST_USER_ID)
         assert result["created"] >= 1
@@ -190,9 +201,15 @@ def test_build_profile():
     try:
         qid = _make_subjective_question(db)
         memory_service.record_grading_trace(
-            user_id=TEST_USER_ID, question_id=qid, subject="数学",
-            question_content="题", my_answer="不会",
-            score=2.0, max_score=10.0, evaluation="差", db=db,
+            user_id=TEST_USER_ID,
+            question_id=qid,
+            subject="数学",
+            question_content="题",
+            my_answer="不会",
+            score=2.0,
+            max_score=10.0,
+            evaluation="差",
+            db=db,
         )
         memory_service.distill_facts(db, user_id=TEST_USER_ID)
         prof = memory_service.build_profile(db, user_id=TEST_USER_ID)
@@ -215,16 +232,24 @@ def test_correct_fact_keeps_original():
     try:
         qid = _make_subjective_question(db)
         memory_service.record_grading_trace(
-            user_id=TEST_USER_ID, question_id=qid, subject="数学",
-            question_content="题", my_answer="不会",
-            score=3.0, max_score=10.0, evaluation="差", db=db,
+            user_id=TEST_USER_ID,
+            question_id=qid,
+            subject="数学",
+            question_content="题",
+            my_answer="不会",
+            score=3.0,
+            max_score=10.0,
+            evaluation="差",
+            db=db,
         )
         memory_service.distill_facts(db, user_id=TEST_USER_ID)
         facts = memory_service.list_facts(db, user_id=TEST_USER_ID)
         fid = facts[0]["id"]
 
         updated = memory_service.correct_fact(
-            db, user_id=TEST_USER_ID, fact_id=fid,
+            db,
+            user_id=TEST_USER_ID,
+            fact_id=fid,
             corrected_claim="我其实会做，只是粗心",
         )
         assert updated is not None
@@ -243,16 +268,24 @@ def test_correct_synthesis_keeps_original():
     try:
         qid = _make_subjective_question(db)
         memory_service.record_grading_trace(
-            user_id=TEST_USER_ID, question_id=qid, subject="数学",
-            question_content="题", my_answer="不会",
-            score=3.0, max_score=10.0, evaluation="差", db=db,
+            user_id=TEST_USER_ID,
+            question_id=qid,
+            subject="数学",
+            question_content="题",
+            my_answer="不会",
+            score=3.0,
+            max_score=10.0,
+            evaluation="差",
+            db=db,
         )
         memory_service.distill_facts(db, user_id=TEST_USER_ID)
         prof = memory_service.build_profile(db, user_id=TEST_USER_ID)
         sid = prof["id"]
 
         updated = memory_service.correct_synthesis(
-            db, user_id=TEST_USER_ID, synthesis_id=sid,
+            db,
+            user_id=TEST_USER_ID,
+            synthesis_id=sid,
             corrected_summary="用户纠正后的画像",
         )
         assert updated is not None
@@ -273,9 +306,15 @@ def _seed_memory():
     try:
         qid = _make_subjective_question(db)
         memory_service.record_grading_trace(
-            user_id=TEST_USER_ID, question_id=qid, subject="数学",
-            question_content="题", my_answer="不会",
-            score=3.0, max_score=10.0, evaluation="差", db=db,
+            user_id=TEST_USER_ID,
+            question_id=qid,
+            subject="数学",
+            question_content="题",
+            my_answer="不会",
+            score=3.0,
+            max_score=10.0,
+            evaluation="差",
+            db=db,
         )
         memory_service.distill_facts(db, user_id=TEST_USER_ID)
         memory_service.build_profile(db, user_id=TEST_USER_ID)
@@ -347,9 +386,15 @@ def test_api_distill_and_profile():
     try:
         qid = _make_subjective_question(db)
         memory_service.record_grading_trace(
-            user_id=TEST_USER_ID, question_id=qid, subject="数学",
-            question_content="题", my_answer="不会",
-            score=3.0, max_score=10.0, evaluation="差", db=db,
+            user_id=TEST_USER_ID,
+            question_id=qid,
+            subject="数学",
+            question_content="题",
+            my_answer="不会",
+            score=3.0,
+            max_score=10.0,
+            evaluation="差",
+            db=db,
         )
     finally:
         db.close()

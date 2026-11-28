@@ -45,9 +45,9 @@ def _iter_candidates() -> list[tuple[str, str]]:
     # 方式 3：解析 ipconfig（Windows）
     if sys.platform == "win32":
         try:
-            r = subprocess.run(["ipconfig"], capture_output=True, text=True,
-                               timeout=10, errors="ignore")
+            r = subprocess.run(["ipconfig"], capture_output=True, text=True, timeout=10, errors="ignore")
             import re
+
             for m in re.finditer(r"IPv4[^:]*:\s*([0-9.]+)", r.stdout):
                 out.append((m.group(1), "ipconfig"))
         except Exception:
@@ -130,9 +130,7 @@ def get_access_info(*, port: int | None = None, auth_enabled: bool = False) -> d
             "要让手机访问，请把 backend-main-fastapi/.env 里的 HOST 改成 0.0.0.0 后重启。"
         )
     if exposed and not auth_enabled:
-        tips.append(
-            "已开放局域网访问但**未启用登录**：同一 WiFi 下任何设备都能打开。"
-        )
+        tips.append("已开放局域网访问但**未启用登录**：同一 WiFi 下任何设备都能打开。")
     if lan_ip and lan_ip.startswith("169.254."):
         tips.append("检测到链路本地地址，可能没连上 WiFi。")
     tips.append("手机需与本电脑连同一个 WiFi；公司/校园网可能禁止设备互访。")

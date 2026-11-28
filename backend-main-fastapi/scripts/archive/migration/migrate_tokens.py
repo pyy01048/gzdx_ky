@@ -21,6 +21,7 @@ src/styles/tokens.css 头部注释里写明了迁移计划：
   · 删前逐块打印，便于人工核对
   · 删除后校验：文件内不应再有裸 hex 定义在 :root 里
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,7 +65,7 @@ def find_blocks(lines: list[str]) -> list[tuple[int, int, str]]:
         if len(line) - len(line.lstrip()) > 2:
             continue
         if in_contrast[i]:
-            continue          # 无障碍块，跳过
+            continue  # 无障碍块，跳过
         depth = 0
         end = i
         for j in range(i, len(lines)):
@@ -112,11 +113,9 @@ def main() -> int:
     print(f"\n  合计可删：{total} 行（占 {total * 100 // len(lines)}%）")
 
     # 高对比度块：改用新令牌，不删
-    hc = [i for i, l in enumerate(lines)
-          if "prefers-contrast" in l]
+    hc = [i for i, l in enumerate(lines) if "prefers-contrast" in l]
     if hc:
-        print(f"\n  注意：检测到 {len(hc)} 处 prefers-contrast 无障碍块，"
-              "将改写为新令牌而非删除")
+        print(f"\n  注意：检测到 {len(hc)} 处 prefers-contrast 无障碍块，将改写为新令牌而非删除")
 
     if not args.apply:
         print("\n[预览模式] 未修改文件。")
@@ -136,7 +135,7 @@ def main() -> int:
                 comment_top = k
             else:
                 break
-        del out[comment_top:e + 1]
+        del out[comment_top : e + 1]
 
     text = "\n".join(out)
     # 无障碍块改写为新令牌名

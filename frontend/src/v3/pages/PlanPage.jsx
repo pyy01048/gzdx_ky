@@ -20,6 +20,11 @@ const STAGE_TONE = {
 }
 const stageTone = (name) => STAGE_TONE[name] || 'other'
 
+/**
+ * 考研规划页：阶段 → 月 → 周 → 日 三层规划，与择校目标联动。
+ * 访客只读公共招生日历与阶段规划；「重新生成节点」需登录。
+ * @returns {JSX.Element} 考研规划页面
+ */
 export default function PlanPage() {
   /* 访客只读（2026-11-20）：公共招生日历 + 阶段规划免登录可看；
      「重新生成节点」是写操作，访客换成登录引导，登录后回到本页。 */
@@ -36,6 +41,7 @@ export default function PlanPage() {
   const [error, setError] = useState(null)
   const [regenBusy, setRegenBusy] = useState(false)
 
+  /** 拉取路线图 + 关键节点。 */
   const load = useCallback(() => {
     setLoading(true)
     setError(null)
@@ -50,7 +56,8 @@ export default function PlanPage() {
 
   useEffect(() => { load() }, [load])
 
-  const regenerate = async () => {
+  /** 重新生成规划节点并刷新本地缓存。 */
+  const regenerate = useCallback(async () => {
     setRegenBusy(true)
     try {
       await kaoyanApi.generatePlan(year)
@@ -62,15 +69,15 @@ export default function PlanPage() {
     } finally {
       setRegenBusy(false)
     }
-  }
+  }, [year])
 
-  const stageList = roadmap?.stages || []
+  const stageList = useMemo(() => roadmap?.stages || [], [roadmap])
   const sortedMilestones = useMemo(
     () => [...(milestones?.milestones || [])].sort((a, b) => (a.start || '').localeCompare(b.start || '')),
     [milestones],
   )
 
-  const goal = roadmap?.goal || {}
+  const goal = useMemo(() => roadmap?.goal || {}, [roadmap])
   const exam = roadmap?.exam_date
   const daysNumber = Number(roadmap?.days_to_exam)
   const hasDays = roadmap?.days_to_exam != null && Number.isFinite(daysNumber)

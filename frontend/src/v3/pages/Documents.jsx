@@ -75,7 +75,7 @@ function DocFavorite({ doc }) {
   const { favorited, known, toggle } = useFavorite('document', doc.id)
   const [busy, setBusy] = useState(false)
 
-  const onClick = async () => {
+  const onClick = useCallback(async () => {
     if (busy || !known) return
     setBusy(true)
     try {
@@ -91,7 +91,7 @@ function DocFavorite({ doc }) {
     } finally {
       setBusy(false)
     }
-  }
+  }, [busy, known, toggle, doc.filename, doc.summary, doc.subject])
 
   return (
     <IconButton
@@ -516,12 +516,12 @@ export default function Documents() {
     else toastOk(`批量上传完成：成功 ${ok} 个`)
   }
 
-  const clearQueue = () => { if (!uploading) setQueue([]) }
+  const clearQueue = useCallback(() => { if (!uploading) setQueue([]) }, [uploading])
 
-  const closeUpload = () => {
+  const closeUpload = useCallback(() => {
     if (uploading) { toast('上传进行中，请等待完成'); return }
     setUploadOpen(false)
-  }
+  }, [uploading])
 
   /* ---------------- 单篇动作 ---------------- */
   const parseDoc = async (id) => {
@@ -623,21 +623,21 @@ export default function Documents() {
     }
   }
 
-  const downloadOriginal = (d) => {
+  const downloadOriginal = useCallback((d) => {
     const a = document.createElement('a')
     a.href = documentsApi.downloadUrl(d.id)
     a.download = d.filename || ''
     document.body.appendChild(a)
     a.click()
     a.remove()
-  }
+  }, [])
 
-  const openDetail = (d, tab = 'overview') => {
+  const openDetail = useCallback((d, tab = 'overview') => {
     if (!backendOk) return toastErr('需连接后端查看文档详情')
     setDetail({ id: d.id, doc: d, tab })
-  }
+  }, [backendOk])
 
-  const openDocById = (id, meta = null) => {
+  const openDocById = useCallback((id, meta = null) => {
     const d = docs.find((x) => String(x.id) === String(id))
     if (d) { openDetail(d, 'overview'); return }
     // 命中可能来自未通过科目筛选的文档：用检索返回的真实元信息打开，
@@ -654,48 +654,48 @@ export default function Documents() {
       return
     }
     toastErr('该文档不在当前列表（可能被科目筛选过滤），请先在文档列表定位')
-  }
+  }, [docs, openDetail])
 
-  const openReview = (d) => {
+  const openReview = useCallback((d) => {
     if (!backendOk) return toastErr('需连接后端预览题目')
     setReviewDoc(d)
-  }
+  }, [backendOk])
 
-  const openKbImport = (arg, doc = null) => {
+  const openKbImport = useCallback((arg, doc = null) => {
     if (!backendOk) return toastErr('需先连接后端才能识别题目')
     const defaultScope = arg === 'all' ? 'all' : arg === 'list' ? 'list' : 'single'
     setKbImport({ defaultScope, docId: doc?.id || '' })
-  }
+  }, [backendOk])
 
-  const openFilePreview = (d) => {
+  const openFilePreview = useCallback((d) => {
     if (!backendOk) return toastErr('需连接后端预览原文件')
     if (!d?.has_local_file) return toastErr(d?.local_file_note || '本地没有原文件，无法预览')
     setFileDoc(d)
-  }
+  }, [backendOk])
 
-  const openSubjectMgr = () => {
+  const openSubjectMgr = useCallback(() => {
     if (!backendOk) return toastErr('需连接后端维护科目')
     setSubjMgrOpen(true)
-  }
+  }, [backendOk])
 
   /* ---------------- 选择与批量操作 ---------------- */
-  const toggleSelect = (id) => setSelected((prev) => {
+  const toggleSelect = useCallback((id) => setSelected((prev) => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id)
     else next.add(id)
     return next
-  })
+  }), [])
 
-  const toggleAll = (check) => setSelected((prev) => {
+  const toggleAll = useCallback((check) => setSelected((prev) => {
     const next = new Set(prev)
     filtered.forEach((d) => {
       if (check) next.add(d.id)
       else next.delete(d.id)
     })
     return next
-  })
+  }), [filtered])
 
-  const clearSelection = () => setSelected(new Set())
+  const clearSelection = useCallback(() => setSelected(new Set()), [])
 
   const bulkAction = async (action) => {
     if (!backendOk) return toastErr('需连接后端执行批量操作')
@@ -767,12 +767,12 @@ export default function Documents() {
   }
 
   /* ---------------- 扫描根目录归档 ---------------- */
-  const openScan = (dry = true) => {
+  const openScan = useCallback((dry = true) => {
     if (!backendOk) return toastErr('需连接后端扫描')
     setScanDry(dry)
     setScanResult(null)
     setScanOpen(true)
-  }
+  }, [backendOk])
 
   const runScan = async () => {
     if (!backendOk) return toastErr('需连接后端扫描')
@@ -815,10 +815,10 @@ export default function Documents() {
     }
   }
 
-  const closeScan = () => {
+  const closeScan = useCallback(() => {
     if (scanningRoot) { toast('扫描进行中，请等待完成'); return }
     setScanOpen(false)
-  }
+  }, [scanningRoot])
 
   /* ---------------- 页面头部 ---------------- */
   const connecting = loading && docs.length === 0 && !loadErr

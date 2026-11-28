@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { favoritesApi } from '../../api/client'
 import useApiData from '../../hooks/useApiData'
@@ -71,6 +71,11 @@ function StatTile({ icon, label, value, unit, hint }) {
   )
 }
 
+/**
+ * 收藏夹主组件（Aurora v3）。
+ * 全站统一收藏中心：文档 / 题目 / 错题 / 知识点 / 单词 / 卡片 / 链接。
+ * 数据源：GET /favorites（item_type / q / limit / offset）· DELETE /favorites/{type}/{id}
+ */
 export default function Favorites() {
   const navigate = useNavigate()
   const [type, setType] = useState('')
@@ -103,11 +108,11 @@ export default function Favorites() {
     setPage(0)
   }, [draft])
 
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
     setDraft('')
     setQ('')
     setPage(0)
-  }
+  }, [])
 
   const remove = useCallback(async (item) => {
     setRemovingId(item.id)
@@ -133,11 +138,11 @@ export default function Favorites() {
     return [...m.entries()]
   }, [items])
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const ok = await reload()
     if (ok) toastOk('收藏列表已刷新')
     else toastErr('刷新失败，请稍后重试')
-  }
+  }, [reload])
 
   const activeTypeLabel = TYPE_OPTIONS.find((o) => o.value === type)?.label || '全部'
 

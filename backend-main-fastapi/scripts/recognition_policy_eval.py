@@ -9,6 +9,7 @@ classify_document 的每块证据（路1 bge 质心 + 路2 关键词，路3 LLM 
 
 用法：python scripts/recognition_policy_eval.py
 """
+
 import json
 import os
 import sys
@@ -48,24 +49,25 @@ def features(db):
         cc.fuse(lab, kw_subj, kw_w, vec_dist, None)
         ranked = sorted(lab.votes.items(), key=lambda kv: -kv[1])
         pua = sum(1 for ch in x["text"][:600] if "\ue000" <= ch <= "\uf8ff")
-        out.append({
-            "gold": cc._normalize_subject(x["label_l1"]) or x["label_l1"],
-            "text": x["text"],
-            "sub": lab.subject,
-            "alt": ranked[1][0] if len(ranked) > 1 else "",
-            "conf": lab.confidence,
-            "src": lab.source,
-            "kw": kw_subj,
-            "kw_w": kw_w,
-            "top_sim": max(sims.values()) if sims else 0.0,
-            "gold_sim": sims.get(x["label_l1"], -1.0),
-            "votes": lab.votes,
-            "sims": sims,
-            "junk": cc.junk_reason(x["text"]),
-            "pua_share": pua / max(len(x["text"][:600]), 1),
-        })
+        out.append(
+            {
+                "gold": cc._normalize_subject(x["label_l1"]) or x["label_l1"],
+                "text": x["text"],
+                "sub": lab.subject,
+                "alt": ranked[1][0] if len(ranked) > 1 else "",
+                "conf": lab.confidence,
+                "src": lab.source,
+                "kw": kw_subj,
+                "kw_w": kw_w,
+                "top_sim": max(sims.values()) if sims else 0.0,
+                "gold_sim": sims.get(x["label_l1"], -1.0),
+                "votes": lab.votes,
+                "sims": sims,
+                "junk": cc.junk_reason(x["text"]),
+                "pua_share": pua / max(len(x["text"][:600]), 1),
+            }
+        )
     return out
-
 
 
 def stamp(f, *, junk=None, use_alt=False, sim_floor=0.0):
@@ -112,12 +114,19 @@ def score(fs, policy):
     prec = correct / exposures if exposures else 0.0
     rec = idom_hit / idom if idom else 0.0
     f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
-    return {"prec": prec, "rec": rec, "f1": f1, "exposures": exposures,
-            "cov": exposures / len(fs), "pollute": od_pollute / od if od else 0.0}
+    return {
+        "prec": prec,
+        "rec": rec,
+        "f1": f1,
+        "exposures": exposures,
+        "cov": exposures / len(fs),
+        "pollute": od_pollute / od if od else 0.0,
+    }
 
 
 def junk_variants(cc):
     """几种弃权规则的误伤/命中，先确认规则本身能不能上生产。"""
+
     def strict_pdf(f):
         return f["junk"] in ("pdf_operator",)
 
@@ -131,9 +140,7 @@ def junk_variants(cc):
     def ratio_loose(f):
         return f["pua_share"] >= 0.05 or macro(f) or f["junk"] == "repeat"
 
-    return {"pdf_only": strict_pdf, "macro": macro,
-            "pua>=10%": ratio, "pua>=5%": ratio_loose}
-
+    return {"pdf_only": strict_pdf, "macro": macro, "pua>=10%": ratio, "pua>=5%": ratio_loose}
 
 
 def report(db, fs):
@@ -148,7 +155,7 @@ def report(db, fs):
     for name, fn in junk_variants(cc).items():
         hit = [f for f in fs if fn(f)]
         fp = sum(1 for f in hit if f["gold"] in SCOPES)
-        print(f"  {name:<10} 命中 {len(hit):>3}  其中域外 {len(hit)-fp:>3}  误伤域内 {fp:>3}")
+        print(f"  {name:<10} 命中 {len(hit):>3}  其中域外 {len(hit) - fp:>3}  误伤域内 {fp:>3}")
 
     base = score(fs, {})
     print("\n[2] 策略对比（precision=学科池判对率，recall=域内块归到自己学科的比例）")
@@ -156,33 +163,36 @@ def report(db, fs):
 
     def line(name, policy):
         r = score(fs, policy)
-        print(f"{name:<28}{r['prec']:>7.3f}{r['rec']:>8.3f}{r['f1']:>7.3f}"
-              f"{r['cov']:>7.1%}{r['pollute']:>9.1%}")
+        print(f"{name:<28}{r['prec']:>7.3f}{r['rec']:>8.3f}{r['f1']:>7.3f}{r['cov']:>7.1%}{r['pollute']:>9.1%}")
         return r
 
     line("P0 现网(始终打标)", {})
     for name in ("pdf_only", "macro", "pua>=10%", "pua>=5%"):
         line(f"P1 +弃权[{name}]", {"junk": junk_variants(cc)[name]})
-    best = max(("pdf_only", "macro", "pua>=10%", "pua>=5%"),
-               key=lambda k: score(fs, {"junk": junk_variants(cc)[k]})["f1"])
+    best = max(
+        ("pdf_only", "macro", "pua>=10%", "pua>=5%"), key=lambda k: score(fs, {"junk": junk_variants(cc)[k]})["f1"]
+    )
     r_p0 = score(fs, {"junk": junk_variants(cc)[best]})
     r_p2 = score(fs, {"junk": junk_variants(cc)[best], "use_alt": True})
     line(f"P2 +第二志愿放行(junk={best})", {"junk": junk_variants(cc)[best], "use_alt": True})
-    print(f"  ↑ P2 与 P1 同池口径：recall {(r_p2['rec'] - r_p0['rec']) * 100:+.2f}pt 但 "
-          f"precision {(r_p2['prec'] - r_p0['prec']) * 100:+.2f}pt、F1 "
-          f"{(r_p2['f1'] - r_p0['f1']) * 100:+.2f}pt、域外污染 "
-          f"{(r_p2['pollute'] - r_p0['pollute']) * 100:+.1f}pt "
-          f"（曝光 {r_p0['exposures']}→{r_p2['exposures']}）→ "
-          f"{'净负，否决' if r_p2['f1'] < r_p0['f1'] else '净正，可落地'}")
+    print(
+        f"  ↑ P2 与 P1 同池口径：recall {(r_p2['rec'] - r_p0['rec']) * 100:+.2f}pt 但 "
+        f"precision {(r_p2['prec'] - r_p0['prec']) * 100:+.2f}pt、F1 "
+        f"{(r_p2['f1'] - r_p0['f1']) * 100:+.2f}pt、域外污染 "
+        f"{(r_p2['pollute'] - r_p0['pollute']) * 100:+.1f}pt "
+        f"（曝光 {r_p0['exposures']}→{r_p2['exposures']}）→ "
+        f"{'净负，否决' if r_p2['f1'] < r_p0['f1'] else '净正，可落地'}"
+    )
 
     # 置信门控广播式放行：低置信块进入所有学科池
     broad = [f for f in fs if f["conf"] < TH]
     pool_now = [f for f in fs if f["sub"] in SCOPES]
     extra = sum(1 for f in broad if f["sub"] in SCOPES) * (len(SCOPES) - 1)
-    prec_broad = (sum(1 for f in pool_now if f["sub"] == f["gold"]) /
-                  (len(pool_now) + extra)) if pool_now else 0.0
-    print(f"\n[3] 置信门控广播式放行实测：低置信块 {len(broad)} 条 × 额外 {len(SCOPES)-1} 个池 "
-          f"= 池内新增 {extra} 条错误曝光，precision 从 {base['prec']:.3f} 跌到 {prec_broad:.3f} → 方案否决")
+    prec_broad = (sum(1 for f in pool_now if f["sub"] == f["gold"]) / (len(pool_now) + extra)) if pool_now else 0.0
+    print(
+        f"\n[3] 置信门控广播式放行实测：低置信块 {len(broad)} 条 × 额外 {len(SCOPES) - 1} 个池 "
+        f"= 池内新增 {extra} 条错误曝光，precision 从 {base['prec']:.3f} 跌到 {prec_broad:.3f} → 方案否决"
+    )
 
     # 第二志愿能挽回多少漏检
     recover = [f for f in idom if f["sub"] != f["gold"] and f["alt"] == f["gold"]]
@@ -191,9 +201,11 @@ def report(db, fs):
     # 相似度门限：域外块能否靠"离所有质心都远"识别
     ts_id = _np.array([f["top_sim"] for f in idom])
     ts_od = _np.array([f["top_sim"] for f in od])
-    print(f"[5] 路1 top 余弦：域内 p10={_np.percentile(ts_id,10):.3f} "
-          f"p50={_np.percentile(ts_id,50):.3f} | 域外 p10={_np.percentile(ts_od,10):.3f} "
-          f"p50={_np.percentile(ts_od,50):.3f} p90={_np.percentile(ts_od,90):.3f}")
+    print(
+        f"[5] 路1 top 余弦：域内 p10={_np.percentile(ts_id, 10):.3f} "
+        f"p50={_np.percentile(ts_id, 50):.3f} | 域外 p10={_np.percentile(ts_od, 10):.3f} "
+        f"p50={_np.percentile(ts_od, 50):.3f} p90={_np.percentile(ts_od, 90):.3f}"
+    )
     ranks = []
     for f in idom:
         if f["gold_sim"] < 0:
@@ -202,11 +214,15 @@ def report(db, fs):
         ranks.append(order.index(f["gold_sim"]) + 1 if f["gold_sim"] in order else 99)
     if ranks:
         r = _np.array(ranks)
-        print(f"[6] 纯相似度口径上限：gold 质心排名第1 的域内块 {sum(r == 1)}/{len(r)} "
-              f"(前2 {sum(r <= 2)}/{len(r)}) —— 这是路1 单路的天花板")
-    print(f"[7] 置信度分布：低置信(<{TH}) {sum(1 for f in fs if f['conf'] < TH)} 条, "
-          f"其中打对错 {sum(1 for f in fs if f['conf'] < TH and f['sub'] != f['gold'])} 条, "
-          f"打对 {sum(1 for f in fs if f['conf'] < TH and f['sub'] == f['gold'])} 条")
+        print(
+            f"[6] 纯相似度口径上限：gold 质心排名第1 的域内块 {sum(r == 1)}/{len(r)} "
+            f"(前2 {sum(r <= 2)}/{len(r)}) —— 这是路1 单路的天花板"
+        )
+    print(
+        f"[7] 置信度分布：低置信(<{TH}) {sum(1 for f in fs if f['conf'] < TH)} 条, "
+        f"其中打对错 {sum(1 for f in fs if f['conf'] < TH and f['sub'] != f['gold'])} 条, "
+        f"打对 {sum(1 for f in fs if f['conf'] < TH and f['sub'] == f['gold'])} 条"
+    )
 
     # 入库：把整张策略表存进 eval_runs，否决结论也跟着留痕
     try:
@@ -220,10 +236,14 @@ def report(db, fs):
         prod = {"junk": variants["macro"]}
         policies["生产采用"] = score(fs, prod)
         metrics = {
-            "n_items": len(fs), "n_in_scope": len(idom), "n_out_of_domain": len(od),
+            "n_items": len(fs),
+            "n_in_scope": len(idom),
+            "n_out_of_domain": len(od),
             "abstain_reasons": list(JUNK_ABSTAIN_REASONS),
-            "policies": {k: {kk: round(vv, 4) if isinstance(vv, float) else vv
-                             for kk, vv in v.items()} for k, v in policies.items()},
+            "policies": {
+                k: {kk: round(vv, 4) if isinstance(vv, float) else vv for kk, vv in v.items()}
+                for k, v in policies.items()
+            },
             "rejected": {
                 "mojibake_abstention": "全库命中 18%（数学 4664 块），样本实测域内 recall 0.947→0.842",
                 "conf_broadcast_gate": (
@@ -244,12 +264,14 @@ def report(db, fs):
             },
         }
         run_id = record_eval_run(
-            "recognition_policy", arm="路1+路2（路3 需 GPU，本轮跳过）",
-            metrics=metrics, primary_metric=policies["生产采用"]["prec"],
+            "recognition_policy",
+            arm="路1+路2（路3 需 GPU，本轮跳过）",
+            metrics=metrics,
+            primary_metric=policies["生产采用"]["prec"],
             n_samples=len(fs),
             fingerprint=text_fingerprint([f["text"][:200] for f in fs]),
             notes=f"主指标=生产策略学科池 precision {policies['生产采用']['prec']:.3f}"
-                  f" / recall {policies['生产采用']['rec']:.3f}",
+            f" / recall {policies['生产采用']['rec']:.3f}",
             db=db,
         )
         print(f"入库：eval_runs #{run_id}" if run_id else "eval_runs 入库失败")
@@ -257,9 +279,9 @@ def report(db, fs):
         print(f"eval_runs 入库异常（忽略）: {e}")
 
 
-
 def main() -> int:
     from database import SessionLocal
+
     db = SessionLocal()
     try:
         fs = features(db)

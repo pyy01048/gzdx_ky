@@ -8,9 +8,11 @@
 1. 一年一根柱，按目标专业过滤后逐年取最低线；
 2. 目标专业对不上时退回全校最低线，并如实返回 ``scope="school"``。
 """
+
 from __future__ import annotations
 
 import pytest
+
 from models import KaoyanSchool, KaoyanScoreLine
 
 MARK = "__score_lines_test_school__"

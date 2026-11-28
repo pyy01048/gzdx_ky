@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import EChart from '../../components/EChart'
 import { statsApi, insightApi } from '../../api/client'
@@ -7,6 +7,7 @@ import { Badge, Button, Empty, IconButton, PageHeader, Skeleton, Tile, toastErr,
 import { Activity, BookOpen, CalendarClock, Clock, RefreshCw, Target, TrendingUp } from '../icons'
 import '../styles/pages.css'
 
+/** 监听 documentElement data-theme 变化，返回当前主题模式。 */
 function useThemeMode() {
   const read = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
   const [mode, setMode] = useState(read)
@@ -24,6 +25,7 @@ const axis = (t) => ({
   splitLine: { lineStyle: { color: t.splitLine.lineStyle.color } },
 })
 
+/** 学习复盘主组件：科目正确率、答题趋势、错题标签与学习时长分布。 */
 export default function Insights() {
   const mode = useThemeMode()
   const [data, setData] = useState(null)
@@ -53,28 +55,34 @@ export default function Insights() {
     load()
   }, [load])
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const ok = await load()
     if (ok) toastOk('统计数据已刷新')
     else toastErr('刷新失败，请稍后重试')
-  }
+  }, [load])
 
-  const subjects = data?.subjects || []
-  const trend = Object.entries(data?.trend_7d || {}).map(([date, v]) => ({ date: date.slice(5), ...v }))
-  const tags = data?.top_error_tags || []
-  const studyTime = data?.study_time || []
+  const subjects = useMemo(() => data?.subjects || [], [data])
+  const trend = useMemo(
+    () => Object.entries(data?.trend_7d || {}).map(([date, v]) => ({ date: date.slice(5), ...v })),
+    [data],
+  )
+  const tags = useMemo(() => data?.top_error_tags || [], [data])
+  const studyTime = useMemo(() => data?.study_time || [], [data])
   const hasAny = subjects.length || trend.some((t) => t.answered) || tags.length || studyTime.length
 
-  const totalAnswered = subjects.reduce((n, s) => n + s.answered, 0)
-  const totalMinutes = studyTime.reduce((n, s) => n + s.minutes, 0)
-  const avgAccuracy = totalAnswered
-    ? ((subjects.reduce((n, s) => n + (s.correct || 0), 0) / totalAnswered) * 100).toFixed(1)
-    : null
+  const totalAnswered = useMemo(() => subjects.reduce((n, s) => n + s.answered, 0), [subjects])
+  const totalMinutes = useMemo(() => studyTime.reduce((n, s) => n + s.minutes, 0), [studyTime])
+  const avgAccuracy = useMemo(
+    () => totalAnswered
+      ? ((subjects.reduce((n, s) => n + (s.correct || 0), 0) / totalAnswered) * 100).toFixed(1)
+      : null,
+    [subjects, totalAnswered],
+  )
 
   const t = chartTheme(mode === 'dark')
   const tooltip = { ...t.tooltip, trigger: 'axis' }
 
-  const subjectOption = {
+  const subjectOption = useMemo(() => ({
     color: ['#4285F4'],
     tooltip: { ...tooltip, formatter: '{b}<br/>{c}%' },
     grid: { left: 8, right: 48, top: 8, bottom: 8, containLabel: true },
@@ -94,9 +102,9 @@ export default function Insights() {
         itemStyle: { borderRadius: [0, 9, 9, 0], color: '#4285F4' },
       },
     ],
-  }
+  }), [subjects, t, tooltip])
 
-  const trendOption = {
+  const trendOption = useMemo(() => ({
     color: ['#9B72CB', '#D96570'],
     tooltip,
     legend: { top: 0, textStyle: { color: t.textStyle.color, fontSize: 11 } },
@@ -123,9 +131,9 @@ export default function Insights() {
         data: trend.map((x) => (x.answered ? Math.round((x.correct / x.answered) * 100) : 0)),
       },
     ],
-  }
+  }), [trend, t, tooltip])
 
-  const tagOption = {
+  const tagOption = useMemo(() => ({
     color: ['#D96570'],
     tooltip: { ...tooltip, formatter: '{b}<br/>错题 {c} 道' },
     grid: { left: 8, right: 36, top: 8, bottom: 8, containLabel: true },
@@ -145,9 +153,9 @@ export default function Insights() {
         itemStyle: { borderRadius: [0, 7, 7, 0] },
       },
     ],
-  }
+  }), [tags, t, tooltip])
 
-  const studyOption = {
+  const studyOption = useMemo(() => ({
     color: ['#4285F4', '#9B72CB', '#D96570', '#34A853', '#F9AB00', '#00ACC1'],
     tooltip: { ...t.tooltip, trigger: 'item', formatter: '{b}：{c} 分钟（{d}%）' },
     legend: {
@@ -166,7 +174,7 @@ export default function Insights() {
         data: studyTime.map((s) => ({ name: s.subject, value: s.minutes })),
       },
     ],
-  }
+  }), [studyTime, t, mode])
 
   return (
     <div className="v3-stack" style={{ gap: 20 }}>
@@ -285,7 +293,7 @@ export default function Insights() {
       ) : error ? (
         <div className="v3-card" style={{ padding: 36 }}>
           <Empty
-            icon={<WarningIcon />}
+            icon={<Activity size={26} />}
             title="统计加载失败"
             text={error}
             action={
@@ -409,8 +417,4 @@ export default function Insights() {
       )}
     </div>
   )
-}
-
-function WarningIcon() {
-  return <Activity size={26} />
 }

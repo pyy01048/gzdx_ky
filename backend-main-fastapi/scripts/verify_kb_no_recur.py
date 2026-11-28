@@ -26,6 +26,7 @@ knowledge_chunks_fts / knowledge_chunks_vec 多张表。用真库做「跑两次
     python scripts/verify_kb_no_recur.py --files a.pdf b.pdf
     python scripts/verify_kb_no_recur.py --keep             # 跑完不删临时库
 """
+
 from __future__ import annotations
 
 import argparse
@@ -85,8 +86,7 @@ def row_counts(db_path: str) -> dict[str, int]:
     con = sqlite3.connect(db_path)
     try:
         out = {}
-        for t in ("documents", "knowledge_chunks", "knowledge_chunks_fts",
-                  "knowledge_chunks_vec"):
+        for t in ("documents", "knowledge_chunks", "knowledge_chunks_fts", "knowledge_chunks_vec"):
             try:
                 out[t] = con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
             except sqlite3.Error as e:
@@ -103,17 +103,17 @@ def run_ingest_once(db_path: str, files: list[str]) -> list[dict[str, Any]]:
     import importlib
 
     import database
+
     importlib.reload(database)
     import services.smart_ingest as si
+
     importlib.reload(si)
 
     results = []
     for p in files:
         db = database.SessionLocal()
         try:
-            r = si.smart_ingest_file(
-                db, p, dry_run=False, force=True, extract_kp=False
-            )
+            r = si.smart_ingest_file(db, p, dry_run=False, force=True, extract_kp=False)
             db.commit()
             results.append(r)
         except Exception as e:  # noqa: BLE001
@@ -121,8 +121,7 @@ def run_ingest_once(db_path: str, files: list[str]) -> list[dict[str, Any]]:
                 db.rollback()
             except Exception:
                 pass
-            results.append({"file": os.path.basename(p), "status": "error",
-                            "reasons": [repr(e)]})
+            results.append({"file": os.path.basename(p), "status": "error", "reasons": [repr(e)]})
         finally:
             db.close()
     return results
@@ -172,9 +171,11 @@ def main() -> int:
     print(">>> 第 1 轮入库…")
     r1 = run_ingest_once(db2, files)
     for r in r1:
-        print(f"    {r.get('status','?'):<10} {r.get('file','')[:46]}"
-              f" doc={r.get('doc_id')} chunks={r.get('chunks')}"
-              f" reused={r.get('dedup_reused', False)}")
+        print(
+            f"    {r.get('status', '?'):<10} {r.get('file', '')[:46]}"
+            f" doc={r.get('doc_id')} chunks={r.get('chunks')}"
+            f" reused={r.get('dedup_reused', False)}"
+        )
     after1 = row_counts(db2)
     print()
     print("  第 1 轮后：")
@@ -187,9 +188,11 @@ def main() -> int:
     print(">>> 第 2 轮入库（关键：增量必须全部为 0）…")
     r2 = run_ingest_once(db2, files)
     for r in r2:
-        print(f"    {r.get('status','?'):<10} {r.get('file','')[:46]}"
-              f" doc={r.get('doc_id')} chunks={r.get('chunks')}"
-              f" reused={r.get('dedup_reused', False)}")
+        print(
+            f"    {r.get('status', '?'):<10} {r.get('file', '')[:46]}"
+            f" doc={r.get('doc_id')} chunks={r.get('chunks')}"
+            f" reused={r.get('dedup_reused', False)}"
+        )
     after2 = row_counts(db2)
     print()
     print("  第 2 轮后：")
@@ -206,8 +209,7 @@ def main() -> int:
     reused2 = sum(1 for r in r2 if r.get("dedup_reused"))
     print("=" * 72)
     ok = True
-    for t in ("documents", "knowledge_chunks", "knowledge_chunks_fts",
-              "knowledge_chunks_vec"):
+    for t in ("documents", "knowledge_chunks", "knowledge_chunks_fts", "knowledge_chunks_vec"):
         d = deltas.get(t)
         if d is None:
             print(f"  [SKIP] {t} 无法统计")
@@ -216,8 +218,10 @@ def main() -> int:
         ok = ok and good
         print(f"  [{'PASS' if good else 'FAIL'}] {t} 第2轮增量 = {d:+}（应为 0）")
 
-    print(f"  [{'PASS' if reused2 == len(r2) else 'WARN'}] "
-          f"第2轮 {reused2}/{len(r2)} 个文件走了复用分支（dedup_reused=True）")
+    print(
+        f"  [{'PASS' if reused2 == len(r2) else 'WARN'}] "
+        f"第2轮 {reused2}/{len(r2)} 个文件走了复用分支（dedup_reused=True）"
+    )
     print()
     print("  RESULT: " + ("PASS —— 幂等生效，重复跑不会膨胀" if ok else "FAIL —— 仍在膨胀"))
     print("=" * 72)

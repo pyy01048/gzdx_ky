@@ -24,6 +24,7 @@
 ## 使用约定
 **任何地方需要初试日期，都必须调本模块**，不允许再自行推导或写死月份日期。
 """
+
 from __future__ import annotations
 
 import calendar
@@ -142,13 +143,13 @@ def phase_of(days_left: int) -> str:
     分支，否则同一个数字会在两个页面给出两种语气。
     """
     if days_left < 0:
-        return "passed"        # 初试已过（等下一届或复试）
+        return "passed"  # 初试已过（等下一届或复试）
     if days_left <= 7:
-        return "sprint"        # 冲刺：最后 7 天
+        return "sprint"  # 冲刺：最后 7 天
     if days_left <= 30:
-        return "warning"       # 警示：最后 30 天
+        return "warning"  # 警示：最后 30 天
     if days_left <= 90:
-        return "intensify"     # 考前 90 天：强化期
+        return "intensify"  # 考前 90 天：强化期
     return "base"
 
 
@@ -175,7 +176,9 @@ def resolve_for_db(goal) -> dict:
         # 以存量日期为准，届数按规则反推 —— 保证两者自洽
         year = exam_year_of(stored)
         official = year in OFFICIAL_EXAM_DATES and OFFICIAL_EXAM_DATES[year] == (
-            stored.year, stored.month, stored.day,
+            stored.year,
+            stored.month,
+            stored.day,
         )
         return {
             "exam_year": year,
@@ -185,7 +188,9 @@ def resolve_for_db(goal) -> dict:
             "is_estimated": False,
             "days_left": (stored - today).days,
             "source": "用户配置" if official else "用户配置（该日期与教育部公布值不一致，请核对）",
-            "official_date": datetime.date(*OFFICIAL_EXAM_DATES[year]).isoformat() if year in OFFICIAL_EXAM_DATES else None,
+            "official_date": datetime.date(*OFFICIAL_EXAM_DATES[year]).isoformat()
+            if year in OFFICIAL_EXAM_DATES
+            else None,
             "signup_hint": f"{stored.year} 年 10 月中下旬（以研招网公告为准）",
         }
 

@@ -24,6 +24,7 @@
    ``services/parsers/base.py`` 的 ``ParsedPage.page_no`` 同基线。
 4. **不写死路径**：所有路径来自入参；图片只落相对路径。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -32,7 +33,7 @@ import logging
 import os
 import re
 import time
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Iterable, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +42,12 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 
 #: 质量门禁四档（docx/34 §4.7）
-GRADE_A = "A"        # 题干 + 选项 + 答案 + 解析齐全
-GRADE_B = "B"        # 题干 + 答案（主观题/判断题，或选择题缺解析）
-GRADE_C = "C"        # 题干完整但缺答案（进复核队列）
+GRADE_A = "A"  # 题干 + 选项 + 答案 + 解析齐全
+GRADE_B = "B"  # 题干 + 答案（主观题/判断题，或选择题缺解析）
+GRADE_C = "C"  # 题干完整但缺答案（进复核队列）
 GRADE_JUNK = "JUNK"  # 解析/目录/页眉页脚/题干过短 —— 丢弃但留日志
 
-GRADE_ORDER: Tuple[str, ...] = (GRADE_A, GRADE_B, GRADE_C, GRADE_JUNK)
+GRADE_ORDER: tuple[str, ...] = (GRADE_A, GRADE_B, GRADE_C, GRADE_JUNK)
 
 #: 题干过短阈值（字数，计入标点）
 MIN_STEM_LENGTH = 8
@@ -79,9 +80,7 @@ _FIG_SINGLE_RE = re.compile(r"图\s*(\d{1,3})(?![0-9\-－—.．])")
 _FIG_MENTION_RE = re.compile(r"如\s*图|图\s*所\s*示|下\s*图|上\s*图")
 
 #: 解析/目录/页眉页脚等噪声前缀（JUNK 判定）
-_JUNK_PREFIX_RE = re.compile(
-    r"^\s*(?:参考)?(?:答案解析|答案与解析|参考答案|答案|解析|目\s*录|页眉|页脚|试卷答案)"
-)
+_JUNK_PREFIX_RE = re.compile(r"^\s*(?:参考)?(?:答案解析|答案与解析|参考答案|答案|解析|目\s*录|页眉|页脚|试卷答案)")
 #: 纯页码行：第 3 页 / 3 / 共 5 页
 _JUNK_PAGE_LINE_RE = re.compile(r"^\s*(?:第\s*)?\d{1,4}\s*(?:页|/|\|)?\s*(?:共\s*\d{1,4}\s*页)?\s*$")
 
@@ -107,7 +106,7 @@ def _as_float(value: Any) -> Optional[float]:
         return None
 
 
-def _as_bbox(box: Any) -> Optional[Tuple[float, float, float, float]]:
+def _as_bbox(box: Any) -> Optional[tuple[float, float, float, float]]:
     """把各种 bbox 形态归一成 ``(x0, y0, x1, y1)``。
 
     支持：``(x0,y0,x1,y1)`` 四元组、``[x0,y0,x1,y1]`` 列表、4 点多边形
@@ -127,23 +126,23 @@ def _as_bbox(box: Any) -> Optional[Tuple[float, float, float, float]]:
         return None
     if not items:
         return None
-    if all(isinstance(p, (list, tuple)) and len(p) >= 2 for p in items):
+    if all(isinstance(p, list | tuple) and len(p) >= 2 for p in items):
         xs = [float(p[0]) for p in items]
         ys = [float(p[1]) for p in items]
         return (min(xs), min(ys), max(xs), max(ys))
-    if len(items) >= 4 and all(isinstance(v, (int, float)) for v in items[:4]):
+    if len(items) >= 4 and all(isinstance(v, int | float) for v in items[:4]):
         x0, y0, a, b = (float(v) for v in items[:4])
         # 判定是 [x0,y0,x1,y1] 还是 [x,y,w,h]：宽高都远大于 0 时按 xyxy 解释，
         # 否则按 xywh 解释（两者在 x1<x0 / y1<y0 时必然是 xywh）。
         if a < x0 or b < y0:
             return (x0, y0, x0 + a, y0 + b)
         return (x0, y0, a, b)
-    if len(items) >= 2 and all(isinstance(v, (int, float)) for v in items[:2]):
+    if len(items) >= 2 and all(isinstance(v, int | float) for v in items[:2]):
         return (float(items[0]), float(items[1]), float(items[0]), float(items[1]))
     return None
 
 
-def _bbox_area(bbox: Optional[Tuple[float, float, float, float]]) -> float:
+def _bbox_area(bbox: Optional[tuple[float, float, float, float]]) -> float:
     if not bbox:
         return 0.0
     x0, y0, x1, y1 = bbox
@@ -151,8 +150,8 @@ def _bbox_area(bbox: Optional[Tuple[float, float, float, float]]) -> float:
 
 
 def _vertical_gap(
-    span: Optional[Tuple[float, float]],
-    bbox: Optional[Tuple[float, float, float, float]],
+    span: Optional[tuple[float, float]],
+    bbox: Optional[tuple[float, float, float, float]],
 ) -> float:
     """两个纵向区间的距离（重叠算 0）。"""
     if not span or not bbox:
@@ -166,9 +165,9 @@ def _vertical_gap(
     return 0.0
 
 
-def _vspan(boxes: Iterable[Any]) -> Optional[Tuple[float, float]]:
-    tops: List[float] = []
-    bottoms: List[float] = []
+def _vspan(boxes: Iterable[Any]) -> Optional[tuple[float, float]]:
+    tops: list[float] = []
+    bottoms: list[float] = []
     for box in boxes:
         bb = _as_bbox(box)
         if not bb:
@@ -183,13 +182,13 @@ def _vspan(boxes: Iterable[Any]) -> Optional[Tuple[float, float]]:
 # --------------------------------------------------------------------------- #
 # 质量门禁（docx/34 §4.7）
 # --------------------------------------------------------------------------- #
-def normalize_options(options: Any) -> Dict[str, str]:
+def normalize_options(options: Any) -> dict[str, str]:
     """把多种写法的选项归一成 ``{key: text}``。
 
     支持：``["A. xxx", "B. yyy"]``、``[{"key": "A", "text": "xxx"}]``、
     ``{"A": "xxx"}``、``"A. xxx"``。
     """
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     if not options:
         return out
     if isinstance(options, dict):
@@ -210,7 +209,7 @@ def normalize_options(options: Any) -> Dict[str, str]:
             m = _OPT_PREFIX_RE.match(text)
             key = m.group(1).upper() if m else ""
             if m:
-                text = text[m.end():].strip()
+                text = text[m.end() :].strip()
         if key and text:
             out[key] = text
     return out
@@ -226,7 +225,7 @@ def _answer_letters(answer: str) -> str:
     return "".join(ch for ch in text if ch.isalpha()).upper()
 
 
-def check_question(q: Dict[str, Any]) -> Tuple[str, List[str]]:
+def check_question(q: dict[str, Any]) -> tuple[str, list[str]]:
     """给一道题定级。返回 ``(等级, 问题列表)``。
 
     规则（docx/34 §4.7）：
@@ -235,7 +234,7 @@ def check_question(q: Dict[str, Any]) -> Tuple[str, List[str]]:
     * B：题干 + 答案（主观题/判断题；选择题缺解析也只到 B）。
     * C：题干完整但缺答案（或答案字母不在选项里 → 强制降级 C）。
     """
-    issues: List[str] = []
+    issues: list[str] = []
     stem = str(q.get("stem") or q.get("content") or "").strip()
     options = normalize_options(q.get("options"))
     answer = str(q.get("answer") or "").strip()
@@ -268,12 +267,12 @@ def check_question(q: Dict[str, Any]) -> Tuple[str, List[str]]:
     return GRADE_A, issues
 
 
-def grade_question(q: Dict[str, Any]) -> str:
+def grade_question(q: dict[str, Any]) -> str:
     """质量门禁：返回 'A' / 'B' / 'C' / 'JUNK'。"""
     return check_question(q)[0]
 
 
-def apply_ocr_trust_flags(q: Dict[str, Any], grade: str) -> Tuple[str, List[str]]:
+def apply_ocr_trust_flags(q: dict[str, Any], grade: str) -> tuple[str, list[str]]:
     """把 OCR 可信度标记应用到门禁结果上（数学扫描件主路径）。
 
     * ``math_corrupted``（题干公式被 OCR 读坏）→ 最高只能 **C**（进复核队列，
@@ -283,7 +282,7 @@ def apply_ocr_trust_flags(q: Dict[str, Any], grade: str) -> Tuple[str, List[str]
 
     返回 ``(等级, 追加的问题码列表)``。
     """
-    codes: List[str] = []
+    codes: list[str] = []
     if q.get("_math_corrupted"):
         codes.append("math_corrupted")
         if grade in (GRADE_A, GRADE_B):
@@ -296,7 +295,7 @@ def apply_ocr_trust_flags(q: Dict[str, Any], grade: str) -> Tuple[str, List[str]
 # --------------------------------------------------------------------------- #
 # 配图绑定（docx/34 §4.5 第 7 条：三信号）
 # --------------------------------------------------------------------------- #
-def _figure_refs(text: str) -> Tuple[set, set]:
+def _figure_refs(text: str) -> tuple[set, set]:
     """抽出文本里的图编号。返回 ``(带小节的编号集合, 单号集合)``。
 
     ``"如图1-3所示"`` → ``({"1-3"}, set())``；``"见图3"`` → ``(set(), {"3"})``。
@@ -317,11 +316,11 @@ def _mentions_figure(text: str) -> bool:
 
 
 def bind_question_images(
-    questions: Sequence[Dict[str, Any]],
-    figures: Sequence[Dict[str, Any]],
+    questions: Sequence[dict[str, Any]],
+    figures: Sequence[dict[str, Any]],
     *,
     max_vertical_gap: float = DEFAULT_MAX_VERTICAL_GAP,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """三信号配图绑定。纯函数（不碰数据库），便于单测。
 
     参数
@@ -346,13 +345,13 @@ def bind_question_images(
     ----
     ``{"bindings": [...], "missing": [...], "figures_bound": n, "figure_missing": m}``
     """
-    by_page: Dict[int, List[Dict[str, Any]]] = {}
+    by_page: dict[int, list[dict[str, Any]]] = {}
     for fig in figures or []:
         page_no = int(_get(fig, "page_no", 0) or 0)
         by_page.setdefault(page_no, []).append(fig)
 
-    bindings: List[Dict[str, Any]] = []
-    missing: List[Dict[str, Any]] = []
+    bindings: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
 
     for q_index, q in enumerate(questions or []):
         page_no = int(_get(q, "page", 0) or _get(q, "page_no", 0) or 0)
@@ -362,8 +361,8 @@ def bind_question_images(
         stem_pairs, stem_singles = _figure_refs(stem)
         mentions = _mentions_figure(stem) or bool(stem_pairs or stem_singles)
 
-        matched: List[Dict[str, Any]] = []
-        signals: List[str] = []
+        matched: list[dict[str, Any]] = []
+        signals: list[str] = []
 
         # —— 信号1：图注编号匹配 ——
         if stem_pairs or stem_singles:
@@ -385,7 +384,7 @@ def bind_question_images(
         if not matched and mentions and not stem_pairs and not stem_singles:
             span = _vspan([_get(b, "box", None) for b in (_get(q, "blocks", None) or [])])
             if span:
-                cands: List[Tuple[float, Dict[str, Any]]] = []
+                cands: list[tuple[float, dict[str, Any]]] = []
                 for fig in page_figs:
                     bb = _as_bbox(_get(fig, "bbox", None))
                     if not bb:
@@ -404,27 +403,31 @@ def bind_question_images(
             primary = max(sized, key=lambda item: item[1])[0] if sized else matched[0]
             for fig in matched:
                 bbox = _as_bbox(_get(fig, "bbox", None))
-                bindings.append({
+                bindings.append(
+                    {
+                        "question_index": q_index,
+                        "qno": _get(q, "qno", None),
+                        "page_no": page_no,
+                        "block_id": str(_get(fig, "block_id", "") or ""),
+                        "image_path": str(_get(fig, "image_path", "") or ""),
+                        "caption": str(_get(fig, "text", "") or ""),
+                        "bbox": list(bbox) if bbox else None,
+                        "area": _bbox_area(bbox),
+                        "width": int(bbox[2] - bbox[0]) if bbox else None,
+                        "height": int(bbox[3] - bbox[1]) if bbox else None,
+                        "signals": list(signals),
+                        "is_primary": fig is primary,
+                    }
+                )
+        elif mentions:
+            missing.append(
+                {
                     "question_index": q_index,
                     "qno": _get(q, "qno", None),
                     "page_no": page_no,
-                    "block_id": str(_get(fig, "block_id", "") or ""),
-                    "image_path": str(_get(fig, "image_path", "") or ""),
-                    "caption": str(_get(fig, "text", "") or ""),
-                    "bbox": list(bbox) if bbox else None,
-                    "area": _bbox_area(bbox),
-                    "width": int(bbox[2] - bbox[0]) if bbox else None,
-                    "height": int(bbox[3] - bbox[1]) if bbox else None,
-                    "signals": list(signals),
-                    "is_primary": fig is primary,
-                })
-        elif mentions:
-            missing.append({
-                "question_index": q_index,
-                "qno": _get(q, "qno", None),
-                "page_no": page_no,
-                "reason": "figure_referenced_but_not_bound",
-            })
+                    "reason": "figure_referenced_but_not_bound",
+                }
+            )
 
     return {
         "bindings": bindings,
@@ -458,7 +461,7 @@ def _call_parse(
         has_var_kw = any(p.kind == p.VAR_KEYWORD for p in params.values())
     except (TypeError, ValueError):  # pragma: no cover - 不可 introspect 的 callable
         return fn(pdf_path)
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     if max_pages is not None and (has_var_kw or "max_pages" in params):
         kwargs["max_pages"] = max_pages
     if out_dir is not None and (has_var_kw or "out_dir" in params):
@@ -466,12 +469,12 @@ def _call_parse(
     return fn(pdf_path, **kwargs)
 
 
-def _pages_of(result: Any) -> List[Any]:
+def _pages_of(result: Any) -> list[Any]:
     pages = _get(result, "pages", None) or []
     return list(pages)
 
 
-def _blocks_of(result: Any) -> List[Any]:
+def _blocks_of(result: Any) -> list[Any]:
     blocks = _get(result, "blocks", None)
     if blocks is None:
         blocks = []
@@ -480,20 +483,22 @@ def _blocks_of(result: Any) -> List[Any]:
     return list(blocks)
 
 
-def _figure_payloads(blocks: Sequence[Any]) -> List[Dict[str, Any]]:
+def _figure_payloads(blocks: Sequence[Any]) -> list[dict[str, Any]]:
     """挑出 figure 块，整理成配图绑定用的载荷。"""
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for block in blocks or []:
         if str(_get(block, "block_type", "") or "") != "figure":
             continue
         bbox = _as_bbox(_get(block, "bbox", None))
-        out.append({
-            "page_no": int(_get(block, "page_no", 0) or 0),
-            "block_id": str(_get(block, "block_id", "") or ""),
-            "text": str(_get(block, "text", "") or ""),
-            "image_path": str(_get(block, "image_path", "") or ""),
-            "bbox": list(bbox) if bbox else None,
-        })
+        out.append(
+            {
+                "page_no": int(_get(block, "page_no", 0) or 0),
+                "block_id": str(_get(block, "block_id", "") or ""),
+                "text": str(_get(block, "text", "") or ""),
+                "image_path": str(_get(block, "image_path", "") or ""),
+                "bbox": list(bbox) if bbox else None,
+            }
+        )
     return out
 
 
@@ -533,8 +538,7 @@ def _upsert_pages(db, document_id: int, pages: Sequence[Any], engine: str = "") 
     from models import DocumentPage
 
     existing = {
-        int(row.page_no): row
-        for row in db.query(DocumentPage).filter(DocumentPage.document_id == document_id).all()
+        int(row.page_no): row for row in db.query(DocumentPage).filter(DocumentPage.document_id == document_id).all()
     }
     count = 0
     for page in pages or []:
@@ -550,7 +554,7 @@ def _upsert_pages(db, document_id: int, pages: Sequence[Any], engine: str = "") 
         row.text = _get(page, "text", None)
         row.layout_json = _get(page, "layout_json", None)
         row.image_path = _get(page, "image_path", None) or None
-        row.ocr_engine = (_get(page, "ocr_engine", None) or engine or None)
+        row.ocr_engine = _get(page, "ocr_engine", None) or engine or None
         row.ocr_confidence = _as_float(_get(page, "ocr_confidence", None))
         count += 1
     db.flush()
@@ -568,58 +572,60 @@ def _replace_blocks(db, document_id: int, blocks: Sequence[Any], page_nos: Seque
         ).delete(synchronize_session=False)
         db.flush()
 
-    rows: List[DocumentBlock] = []
+    rows: list[DocumentBlock] = []
     for block in blocks or []:
         page_no = int(_get(block, "page_no", 0) or 0)
         if page_no < 1:
             continue
         bbox = _as_bbox(_get(block, "bbox", None))
         extra = _get(block, "extra", None)
-        rows.append(DocumentBlock(
-            document_id=document_id,
-            page_no=page_no,
-            block_id=(str(_get(block, "block_id", "") or "") or None),
-            block_type=(str(_get(block, "block_type", "") or "") or None),
-            bbox=list(bbox) if bbox else None,
-            text=_get(block, "text", None),
-            latex=_get(block, "latex", None) or None,
-            image_path=_get(block, "image_path", None) or None,
-            reading_order=_get(block, "reading_order", None),
-            confidence=_as_float(_get(block, "confidence", None)),
-            extra=extra if isinstance(extra, dict) and extra else None,
-        ))
+        rows.append(
+            DocumentBlock(
+                document_id=document_id,
+                page_no=page_no,
+                block_id=(str(_get(block, "block_id", "") or "") or None),
+                block_type=(str(_get(block, "block_type", "") or "") or None),
+                bbox=list(bbox) if bbox else None,
+                text=_get(block, "text", None),
+                latex=_get(block, "latex", None) or None,
+                image_path=_get(block, "image_path", None) or None,
+                reading_order=_get(block, "reading_order", None),
+                confidence=_as_float(_get(block, "confidence", None)),
+                extra=extra if isinstance(extra, dict) and extra else None,
+            )
+        )
     if rows:
         db.bulk_save_objects(rows)
     db.flush()
     return len(rows)
 
 
-def _write_question_images(db, document_id: int, bindings: Sequence[Dict[str, Any]]) -> int:
+def _write_question_images(db, document_id: int, bindings: Sequence[dict[str, Any]]) -> int:
     """落题目配图。先删本文档的旧配图，保证重复 ingest 不产生重复行。"""
     from models import QuestionImage
 
-    db.query(QuestionImage).filter(QuestionImage.document_id == document_id).delete(
-        synchronize_session=False
-    )
+    db.query(QuestionImage).filter(QuestionImage.document_id == document_id).delete(synchronize_session=False)
     db.flush()
 
-    rows: List[QuestionImage] = []
+    rows: list[QuestionImage] = []
     for item in bindings or []:
         bbox = item.get("bbox")
-        rows.append(QuestionImage(
-            question_id=item.get("question_id"),
-            document_id=document_id,
-            page_no=item.get("page_no"),
-            image_path=item.get("image_path") or None,
-            image_hash=_file_sha256(item.get("image_path")),
-            phash=item.get("phash") or None,
-            bbox=bbox,
-            image_kind=IMAGE_KIND_FIGURE_CROP,
-            caption=(item.get("caption") or None) and str(item["caption"])[:1000],
-            width=item.get("width"),
-            height=item.get("height"),
-            is_primary=bool(item.get("is_primary")),
-        ))
+        rows.append(
+            QuestionImage(
+                question_id=item.get("question_id"),
+                document_id=document_id,
+                page_no=item.get("page_no"),
+                image_path=item.get("image_path") or None,
+                image_hash=_file_sha256(item.get("image_path")),
+                phash=item.get("phash") or None,
+                bbox=bbox,
+                image_kind=IMAGE_KIND_FIGURE_CROP,
+                caption=(item.get("caption") or None) and str(item["caption"])[:1000],
+                width=item.get("width"),
+                height=item.get("height"),
+                is_primary=bool(item.get("is_primary")),
+            )
+        )
     if rows:
         db.bulk_save_objects(rows)
     db.flush()
@@ -643,7 +649,7 @@ def _file_sha256(path: Optional[str]) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # 切题适配
 # --------------------------------------------------------------------------- #
-def _cut_questions(pages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _cut_questions(pages: Sequence[Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """把解析块适配成 ``cut_questions_from_blocks`` 的入参并切题。
 
     返回 ``(questions, issues)``；切题失败不抛，只记 issue 并返回空列表。
@@ -655,13 +661,13 @@ def _cut_questions(pages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], List[Dic
     """
     from services.ocr_layout import cut_questions_from_blocks
 
-    questions: List[Dict[str, Any]] = []
-    issues: List[Dict[str, Any]] = []
+    questions: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
     for page in pages or []:
         page_no = int(_get(page, "page_no", 0) or 0)
         if page_no < 1:
             continue
-        blocks_in: List[Dict[str, Any]] = []
+        blocks_in: list[dict[str, Any]] = []
         corrupted_texts: set = set()
         low_conf_texts: set = set()
         for block in _get(page, "blocks", None) or []:
@@ -680,11 +686,13 @@ def _cut_questions(pages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], List[Dic
                 if extra.get("ocr_confidence_missing"):
                     low_conf_texts.add(text)
             bbox = _as_bbox(_get(block, "bbox", None))
-            blocks_in.append({
-                "text": text,
-                "box": list(bbox) if bbox else None,
-                "score": _as_float(_get(block, "confidence", None)),
-            })
+            blocks_in.append(
+                {
+                    "text": text,
+                    "box": list(bbox) if bbox else None,
+                    "score": _as_float(_get(block, "confidence", None)),
+                }
+            )
         if not blocks_in:
             continue
         try:
@@ -717,7 +725,7 @@ def ingest_pdf(
     parse_fn: Optional[Callable[..., Any]] = None,
     write: bool = True,
     cut_questions: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """把一份 PDF 走完「解析 → 落页 → 落块 → 切题 → 配图 → 质检 → 入库」。
 
     参数
@@ -738,8 +746,8 @@ def ingest_pdf(
       "figures_bound", "figure_missing", "grades", "issues", "elapsed_seconds"}``
     """
     started = time.time()
-    issues: List[Dict[str, Any]] = []
-    grades: Dict[str, int] = {g: 0 for g in GRADE_ORDER}
+    issues: list[dict[str, Any]] = []
+    grades: dict[str, int] = {g: 0 for g in GRADE_ORDER}
 
     fn = parse_fn if parse_fn is not None else _default_parse_fn()
     try:
@@ -769,7 +777,7 @@ def ingest_pdf(
             low_confidence_blocks += 1
 
     # —— 切题 ——
-    questions: List[Dict[str, Any]] = []
+    questions: list[dict[str, Any]] = []
     if cut_questions:
         questions, cut_issues = _cut_questions(pages)
         issues.extend(cut_issues)
@@ -787,22 +795,26 @@ def ingest_pdf(
             low_confidence_questions += 1
         grades[grade] = grades.get(grade, 0) + 1
         for code in trust_codes + q_issues:
-            issues.append({
-                "code": code,
-                "qno": q.get("qno"),
-                "page_no": q.get("page"),
-                "grade": grade,
-            })
+            issues.append(
+                {
+                    "code": code,
+                    "qno": q.get("qno"),
+                    "page_no": q.get("page"),
+                    "grade": grade,
+                }
+            )
 
     # —— 配图绑定（三信号）——
     binding = bind_question_images(questions, _figure_payloads(blocks))
     bindings = binding["bindings"]
     for item in binding["missing"]:
-        issues.append({
-            "code": "figure_missing",
-            "qno": item.get("qno"),
-            "page_no": item.get("page_no"),
-        })
+        issues.append(
+            {
+                "code": "figure_missing",
+                "qno": item.get("qno"),
+                "page_no": item.get("page_no"),
+            }
+        )
 
     resolved_document_id = document_id
     pages_written = 0
@@ -820,14 +832,25 @@ def ingest_pdf(
 
             has_old = False
             if page_nos:
-                has_old = db.query(DocumentBlock.id).filter(
-                    DocumentBlock.document_id == resolved_document_id,
-                    DocumentBlock.page_no.in_(page_nos),
-                ).first() is not None
-                has_old = has_old or db.query(DocumentPage.id).filter(
-                    DocumentPage.document_id == resolved_document_id,
-                    DocumentPage.page_no.in_(page_nos),
-                ).first() is not None
+                has_old = (
+                    db.query(DocumentBlock.id)
+                    .filter(
+                        DocumentBlock.document_id == resolved_document_id,
+                        DocumentBlock.page_no.in_(page_nos),
+                    )
+                    .first()
+                    is not None
+                )
+                has_old = (
+                    has_old
+                    or db.query(DocumentPage.id)
+                    .filter(
+                        DocumentPage.document_id == resolved_document_id,
+                        DocumentPage.page_no.in_(page_nos),
+                    )
+                    .first()
+                    is not None
+                )
             if has_old:
                 _ensure_backup()
 

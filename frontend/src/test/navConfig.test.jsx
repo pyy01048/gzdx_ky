@@ -58,7 +58,7 @@ describe('navConfig 单一导航源', () => {
     /* 2026-10-19 信息架构精简：择校 AI 问答等 8 项退出导航（路由保留），面包屑改查仍在导航的子页 */
     expect(crumbName('/kaoyan/plan')).toBe('考研规划')
     expect(crumbName('/kaoyan/schools/42')).toBe('院校详情')
-    expect(crumbName('/exam/2024/math1')).toBe('真题中心')
+    expect(crumbName('/exam/2024/math1')).toBe('真题练习')
     expect(crumbName('/admin/subjects')).toBe('科目管理')
     expect(crumbName('/admin')).toBe('管理后台')
     expect(crumbParent('/admin/quality')).toEqual({ to: '/admin', label: '管理后台' })
@@ -68,7 +68,7 @@ describe('navConfig 单一导航源', () => {
 
   it('管理端入口全部落在 /admin 命名空间，且每条都有旧路径重定向', () => {
     expect(NAV_ADMIN.every((e) => isAdminPath(e.to) && e.roles?.includes('admin'))).toBe(true)
-    expect(ADMIN_LEGACY_REDIRECTS.length).toBe(NAV_ADMIN.length)
+    expect(ADMIN_LEGACY_REDIRECTS.length).toBe(NAV_ADMIN.filter((e) => e.legacy).length)
     const studentTargets = MODULES.flatMap((m) => m.items.map((it) => it.to))
     expect(studentTargets.filter(isAdminPath)).toEqual([])
   })

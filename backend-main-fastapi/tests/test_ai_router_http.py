@@ -7,6 +7,7 @@
 
 不触网、不连 Ollama：通过 monkeypatch ``get_ai_router`` 注入假 router。
 """
+
 from __future__ import annotations
 
 import os
@@ -31,14 +32,19 @@ def _fake_router_result():
         "reasoning_steps": [
             {"step": "plan", "question_type": "knowledge", "need_retrieval": True},
             {"step": "cache", "hit": False},
-            {"step": "retrieval", "round": 1, "hit_count": 2,
-             "reranker_backend": "bge", "degraded": []},
+            {"step": "retrieval", "round": 1, "hit_count": 2, "reranker_backend": "bge", "degraded": []},
             {"step": "selfcheck", "grounded": True, "action": "answer"},
         ],
         "retrieved_chunks": [
-            {"id": "chunk:1", "text": "卡诺图定义", "title": "数电讲义",
-             "source_type": "chunk", "score": 0.1, "rerank_score": 0.99,
-             "provenance": ["原问题"]},
+            {
+                "id": "chunk:1",
+                "text": "卡诺图定义",
+                "title": "数电讲义",
+                "source_type": "chunk",
+                "score": 0.1,
+                "rerank_score": 0.99,
+                "provenance": ["原问题"],
+            },
         ],
         "cache_hit": False,
         "from_cache": False,
@@ -54,10 +60,13 @@ def patched_router(monkeypatch):
 
 
 def test_chat_router_response_contract(client, patched_router):  # noqa: ARG001
-    resp = client.post("/api/ai/chat/router", json={
-        "messages": [{"role": "user", "content": "什么是卡诺图？"}],
-        "use_rag": True,
-    })
+    resp = client.post(
+        "/api/ai/chat/router",
+        json={
+            "messages": [{"role": "user", "content": "什么是卡诺图？"}],
+            "use_rag": True,
+        },
+    )
     assert resp.status_code == 200, resp.text
     data = resp.json()
 
@@ -92,9 +101,12 @@ def test_chat_router_cache_hit_field(client, patched_router):  # noqa: ARG001
     ]
     patched_router.chat_with_router.return_value = hit
 
-    resp = client.post("/api/ai/chat/router", json={
-        "messages": [{"role": "user", "content": "什么是卡诺图？"}],
-    })
+    resp = client.post(
+        "/api/ai/chat/router",
+        json={
+            "messages": [{"role": "user", "content": "什么是卡诺图？"}],
+        },
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["cache_hit"] is True

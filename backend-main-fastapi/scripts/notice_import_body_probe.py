@@ -14,6 +14,7 @@
     python scripts/notice_import_body_probe.py            # 真实 HTTP 导入
     python scripts/notice_import_body_probe.py --dry-run  # 只打印将要导入的内容
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +40,10 @@ PREFIX = "【正文解析验证·勿删】"
 SAMPLES = [
     {
         "title": f"{PREFIX}XX大学2027年全国硕士研究生招生考试网上报名公告",
-        "school_name": "XX大学", "notice_type": "公告",
-        "publish_date": "2026-09-20", "source": "manual",
+        "school_name": "XX大学",
+        "notice_type": "公告",
+        "publish_date": "2026-09-20",
+        "source": "manual",
         "url": "https://example.edu.cn/2026/0920/c1/page.htm",
         "body": (
             "各位考生：\n"
@@ -54,8 +57,10 @@ SAMPLES = [
     },
     {
         "title": f"{PREFIX}XX大学2027年接收推荐免试研究生预报名通知",
-        "school_name": "XX大学", "notice_type": "推免",
-        "publish_date": "2026-09-01", "source": "manual",
+        "school_name": "XX大学",
+        "notice_type": "推免",
+        "publish_date": "2026-09-01",
+        "source": "manual",
         "body": (
             "我校2027年接收推荐免试研究生预报名工作即将启动。\n"
             "请于2026年9月20日前完成复试确认，逾期视为放弃复试资格。\n"
@@ -65,8 +70,10 @@ SAMPLES = [
     },
     {
         "title": f"{PREFIX}XX大学关于2026年硕士研究生录取通知书邮寄信息填报的通知",
-        "school_name": "XX大学", "notice_type": "录取",
-        "publish_date": "2026-06-10", "source": "manual",
+        "school_name": "XX大学",
+        "notice_type": "录取",
+        "publish_date": "2026-06-10",
+        "source": "manual",
         "body": (
             "2026级硕士研究生录取通知书即将寄发。\n"
             "请于2026年6月20日前登录系统完成邮寄地址填报，逾期将按默认地址寄送。\n"
@@ -76,18 +83,21 @@ SAMPLES = [
     },
     {
         "title": f"{PREFIX}XX大学2027年硕士研究生复试录取工作实施细则",
-        "school_name": "XX大学", "notice_type": "复试",
-        "publish_date": "2027-03-01", "source": "manual",
+        "school_name": "XX大学",
+        "notice_type": "复试",
+        "publish_date": "2027-03-01",
+        "source": "manual",
         "body": (
-            "复试时间为2027年3月下旬，具体日期以学院通知为准。\n"
-            "请考生保持通讯畅通，及时关注我校研究生招生信息网。"
+            "复试时间为2027年3月下旬，具体日期以学院通知为准。\n请考生保持通讯畅通，及时关注我校研究生招生信息网。"
         ),
         "_expect": "无（模糊日期「3月下旬」不精确化，不猜不填）",
     },
     {
         "title": f"{PREFIX}XX大学2026年春季学期研究生部分课程期末考试安排",
-        "school_name": "XX大学", "notice_type": "公告",
-        "publish_date": "2026-01-05", "source": "manual",
+        "school_name": "XX大学",
+        "notice_type": "公告",
+        "publish_date": "2026-01-05",
+        "source": "manual",
         "body": (
             "2026年春季学期研究生课程期末考试安排如下。\n"
             "预报名已于2025年9月25日截止，正式报名通道已关闭。\n"
@@ -104,8 +114,7 @@ def main() -> None:
     args = ap.parse_args()
 
     print("=" * 78)
-    print("  /import 正文解析探针（5 条测试数据）"
-          + ("（DRY-RUN）" if args.dry_run else "（真实 HTTP 导入）"))
+    print("  /import 正文解析探针（5 条测试数据）" + ("（DRY-RUN）" if args.dry_run else "（真实 HTTP 导入）"))
     print("=" * 78)
 
     if args.dry_run:
@@ -142,23 +151,25 @@ def main() -> None:
     results = []
     for i, smp in enumerate(SAMPLES, 1):
         payload = {k: v for k, v in smp.items() if not k.startswith("_")}
-        r = s.post(f"http://127.0.0.1:{port}/api/notice-alert/import",
-                   json=payload, headers=hdrs, timeout=30)
-        print(f"\n--- 样本 {i}: {smp['title'][len(PREFIX):][:44]} ---")
+        r = s.post(f"http://127.0.0.1:{port}/api/notice-alert/import", json=payload, headers=hdrs, timeout=30)
+        print(f"\n--- 样本 {i}: {smp['title'][len(PREFIX) :][:44]} ---")
         print(f"  HTTP {r.status_code}")
         if r.status_code == 200:
             d = r.json()
             print(f"  导入 id            : {d['id']}")
             print(f"  deadline_date      : {d.get('deadline_date')}")
             print(f"  deadline_message   : {d.get('deadline_message')}")
-            print(f"  content_saved      : {d.get('content_saved')}  "
-                  f"(body_chars={d.get('body_chars')})")
-            print(f"  抽取事件           : "
-                  f"{[(x['date'], x['kind'], x['is_deadline']) for x in d['dates']]}")
+            print(f"  content_saved      : {d.get('content_saved')}  (body_chars={d.get('body_chars')})")
+            print(f"  抽取事件           : {[(x['date'], x['kind'], x['is_deadline']) for x in d['dates']]}")
             print(f"  预期               : {smp['_expect']}")
-            results.append({"id": d["id"], "title": smp["title"],
-                            "deadline": d.get("deadline_date"),
-                            "message": d.get("deadline_message")})
+            results.append(
+                {
+                    "id": d["id"],
+                    "title": smp["title"],
+                    "deadline": d.get("deadline_date"),
+                    "message": d.get("deadline_message"),
+                }
+            )
         else:
             print(f"  失败: {r.text[:200]}")
         time.sleep(0.2)
@@ -175,9 +186,7 @@ def main() -> None:
     print(f"  合计 {len(results)} 条")
     print()
     print("  JSON（供脚本化核对）:")
-    print("  " + json.dumps(
-        [{"id": r["id"], "deadline": r["deadline"]} for r in results],
-        ensure_ascii=False))
+    print("  " + json.dumps([{"id": r["id"], "deadline": r["deadline"]} for r in results], ensure_ascii=False))
 
 
 if __name__ == "__main__":

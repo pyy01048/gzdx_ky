@@ -361,8 +361,7 @@ def extract(html: str, url: str = "") -> Extracted:
     h1_title = ""
     if doc is not None:
         try:
-            candidates = [t.strip() for t in doc.xpath("//h1//text()")
-                          if isinstance(t, str) and t.strip()]
+            candidates = [t.strip() for t in doc.xpath("//h1//text()") if isinstance(t, str) and t.strip()]
         except Exception:  # pragma: no cover
             candidates = []
         for cand in candidates:

@@ -17,8 +17,9 @@ from sqlalchemy import text
 
 def test_ghost_index_counts_indexed_docs_without_chunks(db_schema):  # noqa: ARG001
     from database import SessionLocal
-    from models import Document, KnowledgeChunk
     from routers.study.quality import _ghost_index
+
+    from models import Document, KnowledgeChunk
 
     db = SessionLocal()
     ids = []

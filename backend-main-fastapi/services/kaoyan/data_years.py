@@ -9,6 +9,7 @@
 口径：年份只能从已入库的 ``kaoyan_scorelines.year`` / ``kaoyan_admissions.year`` 派生。
 库里没有数据时返回空列表 / None，由上层显示空态；**绝不回落到某个写死的年份**。
 """
+
 from __future__ import annotations
 
 from typing import List, Optional

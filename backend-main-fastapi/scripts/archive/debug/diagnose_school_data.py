@@ -12,6 +12,7 @@
   python scripts/diagnose_school_data.py
   python scripts/diagnose_school_data.py --section3   # 只看院校层级错标
 """
+
 import argparse
 import re
 import sqlite3
@@ -38,8 +39,7 @@ def q(sql: str, params: tuple = ()) -> list:
 # ============================================================ 0. 总览
 def section0():
     hr("0. 表规模总览")
-    for t in ["kaoyan_schools", "kaoyan_colleges", "kaoyan_majors",
-              "kaoyan_admissions", "school_aliases"]:
+    for t in ["kaoyan_schools", "kaoyan_colleges", "kaoyan_majors", "kaoyan_admissions", "school_aliases"]:
         n = q(f"SELECT COUNT(*) c FROM {t}")[0]["c"]
         print(f"  {t:22s} {n:6d} 行")
 
@@ -52,7 +52,7 @@ def section0():
     total = q("SELECT COUNT(*) c FROM kaoyan_schools")[0]["c"]
     for c in cols:
         n = q(f"SELECT COUNT(*) c FROM kaoyan_schools WHERE {c} IS NOT NULL AND TRIM({c})<>''")[0]["c"]
-        print(f"    {c:16s} {n:5d}/{total}  {n*100.0/total:5.1f}%")
+        print(f"    {c:16s} {n:5d}/{total}  {n * 100.0 / total:5.1f}%")
 
 
 # ============================================================ 1. level NULL
@@ -83,8 +83,10 @@ def section1():
 
     print("\n  前 60 条明细（id / name / type / region / tags）：")
     for r in rows[:60]:
-        print(f"    {r['id']:<5d} {r['name'][:30]:<32s} type={str(r['type'])[:10]:<11s} "
-              f"region={str(r['region'])[:10]:<11s} tags={str(r['tags'])[:30]}")
+        print(
+            f"    {r['id']:<5d} {r['name'][:30]:<32s} type={str(r['type'])[:10]:<11s} "
+            f"region={str(r['region'])[:10]:<11s} tags={str(r['tags'])[:30]}"
+        )
 
 
 # ============================================================ 2. 官网缺失
@@ -96,7 +98,9 @@ def section2():
     print(f"  缺官网行数：{len(miss)}")
 
     print("\n  全表 data_source 分布（对比）：")
-    for r in q("SELECT COALESCE(data_source,'<NULL>') ds, COUNT(*) c FROM kaoyan_schools GROUP BY 1 ORDER BY c DESC LIMIT 30"):
+    for r in q(
+        "SELECT COALESCE(data_source,'<NULL>') ds, COUNT(*) c FROM kaoyan_schools GROUP BY 1 ORDER BY c DESC LIMIT 30"
+    ):
         print(f"    {r['ds'][:60]:<62s} {r['c']:5d}")
 
     print("\n  缺官网院校的 data_source 分布：")
@@ -159,13 +163,59 @@ def section3():
 
     # 名字含重点关键字但在双非/None 里（未命中名单，供人工判断）
     print("\n  --- 关键字疑似（省会有 师范/科技/工业/交通/财经/医科 等，但库内为双非/NULL 且未命中名单）---")
-    KW = ["师范", "科技大学", "工业大学", "交通大学", "财经大学", "医科大学",
-          "中医药", "石油大学", "矿业大学", "航空", "海洋大学", "林业大学",
-          "农业大学", "电子科技", "理工大学", "建筑大学", "钢铁", "纺织"]
-    prov_capital = {"北京", "上海", "天津", "重庆", "广州", "深圳", "杭州", "南京",
-                    "成都", "武汉", "西安", "长沙", "郑州", "济南", "青岛", "合肥",
-                    "福州", "厦门", "南昌", "昆明", "贵阳", "兰州", "太原", "石家庄",
-                    "哈尔滨", "长春", "沈阳", "大连", "苏州", "无锡", "宁波"}
+    KW = [
+        "师范",
+        "科技大学",
+        "工业大学",
+        "交通大学",
+        "财经大学",
+        "医科大学",
+        "中医药",
+        "石油大学",
+        "矿业大学",
+        "航空",
+        "海洋大学",
+        "林业大学",
+        "农业大学",
+        "电子科技",
+        "理工大学",
+        "建筑大学",
+        "钢铁",
+        "纺织",
+    ]
+    prov_capital = {
+        "北京",
+        "上海",
+        "天津",
+        "重庆",
+        "广州",
+        "深圳",
+        "杭州",
+        "南京",
+        "成都",
+        "武汉",
+        "西安",
+        "长沙",
+        "郑州",
+        "济南",
+        "青岛",
+        "合肥",
+        "福州",
+        "厦门",
+        "南昌",
+        "昆明",
+        "贵阳",
+        "兰州",
+        "太原",
+        "石家庄",
+        "哈尔滨",
+        "长春",
+        "沈阳",
+        "大连",
+        "苏州",
+        "无锡",
+        "宁波",
+    }
     susp = []
     for r in rows:
         lv = (r["level"] or "").strip()
@@ -180,8 +230,10 @@ def section3():
             susp.append(r)
     print(f"  计数：{len(susp)}")
     for r in susp[:60]:
-        print(f"    {r['id']:<5d} {r['name'][:30]:<32s} level={str(r['level'] or '<NULL>'):<8s} "
-              f"city={str(r['city']):<8s} type={str(r['type'])[:10]}")
+        print(
+            f"    {r['id']:<5d} {r['name'][:30]:<32s} level={str(r['level'] or '<NULL>'):<8s} "
+            f"city={str(r['city']):<8s} type={str(r['type'])[:10]}"
+        )
     return mis, susp
 
 
@@ -195,11 +247,15 @@ def section4():
     print("\n  data_source / source 分布：")
     for col in ("data_source", "source"):
         print(f"   --{col}--")
-        for r in q(f"SELECT COALESCE({col},'<NULL>') v, COUNT(*) c FROM kaoyan_admissions GROUP BY 1 ORDER BY c DESC LIMIT 15"):
+        for r in q(
+            f"SELECT COALESCE({col},'<NULL>') v, COUNT(*) c FROM kaoyan_admissions GROUP BY 1 ORDER BY c DESC LIMIT 15"
+        ):
             print(f"      {str(r['v'])[:60]:<62s} {r['c']:5d}")
 
     print("\n  每年覆盖的院校数：")
-    for r in q("SELECT year, COUNT(DISTINCT school_id) s, COUNT(DISTINCT major_id) m FROM kaoyan_admissions GROUP BY 1 ORDER BY 1"):
+    for r in q(
+        "SELECT year, COUNT(DISTINCT school_id) s, COUNT(DISTINCT major_id) m FROM kaoyan_admissions GROUP BY 1 ORDER BY 1"
+    ):
         print(f"    {r['year']}: 院校 {r['s']}, 专业 {r['m']}")
 
     print("\n  是否存在往年复试线/分数线文本可供回填（只统计，不动 notices 内容）：")
@@ -233,8 +289,12 @@ def section5():
     print(f"    major_id 指向不存在的major  : {orphan_maj}")
 
     # school 级孤儿
-    for tbl, col in [("kaoyan_colleges", "school_id"), ("kaoyan_majors", "school_id"),
-                     ("kaoyan_admissions", "school_id"), ("school_aliases", "school_id")]:
+    for tbl, col in [
+        ("kaoyan_colleges", "school_id"),
+        ("kaoyan_majors", "school_id"),
+        ("kaoyan_admissions", "school_id"),
+        ("school_aliases", "school_id"),
+    ]:
         n = q(f"""SELECT COUNT(*) c FROM {tbl} t WHERE t.{col} IS NOT NULL
                   AND NOT EXISTS(SELECT 1 FROM kaoyan_schools s WHERE s.id=t.{col})""")[0]["c"]
         tot = q(f"SELECT COUNT(*) c FROM {tbl}")[0]["c"]
@@ -265,29 +325,36 @@ def section5():
 def section6():
     hr("6. kaoyan_majors 字段填充率与内容质量")
     tot = q("SELECT COUNT(*) c FROM kaoyan_majors")[0]["c"]
-    for c in ["code", "name", "research_direction", "subject_code", "exam_subjects",
-              "reference_books", "degree_type"]:
+    for c in ["code", "name", "research_direction", "subject_code", "exam_subjects", "reference_books", "degree_type"]:
         n = q(f"SELECT COUNT(*) c FROM kaoyan_majors WHERE {c} IS NOT NULL AND TRIM({c})<>''")[0]["c"]
-        print(f"    {c:20s} {n:5d}/{tot}  {n*100.0/tot:5.1f}%")
+        print(f"    {c:20s} {n:5d}/{tot}  {n * 100.0 / tot:5.1f}%")
 
     print("\n  degree_type 分布：")
-    for r in q("SELECT COALESCE(degree_type,'<NULL>') d, COUNT(*) c FROM kaoyan_majors GROUP BY 1 ORDER BY c DESC LIMIT 15"):
+    for r in q(
+        "SELECT COALESCE(degree_type,'<NULL>') d, COUNT(*) c FROM kaoyan_majors GROUP BY 1 ORDER BY c DESC LIMIT 15"
+    ):
         print(f"    {str(r['d'])[:40]:<42s} {r['c']:5d}")
 
     print("\n  exam_subjects 抽样 15 条：")
-    for r in q("SELECT id,name,exam_subjects FROM kaoyan_majors WHERE exam_subjects IS NOT NULL AND TRIM(exam_subjects)<>'' LIMIT 15"):
+    for r in q(
+        "SELECT id,name,exam_subjects FROM kaoyan_majors WHERE exam_subjects IS NOT NULL AND TRIM(exam_subjects)<>'' LIMIT 15"
+    ):
         print(f"    {r['id']:<6d} {r['name'][:24]:<26s} => {r['exam_subjects'][:80]}")
     print("\n  exam_subjects 内容形态分布（是否含'政治/英语/数学'）：")
     forms = Counter()
     for r in q("SELECT exam_subjects FROM kaoyan_majors WHERE exam_subjects IS NOT NULL AND TRIM(exam_subjects)<>''"):
         v = r["exam_subjects"]
-        key = ("含'英语'" if "英语" in v else "") + ("+政治" if "政治" in v else "") + ("+数学" if "数学" in v else "") or "其他"
+        key = ("含'英语'" if "英语" in v else "") + ("+政治" if "政治" in v else "") + (
+            "+数学" if "数学" in v else ""
+        ) or "其他"
         forms[key] += 1
     for k, c in forms.most_common():
         print(f"    {k:<24s} {c}")
 
     print("\n  reference_books 抽样 10 条：")
-    for r in q("SELECT id,name,reference_books FROM kaoyan_majors WHERE reference_books IS NOT NULL AND TRIM(reference_books)<>'' LIMIT 10"):
+    for r in q(
+        "SELECT id,name,reference_books FROM kaoyan_majors WHERE reference_books IS NOT NULL AND TRIM(reference_books)<>'' LIMIT 10"
+    ):
         print(f"    {r['id']:<6d} {r['name'][:22]:<24s} => {r['reference_books'][:100]}")
 
     print("\n  name 疑似脏值（含模板占位/未解析）：")
@@ -301,10 +368,9 @@ def section6():
 
     print("\n  录取表字段填充率：")
     ta = q("SELECT COUNT(*) c FROM kaoyan_admissions")[0]["c"]
-    for c in ["enroll_count", "retest_count", "admit_count", "admit_avg_score",
-              "major_avg_score", "retest_ratio"]:
+    for c in ["enroll_count", "retest_count", "admit_count", "admit_avg_score", "major_avg_score", "retest_ratio"]:
         n = q(f"SELECT COUNT(*) c FROM kaoyan_admissions WHERE {c} IS NOT NULL")[0]["c"]
-        print(f"    {c:20s} {n:5d}/{ta}  {n*100.0/ta:5.1f}%")
+        print(f"    {c:20s} {n:5d}/{ta}  {n * 100.0 / ta:5.1f}%")
 
 
 # ============================================================ 7. 省份/城市/region 写法
@@ -312,12 +378,16 @@ def section7():
     hr("7. province / city / region 写法标准化空间")
     for col in ("province", "city", "region"):
         print(f"\n  {col} 全表取值数：{q(f'SELECT COUNT(DISTINCT {col}) c FROM kaoyan_schools')[0]['c']}")
-        vals = q(f"SELECT COALESCE({col},'<NULL>') v, COUNT(*) c FROM kaoyan_schools GROUP BY 1 ORDER BY c DESC LIMIT 45")
+        vals = q(
+            f"SELECT COALESCE({col},'<NULL>') v, COUNT(*) c FROM kaoyan_schools GROUP BY 1 ORDER BY c DESC LIMIT 45"
+        )
         print("   ", " | ".join(f"{r['v']}:{r['c']}" for r in vals))
 
     print("\n  疑似带后缀的写法（'省'/'市'结尾）：")
     for col in ("province",):
-        for r in q(f"SELECT {col} v, COUNT(*) c FROM kaoyan_schools WHERE {col} LIKE '%省' OR {col} LIKE '%市' GROUP BY 1 ORDER BY c DESC"):
+        for r in q(
+            f"SELECT {col} v, COUNT(*) c FROM kaoyan_schools WHERE {col} LIKE '%省' OR {col} LIKE '%市' GROUP BY 1 ORDER BY c DESC"
+        ):
             print(f"    {col}={r['v']:<12s} {r['c']}")
 
     print("\n  province/city 不匹配的抽样（city 名的省份前缀对不上）：")

@@ -11,6 +11,7 @@
 用法：
     python scripts/backfill_content_category.py
 """
+
 import collections
 import os
 import sys
@@ -34,9 +35,7 @@ def ensure_column(db) -> bool:
     # 常驻服务可能短暂持写锁，有限重试
     for i in range(8):
         try:
-            conn.execute(
-                "ALTER TABLE documents ADD COLUMN content_category VARCHAR(20)"
-            )
+            conn.execute("ALTER TABLE documents ADD COLUMN content_category VARCHAR(20)")
             break
         except Exception as e:  # noqa: BLE001
             if "locked" in str(e).lower() and i < 7:
@@ -46,10 +45,7 @@ def ensure_column(db) -> bool:
     db.commit()
     # 补索引（与 ORM index=True 对齐；IF NOT EXISTS 幂等）
     try:
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS ix_documents_content_category "
-            "ON documents(content_category)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_documents_content_category ON documents(content_category)")
         db.commit()
     except Exception:  # noqa: BLE001
         db.rollback()
@@ -62,9 +58,7 @@ def main() -> None:
         added = ensure_column(db)
         print(f"[ALTER] content_category 列已就绪（本次新增={added}）")
 
-        rows = db.execute(
-            text("SELECT id, file_name FROM documents ORDER BY id")
-        ).fetchall()
+        rows = db.execute(text("SELECT id, file_name FROM documents ORDER BY id")).fetchall()
         total = len(rows)
         print(f"[BACKFILL] 待标注文档数: {total}")
 
@@ -91,14 +85,12 @@ def main() -> None:
 
         print("[分布] content_category 各分类数量：")
         for k in ("exam", "example", "method", "textbook"):
-            print(f"  {k:10s}: {dist.get(k,0)}")
+            print(f"  {k:10s}: {dist.get(k, 0)}")
         print(f"  {'合计':10s}: {sum(dist.values())}")
 
         # 抽查：每类取 5 个文件名，人工核对
         print("\n[抽查] exam 样本:")
-        for r in db.execute(
-            text("SELECT file_name FROM documents WHERE content_category='exam' LIMIT 8")
-        ).fetchall():
+        for r in db.execute(text("SELECT file_name FROM documents WHERE content_category='exam' LIMIT 8")).fetchall():
             print("   -", r[0])
         print("[抽查] example 样本:")
         for r in db.execute(
@@ -106,9 +98,7 @@ def main() -> None:
         ).fetchall():
             print("   -", r[0])
         print("[抽查] method 样本:")
-        for r in db.execute(
-            text("SELECT file_name FROM documents WHERE content_category='method' LIMIT 5")
-        ).fetchall():
+        for r in db.execute(text("SELECT file_name FROM documents WHERE content_category='method' LIMIT 5")).fetchall():
             print("   -", r[0])
         print("[抽查] textbook 样本:")
         for r in db.execute(
@@ -119,9 +109,7 @@ def main() -> None:
         # 完整性自检：题库 / 块数不变
         q = db.execute(text("SELECT COUNT(*) FROM quiz_questions")).scalar()
         ch = db.execute(text("SELECT COUNT(*) FROM knowledge_chunks")).scalar()
-        unlabeled = db.execute(
-            text("SELECT COUNT(*) FROM documents WHERE content_category IS NULL")
-        ).scalar()
+        unlabeled = db.execute(text("SELECT COUNT(*) FROM documents WHERE content_category IS NULL")).scalar()
         print(f"\n[完整性] quiz_questions={q}  knowledge_chunks={ch}  未标注文档={unlabeled}")
     finally:
         db.close()

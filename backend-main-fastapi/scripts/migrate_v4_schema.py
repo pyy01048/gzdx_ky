@@ -38,22 +38,22 @@ NEW_COLUMNS: list[tuple[str, str, str]] = [
     ("knowledge_points", "interval", "ALTER TABLE knowledge_points ADD COLUMN interval INTEGER DEFAULT 0"),
     ("knowledge_points", "lapses", "ALTER TABLE knowledge_points ADD COLUMN lapses INTEGER DEFAULT 0"),
     ("knowledge_points", "question_count", "ALTER TABLE knowledge_points ADD COLUMN question_count INTEGER DEFAULT 0"),
-
     # documents：文档组织三层结构 + OCR 标记
     ("documents", "doc_type", "ALTER TABLE documents ADD COLUMN doc_type VARCHAR(20)"),
     ("documents", "structure_level", "ALTER TABLE documents ADD COLUMN structure_level VARCHAR(20)"),
     ("documents", "ocr_used", "ALTER TABLE documents ADD COLUMN ocr_used BOOLEAN DEFAULT 0"),
     # 跨来源去重溯源：同一道题被多份文档承载时，把全部来源记进这个 JSON 数组。
     # 加列前必须先备份（脚本统一在 main() 里做 src.backup()）。
-    ("quiz_questions", "source_ids",
-     "ALTER TABLE quiz_questions ADD COLUMN source_ids JSON"),
+    ("quiz_questions", "source_ids", "ALTER TABLE quiz_questions ADD COLUMN source_ids JSON"),
 ]
 
 # --------------------------------------------------------------------------- #
 # 2. 新增表
 # --------------------------------------------------------------------------- #
 NEW_TABLES: list[tuple[str, str]] = [
-    ("error_knowledge_links", """
+    (
+        "error_knowledge_links",
+        """
         CREATE TABLE IF NOT EXISTS error_knowledge_links (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             error_id INTEGER NOT NULL REFERENCES error_records(id),
@@ -64,8 +64,11 @@ NEW_TABLES: list[tuple[str, str]] = [
             source VARCHAR(20) DEFAULT 'auto',
             created_at DATETIME
         )
-    """),
-    ("review_records", """
+    """,
+    ),
+    (
+        "review_records",
+        """
         CREATE TABLE IF NOT EXISTS review_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             item_type VARCHAR(20) NOT NULL,
@@ -82,7 +85,8 @@ NEW_TABLES: list[tuple[str, str]] = [
             note TEXT,
             created_at DATETIME
         )
-    """),
+    """,
+    ),
 ]
 
 NEW_INDEXES: list[tuple[str, str, str]] = [
@@ -104,9 +108,7 @@ DEAD_SCHEDULE_TABLES = ["course_adjustments", "courses", "semesters"]
 
 
 def table_exists(cur: sqlite3.Connection, name: str) -> bool:
-    return cur.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
-    ).fetchone() is not None
+    return cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
 
 
 def row_count(cur: sqlite3.Connection, name: str) -> int:
@@ -190,7 +192,8 @@ def main() -> int:
         cols = [r[1] for r in cur.execute(f'PRAGMA table_info("{table}")')]
         print(f"{table}: {len(cols)} 列 | {cols}")
     remaining = [
-        r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        r[0]
+        for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
         if any(k in r[0] for k in ("semester", "course"))
     ]
     print(f"残留课表相关表：{remaining or '无'}")

@@ -6,6 +6,7 @@ V3.0 AI调用优化模块
 - 流式响应优化
 - 请求合并
 """
+
 import hashlib
 import logging
 import time
@@ -53,7 +54,7 @@ class AIResponseCache:
 
         self.cache.move_to_end(key)
         self.hit_count += 1
-        logger.debug(f"AI缓存命中 (命中率: {self.hit_count/(self.hit_count+self.miss_count)*100:.1f}%)")
+        logger.debug(f"AI缓存命中 (命中率: {self.hit_count / (self.hit_count + self.miss_count) * 100:.1f}%)")
         return value
 
     def set(self, messages: List[Dict], response: Dict, provider: str = None, model: str = None, ttl: int = None):
@@ -262,12 +263,14 @@ class AIPerformanceMonitor:
             self.provider_stats[provider]["fail"] += 1
 
         if response_time > 10:  # 超过10秒记为慢调用
-            self.slow_calls.append({
-                "provider": provider,
-                "model": model,
-                "time": response_time,
-                "timestamp": time.time(),
-            })
+            self.slow_calls.append(
+                {
+                    "provider": provider,
+                    "model": model,
+                    "time": response_time,
+                    "timestamp": time.time(),
+                }
+            )
             if len(self.slow_calls) > 100:
                 self.slow_calls = self.slow_calls[-100:]
 

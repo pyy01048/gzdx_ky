@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   errorsApi, kbApi, qualityApi, quizApi, request, systemApi, textbooksApi, wordsApi,
@@ -20,13 +20,16 @@ import '../styles/admin-core-v3.css'
    页面同时汇总全站真实规模，并给管理员一条最近的评测活动流。
    ============================================================ */
 
+/** 将任意值转为有限数，非有限返回 null。 */
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null)
 
+/** 将 0–1 的比率格式化为百分比字符串；非法值返回「—」。 */
 const pct = (v) => {
   if (v === null || v === undefined || Number.isNaN(Number(v))) return '—'
   return `${(Number(v) * 100).toFixed(1)}%`
 }
 
+/** 将 ISO 时间字符串格式化为「MM-DD HH:mm」；非法值原样返回。 */
 const fmtTime = (iso) => {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -44,6 +47,7 @@ const KIND_LABEL = {
   doc_lock: '文档诊断',
 }
 
+/** 构造各数据域的巡检任务清单：每项绑定真实接口、摘要与计数口径。 */
 function buildTasks() {
   return [
     {
@@ -125,6 +129,7 @@ function buildTasks() {
   ]
 }
 
+/** 单个指标瓦片：数值用 AnimatedNumber 滚动展示，warn=true 时高亮为告警态。 */
 function MetricTile({ icon, label, value, unit, hint, warn }) {
   return (
     <Tile className={cx('v3-admin-stat', warn && 'is-warn')}>
@@ -144,6 +149,11 @@ function MetricTile({ icon, label, value, unit, hint, warn }) {
   )
 }
 
+/**
+ * 数据中心 / 管理总览（/admin/overview）。
+ * 每个数据域都绑定一个真实接口，失败时保留错误原文，不吞异常；
+ * 页面同时汇总全站真实规模，并给管理员一条最近的评测活动流。
+ */
 export default function DataCenter() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -186,19 +196,19 @@ export default function DataCenter() {
 
   useEffect(() => { run() }, [run])
 
-  const okCount = rows.filter((r) => r.ok).length
+  const okCount = useMemo(() => rows.filter((r) => r.ok).length, [rows])
   const failedCount = rows.length - okCount
 
-  const getRow = (key) => rows.find((r) => r.key === key)
-  const dataOf = (key) => {
+  const getRow = useCallback((key) => rows.find((r) => r.key === key), [rows])
+  const dataOf = useCallback((key) => {
     const r = getRow(key)
     return r?.ok ? r.data : null
-  }
-  const hintOf = (key, okText) => {
+  }, [getRow])
+  const hintOf = useCallback((key, okText) => {
     const r = getRow(key)
     if (!r) return loading ? '正在检查…' : '暂无检查结果'
     return r.ok ? okText : '接口异常，详见接口明细'
-  }
+  }, [getRow, loading])
 
   const docs = dataOf('documents')
   const quiz = dataOf('quiz')
@@ -221,13 +231,11 @@ export default function DataCenter() {
   const bookSubjects = textbooks && Array.isArray(textbooks.by_subject) ? textbooks.by_subject.length : 0
   const schoolTotal = schools ? num(schools.total) : null
 
-  const heroTitle = loading
-    ? '正在逐项检查接口…'
-    : rows.length === 0
-      ? '尚未执行检查'
-      : failedCount
-        ? `${failedCount} 个接口异常`
-        : '全部接口正常'
+  const heroTitle = useMemo(() => {
+    if (loading) return '正在逐项检查接口…'
+    if (rows.length === 0) return '尚未执行检查'
+    return failedCount ? `${failedCount} 个接口异常` : '全部接口正常'
+  }, [loading, rows.length, failedCount])
 
   return (
     <div className="v3-admin-page">

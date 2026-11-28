@@ -9,6 +9,7 @@
   禁止改历史脚本（否则存量库与新库会悄悄分叉）。
 * 存量库收编：账本为空但库里已有业务表时，默认走 **baseline**（只登记不执行），
   避免在生产库上重放 48 个历史脚本（其中含 DELETE/backfill）。
+  204 及以后的增量结构迁移仍必须执行，否则个人题库与组卷修复会被空账本跳过。
   全新空库则直接执行全部脚本。
 
 对外入口（脚本 scripts/execute_core_sql.py 与启动生命周期共用）::
@@ -31,6 +32,8 @@ from pathlib import Path
 
 from sqlalchemy import text
 
+from core.migration_policy import is_automatic_schema_script
+
 SQL_DIR = Path(__file__).resolve().parent / "sql"
 
 LEDGER_TABLE_SQL = """
@@ -45,12 +48,156 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 _VERSION_RE = re.compile(r"^(\d{3}[a-z]?_[A-Za-z0-9_\-]+)\.sql$")
 
+# 空账本存量库不得把上线后新增的结构迁移标成已执行。
+BASELINE_FORWARD_FROM = 204
+
+MIGRATION_PREFLIGHT = {
+    "206_quiz_persistent_sessions": """
+        SELECT count(*) FROM (
+            SELECT session_id, question_id FROM quiz_attempts
+            WHERE session_id IS NOT NULL AND question_id IS NOT NULL
+            GROUP BY session_id, question_id HAVING count(*) > 1
+        ) duplicates
+    """,
+    "208_quiz_practice_modes": """
+        SELECT count(*) FROM quiz_sessions
+        WHERE mode IS NOT NULL
+          AND mode NOT IN ('chapter_practice', 'smart_paper', 'free_practice', 'practice', 'memorize')
+    """,
+}
+
+CLIENT_ATTEMPT_PREFLIGHT = """
+    SELECT count(*) FROM (
+        SELECT user_id, client_attempt_id FROM quiz_attempts
+        WHERE user_id IS NOT NULL AND client_attempt_id IS NOT NULL
+        GROUP BY user_id, client_attempt_id HAVING count(*) > 1
+    ) duplicates
+"""
+
+# 2026-11-27 逐项核对过的历史漂移。只有账本旧值、磁盘当前值和数据库后置条件
+# 三者同时匹配才允许校正；120_auth_sessions 必须先由 209 完成实际列类型修复。
+AUDITED_CHECKSUM_DRIFT: dict[str, dict[str, str]] = {
+    "103_backfill_review_schedules": {
+        "ledger_checksum": "347afbea5fc32b846b3d090b63d85d104943eca193101e85c0baa92f2ee03ce3",
+        "file_checksum": "e1be97606a64c7285843a2d010911b0440c8add83e3dfe6fa047975ab2807660",
+        "verify_sql": """
+            SELECT EXISTS (
+                SELECT 1 FROM pg_constraint
+                 WHERE conrelid = 'review_schedules'::regclass
+                   AND conname = 'uq_review_schedule'
+                   AND pg_get_constraintdef(oid) = 'UNIQUE (user_id, item_type, item_id)'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM review_schedules WHERE item_type IN ('knowledge', 'error')
+            )
+        """,
+    },
+    "104_users": {
+        "ledger_checksum": "fb377288bd9c361d1f39a588fe7265b45a49775daa89c3e32f3b862b903702de",
+        "file_checksum": "2c16982eac2a3d99fb2f9239c5241169b91fa53917d048c4a842f522ece1539c",
+        "verify_sql": """
+            SELECT EXISTS (
+                SELECT 1 FROM pg_constraint
+                 WHERE conrelid = 'users'::regclass
+                   AND conname = 'ck_users_role'
+                   AND pg_get_constraintdef(oid) LIKE '%admin%'
+                   AND pg_get_constraintdef(oid) LIKE '%doc_admin%'
+                   AND pg_get_constraintdef(oid) LIKE '%user%'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = 'users'
+                   AND column_name IN ('last_login_at', 'created_at', 'updated_at')
+                   AND data_type = 'timestamp without time zone'
+            )
+        """,
+    },
+    "118_users_query_indexes": {
+        "ledger_checksum": "43b8b8f28933d17a7de2f4cd14e7ec50ac30ba4a79c9cdf6a3df48141ba20de6",
+        "file_checksum": "eda439cff8026b8e13f116b5c26aed974c09f955ff99abffd1a2ee0eb26c610a",
+        "verify_sql": """
+            SELECT EXISTS (
+                SELECT 1 FROM pg_index
+                 WHERE indexrelid = to_regclass('ux_users_username_lower')
+                   AND indisunique
+                   AND pg_get_indexdef(indexrelid) LIKE '%lower(%username%'
+            ) AND EXISTS (
+                SELECT 1 FROM pg_index
+                 WHERE indexrelid = to_regclass('ix_users_created_at')
+                   AND pg_get_indexdef(indexrelid) LIKE '%(created_at)%'
+            )
+        """,
+    },
+    "119_school_engineering_eval": {
+        "ledger_checksum": "01799bd111ecf5b6164e742e1e1ae8139ef37c7bd2e26d1da907f3cc7d5a7b5d",
+        "file_checksum": "25575868870951f438b4f24b6a55c4e7f3c3b5ed9ffe44a51565acf2ac481bdf",
+        "verify_sql": """
+            SELECT to_regclass('ky_discipline') IS NOT NULL
+               AND to_regclass('ky_school') IS NOT NULL
+               AND to_regclass('ky_school_discipline_eval') IS NOT NULL
+               AND to_regclass('ky_school_double_first') IS NOT NULL
+               AND to_regclass('v_school_engineering_card') IS NOT NULL
+               AND to_regclass('v_discipline_rank') IS NOT NULL
+        """,
+    },
+    "120_auth_sessions": {
+        "ledger_checksum": "8b32c5964d38fdf49569755bef75d6b2997fdf1c9d8698fb64ee2011c1ec9bf8",
+        "file_checksum": "2974df85375b626ef1755bde2e8c32de2ab98eff0157667a38925bce476a0138",
+        "verify_sql": """
+            SELECT (
+                SELECT count(*) = 4 FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = 'auth_sessions'
+                   AND column_name IN ('created_at', 'last_used_at', 'expires_at', 'revoked_at')
+                   AND data_type = 'timestamp with time zone'
+            ) AND (
+                SELECT count(*) = 2 FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = 'auth_sessions'
+                   AND column_name IN ('created_at', 'last_used_at')
+                   AND is_nullable = 'NO' AND column_default = 'now()'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM auth_sessions WHERE created_at IS NULL OR last_used_at IS NULL
+            )
+        """,
+    },
+    "120_school_branding": {
+        "ledger_checksum": "0d7cae86792124da6b01352845099ca53fcded98b5baae17910fdb63b900b0be",
+        "file_checksum": "81cc235289dc6f63b62172ed75f60e684d8653e4e13eb318832a27304408a9d8",
+        "verify_sql": """
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = 'kaoyan_schools'
+                   AND column_name = 'cover_url' AND data_type = 'character varying'
+                   AND character_maximum_length = 500
+            )
+        """,
+    },
+    "125_gamification_coins": {
+        "ledger_checksum": "2a8863c49f35cba58e507ada062e20765de66ad226f8dc30b3916d09ad2488b1",
+        "file_checksum": "38e63408cd27abaedcdbef45b21ecffe7b989e6237638b0cf8e04954fcc0261d",
+        "verify_sql": """
+            SELECT to_regclass('coin_accounts') IS NOT NULL
+               AND to_regclass('coin_ledger') IS NOT NULL
+               AND to_regclass('checkin_logs') IS NOT NULL
+               AND to_regclass('gamification_rules') IS NOT NULL
+               AND to_regclass('gamification_settings') IS NOT NULL
+               AND to_regclass('reward_items') IS NOT NULL
+               AND to_regclass('redemptions') IS NOT NULL
+               AND to_regclass('user_profiles') IS NOT NULL
+               AND EXISTS (
+                   SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = 'user_profiles'
+                      AND column_name = 'prefs' AND data_type = 'jsonb'
+               )
+        """,
+    },
+}
+
 
 @dataclass
 class MigrationResult:
     applied: list[str] = field(default_factory=list)
     baselined: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    reconciled: list[str] = field(default_factory=list)
+    manual_required: list[str] = field(default_factory=list)
     mode: str = "pending"  # pending | baseline | empty
 
 
@@ -196,6 +343,54 @@ def file_checksum(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _is_audited_drift(version: str, ledger_checksum: str, disk_checksum: str) -> bool:
+    expected = AUDITED_CHECKSUM_DRIFT.get(version)
+    return bool(
+        expected and expected["ledger_checksum"] == ledger_checksum and expected["file_checksum"] == disk_checksum
+    )
+
+
+def reconcile_known_drift(engine, applied_by: str = "manual", sql_dir: Path | str = SQL_DIR) -> list[str]:
+    """核对数据库后置条件后，校正白名单内已审计的历史 checksum。"""
+    sql_dir = Path(sql_dir)
+    reconciled: list[str] = []
+    with engine.begin() as conn:
+        _ensure_ledger(conn)
+        ledger = _load_ledger(conn)
+        for version, expected in AUDITED_CHECKSUM_DRIFT.items():
+            if version not in ledger:
+                continue
+            path = sql_dir / f"{version}.sql"
+            digest = file_checksum(path)
+            if digest != expected["file_checksum"]:
+                raise ChecksumMismatch(f"[中止] 已审计脚本 {version} 的磁盘内容已再次变化。")
+            if ledger[version] == digest:
+                continue
+            if ledger[version] != expected["ledger_checksum"]:
+                raise ChecksumMismatch(f"[中止] {version} 的账本 checksum 不在本次审计范围内。")
+            if conn.execute(text(expected["verify_sql"])).scalar() is not True:
+                raise RuntimeError(f"[中止] {version} 账本校正后校验失败：数据库后置条件不满足。")
+            conn.execute(
+                text(
+                    "UPDATE schema_migrations SET checksum = :checksum, "
+                    "applied_by = COALESCE(applied_by, '') || ';reconciled:' || :by "
+                    "WHERE version = :version AND checksum = :old_checksum"
+                ),
+                {
+                    "checksum": digest,
+                    "by": applied_by,
+                    "version": version,
+                    "old_checksum": expected["ledger_checksum"],
+                },
+            )
+            reconciled.append(version)
+    return reconciled
+
+
+def _forward_migration(path: Path) -> bool:
+    return is_automatic_schema_script(path) and int(path.stem[:3]) >= BASELINE_FORWARD_FROM
+
+
 def _ensure_ledger(conn) -> None:
     conn.execute(text(LEDGER_TABLE_SQL))
 
@@ -237,18 +432,40 @@ def exec_ddl(conn, stmt: str) -> None:
 
 
 def _apply_script(engine, path: Path) -> None:
-    """每个语句独立事务：单条失败不影响后续统计，但整体抛出。
-
-    编号脚本必须幂等（IF NOT EXISTS / ON CONFLICT），因此逐条提交可安全重跑。
-    """
-    stmts = split_statements(path.read_text(encoding="utf-8"))
-    for idx, stmt in enumerate(stmts, 1):
-        try:
-            with engine.begin() as conn:
-                exec_ddl(conn, stmt)
-        except Exception as exc:  # noqa: BLE001 —— 附文件名/序号后原样抛出
-            head = " ".join(stmt.split())[:160]
-            raise RuntimeError(f"[迁移失败] {path.name} 第 {idx}/{len(stmts)} 条：{head}\n{exc}") from exc
+    stmts = [
+        stmt
+        for stmt in split_statements(path.read_text(encoding="utf-8"))
+        if stmt.strip().rstrip(";").strip().upper() not in {"BEGIN", "COMMIT", "START TRANSACTION"}
+    ]
+    try:
+        with engine.begin() as conn:
+            preflight = MIGRATION_PREFLIGHT.get(path.stem)
+            violations = int(conn.execute(text(preflight)).scalar_one() or 0) if preflight else 0
+            if path.stem == "206_quiz_persistent_sessions":
+                has_client_attempt_id = conn.execute(
+                    text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = current_schema()
+                          AND table_name = 'quiz_attempts'
+                          AND column_name = 'client_attempt_id'
+                    )
+                """)
+                ).scalar_one()
+                if has_client_attempt_id:
+                    violations += int(conn.execute(text(CLIENT_ATTEMPT_PREFLIGHT)).scalar_one() or 0)
+            if violations:
+                raise RuntimeError(f"[迁移预检失败] {path.name} 存在重复会话答题或不支持的会话模式。")
+            for idx, stmt in enumerate(stmts, 1):
+                try:
+                    exec_ddl(conn, stmt)
+                except Exception as exc:  # noqa: BLE001
+                    head = " ".join(stmt.split())[:160]
+                    raise RuntimeError(f"[迁移失败] {path.name} 第 {idx}/{len(stmts)} 条：{head}\n{exc}") from exc
+    except RuntimeError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"[迁移失败] {path.name} 事务已回滚。\n{exc}") from exc
 
 
 def run_pending(
@@ -259,6 +476,7 @@ def run_pending(
     baseline_if_no_ledger: bool = True,
     force_baseline: bool = False,
     dry_run: bool = False,
+    reconcile_audited_drift: bool = False,
 ) -> MigrationResult:
     """执行/登记未入账的编号脚本。
 
@@ -276,29 +494,38 @@ def run_pending(
 
     # 1) checksum 守卫（先全量校验，再动手）
     pending: list[Path] = []
+    drifted: list[str] = []
     for path in scripts:
         ver = path.stem
         digest = file_checksum(path)
         if ver in ledger:
             if ledger[ver] != digest:
+                if reconcile_audited_drift and _is_audited_drift(ver, ledger[ver], digest):
+                    drifted.append(ver)
+                    continue
                 raise ChecksumMismatch(
                     f"[中止] {ver} 已登记但文件内容被修改（checksum 不符）。\n"
                     f"  结构变更请新增编号脚本，禁止改历史脚本。\n"
-                    f"  如确认只是空白/注释调整，可手工删除该行后重跑 --baseline。"
+                    f"  已审计漂移必须显式启用 reconcile_audited_drift，并核对数据库后置条件。"
                 )
             result.skipped.append(ver)
         else:
             pending.append(path)
 
-    if not pending:
+    result.manual_required = [path.stem for path in pending if not is_automatic_schema_script(path)]
+    pending = [path for path in pending if is_automatic_schema_script(path)]
+    if not pending and not drifted:
         return result
 
     # 2) 存量库 vs 空库
     do_baseline = force_baseline or (baseline_if_no_ledger and not ledger and has_tables)
     if do_baseline:
         result.mode = "baseline"
+        forward = [path for path in pending if _forward_migration(path)]
+        pending = [path for path in pending if not _forward_migration(path)]
         if dry_run:
             result.baselined = [p.stem for p in pending]
+            result.applied = [p.stem for p in forward]
             return result
         with engine.begin() as conn:
             for path in pending:
@@ -310,12 +537,16 @@ def run_pending(
                     {"v": path.stem, "c": file_checksum(path), "by": f"{applied_by}:baseline"},
                 )
                 result.baselined.append(path.stem)
-        return result
+        if not forward:
+            if drifted:
+                result.reconciled = reconcile_known_drift(engine, applied_by, sql_dir)
+            return result
+        pending = forward
 
-    # 3) 正常执行
-    result.mode = "pending"
+    # 3) 正常执行（baseline 路径只执行 204 及以后的增量结构）
     if dry_run:
         result.applied = [p.stem for p in pending]
+        result.reconciled = drifted
         return result
     for path in pending:
         t0 = time.monotonic()
@@ -332,13 +563,15 @@ def run_pending(
                 {"v": path.stem, "c": file_checksum(path), "d": duration_ms, "by": applied_by},
             )
         result.applied.append(path.stem)
+    if drifted:
+        result.reconciled = reconcile_known_drift(engine, applied_by, sql_dir)
     return result
 
 
 def ledger_status(engine, sql_dir: Path | str = SQL_DIR) -> dict:
     """给 /api/health、diagnostics 用的只读状态。"""
     sql_dir = Path(sql_dir)
-    scripts = {p.stem: file_checksum(p) for p in list_scripts(sql_dir)}
+    scripts = {p.stem: file_checksum(p) for p in list_scripts(sql_dir) if is_automatic_schema_script(p)}
     with engine.begin() as conn:
         _ensure_ledger(conn)
         ledger = _load_ledger(conn)

@@ -16,6 +16,7 @@ PG 分支的完整性校验用**表数量对齐**而非文件体积：空库（�
 实测 502,735 字节，低于 ``MIN_DB_BYTES``，体积红线会误杀它；而「dump 内 TABLE 条目
 数 >= 当前库基表数」在 0 行和 9000 行下同样成立，与数据量无关。
 """
+
 from __future__ import annotations
 
 import logging
@@ -72,7 +73,7 @@ def _resolve_db_path() -> str:
     prefix = "sqlite:///"
     url = SQLALCHEMY_DATABASE_URL or ""
     if url.startswith(prefix):
-        resolved = url[len(prefix):]
+        resolved = url[len(prefix) :]
         # 兼容 Windows 绝对路径可能带前导斜杠：sqlite:///D:/x.db
         if os.path.isfile(resolved):
             return os.path.abspath(resolved)
@@ -164,8 +165,13 @@ def _run(cmd: list[str], password: str | None = None) -> subprocess.CompletedPro
     if password:
         env["PGPASSWORD"] = password
     return subprocess.run(
-        cmd, env=env, capture_output=True, text=True,
-        timeout=PG_SUBPROCESS_TIMEOUT, stdin=subprocess.DEVNULL, check=False,
+        cmd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=PG_SUBPROCESS_TIMEOUT,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -176,10 +182,15 @@ def _live_table_count() -> int | None:
 
     try:
         with engine.connect() as conn:
-            return int(conn.execute(text(
-                "SELECT count(*) FROM information_schema.tables "
-                "WHERE table_schema='public' AND table_type='BASE TABLE'"
-            )).scalar() or 0)
+            return int(
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.tables "
+                        "WHERE table_schema='public' AND table_type='BASE TABLE'"
+                    )
+                ).scalar()
+                or 0
+            )
     except Exception as e:  # noqa: BLE001
         logger.warning("读取当前库基表数失败：%s", str(e)[:200])
         return None
@@ -248,8 +259,20 @@ def _create_pg_backup(backup_path: str) -> int:
         )
     p = _pg_parts()
     cmd = [
-        exe, "-h", p["host"], "-p", p["port"], "-U", p["user"], "-d", p["dbname"],
-        "--format=custom", "--compress=6", "--no-password", "-f", backup_path,
+        exe,
+        "-h",
+        p["host"],
+        "-p",
+        p["port"],
+        "-U",
+        p["user"],
+        "-d",
+        p["dbname"],
+        "--format=custom",
+        "--compress=6",
+        "--no-password",
+        "-f",
+        backup_path,
     ]
     r = _run(cmd, password=p["password"])
     if r.returncode != 0:
@@ -386,7 +409,7 @@ def _is_auto_backup(name: str) -> bool:
     stem = name.rsplit(".", 1)[0] if name.endswith(AUTO_EXTS) else name
     if not stem.startswith("kaoyan_"):
         return False
-    ts = stem[len("kaoyan_"):]
+    ts = stem[len("kaoyan_") :]
     if ts.startswith("pre_"):
         return False
     parts = ts.split("_")
@@ -403,14 +426,16 @@ def list_backups() -> list:
     for ext in AUTO_EXTS:
         for f in Path(BACKUP_DIR).glob(f"kaoyan_*{ext}"):
             stat = f.stat()
-            backups.append({
-                "name": f.name,
-                "path": str(f),
-                "size": stat.st_size,
-                "size_mb": round(stat.st_size / 1024 / 1024, 2),
-                "backend": "postgresql" if f.name.endswith(".dump") else "sqlite",
-                "created_at": iso_utc_z(datetime.fromtimestamp(stat.st_mtime, timezone.utc)),
-            })
+            backups.append(
+                {
+                    "name": f.name,
+                    "path": str(f),
+                    "size": stat.st_size,
+                    "size_mb": round(stat.st_size / 1024 / 1024, 2),
+                    "backend": "postgresql" if f.name.endswith(".dump") else "sqlite",
+                    "created_at": iso_utc_z(datetime.fromtimestamp(stat.st_mtime, timezone.utc)),
+                }
+            )
     return sorted(backups, key=lambda b: b["created_at"], reverse=True)
 
 
@@ -429,8 +454,7 @@ def _is_valid_sqlite_backup(path: str) -> bool:
             if not row or str(row[0]).lower() != "ok":
                 print(f"[backup] 拒绝：备份文件完整性校验失败({row}): {path}")
                 return False
-            n = conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
+            n = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
             if n < 1:
                 print(f"[backup] 拒绝：备份文件无任何表: {path}")
                 return False
@@ -500,9 +524,21 @@ def _restore_pg(backup_path: str, timestamp: str) -> bool:
         return False
 
     cmd = [
-        exe, "--dbname", p["dbname"], "-h", p["host"], "-p", p["port"],
-        "-U", p["user"], "--no-password", "--clean", "--if-exists",
-        "--no-owner", "--no-privileges", backup_path,
+        exe,
+        "--dbname",
+        p["dbname"],
+        "-h",
+        p["host"],
+        "-p",
+        p["port"],
+        "-U",
+        p["user"],
+        "--no-password",
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-privileges",
+        backup_path,
     ]
     r = _run(cmd, password=p["password"])
     if r.returncode != 0:

@@ -16,6 +16,7 @@
     python scripts/backfill_chunk_pages.py --dry-run
     python scripts/backfill_chunk_pages.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -72,10 +73,9 @@ def main() -> int:
         BATCH = 2000
         total = 0
         for i in range(0, len(updates), BATCH):
-            chunk = updates[i:i + BATCH]
+            chunk = updates[i : i + BATCH]
             cur.executemany(
-                "UPDATE knowledge_chunks SET page_start=%s, page_end=%s, updated_at=now()"
-                " WHERE id=%s",
+                "UPDATE knowledge_chunks SET page_start=%s, page_end=%s, updated_at=now() WHERE id=%s",
                 chunk,
             )
             total += len(chunk)
@@ -84,7 +84,7 @@ def main() -> int:
 
         cur.execute("SELECT count(*) FILTER (WHERE page_start IS NOT NULL), count(*) FROM knowledge_chunks")
         filled, alln = cur.fetchone()
-        print(f"\n[OK] 页码覆盖：{filled}/{alln}（{filled/alln:.1%}）")
+        print(f"\n[OK] 页码覆盖：{filled}/{alln}（{filled / alln:.1%}）")
         return 0
 
 

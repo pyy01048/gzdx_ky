@@ -136,6 +136,7 @@ class CircuitVisionService:
     def _http(self):
         """延迟导入 httpx，避免未安装时阻塞模块 import。"""
         import httpx
+
         return httpx
 
     # -------------------- 健康检查 --------------------
@@ -173,8 +174,9 @@ class CircuitVisionService:
         return result
 
     # -------------------- VLM 调用 --------------------
-    def _call_vlm(self, image_b64: str, question_text: Optional[str],
-                  ocr_hints: Optional[str], model: Optional[str] = None) -> str:
+    def _call_vlm(
+        self, image_b64: str, question_text: Optional[str], ocr_hints: Optional[str], model: Optional[str] = None
+    ) -> str:
         """调用 Ollama /api/generate，返回原始文本（应为 JSON）。
 
         :param model: 要使用的模型名；默认 self.vlm_model。
@@ -187,7 +189,7 @@ class CircuitVisionService:
             "system": _SYSTEM_PROMPT,
             "images": [image_b64],
             "stream": False,
-            "format": "json",   # Ollama 强制 JSON 输出
+            "format": "json",  # Ollama 强制 JSON 输出
             "options": {"temperature": 0.1, "num_ctx": 4096},
         }
         try:
@@ -219,9 +221,29 @@ class CircuitVisionService:
         if not text:
             return False
         cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
-        meaningful_words = ["the", "this", "is", "are", "and", "图", "电路", "电阻",
-                            "电容", "电源", "二极管", "三极管", "输出", "输入", "节点",
-                            "resistor", "capacitor", "diode", "transistor", "Vcc", "GND"]
+        meaningful_words = [
+            "the",
+            "this",
+            "is",
+            "are",
+            "and",
+            "图",
+            "电路",
+            "电阻",
+            "电容",
+            "电源",
+            "二极管",
+            "三极管",
+            "输出",
+            "输入",
+            "节点",
+            "resistor",
+            "capacitor",
+            "diode",
+            "transistor",
+            "Vcc",
+            "GND",
+        ]
         lower = text.lower()
         meaningful_hits = sum(lower.count(w.lower()) for w in meaningful_words)
 
@@ -238,7 +260,7 @@ class CircuitVisionService:
                 repeats = n // unit_len
                 expected = unit * repeats
                 # 允许末尾截断
-                if text.startswith(expected) or text[:len(expected)] == expected:
+                if text.startswith(expected) or text[: len(expected)] == expected:
                     return True
                 # 高相似度：超过 80% 位置匹配
                 mismatches = sum(1 for i, ch in enumerate(text) if ch != unit[i % unit_len])
@@ -291,7 +313,7 @@ class CircuitVisionService:
                     break
         if end == -1:
             return None
-        return text[lo:end + 1]
+        return text[lo : end + 1]
 
     @staticmethod
     def _repair_truncated_json(text: str) -> Optional[str]:
@@ -425,20 +447,13 @@ class CircuitVisionService:
                 if isinstance(obj, dict):
                     # 即使解析成功，若内容为空且原文像乱码仍报错
                     if not obj and CircuitVisionService._looks_like_garbage(raw):
-                        raise ValueError(
-                            f"VLM 返回空 JSON 且原文像乱码: {raw[:200]!r}"
-                        )
+                        raise ValueError(f"VLM 返回空 JSON 且原文像乱码: {raw[:200]!r}")
                     return obj
             except json.JSONDecodeError as e:
                 last_err = e
         if CircuitVisionService._looks_like_garbage(raw):
-            raise ValueError(
-                "VLM 输出为乱码（视觉塔可能未正确加载），"
-                f"原文片段: {raw[:200]!r}"
-            )
-        raise ValueError(
-            f"VLM 输出不是合法 JSON: {last_err!s}; 原文片段: {text[:300]!r}"
-        )
+            raise ValueError(f"VLM 输出为乱码（视觉塔可能未正确加载），原文片段: {raw[:200]!r}")
+        raise ValueError(f"VLM 输出不是合法 JSON: {last_err!s}; 原文片段: {text[:300]!r}")
 
     # -------------------- OCR 补充 --------------------
     def _call_ocr(self, image_bytes: bytes, filename: str) -> Tuple[List[str], Optional[str]]:
@@ -470,6 +485,7 @@ class CircuitVisionService:
         # 2) 本地 RapidOCR
         try:
             from services.ocr_service import OCRService
+
             local = OCRService()
             text = local.recognize_bytes(image_bytes)
             lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
@@ -481,8 +497,7 @@ class CircuitVisionService:
 
     # -------------------- OCR 与 VLM 交叉校正 --------------------
     @staticmethod
-    def _cross_check(components: List[Dict[str, Any]],
-                     ocr_labels: List[str]) -> List[Dict[str, Any]]:
+    def _cross_check(components: List[Dict[str, Any]], ocr_labels: List[str]) -> List[Dict[str, Any]]:
         """把 OCR 识别到的标签合并进 components。
 
         策略：
@@ -510,22 +525,23 @@ class CircuitVisionService:
             if desg in known_designators or desg in seen_extras:
                 continue
             seen_extras.add(desg)
-            extras.append({
-                "designator": desg,
-                "type": "unknown",
-                "value": "unknown",
-                "net_nodes": ["unknown"],
-                "confidence": "low",
-                "source": "ocr_only",
-                "raw_label": lab,
-            })
+            extras.append(
+                {
+                    "designator": desg,
+                    "type": "unknown",
+                    "value": "unknown",
+                    "net_nodes": ["unknown"],
+                    "confidence": "low",
+                    "source": "ocr_only",
+                    "raw_label": lab,
+                }
+            )
         return components + extras
 
     # -------------------- 主入口 --------------------
-    def analyze(self,
-                image: Union[str, bytes],
-                question_text: Optional[str] = None,
-                use_ocr: Optional[bool] = None) -> Dict[str, Any]:
+    def analyze(
+        self, image: Union[str, bytes], question_text: Optional[str] = None, use_ocr: Optional[bool] = None
+    ) -> Dict[str, Any]:
         """识别电路图，返回结构化拓扑。
 
         :param image: 本地图片路径 或 bytes
@@ -541,10 +557,15 @@ class CircuitVisionService:
             image_bytes, filename = self._encode_image(image)
         except Exception as e:
             return {
-                "ok": False, "circuit_type": "unknown",
-                "components": [], "connections": [], "nodes": [],
-                "description": "", "question_hints": "",
-                "engines": engines, "errors": [f"图片读取失败: {e!s}"],
+                "ok": False,
+                "circuit_type": "unknown",
+                "components": [],
+                "connections": [],
+                "nodes": [],
+                "description": "",
+                "question_hints": "",
+                "engines": engines,
+                "errors": [f"图片读取失败: {e!s}"],
                 "elapsed_ms": int((time.time() - t0) * 1000),
             }
         image_b64 = base64.b64encode(image_bytes).decode("ascii")
@@ -579,9 +600,7 @@ class CircuitVisionService:
                 vlm_obj = self._parse_vlm_json(raw)
                 # 空结果视为无效（如模型输出 {} 而非真实拓扑）：计入失败并继续重试
                 if not self._result_has_content(vlm_obj):
-                    raise ValueError(
-                        f"VLM 返回空结果（无电路类型/元件/节点）: {raw[:200]!r}"
-                    )
+                    raise ValueError(f"VLM 返回空结果（无电路类型/元件/节点）: {raw[:200]!r}")
                 engines["vlm"] = "ok"
                 if attempt > 0 or len(models_to_try) > 1 and model != self.vlm_model:
                     engines["vlm"] = f"ok(fallback:{model})"
@@ -593,12 +612,15 @@ class CircuitVisionService:
                 if len(models_to_try) > 1 and models_to_try.index(model) < len(models_to_try) - 1:
                     continue
                 return {
-                    "ok": False, "circuit_type": "unknown",
+                    "ok": False,
+                    "circuit_type": "unknown",
                     "components": self._cross_check([], ocr_labels),
-                    "connections": [], "nodes": [],
+                    "connections": [],
+                    "nodes": [],
                     "description": "",
                     "question_hints": "",
-                    "engines": engines, "errors": vlm_errs,
+                    "engines": engines,
+                    "errors": vlm_errs,
                     "ocr_labels": ocr_labels,
                     "elapsed_ms": int((time.time() - t0) * 1000),
                 }
@@ -609,12 +631,15 @@ class CircuitVisionService:
                 if attempt < self.vlm_retries:
                     continue
                 return {
-                    "ok": False, "circuit_type": "unknown",
+                    "ok": False,
+                    "circuit_type": "unknown",
                     "components": self._cross_check([], ocr_labels),
-                    "connections": [], "nodes": [],
+                    "connections": [],
+                    "nodes": [],
                     "description": vlm_raw[:500],  # 保留原文便于排查
                     "question_hints": "",
-                    "engines": engines, "errors": vlm_errs,
+                    "engines": engines,
+                    "errors": vlm_errs,
                     "ocr_labels": ocr_labels,
                     "elapsed_ms": int((time.time() - t0) * 1000),
                 }
@@ -629,8 +654,7 @@ class CircuitVisionService:
         components = self._cross_check(components, ocr_labels)
 
         # 6) 合并节点（OCR 看到的 Vcc/GND 也并入 nodes）
-        extra_nodes = [l for l in ocr_labels
-                       if l in {"GND", "VCC", "Vdd", "Vss", "Vin", "Vout", "+5V", "+12V", "-12V"}]
+        extra_nodes = [l for l in ocr_labels if l in {"GND", "VCC", "Vdd", "Vss", "Vin", "Vout", "+5V", "+12V", "-12V"}]
         nodes = list(dict.fromkeys(list(nodes) + extra_nodes))
 
         # 7) question_hints：题目文本结合电路类型给出提示（不解题）
@@ -638,8 +662,7 @@ class CircuitVisionService:
         if question_text:
             ctype = obj.get("circuit_type_cn") or obj.get("circuit_type") or "该"
             question_hints = (
-                f"结合题目文本，本图识别为「{ctype}」；"
-                f"后续解题时需关注该电路的输入/输出关系与关键节点电压。"
+                f"结合题目文本，本图识别为「{ctype}」；后续解题时需关注该电路的输入/输出关系与关键节点电压。"
             )
 
         return {

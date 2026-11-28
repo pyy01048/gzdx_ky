@@ -27,8 +27,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal  # noqa: E402
-from models import Document  # noqa: E402
 from services import kb_service, structure_parser  # noqa: E402
+
+from models import Document  # noqa: E402
 
 DRY_RUN = "--dry-run" in sys.argv
 IMAGE_TYPES = ("jpg", "jpeg", "png", "bmp", "tiff", "webp")

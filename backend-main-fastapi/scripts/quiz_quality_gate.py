@@ -24,6 +24,7 @@
     python scripts/quiz_quality_gate.py --apply
     python scripts/quiz_quality_gate.py --apply --delete-seed
 """
+
 from __future__ import annotations
 
 import argparse
@@ -106,9 +107,7 @@ def classify(row) -> Tuple[str, str]:
 def backup(con: sqlite3.Connection) -> str:
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_quizgate_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+    bak = os.path.join(bak_dir, f"kaoyan_pre_quizgate_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     return bak
@@ -117,19 +116,16 @@ def backup(con: sqlite3.Connection) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--delete-seed", action="store_true",
-                    help="物理删除 id<=7 的 AI 伪造 seed 题")
+    ap.add_argument("--delete-seed", action="store_true", help="物理删除 id<=7 的 AI 伪造 seed 题")
     args = ap.parse_args()
 
     con = sqlite3.connect(DB_PATH, timeout=120)
     con.execute("PRAGMA busy_timeout=120000")
 
-    rows = con.execute(
-        "SELECT id, content, answer, source, question_type, options "
-        "FROM quiz_questions"
-    ).fetchall()
+    rows = con.execute("SELECT id, content, answer, source, question_type, options FROM quiz_questions").fetchall()
 
     from collections import Counter, defaultdict
+
     dist = Counter()
     reasons = Counter()
     by_grade: Dict[str, List[int]] = defaultdict(list)
@@ -156,33 +152,30 @@ def main() -> int:
         junk = by_grade["JUNK"]
         if junk:
             for i in range(0, len(junk), 500):
-                chunk = junk[i:i + 500]
-                con.execute(
-                    f"UPDATE quiz_questions SET is_junk=1 WHERE id IN "
-                    f"({','.join('?' * len(chunk))})", chunk)
+                chunk = junk[i : i + 500]
+                con.execute(f"UPDATE quiz_questions SET is_junk=1 WHERE id IN ({','.join('?' * len(chunk))})", chunk)
         # A/B/C → quality
         for g in ("A", "B", "C"):
             ids = by_grade[g]
             for i in range(0, len(ids), 500):
-                chunk = ids[i:i + 500]
+                chunk = ids[i : i + 500]
                 con.execute(
-                    f"UPDATE quiz_questions SET quality=?, is_junk=0 WHERE id IN "
-                    f"({','.join('?' * len(chunk))})", [g] + chunk)
+                    f"UPDATE quiz_questions SET quality=?, is_junk=0 WHERE id IN ({','.join('?' * len(chunk))})",
+                    [g] + chunk,
+                )
 
         # C 类不可刷（无答案）
         cids = by_grade["C"]
         if cids:
-            con.execute(
-                f"UPDATE quiz_questions SET is_available=0 WHERE id IN "
-                f"({','.join('?' * len(cids))})", cids)
+            con.execute(f"UPDATE quiz_questions SET is_available=0 WHERE id IN ({','.join('?' * len(cids))})", cids)
         # A/B 可刷
         avail = by_grade["A"] + by_grade["B"]
         if avail:
             for i in range(0, len(avail), 500):
-                chunk = avail[i:i + 500]
+                chunk = avail[i : i + 500]
                 con.execute(
-                    f"UPDATE quiz_questions SET is_available=1 WHERE id IN "
-                    f"({','.join('?' * len(chunk))})", chunk)
+                    f"UPDATE quiz_questions SET is_available=1 WHERE id IN ({','.join('?' * len(chunk))})", chunk
+                )
 
         if args.delete_seed:
             seed = [r[0] for r in rows if r[0] <= 7]
@@ -190,9 +183,7 @@ def main() -> int:
                 # 物理删除闸门：quiz_questions 物理删除不可逆。硬编码的
                 # seed 判定（id<=7）若与真实数据冲突，会直接吃掉真题。
                 require_physical_delete_enabled("quiz_questions")
-                con.execute(
-                    f"DELETE FROM quiz_questions WHERE id IN "
-                    f"({','.join('?' * len(seed))})", seed)
+                con.execute(f"DELETE FROM quiz_questions WHERE id IN ({','.join('?' * len(seed))})", seed)
                 print(f"已删除 seed 伪题 {len(seed)} 条: {seed}")
 
         con.commit()
@@ -206,12 +197,8 @@ def main() -> int:
         "WHERE coalesce(is_junk,0)=0 GROUP BY 1 ORDER BY 2 DESC"
     ):
         print(f"  可见题 quality={r[0]}: {r[1]}")
-    tot_visible = con.execute(
-        "SELECT count(*) FROM quiz_questions WHERE coalesce(is_junk,0)=0"
-    ).fetchone()[0]
-    tot_junk = con.execute(
-        "SELECT count(*) FROM quiz_questions WHERE is_junk=1"
-    ).fetchone()[0]
+    tot_visible = con.execute("SELECT count(*) FROM quiz_questions WHERE coalesce(is_junk,0)=0").fetchone()[0]
+    tot_junk = con.execute("SELECT count(*) FROM quiz_questions WHERE is_junk=1").fetchone()[0]
     print(f"  可见 {tot_visible} / 隔离 {tot_junk} / 总计 {tot_visible + tot_junk}")
     return 0
 

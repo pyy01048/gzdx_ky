@@ -119,8 +119,7 @@ def _qn(tag: str) -> str:
 
 def _iter_paragraph_runs(p_el: Any):
     """按文档顺序产出段落的 run 元素。"""
-    for r_el in p_el.iter(_qn("w:r")):
-        yield r_el
+    yield from p_el.iter(_qn("w:r"))
 
 
 def _run_text(r_el: Any) -> str:
@@ -155,8 +154,7 @@ def _run_image_rel_ids(r_el: Any) -> List[str]:
 
 def _iter_cell_paragraphs(tc_el: Any):
     """表格单元格里的段落元素。"""
-    for p_el in tc_el.findall(_qn("w:p")):
-        yield p_el
+    yield from tc_el.findall(_qn("w:p"))
 
 
 def _measure(path: str) -> Tuple[int, int]:
@@ -252,19 +250,17 @@ def parse_docx_with_images(
                     try:
                         blob = part.related_parts[rid].blob
                         img.byte_size = len(blob)
-                        img.source_name = getattr(
-                            part.related_parts[rid], "partname", rid
-                        )
+                        img.source_name = getattr(part.related_parts[rid], "partname", rid)
                         img.source_name = os.path.basename(str(img.source_name))
-                        if out_dir and (
-                            max_images is None or exported < max_images
-                        ) and (only_indices is None or img.index in only_indices):
+                        if (
+                            out_dir
+                            and (max_images is None or exported < max_images)
+                            and (only_indices is None or img.index in only_indices)
+                        ):
                             ext = os.path.splitext(img.source_name)[1].lower()
                             if ext not in IMAGE_EXTS:
                                 ext = ".png"
-                            img.out_path = os.path.join(
-                                out_dir, f"formula_{img.index:05d}{ext}"
-                            )
+                            img.out_path = os.path.join(out_dir, f"formula_{img.index:05d}{ext}")
                             with open(img.out_path, "wb") as fh:
                                 fh.write(blob)
                             img.width_px, img.height_px = _measure(img.out_path)
@@ -291,10 +287,7 @@ def parse_docx_with_images(
             for tr_el in child.findall(_qn("w:tr")):
                 cells: List[str] = []
                 for tc_el in tr_el.findall(_qn("w:tc")):
-                    cell_lines = [
-                        _handle_paragraph(p_el)
-                        for p_el in _iter_cell_paragraphs(tc_el)
-                    ]
+                    cell_lines = [_handle_paragraph(p_el) for p_el in _iter_cell_paragraphs(tc_el)]
                     cell = " ".join(x.strip() for x in cell_lines if x.strip())
                     # 只含公式图的单元格，旧管线（c.text.strip()）会整格丢弃；
                     # 这里保持一致，保证去占位符后的文本与旧入库内容逐字对齐
@@ -307,8 +300,8 @@ def parse_docx_with_images(
     if table_position == "inline":
         # 真实文档顺序：段落与表格交错
         ordered: List[str] = []
-        para_iter = iter(para_lines)
-        table_iter = iter(table_lines)
+        iter(para_lines)
+        iter(table_lines)
         # 简单实现：无法精确还原交错位置时，退化为「段落在前、表格在后」，
         # 但标记图片仍完整保留（对齐性优先于顺序还原）
         ordered = list(para_lines) + list(table_lines)
@@ -340,9 +333,7 @@ class AlignedText:
     marked: str = ""
     # 每行: (plain_start, plain_len, marked_start, marked_len,
     #        [(m_rel_start, m_rel_end, core_rel_start), ...], lead)
-    _lines: List[Tuple[int, int, int, int, List[Tuple[int, int, int]], int]] = field(
-        default_factory=list
-    )
+    _lines: List[Tuple[int, int, int, int, List[Tuple[int, int, int]], int]] = field(default_factory=list)
 
     # ---------------- 内部：行内偏移换算 ---------------- #
 
@@ -381,7 +372,7 @@ class AlignedText:
         """把 marked 里的字符偏移换算成 plain 里的偏移。"""
         if pos <= 0 or not self._lines:
             return 0
-        for p_start, p_len, m_start, m_len, spans, lead in self._lines:
+        for p_start, _p_len, m_start, m_len, spans, lead in self._lines:
             if m_start <= pos <= m_start + m_len:
                 rel = pos - m_start
                 delta = 0
@@ -420,9 +411,7 @@ def build_aligned(result: DocxParseResult) -> AlignedText:
             # 该标记在 core（去标记后的行）中的起点 = 标记起点 - 此前已被删掉的总长
             spans.append((m.start(), m.end(), m.start() - removed))
             removed += m.end() - m.start()
-        aligned._lines.append(
-            (p_off, len(plain_line), m_off, len(marked_line), spans, lead)
-        )
+        aligned._lines.append((p_off, len(plain_line), m_off, len(marked_line), spans, lead))
         plain_parts.append(plain_line)
         marked_parts.append(marked_line)
         p_off += len(plain_line) + 1

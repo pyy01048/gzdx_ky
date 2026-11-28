@@ -1,0 +1,951 @@
+[
+  {
+    "route": "/#/kaoyan",
+    "viewport": "1440x900",
+    "finalUrl": "http://127.0.0.1:5173/#/kaoyan",
+    "errors": [],
+    "focus": {
+      "tag": "A",
+      "text": "跳到主要内容",
+      "outline": "solid",
+      "outlineWidth": "3px"
+    },
+    "interaction": "not-applicable",
+    "darkTheme": null,
+    "h1": [
+      "院校库"
+    ],
+    "overflow": 0,
+    "smallTargets": [
+      {
+        "text": "学习",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "练习",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "择校",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "收起侧栏",
+        "cls": "v3-sidebar__collapse",
+        "width": 207,
+        "height": 38
+      },
+      {
+        "text": "通知中心",
+        "cls": "v3-iconbtn v3-topbar__bell",
+        "width": 42,
+        "height": 42
+      },
+      {
+        "text": "切换到深色",
+        "cls": "v3-iconbtn",
+        "width": 42,
+        "height": 42
+      },
+      {
+        "text": "登录",
+        "cls": "v3-btn v3-btn--filled v3-btn--sm",
+        "width": 54,
+        "height": 36
+      },
+      {
+        "text": "院校库",
+        "cls": "v3-seg__btn",
+        "width": 67,
+        "height": 36
+      },
+      {
+        "text": "院校对比",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "分数分析",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "择校推荐",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "招生分布",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "区域热力",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "通知中心",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "考研规划",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "学科评估",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "刷新院校数据",
+        "cls": "v3-iconbtn",
+        "width": 42,
+        "height": 42
+      },
+      {
+        "text": "添加考试",
+        "cls": "v3-btn v3-btn--text v3-btn--sm",
+        "width": 99,
+        "height": 36
+      },
+      {
+        "text": "搜索",
+        "cls": "v3-btn v3-btn--filled",
+        "width": 70,
+        "height": 42
+      },
+      {
+        "text": "更多筛选",
+        "cls": "v3-btn v3-btn--text",
+        "width": 109,
+        "height": 42
+      },
+      {
+        "text": "全部",
+        "cls": "v3-chip v3-chip--active",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "A区",
+        "cls": "v3-chip",
+        "width": 40,
+        "height": 28
+      },
+      {
+        "text": "B区",
+        "cls": "v3-chip",
+        "width": 40,
+        "height": 28
+      },
+      {
+        "text": "华北",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "东北",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "华东",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "华中",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "华南",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "西南",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "西北",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "全部",
+        "cls": "v3-chip v3-chip--active",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "985",
+        "cls": "v3-chip",
+        "width": 42,
+        "height": 28
+      },
+      {
+        "text": "211",
+        "cls": "v3-chip",
+        "width": 37,
+        "height": 28
+      },
+      {
+        "text": "双一流",
+        "cls": "v3-chip",
+        "width": 55,
+        "height": 28
+      },
+      {
+        "text": "双非",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "未分类",
+        "cls": "v3-chip",
+        "width": 55,
+        "height": 28
+      },
+      {
+        "text": "全部",
+        "cls": "v3-chip v3-chip--active",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "公办",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "科研院所",
+        "cls": "v3-chip",
+        "width": 66,
+        "height": 28
+      },
+      {
+        "text": "军队院校",
+        "cls": "v3-chip",
+        "width": 66,
+        "height": 28
+      },
+      {
+        "text": "按省份筛选",
+        "cls": "v3-select v3-xsel kyv3-select-sm",
+        "width": 122,
+        "height": 32
+      },
+      {
+        "text": "0854 电子信息",
+        "cls": "v3-chip",
+        "width": 106,
+        "height": 30
+      },
+      {
+        "text": "我的关注",
+        "cls": "v3-chip",
+        "width": 74,
+        "height": 30
+      },
+      {
+        "text": "热度",
+        "cls": "v3-seg__btn",
+        "width": 54,
+        "height": 36
+      },
+      {
+        "text": "拟录取",
+        "cls": "v3-seg__btn",
+        "width": 67,
+        "height": 36
+      },
+      {
+        "text": "复录比",
+        "cls": "v3-seg__btn",
+        "width": 67,
+        "height": 36
+      },
+      {
+        "text": "录取均分",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "名称",
+        "cls": "v3-seg__btn",
+        "width": 54,
+        "height": 36
+      },
+      {
+        "text": "随机抽一所",
+        "cls": "v3-btn v3-btn--tonal v3-btn--sm",
+        "width": 110,
+        "height": 36
+      }
+    ],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-kaoyan-1440.png"
+  },
+  {
+    "route": "/#/kaoyan/schools",
+    "viewport": "1440x900",
+    "finalUrl": "http://127.0.0.1:5173/#/kaoyan/schools",
+    "errors": [],
+    "focus": {
+      "tag": "A",
+      "text": "硕途Study OS",
+      "outline": "solid",
+      "outlineWidth": "3px"
+    },
+    "interaction": true,
+    "darkTheme": null,
+    "h1": [
+      "院校库"
+    ],
+    "overflow": 0,
+    "smallTargets": [
+      {
+        "text": "学习",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "练习",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "择校",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "收起侧栏",
+        "cls": "v3-sidebar__collapse",
+        "width": 207,
+        "height": 38
+      },
+      {
+        "text": "通知中心",
+        "cls": "v3-iconbtn v3-topbar__bell",
+        "width": 42,
+        "height": 42
+      },
+      {
+        "text": "切换到深色",
+        "cls": "v3-iconbtn",
+        "width": 42,
+        "height": 42
+      },
+      {
+        "text": "登录",
+        "cls": "v3-btn v3-btn--filled v3-btn--sm",
+        "width": 54,
+        "height": 36
+      },
+      {
+        "text": "院校库",
+        "cls": "v3-seg__btn",
+        "width": 67,
+        "height": 36
+      },
+      {
+        "text": "院校对比",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "分数分析",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "择校推荐",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "招生分布",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "区域热力",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "通知中心",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "考研规划",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "学科评估",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "刷新院校数据",
+        "cls": "v3-iconbtn",
+        "width": 42,
+        "height": 42
+      },
+      {
+        "text": "添加考试",
+        "cls": "v3-btn v3-btn--text v3-btn--sm",
+        "width": 99,
+        "height": 36
+      },
+      {
+        "text": "搜索",
+        "cls": "v3-btn v3-btn--filled",
+        "width": 70,
+        "height": 42
+      },
+      {
+        "text": "更多筛选",
+        "cls": "v3-btn v3-btn--text",
+        "width": 109,
+        "height": 42
+      },
+      {
+        "text": "全部",
+        "cls": "v3-chip v3-chip--active",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "A区",
+        "cls": "v3-chip",
+        "width": 40,
+        "height": 28
+      },
+      {
+        "text": "B区",
+        "cls": "v3-chip",
+        "width": 40,
+        "height": 28
+      },
+      {
+        "text": "华北",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "东北",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "华东",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "华中",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "华南",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "西南",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "西北",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "全部",
+        "cls": "v3-chip v3-chip--active",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "985",
+        "cls": "v3-chip",
+        "width": 42,
+        "height": 28
+      },
+      {
+        "text": "211",
+        "cls": "v3-chip",
+        "width": 37,
+        "height": 28
+      },
+      {
+        "text": "双一流",
+        "cls": "v3-chip",
+        "width": 55,
+        "height": 28
+      },
+      {
+        "text": "双非",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "未分类",
+        "cls": "v3-chip",
+        "width": 55,
+        "height": 28
+      },
+      {
+        "text": "全部",
+        "cls": "v3-chip v3-chip--active",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "公办",
+        "cls": "v3-chip",
+        "width": 44,
+        "height": 28
+      },
+      {
+        "text": "科研院所",
+        "cls": "v3-chip",
+        "width": 66,
+        "height": 28
+      },
+      {
+        "text": "军队院校",
+        "cls": "v3-chip",
+        "width": 66,
+        "height": 28
+      },
+      {
+        "text": "按省份筛选",
+        "cls": "v3-select v3-xsel kyv3-select-sm",
+        "width": 122,
+        "height": 32
+      },
+      {
+        "text": "0854 电子信息",
+        "cls": "v3-chip",
+        "width": 106,
+        "height": 30
+      },
+      {
+        "text": "我的关注",
+        "cls": "v3-chip",
+        "width": 74,
+        "height": 30
+      },
+      {
+        "text": "热度",
+        "cls": "v3-seg__btn",
+        "width": 54,
+        "height": 36
+      },
+      {
+        "text": "拟录取",
+        "cls": "v3-seg__btn",
+        "width": 67,
+        "height": 36
+      },
+      {
+        "text": "复录比",
+        "cls": "v3-seg__btn",
+        "width": 67,
+        "height": 36
+      },
+      {
+        "text": "录取均分",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "名称",
+        "cls": "v3-seg__btn",
+        "width": 54,
+        "height": 36
+      },
+      {
+        "text": "随机抽一所",
+        "cls": "v3-btn v3-btn--tonal v3-btn--sm",
+        "width": 110,
+        "height": 36
+      }
+    ],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-schools-1440.png"
+  },
+  {
+    "route": "/#/kaoyan/compare",
+    "viewport": "1440x900",
+    "finalUrl": "http://127.0.0.1:5173/#/kaoyan/compare",
+    "errors": [],
+    "focus": {
+      "tag": "BUTTON",
+      "text": "院校库",
+      "outline": "solid",
+      "outlineWidth": "3px"
+    },
+    "interaction": true,
+    "darkTheme": null,
+    "h1": [
+      "院校同年对比"
+    ],
+    "overflow": 0,
+    "smallTargets": [
+      {
+        "text": "学习",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "练习",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "择校",
+        "cls": "v3-nav-group__label",
+        "width": 207,
+        "height": 30
+      },
+      {
+        "text": "收起侧栏",
+        "cls": "v3-sidebar__collapse",
+        "width": 207,
+        "height": 38
+      },
+      {
+        "text": "通知中心",
+        "cls": "v3-iconbtn v3-topbar__bell",
+        "width": 42,
+        "height": 42
+      },
+      {
+        "text": "切换到深色",
+        "cls": "v3-iconbtn",
+        "width": 42,
+        "height": 42
+      },
+      {
+        "text": "登录",
+        "cls": "v3-btn v3-btn--filled v3-btn--sm",
+        "width": 54,
+        "height": 36
+      },
+      {
+        "text": "院校库",
+        "cls": "v3-seg__btn",
+        "width": 67,
+        "height": 36
+      },
+      {
+        "text": "院校对比",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "分数分析",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "择校推荐",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "招生分布",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "区域热力",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "通知中心",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "考研规划",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      },
+      {
+        "text": "学科评估",
+        "cls": "v3-seg__btn",
+        "width": 80,
+        "height": 36
+      }
+    ],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-compare-1440.png"
+  },
+  {
+    "route": "/#/login",
+    "viewport": "1440x900",
+    "finalUrl": "http://127.0.0.1:5173/#/login",
+    "errors": [],
+    "focus": {
+      "tag": "INPUT",
+      "text": "",
+      "outline": "solid",
+      "outlineWidth": "2px"
+    },
+    "interaction": true,
+    "darkTheme": {
+      "theme": "dark",
+      "background": "rgb(17, 18, 16)",
+      "text": "rgb(242, 240, 233)"
+    },
+    "h1": [
+      "把考研的每一步，放在同一张地图上。放在同一张地图上。"
+    ],
+    "overflow": 0,
+    "smallTargets": [
+      {
+        "text": "登录",
+        "cls": "is-active",
+        "width": 171,
+        "height": 38
+      },
+      {
+        "text": "邮箱注册",
+        "cls": "",
+        "width": 171,
+        "height": 38
+      },
+      {
+        "text": "忘记密码？",
+        "cls": "v3-login__linkbtn",
+        "width": 60,
+        "height": 20
+      }
+    ],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-login-1440.png"
+  },
+  {
+    "route": "/#/quiz",
+    "viewport": "1440x900",
+    "finalUrl": "http://127.0.0.1:5173/#/login",
+    "errors": [],
+    "focus": {
+      "tag": "INPUT",
+      "text": "",
+      "outline": "solid",
+      "outlineWidth": "2px"
+    },
+    "interaction": "not-applicable",
+    "darkTheme": null,
+    "h1": [
+      "把考研的每一步，放在同一张地图上。放在同一张地图上。"
+    ],
+    "overflow": 0,
+    "smallTargets": [
+      {
+        "text": "返回上页",
+        "cls": "v3-login__back-link",
+        "width": 73,
+        "height": 24
+      },
+      {
+        "text": "登录",
+        "cls": "is-active",
+        "width": 171,
+        "height": 38
+      },
+      {
+        "text": "邮箱注册",
+        "cls": "",
+        "width": 171,
+        "height": 38
+      },
+      {
+        "text": "忘记密码？",
+        "cls": "v3-login__linkbtn",
+        "width": 60,
+        "height": 20
+      }
+    ],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-quiz-1440.png"
+  },
+  {
+    "route": "/#/kaoyan",
+    "viewport": "390x844",
+    "finalUrl": "http://127.0.0.1:5173/#/kaoyan",
+    "errors": [],
+    "focus": {
+      "tag": "A",
+      "text": "跳到主要内容",
+      "outline": "solid",
+      "outlineWidth": "3px"
+    },
+    "interaction": "not-applicable",
+    "darkTheme": null,
+    "h1": [
+      "院校库"
+    ],
+    "overflow": 0,
+    "smallTargets": [],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-kaoyan-390.png"
+  },
+  {
+    "route": "/#/kaoyan/schools",
+    "viewport": "390x844",
+    "finalUrl": "http://127.0.0.1:5173/#/kaoyan/schools",
+    "errors": [],
+    "focus": {
+      "tag": "A",
+      "text": "硕途Study OS",
+      "outline": "solid",
+      "outlineWidth": "3px"
+    },
+    "interaction": true,
+    "darkTheme": null,
+    "h1": [
+      "院校库"
+    ],
+    "overflow": 0,
+    "smallTargets": [],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-schools-390.png"
+  },
+  {
+    "route": "/#/kaoyan/compare",
+    "viewport": "390x844",
+    "finalUrl": "http://127.0.0.1:5173/#/kaoyan/compare",
+    "errors": [],
+    "focus": {
+      "tag": "BUTTON",
+      "text": "院校库",
+      "outline": "solid",
+      "outlineWidth": "3px"
+    },
+    "interaction": true,
+    "darkTheme": null,
+    "h1": [
+      "院校同年对比"
+    ],
+    "overflow": 0,
+    "smallTargets": [],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-compare-390.png"
+  },
+  {
+    "route": "/#/login",
+    "viewport": "390x844",
+    "finalUrl": "http://127.0.0.1:5173/#/login",
+    "errors": [],
+    "focus": {
+      "tag": "INPUT",
+      "text": "",
+      "outline": "solid",
+      "outlineWidth": "2px"
+    },
+    "interaction": true,
+    "darkTheme": {
+      "theme": "dark",
+      "background": "rgb(17, 18, 16)",
+      "text": "rgb(242, 240, 233)"
+    },
+    "h1": [
+      "欢迎来到硕途"
+    ],
+    "overflow": 0,
+    "smallTargets": [],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-login-390.png"
+  },
+  {
+    "route": "/#/quiz",
+    "viewport": "390x844",
+    "finalUrl": "http://127.0.0.1:5173/#/login",
+    "errors": [],
+    "focus": {
+      "tag": "INPUT",
+      "text": "",
+      "outline": "solid",
+      "outlineWidth": "2px"
+    },
+    "interaction": "not-applicable",
+    "darkTheme": null,
+    "h1": [
+      "欢迎来到硕途"
+    ],
+    "overflow": 0,
+    "smallTargets": [],
+    "activeAnimations": [],
+    "screenshot": "acceptance/after-quiz-390.png"
+  }
+]

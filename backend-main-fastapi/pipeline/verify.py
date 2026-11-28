@@ -23,6 +23,7 @@
 抽样用**固定种子**，保证同一批数据两次跑出的数字完全一致，便于用户复核和
 回归对比；否则「这次 99.2% 上次 98.7%」根本无法归因。
 """
+
 from __future__ import annotations
 
 import random
@@ -163,8 +164,7 @@ def verify_record(
     # 1) 正文非空
     meaningful = len(_MEANINGFUL_RE.findall(text))
     results.append(
-        CheckResult("content_not_empty", meaningful >= MIN_CONTENT_CHARS,
-                    f"实义字符={meaningful}")
+        CheckResult("content_not_empty", meaningful >= MIN_CONTENT_CHARS, f"实义字符={meaningful}")
         if meaningful >= MIN_CONTENT_CHARS
         else CheckResult("content_not_empty", False, f"实义字符={meaningful} < {MIN_CONTENT_CHARS}")
     )
@@ -175,12 +175,10 @@ def verify_record(
         for line in text.split("\n"):
             if hf.contains(line):
                 residue.append(
-                    {"rule_id": "header_footer", "kind": "header_footer",
-                     "matched": line.strip()[:120], "line_no": -1}
+                    {"rule_id": "header_footer", "kind": "header_footer", "matched": line.strip()[:120], "line_no": -1}
                 )
     results.append(
-        CheckResult("no_watermark_residue", not residue,
-                    f"残留 {len(residue)} 处")
+        CheckResult("no_watermark_residue", not residue, f"残留 {len(residue)} 处")
         if residue
         else CheckResult("no_watermark_residue", True, "")
     )
@@ -188,9 +186,7 @@ def verify_record(
     # 3) 乱码
     bad = len(_MOJIBAKE_RE.findall(text))
     results.append(
-        CheckResult("no_mojibake", bad == 0, f"U+FFFD x{bad}")
-        if bad
-        else CheckResult("no_mojibake", True, "")
+        CheckResult("no_mojibake", bad == 0, f"U+FFFD x{bad}") if bad else CheckResult("no_mojibake", True, "")
     )
 
     # 4) 结构完整性：题目走 validate_question，文档走 meta 检查
@@ -211,9 +207,7 @@ def verify_record(
     else:
         meta = record.get("meta") or {}
         ok = not meta.get("error") and bool(text.strip())
-        results.append(
-            CheckResult("structure_complete", bool(ok), meta.get("error") or "ok")
-        )
+        results.append(CheckResult("structure_complete", bool(ok), meta.get("error") or "ok"))
     return results
 
 
@@ -262,14 +256,14 @@ def verify_batch(
         if failed:
             report.failed += 1
             if len(report.failed_samples) < 20:
-                report.failed_samples.append({
-                    "id": rec.get("question_id") or rec.get("id") or rec.get("doc_id"),
-                    "kind": rec.get("kind", ""),
-                    "failed_checks": [
-                        {"name": f.name, "detail": f.detail} for f in failed
-                    ],
-                    "preview": (rec.get("text") or rec.get("stem") or "")[:160],
-                })
+                report.failed_samples.append(
+                    {
+                        "id": rec.get("question_id") or rec.get("id") or rec.get("doc_id"),
+                        "kind": rec.get("kind", ""),
+                        "failed_checks": [{"name": f.name, "detail": f.detail} for f in failed],
+                        "preview": (rec.get("text") or rec.get("stem") or "")[:160],
+                    }
+                )
         else:
             report.passed += 1
 

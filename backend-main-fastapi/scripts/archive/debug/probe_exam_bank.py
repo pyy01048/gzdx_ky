@@ -3,6 +3,7 @@
 
 只读评估，不写库。用于决定是否投入解析器开发。
 """
+
 import re
 import sqlite3
 import sys
@@ -53,8 +54,7 @@ def main() -> int:
             total_ans += p["ans_marks"]
             if p["opt_lines"] >= 8 and p["ans_marks"] >= 4:
                 good += 1
-            print(f"{p['opt_lines']:>7} {p['ans_marks']:>5} {p['exp_marks']:>5} "
-                  f"{p['tags']:>8}  {name[:52]}")
+            print(f"{p['opt_lines']:>7} {p['ans_marks']:>5} {p['exp_marks']:>5} {p['tags']:>8}  {name[:52]}")
 
         print("-" * 100)
         print(f"合计：选项行 {total_opt}，答案标记 {total_ans}")

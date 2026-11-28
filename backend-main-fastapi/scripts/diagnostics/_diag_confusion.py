@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """临时诊断：题库分类逐科目混淆 + 覆盖/精度分解。"""
+
 import collections
 import json
 import os
@@ -21,7 +22,7 @@ def main():
         stats = collections.defaultdict(
             lambda: {"n": 0, "ok": 0, "auto": 0, "auto_ok": 0, "pred": collections.Counter()}
         )
-        for g, d in zip(gold, decs):
+        for g, d in zip(gold, decs, strict=False):
             s = stats[g["subject"]]
             s["n"] += 1
             s["pred"][d.subject.value] += 1
@@ -39,8 +40,11 @@ def main():
             acc = s["ok"] / s["n"]
             ap = s["auto_ok"] / s["auto"] if s["auto"] else float("nan")
             print(f"{subj:<22}{s['n']:>4}{acc:>7.2f}{s['auto']:>6}{ap:>9.2f}")
-            tot += s["n"]; totok += s["ok"]; ta += s["auto"]; tao += s["auto_ok"]
-        print(f"{'TOTAL':<22}{tot:>4}{totok/tot:>7.2f}{ta:>6}{tao/ta if ta else 0:>9.2f}")
+            tot += s["n"]
+            totok += s["ok"]
+            ta += s["auto"]
+            tao += s["auto_ok"]
+        print(f"{'TOTAL':<22}{tot:>4}{totok / tot:>7.2f}{ta:>6}{tao / ta if ta else 0:>9.2f}")
         print()
         for subj in sorted(stats, key=lambda x: -stats[x]["n"]):
             s = stats[subj]

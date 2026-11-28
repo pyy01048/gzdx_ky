@@ -7,6 +7,7 @@ POST /api/conflicts/{id}/resolve  结案-采纳（409 幂等）
 POST /api/conflicts/{id}/reject   结案-驳回（409 幂等）
 POST /api/conflicts/seed          历史冲突批量入队（103 条，幂等）
 """
+
 from __future__ import annotations
 
 from typing import List, Optional
@@ -16,8 +17,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from services import confidence_service
 from sqlalchemy.orm import Session
+from utils.security import require_admin
 
-router = APIRouter(prefix="/api/conflicts", tags=["冲突复核台"])
+router = APIRouter(
+    prefix="/api/conflicts",
+    tags=["冲突复核台"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 class ResolveReq(BaseModel):
@@ -42,8 +48,7 @@ def list_conflicts(
     db: Session = Depends(get_db),
 ):
     try:
-        return confidence_service.list_conflicts(db, status=status, limit=limit,
-                                                 offset=offset, question_id=question_id)
+        return confidence_service.list_conflicts(db, status=status, limit=limit, offset=offset, question_id=question_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -56,8 +61,7 @@ def stats(db: Session = Depends(get_db)):
 @router.post("/{queue_id}/resolve")
 def resolve(queue_id: int, req: ResolveReq, db: Session = Depends(get_db)):
     try:
-        return confidence_service.resolve_conflict(db, queue_id, req.resolution.strip(),
-                                                   req.reviewer_note)
+        return confidence_service.resolve_conflict(db, queue_id, req.resolution.strip(), req.reviewer_note)
     except LookupError:
         raise HTTPException(status_code=404, detail="conflict 不存在")
     except ValueError as e:

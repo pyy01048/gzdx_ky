@@ -34,7 +34,6 @@ def normalize_title(raw: str | None) -> str:
         return ""
     text = unicodedata.normalize("NFKC", raw)
     # 去除「(代码:10614)」「（代码：10614）」「[代码 10614]」这类括号代码后缀
-    out_chars = []
     depth = 0
     buf = []
     for ch in text:
@@ -132,7 +131,7 @@ def main() -> int:
         norm_groups[(r["school_id"], normalize_title(r["title"]))].append(r)
     norm_groups = {k: v for k, v in norm_groups.items() if len(v) > 1}
     extra_groups = 0
-    for k, v in norm_groups.items():
+    for _k, v in norm_groups.items():
         raw_titles = {m["title"] for m in v}
         if len(raw_titles) > 1:
             extra_groups += 1
@@ -142,7 +141,7 @@ def main() -> int:
 
     # ---- 分类统计 ----
     buckets: Dict[str, List[List[sqlite3.Row]]] = defaultdict(list)
-    for k, members in norm_groups.items():
+    for _k, members in norm_groups.items():
         buckets[classify(members)].append(members)
 
     print("-" * 110)
@@ -172,8 +171,10 @@ def main() -> int:
         print(f"\n  [{len(members)}条] {school} | {members[0]['title']}")
         for m in members:
             print(fmt_row(m))
-        print(f"      -> 不同 url 数={len({m['url'] for m in members})}, "
-              f"不同 publish_date 数={len({m['publish_date'] for m in members})}")
+        print(
+            f"      -> 不同 url 数={len({m['url'] for m in members})}, "
+            f"不同 publish_date 数={len({m['publish_date'] for m in members})}"
+        )
     print()
 
     # ---- (c) 类逐组证据 ----
@@ -185,17 +186,17 @@ def main() -> int:
         for t in sorted({m["title"] for m in members}):
             ids = [m["id"] for m in members if m["title"] == t]
             print(f"      标题: {t}   ids={ids}")
-        print(f"      -> 不同 url 数={len({m['url'] for m in members})}, "
-              f"不同 publish_date 数={len({m['publish_date'] for m in members})}")
+        print(
+            f"      -> 不同 url 数={len({m['url'] for m in members})}, "
+            f"不同 publish_date 数={len({m['publish_date'] for m in members})}"
+        )
     print()
 
     # ---- 西电专项 ----
     print("=" * 110)
     print("西电专项：392 条里有多少是重复堆出来的")
     print("=" * 110)
-    xd = conn.execute(
-        f"SELECT COUNT(*) FROM {TABLE} WHERE school_name LIKE '%西安电子科技%'"
-    ).fetchone()[0]
+    xd = conn.execute(f"SELECT COUNT(*) FROM {TABLE} WHERE school_name LIKE '%西安电子科技%'").fetchone()[0]
     xd_groups = {k: v for k, v in norm_groups.items() if "西安电子科技" in v[0]["school_name"]}
     xd_dup_rows = sum(len(v) - 1 for v in xd_groups.values())
     print(f"西电总条数            : {xd}")
@@ -218,9 +219,7 @@ def main() -> int:
     print()
 
     print("  西电 fetched_at 时间戳聚集度 (全量):")
-    xd_rows = conn.execute(
-        f"SELECT fetched_at FROM {TABLE} WHERE school_name LIKE '%西安电子科技%'"
-    ).fetchall()
+    xd_rows = conn.execute(f"SELECT fetched_at FROM {TABLE} WHERE school_name LIKE '%西安电子科技%'").fetchall()
     ts_counter = Counter(str(r["fetched_at"])[:19] for r in xd_rows)
     for ts, cnt in ts_counter.most_common(15):
         print(f"      {ts}  x{cnt}")
@@ -230,10 +229,7 @@ def main() -> int:
     print("=" * 110)
     print("全库 fetched_at 时间戳 TOP15 (判断是否存在采集任务重复执行)")
     print("=" * 110)
-    all_ts = Counter(
-        str(r["fetched_at"])[:19]
-        for r in conn.execute(f"SELECT fetched_at FROM {TABLE}").fetchall()
-    )
+    all_ts = Counter(str(r["fetched_at"])[:19] for r in conn.execute(f"SELECT fetched_at FROM {TABLE}").fetchall())
     for ts, cnt in all_ts.most_common(15):
         print(f"      {ts}  x{cnt}")
     print()

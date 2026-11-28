@@ -15,6 +15,7 @@ LaTeX 编译校验：优先 tectonic / xelatex（探测系统可用编译器）�
 
 接口：recognize_formula(image_path) -> {latex, validated, compile_ok, pending_flags, error}
 """
+
 from __future__ import annotations
 
 import json
@@ -63,10 +64,7 @@ FORMULA_SYSTEM_PROMPT = """\
 任何无法确定的符号，输出 \\text{[待核对:...]} 标记，禁止猜测。
 """
 
-FORMULA_USER_PROMPT = (
-    "请将图片中的公式/题目区域转写为 LaTeX。仅输出 LaTeX 代码，"
-    "不确定处使用 [待核对:原因] 标记。"
-)
+FORMULA_USER_PROMPT = "请将图片中的公式/题目区域转写为 LaTeX。仅输出 LaTeX 代码，不确定处使用 [待核对:原因] 标记。"
 
 _PENDING_RE = re.compile(r"\[待核对[^\]]*\]")
 # 公式环境成对检查
@@ -105,10 +103,12 @@ def _balance_check(latex: str) -> List[str]:
     closes = latex.count("}")
     if opens != closes:
         problems.append(f"花括号不配对: {{ {opens} / }} {closes}")
-    for beg, end in (("\\begin{enumerate}", "\\end{enumerate}"),
-                     ("\\begin{cases}", "\\end{cases}"),
-                     ("\\begin{aligned}", "\\end{aligned}"),
-                     ("\\begin{array}", "\\end{array}")):
+    for beg, end in (
+        ("\\begin{enumerate}", "\\end{enumerate}"),
+        ("\\begin{cases}", "\\end{cases}"),
+        ("\\begin{aligned}", "\\end{aligned}"),
+        ("\\begin{array}", "\\end{array}"),
+    ):
         if latex.count(beg) != latex.count(end):
             problems.append(f"环境 {beg} / {end} 未闭合")
     return problems
@@ -124,8 +124,13 @@ def validate_latex(latex: str) -> Dict[str, Any]:
     latex = (latex or "").strip()
     pending_flags = len(_PENDING_RE.findall(latex))
     if not latex:
-        return {"compile_ok": False, "compiler": None, "validator": "fallback",
-                "problems": ["空 LaTeX"], "pending_flags": 0}
+        return {
+            "compile_ok": False,
+            "compiler": None,
+            "validator": "fallback",
+            "problems": ["空 LaTeX"],
+            "pending_flags": 0,
+        }
 
     compiler = _find_compiler()
     if compiler:
@@ -148,25 +153,41 @@ def validate_latex(latex: str) -> Dict[str, Any]:
                 if "tectonic" in compiler:
                     proc = subprocess.run(
                         [compiler, "--keep-logs", tex_path],
-                        capture_output=True, text=True, timeout=120,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
                     )
                 else:
                     proc = subprocess.run(
                         [compiler, "-interaction=nonstopmode", "-halt-on-error", tex_path],
-                        capture_output=True, text=True, timeout=120,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
                     )
                 ok = proc.returncode == 0
-                problems = [] if ok else [line.strip() for line in (proc.stderr or proc.stdout or "").splitlines() if line.strip()][-5:]
-                return {"compile_ok": ok, "compiler": os.path.basename(compiler),
-                        "validator": "compiler", "problems": problems,
-                        "pending_flags": pending_flags}
+                problems = (
+                    []
+                    if ok
+                    else [line.strip() for line in (proc.stderr or proc.stdout or "").splitlines() if line.strip()][-5:]
+                )
+                return {
+                    "compile_ok": ok,
+                    "compiler": os.path.basename(compiler),
+                    "validator": "compiler",
+                    "problems": problems,
+                    "pending_flags": pending_flags,
+                }
         except Exception:
             pass  # 编译失败回退检查
 
     problems = _balance_check(latex)
-    return {"compile_ok": len(problems) == 0, "compiler": None,
-            "validator": "fallback", "problems": problems,
-            "pending_flags": pending_flags}
+    return {
+        "compile_ok": len(problems) == 0,
+        "compiler": None,
+        "validator": "fallback",
+        "problems": problems,
+        "pending_flags": pending_flags,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -191,8 +212,7 @@ def detect_formula_regions(ocr_text: str) -> Dict[str, Any]:
     op_count = len(re.findall(r"[=+*/−()\[\],.。:;]", text))
     height_hint = len(re.findall(r"[A-Za-z0-9]\^|_[A-Za-z0-9{]", text)) > 0
     if density >= 0.06 or (op_count >= 6 and density >= 0.02) or height_hint:
-        return {"is_formula": True, "reason": "symbol_density_or_layout",
-                "symbol_density": round(density, 4)}
+        return {"is_formula": True, "reason": "symbol_density_or_layout", "symbol_density": round(density, 4)}
     return {"is_formula": False, "reason": "plain_text", "symbol_density": round(density, 4)}
 
 
@@ -216,8 +236,7 @@ def recognize_formula(
         {latex, validated, compile_ok, pending_flags, error, engine, provider, model}
     """
     if not image_path or not os.path.exists(image_path):
-        return {"latex": "", "validated": False, "compile_ok": False,
-                "pending_flags": 0, "error": "图片不存在"}
+        return {"latex": "", "validated": False, "compile_ok": False, "pending_flags": 0, "error": "图片不存在"}
     try:
         # 1) 全页 OCR（复用 ocr_router，仅用于公式区检测，不返回给用户做全文）
         from services.ocr_router import recognize_file
@@ -247,10 +266,16 @@ def recognize_formula(
         latex = re.sub(r"```(?:latex|tex)?\s*", "", raw).strip()
         latex = re.sub(r"```", "", latex).strip()
         if not latex:
-            return {"latex": "", "validated": False, "compile_ok": False,
-                    "pending_flags": 0, "error": "模型未返回 LaTeX",
-                    "engine": result.get("engine"), "provider": result.get("provider"),
-                    "model": result.get("model")}
+            return {
+                "latex": "",
+                "validated": False,
+                "compile_ok": False,
+                "pending_flags": 0,
+                "error": "模型未返回 LaTeX",
+                "engine": result.get("engine"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+            }
 
         # 3) 编译校验
         val = validate_latex(latex)
@@ -269,8 +294,7 @@ def recognize_formula(
             "model": result.get("model", ""),
         }
     except Exception as e:
-        return {"latex": "", "validated": False, "compile_ok": False,
-                "pending_flags": 0, "error": str(e)}
+        return {"latex": "", "validated": False, "compile_ok": False, "pending_flags": 0, "error": str(e)}
 
 
 def batch_recognize(image_paths: List[str], prefer: Optional[str] = None, db=None) -> List[Dict[str, Any]]:
@@ -279,7 +303,6 @@ def batch_recognize(image_paths: List[str], prefer: Optional[str] = None, db=Non
 
 
 if __name__ == "__main__":  # pragma: no cover
-
     sample = r"\(\int_0^1 x^2 dx = \frac{1}{3}\)"
     print(json.dumps(validate_latex(sample), ensure_ascii=False, indent=2))
     print(json.dumps(detect_formula_regions("求积分 ∫(0,1) x^2 dx"), ensure_ascii=False, indent=2))

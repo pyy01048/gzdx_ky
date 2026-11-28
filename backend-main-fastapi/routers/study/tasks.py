@@ -14,7 +14,6 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import Goal, Task, TaskCheckIn, TaskModuleDict, User
 from pydantic import BaseModel
 from schemas import TaskCreate, TaskUpdate
 from services.review_scheduler import ReviewScheduler
@@ -24,6 +23,8 @@ from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id, scoped  # B4 行级隔离
 from utils.security import current_user
 from utils.timeutil import local_today, utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+from models import Goal, Task, TaskCheckIn, TaskModuleDict, User
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -49,7 +50,9 @@ class ModuleIn(BaseModel):
 # --------------------------------------------------------------------------- #
 # 入参规整（诚实原则：非法结构当场 400，不静默吞掉后在日历上造假象）
 # --------------------------------------------------------------------------- #
-def _normalize_subjects(subjects, subject):
+def _normalize_subjects(
+    subjects: Optional[list[str] | str], subject: Optional[str]
+) -> tuple[Optional[list[str]], Optional[str]]:
     """多选科目去空去重；返回 (列表或 None, 兼容列 subject 值)。"""
     if subjects is None:
         return None, subject

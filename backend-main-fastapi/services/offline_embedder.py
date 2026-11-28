@@ -12,6 +12,7 @@
 该引擎的质量虽不及 bge 等语义模型，但完全离线、秒级构建 5000+ 分块的索引，
 并能在 RAG 中作为 FTS5 BM25 的补充召回通道，实现「本地+离线」的精准检索。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,11 +45,11 @@ class OfflineEmbedder:
         cjk = re.sub(r"[^\u4e00-\u9fff]", "", text)
         n = len(cjk)
         for i in range(n):
-            tokens.append(cjk[i])                 # 1-gram
+            tokens.append(cjk[i])  # 1-gram
             if i + 1 < n:
-                tokens.append(cjk[i:i + 2])       # 2-gram
+                tokens.append(cjk[i : i + 2])  # 2-gram
             if i + 2 < n:
-                tokens.append(cjk[i:i + 3])       # 3-gram
+                tokens.append(cjk[i : i + 3])  # 3-gram
         return tokens
 
     def _hash_token(self, tok: str) -> int:

@@ -9,6 +9,7 @@
 
 G4：重复事件不重复计数；坏事件拒收率 100% 且报行号与违反字段。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -32,12 +33,28 @@ EVENT_MAP: Dict[str, str] = {
 
 #: v2.0 扩展事件码（kernel 直接写；总方案 §3.1 枚举冻结）
 EXTENDED_EVENT_TYPES = (
-    "baseline.answered", "task.completed", "task.partial", "task.missed",
-    "task.reviewed", "word.reviewed", "word.mastered", "dictation.result",
-    "quiz.answered", "code.submitted", "code.audited", "code.compliance_checked",
-    "plan.proposed", "plan.approved", "plan.adjusted", "retro.done",
-    "signal.subjective", "signal.focus", "evidence.collected",
-    "evidence.audited", "misc.retested", "exam.submitted",
+    "baseline.answered",
+    "task.completed",
+    "task.partial",
+    "task.missed",
+    "task.reviewed",
+    "word.reviewed",
+    "word.mastered",
+    "dictation.result",
+    "quiz.answered",
+    "code.submitted",
+    "code.audited",
+    "code.compliance_checked",
+    "plan.proposed",
+    "plan.approved",
+    "plan.adjusted",
+    "retro.done",
+    "signal.subjective",
+    "signal.focus",
+    "evidence.collected",
+    "evidence.audited",
+    "misc.retested",
+    "exam.submitted",
 )
 
 ALL_EVENT_TYPES = frozenset(EXTENDED_EVENT_TYPES)
@@ -108,7 +125,11 @@ def iter_events(path: Path) -> Iterator[Tuple[int, Optional[Dict], Optional[str]
             try:
                 jsonschema.validate(instance=obj, schema=EVENT_SCHEMA)
             except jsonschema.ValidationError as exc:
-                yield lineno, None, f"schema 校验失败: {'/'.join(map(str, exc.absolute_path)) or exc.schema.get('type', '?')}（{exc.message[:120]}）"
+                yield (
+                    lineno,
+                    None,
+                    f"schema 校验失败: {'/'.join(map(str, exc.absolute_path)) or exc.schema.get('type', '?')}（{exc.message[:120]}）",
+                )
                 continue
             yield lineno, obj, None
 
@@ -128,7 +149,7 @@ class Projection:
     evidence: Dict[str, Dict] = field(default_factory=dict)
     counters: Dict[str, int] = field(default_factory=dict)
     applied_ids: List[str] = field(default_factory=list)
-    rejected: List[Tuple[int, str]] = field(default_factory=list)   # (行号或序号, 原因)
+    rejected: List[Tuple[int, str]] = field(default_factory=list)  # (行号或序号, 原因)
     duplicate_ids: int = 0
 
 
@@ -138,8 +159,7 @@ def _apply_event(proj: Projection, ev: Dict[str, Any]) -> None:
     if et.startswith("task."):
         tid = str(payload.get("task_id") or ev.get("subject_id") or "")
         if tid:
-            cur = proj.tasks.setdefault(tid, {"task_id": tid, "status": "pending",
-                                              "events": []})
+            cur = proj.tasks.setdefault(tid, {"task_id": tid, "status": "pending", "events": []})
             if et == "task.completed":
                 cur["status"] = "done"
             elif et == "task.missed":
@@ -150,8 +170,7 @@ def _apply_event(proj: Projection, ev: Dict[str, Any]) -> None:
     elif et in ("word.reviewed", "word.mastered"):
         wid = str(payload.get("card_id") or ev.get("subject_id") or "")
         if wid:
-            st = proj.word_states.setdefault(wid, {"card_id": wid, "reviews": 0,
-                                                   "mastered": False})
+            st = proj.word_states.setdefault(wid, {"card_id": wid, "reviews": 0, "mastered": False})
             st["reviews"] += 1
             if et == "word.mastered":
                 st["mastered"] = True
@@ -161,8 +180,7 @@ def _apply_event(proj: Projection, ev: Dict[str, Any]) -> None:
         sig["focus_seconds"] += int(payload.get("duration_seconds") or 0)
     elif et == "evidence.collected":
         eid = str(ev.get("subject_id") or ev["event_id"])
-        proj.evidence[eid] = {"ev_id": eid, "payload": payload,
-                              "grade": ev.get("evidence_grade")}
+        proj.evidence[eid] = {"ev_id": eid, "payload": payload, "grade": ev.get("evidence_grade")}
     elif et == "evidence.audited":
         eid = str(payload.get("ev_id") or "")
         if eid in proj.evidence:
@@ -220,8 +238,11 @@ def rebuild(path: Path, rules_version: str) -> Tuple[Projection, RebuildReport]:
             continue
         events.append(ev)
     proj = derive(events, rules_version)
-    report = RebuildReport(total_lines=total, applied=len(proj.applied_ids),
-                           duplicates=proj.duplicate_ids,
-                           rejected=pre_rejected + proj.rejected,
-                           rules_version=rules_version)
+    report = RebuildReport(
+        total_lines=total,
+        applied=len(proj.applied_ids),
+        duplicates=proj.duplicate_ids,
+        rejected=pre_rejected + proj.rejected,
+        rules_version=rules_version,
+    )
     return proj, report

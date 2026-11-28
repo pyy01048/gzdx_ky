@@ -12,6 +12,7 @@
     python scripts/diagnostics/data_audit.py --full
     python scripts/diagnostics/data_audit.py --inventory
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,7 +38,7 @@ def cnt(db, sql: str, **p) -> int:
 
 
 def section(title: str) -> None:
-    print(f"\n{'='*66}\n{title}\n{'='*66}")
+    print(f"\n{'=' * 66}\n{title}\n{'=' * 66}")
 
 
 def has_col(db, table: str, col: str) -> bool:
@@ -68,24 +69,29 @@ def cols_of(db, table: str) -> list[str]:
 # ---------------------------------------------------------------- 1. 外键
 def fk_orphans(db) -> None:
     section("1. 外键孤儿（子行指向缺失父行）")
-    fks = db.execute(text(
-        "select tc.table_name, kcu.column_name, ccu.table_name, ccu.column_name "
-        "from information_schema.table_constraints tc "
-        "join information_schema.key_column_usage kcu "
-        "  on tc.constraint_name=kcu.constraint_name and tc.table_schema=kcu.table_schema "
-        "join information_schema.constraint_column_usage ccu "
-        "  on tc.constraint_name=ccu.constraint_name and tc.table_schema=ccu.table_schema "
-        "where tc.constraint_type='FOREIGN KEY' and tc.table_schema='public' "
-        "order by tc.table_name"
-    )).all()
+    fks = db.execute(
+        text(
+            "select tc.table_name, kcu.column_name, ccu.table_name, ccu.column_name "
+            "from information_schema.table_constraints tc "
+            "join information_schema.key_column_usage kcu "
+            "  on tc.constraint_name=kcu.constraint_name and tc.table_schema=kcu.table_schema "
+            "join information_schema.constraint_column_usage ccu "
+            "  on tc.constraint_name=ccu.constraint_name and tc.table_schema=ccu.table_schema "
+            "where tc.constraint_type='FOREIGN KEY' and tc.table_schema='public' "
+            "order by tc.table_name"
+        )
+    ).all()
     found = 0
     for child, ccol, parent, pcol in fks:
         try:
-            n = cnt(db, f"""
+            n = cnt(
+                db,
+                f"""
                 select count(*) from "{child}" c
                 left join "{parent}" p on p."{pcol}"=c."{ccol}"
                 where c."{ccol}" is not null and p."{pcol}" is null
-            """)
+            """,
+            )
         except Exception as e:  # noqa: BLE001
             db.rollback()
             print(f"  [跳过] {child}.{ccol}->{parent}: {type(e).__name__}")
@@ -106,63 +112,161 @@ def consistency(db) -> None:
     checks.append(("documents", "文档总数", cnt(db, "select count(*) from documents"), False))
     checks.append(("knowledge_chunks", "分块总数", cnt(db, "select count(*) from knowledge_chunks"), False))
     checks.append(("chunk_vectors", "向量总数", cnt(db, "select count(*) from chunk_vectors"), False))
-    checks.append(("knowledge_chunks", "分块指向缺失文档", cnt(db, """
+    checks.append(
+        (
+            "knowledge_chunks",
+            "分块指向缺失文档",
+            cnt(
+                db,
+                """
         select count(*) from knowledge_chunks kc
         left join documents d on d.id=kc.document_id
-        where kc.document_id is not null and d.id is null"""), True))
-    checks.append(("knowledge_chunks", "分块无 document_id", cnt(db,
-        "select count(*) from knowledge_chunks where document_id is null"), True))
+        where kc.document_id is not null and d.id is null""",
+            ),
+            True,
+        )
+    )
+    checks.append(
+        (
+            "knowledge_chunks",
+            "分块无 document_id",
+            cnt(db, "select count(*) from knowledge_chunks where document_id is null"),
+            True,
+        )
+    )
     if has_col(db, "chunk_vectors", "chunk_id"):
-        checks.append(("chunk_vectors", "分块缺向量", cnt(db, """
+        checks.append(
+            (
+                "chunk_vectors",
+                "分块缺向量",
+                cnt(
+                    db,
+                    """
             select count(*) from knowledge_chunks kc
             left join chunk_vectors cv on cv.chunk_id=kc.id
-            where cv.chunk_id is null"""), True))
-        checks.append(("chunk_vectors", "向量指向缺失分块", cnt(db, """
+            where cv.chunk_id is null""",
+                ),
+                True,
+            )
+        )
+        checks.append(
+            (
+                "chunk_vectors",
+                "向量指向缺失分块",
+                cnt(
+                    db,
+                    """
             select count(*) from chunk_vectors cv
             left join knowledge_chunks kc on kc.id=cv.chunk_id
-            where kc.id is null"""), True))
+            where kc.id is null""",
+                ),
+                True,
+            )
+        )
 
     # --- 题目 → 答案 / 知识点 ---
     qq_cols = cols_of(db, "quiz_questions")
     checks.append(("quiz_questions", "题目总数", cnt(db, "select count(*) from quiz_questions"), False))
-    for col in ("answer", "correct_answer", "content", "subject", "year",
-                "source_kind", "type", "question_type", "source", "analysis"):
+    for col in (
+        "answer",
+        "correct_answer",
+        "content",
+        "subject",
+        "year",
+        "source_kind",
+        "type",
+        "question_type",
+        "source",
+        "analysis",
+    ):
         if col in qq_cols:
-            filled = cnt(db, f"""select count(*) from quiz_questions
-                where "{col}" is not null and btrim("{col}"::text)<>''""")
+            filled = cnt(
+                db,
+                f"""select count(*) from quiz_questions
+                where "{col}" is not null and btrim("{col}"::text)<>''""",
+            )
             checks.append(("quiz_questions", f"有 {col}", filled, False))
     # 关键：题目缺答案/解析
     for col in ("answer", "correct_answer"):
         if col in qq_cols:
-            empty = cnt(db, f"""select count(*) from quiz_questions
-                where "{col}" is null or btrim("{col}"::text)=''""")
+            empty = cnt(
+                db,
+                f"""select count(*) from quiz_questions
+                where "{col}" is null or btrim("{col}"::text)=''""",
+            )
             checks.append(("quiz_questions", f"缺 {col}", empty, True))
 
-    checks.append(("question_knowledge_links", "题目-知识点链接",
-                   cnt(db, "select count(*) from question_knowledge_links"), False))
-    checks.append(("question_knowledge_links", "链接指向缺失题目", cnt(db, """
+    checks.append(
+        ("question_knowledge_links", "题目-知识点链接", cnt(db, "select count(*) from question_knowledge_links"), False)
+    )
+    checks.append(
+        (
+            "question_knowledge_links",
+            "链接指向缺失题目",
+            cnt(
+                db,
+                """
         select count(*) from question_knowledge_links l
-        left join quiz_questions q on q.id=l.question_id where q.id is null"""), True))
-    checks.append(("knowledge_points", "知识点总数",
-                   cnt(db, "select count(*) from knowledge_points"), False))
+        left join quiz_questions q on q.id=l.question_id where q.id is null""",
+            ),
+            True,
+        )
+    )
+    checks.append(("knowledge_points", "知识点总数", cnt(db, "select count(*) from knowledge_points"), False))
 
     # --- 学校 → 分数线 / 专业 / 公告 ---
     checks.append(("kaoyan_schools", "学校总数", cnt(db, "select count(*) from kaoyan_schools"), False))
     checks.append(("kaoyan_scorelines", "分数线总数", cnt(db, "select count(*) from kaoyan_scorelines"), False))
-    checks.append(("kaoyan_scorelines", "分数线指向缺失学校", cnt(db, """
+    checks.append(
+        (
+            "kaoyan_scorelines",
+            "分数线指向缺失学校",
+            cnt(
+                db,
+                """
         select count(*) from kaoyan_scorelines s
-        left join kaoyan_schools k on k.id=s.school_id where k.id is null"""), True))
-    checks.append(("kaoyan_scorelines", "有分数线的学校数",
-                   cnt(db, "select count(distinct school_id) from kaoyan_scorelines"), False))
+        left join kaoyan_schools k on k.id=s.school_id where k.id is null""",
+            ),
+            True,
+        )
+    )
+    checks.append(
+        (
+            "kaoyan_scorelines",
+            "有分数线的学校数",
+            cnt(db, "select count(distinct school_id) from kaoyan_scorelines"),
+            False,
+        )
+    )
     checks.append(("kaoyan_majors", "专业总数", cnt(db, "select count(*) from kaoyan_majors"), False))
-    checks.append(("kaoyan_majors", "专业指向缺失学校", cnt(db, """
+    checks.append(
+        (
+            "kaoyan_majors",
+            "专业指向缺失学校",
+            cnt(
+                db,
+                """
         select count(*) from kaoyan_majors m
-        left join kaoyan_schools k on k.id=m.school_id where k.id is null"""), True))
+        left join kaoyan_schools k on k.id=m.school_id where k.id is null""",
+            ),
+            True,
+        )
+    )
     checks.append(("kaoyan_notices", "公告总数", cnt(db, "select count(*) from kaoyan_notices"), False))
     if has_col(db, "kaoyan_notices", "school_id"):
-        checks.append(("kaoyan_notices", "公告指向缺失学校", cnt(db, """
+        checks.append(
+            (
+                "kaoyan_notices",
+                "公告指向缺失学校",
+                cnt(
+                    db,
+                    """
             select count(*) from kaoyan_notices n
-            left join kaoyan_schools k on k.id=n.school_id where n.school_id is not null and k.id is null"""), True))
+            left join kaoyan_schools k on k.id=n.school_id where n.school_id is not null and k.id is null""",
+                ),
+                True,
+            )
+        )
 
     # --- 单词 / 科目 ---
     checks.append(("words", "单词总数", cnt(db, "select count(*) from words"), False))
@@ -180,6 +284,7 @@ def consistency(db) -> None:
 def _key_cols(db, table: str, key: str) -> bool:
     """校验 key 中引用的列都存在，避免整段事务中止。"""
     import re
+
     have = set(cols_of(db, table))
     for ident in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", key):
         if ident.lower() in {"coalesce", "null", "text"}:
@@ -208,14 +313,16 @@ def dup_keys(db) -> None:
         ("knowledge_points", "coalesce(subject,''), coalesce(name,'')", "科目+名称"),
         ("textbooks", "coalesce(isbn, '#'||id::text)", "ISBN"),
         ("textbooks", "coalesce(title,''), coalesce(edition,'')", "书名+版次"),
-        ("kaoyan_scorelines",
-         "school_id, year, coalesce(major_code,''), line_type, coalesce(depart_name,''), coalesce(degree_type,'')",
-         "校+年+专业码+线型+院系+学位"),
+        (
+            "kaoyan_scorelines",
+            "school_id, year, coalesce(major_code,''), line_type, coalesce(depart_name,''), coalesce(degree_type,'')",
+            "校+年+专业码+线型+院系+学位",
+        ),
     ]
     for table, key, label in specs:
-        if not db.execute(text(
-            "select 1 from information_schema.tables where table_schema='public' and table_name=:t"
-        ), {"t": table}).first():
+        if not db.execute(
+            text("select 1 from information_schema.tables where table_schema='public' and table_name=:t"), {"t": table}
+        ).first():
             continue
         total = cnt(db, f'select count(*) from "{table}"')
         if not total:
@@ -235,10 +342,12 @@ def dup_keys(db) -> None:
                 continue
             key, label = f"coalesce({best[0]}::text,'')", f"列 {best[0]}"
         try:
-            ng, ex = db.execute(text(f"""
+            ng, ex = db.execute(
+                text(f"""
                 select count(*), coalesce(sum(cnt-1),0) from
                   (select count(*) cnt from "{table}" group by {key}) t
-            """)).one()
+            """)
+            ).one()
             ng, ex = int(ng), float(ex)
         except Exception as e:  # noqa: BLE001
             db.rollback()
@@ -271,7 +380,7 @@ def readme_check(db) -> None:
         elif actual == claim:
             mark = f"  {OK}"
         else:
-            mark = f"  {BAD} 差 {actual-claim:+,}"
+            mark = f"  {BAD} 差 {actual - claim:+,}"
         c = "-" if claim is None else f"{claim:,}"
         print(f"  {name:6} README={c:>10}  实际={actual:>10,}{mark}")
 
@@ -280,11 +389,13 @@ def readme_check(db) -> None:
 def inventory(db) -> None:
     tbls = [
         r[0]
-        for r in db.execute(text(
-            "select c.relname from pg_class c "
-            "join pg_namespace n on n.oid=c.relnamespace and n.nspname='public' "
-            "where c.relkind='r' order by c.relname"
-        ))
+        for r in db.execute(
+            text(
+                "select c.relname from pg_class c "
+                "join pg_namespace n on n.oid=c.relnamespace and n.nspname='public' "
+                "where c.relkind='r' order by c.relname"
+            )
+        )
     ]
     counts = {}
     for t in tbls:
@@ -305,11 +416,13 @@ def empty_tables(db) -> None:
     section("5. 空表清单（0 行 → 待填充/待确认是否废弃）")
     tbls = [
         r[0]
-        for r in db.execute(text(
-            "select c.relname from pg_class c "
-            "join pg_namespace n on n.oid=c.relnamespace and n.nspname='public' "
-            "where c.relkind='r' order by c.relname"
-        ))
+        for r in db.execute(
+            text(
+                "select c.relname from pg_class c "
+                "join pg_namespace n on n.oid=c.relnamespace and n.nspname='public' "
+                "where c.relkind='r' order by c.relname"
+            )
+        )
     ]
     empties = []
     for t in tbls:
@@ -317,7 +430,7 @@ def empty_tables(db) -> None:
             empties.append(t)
     print(f"  共 {len(empties)}/{len(tbls)} 张空表：")
     for i in range(0, len(empties), 4):
-        print("   " + "  ".join(f"{t:34}" for t in empties[i:i + 4]))
+        print("   " + "  ".join(f"{t:34}" for t in empties[i : i + 4]))
 
 
 # --------------------------------------------------- 6. 重复组抽样定性
@@ -325,48 +438,69 @@ def dup_samples(db) -> None:
     section("6. 重复组抽样（定性：真重复 vs 合法并存）")
 
     print("-- 公告 URL 重复（前 5 组，看标题/日期是否也一致）--")
-    for url, n in db.execute(text("""
+    for url, n in db.execute(
+        text("""
         select coalesce(url,'(null)'), count(*) from kaoyan_notices
-        where url is not null group by 1 having count(*)>1 order by 2 desc limit 5""")):
-        rows = db.execute(text(
-            "select id, school_id, title, publish_date, fetched_at from kaoyan_notices "
-            "where url=:u order by id limit 4"), {"u": url}).all()
+        where url is not null group by 1 having count(*)>1 order by 2 desc limit 5""")
+    ):
+        rows = db.execute(
+            text(
+                "select id, school_id, title, publish_date, fetched_at from kaoyan_notices "
+                "where url=:u order by id limit 4"
+            ),
+            {"u": url},
+        ).all()
         print(f"  x{n} {url[:70]}")
         for r in rows:
             print(f"      id={r[0]} school={r[1]} {str(r[3])[:10]} {str(r[2])[:38]}")
 
     print("\n-- 题目 同科目+题干 重复（全部 12 组）--")
-    for subj, content, n in db.execute(text("""
+    for subj, content, n in db.execute(
+        text("""
         select coalesce(subject,''), content, count(*) from quiz_questions
-        group by 1,2 having count(*)>1 order by 3 desc""")):
-        rows = db.execute(text(
-            "select id, question_type, left(coalesce(answer,''),16), source_kind, year "
-            "from quiz_questions where subject=:s and content=:c order by id"),
-            {"s": subj, "c": content}).all()
+        group by 1,2 having count(*)>1 order by 3 desc""")
+    ):
+        rows = db.execute(
+            text(
+                "select id, question_type, left(coalesce(answer,''),16), source_kind, year "
+                "from quiz_questions where subject=:s and content=:c order by id"
+            ),
+            {"s": subj, "c": content},
+        ).all()
         print(f"  x{n} [{subj}] {content[:44]!r}")
         for r in rows:
             print(f"      id={r[0]} type={r[1]} ans={r[2]!r} src={r[3]} year={r[4]}")
 
     print("\n-- 知识点 同科目+名称 重复（全部 7 组）--")
-    for subj, name, n in db.execute(text("""
+    for subj, name, n in db.execute(
+        text("""
         select coalesce(subject,''), name, count(*) from knowledge_points
-        group by 1,2 having count(*)>1 order by 3 desc""")):
-        rows = db.execute(text(
-            "select id, coalesce(chapter,''), coalesce(document_id,0), question_count "
-            "from knowledge_points where coalesce(subject,'')=:s and name=:n order by id"),
-            {"s": subj, "n": name}).all()
+        group by 1,2 having count(*)>1 order by 3 desc""")
+    ):
+        rows = db.execute(
+            text(
+                "select id, coalesce(chapter,''), coalesce(document_id,0), question_count "
+                "from knowledge_points where coalesce(subject,'')=:s and name=:n order by id"
+            ),
+            {"s": subj, "n": name},
+        ).all()
         print(f"  x{n} [{subj}] {name[:44]}")
         for r in rows:
             print(f"      id={r[0]} chapter={r[1][:30]!r} doc={r[2]} qn={r[3]}")
 
     print("\n-- 教材 同书名+版次 重复（全部 3 组）--")
-    for title, ed, n in db.execute(text("""
+    for title, ed, n in db.execute(
+        text("""
         select title, coalesce(edition,''), count(*) from textbooks
-        group by 1,2 having count(*)>1 order by 3 desc""")):
-        rows = db.execute(text(
-            "select id, coalesce(isbn,''), coalesce(publisher,''), coalesce(authors,'') "
-            "from textbooks where title=:t and coalesce(edition,'')=:e order by id"),
-            {"t": title, "e": ed}).all()
+        group by 1,2 having count(*)>1 order by 3 desc""")
+    ):
+        rows = db.execute(
+            text(
+                "select id, coalesce(isbn,''), coalesce(publisher,''), coalesce(authors,'') "
+                "from textbooks where title=:t and coalesce(edition,'')=:e order by id"
+            ),
+            {"t": title, "e": ed},
+        ).all()
         print(f"  x{n} {title[:44]!r} ed={ed!r}")
         for r in rows:
             print(f"      id={r[0]} isbn={r[1]} pub={r[2][:24]} auth={r[3][:24]}")
@@ -377,7 +511,7 @@ def coverage(db) -> None:
     section("7. 填充覆盖度（补数据底账）")
 
     def line(label: str, n: int, total: int) -> None:
-        pct = f"{n*100.0/total:.1f}%" if total else "-"
+        pct = f"{n * 100.0 / total:.1f}%" if total else "-"
         print(f"  {label:44} {n:>7,}/{total:<7,} {pct}")
 
     # 学校维度
@@ -391,7 +525,11 @@ def coverage(db) -> None:
     qq = cnt(db, "select count(*) from quiz_questions")
     line("题目 有知识点链接", cnt(db, "select count(distinct question_id) from question_knowledge_links"), qq)
     line("题目 有年份", cnt(db, "select count(*) from quiz_questions where year is not null"), qq)
-    line("题目 有解析", cnt(db, "select count(*) from quiz_questions where analysis is not null and btrim(analysis)<>''"), qq)
+    line(
+        "题目 有解析",
+        cnt(db, "select count(*) from quiz_questions where analysis is not null and btrim(analysis)<>''"),
+        qq,
+    )
     line("题目 有来源文档", cnt(db, "select count(*) from quiz_questions where origin_document_id is not null"), qq)
 
     # 知识点维度
@@ -403,19 +541,32 @@ def coverage(db) -> None:
     docs = cnt(db, "select count(*) from documents")
     line("文档 有哈希", cnt(db, "select count(*) from documents where content_hash is not null"), docs)
     line("文档 有大小", cnt(db, "select count(*) from documents where size is not null"), docs)
-    line("文档 有科目", cnt(db, "select count(*) from documents where subject is not null and btrim(subject)<>''"), docs)
+    line(
+        "文档 有科目", cnt(db, "select count(*) from documents where subject is not null and btrim(subject)<>''"), docs
+    )
     line("文档 已分块(chunk_count>0)", cnt(db, "select count(*) from documents where coalesce(chunk_count,0)>0"), docs)
 
     subj = cnt(db, "select count(*) from subjects")
     line("题目 有 subject_id 外键", cnt(db, "select count(*) from quiz_questions where subject_id is not null"), qq)
     line("科目 有配置", cnt(db, "select count(distinct subject_id) from subject_configs"), subj)
     line("科目 有章节", cnt(db, "select count(distinct subject_id) from subject_chapters"), subj)
-    line("科目 有题目", cnt(db, "select count(distinct subject_id) from quiz_questions where subject_id is not null"), subj)
+    line(
+        "科目 有题目",
+        cnt(db, "select count(distinct subject_id) from quiz_questions where subject_id is not null"),
+        subj,
+    )
     # 题目 subject 文本 vs subjects.name/code 能否对上
-    line("题目 subject文本 能匹配 subjects", cnt(db, """
+    line(
+        "题目 subject文本 能匹配 subjects",
+        cnt(
+            db,
+            """
         select count(*) from quiz_questions q
         join subjects s on s.name=q.subject or s.code=q.subject
-        where q.subject is not null"""), qq)
+        where q.subject is not null""",
+        ),
+        qq,
+    )
 
     # 录取维度
     adm = cnt(db, "select count(*) from kaoyan_admissions")
@@ -425,7 +576,11 @@ def coverage(db) -> None:
     notices = cnt(db, "select count(*) from kaoyan_notices")
     line("公告 有URL", cnt(db, "select count(*) from kaoyan_notices where url is not null and url<>''"), notices)
     line("公告 有发布日期", cnt(db, "select count(*) from kaoyan_notices where publish_date is not null"), notices)
-    line("公告 有正文", cnt(db, "select count(*) from kaoyan_notices where content is not null and btrim(content)<>''"), notices)
+    line(
+        "公告 有正文",
+        cnt(db, "select count(*) from kaoyan_notices where content is not null and btrim(content)<>''"),
+        notices,
+    )
     line("公告 标记为噪声", cnt(db, "select count(*) from kaoyan_notices where is_noise"), notices)
 
 
@@ -438,9 +593,18 @@ def main() -> int:
         if which == "--inventory":
             inventory(db)
         elif which == "--cols":
-            for t in ("quiz_questions", "documents", "kaoyan_notices", "kaoyan_colleges",
-                      "knowledge_points", "textbooks", "subject_chapters",
-                      "kaoyan_admission_details", "words", "subjects"):
+            for t in (
+                "quiz_questions",
+                "documents",
+                "kaoyan_notices",
+                "kaoyan_colleges",
+                "knowledge_points",
+                "textbooks",
+                "subject_chapters",
+                "kaoyan_admission_details",
+                "words",
+                "subjects",
+            ):
                 print(f"== {t} ==")
                 print("   " + ", ".join(cols_of(db, t)))
         elif which == "--samples":

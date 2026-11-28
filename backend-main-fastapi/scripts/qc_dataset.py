@@ -10,6 +10,7 @@ prompt 过长导致 assistant 目标被 max_len 截掉一半）。
     python scripts/qc_dataset.py \
         --in-dir data/lora_finetune_v2 --out-dir data/lora_finetune_v3
 """
+
 from __future__ import annotations
 
 import argparse
@@ -98,8 +99,10 @@ def main() -> int:
         else:
             kept.append(r)
 
-    print(f"输入 {len(rows)} 条 → 保留 {len(kept)} 条（剔除 {len(rows) - len(kept)} 条，"
-          f"{100 * (len(rows) - len(kept)) / max(1, len(rows)):.1f}%）")
+    print(
+        f"输入 {len(rows)} 条 → 保留 {len(kept)} 条（剔除 {len(rows) - len(kept)} 条，"
+        f"{100 * (len(rows) - len(kept)) / max(1, len(rows)):.1f}%）"
+    )
     for k, v in dropped.most_common():
         print(f"  {k:<20} {v}")
 
@@ -114,8 +117,7 @@ def main() -> int:
         sub = [r for r in kept if r["_split"] == name]
         with open(os.path.join(args.out_dir, name), "w", encoding="utf-8") as f:
             for r in sub:
-                f.write(json.dumps({k: v for k, v in r.items() if k != "_split"},
-                                   ensure_ascii=False) + "\n")
+                f.write(json.dumps({k: v for k, v in r.items() if k != "_split"}, ensure_ascii=False) + "\n")
         print(f"  [✓] {os.path.join(args.out_dir, name)}  {len(sub)} 条")
     return 0
 

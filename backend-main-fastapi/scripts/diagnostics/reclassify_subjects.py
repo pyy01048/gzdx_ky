@@ -8,6 +8,7 @@
 安全：先备份数据库；只改 documents.subject 与 knowledge_chunks.subject；
 输出前后对比供核对。
 """
+
 import collections
 import shutil
 import sqlite3
@@ -49,7 +50,7 @@ def main(apply: bool = False) -> int:
             skipped_lowconf += 1
             new = old_n
         after[new] += 1
-        if new != (old or ""):      # 与**原始值**比较，别名也能被改掉
+        if new != (old or ""):  # 与**原始值**比较，别名也能被改掉
             changes.append((did, name, old, new))
 
     print("=== 标注前 ===")

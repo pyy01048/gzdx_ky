@@ -11,6 +11,7 @@
 纯计算用例（streak / fill_series / 格子）不碰 DB，直接喂台账；
 聚合用例走 conftest 的临时库，并用 **2001 年** 的历史区间避开其他用例的数据。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -56,7 +57,7 @@ def test_effective_threshold_boundaries():
 
 
 def test_active_but_ineffective_day_is_distinguishable():
-    """"有痕迹但没达门槛"必须能被区分出来：热力图要显示浅灰，打卡不能算。"""
+    """ "有痕迹但没达门槛"必须能被区分出来：热力图要显示浅灰，打卡不能算。"""
     d = _act("2026-01-01", focus_minutes=4, tasks_done=1)
     assert d.is_active and not d.is_effective
 
@@ -66,6 +67,8 @@ def test_correct_rate_is_none_when_no_answers():
     assert _act("2026-01-01").correct_rate is None
     assert _act("2026-01-01", questions_done=4, questions_correct=0).correct_rate == 0.0
     assert _act("2026-01-01", questions_done=4, questions_correct=3).correct_rate == 75.0
+    assert _act("2026-01-01", questions_done=4, questions_correct=3, questions_pending=1).correct_rate == 100.0
+    assert _act("2026-01-01", questions_done=1, questions_pending=1).correct_rate is None
 
 
 def test_reviews_done_sums_all_item_types():
@@ -102,14 +105,11 @@ def test_streak_counts_today_when_effective():
 def test_streak_gaps_and_longest():
     """中间断一天就断当前；历史最长另算，两者不能混。"""
     today = datetime.date(2026, 10, 17)
-    led = _ledger(*[
-        _act(f"2026-10-{d:02d}", focus_minutes=30)
-        for d in (17, 16, 15, 13, 12, 11, 10, 8)
-    ])
+    led = _ledger(*[_act(f"2026-10-{d:02d}", focus_minutes=30) for d in (17, 16, 15, 13, 12, 11, 10, 8)])
     out = streak_summary(led, today=today)
-    assert out["current"] == 3          # 17/16/15，14 缺失
-    assert out["longest"] == 4          # 13~10
-    assert out["total_days"] == 8       # 有效天数走全量，不受窗口影响
+    assert out["current"] == 3  # 17/16/15，14 缺失
+    assert out["longest"] == 4  # 13~10
+    assert out["total_days"] == 8  # 有效天数走全量，不受窗口影响
     assert out["first_day"] == "2026-10-08"
 
 
@@ -140,7 +140,11 @@ def test_fill_series_pads_missing_days_with_zero():
     led = _ledger(_act("2026-10-01", focus_minutes=50), _act("2026-10-04", focus_minutes=50))
     series = fill_series(led, datetime.date(2026, 10, 1), datetime.date(2026, 10, 5))
     assert [d.date.isoformat() for d in series] == [
-        "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05",
+        "2026-10-01",
+        "2026-10-02",
+        "2026-10-03",
+        "2026-10-04",
+        "2026-10-05",
     ]
     assert series[1].focus_minutes == 0
     assert series[1].date == datetime.date(2026, 10, 2)
@@ -155,9 +159,7 @@ def test_heatmap_grid_starts_on_monday_and_ends_today():
     assert first.weekday() == 0, f"起点必须是整周周一，实际 {first} 是周{first.weekday()}"
     assert len(cells) >= 4 * 7, "回看周数不足"
     # 逐日连续，中间不能缺格
-    assert [c["date"] for c in cells] == [
-        (first + datetime.timedelta(days=i)).isoformat() for i in range(len(cells))
-    ]
+    assert [c["date"] for c in cells] == [(first + datetime.timedelta(days=i)).isoformat() for i in range(len(cells))]
 
 
 def test_heatmap_carries_the_per_day_fields_the_frontend_draws():
@@ -199,12 +201,14 @@ def test_day_bucket_uses_beijing_midnight(db):
     """UTC 16:30 = 北京次日 00:30：必须落到**次日**的桶里，这是日界唯一口径。"""
     from models import AnswerRecord
 
-    db.add_all([
-        # 北京 3/5 23:30（UTC 15:30）
-        AnswerRecord(created_at=datetime.datetime(2001, 3, 5, 15, 30), subject=MARK, is_correct=True),
-        # 北京 3/6 00:30（UTC 3/5 16:30）—— 同一 UTC 日、不同北京日
-        AnswerRecord(created_at=datetime.datetime(2001, 3, 5, 16, 30), subject=MARK, is_correct=False),
-    ])
+    db.add_all(
+        [
+            # 北京 3/5 23:30（UTC 15:30）
+            AnswerRecord(created_at=datetime.datetime(2001, 3, 5, 15, 30), subject=MARK, is_correct=True),
+            # 北京 3/6 00:30（UTC 3/5 16:30）—— 同一 UTC 日、不同北京日
+            AnswerRecord(created_at=datetime.datetime(2001, 3, 5, 16, 30), subject=MARK, is_correct=False),
+        ]
+    )
     db.commit()
 
     led = day_ledger(db, start_day=HIST[0], end_day=HIST[1])
@@ -218,11 +222,13 @@ def test_focus_minutes_only_from_study_sessions(db):
     """study_sessions.date 是 Date 列（本身就是本地日），直接求和、不参与时区换算。"""
     from models import StudySession
 
-    db.add_all([
-        StudySession(date=HIST[0], duration=30, subject=MARK),
-        StudySession(date=HIST[0], duration=15, subject=MARK),
-        StudySession(date=HIST[1], duration=60, subject=MARK),
-    ])
+    db.add_all(
+        [
+            StudySession(date=HIST[0], duration=30, subject=MARK),
+            StudySession(date=HIST[0], duration=15, subject=MARK),
+            StudySession(date=HIST[1], duration=60, subject=MARK),
+        ]
+    )
     db.commit()
 
     led = day_ledger(db, start_day=HIST[0], end_day=HIST[1])
@@ -235,13 +241,15 @@ def test_focus_minutes_only_from_study_sessions(db):
 def test_review_records_split_by_item_type(db):
     from models import ReviewRecord
 
-    db.add_all([
-        ReviewRecord(item_type="word", item_id=1, subject=MARK, created_at=_IN_WIN),
-        ReviewRecord(item_type="word", item_id=2, subject=MARK, created_at=_IN_WIN),
-        ReviewRecord(item_type="flashcard", item_id=3, subject=MARK, created_at=_IN_WIN),
-        ReviewRecord(item_type="knowledge", item_id=4, subject=MARK, created_at=_IN_WIN),
-        ReviewRecord(item_type="error", item_id=5, subject=MARK, created_at=_IN_WIN),
-    ])
+    db.add_all(
+        [
+            ReviewRecord(item_type="word", item_id=1, subject=MARK, created_at=_IN_WIN),
+            ReviewRecord(item_type="word", item_id=2, subject=MARK, created_at=_IN_WIN),
+            ReviewRecord(item_type="flashcard", item_id=3, subject=MARK, created_at=_IN_WIN),
+            ReviewRecord(item_type="knowledge", item_id=4, subject=MARK, created_at=_IN_WIN),
+            ReviewRecord(item_type="error", item_id=5, subject=MARK, created_at=_IN_WIN),
+        ]
+    )
     db.commit()
 
     led = day_ledger(db, start_day=HIST[0], end_day=HIST[0])
@@ -254,8 +262,9 @@ def test_tasks_counted_only_by_completed_at(db):
     """status=done 但没有 completed_at 的老数据不能算"今天完成"——那只是今天改过状态。"""
     from models import Task
 
-    done_today = Task(title="台账-已完成", subject=MARK, status="done",
-                      completed_at=datetime.datetime(2001, 3, 5, 2, 0))
+    done_today = Task(
+        title="台账-已完成", subject=MARK, status="done", completed_at=datetime.datetime(2001, 3, 5, 2, 0)
+    )
     stale = Task(title="台账-缺完成时间", subject=MARK, status="done", completed_at=None)
     db.add_all([done_today, stale])
     db.commit()
@@ -267,15 +276,46 @@ def test_tasks_counted_only_by_completed_at(db):
 def test_window_excludes_days_outside_range(db):
     from models import AnswerRecord
 
-    db.add_all([
-        AnswerRecord(created_at=datetime.datetime(2001, 2, 4, 2, 0), subject=MARK),
-        AnswerRecord(created_at=datetime.datetime(2001, 3, 5, 2, 0), subject=MARK),
-        AnswerRecord(created_at=datetime.datetime(2001, 4, 5, 2, 0), subject=MARK),
-    ])
+    db.add_all(
+        [
+            AnswerRecord(created_at=datetime.datetime(2001, 2, 4, 2, 0), subject=MARK),
+            AnswerRecord(created_at=datetime.datetime(2001, 3, 5, 2, 0), subject=MARK),
+            AnswerRecord(created_at=datetime.datetime(2001, 4, 5, 2, 0), subject=MARK),
+        ]
+    )
     db.commit()
 
     led = day_ledger(db, start_day=HIST[0], end_day=HIST[1])
     assert set(led) == {"2001-03-05"}, f"窗口外的日子漏进来了：{sorted(led)}"
+
+
+def test_pending_answers_are_excluded_from_daily_accuracy(db):
+    from models import AnswerRecord
+
+    db.add_all(
+        [
+            AnswerRecord(created_at=_IN_WIN, subject=MARK, is_correct=True),
+            AnswerRecord(created_at=_IN_WIN, subject=MARK, is_correct=False),
+            AnswerRecord(created_at=_IN_WIN, subject=MARK, is_correct=None),
+        ]
+    )
+    db.commit()
+
+    day = day_ledger(db, start_day=HIST[0], end_day=HIST[0])[HIST[0].isoformat()]
+    assert day.questions_done == 3
+    assert day.questions_correct == 1
+    assert day.questions_graded == 2
+    assert day.questions_pending == 1
+    assert day.correct_rate == 50.0
+
+    from services.learning_analytics_service import LearningAnalyticsService
+
+    diagnosis = LearningAnalyticsService(db).diagnose_weak_points(subject=MARK)
+    assert diagnosis["total_questions"] == 3
+    assert diagnosis["correct_answers"] == 1
+    assert diagnosis["graded_questions"] == 2
+    assert diagnosis["pending_questions"] == 1
+    assert diagnosis["correct_rate"] == 50.0
 
 
 def test_end_day_is_inclusive(db):
@@ -293,5 +333,4 @@ def test_end_day_is_inclusive(db):
 
 def test_empty_range_gives_empty_ledger(db):
     """空库基线：没有数据的日子不编造，台账为空让上层走空态。"""
-    assert day_ledger(db, start_day=datetime.date(1999, 1, 1),
-                      end_day=datetime.date(1999, 1, 3)) == {}
+    assert day_ledger(db, start_day=datetime.date(1999, 1, 1), end_day=datetime.date(1999, 1, 3)) == {}

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """临时诊断：逐题原始余弦 / 边距 / 融合置信，用于校准向量置信。"""
+
 import json
 import os
 import sys
@@ -30,7 +31,9 @@ def main():
     try:
         gold = json.load(open("scripts/data/quiz_classify_silver.json", encoding="utf-8"))
         embed_func, centroids = _load_vector_assets(db)
-        print(f"{'gold':<10}{'pred':<12}{'correct':>7}{'fused_conf':>11}{'top1_cos':>9}{'margin':>8}{'vec_softmax':>12}")
+        print(
+            f"{'gold':<10}{'pred':<12}{'correct':>7}{'fused_conf':>11}{'top1_cos':>9}{'margin':>8}{'vec_softmax':>12}"
+        )
         for g in gold:
             txt = g["content"]
             kw = _keyword_decision(txt)
@@ -42,14 +45,18 @@ def main():
             margin = top1c - top2c
             # softmax 与 classify 内部一致
             vals = np.array([v for v in cos.values()], dtype=np.float64)
-            w = np.exp(vals * 6.0); w /= w.sum()
-            sm = dict(zip(cos.keys(), w))
-            vec = {"value": top1, "conf": sm[top1], "source": "vector"}
+            w = np.exp(vals * 6.0)
+            w /= w.sum()
+            sm = dict(zip(cos.keys(), w, strict=False))
+            {"value": top1, "conf": sm[top1], "source": "vector"}
             from services.quiz_classifier_v2 import FieldDecision
+
             fvec = FieldDecision(top1, round(float(sm[top1]), 4), "vector")
             fused = _fuse_subject(kw, fvec, use_llm=False, text=txt, db=db)
             correct = "✓" if fused.value == g["subject"] else "✗"
-            print(f"{g['subject']:<10}{fused.value:<12}{correct:>7}{fused.confidence:>11.3f}{top1c:>9.3f}{margin:>8.3f}{sm[top1]:>12.3f}")
+            print(
+                f"{g['subject']:<10}{fused.value:<12}{correct:>7}{fused.confidence:>11.3f}{top1c:>9.3f}{margin:>8.3f}{sm[top1]:>12.3f}"
+            )
     finally:
         db.close()
 

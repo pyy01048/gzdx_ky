@@ -90,6 +90,7 @@ def test_guest_can_read_library_documents():
 
 def test_guest_document_content_readable_but_raw_denied():
     from database import SessionLocal
+
     from models import Document
 
     s = SessionLocal()
@@ -136,6 +137,7 @@ def test_guest_plan_calendar_without_goal_leak():
     若 plan.py 未对 user=None 显式短路，这里会读出探针用户的私人目标。
     """
     from database import SessionLocal
+
     from models import Goal, User
 
     s = SessionLocal()

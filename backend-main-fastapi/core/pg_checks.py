@@ -35,7 +35,11 @@ def not_blank_check(column: str, name: str) -> CheckConstraint:
 
 
 def jsonb_array_check(
-    column: str, name: str, min_len: int = 0, max_len: int = 64, elem: str = "object",
+    column: str,
+    name: str,
+    min_len: int = 0,
+    max_len: int = 64,
+    elem: str = "object",
 ) -> CheckConstraint:
     """JSON 数组结构门：必须是数组、长度在界内、首元素类型正确。"""
     return CheckConstraint(

@@ -68,14 +68,49 @@ function extractDetail(data, fallback) {
 
 /** 组合外部 signal 与超时 signal（任一触发即中断）。 */
 function composeSignals(external, controller) {
-  if (!external) return controller.signal
-  if (typeof AbortController === 'undefined') return controller.signal
+  const noop = () => {}
+  if (!external) return { signal: controller.signal, cleanup: noop }
+  if (external.aborted) {
+    controller.abort()
+    return { signal: controller.signal, cleanup: noop }
+  }
   const anyAbort = typeof AbortSignal !== 'undefined' && AbortSignal.any
-  if (anyAbort) return anyAbort([external, controller.signal])
+  if (anyAbort) return { signal: anyAbort([external, controller.signal]), cleanup: noop }
   const onAbort = () => controller.abort()
-  external.addEventListener('abort', onAbort)
-  controller.signal.addEventListener('abort', () => external.removeEventListener('abort', onAbort))
-  return controller.signal
+  external.addEventListener('abort', onAbort, { once: true })
+  let cleaned = false
+  const cleanup = () => {
+    if (cleaned) return
+    cleaned = true
+    external.removeEventListener('abort', onAbort)
+    controller.signal.removeEventListener('abort', cleanup)
+  }
+  controller.signal.addEventListener('abort', cleanup, { once: true })
+  return { signal: controller.signal, cleanup }
+}
+
+function abortError() {
+  if (typeof DOMException === 'function') return new DOMException('请求已取消', 'AbortError')
+  const error = new Error('请求已取消')
+  error.name = 'AbortError'
+  return error
+}
+
+function raceWithSignal(promise, signal) {
+  if (!signal) return promise
+  let onAbort
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(abortError())
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+  })
+  return Promise.race([promise, aborted]).finally(() => {
+    signal.removeEventListener('abort', onAbort)
+  })
+}
+
+function requestAbortedError(method, path) {
+  return new ApiError(`请求已取消：${method} ${path}`, { code: 'aborted' })
 }
 
 /**
@@ -93,14 +128,52 @@ export function fileUrl(path, params = {}) {
 
 // access 过期时并发请求共用同一次 refresh，避免 N 个 401 打出 N 次刷新
 let refreshing = null
-function refreshSession() {
+function refreshSession(signal) {
+  if (signal?.aborted) return Promise.reject(abortError())
   if (!refreshing) {
-    refreshing = fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'same-origin' })
-      .then((r) => r.ok)
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+    const timer = controller ? setTimeout(() => controller.abort(), DEFAULT_TIMEOUT) : null
+    const entry = { controller, promise: null, subscribers: 0, settled: false }
+    entry.promise = raceWithSignal(fetch(`${BASE}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      signal: controller?.signal,
+    }), controller?.signal)
+      .then((response) => response.ok)
       .catch(() => false)
-      .finally(() => { setTimeout(() => { refreshing = null }, 0) })
+      .finally(() => {
+        entry.settled = true
+        if (timer) clearTimeout(timer)
+        setTimeout(() => { if (refreshing === entry) refreshing = null }, 0)
+      })
+    refreshing = entry
   }
-  return refreshing
+
+  const entry = refreshing
+  entry.subscribers += 1
+  return new Promise((resolve, reject) => {
+    let done = false
+    const release = () => {
+      if (done) return
+      done = true
+      signal?.removeEventListener('abort', onAbort)
+      entry.subscribers -= 1
+      if (entry.subscribers === 0 && !entry.settled) {
+        entry.controller?.abort()
+        if (refreshing === entry) refreshing = null
+      }
+    }
+    const onAbort = () => {
+      release()
+      reject(abortError())
+    }
+    if (signal?.aborted) onAbort()
+    else signal?.addEventListener('abort', onAbort, { once: true })
+    entry.promise.then(
+      (value) => { release(); resolve(value) },
+      (error) => { release(); reject(error) },
+    )
+  })
 }
 
 // 精确路径：这些接口的 401 是业务语义（登录失败/刷新失败），不是 session 过期信号
@@ -269,13 +342,18 @@ async function request(path, options = {}) {
     opts.body = JSON.stringify(body)
   }
 
+  if (externalSignal?.aborted) throw requestAbortedError(method, path)
+
   // ---- 超时控制 ----
   const useTimeout = Number(timeout) > 0 && typeof AbortController !== 'undefined'
   const controller = useTimeout ? new AbortController() : null
   let timedOut = false
   let timer = null
+  let cleanupSignal = () => {}
   if (controller) {
-    opts.signal = composeSignals(externalSignal, controller)
+    const combined = composeSignals(externalSignal, controller)
+    opts.signal = combined.signal
+    cleanupSignal = combined.cleanup
     timer = setTimeout(() => {
       timedOut = true
       controller.abort()
@@ -286,8 +364,11 @@ async function request(path, options = {}) {
 
   let resp
   try {
-    resp = await fetch(url, opts)
+    if (opts.signal?.aborted) throw abortError()
+    resp = await raceWithSignal(fetch(url, opts), opts.signal)
   } catch (e) {
+    if (timer) clearTimeout(timer)
+    cleanupSignal()
     if (timedOut) {
       noteFailure(path, 0)
       throw new ApiError(`请求超时（${Math.round(Number(timeout) / 1000)}s）：${method} ${path}`, {
@@ -296,39 +377,61 @@ async function request(path, options = {}) {
     }
     // 调用方主动取消
     if (e && (e.name === 'AbortError' || externalSignal?.aborted)) {
-      throw new ApiError(`请求已取消：${method} ${path}`, { code: 'aborted' })
+      throw requestAbortedError(method, path)
     }
     noteFailure(path, 0)
     throw new ApiError(`网络异常，无法连接后端服务：${method} ${path}（${e?.message || e}）`, {
       code: 'network',
     })
-  } finally {
-    if (timer) clearTimeout(timer)
   }
 
   let data = null
   try {
-    data = await resp.json()
-  } catch {
+    if (opts.signal?.aborted) throw abortError()
+    data = await raceWithSignal(resp.json(), opts.signal)
+  } catch (e) {
+    if (timedOut) {
+      noteFailure(path, 0)
+      throw new ApiError(`请求超时（${Math.round(Number(timeout) / 1000)}s）：${method} ${path}`, {
+        code: 'timeout',
+      })
+    }
+    if (e && (e.name === 'AbortError' || externalSignal?.aborted)) {
+      throw requestAbortedError(method, path)
+    }
     /* 无 JSON 体（204 / 空响应 / HTML 错误页 / 反代返回空体）时返回 null。
      *
      * 契约说明（务必阅读，勿改成返回 {}）：
      * - 返回 null 而非 {}，是为了让下游 `if (!data)` / `data?.x` 这类falsy 守卫生效；
      *   {} 是 truthy，会使这些守卫失效，反而把问题推到更深处的 .map崩溃。
      * - 因此**成功无体时也会 resolve(null) 而不 reject**，调用方必须防御 null：
-     *     const d = await api.get(); if (!d) { /* 降级 *\/ }else { d.items.map(...) }
+     *     const d = await api.get(); if (!data) { /* 降级 *\/ }else { d.items.map(...) }
      * - 保持 null 的另一个理由：向后兼容。既有调用方（如 Words.jsx 的
      *   `backendDecks && backendDecks.length`）已按null 语义编写。
      * 错误场景（非 2xx）由下方 !resp.ok 分支抛出带人类可读 message 的 ApiError。
      */
     data = null
+  } finally {
+    if (timer) clearTimeout(timer)
+    cleanupSignal()
   }
   if (!resp.ok) {
     const authPath = isNoRefreshPath(path)
     if (resp.status === 401 && !authPath) {
-      if (!_retried && await refreshSession()) {
-        return request(path, { ...options, _retried: true })
+      if (externalSignal?.aborted) throw requestAbortedError(method, path)
+      if (!_retried) {
+        let refreshed = false
+        try {
+          refreshed = await refreshSession(externalSignal)
+        } catch (e) {
+          if (externalSignal?.aborted || e?.name === 'AbortError') {
+            throw requestAbortedError(method, path)
+          }
+        }
+        if (externalSignal?.aborted) throw requestAbortedError(method, path)
+        if (refreshed) return request(path, { ...options, _retried: true })
       }
+      if (externalSignal?.aborted) throw requestAbortedError(method, path)
       window.dispatchEvent(new CustomEvent('auth:required', { detail: data }))
     } else if (resp.status === 403 && data?.code === 'PASSWORD_CHANGE_REQUIRED') {
       window.dispatchEvent(new CustomEvent('auth:password-change', { detail: data }))
@@ -380,6 +483,11 @@ export async function aiChatStream(body, { onDelta, signal, timeout = AI_TIMEOUT
   const controller = useTimeout ? new AbortController() : null
   let timedOut = false
   let timer = null
+  let cleanupSignal = () => {}
+  const cleanup = () => {
+    if (timer) clearTimeout(timer)
+    cleanupSignal()
+  }
   const opts = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -387,7 +495,9 @@ export async function aiChatStream(body, { onDelta, signal, timeout = AI_TIMEOUT
     body: JSON.stringify(body || {}),
   }
   if (controller) {
-    opts.signal = composeSignals(signal, controller)
+    const combined = composeSignals(signal, controller)
+    opts.signal = combined.signal
+    cleanupSignal = combined.cleanup
     timer = setTimeout(() => { timedOut = true; controller.abort() }, Number(timeout))
   } else if (signal) {
     opts.signal = signal
@@ -395,8 +505,9 @@ export async function aiChatStream(body, { onDelta, signal, timeout = AI_TIMEOUT
 
   let resp
   try {
-    resp = await fetch(url, opts)
+    resp = await raceWithSignal(fetch(url, opts), opts.signal)
   } catch (e) {
+    cleanup()
     if (timedOut) {
       throw new ApiError(`AI 响应超时（${Math.round(Number(timeout) / 1000)}s）`, { code: 'network' })
     }
@@ -404,13 +515,22 @@ export async function aiChatStream(body, { onDelta, signal, timeout = AI_TIMEOUT
       throw new ApiError('AI 请求已取消', { code: 'aborted' })
     }
     throw new ApiError(`网络异常，无法连接 AI 服务（${e?.message || e}）`, { code: 'network' })
-  } finally {
-    if (timer) clearTimeout(timer)
   }
 
   if (!resp.ok) {
     let data = null
-    try { data = await resp.json() } catch { data = null }
+    try {
+      data = await raceWithSignal(resp.json(), opts.signal)
+    } catch (e) {
+      cleanup()
+      if (timedOut) {
+        throw new ApiError(`AI 响应超时（${Math.round(Number(timeout) / 1000)}s）`, { code: 'network' })
+      }
+      if (e && (e.name === 'AbortError' || signal?.aborted)) {
+        throw new ApiError('AI 请求已取消', { code: 'aborted' })
+      }
+    }
+    cleanup()
     if (resp.status === 401) {
       window.dispatchEvent(new CustomEvent('auth:required', { detail: data }))
     }
@@ -423,13 +543,28 @@ export async function aiChatStream(body, { onDelta, signal, timeout = AI_TIMEOUT
 
   // 没有 ReadableStream（老浏览器 / 反代缓冲了整条流）时不能静默返回空串
   if (!resp.body || typeof resp.body.getReader !== 'function') {
+    cleanup()
     throw new ApiError('当前环境不支持流式响应，AI 未返回任何内容', { code: 'ai_empty_stream' })
   }
 
-  const reader = resp.body.getReader()
-  const decoder = new TextDecoder()
+  let reader
+  let decoder
+  try {
+    reader = resp.body.getReader()
+    decoder = new TextDecoder()
+  } catch (e) {
+    if (reader && typeof reader.cancel === 'function') {
+      try { void Promise.resolve(reader.cancel()).catch(() => {}) } catch { /* 底层流已终止 */ }
+    }
+    if (reader && typeof reader.releaseLock === 'function') {
+      try { reader.releaseLock() } catch { /* reader 已释放 */ }
+    }
+    cleanup()
+    throw new ApiError(`AI 流式连接初始化失败（${e?.message || e}）`, { code: 'network' })
+  }
   let buf = ''
   let full = ''
+  let completed = false
 
   const handleEvent = (ev) => {
     if (!ev || typeof ev !== 'object') return
@@ -452,8 +587,11 @@ export async function aiChatStream(body, { onDelta, signal, timeout = AI_TIMEOUT
 
   try {
     for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
+      const { done, value } = await raceWithSignal(reader.read(), opts.signal)
+      if (done) {
+        completed = true
+        break
+      }
       buf += decoder.decode(value, { stream: true })
       let idx
       while ((idx = buf.indexOf('\n')) >= 0) {
@@ -472,10 +610,20 @@ export async function aiChatStream(body, { onDelta, signal, timeout = AI_TIMEOUT
     }
   } catch (e) {
     if (e instanceof ApiError) throw e
+    if (timedOut) {
+      throw new ApiError(`AI 响应超时（${Math.round(Number(timeout) / 1000)}s）`, { code: 'network' })
+    }
     if (e && e.name === 'AbortError') throw new ApiError('AI 请求已取消', { code: 'aborted' })
     throw new ApiError(`AI 流式连接中断（${e?.message || e}）`, { code: 'network' })
   } finally {
-    reader.releaseLock()
+    if (!completed && typeof reader.cancel === 'function') {
+      try { void Promise.resolve(reader.cancel()).catch(() => {}) } catch { /* 底层流已终止 */ }
+    }
+    try {
+      reader.releaseLock()
+    } finally {
+      cleanup()
+    }
   }
 
   // 200 但一个 delta 都没有：显式报空流，而不是让调用方拿到空串后静默
@@ -511,10 +659,11 @@ function pageItems(resp, aliasKeys) {
 /**
  * 逐页取回一个分页端点的全部条目。
  *
- * @param {(params: {page: number, page_size: number}) => Promise<any>} fetchPage 单页请求
- * @param {{keys?: string[], pageSize?: number, maxItems?: number}} [opts]
+ * @param {(params: {page: number, page_size: number}, signal?: AbortSignal) => Promise<any>} fetchPage 单页请求
+ * @param {{keys?: string[], pageSize?: number, maxItems?: number, signal?: AbortSignal}} [opts]
  *        keys      —— items 之外的条目字段别名（部分老端点用 questions/errors/cards）；
- *        maxItems  —— 安全上限，total 异常或后端返回巨大页数时不至于无限翻页。
+ *        maxItems  —— 安全上限，total 异常或后端返回巨大页数时不至于无限翻页；
+ *        signal    —— 取消分页请求；单页回调以第二参数接收。
  * @returns {Promise<any[]>} 全部条目（顺序 = 后端分页顺序）
  */
 export async function fetchAllPages(fetchPage, opts = {}) {
@@ -524,7 +673,9 @@ export async function fetchAllPages(fetchPage, opts = {}) {
   const out = []
   let page = 1
   for (;;) {
-    const resp = await fetchPage({ page, page_size: pageSize })
+    if (opts.signal?.aborted) throw new DOMException('分页请求已取消', 'AbortError')
+    const resp = await fetchPage({ page, page_size: pageSize }, opts.signal)
+    if (opts.signal?.aborted) throw new DOMException('分页请求已取消', 'AbortError')
     out.push(...pageItems(resp, aliasKeys))
     if (Array.isArray(resp)) break // 无分页壳：这一包就是全量
     const pages = typeof resp?.total_pages === 'number'
@@ -541,7 +692,7 @@ export const dashboardApi = {
   /** 首屏唯一聚合出口（D-01…D-11）：倒计时/目标/KPI/进度环/热力图/趋势/未来负荷 */
   summary: () => request('/dashboard/summary'),
   get: () => request('/dashboard'),
-  countdown: () => request('/dashboard/countdown'),
+  countdown: (options = {}) => request('/dashboard/countdown', options),
   todayTasks: () => request('/dashboard/today-tasks'),
   stats: () => request('/dashboard/stats'),
   weakness: () => request('/dashboard/weakness'),
@@ -557,7 +708,7 @@ export const insightApi = {
 
 /* ---------------- Tasks 任务 ---------------- */
 export const tasksApi = {
-  list: (params) => request('/tasks', { params }),
+  list: (params, options = {}) => request('/tasks', { ...options, params }),
   create: (body) => request('/tasks', { method: 'POST', body }),
   update: (id, body) => request(`/tasks/${id}`, { method: 'PUT', body }),
   remove: (id) => request(`/tasks/${id}`, { method: 'DELETE' }),
@@ -579,7 +730,7 @@ export const tasksApi = {
    故该接口单独放宽到 90s；其余接口沿用 DEFAULT_TIMEOUT。 */
 /* ---------------- Goals 目标 ---------------- */
 export const goalsApi = {
-  list: () => request('/goals'),
+  list: (options = {}) => request('/goals', options),
   update: (body) => request('/goals', { method: 'PUT', body }),
   // 备考科目配置（考试口径 + 专业课支撑）
   subjects: () => request('/goals/subjects'),
@@ -593,7 +744,46 @@ export const goalsApi = {
   strategy: () => request('/goals/strategy', { timeout: AI_TIMEOUT })
 }
 
+/* ---------------- 工科08学习空间 ---------------- */
+export const engineering08Api = {
+  catalog: () => request('/kaoyan/engineering-08/catalog'),
+  questions: (params, options = {}) => request('/kaoyan/engineering-08/questions', { ...options, params }),
+}
+
 /* ---------------- Quiz 刷题中心 ---------------- */
+export const personalQuestionBankApi = {
+  sets: (params) => request('/quiz/personal/sets', { params }),
+  createSet: (body) => request('/quiz/personal/sets', { method: 'POST', body }),
+  updateSet: (id, body) => request(`/quiz/personal/sets/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteSet: (id) => request(`/quiz/personal/sets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  addQuestion: (setId, questionId) => request(`/quiz/personal/sets/${encodeURIComponent(setId)}/items`, {
+    method: 'POST', body: { question_id: questionId },
+  }),
+  removeQuestion: (setId, questionId) => request(`/quiz/personal/sets/${encodeURIComponent(setId)}/items/${encodeURIComponent(questionId)}`, {
+    method: 'DELETE',
+  }),
+  questions: (params) => request('/quiz/personal/questions', { params }),
+  createQuestion: (body) => request('/quiz/personal/questions', { method: 'POST', body }),
+  updateQuestion: (id, body) => request(`/quiz/personal/questions/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteQuestion: (id) => request(`/quiz/personal/questions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  setMastery: (id, state) => request(`/quiz/personal/questions/${encodeURIComponent(id)}/mastery`, {
+    method: 'PUT', body: { mastery_state: state },
+  }),
+  practice: (params) => request('/quiz/personal/practice', { params }),
+  createPracticeSession: (body) => request('/quiz/personal/practice/sessions', { method: 'POST', body }),
+  submit: (body) => request('/quiz/submit', { method: 'POST', body }),
+  publicQuestions: async (params) => {
+    const data = await request('/quiz/questions', { params: { ...params, public_only: true } })
+    const items = Array.isArray(data) ? data : (data?.questions || data?.items || [])
+    return {
+      items,
+      total: Number(data?.total ?? data?.total_count ?? items.length),
+      page: Number(data?.page || 1),
+      page_size: Number(data?.page_size || 20),
+    }
+  },
+}
+
 export const quizApi = {
   list: (params) => request('/quiz/questions', { params }),
   questions: (params) => request('/quiz/questions', { params }),
@@ -602,6 +792,13 @@ export const quizApi = {
 
   remove: (id) => request(`/quiz/questions/${id}`, { method: 'DELETE' }),
   submit: (body) => request('/quiz/submit', { method: 'POST', body }),
+  questionDetail: (id) => request(`/quiz/questions/${encodeURIComponent(id)}`),
+  questionEvidence: (id) => request(`/quiz/questions/${encodeURIComponent(id)}/evidence`),
+  createSession: (body) => request('/quiz/sessions', { method: 'POST', body }),
+  getSession: (id) => request(`/quiz/sessions/${encodeURIComponent(id)}`),
+  latestSession: () => request('/quiz/sessions/latest'),
+  patchSession: (id, body) => request(`/quiz/sessions/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  completeSession: (id) => request(`/quiz/sessions/${encodeURIComponent(id)}/complete`, { method: 'POST' }),
   modes: () => request('/quiz/modes'),
   stats: () => request('/quiz/stats'),
   subjects: () => request('/quiz/subjects'),
@@ -714,7 +911,7 @@ export const errorsApi = {
   exportPdf: (params) => downloadBlob('/errors/export-pdf', params, `错题本_${new Date().toISOString().slice(0, 10)}.pdf`),
   batchDelete: (ids) => request('/errors/batch-delete', { method: 'POST', body: ids }),
 
-  list: (params) => request('/errors', { params }),
+  list: (params, options = {}) => request('/errors', { ...options, params }),
   get: (id) => request(`/errors/${id}`),
   // 错题统计（唯一口径：与仪表盘 stats.active_errors/due_errors 同一聚合函数）
   stats: (params) => request('/errors/stats', { params }),
@@ -733,7 +930,7 @@ export const errorsApi = {
 
 /* ---------------- Flashcards 记忆卡片 ---------------- */
 export const flashcardsApi = {
-  list: (params) => request('/flashcards', { params }),
+  list: (params, options = {}) => request('/flashcards', { ...options, params }),
   create: (body) => request('/flashcards', { method: 'POST', body }),
   batchCreate: (body) => request('/flashcards/batch', { method: 'POST', body }),
   review: (id, body) => request(`/flashcards/${id}/review`, { method: 'PUT', body }),
@@ -808,7 +1005,7 @@ export const netdiskApi = {
   // token 生命周期：过期时间与手动刷新
   tokenStatus: () => request('/netdisk/token-status'),
   refreshToken: () => request('/netdisk/refresh-token', { method: 'POST' }),
-  files: (params) => request('/netdisk/files', { params }),
+  files: (params, options = {}) => request('/netdisk/files', { ...options, params }),
   // 找资料：递归列目录 + 关键词搜索（考研资料目录层级深，搜索是主入口）
   recursiveFiles: (path = '/', maxItems = 2000) =>
     request('/netdisk/recursive-files', { params: { path, max_items: maxItems } }),
@@ -846,7 +1043,7 @@ export const statsApi = {
 }
 
 export const aiApi = {
-  providers: () => request('/ai/providers'),
+  providers: (options = {}) => request('/ai/providers', options),
   saveProvider: (body) => request('/ai/providers', { method: 'POST', body }),
   updateProvider: (id, body) => request(`/ai/providers/${id}`, { method: 'PUT', body }),
   removeProvider: (id) => request(`/ai/providers/${id}`, { method: 'DELETE' }),
@@ -925,7 +1122,7 @@ export const wordsApi = {
   createDeck: (body) => request('/words/decks', { method: 'POST', body }),
   deleteDeck: (id) => request(`/words/decks/${id}`, { method: 'DELETE' }),
   // 单词CRUD
-  list: (params) => request('/words', { params }),
+  list: (params, options = {}) => request('/words', { ...options, params }),
   get: (id) => request(`/words/${id}`),
   create: (body) => request('/words', { method: 'POST', body }),
   update: (id, body) => request(`/words/${id}`, { method: 'PUT', body }),
@@ -1180,7 +1377,7 @@ export const examApi = {
 
 /* ---------------- 聚合导出 ---------------- */
 export default {
-  dashboardApi, tasksApi, goalsApi, quizApi, errorsApi, flashcardsApi,
+  dashboardApi, tasksApi, goalsApi, quizApi, engineering08Api, personalQuestionBankApi, errorsApi, flashcardsApi,
   documentsApi, netdiskApi, importsApi, aiApi, customizationApi, plannerApi, wordsApi,
   studyApi, taxonomyApi, reviewApi, systemApi, kbApi, analysisApi, quizSectionApi, paperApi, planningApi,
   kbImportApi, qualityApi, favoritesApi, growthApi, examApi, recommendApi

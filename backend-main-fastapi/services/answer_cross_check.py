@@ -8,6 +8,7 @@ A6 答案交叉校验（services/answer_cross_check.py）
 answer_candidates 四态来源：bank | extracted | llm | user_confirmed
 confidence 0.0~1.0；used_for_grading 仅高置信度参与自动判分与正确率统计。
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,8 +23,10 @@ from services.dbapi_compat import wrap_conn
 try:
     from services.llm_output import looks_like_chain_of_thought  # 复用思维链检测
 except Exception:  # pragma: no cover
+
     def looks_like_chain_of_thought(_t):  # type: ignore
         return False
+
 
 # 答案来源取值：**必须与 DB 的 answer_source 枚举严格一致**。
 # 权威定义见 core/pg_types.py 的 ENUM_CATALOG["answer_source"] 与
@@ -115,9 +118,7 @@ def _consistency_score(a: str, b: str) -> float:
 # --------------------------------------------------------------------------- #
 def _source_from_bank(db, question_id: int) -> Optional[Dict[str, Any]]:
     conn = wrap_conn(db.connection().connection)
-    row = conn.execute(
-        "SELECT id, answer, analysis FROM quiz_questions WHERE id = ?", (question_id,)
-    ).fetchone()
+    row = conn.execute("SELECT id, answer, analysis FROM quiz_questions WHERE id = ?", (question_id,)).fetchone()
     if not row or not (row[1] or "").strip():
         return None
     return {"source": SOURCE_BANK, "answer": row[1], "explanation": row[2] or "", "confidence": 0.9}
@@ -141,7 +142,7 @@ def _source_from_exam_engine(db, question_id: int, query: str) -> Optional[Dict[
         row = conn.execute(
             "SELECT year, external_id, subject FROM quiz_questions WHERE id = ?", (question_id,)
         ).fetchone()
-        year = row[0] if row else None
+        row[0] if row else None
         ext = row[1] if row else None
         subj = row[2] if row else None
         # 非公共课（电子类/专业课/真题综合）索引无覆盖：不再回落，直接放弃证据
@@ -172,9 +173,20 @@ _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 #: AI 回填失败时的兜底话术（不是真实答案，不能当证据/基准）
 _BANK_FAILURE_PHRASES = (
-    "错误", "题目错误", "题目信息错误", "题目描述存在矛盾", "题目信息不完整",
-    "题目存在错误", "题面存在错误", "题面信息错误",
-    "无法判断", "无法确定", "无法作答", "信息不足", "资料缺失", "题干缺失",
+    "错误",
+    "题目错误",
+    "题目信息错误",
+    "题目描述存在矛盾",
+    "题目信息不完整",
+    "题目存在错误",
+    "题面存在错误",
+    "题面信息错误",
+    "无法判断",
+    "无法确定",
+    "无法作答",
+    "信息不足",
+    "资料缺失",
+    "题干缺失",
 )
 
 
@@ -186,9 +198,7 @@ def _strip_letter_prefix(text: str) -> str:
     """
     if not text:
         return text
-    return re.sub(
-        r"^\s*[A-Da-d]\s*[.、:：)）]\s*", "", str(text)
-    )
+    return re.sub(r"^\s*[A-Da-d]\s*[.、:：)）]\s*", "", str(text))
 
 
 def _strip_letter_prefixes_all(text: str) -> str:
@@ -199,9 +209,7 @@ def _strip_letter_prefixes_all(text: str) -> str:
     """
     if not text:
         return text
-    return re.sub(
-        r"(?:^|[\s，,。;；、])[A-Ea-e]\s*[.、:：)）]", "", str(text)
-    )
+    return re.sub(r"(?:^|[\s，,。;；、])[A-Ea-e]\s*[.、:：)）]", "", str(text))
 
 
 def _clean_llm_answer(ans: str) -> Optional[str]:
@@ -215,7 +223,7 @@ def _clean_llm_answer(ans: str) -> Optional[str]:
     t = _THINK_BLOCK_RE.sub("", ans).strip()
     if not t:
         return None
-    if "<think" in t.lower():          # 未闭合的 <think> 块同样视为污染
+    if "<think" in t.lower():  # 未闭合的 <think> 块同样视为污染
         return None
     if looks_like_chain_of_thought(t):
         return None
@@ -290,6 +298,7 @@ def cross_check_question(
 
     ensure_module_a_schema(db)
     from services.db_retry import exec_retry
+
     conn = wrap_conn(db.connection().connection)
     row = conn.execute(
         "SELECT id, content, answer, answer_type, year, external_id FROM quiz_questions WHERE id = ?",
@@ -298,9 +307,9 @@ def cross_check_question(
     if not row:
         return {"question_id": question_id, "error": "question not found"}
     content = row[1] or ""
-    bank_answer = row[2] or ""
+    row[2] or ""
     answer_type = row[3] or "objective"
-    ext = row[5]
+    row[5]
 
     sources: List[Dict[str, Any]] = []
     bank_src = _source_from_bank(db, question_id)
@@ -318,16 +327,12 @@ def cross_check_question(
     # check_batch 对此类题显式开 use_llm。
     bank_is_ai = False
     try:
-        row_ai = conn.execute(
-            "SELECT ai_generated FROM quiz_questions WHERE id = ?", (question_id,)
-        ).fetchone()
+        row_ai = conn.execute("SELECT ai_generated FROM quiz_questions WHERE id = ?", (question_id,)).fetchone()
         bank_is_ai = bool(row_ai and row_ai[0])
     except Exception as _exc:  # noqa: BLE001
         # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
         # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-        logging.getLogger(__name__).warning(
-            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-        )
+        logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
     if use_llm and (len(sources) <= 1 or (bank_is_ai and len(sources) < 2)):
         llm_src = _source_from_llm(db, question_id, query or content, answer_type)
         if llm_src:
@@ -348,9 +353,7 @@ def cross_check_question(
 
     if len(sources) <= 1:
         # 单源不足以校验：若此前被误标为 verify（假冲突），恢复为未校验
-        old_conf = conn.execute(
-            "SELECT confidence FROM quiz_questions WHERE id = ?", (question_id,)
-        ).fetchone()
+        old_conf = conn.execute("SELECT confidence FROM quiz_questions WHERE id = ?", (question_id,)).fetchone()
         if old_conf and old_conf[0] == "verify":
             exec_retry(
                 conn,
@@ -421,9 +424,15 @@ def cross_check_question(
                 used_for_grading = ?, verified_by = ?, verified_at = ?
                 WHERE id = ?
                 """,
-                (s["answer"], s["explanation"] or "", s["confidence"],
-                 1 if s["confidence"] >= 0.7 else 0,
-                 "cross_check", _now_str(), exists[0]),
+                (
+                    s["answer"],
+                    s["explanation"] or "",
+                    s["confidence"],
+                    1 if s["confidence"] >= 0.7 else 0,
+                    "cross_check",
+                    _now_str(),
+                    exists[0],
+                ),
             )
         else:
             exec_retry(
@@ -433,8 +442,16 @@ def cross_check_question(
                 (question_id, answer, explanation, confidence, source, used_for_grading, verified_by, verified_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (question_id, s["answer"], s["explanation"] or "", s["confidence"],
-                 s["source"], 1 if s["confidence"] >= 0.7 else 0, "cross_check", _now_str()),
+                (
+                    question_id,
+                    s["answer"],
+                    s["explanation"] or "",
+                    s["confidence"],
+                    s["source"],
+                    1 if s["confidence"] >= 0.7 else 0,
+                    "cross_check",
+                    _now_str(),
+                ),
             )
 
     # 来源冲突 → quiz_questions.confidence='verify'
@@ -451,13 +468,16 @@ def cross_check_question(
     if conflicts:
         try:
             from services.confidence_service import register_conflict
+
             by_src = {s["source"]: s for s in sources}
             for sa, sb in conflicts[:4]:  # 最多登记前 4 对，避免队列爆炸
                 register_conflict(
-                    db, question_id,
+                    db,
+                    question_id,
                     answer_a=by_src.get(sa, {}).get("answer", ""),
                     answer_b=by_src.get(sb, {}).get("answer", ""),
-                    source_a=sa, source_b=sb,
+                    source_a=sa,
+                    source_b=sb,
                     confidence_a=by_src.get(sa, {}).get("confidence", 0.0),
                     confidence_b=by_src.get(sb, {}).get("confidence", 0.0),
                     suggested_winner=final.get("best_source"),
@@ -490,12 +510,11 @@ def check_batch(
         # medium（已有 bank/extracted 候选、历史已校验过）默认跳过，避免每批
         # 几百题全量 LLM 串行导致 504 —— 需要重跑时可显式传 question_ids。
         from services.module_a_schema import ensure_module_a_schema
+
         ensure_module_a_schema(db)
         conn = wrap_conn(db.connection().connection)
         rows = conn.execute(
-            "SELECT id FROM quiz_questions "
-            "WHERE confidence IS NULL OR confidence = 'verify' "
-            "ORDER BY id LIMIT ?",
+            "SELECT id FROM quiz_questions WHERE confidence IS NULL OR confidence = 'verify' ORDER BY id LIMIT ?",
             (limit,),
         ).fetchall()
         ids = [r[0] for r in rows]
@@ -506,20 +525,17 @@ def check_batch(
         # 已核验为 high / verify / medium 的题：跳过，不重跑 LLM
         try:
             from services.module_a_schema import ensure_module_a_schema
+
             ensure_module_a_schema(db)
             conn = wrap_conn(db.connection().connection)
-            row = conn.execute(
-                "SELECT confidence FROM quiz_questions WHERE id = ?", (qid,)
-            ).fetchone()
+            row = conn.execute("SELECT confidence FROM quiz_questions WHERE id = ?", (qid,)).fetchone()
             if row and row[0] in ("high", "verify", "medium"):
                 skipped += 1
                 continue
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
         out.append(cross_check_question(db, qid, use_llm=use_llm))
     checked = [x for x in out if x.get("checked")]
     return {
@@ -530,6 +546,7 @@ def check_batch(
         "details": out,
     }
 
+
 def stats(db) -> Dict[str, Any]:
     """答案校验统计。"""
     from services.module_a_schema import ensure_module_a_schema
@@ -539,20 +556,14 @@ def stats(db) -> Dict[str, Any]:
     total_candidates = conn.execute("SELECT COUNT(*) FROM answer_candidates").fetchone()[0]
     by_source = {}
     for src in (SOURCE_BANK, SOURCE_EXTRACTED, SOURCE_LLM, SOURCE_USER):
-        n = conn.execute(
-            "SELECT COUNT(*) FROM answer_candidates WHERE source = ?", (src,)
-        ).fetchone()[0]
+        n = conn.execute("SELECT COUNT(*) FROM answer_candidates WHERE source = ?", (src,)).fetchone()[0]
         by_source[src] = n
-    graded = conn.execute(
-        "SELECT COUNT(*) FROM answer_candidates WHERE used_for_grading = TRUE"
-    ).fetchone()[0]
+    graded = conn.execute("SELECT COUNT(*) FROM answer_candidates WHERE used_for_grading = TRUE").fetchone()[0]
     # 枚举口径：confidence 在 PG 是 ENUM('high','medium','low')（SQLite 时期是
     # 任意 TEXT，历史代码写的 'verify' 在 PG 下直接
     # ``invalid input value for enum confidence_level: "verify"``，整个
     # /api/answers/stats 因此 500）。"待核验"对应低置信度 low。
-    verify_cnt = conn.execute(
-        "SELECT COUNT(*) FROM quiz_questions WHERE confidence = 'low'"
-    ).fetchone()[0]
+    verify_cnt = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE confidence = 'low'").fetchone()[0]
     return {
         "total_candidates": total_candidates,
         "by_source": by_source,

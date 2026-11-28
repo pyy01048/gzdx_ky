@@ -10,6 +10,14 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
+from utils.scope import owner_id, scoped  # B4 行级隔离：scoped 查询过滤 / owner_id 写入归属
+from utils.security import current_user
+from utils.timeutil import local_today, to_naive_utc, utcnow  # 统一 naive UTC 时间规范（P0-4）
+
 from models import (
     DailyPlan,
     EarlyBirdRecord,
@@ -19,13 +27,6 @@ from models import (
     User,
     WeekPlan,
 )
-from pydantic import BaseModel
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-from sqlalchemy.orm.attributes import flag_modified
-from utils.scope import owner_id, scoped  # B4 行级隔离：scoped 查询过滤 / owner_id 写入归属
-from utils.security import current_user
-from utils.timeutil import local_today, to_naive_utc, utcnow  # 统一 naive UTC 时间规范（P0-4）
 
 router = APIRouter(prefix="/api/planner", tags=["planner"])
 
@@ -72,6 +73,7 @@ class DailyPlanUpdate(BaseModel):
 
 class EbbinghausCycle(BaseModel):
     """自定义复习周期点。offset_minutes 表示相对学习时间的偏移分钟数（1天=1440）。"""
+
     label: str
     offset_minutes: int
 
@@ -87,13 +89,15 @@ class EbbinghausCreate(BaseModel):
 
 class EbbinghausReviewTimeUpdate(BaseModel):
     """修改某个复习点的时间。"""
-    key: str          # 周期 key（默认列名 review_5min 或自定义 c1/c2/...）
+
+    key: str  # 周期 key（默认列名 review_5min 或自定义 c1/c2/...）
     review_time: str  # ISO 时间
     label: Optional[str] = None
 
 
 class EbbinghausCyclesUpdate(BaseModel):
     """整体重排复习节奏：按新周期列表重新生成所有复习时间点。"""
+
     cycles: list[EbbinghausCycle]
 
 
@@ -144,7 +148,9 @@ async def get_daily_plan(date: str, db: Session = Depends(get_db), user: User = 
 
 
 @router.post("/daily")
-async def create_or_update_daily_plan(data: DailyPlanCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def create_or_update_daily_plan(
+    data: DailyPlanCreate, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """创建或更新日计划。"""
     try:
         d = datetime.date.fromisoformat(data.date)
@@ -183,7 +189,9 @@ async def create_or_update_daily_plan(data: DailyPlanCreate, db: Session = Depen
 
 
 @router.get("/daily/range")
-async def get_daily_plans_range(start: str, end: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def get_daily_plans_range(
+    start: str, end: str, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """获取日期范围内的日计划列表。"""
     try:
         s = datetime.date.fromisoformat(start)
@@ -265,20 +273,24 @@ async def create_ebbinghaus(data: EbbinghausCreate, db: Session = Depends(get_db
         cycle_config = [{"key": k, "label": label, "offset_minutes": off} for k, label, off in cycles]
     else:
         cycles = DEFAULT_EBBINGHAUS_CYCLES
-        cycle_config = [{"key": CYCLE_KEY_BY_COLUMN[col], "label": label, "offset_minutes": off}
-                         for col, label, off in DEFAULT_EBBINGHAUS_CYCLES]
+        cycle_config = [
+            {"key": CYCLE_KEY_BY_COLUMN[col], "label": label, "offset_minutes": off}
+            for col, label, off in DEFAULT_EBBINGHAUS_CYCLES
+        ]
 
     # 生成复习时间点
     review_times = []
     for col, label, offset_minutes in cycles:
         review_time = learn_dt + datetime.timedelta(minutes=offset_minutes)
         key = CYCLE_KEY_BY_COLUMN.get(col, f"custom_{col}") if col.startswith("review_") else col
-        review_times.append({
-            "key": key,
-            "label": label,
-            "time": review_time.isoformat(),
-            "done": False,
-        })
+        review_times.append(
+            {
+                "key": key,
+                "label": label,
+                "time": review_time.isoformat(),
+                "done": False,
+            }
+        )
 
     # 默认九列回填（兼容旧逻辑）
     col_values = {}
@@ -308,25 +320,16 @@ async def create_ebbinghaus(data: EbbinghausCreate, db: Session = Depends(get_db
 
 
 @router.post("/ebbinghaus/{item_id}/review/{cycle}")
-async def review_ebbinghaus(item_id: int, cycle: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def review_ebbinghaus(
+    item_id: int, cycle: str, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """打卡某个复习周期（支持默认 9 点与自定义周期 key）。"""
     item = db.query(EbbinghausItem).filter(EbbinghausItem.id == item_id, scoped(EbbinghausItem, user)).first()
     if not item:
         raise HTTPException(status_code=404, detail="条目不存在")
 
     now = utcnow()
-    cycle_map = {
-        "5min": "review_5min",
-        "30min": "review_30min",
-        "12h": "review_12h",
-        "1d": "review_1d",
-        "2d": "review_2d",
-        "4d": "review_4d",
-        "7d": "review_7d",
-        "15d": "review_15d",
-        "1m": "review_1m",
-    }
-    field = cycle_map.get(cycle)
+    field = COLUMN_BY_CYCLE_KEY.get(cycle)
     if field:
         setattr(item, field, now)
         # 默认节奏：完成1个月复习标记已掌握
@@ -352,8 +355,9 @@ async def review_ebbinghaus(item_id: int, cycle: str, db: Session = Depends(get_
 
 
 @router.put("/ebbinghaus/{item_id}/review-time")
-async def update_ebbinghaus_review_time(item_id: int, data: EbbinghausReviewTimeUpdate,
-                                        db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def update_ebbinghaus_review_time(
+    item_id: int, data: EbbinghausReviewTimeUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """手动修改某个复习点的时间（默认 9 点或自定义周期均可）。"""
     item = db.query(EbbinghausItem).filter(EbbinghausItem.id == item_id, scoped(EbbinghausItem, user)).first()
     if not item:
@@ -365,19 +369,7 @@ async def update_ebbinghaus_review_time(item_id: int, data: EbbinghausReviewTime
         raise HTTPException(status_code=400, detail="无效的时间格式")
     new_time = to_naive_utc(new_time) or new_time
 
-    # 默认列映射
-    cycle_map = {
-        "5min": "review_5min",
-        "30min": "review_30min",
-        "12h": "review_12h",
-        "1d": "review_1d",
-        "2d": "review_2d",
-        "4d": "review_4d",
-        "7d": "review_7d",
-        "15d": "review_15d",
-        "1m": "review_1m",
-    }
-    field = cycle_map.get(data.key)
+    field = COLUMN_BY_CYCLE_KEY.get(data.key)
     if field:
         setattr(item, field, new_time)
         # 同步 review_times
@@ -409,8 +401,9 @@ async def update_ebbinghaus_review_time(item_id: int, data: EbbinghausReviewTime
 
 
 @router.put("/ebbinghaus/{item_id}/cycles")
-async def update_ebbinghaus_cycles(item_id: int, data: EbbinghausCyclesUpdate,
-                                   db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def update_ebbinghaus_cycles(
+    item_id: int, data: EbbinghausCyclesUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """整体重排复习节奏：按新周期列表重新生成所有复习时间点（手动修改时间表）。"""
     item = db.query(EbbinghausItem).filter(EbbinghausItem.id == item_id, scoped(EbbinghausItem, user)).first()
     if not item:
@@ -426,7 +419,6 @@ async def update_ebbinghaus_cycles(item_id: int, data: EbbinghausCyclesUpdate,
     # 生成新周期定义 + 复习时间点
     cycle_config = []
     review_times = []
-    col_values = {}
     for i, c in enumerate(data.cycles, start=1):
         key = f"custom_{i}"
         label = c.label
@@ -528,13 +520,15 @@ async def get_due_ebbinghaus(db: Session = Depends(get_db), user: User = Depends
                 continue  # 该周期已完成，看下一个周期
 
             raw_content = item.content or ""  # 防 NULL
-            due.append({
-                "id": item.id,
-                "content": raw_content[:100],
-                "subject": item.subject,
-                "due_cycle": label,
-                "due_time": review_time.isoformat(),
-            })
+            due.append(
+                {
+                    "id": item.id,
+                    "content": raw_content[:100],
+                    "subject": item.subject,
+                    "due_cycle": label,
+                    "due_time": review_time.isoformat(),
+                }
+            )
             break  # 每个条目只返回最近的一个待复习周期
     return {"total": len(due), "items": due[:50]}
 
@@ -545,7 +539,13 @@ async def get_due_ebbinghaus(db: Session = Depends(get_db), user: User = Depends
 @router.get("/earlybird")
 async def list_earlybird(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """早起打卡记录列表。"""
-    records = db.query(EarlyBirdRecord).filter(scoped(EarlyBirdRecord, user)).order_by(EarlyBirdRecord.date.desc()).limit(120).all()
+    records = (
+        db.query(EarlyBirdRecord)
+        .filter(scoped(EarlyBirdRecord, user))
+        .order_by(EarlyBirdRecord.date.desc())
+        .limit(120)
+        .all()
+    )
     return [
         {
             "id": r.id,
@@ -596,7 +596,9 @@ async def create_earlybird(data: EarlyBirdCreate, db: Session = Depends(get_db),
 @router.get("/earlybird/streak")
 async def get_earlybird_streak(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """获取连续早起天数统计。"""
-    records = db.query(EarlyBirdRecord).filter(scoped(EarlyBirdRecord, user)).order_by(EarlyBirdRecord.date.desc()).all()
+    records = (
+        db.query(EarlyBirdRecord).filter(scoped(EarlyBirdRecord, user)).order_by(EarlyBirdRecord.date.desc()).all()
+    )
     if not records:
         return {"current_streak": 0, "total_days": 0, "avg_wake_time": None}
 
@@ -659,8 +661,13 @@ async def create_or_update_month_plan(data: dict, db: Session = Depends(get_db),
         if "completion" in data:
             plan.completion = data["completion"]
     else:
-        plan = MonthPlan(year=year, month=month, tasks=data.get("tasks", {}), completion=data.get("completion", ""),
-                         user_id=owner_id(user))  # B4：归属当前用户
+        plan = MonthPlan(
+            year=year,
+            month=month,
+            tasks=data.get("tasks", {}),
+            completion=data.get("completion", ""),
+            user_id=owner_id(user),
+        )  # B4：归属当前用户
         db.add(plan)
     db.commit()
     db.refresh(plan)
@@ -728,24 +735,33 @@ async def create_or_update_week_plan(data: dict, db: Session = Depends(get_db), 
 async def list_phase_plans(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """阶段复习表列表。"""
     plans = db.query(PhasePlan).filter(scoped(PhasePlan, user)).order_by(PhasePlan.start_date.desc()).all()
+    # 批量取每个计划的完成统计，避免 N+1（每计划两条 COUNT）
+    plan_ids = [p.id for p in plans]
+    stats: dict[int, tuple[int, int]] = {}
+    if plan_ids:
+        rows = db.execute(
+            text(
+                "SELECT phase_plan_id, COUNT(*), COUNT(*) FILTER (WHERE completed = TRUE) "
+                "FROM phase_daily_reviews WHERE phase_plan_id = ANY(:ids) GROUP BY phase_plan_id"
+            ),
+            {"ids": plan_ids},
+        ).fetchall()
+        stats = {r[0]: (r[1], r[2]) for r in rows}
     items = []
     for p in plans:
-        total = db.execute(
-            text("SELECT COUNT(*) FROM phase_daily_reviews WHERE phase_plan_id=:pid"),
-            {"pid": p.id}).scalar() or 0
-        done = db.execute(
-            text("SELECT COUNT(*) FROM phase_daily_reviews WHERE phase_plan_id=:pid AND completed = TRUE"),
-            {"pid": p.id}).scalar() or 0
+        total, done = stats.get(p.id, (0, 0))
         progress = round(done / total * 100, 1) if total else 0.0
-        items.append({
-            "id": p.id,
-            "name": p.name,
-            "start_date": p.start_date.isoformat(),
-            "end_date": p.end_date.isoformat() if p.end_date else None,
-            "cycle_days": p.cycle_days,
-            "progress": progress,
-            "task_count": len(p.tasks or []),
-        })
+        items.append(
+            {
+                "id": p.id,
+                "name": p.name,
+                "start_date": p.start_date.isoformat(),
+                "end_date": p.end_date.isoformat() if p.end_date else None,
+                "cycle_days": p.cycle_days,
+                "progress": progress,
+                "task_count": len(p.tasks or []),
+            }
+        )
     return items
 
 
@@ -786,10 +802,19 @@ async def create_phase_plan(data: dict, db: Session = Depends(get_db), user: Use
     for day in range(1, cycle + 1):
         d = sd + datetime.timedelta(days=day - 1)
         db.execute(
-            text("INSERT INTO phase_daily_reviews (phase_plan_id, day_num, date, morning_reviews, evening_reviews, completed, created_at) "
-                 "VALUES (:pid, :day, :dt, :m, :e, 0, :ca)"),
-            {"pid": plan.id, "day": day, "dt": d.isoformat(), "m": "[]", "e": "[]",
-             "ca": utcnow().strftime("%Y-%m-%d %H:%M:%S")})
+            text(
+                "INSERT INTO phase_daily_reviews (phase_plan_id, day_num, date, morning_reviews, evening_reviews, completed, created_at) "
+                "VALUES (:pid, :day, :dt, :m, :e, 0, :ca)"
+            ),
+            {
+                "pid": plan.id,
+                "day": day,
+                "dt": d.isoformat(),
+                "m": "[]",
+                "e": "[]",
+                "ca": utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            },
+        )
         created += 1
     db.commit()
     return {"id": plan.id, "message": f"阶段复习表已创建（预生成 {created} 天打卡记录）"}
@@ -803,33 +828,42 @@ async def get_phase_reviews(plan_id: int, db: Session = Depends(get_db), user: U
         raise HTTPException(status_code=404, detail="阶段计划不存在")
 
     rows = db.execute(
-        text("SELECT id, day_num, date, morning_reviews, evening_reviews, completed "
-             "FROM phase_daily_reviews WHERE phase_plan_id=:pid ORDER BY day_num ASC"),
-        {"pid": plan_id}).fetchall()
+        text(
+            "SELECT id, day_num, date, morning_reviews, evening_reviews, completed "
+            "FROM phase_daily_reviews WHERE phase_plan_id=:pid ORDER BY day_num ASC"
+        ),
+        {"pid": plan_id},
+    ).fetchall()
+
+    def _parse(v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except ValueError:
+                return []
+        return v
+
     result = []
     for r in rows:
-        def _parse(v):
-            if v is None:
-                return []
-            if isinstance(v, str):
-                try:
-                    return json.loads(v)
-                except ValueError:
-                    return []
-            return v
-        result.append({
-            "id": r[0],
-            "day_num": r[1],
-            "date": r[2],
-            "morning_reviews": _parse(r[3]),
-            "evening_reviews": _parse(r[4]),
-            "completed": bool(r[5]),
-        })
+        result.append(
+            {
+                "id": r[0],
+                "day_num": r[1],
+                "date": r[2],
+                "morning_reviews": _parse(r[3]),
+                "evening_reviews": _parse(r[4]),
+                "completed": bool(r[5]),
+            }
+        )
     return {"plan_id": plan_id, "reviews": result, "total": len(result)}
 
 
 @router.post("/phase/{plan_id}/check/{day_num}")
-async def check_phase_day(plan_id: int, day_num: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def check_phase_day(
+    plan_id: int, day_num: int, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """打卡阶段复习的某一天（写入 phase_daily_reviews 独立表）。"""
     plan = db.query(PhasePlan).filter(PhasePlan.id == plan_id, scoped(PhasePlan, user)).first()
     if not plan:
@@ -837,26 +871,37 @@ async def check_phase_day(plan_id: int, day_num: int, db: Session = Depends(get_
 
     row = db.execute(
         text("SELECT id FROM phase_daily_reviews WHERE phase_plan_id=:pid AND day_num=:day"),
-        {"pid": plan_id, "day": day_num}).fetchone()
+        {"pid": plan_id, "day": day_num},
+    ).fetchone()
     if row:
-        db.execute(
-            text("UPDATE phase_daily_reviews SET completed = TRUE WHERE id=:rid"),
-            {"rid": row[0]})
+        db.execute(text("UPDATE phase_daily_reviews SET completed = TRUE WHERE id=:rid"), {"rid": row[0]})
     else:
         db.execute(
-            text("INSERT INTO phase_daily_reviews (phase_plan_id, day_num, date, morning_reviews, evening_reviews, completed, created_at) "
-                 "VALUES (:pid, :day, :dt, :m, :e, 1, :ca)"),
-            {"pid": plan_id, "day": day_num,
-             "dt": (plan.start_date + datetime.timedelta(days=day_num - 1)).isoformat(),
-             "m": "[]", "e": "[]",
-             "ca": utcnow().strftime("%Y-%m-%d %H:%M:%S")})
+            text(
+                "INSERT INTO phase_daily_reviews (phase_plan_id, day_num, date, morning_reviews, evening_reviews, completed, created_at) "
+                "VALUES (:pid, :day, :dt, :m, :e, 1, :ca)"
+            ),
+            {
+                "pid": plan_id,
+                "day": day_num,
+                "dt": (plan.start_date + datetime.timedelta(days=day_num - 1)).isoformat(),
+                "m": "[]",
+                "e": "[]",
+                "ca": utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            },
+        )
     db.commit()
 
-    total = db.execute(
-        text("SELECT COUNT(*) FROM phase_daily_reviews WHERE phase_plan_id=:pid"),
-        {"pid": plan_id}).scalar() or 0
-    done = db.execute(
-        text("SELECT COUNT(*) FROM phase_daily_reviews WHERE phase_plan_id=:pid AND completed = TRUE"),
-        {"pid": plan_id}).scalar() or 0
+    total = (
+        db.execute(text("SELECT COUNT(*) FROM phase_daily_reviews WHERE phase_plan_id=:pid"), {"pid": plan_id}).scalar()
+        or 0
+    )
+    done = (
+        db.execute(
+            text("SELECT COUNT(*) FROM phase_daily_reviews WHERE phase_plan_id=:pid AND completed = TRUE"),
+            {"pid": plan_id},
+        ).scalar()
+        or 0
+    )
     progress = round(done / total * 100, 1) if total else 0.0
     return {"id": plan_id, "day_num": day_num, "progress": progress, "message": "打卡成功"}

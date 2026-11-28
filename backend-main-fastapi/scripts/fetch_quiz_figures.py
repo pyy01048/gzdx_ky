@@ -63,6 +63,7 @@
 
 `--export` 只写图片文件，**不写库**；写库请另开脚本并先备份（本脚本刻意不实现）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -168,7 +169,7 @@ def image_line_before(lines: list[str], cap_idx: int, back: int = 3) -> int | No
         t = (lines[j] or "").strip()
         if t and not strip_marks(t).strip():
             return j
-    if RE_MARK.search(lines[cap_idx] or ""):   # 少数排版图注与图片同段
+    if RE_MARK.search(lines[cap_idx] or ""):  # 少数排版图注与图片同段
         return cap_idx
     return None
 
@@ -205,7 +206,7 @@ class Docx:
         self.id = doc_id
         self.path = path
         self._parse = parse_docx_with_images
-        self.res = self._parse(path)                 # 第一遍：不落盘
+        self.res = self._parse(path)  # 第一遍：不落盘
         self.lines = self.res.text.split("\n")
         self.images = {im.index: im for im in self.res.images}
 
@@ -231,16 +232,19 @@ def fetch_rows(qids: list[int]) -> tuple[dict[int, dict], dict[int, tuple]]:
         )
         rows = {}
         for qid, subj, label, content, odid, nimg in cur.fetchall():
-            rows[qid] = {"id": qid, "subject": subj, "label": label,
-                         "content": content or "", "origin_document_id": odid,
-                         "nimg": nimg or 0}
+            rows[qid] = {
+                "id": qid,
+                "subject": subj,
+                "label": label,
+                "content": content or "",
+                "origin_document_id": odid,
+                "nimg": nimg or 0,
+            }
         labels = sorted({r["label"] for r in rows.values() if r["label"]})
-        cur.execute("SELECT id, file_name, file_path FROM documents WHERE file_name = ANY(%s)",
-                    (labels,))
+        cur.execute("SELECT id, file_name, file_path FROM documents WHERE file_name = ANY(%s)", (labels,))
         by_name = {fn: (did, fp) for did, fn, fp in cur.fetchall()}
         # 清单给的 doc + 各题源书 doc，都要能查到（--auto 会用到后者）
-        ids = sorted({a.get("doc_id") for a in ANCHORS if a.get("doc_id")}
-                     | {v[0] for v in by_name.values()})
+        ids = sorted({a.get("doc_id") for a in ANCHORS if a.get("doc_id")} | {v[0] for v in by_name.values()})
         cur.execute("SELECT id, file_name, file_path FROM documents WHERE id = ANY(%s)", (ids,))
         by_id = {did: (fn, fp) for did, fn, fp in cur.fetchall()}
     for r in rows.values():
@@ -254,23 +258,21 @@ def fetch_rows(qids: list[int]) -> tuple[dict[int, dict], dict[int, tuple]]:
 # --------------------------------------------------------------------------- #
 def main() -> int:
     ap = argparse.ArgumentParser(description="题库配图提取（干跑）")
-    ap.add_argument("--auto", action="store_true",
-                    help="忽略清单里的 doc/图注，从每题的源 docx 自己推锚点")
+    ap.add_argument("--auto", action="store_true", help="忽略清单里的 doc/图注，从每题的源 docx 自己推锚点")
     ap.add_argument("--export", action="store_true", help="真写 data/storage/images/")
     ap.add_argument("--qid", action="append", type=int, default=None, help="只处理这些题")
     ap.add_argument("--show-lines", action="store_true", help="打印命中行上下文")
     ap.add_argument("--min-w", type=int, default=MIN_W)
     ap.add_argument("--min-h", type=int, default=MIN_H)
-    ap.add_argument("--anchors", default=None,
-                    help="改用外部锚点 JSON：[{qids:[..],doc_id:88,caption:'图9',occurrence:1}]")
-    ap.add_argument("--apply", action="store_true",
-                    help="把 images 写进库（只写 images 列；非空数组跳过；默认先备份）")
-    ap.add_argument("--no-backup", dest="backup", action="store_false",
-                    help="跳过 create_backup()（不推荐）")
+    ap.add_argument(
+        "--anchors", default=None, help="改用外部锚点 JSON：[{qids:[..],doc_id:88,caption:'图9',occurrence:1}]"
+    )
+    ap.add_argument("--apply", action="store_true", help="把 images 写进库（只写 images 列；非空数组跳过；默认先备份）")
+    ap.add_argument("--no-backup", dest="backup", action="store_false", help="跳过 create_backup()（不推荐）")
     ap.set_defaults(backup=True)
     args = ap.parse_args()
     if args.apply:
-        args.export = True   # 写库必须先把图片落到正式目录
+        args.export = True  # 写库必须先把图片落到正式目录
 
     global ANCHORS
     if args.anchors:
@@ -282,8 +284,7 @@ def main() -> int:
         all_qids = [q for q in all_qids if q in set(args.qid)]
     rows, docs_by_id = fetch_rows(all_qids)
 
-    out_root = (IMG_ROOT / OUT_SUBDIR) if args.export else (
-        Path(tempfile.gettempdir()) / "quiz_figures_preview")
+    out_root = (IMG_ROOT / OUT_SUBDIR) if args.export else (Path(tempfile.gettempdir()) / "quiz_figures_preview")
     if not args.export and out_root.exists():
         # 干跑目录每次清空，避免上一轮的半成品混进本次结果（本次就踩过）
         import shutil
@@ -322,16 +323,16 @@ def main() -> int:
         else:
             status = "OK"
         if not doc_id:
-            bad_rows.append((qids, "-", caption, "-", "-", "NO-DOC",
-                             "source_label 在 documents 里找不到"))
-            print(f"{str(qids):<15}{'-':<5}{caption:<8}{'-':<7}{'-':<7}{'-':<12}"
-                  f"{'NO-DOC':<17}source_label 在 documents 里找不到")
+            bad_rows.append((qids, "-", caption, "-", "-", "NO-DOC", "source_label 在 documents 里找不到"))
+            print(
+                f"{str(qids):<15}{'-':<5}{caption:<8}{'-':<7}{'-':<7}{'-':<12}"
+                f"{'NO-DOC':<17}source_label 在 documents 里找不到"
+            )
             continue
         info = docs_by_id.get(doc_id)
         if not info or not info[1] or not os.path.exists(info[1]):
             bad_rows.append((qids, doc_id, caption, "-", "-", "DOC-FILE-MISSING", str(info)))
-            print(f"{str(qids):<15}{doc_id:<5}{caption:<8}{'-':<7}{'-':<7}{'-':<12}"
-                  f"{'DOC-FILE-MISSING':<17}{info}")
+            print(f"{str(qids):<15}{doc_id:<5}{caption:<8}{'-':<7}{'-':<7}{'-':<12}{'DOC-FILE-MISSING':<17}{info}")
             continue
         doc_name, doc_path = info
         if doc_path not in cache:
@@ -353,7 +354,7 @@ def main() -> int:
                     status = "AUTO"
                     note = "auto：题干下方第一条图注"
                 else:
-                    status = "NO-FIGURE"   # 题干找到、答案前无图注 → 确认无图
+                    status = "NO-FIGURE"  # 题干找到、答案前无图注 → 确认无图
         else:
             cands = caption_lines(doc.lines, caption)
             if occ_hint and 1 <= int(occ_hint) <= len(cands):
@@ -387,26 +388,34 @@ def main() -> int:
 
         if status in ("DOC-MISMATCH", "STEM-MISS", "CAPTION-MISS", "NO-FIGURE") or cap_line is None:
             bad_rows.append((qids, doc_id, caption, "-", "-", status, note))
-            print(f"{str(qids):<15}{doc_id:<5}{caption:<8}{'-':<7}{'-':<7}{'-':<12}"
-                  f"{status:<17}{note}")
+            print(f"{str(qids):<15}{doc_id:<5}{caption:<8}{'-':<7}{'-':<7}{'-':<12}{status:<17}{note}")
             continue
 
         # ---- ③ 取图注上方纯图段落 ----
         img_line = image_line_before(doc.lines, cap_line)
         if img_line is None:
             bad_rows.append((qids, doc_id, caption, cap_line, "-", "NO-IMAGE-LINE", ""))
-            print(f"{str(qids):<15}{doc_id:<5}{caption:<8}{cap_line:<7}{'-':<7}{'-':<12}"
-                  f"{'NO-IMAGE-LINE':<17}")
+            print(f"{str(qids):<15}{doc_id:<5}{caption:<8}{cap_line:<7}{'-':<7}{'-':<12}{'NO-IMAGE-LINE':<17}")
             continue
         idxs = [int(x) for x in RE_MARK.findall(doc.lines[img_line])]
         if len(idxs) > 1:
             note = (note + "；" if note else "") + f"该段含 {len(idxs)} 张图，取第 1 张"
 
-        ok_rows.append({
-            "qids": qids, "doc_id": doc_id, "doc_name": doc_name, "doc_path": doc_path,
-            "caption": caption, "cap_line": cap_line, "img_line": img_line,
-            "img_index": idxs[0], "status": status, "note": note, "stem_line": stem,
-        })
+        ok_rows.append(
+            {
+                "qids": qids,
+                "doc_id": doc_id,
+                "doc_name": doc_name,
+                "doc_path": doc_path,
+                "caption": caption,
+                "cap_line": cap_line,
+                "img_line": img_line,
+                "img_index": idxs[0],
+                "status": status,
+                "note": note,
+                "stem_line": stem,
+            }
+        )
 
     # ---- ④ 按 doc 聚合批量导出 ----
     by_doc: dict[str, set[int]] = {}
@@ -429,8 +438,10 @@ def main() -> int:
         raw = exported.get((p["doc_path"], p["img_index"]))
         if not raw or not os.path.exists(raw):
             p["status"] = "EXPORT-FAIL"
-            print(f"{str(p['qids']):<15}{p['doc_id']:<5}{p['caption']:<8}{p['cap_line']:<7}"
-                  f"{p['img_index']:<7}{'-':<12}{'EXPORT-FAIL':<17}{p['note']}")
+            print(
+                f"{str(p['qids']):<15}{p['doc_id']:<5}{p['caption']:<8}{p['cap_line']:<7}"
+                f"{p['img_index']:<7}{'-':<12}{'EXPORT-FAIL':<17}{p['note']}"
+            )
             continue
         with Image.open(raw) as im:
             w, h = im.size
@@ -448,22 +459,33 @@ def main() -> int:
         dest = out_root / str(p["doc_id"]) / name
         dest.parent.mkdir(parents=True, exist_ok=True)
         img.save(dest, format="PNG", optimize=True)
-        p.update({
-            "path": f"{OUT_SUBDIR}/{p['doc_id']}/{name}",
-            "size": f"{w}x{h}", "bytes": dest.stat().st_size,
-            "suspect": suspect, "reasons": reasons,
-            "status": "SUSPECT" if suspect else p["status"],
-            # 落库形状（team-lead 定）：path 相对 data/storage/images/，source 固定 docx
-            "images": [{"kind": "figure", "path": f"{OUT_SUBDIR}/{p['doc_id']}/{name}",
-                        "caption": p["caption"], "source": "docx"}],
-        })
+        p.update(
+            {
+                "path": f"{OUT_SUBDIR}/{p['doc_id']}/{name}",
+                "size": f"{w}x{h}",
+                "bytes": dest.stat().st_size,
+                "suspect": suspect,
+                "reasons": reasons,
+                "status": "SUSPECT" if suspect else p["status"],
+                # 落库形状（team-lead 定）：path 相对 data/storage/images/，source 固定 docx
+                "images": [
+                    {
+                        "kind": "figure",
+                        "path": f"{OUT_SUBDIR}/{p['doc_id']}/{name}",
+                        "caption": p["caption"],
+                        "source": "docx",
+                    }
+                ],
+            }
+        )
         done.append(p)
         tail = "; ".join([x for x in [p["note"], ("; ".join(reasons) if reasons else "")] if x])
-        print(f"{str(p['qids']):<15}{p['doc_id']:<5}{p['caption']:<8}{p['cap_line']:<7}"
-              f"{p['img_index']:<7}{f'{w}x{h}':<12}{p['status']:<17}{tail}")
+        print(
+            f"{str(p['qids']):<15}{p['doc_id']:<5}{p['caption']:<8}{p['cap_line']:<7}"
+            f"{p['img_index']:<7}{f'{w}x{h}':<12}{p['status']:<17}{tail}"
+        )
         if args.show_lines:
-            for j in range(max(0, p["img_line"] - 2),
-                           min(len(cache[p["doc_path"]].lines), p["cap_line"] + 2)):
+            for j in range(max(0, p["img_line"] - 2), min(len(cache[p["doc_path"]].lines), p["cap_line"] + 2)):
                 mk = ">>" if j in (p["img_line"], p["cap_line"]) else "  "
                 print(f"      {mk}{j:5d} {cache[p['doc_path']].lines[j].strip()[:82]}")
 
@@ -481,14 +503,12 @@ def main() -> int:
 
     n_ok = sum(1 for p in done if not p["suspect"])
     n_sus = sum(1 for p in done if p["suspect"])
-    print(f"\n汇总：可落地 {len(done)} 行（正常 {n_ok} / suspect {n_sus}）｜"
-          f"未通过 {len(bad_rows)} 行")
+    print(f"\n汇总：可落地 {len(done)} 行（正常 {n_ok} / suspect {n_sus}）｜未通过 {len(bad_rows)} 行")
     for qids, did, cap, _l, _i, st, nt in bad_rows:
         print(f"  ✗ q{qids} doc{did} {cap} → {st} {nt}")
 
     if not args.apply:
-        print(f"\n{'EXPORT' if args.export else 'DRY-RUN'}："
-              f"图片落在 {out_root}，**未写库**（要写库加 --apply）。")
+        print(f"\n{'EXPORT' if args.export else 'DRY-RUN'}：图片落在 {out_root}，**未写库**（要写库加 --apply）。")
         return 0
 
     # ---- ⑦ 写库（只写 images 一列） ----
@@ -533,7 +553,7 @@ def main() -> int:
                     skipped.append((qid, "UPDATE 命中 0 行（并发改动？）"))
                     conn.rollback()
                     continue
-                conn.commit()          # 逐条提交，单条失败不影响前面
+                conn.commit()  # 逐条提交，单条失败不影响前面
                 ok += 1
                 print(f"  ✓ q{qid} ← {payload[0]['path']}")
             except Exception as exc:  # noqa: BLE001

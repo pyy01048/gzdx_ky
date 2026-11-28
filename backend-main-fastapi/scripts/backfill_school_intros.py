@@ -9,6 +9,7 @@
     python scripts/backfill_school_intros.py          # dry-run 预览
     python scripts/backfill_school_intros.py --apply  # 写库
 """
+
 import argparse
 import sys
 from pathlib import Path
@@ -100,17 +101,21 @@ def main() -> int:
     args = ap.parse_args()
 
     with engine.connect() as conn:
-        rows = conn.execute(text(
-            "SELECT id, name, level, province FROM kaoyan_schools "
-            "WHERE level IN ('985','211','双一流') AND (intro IS NULL OR intro='')"
-        )).fetchall()
+        rows = conn.execute(
+            text(
+                "SELECT id, name, level, province FROM kaoyan_schools "
+                "WHERE level IN ('985','211','双一流') AND (intro IS NULL OR intro='')"
+            )
+        ).fetchall()
 
     plan = []
     for rid, name, level, province in rows:
         intro = INTROS.get(name) or _template_intro(name, level, province)
         plan.append((rid, name, intro))
 
-    print(f"待回填 {len(plan)} 所院校（内置真实简介 {sum(1 for _, n, _ in plan if n in INTROS)} 所，模板 {sum(1 for _, n, _ in plan if n not in INTROS)} 所）")
+    print(
+        f"待回填 {len(plan)} 所院校（内置真实简介 {sum(1 for _, n, _ in plan if n in INTROS)} 所，模板 {sum(1 for _, n, _ in plan if n not in INTROS)} 所）"
+    )
     if not args.apply:
         for rid, name, _ in plan:
             print(f"  [{rid}] {name}")

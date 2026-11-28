@@ -24,6 +24,7 @@ python scripts/extract_pdf_formulas.py --doc-id 597 --max-pages 2
 python scripts/extract_pdf_formulas.py --top-polluted 5 --max-pages 2
 ```
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,6 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def _resolve_by_doc_id(doc_id: int) -> str:
     from database import SessionLocal
+
     from models import Document
 
     db = SessionLocal()
@@ -53,8 +55,9 @@ def _resolve_by_doc_id(doc_id: int) -> str:
 def _top_polluted(limit: int) -> list:
     """按「公式误读特征」块数排序，找出污染最重的 PDF。"""
     from database import SessionLocal
-    from models import Document, KnowledgeChunk
     from sqlalchemy import func
+
+    from models import Document, KnowledgeChunk
 
     pats = ["f(α)", "f（α）", "f(r)", "f（r）", "f()", "f（）", "fLg", "%，，"]
     db = SessionLocal()
@@ -94,13 +97,13 @@ def main() -> int:
     ap.add_argument("--pages", help="指定页码，逗号分隔（0 基），如 0,1,5")
     ap.add_argument("--max-pages", type=int, default=2, help="每份最多处理多少页（默认 2）")
     ap.add_argument("--dpi", type=int, default=200, help="渲染 DPI（默认 200）")
-    ap.add_argument("--min-score", type=float, default=0.3,
-                    help="版面检测置信度门槛（实测 0.3 最优，默认 0.3）")
+    ap.add_argument("--min-score", type=float, default=0.3, help="版面检测置信度门槛（实测 0.3 最优，默认 0.3）")
     ap.add_argument("--crops", help="裁图输出目录")
     ap.add_argument("--report", help="JSON 报告输出路径")
     ap.add_argument("--quiet", action="store_true", help="只输出汇总")
     ap.add_argument(
-        "--compose", action="store_true",
+        "--compose",
+        action="store_true",
         help="混排模式：把 LaTeX 插回正文正确位置（OCR 行骨架），而不是只出公式清单",
     )
     ap.add_argument("--save-text", help="把混排文本按页写成 .md 到该目录")
@@ -115,8 +118,9 @@ def main() -> int:
     if args.pdf:
         targets.append({"doc_id": None, "name": os.path.basename(args.pdf), "path": args.pdf})
     for did in args.doc_id:
-        targets.append({"doc_id": did, "name": os.path.basename(_resolve_by_doc_id(did)),
-                        "path": _resolve_by_doc_id(did)})
+        targets.append(
+            {"doc_id": did, "name": os.path.basename(_resolve_by_doc_id(did)), "path": _resolve_by_doc_id(did)}
+        )
     if args.top_polluted:
         for t in _top_polluted(args.top_polluted):
             targets.append(t)
@@ -145,9 +149,7 @@ def main() -> int:
             from services.parsers.pdf_page_compose import compose_page_text
 
             # 混排模式：逐页还原「文字 + LaTeX」，语序正确才谈得上回写正文
-            target_pages = pages if pages is not None else list(
-                range(args.max_pages if args.max_pages > 0 else 3)
-            )
+            target_pages = pages if pages is not None else list(range(args.max_pages if args.max_pages > 0 else 3))
             composed = []
             print(f"\n=== [混排] {t['name'][:60]} ===")
             for pno in target_pages:
@@ -174,16 +176,15 @@ def main() -> int:
                         fh.write(cr.text)
             tot_f = sum(c.formula_count for c in composed)
             tot_ok = sum(c.formula_ok for c in composed)
-            print(
-                f"  [混排汇总] {len(composed)} 页 | 公式 {tot_f} 成功 {tot_ok} | "
-                f"{time.time() - t0:.0f}s"
+            print(f"  [混排汇总] {len(composed)} 页 | 公式 {tot_f} 成功 {tot_ok} | {time.time() - t0:.0f}s")
+            reports.append(
+                {
+                    "target": t,
+                    "mode": "compose",
+                    "seconds": round(time.time() - t0, 1),
+                    "pages": [c.to_dict() for c in composed],
+                }
             )
-            reports.append({
-                "target": t,
-                "mode": "compose",
-                "seconds": round(time.time() - t0, 1),
-                "pages": [c.to_dict() for c in composed],
-            })
             continue
 
         res = extract_pdf_formulas(
@@ -216,11 +217,13 @@ def main() -> int:
                     if len(md.split("\n\n")) > 12:
                         print(f"    ...（共 {len(pg.formulas)} 个公式）")
 
-        reports.append({
-            "target": t,
-            "seconds": round(dt, 1),
-            "result": res.to_dict(),
-        })
+        reports.append(
+            {
+                "target": t,
+                "seconds": round(dt, 1),
+                "result": res.to_dict(),
+            }
+        )
 
     if args.report:
         os.makedirs(os.path.dirname(args.report) or ".", exist_ok=True)

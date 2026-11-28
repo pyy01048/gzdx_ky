@@ -655,6 +655,7 @@ const FUSHI_TOOLS = [
 /* ------------------------------------------------------------------ */
 /* 页面                                                                */
 /* ------------------------------------------------------------------ */
+/** 学习工具箱主组件（移动优先）：站内计算工具套件 + 外部专业工具目录 + 站内工具入口卡。 */
 export default function Tools() {
   const [searchParams] = useSearchParams()
   const bootTool = searchParams.get('tool')

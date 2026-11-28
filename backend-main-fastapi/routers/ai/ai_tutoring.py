@@ -17,6 +17,7 @@ M0-103②：区分「真题 / 教材题」两种作答风格——
 或 LLM 输出为空时，叠加「本地讲解包」（题目+解析+错因分类+相似题指向），
 保证无模型环境下答疑依然有用——这是与大平台"断网即哑巴"的差异点。
 """
+
 from __future__ import annotations
 
 import json as _json
@@ -30,13 +31,14 @@ from services.dbapi_compat import wrap_conn
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-from models import QuizQuestion, User
 from services import blind_spot_pool
 from services.ai_service import AIService
 from services.error_analyzer import _guess_category, _practice_questions
-from services.quiz_query import normalize_source_kind, source_kind_of
+from services.quiz_query import normalize_source_kind, question_owner_expr, source_kind_of
 from utils.scope import owner_id  # B4 行级隔离：写入归属
 from utils.security import current_user
+
+from models import QuizQuestion, User
 
 router = APIRouter(prefix="/api/ai/tutoring", tags=["AI 讲题"])
 
@@ -89,8 +91,15 @@ class StuckReq(BaseModel):
     angle: Optional[str] = Field("solution", description="讲解视角（仅作记录）")
 
 
-def _load_question(db: Session, question_id: int) -> QuizQuestion:
-    q = db.query(QuizQuestion).filter(QuizQuestion.id == question_id).first()
+def _load_question(db: Session, question_id: int, user: User) -> QuizQuestion:
+    q = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.id == question_id,
+            question_owner_expr(user),
+        )
+        .first()
+    )
     if not q:
         raise HTTPException(status_code=404, detail="题目不存在")
     return q
@@ -139,7 +148,7 @@ def _format_options(raw) -> str:
             return raw.strip()[:200]
     if isinstance(data, dict):
         return "；".join(f"{k}.{v}" for k, v in data.items())
-    if isinstance(data, (list, tuple)):
+    if isinstance(data, list | tuple):
         parts: List[str] = []
         for i, v in enumerate(data):
             s = "" if v is None else str(v).strip()
@@ -179,25 +188,24 @@ def _context_text(q: QuizQuestion, my_answer: Optional[str]) -> str:
     return "\n".join(lines)
 
 
-def _local_fallback(db: Session, q: QuizQuestion, my_answer: Optional[str], angle: str,
-                    mode: str = "general") -> Dict:
+def _local_fallback(db: Session, q: QuizQuestion, my_answer: Optional[str], angle: str, mode: str = "general") -> Dict:
     """无模型环境下的结构化讲解包（错因分类 + 参考解析 + 相似题指向）。"""
     cat = _guess_category("答题错误", q.content or "", my_answer or "", q.answer or "")
-    similar = _practice_questions(db, wrap_conn(db.connection().connection), q.id,
-                                 None, q.subject, limit=3)
-    head = {"exam": "（真题模式 · 按评分视角）", "textbook": "（教材模式 · 按概念理解）",
-            "general": ""}[mode]
+    similar = _practice_questions(db, wrap_conn(db.connection().connection), q.id, None, q.subject, limit=3)
+    head = {"exam": "（真题模式 · 按评分视角）", "textbook": "（教材模式 · 按概念理解）", "general": ""}[mode]
     steps = {
         "why_wrong": [
             f"错因初判：{cat}",
             f"正确答案是 {q.answer}；对照解析回看你卡住的步骤。",
             f"本题考点：{q.knowledge_point or '见解析'}——同考点建议再练 2~3 题。",
         ],
-        "solution": [f"参考解析：{str(q.analysis)[:400]}" if q.analysis else "暂无解析，参考答案自行推导。",
-                     f"考点：{q.knowledge_point or '见题干'}"],
+        "solution": [
+            f"参考解析：{str(q.analysis)[:400]}" if q.analysis else "暂无解析，参考答案自行推导。",
+            f"考点：{q.knowledge_point or '见题干'}",
+        ],
         "method": [f"题型归类：{cat}；同考点集中练到连对 3 题即可过关。"],
     }
-    body = "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps.get(angle, steps["solution"])))
+    body = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps.get(angle, steps["solution"])))
     return {
         "content": (head + "\n" + body) if head else body,
         "provider": "local-rules",
@@ -224,8 +232,8 @@ def _build_system_prompt(q: QuizQuestion, mode: str) -> str:
 
 
 @router.post("/explain")
-async def explain(req: ExplainReq, db: Session = Depends(get_db)):
-    q = _load_question(db, req.question_id)
+async def explain(req: ExplainReq, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    q = _load_question(db, req.question_id, user)
     if req.angle not in _ANGLES:
         raise HTTPException(status_code=422, detail="angle 需为 why_wrong/solution/method")
     mode = _resolve_mode(q, req.source_kind)
@@ -243,30 +251,44 @@ async def explain(req: ExplainReq, db: Session = Depends(get_db)):
             if content:
                 fallback["content"] = f"{content}\n\n——\n本地讲解包：\n{fallback['content']}"
             return {"question_id": q.id, "angle": req.angle, **fallback}
-        return {"question_id": q.id, "angle": req.angle, "content": content,
-                "provider": r.get("provider"), "route": route,
-                "mode": mode, "source_kind": sk}
+        return {
+            "question_id": q.id,
+            "angle": req.angle,
+            "content": content,
+            "provider": r.get("provider"),
+            "route": route,
+            "mode": mode,
+            "source_kind": sk,
+        }
     except HTTPException:
         raise
     except Exception as e:
         # P0-5：降级到本地讲解包是合理的兜底，但**必须留痕并告知前端**——
         # 否则用户看到一段像模像样的"AI 讲解"，实际是规则生成的，出问题无从排查。
         logger.exception("AI 讲题失败，已降级本地讲解包")
-        return {"question_id": q.id, "angle": req.angle,
-                "degraded": True, "ai_error": str(e)[:200],
-                **_local_fallback(db, q, req.my_answer, req.angle, mode)}
+        return {
+            "question_id": q.id,
+            "angle": req.angle,
+            "degraded": True,
+            "ai_error": str(e)[:200],
+            **_local_fallback(db, q, req.my_answer, req.angle, mode),
+        }
 
 
 @router.post("/followup")
-async def followup(req: FollowupReq, db: Session = Depends(get_db)):
+async def followup(req: FollowupReq, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """追问链：题目上下文始终在 system 中，history 由前端携带（个人单机，无需服务端会话存储）。"""
-    q = _load_question(db, req.question_id)
+    q = _load_question(db, req.question_id, user)
     mode = _resolve_mode(q, req.source_kind)
     sk = source_kind_of(q.source)
     ctx = _context_text(q, None)
-    messages = [{"role": "system",
-                 "content": f"{_tutor_role(q)}。当前模式：{_MODE_LABEL[mode]}。"
-                            f"{_MODE_STYLE[mode]}\n正在为学生讲解下面这道题，回答不超过 200 字。\n{ctx}"}]
+    messages = [
+        {
+            "role": "system",
+            "content": f"{_tutor_role(q)}。当前模式：{_MODE_LABEL[mode]}。"
+            f"{_MODE_STYLE[mode]}\n正在为学生讲解下面这道题，回答不超过 200 字。\n{ctx}",
+        }
+    ]
     for h in req.history[-6:]:  # 最多携带 6 轮，防上下文爆炸
         if h.get("role") in ("user", "assistant") and h.get("content"):
             messages.append({"role": h["role"], "content": str(h["content"])[:1500]})
@@ -275,19 +297,32 @@ async def followup(req: FollowupReq, db: Session = Depends(get_db)):
         r = await AIService(db).chat(messages)
         if not r.get("content"):
             raise ValueError("empty")
-        return {"question_id": q.id, "content": r["content"],
-                "provider": r.get("provider"), "route": r.get("route"),
-                "mode": mode, "source_kind": sk}
+        return {
+            "question_id": q.id,
+            "content": r["content"],
+            "provider": r.get("provider"),
+            "route": r.get("route"),
+            "mode": mode,
+            "source_kind": sk,
+        }
     except Exception as e:
         # 同上：离线兜底文案必须标记为降级，避免被当成模型真实回答。
         logger.exception("AI 追问失败，已降级离线话术")
-        return {"question_id": q.id, "degraded": True, "ai_error": str(e)[:200],
-                "content": ("当前处于离线模式，无法追问。可用的本地线索：\n"
-                            f"· 参考解析：{str(q.analysis)[:300] or '无'}\n"
-                            f"· 考点：{q.knowledge_point or '见题干'}\n"
-                            "· 建议：回到解析逐步对照自己的步骤。"),
-                "provider": "local-rules", "route": "local",
-                "mode": mode, "source_kind": sk}
+        return {
+            "question_id": q.id,
+            "degraded": True,
+            "ai_error": str(e)[:200],
+            "content": (
+                "当前处于离线模式，无法追问。可用的本地线索：\n"
+                f"· 参考解析：{str(q.analysis)[:300] or '无'}\n"
+                f"· 考点：{q.knowledge_point or '见题干'}\n"
+                "· 建议：回到解析逐步对照自己的步骤。"
+            ),
+            "provider": "local-rules",
+            "route": "local",
+            "mode": mode,
+            "source_kind": sk,
+        }
 
 
 @router.post("/stuck")
@@ -298,7 +333,7 @@ def mark_stuck(req: StuckReq, db: Session = Depends(get_db), user: User = Depend
     进入 pending_questions（gap_type=not_understood），按 B4 归属当前用户，
     后续会出现在盲区看板、反哺组卷 weakest 模式，并可升级为周会议题。
     """
-    q = _load_question(db, req.question_id)
+    q = _load_question(db, req.question_id, user)
     base = (q.content or "").strip()[:500]
     note = (req.note or "").strip()
     question = f"【AI 讲题后仍未理解】{base}" + (f"（备注：{note}）" if note else "")

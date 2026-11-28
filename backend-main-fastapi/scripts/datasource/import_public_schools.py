@@ -17,6 +17,7 @@
   python import_public_schools.py            # 预览（dry-run）
   python import_public_schools.py --apply    # 写库（自动备份）
 """
+
 from __future__ import annotations
 
 import json
@@ -33,14 +34,47 @@ PUB = BASE / "public_schools.json"
 UNITS = BASE / "yz_units.json"
 
 # level 派生规则（沿用库中既有口径）
-LEVEL_985 = {"北京大学", "清华大学", "中国人民大学", "北京航空航天大学", "北京理工大学",
-             "中国农业大学", "北京师范大学", "中央民族大学", "南开大学", "天津大学",
-             "大连理工大学", "东北大学", "吉林大学", "哈尔滨工业大学", "复旦大学",
-             "同济大学", "上海交通大学", "华东师范大学", "南京大学", "东南大学",
-             "浙江大学", "中国科学技术大学", "厦门大学", "山东大学", "中国海洋大学",
-             "武汉大学", "华中科技大学", "中南大学", "湖南大学", "国防科技大学",
-             "中山大学", "华南理工大学", "四川大学", "重庆大学", "电子科技大学",
-             "西安交通大学", "西北工业大学", "兰州大学", "西北农林科技大学"}
+LEVEL_985 = {
+    "北京大学",
+    "清华大学",
+    "中国人民大学",
+    "北京航空航天大学",
+    "北京理工大学",
+    "中国农业大学",
+    "北京师范大学",
+    "中央民族大学",
+    "南开大学",
+    "天津大学",
+    "大连理工大学",
+    "东北大学",
+    "吉林大学",
+    "哈尔滨工业大学",
+    "复旦大学",
+    "同济大学",
+    "上海交通大学",
+    "华东师范大学",
+    "南京大学",
+    "东南大学",
+    "浙江大学",
+    "中国科学技术大学",
+    "厦门大学",
+    "山东大学",
+    "中国海洋大学",
+    "武汉大学",
+    "华中科技大学",
+    "中南大学",
+    "湖南大学",
+    "国防科技大学",
+    "中山大学",
+    "华南理工大学",
+    "四川大学",
+    "重庆大学",
+    "电子科技大学",
+    "西安交通大学",
+    "西北工业大学",
+    "兰州大学",
+    "西北农林科技大学",
+}
 
 
 def now_iso():
@@ -76,7 +110,7 @@ def main():
         if not nm or nm in existing or nm in pub_names:
             continue
         # 排除明显非公办（民办/独立学院常见特征）
-        if any(k in nm for k in ("学院") ) and nm not in pub_names:
+        if any(k in nm for k in ("学院")) and nm not in pub_names:
             # 学院类未在教育部推免名单 → 可能是新升格/科研院所，仍收录但标注来源
             pass
         add_unit.append({"name": nm, "province": u.get("province") or ""})
@@ -97,13 +131,21 @@ def main():
         cur.execute(
             "INSERT INTO kaoyan_schools (name, level, province, data_source, created_at, updated_at)"
             " VALUES (?,?,?,?,?,?)",
-            (s["name"], lvl, s.get("province") or None,
-             "moe_tuimian_2025" if s in add_pub else "yz_units_crawl", now_iso(), now_iso()),
+            (
+                s["name"],
+                lvl,
+                s.get("province") or None,
+                "moe_tuimian_2025" if s in add_pub else "yz_units_crawl",
+                now_iso(),
+                now_iso(),
+            ),
         )
         ins += 1
     for s in fill_prov:
-        cur.execute("UPDATE kaoyan_schools SET province=?, updated_at=? WHERE name=? AND (province IS NULL OR province='')",
-                    (s["province"], now_iso(), s["name"]))
+        cur.execute(
+            "UPDATE kaoyan_schools SET province=?, updated_at=? WHERE name=? AND (province IS NULL OR province='')",
+            (s["province"], now_iso(), s["name"]),
+        )
     con.commit()
     total = cur.execute("SELECT COUNT(*) FROM kaoyan_schools").fetchone()[0]
     print(f"\n写入完成：新增 {ins} 所，补 province {len(fill_prov)} 所；真库院校总数 {total}")

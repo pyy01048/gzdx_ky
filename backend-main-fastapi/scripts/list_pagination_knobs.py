@@ -3,6 +3,7 @@
 为什么不自动改：这些参数的默认值各处不同（20/50/100/200/500），自动改写容易把
 默认值一起冲掉；本脚本只做定位，改由 Edit 逐处做，避免一次性大改引入语义漂移。
 """
+
 from __future__ import annotations
 
 import re
@@ -28,7 +29,9 @@ def main() -> int:
                 if has_le and int(has_le.group()[3:]) <= MAX_PAGE_SIZE:
                     continue
                 total += 1
-                print(f"{path.name}:{lineno}: {name} -> {decl.strip()}  [{'le=%s' % has_le.group()[3:] if has_le else 'NO CAP'}]")
+                print(
+                    f"{path.name}:{lineno}: {name} -> {decl.strip()}  [{'le=%s' % has_le.group()[3:] if has_le else 'NO CAP'}]"
+                )
     print(f"合计 {total} 处")
     return 0
 

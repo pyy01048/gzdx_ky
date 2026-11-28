@@ -13,6 +13,7 @@
     python scripts/build_major_kb_link_pg.py --dry-run
     python scripts/build_major_kb_link_pg.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,12 +28,26 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from services.major_coverage import decode_subjects
+
 from scripts._conn import pg_connect
 
 # 公共课：不参与专业匹配
 PUBLIC_SUBJECTS = {
-    "思想政治理论", "英语（一）", "英语（二）", "英语", "数学（一）", "数学（二）", "数学（三）",
-    "数学", "日语", "俄语", "英语或俄语", "英语或俄语或日语", "法硕联考专业基础", "法硕联考综合",
+    "思想政治理论",
+    "英语（一）",
+    "英语（二）",
+    "英语",
+    "数学（一）",
+    "数学（二）",
+    "数学（三）",
+    "数学",
+    "日语",
+    "俄语",
+    "英语或俄语",
+    "英语或俄语或日语",
+    "法硕联考专业基础",
+    "法硕联考综合",
 }
 
 # 专业课名 → 知识库 subject name 的别名映射（归一化）
@@ -159,10 +174,10 @@ def main() -> None:
     matched_majors = 0
     unmatched_subjects = Counter()
 
-    for mid, school_id, name, code, subject_code, exam_subjects in rows:
+    for mid, school_id, name, code, _subject_code, exam_subjects in rows:
         if not exam_subjects:
             continue
-        subjects = [x for x in exam_subjects if isinstance(x, str)]
+        subjects = decode_subjects(exam_subjects)
         # 只取专业课（非公共课）
         prof_subjects = []
         for s in subjects:
@@ -185,17 +200,20 @@ def main() -> None:
                 continue
             # 生成关联（10 列）
             kb_count = info["kp_cnt"] + info["chunk_cnt"] + info["doc_cnt"]
-            links.append((
-                mid,                                  # major_id
-                school_id or 0,                        # school_id
-                school_names.get(school_id, "") or "", # school_name
-                name or "",                            # major_name
-                code or subject_code or "",            # major_code
-                target,                                # subject_name
-                "L1", "exact",                         # match_level, match_type
-                kb_count,                               # kb_doc_count
-                1.0,                                   # confidence
-            ))
+            links.append(
+                (
+                    mid,  # major_id
+                    school_id or 0,  # school_id
+                    school_names.get(school_id, "") or "",  # school_name
+                    name or "",  # major_name
+                    code or "",  # major_code
+                    target,  # subject_name
+                    "L1",
+                    "exact",  # match_level, match_type
+                    kb_count,  # kb_doc_count
+                    1.0,  # confidence
+                )
+            )
             found_any = True
             stats[target] += 1
         if found_any:

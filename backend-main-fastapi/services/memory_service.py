@@ -20,9 +20,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from models import MemoryFact, MemorySynthesis, MemoryTrace
 from sqlalchemy.orm import Session
 from utils.timeutil import utcnow
+
+from models import MemoryFact, MemorySynthesis, MemoryTrace
 
 logger = logging.getLogger(__name__)
 
@@ -238,24 +239,26 @@ def evidence_from_trace(trace: Dict[str, Any], kind: str = "trace") -> Dict[str,
 def _facts_from_rows(rows: List[MemoryFact]) -> List[Dict[str, Any]]:
     out = []
     for r in rows:
-        out.append({
-            "id": r.id,
-            "user_id": r.user_id,
-            "fact_type": r.fact_type,
-            "subject": r.subject,
-            "knowledge_point_id": r.knowledge_point_id,
-            "kp_name": r.kp_name,
-            "claim": r.claim,
-            "confidence": r.confidence,
-            "evidence": r.evidence or [],
-            "source_layer": r.source_layer,
-            "user_corrected": bool(r.user_corrected),
-            "corrected_claim": r.corrected_claim,
-            "corrected_at": r.corrected_at.isoformat() if r.corrected_at else None,
-            "original_claim": r.original_claim,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-        })
+        out.append(
+            {
+                "id": r.id,
+                "user_id": r.user_id,
+                "fact_type": r.fact_type,
+                "subject": r.subject,
+                "knowledge_point_id": r.knowledge_point_id,
+                "kp_name": r.kp_name,
+                "claim": r.claim,
+                "confidence": r.confidence,
+                "evidence": r.evidence or [],
+                "source_layer": r.source_layer,
+                "user_corrected": bool(r.user_corrected),
+                "corrected_claim": r.corrected_claim,
+                "corrected_at": r.corrected_at.isoformat() if r.corrected_at else None,
+                "original_claim": r.original_claim,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+        )
     return out
 
 
@@ -291,11 +294,7 @@ def correct_fact(
     corrected_claim: str,
 ) -> Optional[Dict[str, Any]]:
     """用户纠正一条 L2 事实。保留原值快照，返回更新后的 dict。"""
-    fact = (
-        db.query(MemoryFact)
-        .filter(MemoryFact.id == int(fact_id), MemoryFact.user_id == int(user_id))
-        .first()
-    )
+    fact = db.query(MemoryFact).filter(MemoryFact.id == int(fact_id), MemoryFact.user_id == int(user_id)).first()
     if not fact:
         return None
     if not fact.user_corrected:
@@ -316,22 +315,24 @@ def correct_fact(
 def _synth_from_rows(rows: List[MemorySynthesis]) -> List[Dict[str, Any]]:
     out = []
     for r in rows:
-        out.append({
-            "id": r.id,
-            "user_id": r.user_id,
-            "synth_type": r.synth_type,
-            "title": r.title,
-            "summary": r.summary,
-            "detail": r.detail or {},
-            "fact_ids": r.fact_ids or [],
-            "source_layer": r.source_layer,
-            "user_corrected": bool(r.user_corrected),
-            "corrected_summary": r.corrected_summary,
-            "corrected_at": r.corrected_at.isoformat() if r.corrected_at else None,
-            "original_summary": r.original_summary,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-        })
+        out.append(
+            {
+                "id": r.id,
+                "user_id": r.user_id,
+                "synth_type": r.synth_type,
+                "title": r.title,
+                "summary": r.summary,
+                "detail": r.detail or {},
+                "fact_ids": r.fact_ids or [],
+                "source_layer": r.source_layer,
+                "user_corrected": bool(r.user_corrected),
+                "corrected_summary": r.corrected_summary,
+                "corrected_at": r.corrected_at.isoformat() if r.corrected_at else None,
+                "original_summary": r.original_summary,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+        )
     return out
 
 
@@ -470,9 +471,14 @@ def distill_facts(
         )
         db.add(fact)
         created += 1
-        new_facts.append({
-            "fact_type": "weakness", "subject": subject, "claim": claim, "evidence": evidence,
-        })
+        new_facts.append(
+            {
+                "fact_type": "weakness",
+                "subject": subject,
+                "claim": claim,
+                "evidence": evidence,
+            }
+        )
 
     # qa 疑问点蒸馏
     qa_subjects: Dict[str, List[MemoryTrace]] = {}
@@ -515,9 +521,14 @@ def distill_facts(
         )
         db.add(fact)
         created += 1
-        new_facts.append({
-            "fact_type": "weakness", "subject": subject, "claim": claim, "evidence": evidence,
-        })
+        new_facts.append(
+            {
+                "fact_type": "weakness",
+                "subject": subject,
+                "claim": claim,
+                "evidence": evidence,
+            }
+        )
 
     db.commit()
     return {"created": created, "skipped": skipped, "facts": new_facts}
@@ -599,19 +610,11 @@ def build_profile(
 # --------------------------------------------------------------------------- #
 def memory_overview(db: Session, *, user_id: int) -> Dict[str, Any]:
     """记忆图谱总览：各层数量。"""
-    trace_count = (
-        db.query(MemoryTrace).filter(MemoryTrace.user_id == int(user_id)).count()
-    )
-    fact_count = (
-        db.query(MemoryFact).filter(MemoryFact.user_id == int(user_id)).count()
-    )
-    synth_count = (
-        db.query(MemorySynthesis).filter(MemorySynthesis.user_id == int(user_id)).count()
-    )
+    trace_count = db.query(MemoryTrace).filter(MemoryTrace.user_id == int(user_id)).count()
+    fact_count = db.query(MemoryFact).filter(MemoryFact.user_id == int(user_id)).count()
+    synth_count = db.query(MemorySynthesis).filter(MemorySynthesis.user_id == int(user_id)).count()
     corrected_count = (
-        db.query(MemoryFact)
-        .filter(MemoryFact.user_id == int(user_id), MemoryFact.user_corrected.is_(True))
-        .count()
+        db.query(MemoryFact).filter(MemoryFact.user_id == int(user_id), MemoryFact.user_corrected.is_(True)).count()
     )
     return {
         "trace_count": trace_count,

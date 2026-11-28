@@ -34,17 +34,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal  # noqa: E402
-from models import Document, KnowledgePoint, QuizQuestion  # noqa: E402
 from services import kp_builder, kp_cleaner, qbank_builder, taxonomy  # noqa: E402
 
+from models import Document, KnowledgePoint, QuizQuestion  # noqa: E402
+
 DRY_RUN = "--dry-run" in sys.argv
-ARCHIVE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "archive"
-)
+ARCHIVE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "archive")
 
 # 真题/题库来源（按文件名识别）
 _EXAM_PATTERNS = [
-    "真题", "考试卷", "试题", "题库", "试卷", "模拟试题", "章节题库", "练习题",
+    "真题",
+    "考试卷",
+    "试题",
+    "题库",
+    "试卷",
+    "模拟试题",
+    "章节题库",
+    "练习题",
 ]
 # 排除：明显不是题目的（答案册、笔记、讲义）
 _EXAM_EXCLUDE = ["答案部分", "笔记", "讲义", "知识点", "总结", "大纲", "考纲"]
@@ -68,10 +74,7 @@ def _readable_ratio(text: str) -> float:
     for a, b in spans:
         seg = c[a:b]
         tot += len(seg)
-        ok += sum(
-            1 for ch in seg
-            if ch.isprintable() and (ch.isascii() or "\u4e00" <= ch <= "\u9fa5")
-        )
+        ok += sum(1 for ch in seg if ch.isprintable() and (ch.isascii() or "\u4e00" <= ch <= "\u9fa5"))
     return ok / max(tot, 1)
 
 
@@ -79,9 +82,15 @@ def _readable_ratio(text: str) -> float:
 # 正常真题正文不会同时出现 "Root Entry"、"Microsoft Office Word"、
 # 控制字符、以及 WordSummary 之类的内部流名。
 _JUNK_MARKERS = [
-    "Root Entry", "WordDocument", "Microsoft Office Word",
-    "SummaryInformation", "ProductBuildVer", "WpsCustomData",
-    "ObjectPool", "CompObj", "Times New Roman(",
+    "Root Entry",
+    "WordDocument",
+    "Microsoft Office Word",
+    "SummaryInformation",
+    "ProductBuildVer",
+    "WpsCustomData",
+    "ObjectPool",
+    "CompObj",
+    "Times New Roman(",
 ]
 
 
@@ -124,14 +133,14 @@ def main() -> int:
                 valid += 1
             else:
                 junk += 1
-        print(f"    质量判定：可用 {valid} / 垃圾 {junk}"
-              f"（{round(junk/max(len(old_kps),1)*100,1)}% 为自动抽取噪声）")
+        print(
+            f"    质量判定：可用 {valid} / 垃圾 {junk}（{round(junk / max(len(old_kps), 1) * 100, 1)}% 为自动抽取噪声）"
+        )
 
         # 先把"其他"科目的条目捞出来 —— 它们其实是数电/模电章名，
         # 但必须在下面 DELETE 之前读取（删了就查不到了）。
         other_kp_rows = [
-            {"id": k.id, "name": k.name, "description": k.description}
-            for k in old_kps if (k.subject or "") == "其他"
+            {"id": k.id, "name": k.name, "description": k.description} for k in old_kps if (k.subject or "") == "其他"
         ]
 
         if not DRY_RUN and old_kps:
@@ -139,12 +148,21 @@ def main() -> int:
             path = os.path.join(ARCHIVE_DIR, "knowledge_points_legacy.json")
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(
-                    [{
-                        "id": k.id, "name": k.name, "subject": k.subject,
-                        "chapter": k.chapter, "mastery": k.mastery,
-                        "document_id": k.document_id, "description": k.description,
-                    } for k in old_kps],
-                    f, ensure_ascii=False, indent=1,
+                    [
+                        {
+                            "id": k.id,
+                            "name": k.name,
+                            "subject": k.subject,
+                            "chapter": k.chapter,
+                            "mastery": k.mastery,
+                            "document_id": k.document_id,
+                            "description": k.description,
+                        }
+                        for k in old_kps
+                    ],
+                    f,
+                    ensure_ascii=False,
+                    indent=1,
                 )
             print(f"    已归档 → {path}")
 
@@ -153,9 +171,7 @@ def main() -> int:
         # 只取判定所需的列，避免把 1500+ 篇全文一次性读进内存
         from sqlalchemy import select
 
-        doc_rows = db.execute(
-            select(Document.id, Document.file_name, Document.subject, Document.content)
-        ).all()
+        doc_rows = db.execute(select(Document.id, Document.file_name, Document.subject, Document.content)).all()
         exam_docs = [d for d in doc_rows if _is_exam_doc(d.file_name or "")]
         print(f"    命中真题/题库类文档 {len(exam_docs)} 篇")
 
@@ -202,8 +218,10 @@ def main() -> int:
             if kept:
                 per_doc.append((doc.file_name, kept))
 
-        print(f"    抽出有效题目 {len(extracted)} 道（去重后）"
-              + (f"，跳过二进制乱码文档 {skipped_binary} 篇" if skipped_binary else ""))
+        print(
+            f"    抽出有效题目 {len(extracted)} 道（去重后）"
+            + (f"，跳过二进制乱码文档 {skipped_binary} 篇" if skipped_binary else "")
+        )
         for name, cnt in sorted(per_doc, key=lambda x: -x[1])[:12]:
             print(f"      {cnt:>4} 道  {name[:56]}")
 
@@ -221,18 +239,20 @@ def main() -> int:
 
         if not DRY_RUN and extracted:
             for q in extracted:
-                db.add(QuizQuestion(
-                    content=q["content"],
-                    options=q.get("options") or None,
-                    answer=q.get("answer"),
-                    analysis=q.get("analysis"),
-                    subject=q["subject"],
-                    chapter=q.get("chapter"),
-                    knowledge_point=q.get("knowledge_point") or "",
-                    difficulty=q.get("difficulty") or 3,
-                    source=f"真题:{q.get('doc_name','')[:80]}",
-                    question_type=q.get("question_type") or "single",
-                ))
+                db.add(
+                    QuizQuestion(
+                        content=q["content"],
+                        options=q.get("options") or None,
+                        answer=q.get("answer"),
+                        analysis=q.get("analysis"),
+                        subject=q["subject"],
+                        chapter=q.get("chapter"),
+                        knowledge_point=q.get("knowledge_point") or "",
+                        difficulty=q.get("difficulty") or 3,
+                        source=f"真题:{q.get('doc_name', '')[:80]}",
+                        question_type=q.get("question_type") or "single",
+                    )
+                )
             db.commit()
             print(f"    [✓] 已写入 quiz_questions {len(extracted)} 道")
 
@@ -246,40 +266,45 @@ def main() -> int:
         outline_items: list[dict] = []
         outline_text = ""
         outline_doc = None
-        candidates = db.query(Document).filter(
-            Document.file_name.like("%834%"),
-            (Document.file_name.like("%考纲%")) | (Document.file_name.like("%大纲%")),
-        ).all()
+        candidates = (
+            db.query(Document)
+            .filter(
+                Document.file_name.like("%834%"),
+                (Document.file_name.like("%考纲%")) | (Document.file_name.like("%大纲%")),
+            )
+            .all()
+        )
         readable = [
-            d for d in candidates
-            if not _is_junk_text(d.content)
-            and _looks_like_outline(d.content)
-            and len(d.content or "") > 300
+            d
+            for d in candidates
+            if not _is_junk_text(d.content) and _looks_like_outline(d.content) and len(d.content or "") > 300
         ]
         # 同内容优先选 .txt（解析干净的），再按长度
         readable.sort(key=lambda d: (".txt" not in (d.file_name or ""), -len(d.content or "")))
         if readable:
             outline_doc = readable[0]
             outline_text = outline_doc.content
-            print(f"    考纲来源：{outline_doc.file_name}（{len(outline_text)} 字，"
-                  f"可读率 {_readable_ratio(outline_text):.0%}）")
+            print(
+                f"    考纲来源：{outline_doc.file_name}（{len(outline_text)} 字，"
+                f"可读率 {_readable_ratio(outline_text):.0%}）"
+            )
         else:
             print("    [!] 未找到可读的 834 考纲文档，跳过考纲考点")
 
         for item in kp_builder.parse_834_outline(outline_text):
             subj = _module_subject(item["module"])
-            chapter = kp_cleaner.map_chapter(
-                item["name"], None, subj, item["requirement"]
+            chapter = kp_cleaner.map_chapter(item["name"], None, subj, item["requirement"])
+            outline_items.append(
+                {
+                    "name": item["name"],
+                    "subject": subj,
+                    "chapter": chapter or f"834考纲·{item['module'] or '总则'}",
+                    "description": f"【考纲要求·{item['verb']}】{item['requirement']}",
+                    "difficulty": kp_builder.outline_difficulty(item["verb"]),
+                    "question_types": taxonomy.question_types_of(subj),
+                    "source": "outline",
+                }
             )
-            outline_items.append({
-                "name": item["name"],
-                "subject": subj,
-                "chapter": chapter or f"834考纲·{item['module'] or '总则'}",
-                "description": f"【考纲要求·{item['verb']}】{item['requirement']}",
-                "difficulty": kp_builder.outline_difficulty(item["verb"]),
-                "question_types": taxonomy.question_types_of(subj),
-                "source": "outline",
-            })
         print(f"    834 考纲 → {len(outline_items)} 条考点")
         for it in outline_items[:8]:
             print(f"      · [{it['subject']}] {it['name'][:34]}  →  {it['chapter']}")
@@ -297,7 +322,8 @@ def main() -> int:
         for q in qb_rows:
             if q.subject in ("数字电子技术", "模拟电子技术") and not q.knowledge_point:
                 cls = qbank_builder.classify_question(
-                    q.content or "", subject_hint=q.subject,
+                    q.content or "",
+                    subject_hint=q.subject,
                     section_type=_label_of_type(q.question_type),
                 )
                 if cls["knowledge_point"]:
@@ -310,8 +336,12 @@ def main() -> int:
             print(f"    补齐 {backfilled} 道题的考点标注")
 
         qb_for_kp = [
-            {"knowledge_point": q.knowledge_point, "subject": q.subject,
-             "chapter": q.chapter, "question_type": q.question_type}
+            {
+                "knowledge_point": q.knowledge_point,
+                "subject": q.subject,
+                "chapter": q.chapter,
+                "question_type": q.question_type,
+            }
             for q in qb_rows
             if (q.subject in ("数字电子技术", "模拟电子技术"))
         ]
@@ -331,13 +361,15 @@ def main() -> int:
             if not guessed:
                 continue
             chapter = kp_cleaner.map_chapter(name, None, guessed, row["description"] or "")
-            all_items.append({
-                "name": name,
-                "subject": guessed,
-                "chapter": chapter,
-                "description": row["description"],
-                "source": "reclassify",
-            })
+            all_items.append(
+                {
+                    "name": name,
+                    "subject": guessed,
+                    "chapter": chapter,
+                    "description": row["description"],
+                    "source": "reclassify",
+                }
+            )
             reclassified += 1
         print(f"    '其他'科目归位 → {reclassified}/{len(other_kp_rows)} 条")
 
@@ -348,15 +380,19 @@ def main() -> int:
             # 安全闸：一旦有错题/复习记录挂在这些知识点上，说明系统已在真实使用，
             # 直接 DELETE 会把 error_knowledge_links / review_records 变成悬空引用。
             # 此时拒绝执行，要求走增量补齐（不加 --force）。
-            from models import ErrorKnowledgeLink, ReviewRecord
             from sqlalchemy import func
 
-            link_refs = db.query(func.count(ErrorKnowledgeLink.id)).filter(
-                ErrorKnowledgeLink.knowledge_point_id.isnot(None)
-            ).scalar() or 0
-            review_refs = db.query(func.count(ReviewRecord.id)).filter(
-                ReviewRecord.item_type == "knowledge"
-            ).scalar() or 0
+            from models import ErrorKnowledgeLink, ReviewRecord
+
+            link_refs = (
+                db.query(func.count(ErrorKnowledgeLink.id))
+                .filter(ErrorKnowledgeLink.knowledge_point_id.isnot(None))
+                .scalar()
+                or 0
+            )
+            review_refs = (
+                db.query(func.count(ReviewRecord.id)).filter(ReviewRecord.item_type == "knowledge").scalar() or 0
+            )
 
             if (link_refs or review_refs) and "--force" not in sys.argv:
                 print(f"\n[!] 检测到知识点已被引用：错题关联 {link_refs} 条、复习记录 {review_refs} 条。")
@@ -433,29 +469,51 @@ def main() -> int:
         print(f"    题目：7 → {total_q}")
 
         from sqlalchemy import func
+
         print("\n    各科目知识点 / 已标章节：")
-        for subj, cnt in db.query(
-            KnowledgePoint.subject, func.count(KnowledgePoint.id)
-        ).group_by(KnowledgePoint.subject).order_by(func.count(KnowledgePoint.id).desc()).all():
-            with_ch = db.query(func.count(KnowledgePoint.id)).filter(
-                KnowledgePoint.subject == subj,
-                KnowledgePoint.chapter.isnot(None),
-                KnowledgePoint.chapter != "",
-            ).scalar() or 0
-            with_qt = db.query(func.count(KnowledgePoint.id)).filter(
-                KnowledgePoint.subject == subj,
-                KnowledgePoint.question_types.isnot(None),
-            ).scalar() or 0
-            print(f"      {subj:<14} {cnt:>5}  章节 {with_ch:>5} ({round(with_ch/cnt*100) if cnt else 0}%)"
-                  f"  题型 {with_qt:>5}")
+        for subj, cnt in (
+            db.query(KnowledgePoint.subject, func.count(KnowledgePoint.id))
+            .group_by(KnowledgePoint.subject)
+            .order_by(func.count(KnowledgePoint.id).desc())
+            .all()
+        ):
+            with_ch = (
+                db.query(func.count(KnowledgePoint.id))
+                .filter(
+                    KnowledgePoint.subject == subj,
+                    KnowledgePoint.chapter.isnot(None),
+                    KnowledgePoint.chapter != "",
+                )
+                .scalar()
+                or 0
+            )
+            with_qt = (
+                db.query(func.count(KnowledgePoint.id))
+                .filter(
+                    KnowledgePoint.subject == subj,
+                    KnowledgePoint.question_types.isnot(None),
+                )
+                .scalar()
+                or 0
+            )
+            print(
+                f"      {subj:<14} {cnt:>5}  章节 {with_ch:>5} ({round(with_ch / cnt * 100) if cnt else 0}%)"
+                f"  题型 {with_qt:>5}"
+            )
 
         print("\n    各科目题目数：")
-        for subj, cnt in db.query(
-            QuizQuestion.subject, func.count(QuizQuestion.id)
-        ).group_by(QuizQuestion.subject).order_by(func.count(QuizQuestion.id).desc()).all():
-            with_ch = db.query(func.count(QuizQuestion.id)).filter(
-                QuizQuestion.subject == subj, QuizQuestion.chapter.isnot(None)
-            ).scalar() or 0
+        for subj, cnt in (
+            db.query(QuizQuestion.subject, func.count(QuizQuestion.id))
+            .group_by(QuizQuestion.subject)
+            .order_by(func.count(QuizQuestion.id).desc())
+            .all()
+        ):
+            with_ch = (
+                db.query(func.count(QuizQuestion.id))
+                .filter(QuizQuestion.subject == subj, QuizQuestion.chapter.isnot(None))
+                .scalar()
+                or 0
+            )
             print(f"      {subj:<14} {cnt:>5}  已归章节 {with_ch:>5}")
 
         if DRY_RUN:
@@ -477,8 +535,13 @@ def _module_subject(module: str) -> str:
 
 # 数据库题型（single/fill/...）→ 中文题型（选择/填空/...）
 _TYPE_LABELS = {
-    "single": "选择", "multiple": "多选", "judge": "判断",
-    "fill": "填空", "essay": "简答", "calc": "计算", "draw": "画图",
+    "single": "选择",
+    "multiple": "多选",
+    "judge": "判断",
+    "fill": "填空",
+    "essay": "简答",
+    "calc": "计算",
+    "draw": "画图",
 }
 
 
@@ -499,7 +562,7 @@ def _dedupe_knowledge_points(db) -> int:
         groups[(taxonomy.normalize_subject(kp.subject), (kp.name or "").strip())].append(kp)
 
     merged = 0
-    for (subj, name), rows in groups.items():
+    for (_subj, name), rows in groups.items():
         if len(rows) < 2 or not name:
             continue
         rows.sort(key=lambda k: (k.question_count or 0), reverse=True)

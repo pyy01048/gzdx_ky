@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { authApi } from '../../api/client'
 import { Button, Field, Input } from '../ui'
@@ -7,8 +7,10 @@ import { passwordCategories } from '../../utils/password'
 import { PasswordStrength } from '../ui/PasswordStrength'
 import '../styles/pages.css'
 
-/* 重置密码落地页：后端 GET /api/auth/reset-link 校验后把 token 放进 httpOnly
-   cookie 并 302 到本页（地址栏不留 token）；也兼容 ?token= 直达与 ?error=invalid。 */
+/**
+ * 重置密码落地页：后端 GET /api/auth/reset-link 校验后把 token 放进 httpOnly
+ * cookie 并 302 到本页（地址栏不留 token）；也兼容 ?token= 直达与 ?error=invalid。
+ */
 export default function ResetPassword() {
   const [params] = useSearchParams()
   const urlToken = params.get('token') || ''
@@ -22,6 +24,7 @@ export default function ResetPassword() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const checked = useRef(false)
+  const { phase, message, email } = inspect
 
   /* P1（F-06）：title 由 App 的 RouteTitle 从 ROUTE_META 统一派生 */
 
@@ -32,17 +35,22 @@ export default function ResetPassword() {
       setInspect({ phase: 'bad', message: '重置链接无效、已过期或已被使用。请重新发起找回密码。' })
       return
     }
-    authApi.inspectReset(urlToken || undefined)
-      .then((r) => {
+    const checkLink = async () => {
+      try {
+        const r = await authApi.inspectReset(urlToken || undefined)
         if (r?.valid) setInspect({ phase: 'ok', email: r.email_masked || '' })
         else setInspect({ phase: 'bad', message: '重置链接无效、已过期或已被使用。请重新发起找回密码。' })
-      })
-      .catch((e) => setInspect({ phase: 'bad', message: e?.message || '重置链接校验失败。' }))
+      } catch (e) {
+        setInspect({ phase: 'bad', message: e?.message || '重置链接校验失败。' })
+      }
+    }
+    checkLink()
   }, [linkError, urlToken])
 
   const pwdOk = useMemo(() => pwd.length >= 8 && passwordCategories(pwd) >= 3, [pwd])
 
-  const submit = async (e) => {
+  /** 提交重置密码：校验强度与一致性后调用 resetPassword，成功后延时跳转登录页 */
+  const submit = useCallback(async (e) => {
     e.preventDefault()
     if (!pwdOk) { setError('密码需 8 位以上，且包含大小写字母、数字、特殊字符中的至少 3 类'); return }
     if (pwd !== pwd2) { setError('两次输入的密码不一致'); return }
@@ -57,12 +65,12 @@ export default function ResetPassword() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [pwdOk, pwd, pwd2, urlToken, navigate])
 
   return (
     <div className="v3-auth-landing">
       <div className="v3-auth-landing__card">
-        {inspect.phase === 'busy' ? (
+        {phase === 'busy' ? (
           <div role="status" aria-live="polite">
             <span className="v3-auth-landing__icon is-wait"><KeyRound size={26} /></span>
             <h1>正在校验重置链接…</h1>
@@ -79,21 +87,21 @@ export default function ResetPassword() {
           </div>
         ) : null}
 
-        {!done && inspect.phase === 'bad' ? (
+        {!done && phase === 'bad' ? (
           <div role="alert">
             <span className="v3-auth-landing__icon is-bad"><AlertCircle size={28} /></span>
             <h1>链接不可用</h1>
-            <p>{inspect.message}</p>
+            <p>{message}</p>
             <p>重置链接 60 分钟内有效、仅可使用一次；修改过密码后旧链接会自动失效。</p>
             <Link to="/login"><Button variant="outline" block>返回登录，重新找回</Button></Link>
           </div>
         ) : null}
 
-        {!done && inspect.phase === 'ok' ? (
+        {!done && phase === 'ok' ? (
           <>
             <span className="v3-auth-landing__icon is-wait"><Shield size={26} /></span>
             <h1>设置新密码</h1>
-            <p>{inspect.email ? `账号：${inspect.email}` : '请为该账号设置一个新密码。'}</p>
+            <p>{email ? `账号：${email}` : '请为该账号设置一个新密码。'}</p>
             <form className="v3-auth-landing__form" onSubmit={submit} noValidate>
               <Field label="新密码" htmlFor="v3-reset-pwd">
                 <div className="v3-login__pwd">

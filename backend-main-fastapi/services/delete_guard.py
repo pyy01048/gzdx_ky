@@ -57,9 +57,7 @@ BACKUP_DIR = os.path.join(BASE_DIR, "data", "backups")
 #: 注意：人工备份形如 ``kaoyan_pre_restore_YYYYmmdd_HHMMSS.db``，
 #: 其日期段前有 "pre_restore" 之类的前缀，**不会**匹配本正则，
 #: 因此不会被误当成自动回滚候选。
-BACKUP_NAME_PATTERN = re.compile(
-    r"^kaoyan_(\d{8})_(\d{6})(?:_(\d{6}))?(?:_[0-9A-Za-z]+)?\.db$"
-)
+BACKUP_NAME_PATTERN = re.compile(r"^kaoyan_(\d{8})_(\d{6})(?:_(\d{6}))?(?:_[0-9A-Za-z]+)?\.db$")
 
 
 # --------------------------------------------------------------------------- #
@@ -86,7 +84,7 @@ def _describe_env_flag() -> str:
     if raw is None:
         return f"{ENV_FLAG}=未设置（当前视为关闭）"
     if raw.strip() == "":
-        return f"{ENV_FLAG}=\"\"（空值，当前视为关闭）"
+        return f'{ENV_FLAG}=""（空值，当前视为关闭）'
     return f"{ENV_FLAG}={raw!r}"
 
 
@@ -100,7 +98,7 @@ def _sqlite_url_to_path(url: str) -> Optional[str]:
         return None
     for prefix in ("sqlite+aiosqlite:///", "sqlite:///"):
         if url.startswith(prefix):
-            raw = url[len(prefix):]
+            raw = url[len(prefix) :]
             break
     else:
         # 其它方言（postgresql:// 等）—— 本项目是 SQLite，交给调用方回落。
@@ -151,10 +149,12 @@ def _resolve_db_path() -> str:
         candidates.append(("env KAOYAN_DB_PATH", env))
 
     # 3) 仓库同级 database/kaoyan.db
-    candidates.append((
-        "repo database/kaoyan.db",
-        os.path.join(BASE_DIR, os.pardir, "database", "kaoyan.db"),
-    ))
+    candidates.append(
+        (
+            "repo database/kaoyan.db",
+            os.path.join(BASE_DIR, os.pardir, "database", "kaoyan.db"),
+        )
+    )
 
     # 4) 最后回落 data/kaoyan.db（保持既有行为，由体积校验兜住）
     candidates.append(("fallback data/kaoyan.db", os.path.join(BASE_DIR, "data", "kaoyan.db")))
@@ -175,16 +175,13 @@ def _resolve_db_path() -> str:
         f"{MIN_DB_BYTES} 字节下限）。已尝试：\n"
         + "\n".join(f"  - {src}: {os.path.abspath(p)}" for src, p in candidates)
         + "\n请检查 .env 的 DATABASE_PATH 是否指向真库，"
-          "或用 KAOYAN_DB_PATH 显式指定。"
+        "或用 KAOYAN_DB_PATH 显式指定。"
     )
 
 
 def _record_rejected(source: str, path: str, size: int) -> None:
     """记录一个被体积下限拦下的候选库，便于排查。"""
-    print(
-        f"[delete_guard] 拒绝候选库({source}): {path} "
-        f"大小 {size} B < {MIN_DB_BYTES} B，疑似空壳诱饵库"
-    )
+    print(f"[delete_guard] 拒绝候选库({source}): {path} 大小 {size} B < {MIN_DB_BYTES} B，疑似空壳诱饵库")
 
 
 # --------------------------------------------------------------------------- #
@@ -286,9 +283,7 @@ def backup_before_delete(db_path: str) -> str:
     # 同秒内重复调用会撞同一个文件名。加微秒后缀保证唯一。
     if os.path.exists(backup_path):
         micro = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        backup_path = os.path.join(
-            backup_dir, f"kaoyan_{micro}_{re.sub(r'[^0-9A-Za-z_]+', '_', tag)}.db"
-        )
+        backup_path = os.path.join(backup_dir, f"kaoyan_{micro}_{re.sub(r'[^0-9A-Za-z_]+', '_', tag)}.db")
 
     src = None
     dst = None
@@ -321,9 +316,7 @@ def backup_before_delete(db_path: str) -> str:
             except Exception as _exc:  # noqa: BLE001
                 # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
                 # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-                logging.getLogger(__name__).warning(
-                    '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-                )
+                logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
         try:
             if os.path.exists(backup_path):
                 os.remove(backup_path)
@@ -342,18 +335,14 @@ def _assert_valid_backup(path: str) -> None:
     """
     size = os.path.getsize(path)
     if size < MIN_DB_BYTES:
-        raise PhysicalDeleteBlocked(
-            f"拒绝：备份文件过小（{size} B < {MIN_DB_BYTES} B）: {path}"
-        )
+        raise PhysicalDeleteBlocked(f"拒绝：备份文件过小（{size} B < {MIN_DB_BYTES} B）: {path}")
     conn = None
     try:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         row = conn.execute("PRAGMA quick_check").fetchone()
         if not row or str(row[0]).lower() != "ok":
             raise PhysicalDeleteBlocked(f"拒绝：备份文件完整性校验失败({row}): {path}")
-        n = conn.execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
-        ).fetchone()[0]
+        n = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
         if n < 1:
             raise PhysicalDeleteBlocked(f"拒绝：备份文件无任何表: {path}")
     finally:
@@ -436,7 +425,7 @@ def rollback_window(
             "window_minutes": minutes,
             "rollback_hint": (
                 f"用该备份覆盖回滚 {table_name}："
-                f"python -c \"import services.backup_service as b; "
+                f'python -c "import services.backup_service as b; '
                 f"b.restore_backup(r'{full}')\""
             ),
         }

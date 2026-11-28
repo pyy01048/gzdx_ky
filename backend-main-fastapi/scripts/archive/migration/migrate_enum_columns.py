@@ -23,6 +23,7 @@
   · 逐条打印改动，便于人工复核
   · 替换后 import models 失败即回滚提示
 """
+
 from __future__ import annotations
 
 import argparse
@@ -99,10 +100,7 @@ def migrate(src: str) -> tuple[str, list[tuple[str, str, str]]]:
         enum_name = ENUM_COLUMNS[(table, col)]
         length = m.group("len")
         new_ln = COL_RE.sub(
-            lambda mm: (
-                f"{mm.group('indent')}{mm.group('col')} = "
-                f"Column(PgEnumAware(\"{enum_name}\", {length})"
-            ),
+            lambda mm: (f'{mm.group("indent")}{mm.group("col")} = Column(PgEnumAware("{enum_name}", {length})'),
             ln,
             count=1,
         )
@@ -158,9 +156,16 @@ def main() -> int:
     # 不能用同进程 importlib.reload：reload 会重新执行 models.py，而 Base.metadata
     # 里已注册过同名 Table，触发 "Table 'goals' is already defined"（实测踩坑）。
     import subprocess
+
     r = subprocess.run(
-        [sys.executable, "-c", "import sys; sys.path.insert(0, r'D:\\平台\\backend-main-fastapi'); import models; print('OK')"],
-        capture_output=True, text=True, cwd=str(MODELS.parent),
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.path.insert(0, r'D:\\平台\\backend-main-fastapi'); import models; print('OK')",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(MODELS.parent),
     )
     if "OK" in (r.stdout or ""):
         print("✓ models 导入成功（子进程验证）")

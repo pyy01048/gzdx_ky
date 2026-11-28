@@ -12,6 +12,7 @@
 ``--dry-run`` 不落任何文件；``--selftest`` 用真实脏数据形态当 fixtures 做回归断言
 （含金标准：比 Options 修复前后的期望值），断言全部来自 kaoyan.db 实测，不是编造。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -60,24 +61,41 @@ def build_parser() -> argparse.ArgumentParser:
 # --------------------------------------------------------------------------- #
 _GOLDEN_OPTIONS = [
     # (说明, 原始 options, 期望 options 数量, 期望首项 key)
-    ("id=18 题干碎片混入：取最长递增段",
-     ["A、", "B）当成反相器使用，则", "A、B 端应________ 连接。",
-      "A.A 或B 中有一个接1", "B.A 或B 中有一个接0", "C.A 和B 并联使用", "D.不能实现"],
-     4, "A"),
-    ("id=21 首项为上题残留题干",
-     ["C）＝∑m（0，1，2，6），则它的最大项表达式是F＝ （ ）",
-      "A、πM（0,1,2,6）", "B、πM（0,1,2）", "C、πM（3,4,5,7）", "D、πM（4,5,7）"],
-     4, "A"),
-    ("id=22 末项粘连下一题型标题",
-     ["A、输出电压和输入电压", "B、输出电压与输出电流",
-      "C、电路的抗干扰能力 二、填空题（每题5 分，共30 分）"],
-     3, "A"),
-    ("id=58 仅 1 项且无 A：整体回退为题干碎片",
-     ["D）工作时需加反向电压，才能发出特定波长的光。"], 0, None),
-    ("正常四选项应原样保留",
-     ["A．奇偶校验码", "B．5421BCD 码", "C．余三码", "D．格雷码"], 4, "A"),
-    ("字符串 null 代表无选项",
-     "null", 0, None),
+    (
+        "id=18 题干碎片混入：取最长递增段",
+        [
+            "A、",
+            "B）当成反相器使用，则",
+            "A、B 端应________ 连接。",
+            "A.A 或B 中有一个接1",
+            "B.A 或B 中有一个接0",
+            "C.A 和B 并联使用",
+            "D.不能实现",
+        ],
+        4,
+        "A",
+    ),
+    (
+        "id=21 首项为上题残留题干",
+        [
+            "C）＝∑m（0，1，2，6），则它的最大项表达式是F＝ （ ）",
+            "A、πM（0,1,2,6）",
+            "B、πM（0,1,2）",
+            "C、πM（3,4,5,7）",
+            "D、πM（4,5,7）",
+        ],
+        4,
+        "A",
+    ),
+    (
+        "id=22 末项粘连下一题型标题",
+        ["A、输出电压和输入电压", "B、输出电压与输出电流", "C、电路的抗干扰能力 二、填空题（每题5 分，共30 分）"],
+        3,
+        "A",
+    ),
+    ("id=58 仅 1 项且无 A：整体回退为题干碎片", ["D）工作时需加反向电压，才能发出特定波长的光。"], 0, None),
+    ("正常四选项应原样保留", ["A．奇偶校验码", "B．5421BCD 码", "C．余三码", "D．格雷码"], 4, "A"),
+    ("字符串 null 代表无选项", "null", 0, None),
 ]
 
 _GOLDEN_WATERMARK = [
@@ -85,16 +103,20 @@ _GOLDEN_WATERMARK = [
     ("品牌行内水印", "判断反馈组态 东坡哥微信:haidongpo8 第 3 页", "判断反馈组态"),
     (" Colon 联系方式", "电子通信考研择校、精品课程联系东坡哥：", ""),
     # 只保证「行内片段被剔除」，同行的正文必须原样保留（宁可漏删不可误杀）
-    ("考研专家残片", "电路如惠斯顿电桥 你身边的考研专家！ 接下来是正文内容",
-     "电路如惠斯顿电桥 接下来是正文内容"),
+    ("考研专家残片", "电路如惠斯顿电桥 你身边的考研专家！ 接下来是正文内容", "电路如惠斯顿电桥 接下来是正文内容"),
     # 防误杀回归：正常行文里的「公众号召力」绝不能被当成公众号水印删掉
-    ("正常行文不得误杀", "不可否认的是，偶像具有强大的公众号召力，因为从人性的弱点方面来说",
-     "不可否认的是，偶像具有强大的公众号召力，因为从人性的弱点方面来说"),
-    ("带冒号的公众号仍需清除", "习题详解 微信公众号:电子与通信工程考研 更多资料",
-     "习题详解 更多资料"),
+    (
+        "正常行文不得误杀",
+        "不可否认的是，偶像具有强大的公众号召力，因为从人性的弱点方面来说",
+        "不可否认的是，偶像具有强大的公众号召力，因为从人性的弱点方面来说",
+    ),
+    ("带冒号的公众号仍需清除", "习题详解 微信公众号:电子与通信工程考研 更多资料", "习题详解 更多资料"),
     # 作答空位不是噪声：________ 必须原样保留
-    ("保留作答空位", "2、已知F=ABC+CD，选出下列可以肯定使F=0 的取值________________。",
-     "2、已知F=ABC+CD，选出下列可以肯定使F=0 的取值________________。"),
+    (
+        "保留作答空位",
+        "2、已知F=ABC+CD，选出下列可以肯定使F=0 的取值________________。",
+        "2、已知F=ABC+CD，选出下列可以肯定使F=0 的取值________________。",
+    ),
     ("扫描App连写尾巴", "扫描全能王 创建扫描全能王 创建这是正文", "这是正文"),
 ]
 
@@ -144,9 +166,16 @@ def selftest() -> int:
 
     # 变异定向加固：把「正常四选项」的样本拿去校验，不该出现 hard error
     opts, _ = normalize_options(["A．奇偶校验码", "B．5421BCD 码", "C．余三码", "D．格雷码"])
-    v = validate_question(CanonicalQuestion(stem="下列代码中属于无权码的是？", options=opts,
-                                            answer="C", question_type="single",
-                                            origin="textbook", subject_norm="数字电子技术"))
+    v = validate_question(
+        CanonicalQuestion(
+            stem="下列代码中属于无权码的是？",
+            options=opts,
+            answer="C",
+            question_type="single",
+            origin="textbook",
+            subject_norm="数字电子技术",
+        )
+    )
     ok = v["ok"] is True
     print(f"    {'PASS' if ok else 'FAIL'}  完好题目应通过校验门 -> {v}")
     if not ok:
@@ -159,7 +188,7 @@ def selftest() -> int:
 def _diff_window(before: str, after: str, matched: str, window: int = 32) -> None:
     """打印变更点的局部对照，而不是整行从头截断（长行看不出改在哪）。"""
     if not after.strip():
-        print(f"    前: ...{before[-min(len(before), 90):]}...")
+        print(f"    前: ...{before[-min(len(before), 90) :]}...")
         print("    后: (整行丢弃)")
         return
     pos = before.find(matched) if matched else -1
@@ -171,9 +200,9 @@ def _diff_window(before: str, after: str, matched: str, window: int = 32) -> Non
     end = min(len(before), pos + len(matched) + window)
     print(f"    前: ...{before[start:end]}...")
     cut = after.replace(matched, "")
-    head = max(0, cut.find(before[max(0, start):pos][-12:]) if start > 0 else 0)
+    head = max(0, cut.find(before[max(0, start) : pos][-12:]) if start > 0 else 0)
     tail_start = max(0, head)
-    print(f"    后: ...{cut[tail_start:tail_start + (end - start) + window]}...")
+    print(f"    后: ...{cut[tail_start : tail_start + (end - start) + window]}...")
 
 
 def show_samples(n: int, db_path: str | None = None) -> int:
@@ -190,7 +219,6 @@ def show_samples(n: int, db_path: str | None = None) -> int:
         打印出的条数。
     """
     import sqlite3
-
 
     bundle = wm.load_rules()
     conn = sqlite3.connect(read_only_sqlite_uri(db_path), uri=True)
@@ -244,18 +272,23 @@ def print_report(result: dict) -> None:
     print("ETL 结果摘要")
     print("=" * 62)
     if "questions_total" in result:
-        print(f"  题目    总 {result['questions_total']:>6}  干净 {result['questions_clean']:>6}  "
-              f"待修复 {result['questions_repair']:>6}  答案回填 {result.get('answers_enriched', 0):>5}")
+        print(
+            f"  题目    总 {result['questions_total']:>6}  干净 {result['questions_clean']:>6}  "
+            f"待修复 {result['questions_repair']:>6}  答案回填 {result.get('answers_enriched', 0):>5}"
+        )
         print(f"  文档    干净 {result['documents_clean']:>6}  待修复 {result['documents_repair']:>6}")
         print(f"  分块    干净 {result['chunks_clean']:>6}  待修复 {result['chunks_repair']:>6}")
     if v:
         print("-" * 62)
         print(f"  抽样 {v['total']}  通过 {v['passed']}  失败 {v['failed']}")
-        print(f"  准确率  {v['accuracy']:.2%}  门禁阈值 {v['threshold']:.2%}  "
-              f"{'PASS' if v['gate_passed'] else 'REJECT'}")
+        print(
+            f"  准确率  {v['accuracy']:.2%}  门禁阈值 {v['threshold']:.2%}  {'PASS' if v['gate_passed'] else 'REJECT'}"
+        )
         m = v.get("metrics") or {}
-        print(f"  水印残留率 {m.get('watermark_residue_rate')}   "
-              f"选项修复率 {m.get('option_fix_rate')}   结构达标率 {m.get('structure_pass_rate')}")
+        print(
+            f"  水印残留率 {m.get('watermark_residue_rate')}   "
+            f"选项修复率 {m.get('option_fix_rate')}   结构达标率 {m.get('structure_pass_rate')}"
+        )
         print(f"  各项通过率 {v.get('check_summary')}")
         print(f"  写文件   {result.get('written', False)}   目录 {result.get('out_dir')}")
     print("=" * 62)
@@ -273,9 +306,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         result = run_etl(
-            db_path=args.db, out_dir=args.out_dir, limit=args.limit,
-            dry_run=args.dry_run, emit_ddl=args.emit_ddl, verify_only=args.verify_only,
-            seed=args.seed, threshold=args.threshold, sample_size=args.sample_size,
+            db_path=args.db,
+            out_dir=args.out_dir,
+            limit=args.limit,
+            dry_run=args.dry_run,
+            emit_ddl=args.emit_ddl,
+            verify_only=args.verify_only,
+            seed=args.seed,
+            threshold=args.threshold,
+            sample_size=args.sample_size,
         )
     except FileNotFoundError as exc:
         print(f"[错误] {exc}", file=sys.stderr)

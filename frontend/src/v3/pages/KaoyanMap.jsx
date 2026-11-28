@@ -38,6 +38,7 @@ function fetchChinaGeo() {
     })
 }
 
+/** 把行政区全名规整为短名（去省 / 市 / 自治区等后缀）。 */
 function shortProvince(name) {
   return String(name || '')
     .replace(/(壮族自治区|回族自治区|维吾尔自治区|特别行政区|自治区|省|市)$/u, '')
@@ -253,7 +254,7 @@ export default function KaoyanMap() {
     : null
   const hasMap = projection && projection.features.length > 0
 
-  const refresh = () => { load() }
+  const refresh = useCallback(() => { load() }, [load])
 
   const yearText = data.year ?? year ?? '—'
   const headerSub = loading

@@ -7,6 +7,7 @@
      把 Python repr 喂给模型；现按 list 顺序拼成 A．… B．…；
   ③ exam / textbook 两种模式的提示词必须有**实质差异**（评分视角 vs 概念理解）。
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -15,9 +16,18 @@ from routers.ai import ai_tutoring as t
 
 
 def _q(source=None, subject=None, options=None):
-    return SimpleNamespace(id=1, source=source, subject=subject, options=options,
-                           content="c", answer="A", analysis=None, knowledge_point=None,
-                           year=None, paper=None)
+    return SimpleNamespace(
+        id=1,
+        source=source,
+        subject=subject,
+        options=options,
+        content="c",
+        answer="A",
+        analysis=None,
+        knowledge_point=None,
+        year=None,
+        paper=None,
+    )
 
 
 # --------------------------- ① 动态科目身份 --------------------------- #

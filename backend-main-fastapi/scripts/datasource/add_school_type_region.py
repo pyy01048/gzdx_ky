@@ -14,6 +14,7 @@
   python add_school_type_region.py            # 预览
   python add_school_type_region.py --apply    # 写库（自动备份）
 """
+
 from __future__ import annotations
 
 import shutil
@@ -24,14 +25,44 @@ from datetime import datetime, timezone
 DB = r"D:\平台\database\kaoyan.db"
 
 # 考研 A/B 区（教育部国家线分区）
-ZONE_A = {"北京", "天津", "河北", "山西", "辽宁", "吉林", "黑龙江", "上海", "江苏",
-          "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东",
-          "重庆", "四川", "陕西"}
+ZONE_A = {
+    "北京",
+    "天津",
+    "河北",
+    "山西",
+    "辽宁",
+    "吉林",
+    "黑龙江",
+    "上海",
+    "江苏",
+    "浙江",
+    "安徽",
+    "福建",
+    "江西",
+    "山东",
+    "河南",
+    "湖北",
+    "湖南",
+    "广东",
+    "重庆",
+    "四川",
+    "陕西",
+}
 ZONE_B = {"内蒙古", "广西", "海南", "贵州", "云南", "西藏", "甘肃", "青海", "宁夏", "新疆"}
+
 
 # 省份别名归一（库中既有"北京市"也有"北京"）
 def norm(p: str) -> str:
-    return (p or "").replace("省", "").replace("市", "").replace("自治区", "").replace("壮族", "").replace("回族", "").replace("维吾尔", "").strip()
+    return (
+        (p or "")
+        .replace("省", "")
+        .replace("市", "")
+        .replace("自治区", "")
+        .replace("壮族", "")
+        .replace("回族", "")
+        .replace("维吾尔", "")
+        .strip()
+    )
 
 
 MILITARY_KW = ("军医大学", "陆军", "海军", "空军", "国防", "武警", "战略支援", "火箭军")
@@ -84,6 +115,7 @@ def main():
 
     print(f"需回填 {len(upd)} 行")
     from collections import Counter
+
     print("type 分布:", dict(Counter(x[1] for x in upd)))
     print("region 分布:", dict(Counter(x[2] for x in upd)))
 
@@ -94,8 +126,7 @@ def main():
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     for sid, typ, region in upd:
-        cur.execute("UPDATE kaoyan_schools SET type=?, region=?, updated_at=? WHERE id=?",
-                    (typ, region, ts, sid))
+        cur.execute("UPDATE kaoyan_schools SET type=?, region=?, updated_at=? WHERE id=?", (typ, region, ts, sid))
     con.commit()
     print("\n完成。最终分布：")
     print("  type:", dict(Counter(r[0] for r in cur.execute("SELECT type FROM kaoyan_schools"))))

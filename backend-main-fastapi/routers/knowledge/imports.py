@@ -19,7 +19,6 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from models import Document
 from pydantic import BaseModel
 from services.doc_naming import apply_display_name
 from services.document_parser import DocumentParser
@@ -27,6 +26,8 @@ from services.kb_service import has_searchable_chunks, ingest_document, ingest_t
 from services.smart_ingest import gate_for_write, is_self_produced
 from sqlalchemy.orm import Session
 from utils.security import require_admin
+
+from models import Document
 
 router = APIRouter(prefix="/api/imports", tags=["imports"], dependencies=[Depends(require_admin)])
 
@@ -103,9 +104,9 @@ class ScanRequest(BaseModel):
     directory: str
     recursive: bool = True
     use_ocr: bool = True
-    enrich: bool = True                       # 用本地模型提炼要点追加进知识库
-    enrich_model: str = "qwen3:8b"          # 文档处理模型（用户已下载）
-    force: bool = False                        # 强制重新解析已导入文档
+    enrich: bool = True  # 用本地模型提炼要点追加进知识库
+    enrich_model: str = "qwen3:8b"  # 文档处理模型（用户已下载）
+    force: bool = False  # 强制重新解析已导入文档
 
 
 def _scan_worker(
@@ -120,8 +121,16 @@ def _scan_worker(
 ):
     """后台扫描导入任务：解析 -> 质量闸门 -> 切分入库(RAG) -> 可选本地模型提炼。"""
     parser = DocumentParser()
-    stats = {"scanned": 0, "imported": 0, "skipped": 0, "failed": 0,
-             "rejected": 0, "dedup_skipped": 0, "enriched": 0, "errors": []}
+    stats = {
+        "scanned": 0,
+        "imported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "rejected": 0,
+        "dedup_skipped": 0,
+        "enriched": 0,
+        "errors": [],
+    }
     start = time.time()
     try:
         if not os.path.isdir(directory):
@@ -173,12 +182,10 @@ def _scan_worker(
 
                     # 质量闸门：拦下的文件**不写 Document、不切块**，
                     # 所以库里不会再长出"正文一堆乱码但标着 indexed"的行。
-                    verdict = gate_for_write(db, text, path=path,
-                                             doc_id=getattr(exists, "id", None))
+                    verdict = gate_for_write(db, text, path=path, doc_id=getattr(exists, "id", None))
                     if not verdict["ok"]:
                         stats["rejected"] += 1
-                        stats["errors"].append(
-                            f"{path}: 质量闸门拒绝 —— {'; '.join(verdict['reasons'])}")
+                        stats["errors"].append(f"{path}: 质量闸门拒绝 —— {'; '.join(verdict['reasons'])}")
                         if verdict.get("dedup_hit"):
                             stats["dedup_skipped"] += 1
                         continue
@@ -217,8 +224,12 @@ def _scan_worker(
                         summary = _ollama_enrich(text, enrich_model)
                         if summary:
                             enriched = ingest_text(
-                                db, doc.id, doc.file_name + " ·AI提炼",
-                                summary, subject=doc.subject, replace=False,
+                                db,
+                                doc.id,
+                                doc.file_name + " ·AI提炼",
+                                summary,
+                                subject=doc.subject,
+                                replace=False,
                             )
                     # indexed 只认"库里真的有块"，不认本轮返回值：
                     # 重新解析被物理删除闸门拦住时旧块仍在、RAG 照样命中。
@@ -247,8 +258,21 @@ def _scan_worker(
 
 @router.post("/scan")
 async def start_scan(req: ScanRequest, db: Session = Depends(get_db)):
-    """启动目录扫描导入任务（后台执行）。"""
+    """启动目录扫描导入任务（后台执行）。
+
+    ``ScanRequest.directory`` 须落在 ``resolve_kb_root()`` 子树内（C-INGEST@1
+    白名单），越界抛 400，防扫描器把仓库根/系统目录当资料源扫进来。
+    """
     from database import SessionLocal
+    from services.kb_service import resolve_kb_root
+
+    kb_root = os.path.realpath(resolve_kb_root())
+    req_dir = os.path.realpath(os.path.abspath(req.directory))
+    if not (req_dir == kb_root or req_dir.startswith(kb_root + os.sep)):
+        raise HTTPException(
+            status_code=400,
+            detail=f"目录不在知识库根下（{kb_root}），已拒绝扫描",
+        )
 
     task_id = f"scan_{int(time.time() * 1000)}"
     _scans[task_id] = {
@@ -262,8 +286,14 @@ async def start_scan(req: ScanRequest, db: Session = Depends(get_db)):
     t = threading.Thread(
         target=_scan_worker,
         args=(
-            task_id, req.directory, req.recursive, req.use_ocr,
-            req.enrich, req.enrich_model, req.force, SessionLocal,
+            task_id,
+            req.directory,
+            req.recursive,
+            req.use_ocr,
+            req.enrich,
+            req.enrich_model,
+            req.force,
+            SessionLocal,
         ),
         daemon=True,
     )
@@ -295,9 +325,11 @@ async def get_stats(db: Session = Depends(get_db)):
     indexed = db.query(Document).filter(Document.index_status == "indexed").count()
     failed = db.query(Document).filter(Document.index_status == "failed").count()
     pending = db.query(Document).filter(Document.index_status == "pending").count()
-    total_size = db.query(Document).with_entities(
-        __import__("sqlalchemy").func.coalesce(__import__("sqlalchemy").func.sum(Document.size), 0)
-    ).scalar()
+    total_size = (
+        db.query(Document)
+        .with_entities(__import__("sqlalchemy").func.coalesce(__import__("sqlalchemy").func.sum(Document.size), 0))
+        .scalar()
+    )
     return {
         "total": total,
         "indexed": indexed,

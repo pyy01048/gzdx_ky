@@ -34,6 +34,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { SOURCE_KINDS, SOURCE_KIND_LABEL, loadFavs, normQ } from './quizShared'
 import QuizYear from './QuizYear'
 import QuizWrongReview from './QuizWrongReview'
+import Engineering08Practice from './Engineering08Practice'
 import '../styles/quiz-v3.css'
 import '../styles/study-glass.css'
 
@@ -45,6 +46,27 @@ import '../styles/study-glass.css'
  * 以便「返回题库」时保留 Tab、选中科目与分组缓存——与拆分前行为一致。
  * ===================================================================== */
 
+/**
+ * 刷题中心 · 首页（v3）
+ * 统计带 / 来源 Tab（真题·教材题·全部）/ 三入口 Tab（知识点·年份·错题收藏）/
+ * 练习-背题切换 / 自定义练习设置 / 智能组卷 / 按知识点（科目+章节树）。
+ * 首页常驻挂载于容器（visible=false 时渲染 null），
+ * 以便「返回题库」时保留 Tab、选中科目与分组缓存——与拆分前行为一致。
+ * @param {Object} props
+ * @param {boolean} props.visible - 是否可见（首页常驻挂载，不可见时返回 null）
+ * @param {string} props.mode - practice | memorize
+ * @param {(m: string) => void} props.setMode
+ * @param {string} props.sourceKind - exam | textbook | all
+ * @param {(s: string) => void} props.setSourceKind
+ * @param {Object|null} props.kpFilter - 知识点筛选 {id,name} | null
+ * @param {Object|null} props.kpEmpty - 知识点无题空态 {name} | null
+ * @param {Object} props.favs - 收藏快照 {id: {content,subject,chapter,type}}
+ * @param {boolean} props.submitting - 提交中（禁用整科练习按钮）
+ * @param {Function} props.onBeginSession - 开始会话
+ * @param {Function} props.onStartWithFilter - 按筛选开始
+ * @param {Function} props.onClearKp - 清除知识点筛选
+ * @param {Function} props.onContinueSession - 继续上次会话
+ */
 export default function QuizHome({
   visible,
   mode,
@@ -58,10 +80,11 @@ export default function QuizHome({
   onBeginSession,
   onStartWithFilter,
   onClearKp,
+  onContinueSession,
 }) {
   const { user } = useAuth()
   /* URL ?subject= 初选科目（与拆分前 Quiz.jsx 的 selSubject 初值一致） */
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const isExamRoute = location.pathname.startsWith('/exam')
   const urlSubject = searchParams.get('subject') || ''
@@ -71,11 +94,12 @@ export default function QuizHome({
      用户不再需要在刷题中心里找入口。 */
   const urlTab = searchParams.get('tab')
   const [tab, setTab] = useState(
-    isExamRoute ? 'year' : ['knowledge', 'year', 'review'].includes(urlTab) ? urlTab : 'knowledge',
+    isExamRoute ? 'year' : ['knowledge', 'year', 'review', 'engineering08'].includes(urlTab) ? urlTab : 'knowledge',
   ) // knowledge | year | review
   const [stats, setStats] = useState(null)
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsErr, setStatsErr] = useState(false)
+  const [latestSession, setLatestSession] = useState(null)
 
   const [subjects, setSubjects] = useState([])
   const [subjLoading, setSubjLoading] = useState(true)
@@ -227,6 +251,19 @@ export default function QuizHome({
   useEffect(() => {
     loadStats()
   }, [loadStats])
+  const loadLatestSession = useCallback(async () => {
+    if (!visible || !user) return
+    const data = await quizApi.latestSession?.()
+    setLatestSession(data?.session_id && data.status === 'in_progress' ? data : null)
+  }, [visible, user])
+
+  useEffect(() => {
+    let alive = true
+    Promise.resolve(quizApi.latestSession?.()).then((data) => {
+      if (alive) setLatestSession(data?.session_id && data.status === 'in_progress' ? data : null)
+    }).catch(() => { if (alive) setLatestSession(null) })
+    return () => { alive = false }
+  }, [visible, user])
   useEffect(() => {
     loadCfgOrder()
   }, [loadCfgOrder])
@@ -268,7 +305,7 @@ export default function QuizHome({
       setTab('year')
       return
     }
-    setTab(['knowledge', 'year', 'review'].includes(urlTab) ? urlTab : 'knowledge')
+    setTab(['knowledge', 'year', 'review', 'engineering08'].includes(urlTab) ? urlTab : 'knowledge')
   }, [urlTab, isExamRoute])
   /* 等配置科目顺序就绪后再加载科目列表，保证排序/默认选中正确 */
   useEffect(() => {
@@ -286,12 +323,13 @@ export default function QuizHome({
   }, [selSubject, loadTree])
 
   /* ================= 自定义练习 =================
-     题量：5 / 10 / 20 / 自定义；科目：多选（来自已加载的 subjects 列表，
-     空选 = 全部科目）；来源：只练错题 / 只练收藏（二选一，均进入浏览模式——
-     错题与收藏快照不携带选项，无法自动判分）。
-     数据来源：错题 = errorsApi.list({status:'active'})；收藏 = 本地
-     quiz_favorites_v9；普通出题 = quizApi.questions（多科目逐个请求后合并）。 */
-  const startCustomPractice = async () => {
+      题量：5 / 10 / 20 / 自定义；科目：多选（来自已加载的 subjects 列表，
+      空选 = 全部科目）；来源：只练错题 / 只练收藏（二选一，均进入浏览模式——
+      错题与收藏快照不携带选项，无法自动判分）。
+      数据来源：错题 = errorsApi.list({status:'active'})；收藏 = 本地
+      quiz_favorites_v9；普通出题 = quizApi.questions（多科目逐个请求后合并）。 */
+  /** 启动自定义练习：按题量/科目/错题/收藏组合出题并进入会话 */
+  const startCustomPractice = useCallback(async () => {
     const n = practiceCount === 'custom' ? parseInt(customCount, 10) : parseInt(practiceCount, 10)
     const size = Number.isFinite(n) && n > 0 ? Math.min(n, 200) : 10
     if (onlyWrong && onlyFav) {
@@ -301,23 +339,33 @@ export default function QuizHome({
     setCustomLoading(true)
     try {
       let qs = []
+      let errorBasis = null
       if (onlyWrong) {
-        // 「只练错题」的候选池必须是全部活跃错题：此前只取第一页 200 条，
-        // 第 201 条以后的错题在自定义练习里永远抽不到。
         const rows = await fetchAllPages((p) => errorsApi.list({ ...p, status: 'active' }), {
           keys: ['errors'],
         })
-        qs = rows.map((e) => ({
-          id: String(e.question_id || e.id),
-          content: e.content || '',
-          options: [],
-          answer: e.correct_answer || '',
-          analysis: e.analysis || '',
-          subject: e.subject || '',
-          chapter: '错题',
-          difficulty: 1,
-          question_type: '',
+        for (let i = rows.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          ;[rows[i], rows[j]] = [rows[j], rows[i]]
+        }
+        const selected = rows.slice(0, size)
+        const loaded = await Promise.all(selected.map(async (error) => {
+          if (!Number(error.question_id)) throw new Error('部分错题没有关联原题，请先前往错题本补录题目')
+          const detail = await quizApi.questionDetail(error.question_id)
+          const question = { ...normQ(detail), id: String(detail.id), error_id: Number(error.id) }
+          if (!question.content) throw new Error('原题内容为空，无法重练')
+          return question
         }))
+        qs = loaded
+        errorBasis = {
+          kind: 'error_review',
+          title: `自定义错题重练（${loaded.length} 题）`,
+          error_ids: selected.map((error) => Number(error.id)),
+          question_error_ids: Object.fromEntries(loaded.map((question) => [question.id, question.error_id])),
+          loaded: loaded.length,
+          answerableCount: loaded.length,
+          totalCount: loaded.length,
+        }
       } else if (onlyFav) {
         const favMap = loadFavs()
         qs = Object.entries(favMap).map(([id, f]) => ({
@@ -366,12 +414,12 @@ export default function QuizHome({
         toast('当前设置下没有可用题目，请调整科目或开关')
         return
       }
-      const browse = onlyWrong || onlyFav
+      const browse = onlyFav
       const parts = [
         onlyWrong ? '错题' : onlyFav ? '收藏' : practiceSubs.length ? practiceSubs.join('+') : '全部科目',
       ]
       const title = `自定义练习 · ${parts.join(' · ')}（${qs.length} 题）`
-      onBeginSession(title, qs, mode, 0, browse, {
+      const sessionBasis = errorBasis || {
         title,
         subject: practiceSubs[0] || null,
         chapter: null,
@@ -383,17 +431,20 @@ export default function QuizHome({
         answerableCount: browse ? null : qs.length,
         totalCount: qs.length,
         dropped: 0,
-      })
-      if (browse) toast('错题/收藏题不携带选项，已进入浏览模式（不判分、不进错题本）')
-    } catch {
-      toast('自定义练习拉题失败，请确认后端已启动')
+      }
+      await onBeginSession(title, qs, mode, 0, browse, sessionBasis)
+      if (onlyFav) toast('收藏快照不携带选项，已进入浏览模式（不判分、不进错题本）')
+    } catch (e) {
+      toast(onlyWrong ? `错题重练失败：${e?.message || '无法读取原题'}` : '自定义练习拉题失败，请确认后端已启动')
     } finally {
       setCustomLoading(false)
+      try { await loadLatestSession() } catch { /* 首页继续上次入口保持原状态 */ }
     }
-  }
+  }, [practiceCount, customCount, onlyWrong, onlyFav, practiceSubs, subjects, sourceKind, mode, onBeginSession, loadLatestSession])
 
-  /* V11 智能组卷：调 /api/insight/smart-paper 成卷后直接进入练习 */
-  const runSmartPaper = async (m) => {
+  /** V11 智能组卷：调 /api/insight/smart-paper 成卷后直接进入练习
+   *  @param {string} m - weak | error_prone | random */
+  const runSmartPaper = useCallback(async (m) => {
     setSmartLoading(m)
     try {
       const { insightApi } = await import('../../api/client')
@@ -402,7 +453,7 @@ export default function QuizHome({
         200,
       )
       const r = await insightApi.smartPaper({ mode: m, size, subject: selSubject || undefined })
-      onBeginSession(
+      await onBeginSession(
         `智能组卷 · ${m === 'weak' ? '薄弱优先' : m === 'error_prone' ? '易错重练' : '随机'}（${r.size}题）`,
         r.questions,
         'practice',
@@ -412,8 +463,9 @@ export default function QuizHome({
       toast(e?.message || '智能组卷失败')
     } finally {
       setSmartLoading(null)
+      try { await loadLatestSession() } catch { /* 首页继续上次入口保持原状态 */ }
     }
-  }
+  }, [practiceCount, customCount, selSubject, onBeginSession, loadLatestSession])
 
   /* 非首页视图时不渲染（组件保持挂载，首页状态因此跨练习保留） */
   if (!visible) return null
@@ -701,9 +753,26 @@ export default function QuizHome({
         </Alert>
       )}
 
+      {latestSession && onContinueSession && (
+        <Card className="v3-quiz-continue">
+          <div className="v3-quiz-inline" style={{ justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <strong>继续上次</strong>
+              <div className="v3-quiz-keyhint">
+                {latestSession.title} · 已作答 {latestSession.answered_count || 0}/{latestSession.total_questions || 0} 题
+              </div>
+            </div>
+            <Button variant="filled" icon={<Play size={15} />} onClick={() => onContinueSession(latestSession)}>
+              继续作答
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* 统计带（W4 精简）：题库口径两数常显；答题行为数**有数据才出现**——
           「已完成作答 0 次 / 正确率 0% / 待攻克 0 题」不是信息，是噪音
           （对标粉笔/考研帮：首页只给当前有用的下一步，不做零值陈列柜）。 */}
+      {tab !== 'engineering08' && (
       <div className="v3-quiz-statsline" aria-label="题库与作答概况">
         {statsLoading ? (
           <>
@@ -759,9 +828,10 @@ export default function QuizHome({
           </>
         )}
       </div>
+      )}
 
       {/* 知识点级筛选标识：仅在 URL 带 kp_id 时出现，让用户明确当前按知识点刷题 */}
-      {kpFilter && (
+      {tab !== 'engineering08' && kpFilter && (
         <Alert tone="info">
           <div className="v3-quiz-inline">
             <span>
@@ -775,7 +845,7 @@ export default function QuizHome({
       )}
 
       {/* 知识点筛选命中 0 题：显式空态兜底，不白屏 */}
-      {kpEmpty && (
+      {tab !== 'engineering08' && kpEmpty && (
         <Card>
           <Empty
             icon={<Search size={26} />}
@@ -790,7 +860,7 @@ export default function QuizHome({
         </Card>
       )}
 
-      {statsErr && (
+      {tab !== 'engineering08' && statsErr && (
         <Alert tone="danger">
           <div className="v3-quiz-inline">
             <span>
@@ -805,6 +875,7 @@ export default function QuizHome({
 
       {/* 来源分离（M0）+ 三入口 Tab + 练习/背题切换 */}
       <Card variant="tonal" className="v3-quiz-controls">
+        {tab !== 'engineering08' && (
         <div className="v3-quiz-bar">
           <Segmented
             ariaLabel="题目来源"
@@ -831,15 +902,25 @@ export default function QuizHome({
             {sourceKind === 'exam' ? '（真题与教材题已分离，不混排）' : ''}
           </span>
         </div>
+        )}
         <div className="v3-quiz-bar">
           <Segmented
             ariaLabel="刷题入口"
             value={tab}
-            onChange={setTab}
+            onChange={(nextTab) => {
+              setTab(nextTab)
+              setSearchParams((prev) => {
+                const params = new URLSearchParams(prev)
+                if (nextTab === 'knowledge') params.delete('tab')
+                else params.set('tab', nextTab)
+                return params
+              }, { replace: true })
+            }}
             options={[
               { value: 'knowledge', label: '按知识点', icon: <Brain size={14} /> },
               { value: 'year', label: '按年份', icon: <Calendar size={14} /> },
               { value: 'review', label: '错题库', icon: <Search size={14} /> },
+              { value: 'engineering08', label: '工科08', icon: <Target size={14} /> },
             ]}
           />
           <Segmented
@@ -855,7 +936,7 @@ export default function QuizHome({
       </Card>
 
       {/* P0-6：当前来源 0 题、而另一侧有题时，给一个「去教材题」直达按钮。 */}
-      {sourceKind === 'exam' && sourceCounts?.exam === 0 && (sourceCounts?.textbook || 0) > 0 && (
+      {tab !== 'engineering08' && sourceKind === 'exam' && sourceCounts?.exam === 0 && (sourceCounts?.textbook || 0) > 0 && (
         <Card>
           <Empty
             icon={<Search size={26} />}
@@ -878,12 +959,13 @@ export default function QuizHome({
       )}
 
       {/* 自定义练习：题量 / 科目多选 / 只练错题 / 只练收藏 */}
+      {tab !== 'engineering08' && (
       <Card>
         <CardHead
           title="自定义练习"
           sub={
             onlyWrong
-              ? '候选池为全部活跃错题（浏览模式）'
+              ? '候选池为全部活跃错题，回取完整原题后判分'
               : onlyFav
                 ? '候选池为本地收藏快照（浏览模式）'
                 : '题量、科目范围与随机抽题'
@@ -990,6 +1072,7 @@ export default function QuizHome({
           )}
         </div>
       </Card>
+      )}
 
       {tab === 'knowledge' && (
         <>
@@ -1027,6 +1110,11 @@ export default function QuizHome({
         visible={visible && tab === 'review'}
         tab={tab}
         favs={favs}
+        mode={mode}
+        onBeginSession={onBeginSession}
+      />
+      <Engineering08Practice
+        visible={visible && tab === 'engineering08'}
         mode={mode}
         onBeginSession={onBeginSession}
       />

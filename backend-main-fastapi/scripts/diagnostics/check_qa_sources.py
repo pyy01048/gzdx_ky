@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """检查 SFT 样本与真题题干/答案的可配对程度，判断重建训练集的可行性。"""
+
 import os
 import re
 import sys
@@ -8,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal
+
 from models import QuizQuestion, SFTExample
 
 
@@ -39,28 +41,23 @@ def main():
                 n += 1
                 if a[:120] in u:
                     same += 1
-            print(f"\n  ⚠️ assistant 是 user 子串的比例: {same}/{n} "
-                  f"({same/max(n,1)*100:.1f}%)")
+            print(f"\n  ⚠️ assistant 是 user 子串的比例: {same}/{n} ({same / max(n, 1) * 100:.1f}%)")
 
         print()
         print("=" * 74)
         print("2) QuizQuestion（真题）—— 能否做成真 Q&A 对")
         print("=" * 74)
         q_total = db.query(QuizQuestion).count()
-        with_ans = db.query(QuizQuestion).filter(
-            QuizQuestion.answer.isnot(None), QuizQuestion.answer != ""
-        ).count()
-        with_ana = db.query(QuizQuestion).filter(
-            QuizQuestion.analysis.isnot(None), QuizQuestion.analysis != ""
-        ).count()
+        with_ans = db.query(QuizQuestion).filter(QuizQuestion.answer.isnot(None), QuizQuestion.answer != "").count()
+        with_ana = db.query(QuizQuestion).filter(QuizQuestion.analysis.isnot(None), QuizQuestion.analysis != "").count()
         print(f"  题目总数 {q_total}")
-        print(f"  有答案   {with_ans}  ({with_ans/max(q_total,1)*100:.1f}%)")
-        print(f"  有解析   {with_ana}  ({with_ana/max(q_total,1)*100:.1f}%)")
+        print(f"  有答案   {with_ans}  ({with_ans / max(q_total, 1) * 100:.1f}%)")
+        print(f"  有解析   {with_ana}  ({with_ana / max(q_total, 1) * 100:.1f}%)")
 
         print("\n  有答案的样例:")
-        for q in db.query(QuizQuestion).filter(
-            QuizQuestion.answer.isnot(None), QuizQuestion.answer != ""
-        ).limit(5).all():
+        for q in (
+            db.query(QuizQuestion).filter(QuizQuestion.answer.isnot(None), QuizQuestion.answer != "").limit(5).all()
+        ):
             print(f"    [{q.subject}] {q.chapter}")
             print(f"      题干: {(q.content or '')[:90]!r}")
             print(f"      答案: {(q.answer or '')[:60]!r}")
@@ -73,8 +70,10 @@ def main():
         from models import KnowledgeChunk, KnowledgePoint
 
         kp_total = db.query(KnowledgePoint).count()
-        print(f"  知识点 {kp_total}（含 description 的: "
-              f"{db.query(KnowledgePoint).filter(KnowledgePoint.description.isnot(None)).count()}）")
+        print(
+            f"  知识点 {kp_total}（含 description 的: "
+            f"{db.query(KnowledgePoint).filter(KnowledgePoint.description.isnot(None)).count()}）"
+        )
         chunk_total = db.query(KnowledgeChunk).count()
         print(f"  知识分块 {chunk_total}")
         for c in db.query(KnowledgeChunk).limit(3).all():

@@ -48,6 +48,7 @@
 | `CHUNK_LLM_SLOTS` | `2` | 同时打模型请求上限 |
 | `CHUNK_LLM_MAX_PER_DOC` | `10` | 单文档 LLM 调用上限（成本闸门） |
 """
+
 from __future__ import annotations
 
 import json
@@ -149,12 +150,8 @@ JUNK_ABSTAIN_REASONS: Tuple[str, ...] = ("empty", "pdf_operator", "compile_noise
 
 
 def _exotic_count(text: str) -> int:
-    n = 0
-    for ch in text[:600]:
-        if ch.isascii() or _CJK_RE.match(ch) or ch in _NONASCII_ALLOWED:
-            continue
-        n += 1
-    return n
+    """前 600 字符中"非 ASCII、非 CJK、非常见标点"的字符数。"""
+    return sum(1 for ch in text[:600] if not (ch.isascii() or _CJK_RE.match(ch) or ch in _NONASCII_ALLOWED))
 
 
 def _pua_share(text: str) -> float:
@@ -297,16 +294,19 @@ def load_prototypes(db: Session) -> Dict[str, np.ndarray]:
     try:
         from sqlalchemy import text
 
-        rows = db.execute(text(
-            "SELECT sp.subject_id          AS subject_id,"
-            "       s.name                 AS subject_name,"
-            "       sp.prototype           AS vector,"
-            "       sp.dim                 AS dim,"
-            "       sp.built_at            AS built_at "
-            "FROM subject_prototypes sp "
-            "JOIN subjects s ON s.id = sp.subject_id "
-            "WHERE sp.engine = :engine"
-        ), {"engine": "bge"}).fetchall()
+        rows = db.execute(
+            text(
+                "SELECT sp.subject_id          AS subject_id,"
+                "       s.name                 AS subject_name,"
+                "       sp.prototype           AS vector,"
+                "       sp.dim                 AS dim,"
+                "       sp.built_at            AS built_at "
+                "FROM subject_prototypes sp "
+                "JOIN subjects s ON s.id = sp.subject_id "
+                "WHERE sp.engine = :engine"
+            ),
+            {"engine": "bge"},
+        ).fetchall()
     except Exception:  # noqa: BLE001
         return {}
     if not rows:
@@ -359,9 +359,9 @@ def vector_scores(embedded: Optional[np.ndarray], protos: Dict[str, np.ndarray])
     if not sims:
         return {}
     vals = np.array(list(sims.values()), dtype=np.float64)
-    w = np.exp(vals * 6.0)          # beta=6：拉开相邻科的差距
+    w = np.exp(vals * 6.0)  # beta=6：拉开相邻科的差距
     w /= w.sum()
-    return {s: float(x) for s, x in zip(sims.keys(), w)}
+    return {s: float(x) for s, x in zip(sims.keys(), w, strict=False)}
 
 
 # --------------------------------------------------------------------------- #
@@ -385,7 +385,12 @@ def keyword_scores(file_name: str, text: str) -> Tuple[str, float]:
 # L3 内容语义类型：规则速判（LLM 缺席时兜底；LLM 在场时以其输出为准）
 # --------------------------------------------------------------------------- #
 _L3_RULES: Tuple[Tuple[str, re.Pattern[str]], ...] = (
-    ("习题", re.compile(r"(习题|练习|课后题|作业|思考题|题\s*\d|[（(]\d+[)）].{0,12}(求|证|计算)|\bA[．.、]\s*\S+.*\bB[．.、]\s*\S+.*(C[．.、]|D[．.、]))")),
+    (
+        "习题",
+        re.compile(
+            r"(习题|练习|课后题|作业|思考题|题\s*\d|[（(]\d+[)）].{0,12}(求|证|计算)|\bA[．.、]\s*\S+.*\bB[．.、]\s*\S+.*(C[．.、]|D[．.、]))"
+        ),
+    ),
     ("例题", re.compile(r"(【?例\s*[一二三四五六七八九十\d]+】?|典型题|例题)")),
     ("证明", re.compile(r"(证明如下|证\s*明[:：]|试证|求证)")),
     ("定理", re.compile(r"(定理|推论|性质\s*\d|拉格朗日|洛必达|泰勒公式)")),
@@ -427,12 +432,14 @@ _LLM_PROMPT = """任务：对下面文本块做内容打标，只从给定候选
 
 
 def _chat_local(messages: Sequence[Dict[str, str]], *, timeout: float = 90.0) -> str:
-    payload = json.dumps({
-        "model": LLM_MODEL,
-        "messages": list(messages),
-        "stream": False,
-        "options": {"temperature": 0.1, "num_ctx": 8192},
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "model": LLM_MODEL,
+            "messages": list(messages),
+            "stream": False,
+            "options": {"temperature": 0.1, "num_ctx": 8192},
+        }
+    ).encode("utf-8")
     req = urllib.request.Request(
         f"{_OLLAMA_HOST}/v1/chat/completions",
         data=payload,
@@ -450,8 +457,7 @@ _JSON_RE = re.compile(r"\{[\s\S]*\}")
 # （`"reason": "文本属于"生理学"范畴"`），正是它让 json.loads 报错；
 # reason 只是留痕字段，丢了不影响判定。
 _LLM_FIELD_RE: Dict[str, Tuple[re.Pattern[str], re.Pattern[str]]] = {
-    k: (re.compile('"' + k + r'"\s*:\s*"([^"]*)"'),
-         re.compile('"' + k + r'"\s*:\s*([^,\n}\s][^,\n}]*)'))
+    k: (re.compile('"' + k + r'"\s*:\s*"([^"]*)"'), re.compile('"' + k + r'"\s*:\s*([^,\n}\s][^,\n}]*)'))
     for k in ("l1_subject", "l2_chapter", "l3_content_type", "confidence")
 }
 
@@ -511,7 +517,7 @@ def llm_classify(file_name: str, text: str, chunk_no: int = 0) -> Optional[Dict[
         except (TypeError, ValueError):
             conf = 0.0
         return {
-            "l1_subject": subj,           # 非法学科 → 空串，绝不落库
+            "l1_subject": subj,  # 非法学科 → 空串，绝不落库
             "l2_chapter": str(obj.get("l2_chapter", "")).strip()[:200],
             "l3_content_type": l3 if l3 in L3_TYPES else "",
             "confidence": max(0.0, min(1.0, conf)),
@@ -538,8 +544,9 @@ class ChunkLabel:
     votes: Dict[str, float] = field(default_factory=dict)
 
 
-def fuse(label: ChunkLabel, kw_subj: str, kw_w: float,
-         vec_dist: Dict[str, float], llm_out: Optional[Dict[str, object]]) -> ChunkLabel:
+def fuse(
+    label: ChunkLabel, kw_subj: str, kw_w: float, vec_dist: Dict[str, float], llm_out: Optional[Dict[str, object]]
+) -> ChunkLabel:
     """把三路证据合成最终标签。规则（对齐 kp_extract.resolve_subject 的留痕习惯）：
 
     * 两路都有且一致 → confidence 加成，source='fusion'
@@ -558,8 +565,8 @@ def fuse(label: ChunkLabel, kw_subj: str, kw_w: float,
         scores[kw_subj] = scores.get(kw_subj, 0.0) + W_KEYWORD * kw_w
     if llm_out and llm_out.get("l1_subject"):
         total_w += W_LLM
-        scores[str(llm_out["l1_subject"])] = (
-            scores.get(str(llm_out["l1_subject"]), 0.0) + W_LLM * float(llm_out["confidence"])
+        scores[str(llm_out["l1_subject"])] = scores.get(str(llm_out["l1_subject"]), 0.0) + W_LLM * float(
+            llm_out["confidence"]
         )
 
     label.votes = scores
@@ -583,8 +590,12 @@ def fuse(label: ChunkLabel, kw_subj: str, kw_w: float,
 
     if llm_out and llm_out.get("l1_subject") == top_subj and kw_subj == top_subj and vec_dist:
         label.source = "fusion"
-    elif llm_out and llm_out.get("l1_subject") and float(llm_out["confidence"]) >= 0.6 \
-            and label.confidence < CONF_THRESHOLD:
+    elif (
+        llm_out
+        and llm_out.get("l1_subject")
+        and float(llm_out["confidence"]) >= 0.6
+        and label.confidence < CONF_THRESHOLD
+    ):
         label.source = "llm"
     elif vec_dist and kw_subj == top_subj:
         label.source = "fusion"
@@ -619,8 +630,7 @@ MIRROR_TABLES: Tuple[Tuple[str, str], ...] = (
 )
 
 
-def sync_mirror_subjects(db: Session,
-                         chunk_ids: Optional[Sequence[int]] = None) -> Dict[str, int]:
+def sync_mirror_subjects(db: Session, chunk_ids: Optional[Sequence[int]] = None) -> Dict[str, int]:
     """把 `knowledge_chunks.subject` 同步进检索镜像（fts / vec），返回各表影响行数。
 
     为什么必须同步：检索的学科过滤打在**镜像列**上，而镜像列是入库时的拷贝，
@@ -662,8 +672,7 @@ def sync_mirror_subjects(db: Session,
     for tbl, key in MIRROR_TABLES:
         if is_pg:
             try:
-                exists = db.execute(text("SELECT to_regclass(:t) IS NOT NULL"),
-                                    {"t": tbl}).scalar()
+                exists = db.execute(text("SELECT to_regclass(:t) IS NOT NULL"), {"t": tbl}).scalar()
             except Exception:  # noqa: BLE001
                 db.rollback()
                 exists = False
@@ -673,8 +682,7 @@ def sync_mirror_subjects(db: Session,
                 continue
         # EXISTS 守卫：孤儿镜像行（chunk 已被删）不能被关联子查询刷成 NULL，
         # 否则体检脚本会把"孤儿行"误报成"学科漂移"。孤儿行由 --prune-orphans 显式处理。
-        src = (f"SELECT kc.subject FROM knowledge_chunks kc "
-               f"WHERE kc.id = {tbl}.{key}")
+        src = f"SELECT kc.subject FROM knowledge_chunks kc WHERE kc.id = {tbl}.{key}"
         sql = f"UPDATE {tbl} SET subject = ({src})"
         params: Dict[str, object] = {}
         ids_where = ""
@@ -697,14 +705,18 @@ def sync_mirror_subjects(db: Session,
                 # 召不到的块，必须吼一声，否则 59 块未进 fts / 42925 块未进 vec 会一直被藏着。
                 want = {int(i) for i in ids}
                 found_stmt = text(f"SELECT DISTINCT {key} FROM {tbl}{ids_where}").bindparams(
-                    bindparam("ids", expanding=True))
+                    bindparam("ids", expanding=True)
+                )
                 found = {int(r[0]) for r in db.execute(found_stmt, params).fetchall()}
                 missing = want - found
                 if missing:
                     logger.warning(
-                        "检索镜像 %s 缺 %d/%d 个块（chunk_ids=%s…），本次学科改动对检索无效；"
-                        "需重建该镜像索引", tbl, len(missing), len(want),
-                        ",".join(str(x) for x in sorted(missing)[:5]))
+                        "检索镜像 %s 缺 %d/%d 个块（chunk_ids=%s…），本次学科改动对检索无效；需重建该镜像索引",
+                        tbl,
+                        len(missing),
+                        len(want),
+                        ",".join(str(x) for x in sorted(missing)[:5]),
+                    )
         except Exception as e:  # noqa: BLE001
             logger.warning("检索镜像 %s 学科同步失败（chunk 标签已提交，不受影响）: %s", tbl, e)
             db.rollback()
@@ -712,9 +724,9 @@ def sync_mirror_subjects(db: Session,
     return out
 
 
-def classify_document(db: Session, doc_id: int, *, use_llm: bool = True,
-                      only_unlabeled: bool = False,
-                      progress=None) -> Dict[str, object]:
+def classify_document(
+    db: Session, doc_id: int, *, use_llm: bool = True, only_unlabeled: bool = False, progress=None
+) -> Dict[str, object]:
     """对一篇文档的全部 chunk 三路打标 + 聚合回写文档学科。
 
     两遍结构省开销：先批量 bge 编码跑路1+路2，仅挑出的低置信块进路3。
@@ -801,9 +813,13 @@ def classify_document(db: Session, doc_id: int, *, use_llm: bool = True,
     if progress:
         progress(len(chunks), len(chunks))
     return {
-        "ok": True, "chunks": len(chunks), "llm_calls": llm_done,
+        "ok": True,
+        "chunks": len(chunks),
+        "llm_calls": llm_done,
         "llm_failed": llm_failed,
-        "junk_skipped": junk_done, "no_bge": emb is None, "aggregate": agg,
+        "junk_skipped": junk_done,
+        "no_bge": emb is None,
+        "aggregate": agg,
         "mirror_synced": mirror,
     }
 
@@ -814,8 +830,9 @@ def aggregate_document(db: Session, doc_id: int) -> Dict[str, object]:
     口径（docx/14 §2.3）：只回写"原学科为空/兜底值"的文档；已有标签不动
     （文档学科锁语义保持），但占比统计照常返回，供人工核查混合文档。
     """
-    from models import Document, KnowledgeChunk
     from sqlalchemy import func
+
+    from models import Document, KnowledgeChunk
 
     doc = db.get(Document, doc_id)
     if doc is None:
@@ -840,7 +857,9 @@ def aggregate_document(db: Session, doc_id: int) -> Dict[str, object]:
             updated = True
             db.commit()
     return {
-        "doc_id": doc_id, "chunks": total, "main_subject": main,
+        "doc_id": doc_id,
+        "chunks": total,
+        "main_subject": main,
         "shares": {k: round(v, 4) for k, v in shares.items()},
         "mixed": bool(shares) and max(shares.values()) < 0.85,
         "subject_updated": updated,

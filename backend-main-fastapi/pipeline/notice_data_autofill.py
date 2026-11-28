@@ -11,6 +11,7 @@
   python pipeline/notice_data_autofill.py --extract-only   # 只跑 B+C（通知已爬好时）
 输出：一行 JSON 摘要（给定时任务日志/晨报用）。
 """
+
 import json
 import sys
 from pathlib import Path

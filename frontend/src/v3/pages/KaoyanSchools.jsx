@@ -71,6 +71,33 @@ const EMPTY_FILTERS = () => ({
   numRetestMin: '', numEnrollMin: '',
 })
 
+const FILTER_PARAM_KEYS = [
+  'region', 'level', 'type', 'province', 'keyword',
+  'numAdmitMin', 'numAdmitMax', 'numRatioMin', 'numRatioMax',
+  'numRetestMin', 'numEnrollMin',
+]
+
+function filtersFromSearchParams(searchParams) {
+  const next = EMPTY_FILTERS()
+  FILTER_PARAM_KEYS.forEach((key) => { next[key] = searchParams.get(key)?.trim() || '' })
+  next.province = next.province ? normProvince(next.province) : ''
+  next.only0854 = searchParams.get('subject_code') === '0854'
+  return next
+}
+
+function schoolsSearchParams(filters, sort, page, onlyFav, current) {
+  const next = new URLSearchParams(current)
+  ;[...FILTER_PARAM_KEYS, 'subject_code', 'sort', 'page', 'fav'].forEach((key) => next.delete(key))
+  FILTER_PARAM_KEYS.forEach((key) => {
+    if (filters[key] !== '') next.set(key, String(filters[key]))
+  })
+  if (filters.only0854) next.set('subject_code', '0854')
+  if (sort && sort !== 'heat') next.set('sort', sort)
+  if (page > 1) next.set('page', String(page))
+  if (onlyFav) next.set('fav', '1')
+  return next
+}
+
 function normProvince(p) {
   if (!p) return '未知'
   return String(p)
@@ -121,7 +148,8 @@ function starText(star) {
 function collegeInfo(s) {
   const parts = []
   if (s.college_count) parts.push(`${s.college_count}学院`)
-  if (s.major_count) parts.push(`${s.major_count}方向`)
+  if (s.major_count) parts.push(`${s.major_count}个专业`)
+  if (s.direction_count) parts.push(`${s.direction_count}个方向`)
   return parts.length ? parts.join('/') : '—'
 }
 
@@ -141,23 +169,29 @@ const pad2 = (n) => String(n).padStart(2, '0')
 // 院校全量缓存：60s 内重复进入页面直接复用，避免每次都重拉 1150 条
 const _schoolsCache = new Map()
 const SCHOOLS_TTL = 60000
-function invalidateSchoolsCache() {
+export function invalidateSchoolsCache() {
   _schoolsCache.clear()
 }
 
 // 与后端 /kaoyan/schools 的 sort 口径保持一致，改为本地排序后切换排序不再重拉 1150 条
+function numericSortValue(value) {
+  return value == null || !Number.isFinite(Number(value)) ? null : Number(value)
+}
+
 function sortRows(list, key) {
   const out = [...list]
   if (key === 'name') {
     out.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'))
-  } else if (key === 'admit') {
-    out.sort((a, b) => (Number(b.admit_count) || 0) - (Number(a.admit_count) || 0))
-  } else if (key === 'ratio') {
-    out.sort((a, b) => (Number(b.retest_ratio) || 0) - (Number(a.retest_ratio) || 0))
-  } else if (key === 'avg') {
-    out.sort((a, b) => (Number(b.admit_avg_score) || 0) - (Number(a.admit_avg_score) || 0))
   } else {
-    out.sort((a, b) => (Number(b.heat) || 0) - (Number(a.heat) || 0))
+    const field = { admit: 'admit_count', ratio: 'retest_ratio', avg: 'admit_avg_score' }[key] || 'heat'
+    out.sort((a, b) => {
+      const av = numericSortValue(a[field])
+      const bv = numericSortValue(b[field])
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      return bv - av
+    })
   }
   return out
 }
@@ -385,9 +419,10 @@ function CountdownStrip() {
 /* -------------------------------------------------------------------------- */
 function SchoolCard({
   s, isFav, isCmp, isOpen, majors, majorsLoading,
-  onFav, onCmp, onExpand, highlight, covMap, idx = 0,
+  onFav, onCmp, onExpand, highlight, covMap, majorScope, idx = 0,
 }) {
   const yzLink = `https://yz.chsi.com.cn/sch/search.do?q=${encodeURIComponent(s.name || '')}`
+  const detailPath = `/kaoyan/schools/${s.id}${majorScope ? '?subject_code=0854' : ''}`
   const cov = covMap && covMap[s.id]
   /* 自托管图片也可能 404（回填未覆盖/文件被清）：裂图时退回无封面/首字头像 */
   const [coverOk, setCoverOk] = useState(true)
@@ -420,7 +455,7 @@ function SchoolCard({
             : (s.name || '?').slice(0, 1)}
         </div>
         <div className="kyv3-school-title-wrap">
-          <Link to={`/kaoyan/schools/${s.id}`} className="kyv3-school-name" title={s.name}>{s.name}</Link>
+          <Link to={detailPath} className="kyv3-school-name" title={s.name}>{s.name}</Link>
           <div className="kyv3-school-badges">
             <Badge tone={levelTone(normLevel(s.level))}>{normLevel(s.level)}</Badge>
             {showDoubleFirst(s) ? <Badge tone="success">双一流</Badge> : null}
@@ -474,11 +509,11 @@ function SchoolCard({
         <div className="kyv3-school-stat"><b>{fmtNum(s.admit_count)}</b><span>拟录取</span></div>
         <div className="kyv3-school-stat"><b className={ratioClass(s.retest_ratio)}>{fmtNum(s.retest_ratio)}</b><span>复录比</span></div>
         <div className="kyv3-school-stat"><b>{fmtNum(s.admit_avg_score)}</b><span>录取均分</span></div>
-        <div className="kyv3-school-stat"><b>{s.heat > 0 ? Math.round(s.heat) : '—'}</b><span>热度</span></div>
+        {!majorScope ? <div className="kyv3-school-stat"><b>{s.heat > 0 ? Math.round(s.heat) : '—'}</b><span>热度</span></div> : null}
       </div>
 
       <div className="kyv3-school-foot">
-        <Link to={`/kaoyan/schools/${s.id}`} className="v3-btn v3-btn--filled v3-btn--sm">查看详情</Link>
+        <Link to={detailPath} className="v3-btn v3-btn--filled v3-btn--sm">查看详情</Link>
         <Button
           variant={isCmp ? 'tonal' : 'text'}
           size="sm"
@@ -538,11 +573,9 @@ function SchoolCard({
 /* -------------------------------------------------------------------------- */
 export default function KaoyanSchools() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const initialFilters = () => {
-    const province = searchParams.get('province')?.trim()
-    return { ...EMPTY_FILTERS(), province: province ? normProvince(province) : '' }
-  }
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialFilters = () => filtersFromSearchParams(searchParams)
+  const initialPage = () => Math.max(1, Number(searchParams.get('page')) || 1)
   const { user, status: authStatus } = useAuth()
   const mode = useThemeMode()
   const t = useMemo(() => chartTheme(mode === 'dark'), [mode])
@@ -555,15 +588,18 @@ export default function KaoyanSchools() {
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [sort, setSort] = useState('heat')
-  const rows = useMemo(() => sortRows(rawRows, sort), [rawRows, sort])
+  const [sort, setSort] = useState(() => searchParams.get('sort') || 'heat')
   const [covMap, setCovMap] = useState(null)
 
   const [draft, setDraft] = useState(initialFilters)
   const [filters, setFilters] = useState(initialFilters)
-  const [page, setPage] = useState(1)
+  const rows = useMemo(() => {
+    const scope = filters.only0854 ? 'major' : 'school'
+    return sortRows(rawRows.filter((row) => row.metric_scope === scope), sort)
+  }, [rawRows, sort, filters.only0854])
+  const [page, setPage] = useState(initialPage)
   const [showMore, setShowMore] = useState(false)
-  const [onlyFav, setOnlyFav] = useState(false)
+  const [onlyFav, setOnlyFav] = useState(() => searchParams.get('fav') === '1')
 
   const [favs, setFavs] = useState(() => {
     /* 与详情页同源：统一读 kaoyan-fav-schools map（含旧 id 键一次性迁移），键为 String(id) */
@@ -577,31 +613,41 @@ export default function KaoyanSchools() {
   const [expandedId, setExpandedId] = useState(null)
   const [majorsMap, setMajorsMap] = useState({})
   const [majorsLoading, setMajorsLoading] = useState(null)
+  const schoolsRequestRef = useRef(0)
+  const majorsRequestRef = useRef(0)
+  const urlSignatureRef = useRef(searchParams.toString())
+  const restoringUrlRef = useRef(false)
 
   const load = useCallback(async () => {
+    const requestId = ++schoolsRequestRef.current
+    const majorScope = filters.only0854
     setLoading(true)
     setError('')
     setAnalysisError('')
+    setRawRows([])
+    setHotList([])
+    setCovMap(null)
     try {
-      const [schools, schools0854, hot, cov] = await Promise.all([
-        fetchAllSchools({}, (partial) => {
-          // 首次进页：第一页先渲染，剩余分页到齐后整体替换；刷新时保留旧列表避免页数抖动
+      const [schools, has0854, hot, cov] = await Promise.all([
+        fetchAllSchools(majorScope ? { subject_code: '0854' } : {}, (partial) => {
+          if (requestId !== schoolsRequestRef.current) return
           setRawRows((prev) => (prev.length ? prev : partial.map((s) => ({ ...s, has0854: false }))))
         }),
-        fetchAllSchools({ subject_code: '0854' }).catch(() => []),
-        kaoyanApi.hot({ limit: 10 }).catch(() => ({ items: [] })),
-        user ? request('/quality/major-coverage').catch(() => null) : Promise.resolve(null),
+        majorScope ? Promise.resolve(null) : fetchAllSchools({ subject_code: '0854' }).catch(() => []),
+        majorScope ? Promise.resolve({ items: [] }) : kaoyanApi.hot({ limit: 10 }).catch(() => ({ items: [] })),
+        !majorScope && user ? request('/quality/major-coverage').catch(() => null) : Promise.resolve(null),
       ])
-      const ids0854 = new Set((schools0854 || []).map((s) => s.id))
+      if (requestId !== schoolsRequestRef.current) return
+      const ids0854 = new Set((has0854 || []).map((s) => s.id))
       setRawRows(schools.map((s) => ({ ...s, has0854: ids0854.has(s.id) })))
       setHotList(hot?.items || [])
       setCovMap((cov && cov.by_school) || {})
     } catch (e) {
-      setError(e?.message || '院校数据加载失败')
+      if (requestId === schoolsRequestRef.current) setError(e?.message || '院校数据加载失败')
     } finally {
-      setLoading(false)
+      if (requestId === schoolsRequestRef.current) setLoading(false)
     }
-  }, [user])
+  }, [user, filters.only0854])
 
   /* 数据看板默认收起：聚合接口只在用户首次展开时请求，首屏少一次重请求 */
   const loadAnalysis = useCallback(async (force = false) => {
@@ -623,6 +669,43 @@ export default function KaoyanSchools() {
     if (authStatus === 'loading') return
     load()
   }, [load, authStatus])
+
+  useEffect(() => {
+    if (filters.only0854 && sort === 'heat') setSort('admit')
+  }, [filters.only0854, sort])
+
+  useEffect(() => {
+    const signature = searchParams.toString()
+    if (urlSignatureRef.current === signature) return
+    urlSignatureRef.current = signature
+    restoringUrlRef.current = true
+    const nextFilters = filtersFromSearchParams(searchParams)
+    setDraft(nextFilters)
+    setFilters(nextFilters)
+    setSort(searchParams.get('sort') || 'heat')
+    setPage(Math.max(1, Number(searchParams.get('page')) || 1))
+    setOnlyFav(searchParams.get('fav') === '1')
+  }, [searchParams])
+
+  useEffect(() => {
+    if (restoringUrlRef.current) {
+      const next = schoolsSearchParams(filters, sort, page, onlyFav, searchParams)
+      if (next.toString() === searchParams.toString()) restoringUrlRef.current = false
+      return
+    }
+    const next = schoolsSearchParams(filters, sort, page, onlyFav, searchParams)
+    const signature = next.toString()
+    if (signature === searchParams.toString()) return
+    urlSignatureRef.current = signature
+    setSearchParams(next)
+  }, [filters, sort, page, onlyFav, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (filters.only0854) setShowAnalysis(false)
+    setExpandedId(null)
+    majorsRequestRef.current += 1
+    setMajorsLoading(null)
+  }, [filters.only0854])
 
   useEffect(() => {
     /* 写回统一 map：保留已有条目（详情页写入的 name/level），新增 id 从当前 rows 补全 */
@@ -657,7 +740,6 @@ export default function KaoyanSchools() {
     if (filters.level && normLevel(r.level) !== filters.level) return false
     if (filters.type && (r.type || '') !== filters.type) return false
     if (filters.province && normProvince(r.province) !== filters.province) return false
-    if (filters.only0854 && !r.has0854) return false
     if (onlyFav && !favs.has(String(r.id))) return false
     if (filters.keyword && !(r.name || '').toLowerCase().includes(filters.keyword.trim().toLowerCase())) return false
     const avg = r.admit_avg_score
@@ -738,16 +820,21 @@ export default function KaoyanSchools() {
   const toggleExpand = async (id) => {
     if (expandedId === id) { setExpandedId(null); return }
     setExpandedId(id)
-    if (majorsMap[id]) return
-    setMajorsLoading(id)
+    const scope = filters.only0854 ? '0854' : 'school'
+    const cacheKey = `${id}:${scope}`
+    if (majorsMap[cacheKey]) return
+    const requestId = ++majorsRequestRef.current
+    setMajorsLoading(cacheKey)
     try {
-      const list = await kaoyanApi.schoolMajors(id)
-      setMajorsMap((prev) => ({ ...prev, [id]: list || [] }))
+      const list = await kaoyanApi.schoolMajors(id, filters.only0854 ? { subject_code: '0854' } : {})
+      if (requestId !== majorsRequestRef.current) return
+      setMajorsMap((prev) => ({ ...prev, [cacheKey]: list || [] }))
     } catch {
-      setMajorsMap((prev) => ({ ...prev, [id]: [] }))
+      if (requestId !== majorsRequestRef.current) return
+      setMajorsMap((prev) => ({ ...prev, [cacheKey]: [] }))
       toastErr('专业方向加载失败')
     } finally {
-      setMajorsLoading(null)
+      if (requestId === majorsRequestRef.current) setMajorsLoading(null)
     }
   }
 
@@ -763,7 +850,9 @@ export default function KaoyanSchools() {
 
   const goCompare = () => {
     try { localStorage.setItem(ukey(CMP_KEY), JSON.stringify([...cmpSet])) } catch { /* ignore */ }
-    navigate('/kaoyan/compare')
+    const params = new URLSearchParams({ ids: [...cmpSet].join(',') })
+    if (filters.only0854) params.set('subject_code', '0854')
+    navigate(`/kaoyan/compare?${params.toString()}`)
   }
 
   const activeFilterCount = useMemo(() => {
@@ -774,7 +863,7 @@ export default function KaoyanSchools() {
 
   const hotTop = useMemo(() => hotList.filter((s) => (s.heat || 0) > 0).slice(0, 10), [hotList])
   /* 默认热度排序的第一页本身就是同一份热度榜，此时不再重复渲染 TOP10 卡片 */
-  const showHotRank = hotTop.length > 0
+  const showHotRank = !filters.only0854 && hotTop.length > 0
     && !(sort === 'heat' && curPage === 1 && activeFilterCount === 0)
 
   const dash = useMemo(() => analysis || {}, [analysis])
@@ -854,7 +943,7 @@ export default function KaoyanSchools() {
       tooltip: { ...t.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
       legend: { top: 0, textStyle: { color: t.textStyle.color, fontSize: 10 }, itemWidth: 10, itemHeight: 8 },
       xAxis: { type: 'value', ...chartAxis(t) },
-      yAxis: { type: 'category', data: list.map((d) => d.major), ...chartAxis(t), splitLine: { show: false } },
+      yAxis: { type: 'category', data: list.map((d) => d.major_label || d.major), ...chartAxis(t), splitLine: { show: false } },
       series: [
         { name: '复试均分', type: 'bar', data: list.map((d) => d.major_avg), itemStyle: { color: '#4285F4', borderRadius: [0, 5, 5, 0] }, barMaxWidth: 11 },
         { name: '录取均分', type: 'bar', data: list.map((d) => d.admit_avg), itemStyle: { color: '#F9AB00', borderRadius: [0, 5, 5, 0] }, barMaxWidth: 11 },
@@ -863,8 +952,10 @@ export default function KaoyanSchools() {
   }, [dash, t])
 
   const majorPie = useMemo(() => {
-    const list = (dash.major_comparison || []).slice(0, 10)
-    const total = list.reduce((sum, d) => sum + (d.enroll_count || 0), 0)
+    const list = (dash.major_comparison || [])
+      .filter((d) => d.enroll_count != null)
+      .slice(0, 10)
+    const total = list.reduce((sum, d) => sum + d.enroll_count, 0)
     return {
       tooltip: {
         ...t.tooltip,
@@ -875,8 +966,8 @@ export default function KaoyanSchools() {
       series: [{
         type: 'pie', radius: ['40%', '64%'], center: ['50%', '43%'], label: { show: false },
         data: list.map((d, i) => ({
-          name: d.major,
-          value: d.enroll_count || 0,
+          name: d.major_label || d.major,
+          value: d.enroll_count,
           itemStyle: { color: ['#4285F4', '#9B72CB', '#D96570', '#34A853', '#F9AB00', '#00ACC1'][i % 6] },
         })),
       }],
@@ -884,8 +975,11 @@ export default function KaoyanSchools() {
   }, [dash, t])
 
   const collegeBar = useMemo(() => {
-    const data = (dash.college_enroll || []).slice(0, 10).reverse()
-    return horizontalBar(t, data.map((d) => d.college), data.map((d) => d.enroll_count), '#D96570')
+    const data = (dash.college_enroll || [])
+      .filter((d) => d.enroll_count != null)
+      .slice(0, 10)
+      .reverse()
+    return horizontalBar(t, data.map((d) => d.college_label || d.college), data.map((d) => d.enroll_count), '#D96570')
   }, [dash, t])
 
   const scoreDistBar = useMemo(() => {
@@ -1008,10 +1102,16 @@ export default function KaoyanSchools() {
       />
 
       <Alert tone="info" icon={<InfoCircle size={18} />} className="kyv3-note">
-        <p><b>数据说明：</b>本页招生 / 录取 / 复录比均为第三方聚合数据，未经院校官方逐条核验，仅供择校参考；正式信息以目标院校研究生院官网为准。</p>
+        <p><b>数据说明：</b>本页招生 / 录取 / 复录比汇总仅纳入明确官方招生来源；分数线与明细按来源分档展示，正式信息以目标院校研究生院官网为准。</p>
       </Alert>
 
-      {analysisError ? (
+      {filters.only0854 ? (
+        <Alert tone="info" icon={<InfoCircle size={18} />} className="kyv3-note">
+          <p><b>0854 专业口径：</b>列表人数、均分、复录比和展开专业仅统计 0854 电子信息；不再展示全校汇总指标、全校热度或全校数据看板。</p>
+        </Alert>
+      ) : null}
+
+      {!filters.only0854 && analysisError ? (
         <Alert tone="warning" icon={<AlertCircle size={18} />} className="kyv3-note">
           <p>{analysisError}</p>
         </Alert>
@@ -1168,7 +1268,7 @@ export default function KaoyanSchools() {
               ariaLabel="院校排序"
               value={sort}
               onChange={changeSort}
-              options={SORTS.map((o) => ({ value: o.key, label: o.label }))}
+              options={SORTS.filter((o) => !filters.only0854 || o.key !== 'heat').map((o) => ({ value: o.key, label: o.label }))}
             />
             <Button variant="tonal" size="sm" icon={<Sparkles size={14} />} onClick={randomPick} disabled={!filtered.length}>
               随机抽一所
@@ -1192,13 +1292,14 @@ export default function KaoyanSchools() {
                 isFav={favs.has(String(s.id))}
                 isCmp={cmpSet.has(s.id)}
                 isOpen={expandedId === s.id}
-                majors={majorsMap[s.id]}
-                majorsLoading={majorsLoading === s.id}
+                majors={majorsMap[`${s.id}:${filters.only0854 ? '0854' : 'school'}`]}
+                majorsLoading={majorsLoading === `${s.id}:${filters.only0854 ? '0854' : 'school'}`}
                 onFav={() => toggleFav(s.id)}
                 onCmp={() => toggleCmp(s.id)}
                 onExpand={() => toggleExpand(s.id)}
                 highlight={hlId === s.id}
-                covMap={covMap}
+                covMap={filters.only0854 ? null : covMap}
+                majorScope={filters.only0854}
               />
             ))}
           </div>
@@ -1247,12 +1348,13 @@ export default function KaoyanSchools() {
         ) : null}
       </Card>
 
+      {!filters.only0854 ? (
       <Card className="kyv3-analysis">
         <div className="kyv3-analysis-head">
           <CardHead
             icon={<BarChart3 size={17} />}
             title="数据分析"
-            sub="汇总招生、录取与院校库的实时聚合数据"
+            sub={dash.year ? `汇总 ${dash.year} 年招生、录取与院校库的实时聚合数据` : '汇总招生、录取与院校库的实时聚合数据'}
           />
           <Button
             variant="text"
@@ -1351,6 +1453,7 @@ export default function KaoyanSchools() {
           </p>
         )}
       </Card>
+      ) : null}
     </div>
   )
 }

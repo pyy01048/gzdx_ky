@@ -6,9 +6,9 @@
 """
 
 import os
-import sys
-import subprocess
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -16,6 +16,7 @@ def check_pyinstaller():
     """检查是否安装了PyInstaller"""
     try:
         import PyInstaller
+
         return True
     except ImportError:
         return False
@@ -30,13 +31,13 @@ def install_pyinstaller():
 
 def clean_build_dirs():
     """清理构建目录"""
-    dirs_to_clean = ['build', 'dist']
+    dirs_to_clean = ["build", "dist"]
     for d in dirs_to_clean:
         if os.path.exists(d):
             shutil.rmtree(d)
             print(f"✓ 清理目录: {d}")
-    
-    for spec_file in Path('.').glob('*.spec'):
+
+    for spec_file in Path(".").glob("*.spec"):
         spec_file.unlink()
         print(f"✓ 清理文件: {spec_file}")
 
@@ -46,59 +47,58 @@ def build_executable():
     print("\n" + "=" * 60)
     print("开始打包 - 文档水印去除工具 v2.0")
     print("=" * 60 + "\n")
-    
+
     # PyInstaller命令
     cmd = [
-        sys.executable, "-m", "PyInstaller",
-        '--name=文档水印去除工具',
-        '--onefile',
-        '--console',
-        '--clean',
-        '--noconfirm',
-        
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--name=文档水印去除工具",
+        "--onefile",
+        "--console",
+        "--clean",
+        "--noconfirm",
         # 排除不必要的模块
-        '--exclude-module=PyQt5',
-        '--exclude-module=PyQt6',
-        '--exclude-module=PySide2',
-        '--exclude-module=PySide6',
-        '--exclude-module=matplotlib',
-        '--exclude-module=numpy',
-        '--exclude-module=pandas',
-        '--exclude-module=scipy',
-        '--exclude-module=tkinter',
-        
+        "--exclude-module=PyQt5",
+        "--exclude-module=PyQt6",
+        "--exclude-module=PySide2",
+        "--exclude-module=PySide6",
+        "--exclude-module=matplotlib",
+        "--exclude-module=numpy",
+        "--exclude-module=pandas",
+        "--exclude-module=scipy",
+        "--exclude-module=tkinter",
         # 隐藏导入
-        '--hidden-import=PyMuPDF',
-        '--hidden-import=fitz',
-        '--hidden-import=fitz.fitz',
-        '--hidden-import=docx',
-        '--hidden-import=docx.shared',
-        '--hidden-import=docx.enum.text',
-        '--hidden-import=docx.oxml.ns',
-        '--hidden-import=docx.oxml',
-        '--hidden-import=PIL',
-        '--hidden-import=PIL.Image',
-        '--hidden-import=PIL.ImageDraw',
-        '--hidden-import=pdf_watermark_remover',
-        '--hidden-import=word_watermark_remover',
-        '--hidden-import=collections',
-        '--hidden-import=re',
-        
-        'main.py'
+        "--hidden-import=PyMuPDF",
+        "--hidden-import=fitz",
+        "--hidden-import=fitz.fitz",
+        "--hidden-import=docx",
+        "--hidden-import=docx.shared",
+        "--hidden-import=docx.enum.text",
+        "--hidden-import=docx.oxml.ns",
+        "--hidden-import=docx.oxml",
+        "--hidden-import=PIL",
+        "--hidden-import=PIL.Image",
+        "--hidden-import=PIL.ImageDraw",
+        "--hidden-import=pdf_watermark_remover",
+        "--hidden-import=word_watermark_remover",
+        "--hidden-import=collections",
+        "--hidden-import=re",
+        "main.py",
     ]
-    
+
     print("执行命令:")
     print(" ".join(cmd))
     print()
-    
+
     try:
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
+        result = subprocess.run(cmd, capture_output=True)
+
         if result.returncode == 0:
             print("\n" + "=" * 60)
             print("✓ 打包成功!")
             print("=" * 60)
-            exe_path = os.path.abspath('dist/文档水印去除工具.exe')
+            exe_path = os.path.abspath("dist/文档水印去除工具.exe")
             print(f"\n可执行文件位置: {exe_path}")
             return True
         else:
@@ -106,7 +106,7 @@ def build_executable():
             print("\n错误输出:")
             print(result.stderr[-3000:] if len(result.stderr) > 3000 else result.stderr)
             return False
-        
+
     except Exception as e:
         print(f"\n✗ 打包失败: {str(e)}")
         return False
@@ -117,29 +117,29 @@ def create_distribution_package():
     print("\n" + "=" * 60)
     print("创建分发包")
     print("=" * 60 + "\n")
-    
-    dist_package_dir = '发布包'
-    
+
+    dist_package_dir = "发布包"
+
     # 确保发布包目录存在
     os.makedirs(dist_package_dir, exist_ok=True)
-    
+
     # 复制可执行文件
-    exe_name = '文档水印去除工具.exe'
-    if os.path.exists(f'dist/{exe_name}'):
-        shutil.copy(f'dist/{exe_name}', dist_package_dir)
+    exe_name = "文档水印去除工具.exe"
+    if os.path.exists(f"dist/{exe_name}"):
+        shutil.copy(f"dist/{exe_name}", dist_package_dir)
         print(f"✓ 复制: {exe_name}")
     else:
         print(f"✗ 未找到: dist/{exe_name}")
         return
-    
+
     # 复制说明文档
-    if os.path.exists('README.md'):
-        shutil.copy('README.md', dist_package_dir)
+    if os.path.exists("README.md"):
+        shutil.copy("README.md", dist_package_dir)
         print("✓ 复制: README.md")
-    
+
     # 创建使用说明
-    usage_file = os.path.join(dist_package_dir, '使用说明.txt')
-    with open(usage_file, 'w', encoding='utf-8') as f:
+    usage_file = os.path.join(dist_package_dir, "使用说明.txt")
+    with open(usage_file, "w", encoding="utf-8") as f:
         f.write("""文档水印去除工具 v2.0 - 使用说明
 =====================================
 
@@ -195,15 +195,15 @@ def create_distribution_package():
 4. 仅支持.docx格式，不支持.doc格式
 """)
     print("✓ 创建: 使用说明.txt")
-    
+
     # 确保示例目录存在
-    example_dir = os.path.join(dist_package_dir, '示例文件')
+    example_dir = os.path.join(dist_package_dir, "示例文件")
     os.makedirs(example_dir, exist_ok=True)
-    
+
     # 创建说明文件
-    with open(os.path.join(example_dir, '将文件放到这里.txt'), 'w', encoding='utf-8') as f:
+    with open(os.path.join(example_dir, "将文件放到这里.txt"), "w", encoding="utf-8") as f:
         f.write("将要去除水印的文件放到此目录，然后运行程序选择批量处理模式\n")
-    
+
     print(f"\n✓ 分发包已创建: {os.path.abspath(dist_package_dir)}")
 
 
@@ -214,20 +214,20 @@ def main():
     ║             打包工具 - 文档水印去除工具 v2.0               ║
     ╚═══════════════════════════════════════════════════════════╝
     """)
-    
+
     # 检查PyInstaller
     if not check_pyinstaller():
         print("PyInstaller未安装，正在安装...")
         install_pyinstaller()
-    
+
     # 清理旧的构建
     print("\n清理旧的构建文件...")
     clean_build_dirs()
-    
+
     # 打包
     if build_executable():
         create_distribution_package()
-        
+
         print("\n" + "=" * 60)
         print("✓ 打包流程完成!")
         print("=" * 60)
@@ -235,5 +235,5 @@ def main():
         print("\n✗ 打包失败，请检查错误信息")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

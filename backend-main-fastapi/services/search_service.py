@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 from sqlalchemy.orm import Session
@@ -20,15 +20,15 @@ from services.dbapi_compat import wrap_conn  # noqa: E402  PG/SQLite 双底座�
 
 logger = logging.getLogger(__name__)
 
-RRF_K = 60
-TOPN_PER_LANE = 30
-VEC_MIN_DIST = 0.6  # cosine distance 阈值，超过则视为不相关
+RRF_K: int = 60
+TOPN_PER_LANE: int = 30
+VEC_MIN_DIST: float = 0.6  # cosine distance 阈值，超过则视为不相关
 
 # ---------------------------------------------------------------------------
 # 术语加权精排（移植自 D:\kaoyan_ai\04_app\chat.py 的 KBRetriever._term_boost）
 # ---------------------------------------------------------------------------
 # 领域核心术语表：检索时对这些词加权，帮助命中真正讲解概念的段落
-CORE_TERMS = [
+CORE_TERMS: list[str] = [
     "TTL",
     "CMOS",
     "MOS",
@@ -79,7 +79,7 @@ CORE_TERMS = [
 ]
 
 # 同义词组：不同写法但指向同一概念（查询命中任一组内词，则对组内所有写法加权）
-TERM_SYNONYMS = [
+TERM_SYNONYMS: list[list[str]] = [
     ["DAC", "D/A转换器", "D/A 转换器", "数模转换器"],
     ["ADC", "A/D转换器", "A/D 转换器", "模数转换器"],
     ["TTL", "晶体管-晶体管逻辑", "晶体管逻辑"],
@@ -90,27 +90,39 @@ TERM_SYNONYMS = [
 ]
 
 # 封面/导航噪声词：命中即降权（教案封面、目录页等非知识点内容）
-NOISE_TERMS = ["授课", "课时", "教学章", "教案", "目录", "课时安排", "授课方式", "主讲", "章节安排"]
+NOISE_TERMS: list[str] = [
+    "授课",
+    "课时",
+    "教学章",
+    "教案",
+    "目录",
+    "课时安排",
+    "授课方式",
+    "主讲",
+    "章节安排",
+]
 
 
 def _term_boost(query: str, text: str) -> float:
     """核心术语加权：命中的术语越多、出现越靠前，权重越高（概念定义通常在段首）。
-    与 kaoyan_ai 原始实现保持一致：术语出现 +2.0/次，前 200 字符 +3.0/次，噪声词 -8.0。"""
+
+    与 kaoyan_ai 原始实现保持一致：术语出现 +2.0/次，前 200 字符 +3.0/次，噪声词 -8.0。
+    """
     up = query.upper()
+    text_up = text.upper()
+    head_up = text[:200].upper()
     boost = 0.0
     for term in CORE_TERMS:
         if term in up:
-            cnt = text.upper().count(term)
+            cnt = text_up.count(term)
             if cnt:
-                head = text[:200].upper().count(term)
-                boost += cnt * 2.0 + head * 3.0
+                boost += cnt * 2.0 + head_up.count(term) * 3.0
     for group in TERM_SYNONYMS:
         if any(t in up for t in group):
             for t in group:
-                c = text.upper().count(t)
+                c = text_up.count(t)
                 if c:
-                    h = text[:200].upper().count(t)
-                    boost += c * 2.0 + h * 3.0
+                    boost += c * 2.0 + head_up.count(t) * 3.0
     for n in NOISE_TERMS:
         if n in text:
             boost -= 8.0
@@ -146,9 +158,7 @@ def segment(text: str) -> str:
         return " ".join(t.strip() for t in jieba.cut_for_search(text) if t.strip())
     except ImportError:
         # 回退：中文2-gram + 英文单词
-        tokens = []
-        for w in re.findall(r"[a-zA-Z0-9]{2,}", text.lower()):
-            tokens.append(w)
+        tokens: list[str] = list(re.findall(r"[a-zA-Z0-9]{2,}", text.lower()))
         cjk = re.sub(r"[^\u4e00-\u9fff]", "", text)
         for i in range(len(cjk) - 1):
             tokens.append(cjk[i : i + 2])
@@ -156,6 +166,7 @@ def segment(text: str) -> str:
 
 
 def _fts_query(user_query: str) -> str:
+    """构造 FTS5 MATCH 表达式：分词后用 OR 连接带引号词元。"""
     tokens = [t for t in segment(user_query).split() if t]
     if not tokens:
         return '""'
@@ -164,7 +175,7 @@ def _fts_query(user_query: str) -> str:
 
 
 # 停用词：中文疑问句里的高频虚词，进 LIKE/tsquery 只会拖慢召回质量。
-_STOPWORDS = frozenset(
+_STOPWORDS: frozenset[str] = frozenset(
     {
         "的",
         "了",
@@ -200,7 +211,7 @@ _STOPWORDS = frozenset(
 _TS_UNSAFE = re.compile(r"['\\]")
 
 
-def query_terms(query: str, max_terms: int = 5) -> Tuple[str, List[str]]:
+def query_terms(query: str, max_terms: int = 5) -> tuple[str, list[str]]:
     """抽取检索词：返回 ``(整句 core, 关键词列表)``。
 
     整句 core 用作「短语命中」这一最高权重信号；关键词按长度降序取 ``max_terms``
@@ -209,7 +220,7 @@ def query_terms(query: str, max_terms: int = 5) -> Tuple[str, List[str]]:
     core = _CTRL.sub("", (query or "").strip())[:60]
     if not core:
         return "", []
-    terms: List[str] = []
+    terms: list[str] = []
     for t in segment(core).split():
         t = _CTRL.sub("", t).strip()
         if len(t) >= 2 and t not in _STOPWORDS and t not in terms:
@@ -217,9 +228,9 @@ def query_terms(query: str, max_terms: int = 5) -> Tuple[str, List[str]]:
     return core, sorted(terms, key=len, reverse=True)[:max_terms]
 
 
-def _tsquery_or(terms: List[str]) -> str:
+def _tsquery_or(terms: list[str]) -> str:
     """把关键词拼成 `to_tsquery('simple', ...)` 的 OR 查询串（带引号转义）。"""
-    parts = []
+    parts: list[str] = []
     for t in terms:
         safe = _TS_UNSAFE.sub("", t)
         if safe:
@@ -301,8 +312,12 @@ def ensure_tables(db: Session) -> None:
 # 全文检索（双后端）
 # ---------------------------------------------------------------------------
 def _pg_tsvector_candidates(
-    conn, core: str, terms: List[str], want: int, subject: Optional[str]
-) -> List[Tuple[Any, ...]]:
+    conn,
+    core: str,
+    terms: list[str],
+    want: int,
+    subject: str | None,
+) -> list[tuple[Any, ...]]:
     """PG 全文主查：GIN(`search_vector`) 索引路，返回 [(chunk_id, text, doc_name)]。
 
     为什么不再用 ILIKE 子串扫（2026-11-23 实测，81348 块）：
@@ -341,12 +356,12 @@ def _pg_tsvector_candidates(
 def _pg_ilike_candidates(
     conn,
     core: str,
-    terms: List[str],
+    terms: list[str],
     want: int,
-    subject: Optional[str],
+    subject: str | None,
     exclude: set,
     tsq: str,
-) -> List[Tuple[Any, ...]]:
+) -> list[tuple[Any, ...]]:
     """PG 全文兜底路：子串 ILIKE，只在索引路召回不足 ``topn`` 时才跑。
 
     保留它是因为历史数据里混有**未经 jieba 分词**的块（词元表里没有它们的中文词），
@@ -393,8 +408,8 @@ def fts_search(
     conn,
     query: str,
     topn: int = TOPN_PER_LANE,
-    subject: Optional[str] = None,
-) -> List[Tuple[int, int]]:
+    subject: str | None = None,
+) -> list[tuple[int, int]]:
     """全文检索，返回 [(chunk_id, rank)]，rank 从 1 开始。
 
     PostgreSQL 迁移（2026-10-14）：SQLite 侧走 FTS5 + bm25()；
@@ -403,38 +418,7 @@ def fts_search(
     导致 hybrid 检索必然失败、退化为 Python 词集 Jaccard 全表扫描。
     """
     if _is_pg(conn):
-        # 两段式（2026-10-20 定形的召回策略，2026-11-23 只换主查的执行方式）：
-        #   第一段 候选：GIN 索引路取 candidate_n 条（召回不足才补 ILIKE 池）
-        #   第二段 精排：只对这批候选按「整句命中/命中词数/密度/位置」打分排序
-        # 精排口径完全没动，动的是不再把全表 ILIKE 扫描当主查（见下方两个 helper 的实测说明）。
-        core, terms = query_terms(query)
-        if not core:
-            return []
-        candidate_n = max(topn * 4, 40)
-
-        rows = _pg_tsvector_candidates(conn, core, terms, candidate_n, subject)
-        if len(rows) < topn:
-            seen = {r[0] for r in rows}
-            rows += _pg_ilike_candidates(conn, core, terms, candidate_n - len(rows), subject, seen, _tsquery_or(terms))
-        if not rows:
-            # 兜底：关键词未命中时退到向量已无意义，如实返回空
-            return []
-
-        # 精排：整句命中 > 命中词多 > 密度高 > 位置靠前；长度短者优先
-        match_terms = terms or [core]
-        scored: list[tuple[int, float]] = []
-        for cid, txt, _doc in rows:
-            t = txt or ""
-            phrase_hit = t.count(core)
-            hit_n = sum(1 for term in match_terms if term in t)
-            total_hits = sum(t.count(term) for term in match_terms)
-            density = total_hits / max(1, len(t))
-            first_pos = min((t.find(term) for term in match_terms if term in t), default=-1)
-            pos_bonus = 1.0 if 0 <= first_pos < 120 else 0.0
-            score = phrase_hit * 3.0 + hit_n * 2.0 + density * 800 + pos_bonus
-            scored.append((cid, score))
-        scored.sort(key=lambda x: -x[1])
-        return [(cid, i + 1) for i, (cid, _s) in enumerate(scored[:topn])]
+        return _pg_fts_search(conn, query, topn, subject)
 
     q_seg = _fts_query(query)
     if q_seg == '""':
@@ -442,7 +426,7 @@ def fts_search(
     sql = (
         "SELECT chunk_id, bm25(knowledge_chunks_fts) AS s FROM knowledge_chunks_fts WHERE knowledge_chunks_fts MATCH ?"
     )
-    params = [q_seg]
+    params: list[Any] = [q_seg]
     if subject:
         sql += " AND subject = ?"
         params.append(subject)
@@ -452,6 +436,47 @@ def fts_search(
     return [(r[0], i + 1) for i, r in enumerate(rows)]
 
 
+def _pg_fts_search(
+    conn,
+    query: str,
+    topn: int,
+    subject: str | None,
+) -> list[tuple[int, int]]:
+    """PG 全文检索：两段式（候选 + 精排）。
+
+    第一段 候选：GIN 索引路取 candidate_n 条（召回不足才补 ILIKE 池）
+    第二段 精排：只对这批候选按「整句命中/命中词数/密度/位置」打分排序
+    """
+    core, terms = query_terms(query)
+    if not core:
+        return []
+    candidate_n = max(topn * 4, 40)
+
+    rows = _pg_tsvector_candidates(conn, core, terms, candidate_n, subject)
+    if len(rows) < topn:
+        seen = {r[0] for r in rows}
+        rows += _pg_ilike_candidates(conn, core, terms, candidate_n - len(rows), subject, seen, _tsquery_or(terms))
+    if not rows:
+        # 兜底：关键词未命中时退到向量已无意义，如实返回空
+        return []
+
+    # 精排：整句命中 > 命中词多 > 密度高 > 位置靠前；长度短者优先
+    match_terms = terms or [core]
+    scored: list[tuple[int, float]] = []
+    for cid, txt, _doc in rows:
+        t = txt or ""
+        phrase_hit = t.count(core)
+        hit_n = sum(1 for term in match_terms if term in t)
+        total_hits = sum(t.count(term) for term in match_terms)
+        density = total_hits / max(1, len(t))
+        first_pos = min((t.find(term) for term in match_terms if term in t), default=-1)
+        pos_bonus = 1.0 if 0 <= first_pos < 120 else 0.0
+        score = phrase_hit * 3.0 + hit_n * 2.0 + density * 800 + pos_bonus
+        scored.append((cid, score))
+    scored.sort(key=lambda x: -x[1])
+    return [(cid, i + 1) for i, (cid, _s) in enumerate(scored[:topn])]
+
+
 # ---------------------------------------------------------------------------
 # 向量检索（双后端）
 # ---------------------------------------------------------------------------
@@ -459,9 +484,9 @@ def vec_search(
     conn,
     query_vec: np.ndarray,
     topn: int = TOPN_PER_LANE,
-    subject: Optional[str] = None,
-    query_dim: Optional[int] = None,
-) -> List[Tuple[int, int]]:
+    subject: str | None = None,
+    query_dim: int | None = None,
+) -> list[tuple[int, int]]:
     """向量 KNN 检索，返回 [(chunk_id, rank)]。
 
     PostgreSQL 迁移（2026-10-14）：SQLite 侧保留 numpy 暴力检索（BLOB 存储）；
@@ -470,7 +495,16 @@ def vec_search(
     """
     if _is_pg(conn):
         return _pg_vec_search(conn, query_vec, topn, subject, query_dim)
+    return _sqlite_vec_search(conn, query_vec, topn, subject)
 
+
+def _sqlite_vec_search(
+    conn,
+    query_vec: np.ndarray,
+    topn: int,
+    subject: str | None,
+) -> list[tuple[int, int]]:
+    """SQLite 侧向量检索：numpy 暴力 cosine。"""
     q = np.asarray(query_vec, dtype=np.float32)
     if q.ndim != 1:
         return []
@@ -483,7 +517,7 @@ def vec_search(
     if not rows:
         return []
     # 过滤维度匹配的向量
-    valid = []
+    valid: list[tuple[int, np.ndarray]] = []
     for r in rows:
         try:
             v = np.frombuffer(r[1], dtype=np.float32)
@@ -510,9 +544,9 @@ def _pg_vec_search(
     conn,
     query_vec: np.ndarray,
     topn: int,
-    subject: Optional[str],
-    query_dim: Optional[int],
-) -> List[Tuple[int, int]]:
+    subject: str | None,
+    query_dim: int | None,
+) -> list[tuple[int, int]]:
     """PG 侧向量检索：pgvector `<=>` 余弦距离 + HNSW 索引 `idx_chunk_vectors_hnsw`。
 
     列名澄清（实测踩坑）：`chunk_vectors` 有两个向量承载列 —
@@ -553,7 +587,7 @@ def _pg_vec_search(
 # ---------------------------------------------------------------------------
 # RRF 融合
 # ---------------------------------------------------------------------------
-def rrf_fuse(*lanes: List[Tuple[int, int]], k: int = RRF_K) -> List[int]:
+def rrf_fuse(*lanes: list[tuple[int, int]], k: int = RRF_K) -> list[int]:
     """Reciprocal Rank Fusion，返回融合后的 chunk_id 列表（按分数降序）。"""
     scores: dict[int, float] = {}
     for lane in lanes:
@@ -565,10 +599,20 @@ def rrf_fuse(*lanes: List[Tuple[int, int]], k: int = RRF_K) -> List[int]:
 # ---------------------------------------------------------------------------
 # 对外主接口
 # ---------------------------------------------------------------------------
-_SUBJECT_FILTER_SENTINELS = {"", "全部科目", "全部", "所有科目", "all", "All", "*"}
+_SUBJECT_FILTER_SENTINELS: frozenset[str] = frozenset(
+    {
+        "",
+        "全部科目",
+        "全部",
+        "所有科目",
+        "all",
+        "All",
+        "*",
+    }
+)
 
 
-def normalize_subject_filter(subject: Optional[str]) -> Optional[str]:
+def normalize_subject_filter(subject: str | None) -> str | None:
     """学科过滤参数归一（2026-11-21 审计 P1-11 修复）。
 
     前端「全部科目」哨兵值此前被当字面学科名去匹配，必然空结果。
@@ -580,13 +624,37 @@ def normalize_subject_filter(subject: Optional[str]) -> Optional[str]:
     return None if s in _SUBJECT_FILTER_SENTINELS else s
 
 
+# 知识点 / 文档用负 ID 区分，避免与 chunk_id 冲突
+_POINT_ID_OFFSET = 100000
+_DOC_ID_OFFSET = 200000
+
+
+def _encode_point_id(pid: int) -> int:
+    """知识点 ID → 负 ID（与 chunk_id 区分）。"""
+    return -_POINT_ID_OFFSET - pid
+
+
+def _encode_doc_id(did: int) -> int:
+    """文档 ID → 负 ID（与 chunk_id 区分）。"""
+    return -_DOC_ID_OFFSET - did
+
+
+def _decode_fused_id(cid: int) -> tuple[str, int]:
+    """融合 ID → (类型, 原始 ID)。类型 ∈ {'chunk', 'point', 'doc'}。"""
+    if cid > 0:
+        return "chunk", cid
+    if -_DOC_ID_OFFSET < cid <= -_POINT_ID_OFFSET:
+        return "point", abs(cid) - _POINT_ID_OFFSET
+    return "doc", abs(cid) - _DOC_ID_OFFSET
+
+
 def hybrid_search(
     db: Session,
     query: str,
-    query_vec: Optional[np.ndarray] = None,
+    query_vec: np.ndarray | None = None,
     limit: int = 6,
-    subject: Optional[str] = None,
-) -> List[dict]:
+    subject: str | None = None,
+) -> list[dict]:
     """混合检索主入口（三路召回：chunks + points + documents）。
 
     V2.0 修复：原版本只检索 knowledge_chunks，知识点和文档从不进入 RAG 上下文。
@@ -609,7 +677,7 @@ def hybrid_search(
 
     # ---- 第一路：knowledge_chunks（FTS + 向量）----
     fts_lane = fts_search(conn, query, topn=TOPN_PER_LANE, subject=subject)
-    vec_lane: List[Tuple[int, int]] = []
+    vec_lane: list[tuple[int, int]] = []
     if query_vec is not None:
         vec_lane = vec_search(conn, query_vec, topn=TOPN_PER_LANE, subject=subject)
     if vec_lane:
@@ -624,22 +692,19 @@ def hybrid_search(
     doc_ids = _search_documents(conn, query, topn=TOPN_PER_LANE, subject=subject)
 
     # ---- 三路 RRF 融合 ----
-    # 给每路的结果分配 rank，然后 RRF 融合
-    all_lanes = []
+    all_lanes: list[list[tuple[int, int]]] = []
     if chunk_ids:
         all_lanes.append([(cid, i + 1) for i, cid in enumerate(chunk_ids)])
     if point_ids:
-        # 知识点用负 ID 区分（-100000 - point_id）
-        all_lanes.append([(-100000 - pid, i + 1) for i, pid in enumerate(point_ids)])
+        all_lanes.append([(_encode_point_id(pid), i + 1) for i, pid in enumerate(point_ids)])
     if doc_ids:
-        # 文档用负 ID 区分（-200000 - doc_id）
-        all_lanes.append([(-200000 - did, i + 1) for i, did in enumerate(doc_ids)])
+        all_lanes.append([(_encode_doc_id(did), i + 1) for i, did in enumerate(doc_ids)])
 
     if not all_lanes:
         return []
 
     # 多路 RRF 融合
-    fused_scores: Dict[int, float] = {}
+    fused_scores: dict[int, float] = {}
     for lane in all_lanes:
         for cid, rank in lane:
             fused_scores[cid] = fused_scores.get(cid, 0) + 1.0 / (RRF_K + rank)
@@ -651,114 +716,8 @@ def hybrid_search(
     if not fused_ids:
         return []
 
-    # ---- 取详情 ----
-    results = []
-    chunk_id_list = [cid for cid in fused_ids if cid > 0]
-    point_id_list = [abs(cid) - 100000 for cid in fused_ids if -200000 < cid <= -100000]
-    doc_id_list = [abs(cid) - 200000 for cid in fused_ids if cid <= -200000]
-
-    # 取 chunks 详情
-    if chunk_id_list:
-        placeholders = ",".join("?" * len(chunk_id_list))
-        rows = conn.execute(
-            f"SELECT kc.id, kc.document_id, kc.subject, kc.text, "
-            f"       COALESCE(kc.doc_name, kd.file_name) AS doc_name, "
-            f"       kc.page_start, kc.page_end, kc.chunk_index "
-            f"FROM knowledge_chunks kc LEFT JOIN documents kd ON kc.document_id = kd.id "
-            f"WHERE kc.id IN ({placeholders})",
-            chunk_id_list,
-        ).fetchall()
-        id_to_row = {r[0]: r for r in rows}
-        for cid in chunk_id_list:
-            if cid in id_to_row:
-                r = id_to_row[cid]
-                results.append(
-                    {
-                        "chunk_id": r[0],
-                        "document_id": r[1],
-                        "subject": r[2],
-                        "content": r[3] or "",
-                        "document_title": r[4] or "",
-                        # 引用溯源（2026-10-20）：答疑回答必须能标到「哪份文档、第几页」。
-                        # page_start 由解析阶段写入；历史 docx 资料可能为 NULL，
-                        # 此时前端/回答退化为「第 N 段」（chunk_index）。
-                        "doc_name": r[4] or "",
-                        "page_start": r[5],
-                        "page_end": r[6],
-                        "chunk_index": r[7],
-                        "score": fused_scores.get(cid, 0),
-                        "source_type": "chunk",
-                    }
-                )
-
-    # 取 points 详情
-    if point_id_list:
-        placeholders = ",".join("?" * len(point_id_list))
-        rows = conn.execute(
-            f"SELECT id, name, description, subject, document_id FROM knowledge_points WHERE id IN ({placeholders})",
-            point_id_list,
-        ).fetchall()
-        id_to_row = {r[0]: r for r in rows}
-        for pid in point_id_list:
-            if pid in id_to_row:
-                r = id_to_row[pid]
-                results.append(
-                    {
-                        "chunk_id": -100000 - r[0],
-                        "document_id": r[4] or 0,
-                        "subject": r[3] or "",
-                        "content": f"【知识点】{r[1]}\n{r[2] or ''}",
-                        "document_title": "",
-                        "doc_name": "",
-                        "page_start": None,
-                        "page_end": None,
-                        "chunk_index": None,
-                        "score": fused_scores.get(-100000 - r[0], 0),
-                        "source_type": "knowledge_point",
-                        "point_name": r[1],
-                    }
-                )
-
-    # 取 documents 详情
-    #
-    # PostgreSQL 迁移修正（2026-10-14）：原写法有两处 PG 不兼容
-    #   1. `documents.file_type` 在 PG canonical schema 里已改名 `source_format`
-    #      （ADR-002 格式归一：source_format 记录原始格式、canonical_content 存中间态）；
-    #   2. `?` 占位符在 psycopg 下非法（只认 %s）。
-    # 经 dbapi_compat 适配后两处都可执行，业务侧无需区分后端。
-    if doc_id_list:
-        from services.dbapi_compat import adapt_sql, is_postgres
-
-        _pg = is_postgres(conn)
-        _fmt_col = "source_format" if _pg else "file_type"
-        placeholders = ",".join("?" * len(doc_id_list))
-        _sql = (
-            f"SELECT id, file_name, subject, content, {_fmt_col} "
-            f"FROM documents WHERE id IN ({placeholders}) AND is_junk IS NOT TRUE"
-        )
-        rows = conn.execute(adapt_sql(_sql, conn), doc_id_list).fetchall()
-        id_to_row = {r[0]: r for r in rows}
-        for did in doc_id_list:
-            if did in id_to_row:
-                r = id_to_row[did]
-                # 文档内容取前500字符作为摘要
-                doc_content = (r[3] or "")[:500]
-                results.append(
-                    {
-                        "chunk_id": -200000 - r[0],
-                        "document_id": r[0],
-                        "subject": r[2] or "",
-                        "content": f"【文档】{r[1]}\n{doc_content}",
-                        "document_title": r[1] or "",
-                        "doc_name": r[1] or "",
-                        "page_start": None,
-                        "page_end": None,
-                        "chunk_index": None,
-                        "score": fused_scores.get(-200000 - r[0], 0),
-                        "source_type": "document",
-                        "file_type": r[4] or "",
-                    }
-                )
+    # ---- 取详情（按类型分桶，批量查询避免 N+1）----
+    results = _fetch_fused_details(conn, fused_ids, fused_scores)
 
     # ---- RRF 后精排：kaoyan_ai 术语加权（CORE_TERMS/TERM_SYNONYMS/NOISE_TERMS + 前200字符加权）----
     for r in results:
@@ -771,20 +730,168 @@ def hybrid_search(
     return results[:limit]
 
 
+def _fetch_fused_details(
+    conn,
+    fused_ids: list[int],
+    fused_scores: dict[int, float],
+) -> list[dict]:
+    """按融合 ID 分桶批量取详情，返回结果列表（未排序）。"""
+    chunk_id_list = [cid for cid in fused_ids if cid > 0]
+    point_id_list = [abs(cid) - _POINT_ID_OFFSET for cid in fused_ids if -_DOC_ID_OFFSET < cid <= -_POINT_ID_OFFSET]
+    doc_id_list = [abs(cid) - _DOC_ID_OFFSET for cid in fused_ids if cid <= -_DOC_ID_OFFSET]
+
+    results: list[dict] = []
+    if chunk_id_list:
+        results.extend(_fetch_chunk_details(conn, chunk_id_list, fused_scores))
+    if point_id_list:
+        results.extend(_fetch_point_details(conn, point_id_list, fused_scores))
+    if doc_id_list:
+        results.extend(_fetch_doc_details(conn, doc_id_list, fused_scores))
+    return results
+
+
+def _fetch_chunk_details(
+    conn,
+    chunk_id_list: list[int],
+    fused_scores: dict[int, float],
+) -> list[dict]:
+    """批量取 knowledge_chunks 详情。"""
+    placeholders = ",".join("?" * len(chunk_id_list))
+    rows = conn.execute(
+        f"SELECT kc.id, kc.document_id, kc.subject, kc.text, "
+        f"       COALESCE(kc.doc_name, kd.file_name) AS doc_name, "
+        f"       kc.page_start, kc.page_end, kc.chunk_index "
+        f"FROM knowledge_chunks kc LEFT JOIN documents kd ON kc.document_id = kd.id "
+        f"WHERE kc.id IN ({placeholders})",
+        chunk_id_list,
+    ).fetchall()
+    id_to_row = {r[0]: r for r in rows}
+    out: list[dict] = []
+    for cid in chunk_id_list:
+        if cid not in id_to_row:
+            continue
+        r = id_to_row[cid]
+        out.append(
+            {
+                "chunk_id": r[0],
+                "document_id": r[1],
+                "subject": r[2],
+                "content": r[3] or "",
+                "document_title": r[4] or "",
+                # 引用溯源（2026-10-20）：答疑回答必须能标到「哪份文档、第几页」。
+                # page_start 由解析阶段写入；历史 docx 资料可能为 NULL，
+                # 此时前端/回答退化为「第 N 段」（chunk_index）。
+                "doc_name": r[4] or "",
+                "page_start": r[5],
+                "page_end": r[6],
+                "chunk_index": r[7],
+                "score": fused_scores.get(cid, 0),
+                "source_type": "chunk",
+            }
+        )
+    return out
+
+
+def _fetch_point_details(
+    conn,
+    point_id_list: list[int],
+    fused_scores: dict[int, float],
+) -> list[dict]:
+    """批量取 knowledge_points 详情。"""
+    placeholders = ",".join("?" * len(point_id_list))
+    rows = conn.execute(
+        f"SELECT id, name, description, subject, document_id FROM knowledge_points WHERE id IN ({placeholders})",
+        point_id_list,
+    ).fetchall()
+    id_to_row = {r[0]: r for r in rows}
+    out: list[dict] = []
+    for pid in point_id_list:
+        if pid not in id_to_row:
+            continue
+        r = id_to_row[pid]
+        out.append(
+            {
+                "chunk_id": _encode_point_id(r[0]),
+                "document_id": r[4] or 0,
+                "subject": r[3] or "",
+                "content": f"【知识点】{r[1]}\n{r[2] or ''}",
+                "document_title": "",
+                "doc_name": "",
+                "page_start": None,
+                "page_end": None,
+                "chunk_index": None,
+                "score": fused_scores.get(_encode_point_id(r[0]), 0),
+                "source_type": "knowledge_point",
+                "point_name": r[1],
+            }
+        )
+    return out
+
+
+def _fetch_doc_details(
+    conn,
+    doc_id_list: list[int],
+    fused_scores: dict[int, float],
+) -> list[dict]:
+    """批量取 documents 详情。
+
+    PostgreSQL 迁移修正（2026-10-14）：原写法有两处 PG 不兼容
+      1. `documents.file_type` 在 PG canonical schema 里已改名 `source_format`
+         （ADR-002 格式归一：source_format 记录原始格式、canonical_content 存中间态）；
+      2. `?` 占位符在 psycopg 下非法（只认 %s）。
+    经 dbapi_compat 适配后两处都可执行，业务侧无需区分后端。
+    """
+    from services.dbapi_compat import adapt_sql, is_postgres
+
+    _pg = is_postgres(conn)
+    _fmt_col = "source_format" if _pg else "file_type"
+    placeholders = ",".join("?" * len(doc_id_list))
+    _sql = (
+        f"SELECT id, file_name, subject, content, {_fmt_col} "
+        f"FROM documents WHERE id IN ({placeholders}) AND is_junk IS NOT TRUE"
+    )
+    rows = conn.execute(adapt_sql(_sql, conn), doc_id_list).fetchall()
+    id_to_row = {r[0]: r for r in rows}
+    out: list[dict] = []
+    for did in doc_id_list:
+        if did not in id_to_row:
+            continue
+        r = id_to_row[did]
+        # 文档内容取前500字符作为摘要
+        doc_content = (r[3] or "")[:500]
+        out.append(
+            {
+                "chunk_id": _encode_doc_id(r[0]),
+                "document_id": r[0],
+                "subject": r[2] or "",
+                "content": f"【文档】{r[1]}\n{doc_content}",
+                "document_title": r[1] or "",
+                "doc_name": r[1] or "",
+                "page_start": None,
+                "page_end": None,
+                "chunk_index": None,
+                "score": fused_scores.get(_encode_doc_id(r[0]), 0),
+                "source_type": "document",
+                "file_type": r[4] or "",
+            }
+        )
+    return out
+
+
 def _search_knowledge_points(
     conn: sqlite3.Connection,
     query: str,
     topn: int = 30,
-    subject: Optional[str] = None,
-) -> List[int]:
+    subject: str | None = None,
+) -> list[int]:
     """检索 knowledge_points（知识点），返回 ID 列表。"""
     tokens = [t for t in segment(query).split() if t]
     if not tokens:
         return []
 
     # 用 LIKE 匹配 name 和 description（简单但有效）
-    conditions = []
-    params = []
+    conditions: list[str] = []
+    params: list[Any] = []
     for token in tokens[:5]:  # 最多5个关键词
         conditions.append("(name LIKE ? OR description LIKE ?)")
         params.extend([f"%{token}%", f"%{token}%"])
@@ -803,7 +910,7 @@ def _search_knowledge_points(
         return []
 
 
-def _pg_doc_ids_for_term(conn, term: str, subject: Optional[str]) -> set:
+def _pg_doc_ids_for_term(conn, term: str, subject: str | None) -> set:
     """单个关键词命中的文档集合：标题（GIN trgm，列小）∪ 分块正文（GIN tsvector）。
 
     分块就是文档正文切出来的（实测 2666 篇里 2600 篇已切块），所以"正文含该词"
@@ -830,8 +937,8 @@ def _pg_doc_ids_for_term(conn, term: str, subject: Optional[str]) -> set:
     return ids
 
 
-def _pg_unindexed_doc_ids(conn, terms: List[str], subject: Optional[str], want: int) -> List[int]:
-    """尚未切块的文档（实测 66/2666）没有索引可走，只能回落到原始 content 谓词。
+def _pg_unindexed_doc_ids(conn, terms: list[str], subject: str | None, want: int) -> list[int]:
+    """尚未切块的文档（实测 66/2666）没有索引可走，只能回落到原始 content 蒙词。
 
     用 `NOT EXISTS(分块)` 先把扫描面压到那几十行，再对 content 做 ILIKE，
     这样"无索引全表扫 64 MB"就只剩历史欠账的那一小截。
@@ -841,7 +948,7 @@ def _pg_unindexed_doc_ids(conn, terms: List[str], subject: Optional[str], want: 
     conds = " AND ".join(f"(u.file_name ILIKE %(t{i})s OR u.content ILIKE %(t{i})s)" for i in range(len(terms)))
     params: dict[str, Any] = {f"t{i}": f"%{t}%" for i, t in enumerate(terms)}
     # AS MATERIALIZED 是必需的屏障：直接写 WHERE ... AND (content ILIKE ...) 时
-    # 优化器按自身的低成本估计把 content 谓词排到 NOT EXISTS 之前，实测仍要
+    # 优化器按自身的低成本估计把 content 蒙词排到 NOT EXISTS 之前，实测仍要
     # 500~630 ms（64 MB TOAST 全表求值）；先物化"未切块"那几十行再判正文 = 11~22 ms。
     sql = (
         "WITH u AS MATERIALIZED ("
@@ -863,10 +970,10 @@ def _pg_unindexed_doc_ids(conn, terms: List[str], subject: Optional[str], want: 
         return []
 
 
-def _pg_search_documents(conn, query: str, topn: int, subject: Optional[str]) -> List[int]:
+def _pg_search_documents(conn, query: str, topn: int, subject: str | None) -> list[int]:
     """PG 文档路：跨词取交集（= 旧版 AND 语义），排序按标题长度升序（口径不变）。
 
-    旧实现是一条 `AND (file_name LIKE ? OR content LIKE ?)` ×5 谓词，PG 下对
+    旧实现是一条 `AND (file_name LIKE ? OR content LIKE ?)` ×5 蒙词，PG 下对
     documents.content（64 MB TOAST）全表求值，实测 0.4~1.0 秒/次，占 rag-search
     剩余耗时的大头；补 pg_trgm GIN 也救不了（实测常见中文词命中七成文档，
     走位图索引后 recheck 仍要把正文读出来：0.72 秒 vs 全表 0.66 秒）。
@@ -883,7 +990,7 @@ def _pg_search_documents(conn, query: str, topn: int, subject: Optional[str]) ->
         logger.warning("PG 文档路（索引交集）异常：%s", exc)
         hits = set()
     # 排序口径与旧版一致：短文件名（通常是主题文档）优先
-    out: List[int] = []
+    out: list[int] = []
     if hits:
         try:
             rows = conn.execute(
@@ -904,11 +1011,11 @@ def _search_documents(
     conn: sqlite3.Connection,
     query: str,
     topn: int = 30,
-    subject: Optional[str] = None,
-) -> List[int]:
+    subject: str | None = None,
+) -> list[int]:
     """检索 documents（文档标题/内容），返回 ID 列表。
 
-    PG 走 :func:`_pg_search_documents`（GIN 索引路）；SQLite 保留原 LIKE 谓词
+    PG 走 :func:`_pg_search_documents`（GIN 索引路）；SQLite 保留原 LIKE 蒙词
     （FTS5 影子表只覆盖分块，文档级标题匹配数据量小，实测毫秒级）。
     """
     if _is_pg(conn):
@@ -918,8 +1025,8 @@ def _search_documents(
     if not tokens:
         return []
 
-    conditions = []
-    params = []
+    conditions: list[str] = []
+    params: list[Any] = []
     for token in tokens[:5]:
         conditions.append("(file_name LIKE ? OR content LIKE ?)")
         params.extend([f"%{token}%", f"%{token}%"])
@@ -989,17 +1096,49 @@ def get_index_stats(db: Session) -> dict:
 # ---------------------------------------------------------------------------
 # V3.0 重排（Rerank）：优化检索结果排序
 # ---------------------------------------------------------------------------
+# 来源类型权重（知识点 > 分块 > 文档）
+_SOURCE_WEIGHTS: dict[str, float] = {
+    "knowledge_point": 1.3,
+    "chunk": 1.0,
+    "document": 0.8,
+}
+
+
+def _length_weight(content_len: int) -> float:
+    """按内容长度给长度权重：中等长度（200~800）最优。"""
+    if 200 <= content_len <= 800:
+        return 1.2
+    if 100 <= content_len < 200 or 800 < content_len <= 1500:
+        return 1.0
+    return 0.8
+
+
+def _title_match_bonus(source_type: str, r: dict, query_tokens: set[str]) -> float:
+    """标题命中加分：知识点名命中 +0.5/词，文档标题命中 +0.3/词。"""
+    bonus = 0.0
+    if source_type == "knowledge_point":
+        point_name = (r.get("point_name", "") or "").lower()
+        for token in query_tokens:
+            if token.lower() in point_name:
+                bonus += 0.5
+    elif source_type == "document":
+        doc_title = (r.get("document_title", "") or "").lower()
+        for token in query_tokens:
+            if token.lower() in doc_title:
+                bonus += 0.3
+    return bonus
+
+
 def rerank_results(results, query, limit=6):
     """对检索结果进行重排，提升相关性。"""
     if not results:
         return []
 
-    query_tokens = set(segment(query).split())
-    query_tokens = {t for t in query_tokens if len(t) >= 2}
+    query_tokens = {t for t in segment(query).split() if len(t) >= 2}
     if not query_tokens:
         return results[:limit]
 
-    reranked = []
+    reranked: list[dict] = []
     for r in results:
         content = r.get("content", "") or ""
         source_type = r.get("source_type", "chunk")
@@ -1007,45 +1146,20 @@ def rerank_results(results, query, limit=6):
 
         content_lower = content.lower()
         match_count = 0
-        match_positions = []
+        match_positions: list[int] = []
         for token in query_tokens:
             pos = content_lower.find(token.lower())
             if pos >= 0:
                 match_count += 1
                 match_positions.append(pos)
 
-        coverage = match_count / len(query_tokens) if query_tokens else 0
+        coverage = match_count / len(query_tokens)
 
-        source_weight = {
-            "knowledge_point": 1.3,
-            "chunk": 1.0,
-            "document": 0.8,
-        }.get(source_type, 1.0)
+        source_weight = _SOURCE_WEIGHTS.get(source_type, 1.0)
+        length_weight = _length_weight(len(content))
+        title_match = _title_match_bonus(source_type, r, query_tokens)
 
-        content_len = len(content)
-        if 200 <= content_len <= 800:
-            length_weight = 1.2
-        elif 100 <= content_len < 200 or 800 < content_len <= 1500:
-            length_weight = 1.0
-        else:
-            length_weight = 0.8
-
-        title_match = 0
-        if source_type == "knowledge_point":
-            point_name = (r.get("point_name", "") or "").lower()
-            for token in query_tokens:
-                if token.lower() in point_name:
-                    title_match += 0.5
-        elif source_type == "document":
-            doc_title = (r.get("document_title", "") or "").lower()
-            for token in query_tokens:
-                if token.lower() in doc_title:
-                    title_match += 0.3
-
-        early_match = 0
-        for pos in match_positions:
-            if pos < 100:
-                early_match += 0.2
+        early_match = sum(0.2 for pos in match_positions if pos < 100)
 
         final_score = (
             (original_score * 0.4 + coverage * 0.3 + title_match * 0.15 + early_match * 0.15)
@@ -1054,8 +1168,7 @@ def rerank_results(results, query, limit=6):
         )
 
         # 术语加权精排（移植 kaoyan_ai）：核心术语命中数加权 + 噪声词降权
-        term_boost = _term_boost(query, content)
-        final_score += term_boost
+        final_score += _term_boost(query, content)
 
         r["rerank_score"] = final_score
         r["coverage"] = coverage

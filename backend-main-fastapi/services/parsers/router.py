@@ -94,8 +94,12 @@ def route_parse(
     t0 = time.perf_counter()
     profile = classify_pdf(pdf_path)
     route: List[str] = [f"classify:{profile.kind}"]
-    logger.info("PDF 分类 %s → %s（平均 %s 字/页）", os.path.basename(pdf_path), profile.kind,
-                round(profile.avg_chars_per_page, 1))
+    logger.info(
+        "PDF 分类 %s → %s（平均 %s 字/页）",
+        os.path.basename(pdf_path),
+        profile.kind,
+        round(profile.avg_chars_per_page, 1),
+    )
 
     real_out = os.path.abspath(out_dir) if out_dir else tempfile.mkdtemp(prefix="kaoyan_parse_")
     os.makedirs(real_out, exist_ok=True)
@@ -157,9 +161,7 @@ def _parse_hybrid(
     text_pages = [p for p in all_pages if p not in set(ocr_pages)]
 
     pymupdf = _build_parser("pymupdf")
-    text_result = pymupdf.parse(
-        pdf_path, page_numbers=text_pages or [], out_dir=out_dir
-    )
+    text_result = pymupdf.parse(pdf_path, page_numbers=text_pages or [], out_dir=out_dir)
     route.append(f"pymupdf:text_pages={len(text_pages)}")
 
     ocr_result: Optional[ParseResult] = None
@@ -175,9 +177,7 @@ def _parse_hybrid(
                 route.append(f"{name}:unavailable")
                 continue
             route.append(f"{name}:ocr_pages={len(ocr_pages)}")
-            ocr_result = parser.parse(
-                pdf_path, page_numbers=ocr_pages, out_dir=out_dir
-            )
+            ocr_result = parser.parse(pdf_path, page_numbers=ocr_pages, out_dir=out_dir)
             break
         if ocr_result is None:
             raise RuntimeError("没有可用的 OCR 引擎（mineru / rapidocr 均不可用）")

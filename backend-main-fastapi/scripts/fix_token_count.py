@@ -4,11 +4,11 @@
 算法与 scripts/fill_kb_docs_and_kps.py 的 token_count() 保持一致：
     汉字算 1 token，连续字母数字/下划线算 1 token，其余标点不计。
 """
-import sys
 
-import psycopg
 import sys
 from pathlib import Path
+
+import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts._conn import dsn
@@ -81,7 +81,9 @@ def main() -> int:
         print(f"token_count>0: {positive}")
         print(f"token_count=0/null 剩余: {remain}")
         if remain:
-            cur.execute("SELECT id, document_id, LENGTH(text) FROM knowledge_chunks WHERE token_count=0 OR token_count IS NULL LIMIT 10")
+            cur.execute(
+                "SELECT id, document_id, LENGTH(text) FROM knowledge_chunks WHERE token_count=0 OR token_count IS NULL LIMIT 10"
+            )
             print("剩余 0 值示例(应均为空/极短块):", cur.fetchall())
     return 0
 

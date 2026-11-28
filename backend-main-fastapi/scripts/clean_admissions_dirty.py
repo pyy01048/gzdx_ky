@@ -23,6 +23,7 @@
 
 禁止 ``git add -A``；本脚本仅操作 kaoyan_admissions 表。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -66,11 +67,7 @@ def _resolve_db_path(db_arg: str | None) -> str:
 
 def _year_distribution(cur: sqlite3.Cursor) -> list[tuple[int, int]]:
     """返回 [(year, count), ...]，按年份升序。"""
-    return list(
-        cur.execute(
-            "SELECT year, COUNT(*) FROM kaoyan_admissions GROUP BY year ORDER BY year"
-        ).fetchall()
-    )
+    return list(cur.execute("SELECT year, COUNT(*) FROM kaoyan_admissions GROUP BY year ORDER BY year").fetchall())
 
 
 def _find_dirty_rows(cur: sqlite3.Cursor, dirty_year: int) -> list[tuple]:
@@ -86,9 +83,7 @@ def _find_dirty_rows(cur: sqlite3.Cursor, dirty_year: int) -> list[tuple]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="清洗 kaoyan_admissions 中的 year=2099 脏数据（幂等，默认 dry-run）"
-    )
+    parser = argparse.ArgumentParser(description="清洗 kaoyan_admissions 中的 year=2099 脏数据（幂等，默认 dry-run）")
     parser.add_argument("--apply", action="store_true", help="真正执行删除（默认仅演练）")
     parser.add_argument("--db", default=None, help="数据库路径（默认取 DATABASE_PATH / data/kaoyan.db）")
     parser.add_argument("--dirty-year", type=int, default=_DIRTY_YEAR, help="脏数据年份阈值（默认 2099）")

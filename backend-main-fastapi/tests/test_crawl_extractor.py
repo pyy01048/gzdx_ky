@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """``services/crawl/extractor.py`` 单测：内嵌中文公告片段，不联网。"""
+
 from __future__ import annotations
 
 import os

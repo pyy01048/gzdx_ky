@@ -63,6 +63,7 @@ for page in res.pages:
         print(page.page_no, f.label, f.latex, f.bbox)
 ```
 """
+
 from __future__ import annotations
 
 import os
@@ -76,11 +77,30 @@ from PIL import Image
 
 # ---- 版面类别（PP-DocLayoutV2，index 即 class_id） ----------------------- #
 LAYOUT_LABELS: Tuple[str, ...] = (
-    "abstract", "algorithm", "aside_text", "chart", "content",
-    "display_formula", "doc_title", "figure_title", "footer", "footer_image",
-    "footnote", "formula_number", "header", "header_image", "image",
-    "inline_formula", "number", "paragraph_title", "reference",
-    "reference_content", "seal", "table", "text", "vertical_text",
+    "abstract",
+    "algorithm",
+    "aside_text",
+    "chart",
+    "content",
+    "display_formula",
+    "doc_title",
+    "figure_title",
+    "footer",
+    "footer_image",
+    "footnote",
+    "formula_number",
+    "header",
+    "header_image",
+    "image",
+    "inline_formula",
+    "number",
+    "paragraph_title",
+    "reference",
+    "reference_content",
+    "seal",
+    "table",
+    "text",
+    "vertical_text",
     "vision_footnote",
 )
 CLS_DISPLAY_FORMULA = 5
@@ -202,8 +222,13 @@ def _default_layout_model() -> str:
         return env
     home = os.path.expanduser("~")
     return os.path.join(
-        home, ".mineru", "models", "MinerU-4_models_onnx",
-        "Layout", "PP-DocLayoutV2", "inference.onnx",
+        home,
+        ".mineru",
+        "models",
+        "MinerU-4_models_onnx",
+        "Layout",
+        "PP-DocLayoutV2",
+        "inference.onnx",
     )
 
 
@@ -254,7 +279,9 @@ class LayoutDetector:
     def load_error(self) -> str:
         return self._load_error
 
-    def detect(self, page_img: Image.Image, *, min_score: float = 0.0) -> List[Tuple[int, float, Tuple[float, float, float, float]]]:
+    def detect(
+        self, page_img: Image.Image, *, min_score: float = 0.0
+    ) -> List[Tuple[int, float, Tuple[float, float, float, float]]]:
         """检测一页，返回 ``[(class_id, score, (x1,y1,x2,y2)), ...]``。"""
         if not self._ensure():
             return []
@@ -268,9 +295,7 @@ class LayoutDetector:
             [[LAYOUT_INPUT / float(max(1, oh)), LAYOUT_INPUT / float(max(1, ow))]], dtype=np.float32
         )
         try:
-            outs = self._sess.run(
-                None, {"image": inp, "im_shape": im_shape, "scale_factor": scale_factor}
-            )
+            outs = self._sess.run(None, {"image": inp, "im_shape": im_shape, "scale_factor": scale_factor})
         except Exception:  # noqa: BLE001
             return []
         boxes = np.asarray(outs[0])
@@ -424,10 +449,7 @@ def extract_pdf_formulas(
                 counts[name] = counts.get(name, 0) + 1
             pf.layout_counts = counts
 
-            formula_boxes = [
-                (cid, sc, bb) for cid, sc, bb in boxes
-                if cid in FORMULA_CLASSES and sc >= min_score
-            ]
+            formula_boxes = [(cid, sc, bb) for cid, sc, bb in boxes if cid in FORMULA_CLASSES and sc >= min_score]
             # 同一区域可能被重复检出（display 与 inline 各一次），按 bbox 去重
             seen: set = set()
             uniq: List[Tuple[int, float, Tuple[float, float, float, float]]] = []
@@ -469,8 +491,9 @@ def extract_pdf_formulas(
                     tmp = f.crop_path
                     if not tmp:
                         os.makedirs(out_dir or os.path.join(os.getcwd(), ".tmp_formula"), exist_ok=True)
-                        tmp = os.path.join(out_dir or os.path.join(os.getcwd(), ".tmp_formula"),
-                                           f"p{pno + 1:04d}_f{i:03d}.png")
+                        tmp = os.path.join(
+                            out_dir or os.path.join(os.getcwd(), ".tmp_formula"), f"p{pno + 1:04d}_f{i:03d}.png"
+                        )
                         crop.save(tmp)
                         f.crop_path = tmp
                     r = rec.recognize(tmp)

@@ -8,6 +8,7 @@
 幂等：已存在且不更短则跳过。
 用法：python auto_ingest_dropped.py
 """
+
 from __future__ import annotations
 
 import glob
@@ -39,9 +40,7 @@ def main() -> int:
     if not os.path.isdir(DROPPED_DIR):
         print("no dropped dir")
         return 0
-    files = sorted(
-        glob.glob(os.path.join(DROPPED_DIR, "mcp-ima-mcp-fetch_media_content-*.txt"))
-    )
+    files = sorted(glob.glob(os.path.join(DROPPED_DIR, "mcp-ima-mcp-fetch_media_content-*.txt")))
     if not files:
         print("no dropped files")
         return 0
@@ -50,11 +49,7 @@ def main() -> int:
     con.execute("PRAGMA busy_timeout=60000")
     # media_id → doc_id
     mapping = {
-        mid: did
-        for did, mid in con.execute(
-            "SELECT id, ima_media_id FROM documents "
-            "WHERE ima_media_id IS NOT NULL"
-        )
+        mid: did for did, mid in con.execute("SELECT id, ima_media_id FROM documents WHERE ima_media_id IS NOT NULL")
     }
 
     ok = skipped = unmatched = 0
@@ -70,9 +65,7 @@ def main() -> int:
             unmatched += 1
             continue
         doc_id = matched[0]
-        cur_len = con.execute(
-            "SELECT length(coalesce(content,'')) FROM documents WHERE id=?", (doc_id,)
-        ).fetchone()[0]
+        cur_len = con.execute("SELECT length(coalesce(content,'')) FROM documents WHERE id=?", (doc_id,)).fetchone()[0]
         if cur_len and cur_len >= len(body):
             skipped += 1
             continue

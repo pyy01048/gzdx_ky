@@ -4,6 +4,7 @@
 只读。不写库。
 输出逐组对照表：组号 / 正确侧id / 错误侧id / 是否已执行 / 错误侧当前 is_junk。
 """
+
 from __future__ import annotations
 
 import json
@@ -28,15 +29,13 @@ def canon(s: str) -> str:
 def main() -> int:
     conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT id, content, answer, is_junk, source FROM quiz_questions"
-    ).fetchall()
+    rows = conn.execute("SELECT id, content, answer, is_junk, source FROM quiz_questions").fetchall()
 
     # 建 stem -> [row]
     buckets: dict[str, list[sqlite3.Row]] = {}
     for r in rows:
         c = canon(r["content"])
-        if len(c) < 8:      # 太短跳过，与我此前口径一致
+        if len(c) < 8:  # 太短跳过，与我此前口径一致
             continue
         buckets.setdefault(c, []).append(r)
 
@@ -51,9 +50,9 @@ def main() -> int:
             if a:
                 answers.setdefault(a, []).append(r["id"])
         if len(answers) >= 2:
-            conflict_groups.append(g)     # 同题干多答案 -> 冲突
+            conflict_groups.append(g)  # 同题干多答案 -> 冲突
         else:
-            pure_groups.append(g)         # 同题干答案一致（或都无答案）-> 纯重复
+            pure_groups.append(g)  # 同题干答案一致（或都无答案）-> 纯重复
     conn.close()
 
     conflict_groups.sort(key=lambda g: min(r["id"] for r in g))
@@ -72,10 +71,10 @@ def main() -> int:
     out = {
         "conflict_groups": [
             [
-                {"id": r["id"], "is_junk": r["is_junk"],
-                 "answer": (r["answer"] or "")[:60], "source": r["source"]}
+                {"id": r["id"], "is_junk": r["is_junk"], "answer": (r["answer"] or "")[:60], "source": r["source"]}
                 for r in g
-            ] for g in conflict_groups
+            ]
+            for g in conflict_groups
         ],
         "pure_groups": [[r["id"] for r in g] for g in pure_groups],
     }

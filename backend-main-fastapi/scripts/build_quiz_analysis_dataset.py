@@ -26,6 +26,7 @@
     python scripts/build_quiz_analysis_dataset.py --dry-run
     python scripts/build_quiz_analysis_dataset.py --out-dir data/lora_finetune_quiz_v1
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal  # noqa: E402
+
 from models import QuizQuestion  # noqa: E402
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -198,9 +200,7 @@ def build(out_dir: str, holdout_n: int, val_n: int, seed: int, dry_run: bool) ->
                 {
                     "role": "user",
                     "content": (
-                        f"【科目】{q.subject or '未分类'}\n"
-                        f"【题目】{content}\n"
-                        f"【选项】\n{_options_text(q.options)}"
+                        f"【科目】{q.subject or '未分类'}\n【题目】{content}\n【选项】\n{_options_text(q.options)}"
                     ),
                 },
                 {

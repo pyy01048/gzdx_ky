@@ -17,6 +17,7 @@
 
 合规：仅处理公开公示名单；下载/请求保持 1.5-2.5s 随机延迟；KAOYAN_AUTO_COLLECT 开关保护。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,19 +32,22 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal  # noqa: E402
-from models import KaoyanAdmission  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
+from models import KaoyanAdmission  # noqa: E402
 from pipeline.notice_admission_crawler import fetch  # noqa: E402
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ocr_cache")
 
 
 def _load_notice(db, notice_id: int):
-    row = db.execute(text(
-        "SELECT id, school_id, school_name, notice_type, title, url, publish_date "
-        "FROM kaoyan_notices WHERE id = :nid"
-    ), {"nid": notice_id}).fetchone()
+    row = db.execute(
+        text(
+            "SELECT id, school_id, school_name, notice_type, title, url, publish_date "
+            "FROM kaoyan_notices WHERE id = :nid"
+        ),
+        {"nid": notice_id},
+    ).fetchone()
     if row is None:
         raise SystemExit(f"[中止] kaoyan_notices 无 id={notice_id}")
     return row
@@ -107,19 +111,26 @@ def _save_status(notice_id: int, st: dict):
         json.dump(st, f, ensure_ascii=False, indent=2)
 
 
-def _upsert_admission(db, notice_id: int, school_id: int, year: int, ntype: str,
-                      students: int, totals: list):
+def _upsert_admission(db, notice_id: int, school_id: int, year: int, ntype: str, students: int, totals: list):
     src = f"notice:{notice_id}"
     avg = round(statistics.mean(totals), 1) if totals else None
-    row = db.query(KaoyanAdmission).filter(KaoyanAdmission.school_id == school_id,
-                                           KaoyanAdmission.year == year,
-                                           KaoyanAdmission.data_source == src).first()
+    row = (
+        db.query(KaoyanAdmission)
+        .filter(
+            KaoyanAdmission.school_id == school_id, KaoyanAdmission.year == year, KaoyanAdmission.data_source == src
+        )
+        .first()
+    )
     is_admit = ntype in ("录取", "调剂")
     if row is None:
-        row = KaoyanAdmission(school_id=school_id, year=year,
-                              retest_count=students if ntype == "复试" else None,
-                              admit_count=students if is_admit else None,
-                              admit_avg_score=avg, data_source=src)
+        row = KaoyanAdmission(
+            school_id=school_id,
+            year=year,
+            retest_count=students if ntype == "复试" else None,
+            admit_count=students if is_admit else None,
+            admit_avg_score=avg,
+            data_source=src,
+        )
         db.add(row)
         db.flush()
     else:
@@ -133,35 +144,43 @@ def _upsert_admission(db, notice_id: int, school_id: int, year: int, ntype: str,
     return row.id
 
 
-def _insert_details(db, notice_id: int, school_id: int, year: int,
-                    admission_id: int, rows: list):
-    inserted = 0
+def _mask_exam_no(value: str | None) -> str | None:
+    number = str(value or "").strip()
+    return f"***{number[-4:]}" if number else None
+
+
+def _insert_details(db, notice_id: int, school_id: int, year: int, admission_id: int, rows: list) -> list:
+    inserted_rows = []
     for r in rows:
         page = int(r.get("page") or 0)
         idx = int(r.get("row_idx") or 0)
         src = f"notice:{notice_id}:p{page}:r{idx}"
         # ON CONFLICT DO NOTHING —— 同页重跑自然幂等
-        db.execute(text(
-            "INSERT INTO kaoyan_admission_details "
-            "(admission_id, school_id, year, exam_no, name, major_name, "
-            " score_initial, score_retest, score_total, data_source) "
-            "VALUES (:admission_id, :school_id, :year, :exam_no, :name, :major_name, "
-            " :score_initial, :score_retest, :score_total, :data_source) "
-            "ON CONFLICT (data_source) DO NOTHING"
-        ), {
-            "admission_id": admission_id,
-            "school_id": school_id,
-            "year": year,
-            "exam_no": (r.get("exam_no") or "")[:40] or None,
-            "name": (r.get("name") or "")[:60],
-            "major_name": (r.get("major") or "")[:120] or None,
-            "score_initial": r.get("initial"),
-            "score_retest": r.get("retest"),
-            "score_total": r.get("total"),
-            "data_source": src,
-        })
-        inserted += 1
-    return inserted
+        result = db.execute(
+            text(
+                "INSERT INTO kaoyan_admission_details "
+                "(admission_id, school_id, year, exam_no, name, major_name, "
+                " score_initial, score_retest, score_total, data_source) "
+                "VALUES (:admission_id, :school_id, :year, :exam_no, :name, :major_name, "
+                " :score_initial, :score_retest, :score_total, :data_source) "
+                "ON CONFLICT (data_source) DO NOTHING"
+            ),
+            {
+                "admission_id": admission_id,
+                "school_id": school_id,
+                "year": year,
+                "exam_no": _mask_exam_no(r.get("exam_no")),
+                "name": "匿名考生",
+                "major_name": (r.get("major") or "")[:120] or None,
+                "score_initial": r.get("initial"),
+                "score_retest": r.get("retest"),
+                "score_total": r.get("total"),
+                "data_source": src,
+            },
+        )
+        if result.rowcount > 0:
+            inserted_rows.append(r)
+    return inserted_rows
 
 
 def _stage_rows(res: dict):
@@ -174,14 +193,26 @@ def _stage_rows(res: dict):
     return out
 
 
-def run(notice_id: int, year: int, start_page: int = 1, end_page: int = 0,
-        dry_run: bool = False, out_html: Optional[str] = None) -> int:
+def run(
+    notice_id: int,
+    year: int,
+    start_page: int = 1,
+    end_page: int = 0,
+    dry_run: bool = False,
+    out_html: Optional[str] = None,
+) -> int:
     db = SessionLocal()
     try:
         notice = _load_notice(db, notice_id)
-        nid, sid, sname, ntype, title, url, pdate = (
-            notice.id, notice.school_id, notice.school_name, notice.notice_type,
-            notice.title, notice.url, notice.publish_date)
+        nid, sid, sname, ntype, title, url, _pdate = (
+            notice.id,
+            notice.school_id,
+            notice.school_name,
+            notice.notice_type,
+            notice.title,
+            notice.url,
+            notice.publish_date,
+        )
         print(f"通知 #{nid} {sname} {ntype} {title[:40]} url={url}")
         if not url:
             raise SystemExit("[中止] 通知无 URL")
@@ -225,15 +256,23 @@ def run(notice_id: int, year: int, start_page: int = 1, end_page: int = 0,
         st = _load_status(nid)
         print(f"PDF 共 {total_pages} 页，本次处理 {start_page}..{end_page}（断点 last={st['last_done_page']}）")
 
-        all_students = st.get("students_total", 0)
-        all_totals: list = []
-        if os.path.exists(os.path.join(CACHE_DIR, f"notice-{nid}.totals.json")):
-            with open(os.path.join(CACHE_DIR, f"notice-{nid}.totals.json"), "r", encoding="utf-8") as f:
-                all_totals = json.load(f)
+        detail_totals = (
+            db.execute(
+                text("SELECT score_total FROM kaoyan_admission_details WHERE data_source LIKE :pattern ORDER BY id"),
+                {"pattern": f"notice:{nid}:p%"},
+            )
+            .scalars()
+            .all()
+        )
+        all_students = len(detail_totals)
+        all_totals = [float(value) for value in detail_totals if value is not None]
+        st["students_total"] = all_students
 
-        # 先初始化/复用聚合行（保证 admission_id 稳定）
-        admission_id = _upsert_admission(db, nid, sid, year, ntype, all_students, all_totals)
-        db.commit()
+        # 先初始化/复用聚合行（保证 admission_id 稳定）；dry-run 不写库。
+        admission_id = None
+        if not dry_run:
+            admission_id = _upsert_admission(db, nid, sid, year, ntype, all_students, all_totals)
+            db.commit()
 
         total_inserted = 0
         for page in range(start_page, end_page + 1):
@@ -243,32 +282,41 @@ def run(notice_id: int, year: int, start_page: int = 1, end_page: int = 0,
             except Exception as exc:  # noqa: BLE001
                 print(f"[ERR] p{page}: {type(exc).__name__}: {exc}")
                 st["pages_err"] = st.get("pages_err", 0) + 1
-                _save_status(nid, st)
+                if not dry_run:
+                    _save_status(nid, st)
                 continue
             if not res or not res.get("rows"):
                 print(f"[EMPTY] p{page}：无名单行")
                 st["pages_err"] = st.get("pages_err", 0) + 1  # 该页无结果也算未达预期
-                _save_status(nid, st)
+                if not dry_run:
+                    _save_status(nid, st)
                 continue
             rows = _stage_rows(res)
-            page_students = len(rows)
-            page_totals = [v for v in (r.get("total") for r in rows) if isinstance(v, float)]
+            if dry_run:
+                counted_rows = rows
+                inserted = 0
+            else:
+                counted_rows = _insert_details(db, nid, sid, year, admission_id, rows)
+                db.commit()
+                inserted = len(counted_rows)
+                total_inserted += inserted
+            page_students = len(counted_rows)
+            page_totals = [v for v in (r.get("total") for r in counted_rows) if isinstance(v, float)]
             all_students += page_students
             all_totals.extend(page_totals)
-            inserted = 0
-            if not dry_run:
-                inserted = _insert_details(db, nid, sid, year, admission_id, rows)
-                db.commit()
-                total_inserted += inserted
             st["last_done_page"] = page
             st["pages_ok"] = st.get("pages_ok", 0) + 1
             st["students_total"] = all_students
-            _save_status(nid, st)
-            with open(os.path.join(CACHE_DIR, f"notice-{nid}.totals.json"), "w", encoding="utf-8") as f:
-                json.dump(all_totals, f)
-            print(f"[OK] p{page:03d}/{end_page} 本页 {page_students} 人 "
-                  f"（累计 {all_students}），avg={round(statistics.mean(page_totals),1) if page_totals else '-'}，"
-                  f"{time.time() - t0:.0f}s，入库 {inserted} 行")
+            if not dry_run:
+                _save_status(nid, st)
+                with open(os.path.join(CACHE_DIR, f"notice-{nid}.totals.json"), "w", encoding="utf-8") as f:
+                    json.dump(all_totals, f)
+            print(
+                f"[OK] p{page:03d}/{end_page} 本页识别 {len(rows)} 人 "
+                f"（新增 {page_students}，累计 {all_students}），"
+                f"avg={round(statistics.mean(page_totals), 1) if page_totals else '-'}，"
+                f"{time.time() - t0:.0f}s，入库 {inserted} 行"
+            )
             if not dry_run:
                 admission_id = _upsert_admission(db, nid, sid, year, ntype, all_students, all_totals)
                 db.commit()
@@ -279,35 +327,42 @@ def run(notice_id: int, year: int, start_page: int = 1, end_page: int = 0,
 
         print("== 汇总 ==")
         print(f"累计完成页 {st['last_done_page']}/{end_page}（ok={st['pages_ok']} err={st['pages_err']}）")
-        print(f"累计学生 {all_students} 人，成绩样本 {len(all_totals)}，"
-              f"均分 {round(statistics.mean(all_totals),1) if all_totals else '-'}")
+        print(
+            f"累计学生 {all_students} 人，成绩样本 {len(all_totals)}，"
+            f"均分 {round(statistics.mean(all_totals), 1) if all_totals else '-'}"
+        )
 
         if out_html:
-            _write_html(out_html, sname, ntype, year, all_students,
-                        all_totals, _load_details_db(db, nid) or [])
+            _write_html(out_html, sname, ntype, year, all_students, all_totals, _load_details_db(db, nid) or [])
         return 0
     finally:
         db.close()
 
 
 def _load_details_db(db, notice_id: int):
-    rows = db.execute(text(
-        "SELECT exam_no, name, major_name, score_initial, score_retest, score_total "
-        "FROM kaoyan_admission_details WHERE data_source LIKE :pat ORDER BY id"
-    ), {"pat": f"notice:{notice_id}:p%"}).fetchall()
+    rows = db.execute(
+        text(
+            "SELECT exam_no, name, major_name, score_initial, score_retest, score_total "
+            "FROM kaoyan_admission_details WHERE data_source LIKE :pat ORDER BY id"
+        ),
+        {"pat": f"notice:{notice_id}:p%"},
+    ).fetchall()
     return [dict(r._mapping) for r in rows]
 
 
-def _write_html(path: str, sname: str, ntype: str, year: int, students: int,
-                totals: list, details: list):
+def _write_html(path: str, sname: str, ntype: str, year: int, students: int, totals: list, details: list):
     avg = round(statistics.mean(totals), 1) if totals else "-"
     rows_html = "\n".join(
         "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-            d.get("exam_no") or "-", d["name"], d.get("major_name") or "-",
+            d.get("exam_no") or "-",
+            d["name"],
+            d.get("major_name") or "-",
             d.get("score_initial") if d.get("score_initial") is not None else "-",
             d.get("score_retest") if d.get("score_retest") is not None else "-",
-            d.get("score_total") if d.get("score_total") is not None else "-")
-        for d in details[:2000])
+            d.get("score_total") if d.get("score_total") is not None else "-",
+        )
+        for d in details[:2000]
+    )
     html = f"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{sname} {year} {ntype}名单（OCR）</title>
@@ -342,8 +397,7 @@ def main():
     args = ap.parse_args()
     if not os.environ.get("KAOYAN_AUTO_COLLECT"):
         print("[提示] 未设置 KAOYAN_AUTO_COLLECT=1 的环境变量（合规开关），仍继续（人工驱动）。")
-    run(args.notice_id, args.year, args.start_page, args.end_page,
-        args.dry_run, args.out_html)
+    run(args.notice_id, args.year, args.start_page, args.end_page, args.dry_run, args.out_html)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 照样拿到一份全科计划；同时前端在后端不可用时会本地"生成"一套
 数学/英语/政治/834专业课 的假任务并当成 AI 结果（已在 Tasks.jsx 移除）。
 """
+
 from services.ai_service import AIService
 
 

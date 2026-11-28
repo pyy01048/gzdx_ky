@@ -18,6 +18,7 @@
     ``IS $1`` 直接语法错误；实际踩在 ``notice_dedup.upsert_notice`` 的
     ``WHERE school_id IS ?`` 上。
 """
+
 from __future__ import annotations
 
 from services.dbapi_compat import adapt_dml, adapt_sql, convert_placeholders
@@ -99,8 +100,7 @@ def test_is_null_is_untouched():
 # 占位符与直通
 # --------------------------------------------------------------------------- #
 def test_placeholders_converted_only_on_pg():
-    assert convert_placeholders("SELECT * FROM t WHERE a=? AND b=?") == \
-        "SELECT * FROM t WHERE a=%s AND b=%s"
+    assert convert_placeholders("SELECT * FROM t WHERE a=? AND b=?") == "SELECT * FROM t WHERE a=%s AND b=%s"
     # SQLite：adapt_sql 原样返回（conn=None 视为 SQLite）
     raw = "SELECT IFNULL(a,1) FROM t WHERE x IS ?"
     assert adapt_sql(raw) == raw

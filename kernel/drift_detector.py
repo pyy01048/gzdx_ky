@@ -9,6 +9,7 @@
 冷启动保护：< min_days(3) 天数据 → insufficient_data，零触发；
 planned=0 → no_plan，零触发。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,22 +28,21 @@ STATUS_RECOVERY = "recovery"
 class DayLedger:
     """study_calendar 出口 DTO（唯一口径）。"""
 
-    date: str            # ISO 日期串 YYYY-MM-DD
+    date: str  # ISO 日期串 YYYY-MM-DD
     planned_min: int
     completed_min: int
 
 
 @dataclass(frozen=True)
 class DriftResult:
-    drift: Optional[float]     # None = 无有效漂移值（冷启动/无计划）
+    drift: Optional[float]  # None = 无有效漂移值（冷启动/无计划）
     status: str
     window_days: int
     planned_avg: float
     completed_avg: float
 
 
-def compute_drift(ledger: List[DayLedger], cfg: DriftConfig, *,
-                  window_days: Optional[int] = None) -> DriftResult:
+def compute_drift(ledger: List[DayLedger], cfg: DriftConfig, *, window_days: Optional[int] = None) -> DriftResult:
     """按滑动窗口均值计算漂移率并分带。
 
     Args:
@@ -53,23 +53,26 @@ def compute_drift(ledger: List[DayLedger], cfg: DriftConfig, *,
     win = window_days if window_days is not None else cfg.window_days
     recent = list(ledger[-win:]) if win > 0 else []
     if len(recent) < cfg.min_days:
-        return DriftResult(drift=None, status=STATUS_INSUFFICIENT,
-                           window_days=len(recent), planned_avg=0.0,
-                           completed_avg=0.0)
+        return DriftResult(
+            drift=None, status=STATUS_INSUFFICIENT, window_days=len(recent), planned_avg=0.0, completed_avg=0.0
+        )
     planned = sum(d.planned_min for d in recent) / len(recent)
     completed = sum(d.completed_min for d in recent) / len(recent)
     if planned == 0:
-        return DriftResult(drift=0.0, status=STATUS_NO_PLAN,
-                           window_days=len(recent), planned_avg=0.0,
-                           completed_avg=completed)
-    drift = (completed - planned) / planned   # 负值 = 落后
+        return DriftResult(
+            drift=0.0, status=STATUS_NO_PLAN, window_days=len(recent), planned_avg=0.0, completed_avg=completed
+        )
+    drift = (completed - planned) / planned  # 负值 = 落后
     if drift >= -cfg.on_track_band:
         status = STATUS_ON_TRACK
     elif drift >= -cfg.recovery_band:
         status = STATUS_MICRO_ADJUST
     else:
         status = STATUS_RECOVERY
-    return DriftResult(drift=round(drift, 6), status=status,
-                       window_days=len(recent),
-                       planned_avg=round(planned, 4),
-                       completed_avg=round(completed, 4))
+    return DriftResult(
+        drift=round(drift, 6),
+        status=status,
+        window_days=len(recent),
+        planned_avg=round(planned, 4),
+        completed_avg=round(completed, 4),
+    )

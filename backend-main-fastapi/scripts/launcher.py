@@ -27,6 +27,7 @@
 * 最重要的：**旧启动器从不检查数据库**，库挂了照样起后端，用户看到的是一堆
   莫名其妙的接口报错。现在每个启动入口都会先 ``ensure-db``。
 """
+
 from __future__ import annotations
 
 import os
@@ -98,17 +99,14 @@ def parse_netstat_listen(output: str, port: str | int) -> list[int]:
     return sorted(set(pids))
 
 
-def build_backend_cmd(
-    host: str, port: int, mode: str = "normal"
-) -> list[str]:
+def build_backend_cmd(host: str, port: int, mode: str = "normal") -> list[str]:
     """拼出启动后端的命令行。
 
     mode: normal / background / dev
     """
     py = sys.executable
     if mode == "dev":
-        return [py, "-m", "uvicorn", "main:app", "--host", host,
-                "--port", str(port), "--reload"]
+        return [py, "-m", "uvicorn", "main:app", "--host", host, "--port", str(port), "--reload"]
     if mode == "background":
         script = str(BACKEND / "run_server.py")
         return [py, script]
@@ -135,8 +133,12 @@ def read_env() -> dict[str, str]:
 def _netstat() -> str:
     try:
         proc = subprocess.run(
-            ["netstat", "-ano"], capture_output=True, text=True,
-            timeout=15, encoding="utf-8", errors="replace",
+            ["netstat", "-ano"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            encoding="utf-8",
+            errors="replace",
         )
         return proc.stdout or ""
     except (subprocess.TimeoutExpired, OSError):
@@ -191,13 +193,17 @@ def ensure_db(timeout: int = 45) -> bool:
     print("  [数据库] 未运行，正在拉起（含崩溃残留清理）...")
     proc = subprocess.run(
         [sys.executable, str(BACKEND / "scripts" / "startup_manager.py"), "ensure-db"],
-        cwd=str(BACKEND), encoding="utf-8", errors="replace",
+        cwd=str(BACKEND),
+        encoding="utf-8",
+        errors="replace",
     )
     if proc.returncode != 0:
         print("  [数据库] 启动失败 —— 服务先不起，起了也是一堆报错")
         subprocess.run(
             [sys.executable, str(BACKEND / "scripts" / "startup_manager.py"), "diagnose"],
-            cwd=str(BACKEND), encoding="utf-8", errors="replace",
+            cwd=str(BACKEND),
+            encoding="utf-8",
+            errors="replace",
         )
         return False
     return True
@@ -208,7 +214,8 @@ def kill_pids(pids: Iterable[int]) -> None:
         try:
             subprocess.run(
                 ["taskkill", "/PID", str(pid), "/F"],
-                capture_output=True, timeout=10,
+                capture_output=True,
+                timeout=10,
             )
             print(f"        已停止 PID={pid}")
         except (subprocess.TimeoutExpired, OSError):
@@ -341,11 +348,11 @@ def main(argv: list[str] | None = None) -> int:
             if not ensure_db():
                 return 1
             host = "0.0.0.0" if action == "lan" else "127.0.0.1"
-            start_backend(host, port, "background" if action == "background" else
-                          ("dev" if action == "dev" else "normal"))
+            start_backend(
+                host, port, "background" if action == "background" else ("dev" if action == "dev" else "normal")
+            )
             print(f"  正在启动（{host}:{port}）...")
-            print("  [OK] 服务已就绪" if wait_ready(f"{url}/api/health")
-                  else "  [警告] 等待超时，请查看后端窗口日志")
+            print("  [OK] 服务已就绪" if wait_ready(f"{url}/api/health") else "  [警告] 等待超时，请查看后端窗口日志")
             return 0
         if action == "stop":
             stop_backend(port)
@@ -353,7 +360,9 @@ def main(argv: list[str] | None = None) -> int:
         if action == "diagnose":
             return subprocess.run(
                 [sys.executable, str(BACKEND / "scripts" / "startup_manager.py"), "diagnose"],
-                cwd=str(BACKEND), encoding="utf-8", errors="replace",
+                cwd=str(BACKEND),
+                encoding="utf-8",
+                errors="replace",
             ).returncode
 
     while True:
@@ -388,7 +397,9 @@ def main(argv: list[str] | None = None) -> int:
             if ans == "y":
                 subprocess.run(
                     [sys.executable, str(BACKEND / "scripts" / "startup_manager.py"), "stop-db"],
-                    cwd=str(BACKEND), encoding="utf-8", errors="replace",
+                    cwd=str(BACKEND),
+                    encoding="utf-8",
+                    errors="replace",
                 )
             _pause()
         elif choice == "5":
@@ -396,7 +407,9 @@ def main(argv: list[str] | None = None) -> int:
         elif choice == "6":
             subprocess.run(
                 [sys.executable, str(BACKEND / "scripts" / "diagnostics" / "check_env.py")],
-                cwd=str(BACKEND), encoding="utf-8", errors="replace",
+                cwd=str(BACKEND),
+                encoding="utf-8",
+                errors="replace",
             )
             _pause()
         else:
@@ -407,10 +420,20 @@ def main(argv: list[str] | None = None) -> int:
 def _try_open_firewall(port: int) -> None:
     try:
         subprocess.run(
-            ["netsh", "advfirewall", "firewall", "add", "rule",
-             "name=KaoyanPlatform", "dir=in", "action=allow",
-             "protocol=TCP", f"localport={port}"],
-            capture_output=True, timeout=20,
+            [
+                "netsh",
+                "advfirewall",
+                "firewall",
+                "add",
+                "rule",
+                "name=KaoyanPlatform",
+                "dir=in",
+                "action=allow",
+                "protocol=TCP",
+                f"localport={port}",
+            ],
+            capture_output=True,
+            timeout=20,
         )
     except (subprocess.TimeoutExpired, OSError):
         pass

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """``services/crawl/fetcher.py`` 单测：全部用假客户端，**不发任何网络请求**。"""
+
 from __future__ import annotations
 
 import os
@@ -68,15 +69,19 @@ def _clear_robots():
 
 # --------------------------------------------------------------------------- #
 def test_200_ok():
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [FakeResponse(
-            200,
-            "<html><body>2025年硕士研究生招生简章</body></html>".encode(),
-            {"content-type": "text/html; charset=utf-8"},
-            url=PAGE_URL,
-        )],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [
+                FakeResponse(
+                    200,
+                    "<html><body>2025年硕士研究生招生简章</body></html>".encode(),
+                    {"content-type": "text/html; charset=utf-8"},
+                    url=PAGE_URL,
+                )
+            ],
+        }
+    )
     result = make_fetcher(client).fetch(PAGE_URL)
     assert result.status == 200
     assert result.error == ""
@@ -87,10 +92,12 @@ def test_200_ok():
 
 
 def test_404_is_not_retried():
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [FakeResponse(404, b"", {"content-type": "text/html"}, url=PAGE_URL)],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [FakeResponse(404, b"", {"content-type": "text/html"}, url=PAGE_URL)],
+        }
+    )
     result = make_fetcher(client).fetch(PAGE_URL)
     assert result.status == 404
     assert result.error == "http_404"
@@ -98,13 +105,15 @@ def test_404_is_not_retried():
 
 
 def test_429_is_retried():
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [
-            FakeResponse(429, b"", {"content-type": "text/html"}, url=PAGE_URL),
-            FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"}, url=PAGE_URL),
-        ],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [
+                FakeResponse(429, b"", {"content-type": "text/html"}, url=PAGE_URL),
+                FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"}, url=PAGE_URL),
+            ],
+        }
+    )
     result = make_fetcher(client).fetch(PAGE_URL)
     assert result.status == 200
     assert result.error == ""
@@ -112,23 +121,27 @@ def test_429_is_retried():
 
 
 def test_timeout_is_retried():
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [
-            httpx.TimeoutException("timeout"),
-            FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"}, url=PAGE_URL),
-        ],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [
+                httpx.TimeoutException("timeout"),
+                FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"}, url=PAGE_URL),
+            ],
+        }
+    )
     result = make_fetcher(client).fetch(PAGE_URL)
     assert result.status == 200
     assert client.count("jzsh.html") == 2
 
 
 def test_5xx_retries_then_gives_up():
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [FakeResponse(500, b"", {"content-type": "text/html"}, url=PAGE_URL)],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [FakeResponse(500, b"", {"content-type": "text/html"}, url=PAGE_URL)],
+        }
+    )
     result = make_fetcher(client).fetch(PAGE_URL)
     assert result.status == 500
     assert result.error == "http_500"
@@ -136,13 +149,16 @@ def test_5xx_retries_then_gives_up():
 
 
 def test_robots_disallowed_never_fetches_page():
-    client = FakeClient({
-        "robots.txt": [FakeResponse(
-            200, b"User-agent: *\nDisallow: /\n", {"content-type": "text/plain"}, url=ROBOTS_URL
-        )],
-        "jzsh.html": [FakeResponse(200, b"<html>should not be fetched</html>",
-                                   {"content-type": "text/html"}, url=PAGE_URL)],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [
+                FakeResponse(200, b"User-agent: *\nDisallow: /\n", {"content-type": "text/plain"}, url=ROBOTS_URL)
+            ],
+            "jzsh.html": [
+                FakeResponse(200, b"<html>should not be fetched</html>", {"content-type": "text/html"}, url=PAGE_URL)
+            ],
+        }
+    )
     result = make_fetcher(client).fetch(PAGE_URL)
     assert result.error == "robots_disallowed"
     assert result.status == 0
@@ -150,12 +166,14 @@ def test_robots_disallowed_never_fetches_page():
 
 
 def test_robots_can_be_skipped():
-    client = FakeClient({
-        "robots.txt": [FakeResponse(200, b"User-agent: *\nDisallow: /\n",
-                                    {"content-type": "text/plain"}, url=ROBOTS_URL)],
-        "jzsh.html": [FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"},
-                                   url=PAGE_URL)],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [
+                FakeResponse(200, b"User-agent: *\nDisallow: /\n", {"content-type": "text/plain"}, url=ROBOTS_URL)
+            ],
+            "jzsh.html": [FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"}, url=PAGE_URL)],
+        }
+    )
     result = make_fetcher(client).fetch(PAGE_URL, respect_robots=False)
     assert result.status == 200
     assert client.count("robots.txt") == 0
@@ -163,10 +181,12 @@ def test_robots_can_be_skipped():
 
 def test_oversized_page_is_truncated():
     body = ("中" * 5000).encode("utf-8")
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [FakeResponse(200, body, {"content-type": "text/html"}, url=PAGE_URL)],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [FakeResponse(200, body, {"content-type": "text/html"}, url=PAGE_URL)],
+        }
+    )
     result = make_fetcher(client, max_bytes=100).fetch(PAGE_URL)
     assert result.error == "too_large"
     assert len(result.html) < 200
@@ -174,25 +194,26 @@ def test_oversized_page_is_truncated():
 
 def test_gbk_page_is_decoded_by_meta_charset():
     html = '<html><head><meta charset="gb2312"></head><body>中文内容测试</body></html>'
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [FakeResponse(200, html.encode("gb18030"),
-                                   {"content-type": "text/html"}, url=PAGE_URL)],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [FakeResponse(200, html.encode("gb18030"), {"content-type": "text/html"}, url=PAGE_URL)],
+        }
+    )
     result = make_fetcher(client).fetch(PAGE_URL)
     assert "中文内容测试" in result.html
 
 
 def test_same_domain_requests_are_spaced():
     """同域连续两次请求，间隔不小于 delay。"""
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"},
-                                   url=PAGE_URL)],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"}, url=PAGE_URL)],
+        }
+    )
     slept = []
-    fetcher = PoliteFetcher(delay=(1.0, 1.0), client_factory=lambda: client,
-                             sleep=slept.append)
+    fetcher = PoliteFetcher(delay=(1.0, 1.0), client_factory=lambda: client, sleep=slept.append)
     fetcher.fetch(PAGE_URL)
     fetcher.fetch(PAGE_URL)
     assert any(s >= 0.5 for s in slept), f"同域请求应有节流等待，实际 sleep={slept}"
@@ -206,11 +227,12 @@ def test_invalid_url_is_rejected():
 
 
 def test_robots_cache_is_reused():
-    client = FakeClient({
-        "robots.txt": [FakeResponse(404, b"")],
-        "jzsh.html": [FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"},
-                                   url=PAGE_URL)],
-    })
+    client = FakeClient(
+        {
+            "robots.txt": [FakeResponse(404, b"")],
+            "jzsh.html": [FakeResponse(200, b"<html>ok</html>", {"content-type": "text/html"}, url=PAGE_URL)],
+        }
+    )
     fetcher = make_fetcher(client)
     fetcher.fetch(PAGE_URL)
     fetcher.fetch(PAGE_URL)

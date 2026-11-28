@@ -16,6 +16,7 @@
 
 每轮输出前后对比指标；幂等可重跑。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,7 +39,8 @@ from services.content_sanitizer import (  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 _PAST_EXAM_LABEL_RE = re.compile(
-    r"真题|历年|(\d{2,4}\s*[-~至]\s*\d{2,4}\s*年)|(\d{4}\s*年.*(真题|试卷))|统考真题|回忆版")
+    r"真题|历年|(\d{2,4}\s*[-~至]\s*\d{2,4}\s*年)|(\d{4}\s*年.*(真题|试卷))|统考真题|回忆版"
+)
 
 _YEAR_RE = re.compile(r"(20\d{2}|[0-9]{2})\s*年")
 
@@ -58,9 +60,9 @@ def _extract_year(*texts: Optional[str]) -> Optional[int]:
         return years.pop()
     return None
 
+
 #: 违禁学科（0854 无关内容，触红线 3：只清不删，报告交用户）
-_OFFTOPIC_LABEL_RE = re.compile(
-    r"管综|管理类联考|法硕|法律硕士|西医|中医|临床|执业医师|植物生理|教育学|心理学统考")
+_OFFTOPIC_LABEL_RE = re.compile(r"管综|管理类联考|法硕|法律硕士|西医|中医|临床|执业医师|植物生理|教育学|心理学统考")
 
 
 def baseline(db) -> dict:
@@ -68,15 +70,20 @@ def baseline(db) -> dict:
     return {
         "total": q("SELECT count(*) FROM quiz_questions"),
         "no_options": q("SELECT count(*) FROM quiz_questions WHERE options IS NULL OR jsonb_array_length(options)=0"),
-        "choice_no_options": q("SELECT count(*) FROM quiz_questions WHERE (options IS NULL OR jsonb_array_length(options)=0) AND question_type IN ('single','multiple')"),
-        "options_gt4": q("SELECT count(*) FROM quiz_questions WHERE options IS NOT NULL AND jsonb_array_length(options)>4"),
+        "choice_no_options": q(
+            "SELECT count(*) FROM quiz_questions WHERE (options IS NULL OR jsonb_array_length(options)=0) AND question_type IN ('single','multiple')"
+        ),
+        "options_gt4": q(
+            "SELECT count(*) FROM quiz_questions WHERE options IS NOT NULL AND jsonb_array_length(options)>4"
+        ),
         "answer_empty": q("SELECT count(*) FROM quiz_questions WHERE answer IS NULL OR btrim(answer)=''"),
         "needs_review": q("SELECT count(*) FROM quiz_questions WHERE needs_review IS TRUE"),
         "unavailable": q("SELECT count(*) FROM quiz_questions WHERE is_available IS FALSE"),
         "is_junk": q("SELECT count(*) FROM quiz_questions WHERE is_junk IS TRUE"),
         "past_exam": q("SELECT count(*) FROM quiz_questions WHERE source_kind='past_exam'"),
         "textbook_wrong_pastexam": q(
-            "SELECT count(*) FROM quiz_questions WHERE source_kind='textbook' AND (source_label LIKE '%真题%' OR source_label ~ '[0-9]{2}-[0-9]{2}')"),
+            "SELECT count(*) FROM quiz_questions WHERE source_kind='textbook' AND (source_label LIKE '%真题%' OR source_label ~ '[0-9]{2}-[0-9]{2}')"
+        ),
     }
 
 
@@ -97,13 +104,16 @@ def main() -> int:
         samples = {"fixed_options": [], "offline": [], "source_fixed": [], "offtopic": []}
         last_id = 0
         while True:
-            rows = db.execute(text("""
+            rows = db.execute(
+                text("""
                 SELECT id, content, options, answer, analysis, rubric,
                        question_type, source_kind, source_label, is_junk, needs_review, is_available,
                        year, paper
                 FROM quiz_questions
                 WHERE id > :lid ORDER BY id LIMIT :lim
-            """), {"lid": last_id, "lim": args.batch}).fetchall()
+            """),
+                {"lid": last_id, "lim": args.batch},
+            ).fetchall()
             if not rows:
                 break
             for r in rows:
@@ -123,18 +133,28 @@ def main() -> int:
                     if len(samples["offtopic"]) < 5:
                         samples["offtopic"].append({"id": qid, "label": source_label[:60]})
                     if args.apply:
-                        db.execute(text("UPDATE quiz_questions SET is_junk=TRUE, updated_at=now() WHERE id=:i"), {"i": qid})
+                        db.execute(
+                            text("UPDATE quiz_questions SET is_junk=TRUE, updated_at=now() WHERE id=:i"), {"i": qid}
+                        )
                     continue
 
                 # ---- P1 字段清洗 ----
-                cleaned, issues = sanitize_question_fields({
-                    "content": content, "options": options, "answer": answer,
-                    "analysis": analysis, "rubric": rubric, "question_type": qtype,
-                })
-                changed = (cleaned.get("content") != content
-                           or cleaned.get("options") != options
-                           or cleaned.get("answer") != answer
-                           or cleaned.get("analysis") != analysis)
+                cleaned, issues = sanitize_question_fields(
+                    {
+                        "content": content,
+                        "options": options,
+                        "answer": answer,
+                        "analysis": analysis,
+                        "rubric": rubric,
+                        "question_type": qtype,
+                    }
+                )
+                changed = (
+                    cleaned.get("content") != content
+                    or cleaned.get("options") != options
+                    or cleaned.get("answer") != answer
+                    or cleaned.get("analysis") != analysis
+                )
                 if changed:
                     stats["fields_cleaned"] += 1
                     if "options_from_inline" in issues and len(samples["fixed_options"]) < 5:
@@ -146,8 +166,9 @@ def main() -> int:
                 new_needs_review = needs_review
                 new_available = is_available
                 vissues = validate_question(cleaned)
-                hard_bad = {"choice_without_options", "content_mojibake",
-                            "content_empty", "content_too_short"} & set(vissues)
+                hard_bad = {"choice_without_options", "content_mojibake", "content_empty", "content_too_short"} & set(
+                    vissues
+                )
                 if "options_all_duplicate" in issues:
                     hard_bad.add("options_all_duplicate")  # 选项全重复=坏题
                 if hard_bad:
@@ -176,11 +197,15 @@ def main() -> int:
                     else:
                         stats["source_ambiguous"] += 1
 
-                if args.apply and (changed or new_kind != source_kind
-                                   or new_year != cur_year
-                                   or new_needs_review != needs_review
-                                   or new_available != is_available):
-                    db.execute(text("""
+                if args.apply and (
+                    changed
+                    or new_kind != source_kind
+                    or new_year != cur_year
+                    or new_needs_review != needs_review
+                    or new_available != is_available
+                ):
+                    db.execute(
+                        text("""
                         UPDATE quiz_questions SET
                             content=:content, options=CAST(:options AS jsonb),
                             answer=:answer, analysis=:analysis, rubric=:rubric,
@@ -189,17 +214,22 @@ def main() -> int:
                             needs_review=:needs_review, is_available=:is_available,
                             updated_at=now()
                         WHERE id=:id
-                    """), {
-                        "id": qid,
-                        "content": cleaned.get("content"),
-                        "options": json.dumps(cleaned["options"], ensure_ascii=False) if cleaned.get("options") else None,
-                        "answer": cleaned.get("answer"), "analysis": cleaned.get("analysis"),
-                        "rubric": cleaned.get("rubric"),
-                        "source_kind": new_kind,
-                        "year": new_year,
-                        "needs_review": new_needs_review,
-                        "is_available": new_available,
-                    })
+                    """),
+                        {
+                            "id": qid,
+                            "content": cleaned.get("content"),
+                            "options": json.dumps(cleaned["options"], ensure_ascii=False)
+                            if cleaned.get("options")
+                            else None,
+                            "answer": cleaned.get("answer"),
+                            "analysis": cleaned.get("analysis"),
+                            "rubric": cleaned.get("rubric"),
+                            "source_kind": new_kind,
+                            "year": new_year,
+                            "needs_review": new_needs_review,
+                            "is_available": new_available,
+                        },
+                    )
             if args.apply:
                 db.commit()
                 print(f"  ... progress id={last_id} cleaned={stats['fields_cleaned']}", flush=True)

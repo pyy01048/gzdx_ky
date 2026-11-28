@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import EChart from '../../components/EChart'
 import { analysisApi } from '../../api/client'
@@ -22,6 +22,9 @@ const MASTERY = {
   未开始: { cls: 'outline', desc: '暂无答题记录' },
 }
 
+const MASTERY_ORDER = ['危', '弱', '稳', '强', '未开始']
+
+/** 监听 document data-theme 变化，返回当前主题模式（dark / light）。 */
 function useThemeMode() {
   const read = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
   const [mode, setMode] = useState(read)
@@ -33,6 +36,7 @@ function useThemeMode() {
   return mode
 }
 
+/** 把后端时间值格式化为本地化字符串；非法值原样返回。 */
 function fmtTime(value) {
   if (!value) return '—'
   const d = new Date(value)
@@ -40,6 +44,7 @@ function fmtTime(value) {
   return d.toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+/** 单个画像统计 Tile。 */
 function ProfileStat({ icon, label, value, unit, hint }) {
   return (
     <Tile span={3} className="v3-profile-stat">
@@ -50,15 +55,21 @@ function ProfileStat({ icon, label, value, unit, hint }) {
   )
 }
 
+/**
+ * 学习画像页：基于答题 / 错题 / 模考的真实记录聚合，非模型臆测。
+ * 数据源：analysisApi.profile({ days: 30 })。
+ * @returns {JSX.Element} 学习画像页面
+ */
 export default function LearnerProfile() {
   const navigate = useNavigate()
   const mode = useThemeMode()
   const { data: profile, loading, error, isEmpty, reload } = useApiData(
     () => analysisApi.profile({ days: 30 }),
-    { onError: (e) => toast(`画像加载失败：${e.message}`) },
+    { onError: (e) => toast(`画像加载失败：${e?.message || '未知错误'}`) },
   )
   const [refreshing, setRefreshing] = useState(false)
 
+  /** 刷新画像并提示结果。 */
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
@@ -70,7 +81,7 @@ export default function LearnerProfile() {
     }
   }, [reload])
 
-  const T = chartTheme(mode === 'dark')
+  const T = useMemo(() => chartTheme(mode === 'dark'), [mode])
 
   if (loading) {
     return (
@@ -122,14 +133,13 @@ export default function LearnerProfile() {
   const {
     overview = {}, subjects = [], weak_points: weakPoints = [], knowledge_points: kp3,
     review_queue: reviewQueue = {}, trend = [], suggestions = [],
-  } = profile
+  } = profile || {}
 
   const kpTotal = kp3?.total || 0
   const queueTotal = (reviewQueue.scheduled || 0) + (reviewQueue.no_schedule || 0)
   const scheduledPct = queueTotal ? Math.round((reviewQueue.scheduled / queueTotal) * 100) : 0
-  const masteryOrder = ['危', '弱', '稳', '强', '未开始']
   const masteryCount = subjects.reduce((acc, s) => {
-    const key = masteryOrder.includes(s.mastery) ? s.mastery : '未开始'
+    const key = MASTERY_ORDER.includes(s.mastery) ? s.mastery : '未开始'
     acc[key] = (acc[key] || 0) + 1
     return acc
   }, {})
@@ -190,7 +200,7 @@ export default function LearnerProfile() {
               <div className="v3-card__sub">危 &lt;50% 或错题积压 &gt;20 · 弱 &lt;65% · 稳 &lt;80% · 强 ≥80%</div>
             </div>
             <span className="v3-profile-mastery-legend">
-              {masteryOrder.filter((k) => masteryCount[k]).map((k) => (
+              {MASTERY_ORDER.filter((k) => masteryCount[k]).map((k) => (
                 <span key={k} className={`v3-profile-mastery-dot is-${MASTERY[k].cls}`} title={MASTERY[k].desc}>
                   {k} {masteryCount[k]}
                 </span>

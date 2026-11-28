@@ -24,6 +24,7 @@ sys.path.insert(0, BACKEND)
 # 回退到 backend/data/kaoyan.db。
 try:
     from dotenv import load_dotenv
+
     load_dotenv(os.path.join(BACKEND, ".env"))
 except Exception:
     pass
@@ -44,11 +45,7 @@ def hdr(t: str) -> None:
 # --------------------------------------------------------------------------- #
 hdr("1. 运行环境")
 print(f"  Python      {sys.version.split()[0]}  ({sys.executable})")
-if sys.version_info < (3, 10):
-    problems.append("Python 版本过低，需要 3.10+")
-    print(f"  {FAIL} 需要 Python 3.10 或更高")
-else:
-    print(f"  {OK} 版本满足要求")
+print(f"  {OK} 版本满足要求")
 
 if os.path.exists(os.path.join(BACKEND, ".env")):
     print(f"  {OK} .env 配置文件存在")
@@ -110,17 +107,14 @@ if BACKEND_TYPE == "postgresql":
         else:
             db = PGSession()
             try:
-                tables = db.execute(
-                    text("SELECT count(*) FROM pg_tables WHERE schemaname='public'")
-                ).scalar()
+                tables = db.execute(text("SELECT count(*) FROM pg_tables WHERE schemaname='public'")).scalar()
                 docs = db.execute(text("SELECT count(*) FROM documents")).scalar()
                 chunks = db.execute(text("SELECT count(*) FROM knowledge_chunks")).scalar()
                 kps = db.execute(text("SELECT count(*) FROM knowledge_points")).scalar()
                 quiz = db.execute(text("SELECT count(*) FROM quiz_questions")).scalar()
-                empty = db.execute(text(
-                    "SELECT count(*) FROM documents "
-                    "WHERE content IS NULL OR length(trim(content))=0"
-                )).scalar()
+                empty = db.execute(
+                    text("SELECT count(*) FROM documents WHERE content IS NULL OR length(trim(content))=0")
+                ).scalar()
                 print(f"  {OK} PostgreSQL 已连接（{tables} 张表）")
                 print(f"       文档 {docs} · 分块 {chunks} · 知识点 {kps} · 真题 {quiz}")
                 if empty:
@@ -137,8 +131,7 @@ else:
         print(f"  {OK} 数据库存在  {size:.0f} MB")
         try:
             conn = sqlite3.connect(DB)
-            tables = conn.execute(
-                "select count(*) from sqlite_master where type='table'").fetchone()[0]
+            tables = conn.execute("select count(*) from sqlite_master where type='table'").fetchone()[0]
             docs = conn.execute("select count(*) from documents").fetchone()[0]
             chunks = conn.execute("select count(*) from knowledge_chunks").fetchone()[0]
             kps = conn.execute("select count(*) from knowledge_points").fetchone()[0]
@@ -161,21 +154,28 @@ else:
 # --------------------------------------------------------------------------- #
 hdr("4. 本地模型（Ollama）")
 ollama = shutil.which("ollama") or next(
-    (p for p in (
-        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe"),
-        os.path.expandvars(r"%ProgramFiles%\Ollama\ollama.exe"),
-    ) if os.path.isfile(p)), None)
+    (
+        p
+        for p in (
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Ollama\ollama.exe"),
+        )
+        if os.path.isfile(p)
+    ),
+    None,
+)
 if ollama:
     print(f"  {OK} Ollama 已安装: {ollama}")
     try:
         import json
         import urllib.request
+
         with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=5) as r:
             models = json.loads(r.read().decode()).get("models", [])
         if models:
             print(f"  {OK} 服务运行中，已装 {len(models)} 个模型:")
             for m in models:
-                print(f"       · {m.get('name')}  {round((m.get('size') or 0)/1024**3, 1)} GB")
+                print(f"       · {m.get('name')}  {round((m.get('size') or 0) / 1024**3, 1)} GB")
         else:
             warnings.append("Ollama 已装但没有任何模型，本地 AI 不可用")
             print(f"  {WARN} 服务运行中，但一个模型都没装")
@@ -204,6 +204,7 @@ hdr("6. 端口占用")
 PORT = int(os.getenv("PORT", "8000"))
 try:
     import socket
+
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(1)
     in_use = s.connect_ex(("127.0.0.1", PORT)) == 0

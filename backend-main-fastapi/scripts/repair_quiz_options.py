@@ -51,6 +51,7 @@ python scripts/repair_quiz_options.py --apply          # 真写库
 python scripts/repair_quiz_options.py --report /tmp/o.json
 ```
 """
+
 from __future__ import annotations
 
 import argparse
@@ -101,7 +102,6 @@ SCAN_WINDOW = 18
 MAX_OPTION_PLAIN = 200
 
 
-
 def _line_starts(text: str) -> List[int]:
     """每行起始偏移。"""
     starts = [0]
@@ -122,7 +122,11 @@ def _line_span(starts: List[int], text: str, i: int) -> Tuple[int, int]:
 
 
 def find_option_block(
-    text: str, starts: List[int], from_pos: int, *, window: int = SCAN_WINDOW,
+    text: str,
+    starts: List[int],
+    from_pos: int,
+    *,
+    window: int = SCAN_WINDOW,
     max_run_index: Optional[int] = None,
 ) -> Optional[List[Dict]]:
     """在 ``from_pos`` 之后找连续的 A/B/C/D 选项段。
@@ -171,10 +175,14 @@ def find_option_block(
                 seg_end = line_end
             if seg_end - seg_start > MAX_OPTION_PLAIN:
                 break
-            block.append({
-                "key": key, "start": seg_start, "end": seg_end,
-                "text": text[seg_start:seg_end],
-            })
+            block.append(
+                {
+                    "key": key,
+                    "start": seg_start,
+                    "end": seg_end,
+                    "text": text[seg_start:seg_end],
+                }
+            )
         if len(block) == 4:
             block[0]["run_index"] = k
             return block
@@ -216,14 +224,16 @@ def _rewrite_option_text(marked_slice: str) -> str:
 def collect_targets(db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0) -> List[dict]:
     from sqlalchemy import text as sqltext
 
-    rows = db.execute(sqltext("""
+    rows = db.execute(
+        sqltext("""
         select id, coalesce(subject,''), coalesce(content,''),
                coalesce(options::text,''), coalesce(source_label,'')
         from quiz_questions
         where coalesce(source_label,'') <> ''
           and options is not null
         order by id
-    """)).fetchall()
+    """)
+    ).fetchall()
     out: List[dict] = []
     for qid, subj, content, options_json, label in rows:
         if quiz_ids and qid not in quiz_ids:
@@ -234,10 +244,15 @@ def collect_targets(db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0)
             continue
         if not isinstance(opts, list) or not opts:
             continue
-        out.append({
-            "id": qid, "subject": subj, "content": content,
-            "options": opts, "label": label,
-        })
+        out.append(
+            {
+                "id": qid,
+                "subject": subj,
+                "content": content,
+                "options": opts,
+                "label": label,
+            }
+        )
     if limit:
         out = out[:limit]
     return out
@@ -254,6 +269,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from database import SessionLocal
+
     from models import QuizQuestion
 
     db = SessionLocal()
@@ -352,9 +368,7 @@ def main() -> int:
             rejected: List[Tuple[int, str, str]] = []
             if wanted:
                 out_dir = os.path.join(img_root, str(d.id))
-                res2 = parse_docx_with_images(
-                    d.file_path, out_dir=out_dir, only_indices=wanted
-                )
+                res2 = parse_docx_with_images(d.file_path, out_dir=out_dir, only_indices=wanted)
                 images = {i.index: i for i in res2.images}
                 for idx in sorted(wanted):
                     img = images.get(idx)
@@ -368,10 +382,7 @@ def main() -> int:
                     # 用在深色背景上会变成「黑底黑字」，而且 Windows 下 .gif 的
                     # MIME 映射来自注册表，不一定可靠。统一转格式后再写 URL。
                     usable = _ensure_web_png(img.out_path)
-                    url = (
-                        f"/media/images/quiz_option/{d.id}/"
-                        f"{os.path.basename(usable)}"
-                    )
+                    url = f"/media/images/quiz_option/{d.id}/{os.path.basename(usable)}"
                     if args.no_image_fallback:
                         url = ""
                     if url:
@@ -466,8 +477,10 @@ def main() -> int:
             print(f"        {k}: {v}")
 
         for r in ok_items[: args.show]:
-            print(f"\n--- quiz {r['id']} [{r['subject']}] 选项改 {r['changed']} 个 "
-                  f"公式 {r['latex_ok']}/{r['markers']} 守卫拦截 {r['guarded']} ---")
+            print(
+                f"\n--- quiz {r['id']} [{r['subject']}] 选项改 {r['changed']} 个 "
+                f"公式 {r['latex_ok']}/{r['markers']} 守卫拦截 {r['guarded']} ---"
+            )
             old_map = {str(o.get("key", "")).upper(): str(o.get("text", "")) for o in r["options"]}
             for o in r["candidate"]:
                 if old_map.get(o["key"]) != o["text"]:

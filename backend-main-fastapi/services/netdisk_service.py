@@ -333,9 +333,10 @@ from contextlib import asynccontextmanager  # noqa: E402
 from typing import Any, Dict, Iterator  # noqa: E402
 
 import httpx  # noqa: E402
-from models import PlatformConfig  # noqa: E402
 from utils.secret_codec import SecretDecodeError, seal_extra, unseal_extra  # noqa: E402
 from utils.timeutil import to_naive_utc, utcnow  # noqa: E402  统一 naive UTC 时间规范（P0-4）
+
+from models import PlatformConfig  # noqa: E402
 
 # 从 .env 加载网盘凭证（避免密钥硬编码）
 try:
@@ -381,7 +382,8 @@ def _generate_device_id() -> str:
 
 
 def _looks_valid_device_id(value: str) -> bool:
-    return bool(value and re.fullmatch(r"[0-9a-fA-F]{32}", value or ""))
+    """device_id 是否为合法的 32 位十六进制串。"""
+    return bool(value and re.fullmatch(r"[0-9a-fA-F]{32}", value))
 
 
 class NetdiskService:

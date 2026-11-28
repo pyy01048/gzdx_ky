@@ -156,9 +156,7 @@ def _flag_supported(flag: str, help_text: str) -> bool:
     return re.search(rf"(^|[\s,]){re.escape(flag)}([\s,]|$)", help_text, re.M) is not None
 
 
-def _assemble(
-    binary: str, parts: Sequence[Tuple[Optional[str], Optional[str]]], help_text: str
-) -> List[str]:
+def _assemble(binary: str, parts: Sequence[Tuple[Optional[str], Optional[str]]], help_text: str) -> List[str]:
     """把 (flag, value) 对拼成命令行；现场 help 里没有的 flag 直接不拼。
 
     这样 MinerU 升级导致 CLI 变形时，命令不会带着不存在的参数去撞
@@ -232,7 +230,7 @@ def _collect_page_sizes(content_list: Sequence[Dict[str, Any]]) -> Dict[int, Tup
         if isinstance(size, dict):
             width = width if width is not None else _as_float(size.get("width"))
             height = height if height is not None else _as_float(size.get("height"))
-        elif isinstance(size, (list, tuple)) and len(size) >= 2:
+        elif isinstance(size, list | tuple) and len(size) >= 2:
             width = width if width is not None else _as_float(size[0])
             height = height if height is not None else _as_float(size[1])
         if width and height:
@@ -240,9 +238,7 @@ def _collect_page_sizes(content_list: Sequence[Dict[str, Any]]) -> Dict[int, Tup
     return sizes
 
 
-def _bbox_of(
-    raw: Any, page_width: float, page_height: float
-) -> Optional[Tuple[float, float, float, float]]:
+def _bbox_of(raw: Any, page_width: float, page_height: float) -> Optional[Tuple[float, float, float, float]]:
     """把 content_list 的 bbox 转成 (x0,y0,x1,y1) 像素坐标。
 
     兼容 4 元素 list/tuple、``{"x0":..}`` 形态的 dict。**若所有值 ≤ 1.5**，
@@ -258,7 +254,7 @@ def _bbox_of(
             alt = ("left", "top", "right", "bottom")
             if all(k in raw for k in alt):
                 values = [_as_float(raw[k]) for k in alt]
-    elif isinstance(raw, (list, tuple)) and len(raw) >= 4:
+    elif isinstance(raw, list | tuple) and len(raw) >= 4:
         values = [_as_float(raw[i]) for i in range(4)]
 
     if not values or any(v is None for v in values):
@@ -316,9 +312,7 @@ def _copy_image(item: Dict[str, Any], out_dir: str, images_dir: str) -> Tuple[st
     return f"images/{name}", False
 
 
-def content_list_to_pages(
-    content_list: List[Dict[str, Any]], out_dir: str
-) -> List[ParsedPage]:
+def content_list_to_pages(content_list: List[Dict[str, Any]], out_dir: str) -> List[ParsedPage]:
     """把 MinerU ``content_list`` 转成 ``ParsedPage`` 列表（纯函数）。
 
     :param content_list: content_list.json 的原始数组
@@ -413,9 +407,7 @@ def _pages_from_markdown(markdown: str) -> List[ParsedPage]:
         if not stripped:
             return []
         page = ParsedPage(page_no=1, text=stripped)
-        page.blocks.append(
-            ParsedBlock(page_no=1, block_type=BLOCK_TEXT, text=stripped, reading_order=0)
-        )
+        page.blocks.append(ParsedBlock(page_no=1, block_type=BLOCK_TEXT, text=stripped, reading_order=0))
         return [page]
     for i, m in enumerate(matches):
         start = m.end()
@@ -537,9 +529,7 @@ class MinerUParser:
                 parts.append((token, None))
         return _assemble(binary, parts, help_text)
 
-    def _cmd_4x(
-        self, binary: str, pdf: str, out_dir: str, help_text: str = ""
-    ) -> List[str]:
+    def _cmd_4x(self, binary: str, pdf: str, out_dir: str, help_text: str = "") -> List[str]:
         stem = os.path.splitext(os.path.basename(pdf))[0]
         out_md = os.path.join(out_dir, f"{stem}.md")
         parts: List[Tuple[Optional[str], Optional[str]]] = [
@@ -565,9 +555,7 @@ class MinerUParser:
             raise FileNotFoundError(f"PDF 不存在: {pdf_path}")
         binary = self.resolve_bin()
         if not binary:
-            raise RuntimeError(
-                "未找到 MinerU 可执行文件（设置 MINERU_BIN / KAOYAN_OCR_BIN 或把 mineru 放进 PATH）"
-            )
+            raise RuntimeError("未找到 MinerU 可执行文件（设置 MINERU_BIN / KAOYAN_OCR_BIN 或把 mineru 放进 PATH）")
 
         real_out = os.path.abspath(out_dir) if out_dir else tempfile.mkdtemp(prefix="kaoyan_mineru_")
         os.makedirs(real_out, exist_ok=True)
@@ -600,9 +588,7 @@ class MinerUParser:
                     errors="replace",
                 )
             except subprocess.TimeoutExpired as exc:
-                raise RuntimeError(
-                    f"MinerU 超时（>{self.timeout:.0f}s）: {os.path.basename(pdf_path)}"
-                ) from exc
+                raise RuntimeError(f"MinerU 超时（>{self.timeout:.0f}s）: {os.path.basename(pdf_path)}") from exc
             if proc.returncode == 0:
                 used_flavor = fl
                 succeeded = True

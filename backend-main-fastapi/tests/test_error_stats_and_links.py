@@ -14,10 +14,13 @@
    里，且标 ``source=question_link`` / ``verified=True``；启发式
    ``error_knowledge_links`` 只作补充（``source`` 为 auto 族 / manual）。
 """
+
 from __future__ import annotations
 
 import pytest
 from database import SessionLocal
+from services import error_linker, kp_mastery
+
 from models import (
     ErrorKnowledgeLink,
     ErrorRecord,
@@ -26,7 +29,6 @@ from models import (
     QuizQuestion,
     ReviewRecord,
 )
-from services import error_linker, kp_mastery
 
 SUBJECT = "数学"
 
@@ -45,8 +47,12 @@ def _mk_error(db, content, *, accuracy=0.0, review_count=0, status="active", que
         # 行级隔离（utils.scope.scoped）按 user_id 过滤；夹具必须与
         # stub_principal().id 归属一致，否则 API 侧永远查不到这条错题。
         user_id=0,
-        content=content, subject=SUBJECT, accuracy=accuracy, review_count=review_count,
-        status=status, question_id=question_id,
+        content=content,
+        subject=SUBJECT,
+        accuracy=accuracy,
+        review_count=review_count,
+        status=status,
+        question_id=question_id,
     )
     db.add(err)
     db.commit()
@@ -78,14 +84,13 @@ def _fetch_all(client, url, params, *, page_size: int = 200):
 # 一、统计口径唯一 + 三态自洽
 # --------------------------------------------------------------------------- #
 
-class TestErrorStatsCaliber:
 
+class TestErrorStatsCaliber:
     def test_endpoint_ok_and_three_state_partition(self, client):
         resp = client.get("/api/errors/stats")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        for key in ("total", "active_errors", "due_errors", "graduated_errors",
-                    "unlearned", "weak", "mastered"):
+        for key in ("total", "active_errors", "due_errors", "graduated_errors", "unlearned", "weak", "mastered"):
             assert key in data, f"错题统计缺字段 {key}"
         assert data["unlearned"] + data["weak"] + data["mastered"] == data["total"], (
             "三态计数必须严格划分全部错题（未学+薄弱+已掌握 == 总数）"
@@ -119,8 +124,8 @@ class TestErrorStatsCaliber:
 # 二、掌握度三态真实计算（筛选 == 逐条判定）
 # --------------------------------------------------------------------------- #
 
-class TestErrorMasteryState:
 
+class TestErrorMasteryState:
     def test_error_mastery_state_pure(self):
         assert kp_mastery.error_mastery_state(0.0, 0, "active") == kp_mastery.STATE_UNLEARNED
         assert kp_mastery.error_mastery_state(None, 1, "active") == kp_mastery.STATE_LEARNING
@@ -131,9 +136,7 @@ class TestErrorMasteryState:
 
     def test_list_filter_matches_per_item_state(self, client, db):
         # 清理同名残留，避免跨测试污染
-        db.query(ErrorRecord).filter(
-            ErrorRecord.content.like("三态-%")
-        ).delete(synchronize_session=False)
+        db.query(ErrorRecord).filter(ErrorRecord.content.like("三态-%")).delete(synchronize_session=False)
         db.commit()
 
         _mk_error(db, "三态-未学样本", accuracy=0.0, review_count=0, status="active")
@@ -157,8 +160,7 @@ class TestErrorMasteryState:
             assert actual_state == expected_state, f"{content}: {actual_state} != {expected_state}"
 
             # API 筛选能把它找出来
-            items = _fetch_all(client, "/api/errors",
-                               {"mastery_state": expected_state, "page_size": 200})
+            items = _fetch_all(client, "/api/errors", {"mastery_state": expected_state, "page_size": 200})
             ids = {i["id"] for i in items}
             assert err.id in ids, f"{content} (id={err.id}) 未被 mastery_state={expected_state} 筛出"
 
@@ -179,42 +181,46 @@ class TestErrorMasteryState:
 # 三、知识点关联按实际链路（question_knowledge_links 优先）
 # --------------------------------------------------------------------------- #
 
-class TestKnowledgeLinksAreReal:
 
+class TestKnowledgeLinksAreReal:
     def test_question_link_surfaces_and_wins(self, client, db):
         # 题目 + 人工校验的题目-知识点关联（权威链路）
-        q = QuizQuestion(content="三态-关联题：JK触发器", subject=SUBJECT,
-                         answer="A", question_type="single")
+        q = QuizQuestion(content="三态-关联题：JK触发器", subject=SUBJECT, answer="A", question_type="single")
         db.add(q)
         db.commit()
         db.refresh(q)
 
-        kp_ok = KnowledgePoint(name="测试-JK触发器", subject=SUBJECT,
-                               chapter="第六章 时序逻辑", mastery=0)
-        kp_noise = KnowledgePoint(name="测试-噪声知识点", subject=SUBJECT,
-                                  chapter="第一章", mastery=0)
+        kp_ok = KnowledgePoint(name="测试-JK触发器", subject=SUBJECT, chapter="第六章 时序逻辑", mastery=0)
+        kp_noise = KnowledgePoint(name="测试-噪声知识点", subject=SUBJECT, chapter="第一章", mastery=0)
         db.add_all([kp_ok, kp_noise])
         db.commit()
         db.refresh(kp_ok)
         db.refresh(kp_noise)
 
-        db.add(QuestionKnowledgeLink(question_id=q.id, knowledge_point_id=kp_ok.id,
-                                     role="primary", weight=1.0, is_verified=True))
+        db.add(
+            QuestionKnowledgeLink(
+                question_id=q.id, knowledge_point_id=kp_ok.id, role="primary", weight=1.0, is_verified=True
+            )
+        )
         # 同一知识点又被启发式挂了一次（应被去重，保留 question_link 的权威来源）
-        db.add(QuestionKnowledgeLink(question_id=q.id, knowledge_point_id=kp_noise.id,
-                                     role="secondary", weight=0.3, is_verified=False))
+        db.add(
+            QuestionKnowledgeLink(
+                question_id=q.id, knowledge_point_id=kp_noise.id, role="secondary", weight=0.3, is_verified=False
+            )
+        )
         err = _mk_error(db, "三态-关联错题", question_id=q.id)
-        db.add(ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp_ok.id,
-                                  relevance=0.2, source="name_match"))
-        db.add(ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp_noise.id,
-                                  relevance=0.1, source="keyword_match"))
+        db.add(ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp_ok.id, relevance=0.2, source="name_match"))
+        db.add(
+            ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp_noise.id, relevance=0.1, source="keyword_match")
+        )
         # 只有启发式、题目侧没有的孤立关联（应作为补充保留）
         kp_extra = KnowledgePoint(name="测试-仅启发式知识点", subject=SUBJECT, chapter="第二章", mastery=0)
         db.add(kp_extra)
         db.commit()
         db.refresh(kp_extra)
-        db.add(ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp_extra.id,
-                                  relevance=0.05, source="keyword_match"))
+        db.add(
+            ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp_extra.id, relevance=0.05, source="keyword_match")
+        )
         db.commit()
 
         resp = client.get(f"/api/errors/{err.id}/knowledge-points")
@@ -244,8 +250,11 @@ class TestKnowledgeLinksAreReal:
         from unittest.mock import patch
 
         err = ErrorRecord(
-            content="测试-孤立考点XYZ", subject=SUBJECT,
-            error_reason="答题错误", user_id=0, status="active",
+            content="测试-孤立考点XYZ",
+            subject=SUBJECT,
+            error_reason="答题错误",
+            user_id=0,
+            status="active",
         )
         db.add(err)
         db.commit()
@@ -258,17 +267,19 @@ class TestKnowledgeLinksAreReal:
         db.commit()
         db.refresh(kp)
 
-        fake_results = [{
-            "chunk_id": -100000 - kp.id,
-            "document_id": 0,
-            "subject": SUBJECT,
-            "content": f"【知识点】{kp.name}",
-            "document_title": "",
-            "doc_name": "",
-            "score": 0.5,
-            "source_type": "knowledge_point",
-            "point_name": kp.name,
-        }]
+        fake_results = [
+            {
+                "chunk_id": -100000 - kp.id,
+                "document_id": 0,
+                "subject": SUBJECT,
+                "content": f"【知识点】{kp.name}",
+                "document_title": "",
+                "doc_name": "",
+                "score": 0.5,
+                "source_type": "knowledge_point",
+                "point_name": kp.name,
+            }
+        ]
 
         with patch(
             "services.search_service.hybrid_search",
@@ -278,9 +289,7 @@ class TestKnowledgeLinksAreReal:
 
         # 关联应建立（负 chunk_id 不阻断挂知识点）
         assert created, "auto_link_error 应建立至少一条知识点关联"
-        link = db.query(ErrorKnowledgeLink).filter(
-            ErrorKnowledgeLink.error_id == err.id
-        ).first()
+        link = db.query(ErrorKnowledgeLink).filter(ErrorKnowledgeLink.error_id == err.id).first()
         assert link is not None
         assert link.knowledge_point_id == kp.id
         # 外键列必须被置空：负编码/0 占位直接落库会违反 FK 约束
@@ -290,24 +299,23 @@ class TestKnowledgeLinksAreReal:
     def test_items_carry_three_state_label(self, client, db):
         # mastery 是派生列（触发器无条件覆盖手写值）—— 直接写 80 无效，
         # 必须用真实学习记录（review_records）+ touch 让视图算出掌握度。
-        kp = KnowledgePoint(name="测试-三态标签", subject=SUBJECT, chapter="第三章",
-                            review_count=3)
+        kp = KnowledgePoint(name="测试-三态标签", subject=SUBJECT, chapter="第三章", review_count=3)
         db.add(kp)
         db.commit()
         db.refresh(kp)
         for _ in range(3):
-            db.add(ReviewRecord(item_type="knowledge", item_id=kp.id,
-                                subject=SUBJECT, result="good", grade=5))
+            db.add(
+                ReviewRecord(user_id=0, item_type="knowledge", item_id=kp.id, subject=SUBJECT, result="good", grade=5)
+            )
         db.commit()
         kp_mastery.touch_mastery(db, [kp.id])
         db.commit()
         db.refresh(kp)
         err = _mk_error(db, "三态-标签错题", accuracy=0.4, review_count=1)
-        db.add(ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp.id,
-                                  relevance=0.9, source="manual"))
+        db.add(ErrorKnowledgeLink(error_id=err.id, knowledge_point_id=kp.id, relevance=0.9, source="manual"))
         db.commit()
 
         items = client.get(f"/api/errors/{err.id}/knowledge-points").json()["items"]
         row = next(i for i in items if i["knowledge_point_id"] == kp.id)
-        assert row["state"] == "mastered"       # mastery=80 且有学习记录
+        assert row["state"] == "mastered"  # mastery=80 且有学习记录
         assert row["state_label"] == "已掌握"

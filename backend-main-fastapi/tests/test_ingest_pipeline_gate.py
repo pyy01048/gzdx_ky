@@ -4,6 +4,7 @@
 覆盖 A / B / C / JUNK 四档 + 「答案字母不在选项里 → 降级 C」。
 纯函数测试：不碰数据库、不需要 mineru、不需要真实 PDF。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,7 +22,9 @@ from services.ingest_pipeline import (
 def _choice(stem="下列关于放大电路的说法正确的是（　）", options=None, answer="B", analysis="由静态工作点分析可得。"):
     return {
         "stem": stem,
-        "options": options if options is not None else [
+        "options": options
+        if options is not None
+        else [
             "A. 静态工作点越低越好",
             "B. 静态工作点应保证输出不失真",
             "C. 静态工作点与信号无关",
@@ -176,12 +179,17 @@ def test_ingest_marks_corrupted_question():
     def fake(pdf_path, **kwargs):  # noqa: ARG001
         page = ParsedPage(
             page_no=1,
-            blocks=[ParsedBlock(
-                page_no=1, block_type=BLOCK_TEXT,
-                text="1. 恒有f（一）=f()，则称f(α)为偶函数（　）",
-                bbox=(50, 100, 500, 130), block_id="b1", reading_order=0,
-                extra={"math_corrupted": True},
-            )],
+            blocks=[
+                ParsedBlock(
+                    page_no=1,
+                    block_type=BLOCK_TEXT,
+                    text="1. 恒有f（一）=f()，则称f(α)为偶函数（　）",
+                    bbox=(50, 100, 500, 130),
+                    block_id="b1",
+                    reading_order=0,
+                    extra={"math_corrupted": True},
+                )
+            ],
         )
         return ParseResult(pages=[page], engine="fake", pdf_kind="scanned", total_pages=1)
 

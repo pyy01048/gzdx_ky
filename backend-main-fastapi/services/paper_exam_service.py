@@ -8,6 +8,7 @@ P2-M4 真题模块：papers 年份/卷种轴 + 整卷模考与报告
 3. 提交作答并判分
 4. 生成模考报告(逐题分析+薄弱点诊断)
 """
+
 from __future__ import annotations
 
 import logging
@@ -85,9 +86,7 @@ def get_available_paper_types(db: Session, subject: str, year: Optional[int] = N
     return [r[0] for r in rows]
 
 
-def start_paper_attempt(
-    db: Session, paper_id: int, *, user_id: Optional[int] = None
-) -> Dict[str, Any]:
+def start_paper_attempt(db: Session, paper_id: int, *, user_id: Optional[int] = None) -> Dict[str, Any]:
     """开始一份试卷的模考作答。
 
     Args:
@@ -111,12 +110,7 @@ def start_paper_attempt(
     db.refresh(attempt)
 
     # 返回试卷详情+作答记录
-    questions = (
-        db.query(PaperQuestion)
-        .filter(PaperQuestion.paper_id == paper_id)
-        .order_by(PaperQuestion.seq)
-        .all()
-    )
+    questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).order_by(PaperQuestion.seq).all()
 
     return {
         "attempt_id": attempt.id,
@@ -174,10 +168,7 @@ def submit_paper_attempt(
 
     # 获取试卷题目快照
     paper_questions = (
-        db.query(PaperQuestion)
-        .filter(PaperQuestion.paper_id == paper.id)
-        .order_by(PaperQuestion.seq)
-        .all()
+        db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper.id).order_by(PaperQuestion.seq).all()
     )
     pq_by_seq = {q.seq: q for q in paper_questions}
 
@@ -199,7 +190,7 @@ def submit_paper_attempt(
         is_correct = None
         score = 0.0
         if pq.question_type in ("single", "multiple", "judge"):
-            is_correct = (user_answer.strip().upper() == (pq.answer or "").strip().upper())
+            is_correct = user_answer.strip().upper() == (pq.answer or "").strip().upper()
             score = pq.score if is_correct else 0.0
             if is_correct:
                 correct_count += 1
@@ -236,10 +227,14 @@ def submit_paper_attempt(
 
     # 更新题目热度统计
     for qid, stats in question_stats.items():
-        pq_obj = db.query(PaperQuestion).filter(
-            PaperQuestion.question_id == qid,
-            PaperQuestion.paper_id == paper.id,
-        ).first()
+        pq_obj = (
+            db.query(PaperQuestion)
+            .filter(
+                PaperQuestion.question_id == qid,
+                PaperQuestion.paper_id == paper.id,
+            )
+            .first()
+        )
         if pq_obj:
             old_avg = pq_obj.avg_score or 0.0
             old_count = pq_obj.attempt_count or 0
@@ -267,9 +262,7 @@ def submit_paper_attempt(
     return report
 
 
-def generate_paper_report(
-    db: Session, attempt_id: int, *, user_id: Optional[int] = None
-) -> Dict[str, Any]:
+def generate_paper_report(db: Session, attempt_id: int, *, user_id: Optional[int] = None) -> Dict[str, Any]:
     """生成试卷作答报告。
 
     Returns:
@@ -315,11 +308,8 @@ def generate_paper_report(
         kps = []
         if ans.question_id:
             from core.models.questions import QuestionKnowledgeLink
-            links = (
-                db.query(QuestionKnowledgeLink)
-                .filter(QuestionKnowledgeLink.question_id == ans.question_id)
-                .all()
-            )
+
+            links = db.query(QuestionKnowledgeLink).filter(QuestionKnowledgeLink.question_id == ans.question_id).all()
             kps = [link.knowledge_point_id for link in links]
 
         item = {
@@ -345,17 +335,20 @@ def generate_paper_report(
 
     # 薄弱知识点 TOP5
     from core.models.knowledge import KnowledgePoint
+
     weak_points = []
     for kp_id, error_count in sorted(weak_kps.items(), key=lambda x: -x[1])[:5]:
         kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == kp_id).first()
         if kp:
-            weak_points.append({
-                "id": kp.id,
-                "name": kp.name,
-                "subject": kp.subject,
-                "chapter": kp.chapter,
-                "error_count": error_count,
-            })
+            weak_points.append(
+                {
+                    "id": kp.id,
+                    "name": kp.name,
+                    "subject": kp.subject,
+                    "chapter": kp.chapter,
+                    "error_count": error_count,
+                }
+            )
 
     # 时间分配分析
     times = [ans.time_spent_seconds for ans in answers if ans.time_spent_seconds]

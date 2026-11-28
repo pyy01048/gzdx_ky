@@ -60,6 +60,7 @@ for p in paths:
     print(rec.recognize(p).latex)
 ```
 """
+
 from __future__ import annotations
 
 import json
@@ -87,7 +88,7 @@ MAX_ASPECT = 12.0
 # 渲染出来的位图**内容失真**：实测一份数电讲义的逻辑代数公式
 # （0·1=0、A·A=A）被识别成几何符号 \angle A B C、\Delta A \cong \Delta B D。
 # 语法合法但语义全错，比不识别更糟——必须拦掉，让它走图片兜底。
-UNRENDERABLE_EXTS = frozenset({'.wmf', '.emf', '.wmz', '.emz'})
+UNRENDERABLE_EXTS = frozenset({".wmf", ".emf", ".wmz", ".emz"})
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3000-\u303f\uff01-\uff60]")
 _CMD_RE = re.compile(r"\\([a-zA-Z]+)")
@@ -428,7 +429,9 @@ class FormulaRecognizer:
             latex = self._tokenizer.decode([int(i) for i in ids], skip_special_tokens=True).strip()
         except Exception as exc:  # noqa: BLE001
             return FormulaResult(
-                ok=False, image_path=image_path, engine=self.engine_name,
+                ok=False,
+                image_path=image_path,
+                engine=self.engine_name,
                 reason=f"inference_failed: {type(exc).__name__}: {exc}",
                 elapsed=time.time() - t0,
             )
@@ -437,16 +440,24 @@ class FormulaRecognizer:
             good, why = latex_is_plausible(latex)
             if not good:
                 return FormulaResult(
-                    ok=False, latex=latex, image_path=image_path, engine=self.engine_name,
-                    reason=why, elapsed=time.time() - t0,
+                    ok=False,
+                    latex=latex,
+                    image_path=image_path,
+                    engine=self.engine_name,
+                    reason=why,
+                    elapsed=time.time() - t0,
                 )
         extra: Dict[str, Any] = {}
         unc = unknown_commands(latex)
         if unc:
             extra["unknown_commands"] = unc
         return FormulaResult(
-            ok=True, latex=latex, image_path=image_path, engine=self.engine_name,
-            elapsed=time.time() - t0, extra=extra,
+            ok=True,
+            latex=latex,
+            image_path=image_path,
+            engine=self.engine_name,
+            elapsed=time.time() - t0,
+            extra=extra,
         )
 
     def recognize_image(self, img: Image.Image, *, image_path: str = "", validate: bool = True) -> FormulaResult:
@@ -462,25 +473,34 @@ class FormulaRecognizer:
             w, h = img.size
             if h > 0 and (w / float(h)) > MAX_ASPECT:
                 return FormulaResult(
-                    ok=False, image_path=image_path, engine=self.engine_name,
+                    ok=False,
+                    image_path=image_path,
+                    engine=self.engine_name,
                     reason=f"too_wide: {w}x{h} aspect={w / float(h):.1f}",
                     elapsed=time.time() - t0,
                 )
             arr = _img_decode(img)
         except Exception as exc:  # noqa: BLE001
             return FormulaResult(
-                ok=False, image_path=image_path, engine=self.engine_name,
+                ok=False,
+                image_path=image_path,
+                engine=self.engine_name,
                 reason=f"image_decode_failed: {type(exc).__name__}: {exc}",
                 elapsed=time.time() - t0,
             )
         if arr is None:
             return FormulaResult(
-                ok=False, image_path=image_path, engine=self.engine_name,
-                reason="image_decode_failed: empty", elapsed=time.time() - t0,
+                ok=False,
+                image_path=image_path,
+                engine=self.engine_name,
+                reason="image_decode_failed: empty",
+                elapsed=time.time() - t0,
             )
         if not self._ensure_loaded():
             return FormulaResult(
-                ok=False, image_path=image_path, engine=self.engine_name,
+                ok=False,
+                image_path=image_path,
+                engine=self.engine_name,
                 reason=f"engine_unavailable: {self._load_error}",
                 elapsed=time.time() - t0,
             )
@@ -512,7 +532,9 @@ class FormulaRecognizer:
                 # 且模型对极扁输入会吐残缺序列。别让它拖死整批回填。
                 if h > 0 and (w / float(h)) > MAX_ASPECT:
                     return FormulaResult(
-                        ok=False, image_path=path, engine=self.engine_name,
+                        ok=False,
+                        image_path=path,
+                        engine=self.engine_name,
                         reason=f"too_wide: {w}x{h} aspect={w / float(h):.1f}",
                         elapsed=time.time() - t0,
                     )
@@ -527,8 +549,11 @@ class FormulaRecognizer:
             )
         if arr is None:
             return FormulaResult(
-                ok=False, image_path=path, engine=self.engine_name,
-                reason="image_decode_failed: empty", elapsed=time.time() - t0,
+                ok=False,
+                image_path=path,
+                engine=self.engine_name,
+                reason="image_decode_failed: empty",
+                elapsed=time.time() - t0,
             )
         return self._infer(arr, image_path=path, t0=t0, validate=validate)
 
@@ -568,15 +593,20 @@ class FormulaRecognizer:
                     arr = _img_decode(im.copy())
             except Exception as exc:  # noqa: BLE001
                 results[i] = FormulaResult(
-                    ok=False, image_path=p, engine=self.engine_name,
+                    ok=False,
+                    image_path=p,
+                    engine=self.engine_name,
                     reason=f"image_decode_failed: {type(exc).__name__}: {exc}",
                     elapsed=time.time() - t0,
                 )
                 continue
             if arr is None:
                 results[i] = FormulaResult(
-                    ok=False, image_path=p, engine=self.engine_name,
-                    reason="image_decode_failed: empty", elapsed=time.time() - t0,
+                    ok=False,
+                    image_path=p,
+                    engine=self.engine_name,
+                    reason="image_decode_failed: empty",
+                    elapsed=time.time() - t0,
                 )
                 continue
             decoded.append((i, _normalize(arr)))
@@ -587,14 +617,16 @@ class FormulaRecognizer:
         if not self._ensure_loaded():
             for i, _ in decoded:
                 results[i] = FormulaResult(
-                    ok=False, image_path=paths[i], engine=self.engine_name,
+                    ok=False,
+                    image_path=paths[i],
+                    engine=self.engine_name,
                     reason=f"engine_unavailable: {self._load_error}",
                 )
             return [r for r in results if r is not None]
 
         done = 0
         for start in range(0, len(decoded), batch_size):
-            chunk = decoded[start: start + batch_size]
+            chunk = decoded[start : start + batch_size]
             t0 = time.time()
             batch = np.concatenate([a for _, a in chunk], axis=0)
             try:
@@ -605,7 +637,9 @@ class FormulaRecognizer:
             except Exception as exc:  # noqa: BLE001
                 for i, _ in chunk:
                     results[i] = FormulaResult(
-                        ok=False, image_path=paths[i], engine=self.engine_name,
+                        ok=False,
+                        image_path=paths[i],
+                        engine=self.engine_name,
                         reason=f"inference_failed: {type(exc).__name__}: {exc}",
                     )
                 continue
@@ -613,7 +647,9 @@ class FormulaRecognizer:
             for row, (i, _) in enumerate(chunk):
                 if row >= token_ids.shape[0]:
                     results[i] = FormulaResult(
-                        ok=False, image_path=paths[i], engine=self.engine_name,
+                        ok=False,
+                        image_path=paths[i],
+                        engine=self.engine_name,
                         reason="inference_failed: output_row_missing",
                     )
                     continue
@@ -622,7 +658,9 @@ class FormulaRecognizer:
                     latex = self._tokenizer.decode(ids, skip_special_tokens=True).strip()
                 except Exception as exc:  # noqa: BLE001
                     results[i] = FormulaResult(
-                        ok=False, image_path=paths[i], engine=self.engine_name,
+                        ok=False,
+                        image_path=paths[i],
+                        engine=self.engine_name,
                         reason=f"decode_failed: {type(exc).__name__}: {exc}",
                     )
                     continue
@@ -630,8 +668,12 @@ class FormulaRecognizer:
                     good, why = latex_is_plausible(latex)
                     if not good:
                         results[i] = FormulaResult(
-                            ok=False, latex=latex, image_path=paths[i],
-                            engine=self.engine_name, reason=why, elapsed=elapsed_each,
+                            ok=False,
+                            latex=latex,
+                            image_path=paths[i],
+                            engine=self.engine_name,
+                            reason=why,
+                            elapsed=elapsed_each,
                         )
                         continue
                 extra: Dict[str, Any] = {}
@@ -639,8 +681,12 @@ class FormulaRecognizer:
                 if unc:
                     extra["unknown_commands"] = unc
                 results[i] = FormulaResult(
-                    ok=True, latex=latex, image_path=paths[i],
-                    engine=self.engine_name, elapsed=elapsed_each, extra=extra,
+                    ok=True,
+                    latex=latex,
+                    image_path=paths[i],
+                    engine=self.engine_name,
+                    elapsed=elapsed_each,
+                    extra=extra,
                 )
             done += len(chunk)
             if on_progress:

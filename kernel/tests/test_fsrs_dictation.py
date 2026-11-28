@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """fsrs_adapter / dictation_selector：SM-2 迁移估算、rating 映射、召回公式、
 队列排序与配额、轮内重现、到期预测、默写选词确定性（naive UTC 红线）。"""
+
 import datetime
 
 import pytest
@@ -8,26 +9,40 @@ from fsrs import Rating
 
 from kernel.dictation_selector import select
 from kernel.fsrs_adapter import (
-    CardState, due_forecast, from_legacy, queue, recall_prob, reinsert_positions,
-    rating_from_quality, rating_from_ui, review,
+    CardState,
+    due_forecast,
+    from_legacy,
+    queue,
+    rating_from_quality,
+    rating_from_ui,
+    recall_prob,
+    reinsert_positions,
+    review,
 )
 
 
 def _dt(day=20, hour=8):
-    return datetime.datetime(2026, 11, day, hour, 0, 0)   # naive UTC
+    return datetime.datetime(2026, 11, day, hour, 0, 0)  # naive UTC
 
 
-def _card(cid, *, S=5.0, D=5.0, due=None, reps=3, lapses=0, mastered=False,
-          learning=False):
-    return CardState(card_id=cid, kind="word", stability=S, difficulty=D,
-                     due=due or _dt(), last_review=None, reps=reps,
-                     lapses=lapses, mastered=mastered, learning=learning)
+def _card(cid, *, S=5.0, D=5.0, due=None, reps=3, lapses=0, mastered=False, learning=False):
+    return CardState(
+        card_id=cid,
+        kind="word",
+        stability=S,
+        difficulty=D,
+        due=due or _dt(),
+        last_review=None,
+        reps=reps,
+        lapses=lapses,
+        mastered=mastered,
+        learning=learning,
+    )
 
 
 class TestFromLegacy:
     def test_s_init_formula(self):
-        c = from_legacy(quality=4, repetitions=3, interval_days=10, ef=2.5,
-                        now=_dt())
+        c = from_legacy(quality=4, repetitions=3, interval_days=10, ef=2.5, now=_dt())
         assert c.stability == max(0.5, 10.0)
         assert c.difficulty == pytest.approx(min(10.0, max(1.0, 10 - (2.5 - 1.3) * 4)))
         assert c.legacy["ef"] == 2.5
@@ -36,20 +51,20 @@ class TestFromLegacy:
     def test_zero_interval_floor_half_day(self):
         c = from_legacy(0, 0, 0, 1.3, now=_dt())
         assert c.stability == 0.5
-        assert c.lapses == 1                    # quality<3 → 记一次 lapse
+        assert c.lapses == 1  # quality<3 → 记一次 lapse
 
     def test_difficulty_clamp(self):
-        assert from_legacy(4, 1, 1, 9.9).difficulty == 1.0     # 高 ef → 下限 1
-        assert from_legacy(4, 1, 1, 0.5).difficulty == 10.0    # 低 ef → 上限 10
+        assert from_legacy(4, 1, 1, 9.9).difficulty == 1.0  # 高 ef → 下限 1
+        assert from_legacy(4, 1, 1, 0.5).difficulty == 10.0  # 低 ef → 上限 10
 
 
 class TestRatingMapping:
     def test_quality_bands(self, fsrs_cfg):
         for q in (0, 1, 2):
             assert rating_from_quality(q, fsrs_cfg) == Rating.Again
-        assert rating_from_quality(3, fsrs_cfg) == Rating.Hard   # 默认 impression→Hard
+        assert rating_from_quality(3, fsrs_cfg) == Rating.Hard  # 默认 impression→Hard
         assert rating_from_quality(4, fsrs_cfg) == Rating.Good
-        assert rating_from_quality(5, fsrs_cfg) == Rating.Good   # familiar_maps_to=Good
+        assert rating_from_quality(5, fsrs_cfg) == Rating.Good  # familiar_maps_to=Good
 
     def test_quality_out_of_range(self, fsrs_cfg):
         with pytest.raises(ValueError):
@@ -91,19 +106,19 @@ class TestReview:
         assert log.stability > 0 and 1 <= log.difficulty <= 10
         for f in ("state", "elapsed_days", "scheduled_days"):
             assert getattr(log, f) is not None
-        assert st.stability >= 5.0              # Good 不降稳定度
+        assert st.stability >= 5.0  # Good 不降稳定度
 
     def test_again_lowers_interval_first_day_min(self, fsrs_cfg):
         newc = _card("n1", reps=0, due=_dt(), learning=True)
         st, _log = review(newc, Rating.Again, _dt(), 1000, fsrs_cfg)
-        assert (st.due - _dt()).total_seconds() >= 86400   # V12：首间隔 ≥1 天
+        assert (st.due - _dt()).total_seconds() >= 86400  # V12：首间隔 ≥1 天
 
 
 class TestQueue:
     def test_risk_order_and_quota(self, fsrs_cfg):
         now = _dt()
         cards = [
-            _card("safe", S=30, due=now),           # 刚到期，R 高
+            _card("safe", S=30, due=now),  # 刚到期，R 高
             _card("danger", S=1, due=now - datetime.timedelta(days=5)),
             _card("mid", S=5, due=now - datetime.timedelta(days=1)),
             _card("done", S=5, due=now, mastered=True),
@@ -112,7 +127,7 @@ class TestQueue:
         out = queue(cards, now, fsrs_cfg)
         ids = [c.card_id for c in out]
         assert "done" not in ids and "future" not in ids
-        assert ids == ["danger", "mid", "safe"]     # R 升序＝最危险优先
+        assert ids == ["danger", "mid", "safe"]  # R 升序＝最危险优先
 
     def test_quota_trims_not_drops(self, fsrs_cfg):
         now = _dt()
@@ -129,8 +144,8 @@ class TestReinsertForecast:
     def test_reinsert_plus4(self):
         q = ["a", "b", "c", "d", "e", "f", "g"]
         out = reinsert_positions(q, ["a"], offset=4)
-        assert out[0] == "b" and out[4] == "a"      # 队首后第 4 位重现
-        assert sorted(out) == sorted(q)             # 不增删元素
+        assert out[0] == "b" and out[4] == "a"  # 队首后第 4 位重现
+        assert sorted(out) == sorted(q)  # 不增删元素
 
     def test_reinsert_deterministic(self):
         q = ["x", "y", "z", "w", "v", "u"]
@@ -140,9 +155,12 @@ class TestReinsertForecast:
 
     def test_due_forecast_buckets(self):
         now = _dt()
-        cards = [_card("a", due=now), _card("b", due=now),
-                 _card("c", due=now + datetime.timedelta(days=2)),
-                 _card("d", due=now, mastered=True)]
+        cards = [
+            _card("a", due=now),
+            _card("b", due=now),
+            _card("c", due=now + datetime.timedelta(days=2)),
+            _card("d", due=now, mastered=True),
+        ]
         fc = due_forecast(cards, now, days=7)
         assert len(fc) == 7
         assert fc[now.date().isoformat()] == 2
@@ -154,8 +172,8 @@ class TestDictation:
         now = _dt()
         cards = [_card(f"w{i}", S=1 + i, due=now) for i in range(10)]
         chosen = select(cards, ["w9"], now, n=3)
-        assert set(chosen[:3]) == {"w0", "w1", "w2"}   # R 最低（S 最小）Top-3
-        assert "w9" in chosen                          # 昨日错词必选
+        assert set(chosen[:3]) == {"w0", "w1", "w2"}  # R 最低（S 最小）Top-3
+        assert "w9" in chosen  # 昨日错词必选
 
     def test_mastered_excluded(self):
         now = _dt()

@@ -7,6 +7,7 @@
   - 每个文档最多生成 5 个知识点，避免数量爆炸
   - 幂等：先清空 knowledge_points 再写入（该表当前为空）
 """
+
 import datetime
 import sqlite3
 import sys
@@ -22,6 +23,7 @@ def first_sentence(text, maxlen=60):
         return "未命名知识点"
     # 取第一个句号/分号/制表符之前的内容
     import re
+
     m = re.split(r"[。；;\.]", t, maxsplit=1)[0]
     name = m.strip()
     if not name or len(name) < 2:
@@ -46,7 +48,7 @@ def main():
     rows = cur.fetchall()
 
     by_doc = {}
-    for document_id, doc_name, chunk_id, subject, text, d_id in rows:
+    for document_id, doc_name, chunk_id, subject, text, _d_id in rows:
         by_doc.setdefault(document_id, []).append((doc_name, chunk_id, subject, text))
 
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

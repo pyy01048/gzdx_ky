@@ -15,12 +15,13 @@ from typing import Any, Dict, List, Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends
-from models import Goal, Milestone, User
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from utils.scope import scoped
 from utils.security import current_user, optional_user
 from utils.timeutil import local_today
+
+from models import Goal, Milestone, User
 
 router = APIRouter(prefix="/api/plan", tags=["考研规划"])
 
@@ -229,11 +230,14 @@ def _seed_milestones(db: Session, year: int) -> List[Milestone]:
     return seeded
 
 
-def _goal_context(db: Session, user) -> Dict[str, Any]:
-    # Goal 属个人域（108 迁移表清单），读写均按当前用户 scope；
-    # Milestone 是公共招生日历内容，不随用户隔离。
-    # 访客（user=None）必须显式短路：scoped(Goal, None) 恒真，
-    # 直接查会把第一个用户的私人目标泄露给未登录访客。
+def _goal_context(db: Session, user: Optional[User]) -> Dict[str, Any]:
+    """读取当前用户的目标上下文（院校/专业/总分目标/初试日）。
+
+    Goal 属个人域（108 迁移表清单），读写均按当前用户 scope；
+    Milestone 是公共招生日历内容，不随用户隔离。
+    访客（user=None）必须显式短路：scoped(Goal, None) 恒真，
+    直接查会把第一个用户的私人目标泄露给未登录访客。
+    """
     if getattr(user, "id", None) is None:
         return {}
     goal = db.query(Goal).filter(scoped(Goal, user)).order_by(Goal.id.asc()).first()
@@ -360,7 +364,7 @@ def _build_roadmap(year: int, milestones: List[Milestone]) -> Dict[str, Any]:
     }
 
 
-def _resolve_plan_year(db: Session, year: Optional[int] = None, user=None) -> int:
+def _resolve_plan_year(db: Session, year: Optional[int] = None, user: Optional[User] = None) -> int:
     """确定计划要按哪一届生成。
 
     优先级：显式传入 > 当前用户 Goal 里配置/反推出的届 > 按当前时间推断。
@@ -419,8 +423,8 @@ def list_milestones(
                 "year": m.year,
                 "name": m.name,
                 "category": m.category,
-                "start": (m.start_date or "").isoformat() if m.start_date else None,
-                "end": (m.end_date or "").isoformat() if m.end_date else None,
+                "start": m.start_date.isoformat() if m.start_date else None,
+                "end": m.end_date.isoformat() if m.end_date else None,
                 "importance": m.importance,
                 "action": m.action,
                 "pitfalls": m.pitfalls,

@@ -9,6 +9,7 @@
 
     python scripts/diagnostics/verify_enum_fix.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -28,10 +29,7 @@ def _xacts() -> tuple:
     try:
         return tuple(
             db.execute(
-                text(
-                    "select xact_commit, xact_rollback from pg_stat_database"
-                    "  where datname = current_database()"
-                )
+                text("select xact_commit, xact_rollback from pg_stat_database  where datname = current_database()")
             ).first()
         )
     finally:

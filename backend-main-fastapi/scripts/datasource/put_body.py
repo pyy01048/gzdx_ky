@@ -5,6 +5,7 @@
     type body.txt | python put_body.py 2094
     python put_body.py 2094 < body.txt
 """
+
 from __future__ import annotations
 
 import sqlite3

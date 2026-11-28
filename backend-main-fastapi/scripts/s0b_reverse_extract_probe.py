@@ -68,8 +68,9 @@ def main() -> None:
         try:
             qs = extract_questions(d["content"] or "", source_hint=f"真题:{d['file_name']}")
         except Exception as exc:  # noqa: BLE001
-            rows.append({"doc_id": d["id"], "file_name": d["file_name"],
-                         "doc_len": len(d["content"]), "error": repr(exc)[:200]})
+            rows.append(
+                {"doc_id": d["id"], "file_name": d["file_name"], "doc_len": len(d["content"]), "error": repr(exc)[:200]}
+            )
             tot["error"] += 1
             continue
         n = len(qs)
@@ -89,10 +90,15 @@ def main() -> None:
             "n_with_answer": with_ans,
             "n_with_analysis": with_ana,
             "samples": [
-                {"answer": q.get("answer"), "analysis": (q.get("analysis") or "")[:80],
-                 "content": q.get("content", "")[:160]}
+                {
+                    "answer": q.get("answer"),
+                    "analysis": (q.get("analysis") or "")[:80],
+                    "content": q.get("content", "")[:160],
+                }
                 for q in qs[:2]
-            ] if n else [],
+            ]
+            if n
+            else [],
         }
         rows.append(rec)
         if idx % 25 == 0:
@@ -107,7 +113,7 @@ def main() -> None:
     L.append("S0b 反向抽题干跑探测（只读）")
     L.append("=" * 78)
     L.append(f"探测文档数: {tot['docs']}")
-    L.append(f"  能抽出题的文档: {tot['docs_with_q']} ({tot['docs_with_q']*100.0/max(tot['docs'],1):.1f}%)")
+    L.append(f"  能抽出题的文档: {tot['docs_with_q']} ({tot['docs_with_q'] * 100.0 / max(tot['docs'], 1):.1f}%)")
     L.append(f"  抽出题目总数: {tot['q']}")
     L.append(f"  其中带答案: {tot['q_with_ans']}")
     L.append(f"  其中带解析: {tot['q_with_ana']}")
@@ -117,8 +123,10 @@ def main() -> None:
     ranked = sorted([r for r in rows if r.get("n_questions")], key=lambda r: -r["n_questions"])
     L.append(f"{'doc_id':>6} {'题数':>5} {'有答案':>6} {'有解析':>6} {'字数':>8}  file_name")
     for r in ranked[:40]:
-        L.append(f"{r['doc_id']:>6} {r['n_questions']:>5} {r['n_with_answer']:>6} "
-                 f"{r['n_with_analysis']:>6} {r['doc_len']:>8,}  {r['file_name']}")
+        L.append(
+            f"{r['doc_id']:>6} {r['n_questions']:>5} {r['n_with_answer']:>6} "
+            f"{r['n_with_analysis']:>6} {r['doc_len']:>8,}  {r['file_name']}"
+        )
     L.append("")
     L.append("--- 抽题样例（Top 8 文档，每份前 1 题） ---")
     for r in ranked[:8]:

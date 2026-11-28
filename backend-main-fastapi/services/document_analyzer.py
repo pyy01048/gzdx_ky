@@ -9,6 +9,7 @@
 
 这是实现"上传一份资料，自动生成知识库+题库"的核心服务。
 """
+
 from __future__ import annotations
 
 import json
@@ -16,9 +17,9 @@ import logging
 import re
 from typing import Any, Callable, Dict, List, Optional
 
-from models import Document, KnowledgePoint, QuizQuestion
 from sqlalchemy.orm import Session
 
+from models import Document, KnowledgePoint, QuizQuestion
 from services import quiz_dedupe
 from services.quiz_content_gate import admit as gate_admit
 from services.quiz_content_gate import gate_log_summary
@@ -45,23 +46,21 @@ def smart_chunk_text(
 
     # 识别章节标题（支持多种格式）
     heading_patterns = [
-        r'^第[一二三四五六七八九十百千\d]+[章节篇讲]\s*.*$',  # 第一章/第1节
-        r'^\d+(\.\d+)*\s+[^\n]{2,50}$',  # 1.1 标题
-        r'^[一二三四五六七八九十]+、[^\n]{2,50}$',  # 一、标题
-        r'^【[^】]+】$',  # 【标题】
-        r'^#{1,4}\s+.*$',  # Markdown 标题
+        r"^第[一二三四五六七八九十百千\d]+[章节篇讲]\s*.*$",  # 第一章/第1节
+        r"^\d+(\.\d+)*\s+[^\n]{2,50}$",  # 1.1 标题
+        r"^[一二三四五六七八九十]+、[^\n]{2,50}$",  # 一、标题
+        r"^【[^】]+】$",  # 【标题】
+        r"^#{1,4}\s+.*$",  # Markdown 标题
     ]
-    heading_re = re.compile('|'.join(heading_patterns), re.MULTILINE)
+    heading_re = re.compile("|".join(heading_patterns), re.MULTILINE)
 
     # 按标题切分
     chunks = []
-    current_heading = None
-    current_start = 0
     matches = list(heading_re.finditer(text))
 
     if not matches:
         # 没有标题，按段落切分
-        paragraphs = re.split(r'\n\s*\n', text)
+        paragraphs = re.split(r"\n\s*\n", text)
         current = ""
         for i, para in enumerate(paragraphs):
             para = para.strip()
@@ -74,7 +73,7 @@ def smart_chunk_text(
                     chunks.append({"text": current, "heading": None})
                 # 超长段落按句子切分
                 if len(para) > max_chunk_size:
-                    sentences = re.split(r'(?<=[。！？；.!?;])', para)
+                    sentences = re.split(r"(?<=[。！？；.!?;])", para)
                     buf = ""
                     for sent in sentences:
                         sent = sent.strip()
@@ -95,7 +94,7 @@ def smart_chunk_text(
     else:
         # 按标题切分
         for i, match in enumerate(matches):
-            heading = match.group().strip()
+            match.group().strip()
             start = match.start()
             if i > 0:
                 # 上一个标题到当前标题之间的内容
@@ -110,8 +109,6 @@ def smart_chunk_text(
                             chunks.append({"text": sc, "heading": prev_heading})
                     else:
                         chunks.append({"text": section_text, "heading": prev_heading})
-            current_heading = heading
-            current_start = start
 
         # 最后一个章节
         if matches:
@@ -131,14 +128,16 @@ def smart_chunk_text(
     pos = 0
     for i, chunk in enumerate(chunks):
         chunk_text = chunk["text"]
-        result.append({
-            "index": i,
-            "text": chunk_text,
-            "heading": chunk.get("heading"),
-            "start_pos": pos,
-            "end_pos": pos + len(chunk_text),
-            "char_count": len(chunk_text),
-        })
+        result.append(
+            {
+                "index": i,
+                "text": chunk_text,
+                "heading": chunk.get("heading"),
+                "start_pos": pos,
+                "end_pos": pos + len(chunk_text),
+                "char_count": len(chunk_text),
+            }
+        )
         pos += len(chunk_text)
 
     return result
@@ -146,7 +145,7 @@ def smart_chunk_text(
 
 def _split_long_section(text: str, max_size: int, overlap: int) -> List[str]:
     """超长章节按段落+句子细分，带重叠。"""
-    paragraphs = re.split(r'\n\s*\n', text)
+    paragraphs = re.split(r"\n\s*\n", text)
     chunks = []
     current = ""
 
@@ -161,7 +160,7 @@ def _split_long_section(text: str, max_size: int, overlap: int) -> List[str]:
                 chunks.append(current)
             # 段落本身超长，按句子切
             if len(para) > max_size:
-                sentences = re.split(r'(?<=[。！？；.!?;])', para)
+                sentences = re.split(r"(?<=[。！？；.!?;])", para)
                 buf = ""
                 for sent in sentences:
                     sent = sent.strip()
@@ -220,21 +219,21 @@ async def extract_knowledge_points(
     """从文档分块中AI提取知识点并入库（去重）。"""
     extracted = []
     existing_names = {
-        kp.name for kp in db.query(KnowledgePoint).filter(
-            KnowledgePoint.document_id == document.id
-        ).all()
+        kp.name for kp in db.query(KnowledgePoint).filter(KnowledgePoint.document_id == document.id).all()
     }
 
     total = len(chunks)
     for i, chunk in enumerate(chunks):
         if progress_callback:
-            progress_callback(f"知识点提取 {i+1}/{total}", i / total if total else 0)
+            progress_callback(f"知识点提取 {i + 1}/{total}", i / total if total else 0)
 
         try:
-            result = await ai_service.chat([
-                {"role": "system", "content": "你是知识提取专家，只返回JSON。"},
-                {"role": "user", "content": KNOWLEDGE_POINT_PROMPT.format(content=chunk["text"][:6000])}
-            ])
+            result = await ai_service.chat(
+                [
+                    {"role": "system", "content": "你是知识提取专家，只返回JSON。"},
+                    {"role": "user", "content": KNOWLEDGE_POINT_PROMPT.format(content=chunk["text"][:6000])},
+                ]
+            )
             text = result.get("content", "")
             # 提取JSON
             start = text.find("[")
@@ -321,9 +320,8 @@ async def extract_questions(
     # 现在叠加一层跨来源指纹判重（services/quiz_dedupe）：命中即合并溯源、不插入。
     # 开关：QUIZ_DEDUPE_CROSS_SOURCE（默认开，置 off 退回旧行为）。
     existing_contents = {
-        (q.content or "")[:100] for q in db.query(QuizQuestion).filter(
-            QuizQuestion.source.like(f"%{document.file_name}%")
-        ).all()
+        (q.content or "")[:100]
+        for q in db.query(QuizQuestion).filter(QuizQuestion.source.like(f"%{document.file_name}%")).all()
     }
     cross_dedupe = quiz_dedupe.dedupe_enabled()
     dd_index = quiz_dedupe.build_index_from_db(db) if cross_dedupe else None
@@ -332,13 +330,15 @@ async def extract_questions(
     total = len(chunks)
     for i, chunk in enumerate(chunks):
         if progress_callback:
-            progress_callback(f"题目识别 {i+1}/{total}", i / total if total else 0)
+            progress_callback(f"题目识别 {i + 1}/{total}", i / total if total else 0)
 
         try:
-            result = await ai_service.chat([
-                {"role": "system", "content": "你是题库建设专家，只返回JSON。"},
-                {"role": "user", "content": QUESTION_EXTRACT_PROMPT.format(content=chunk["text"][:6000])}
-            ])
+            result = await ai_service.chat(
+                [
+                    {"role": "system", "content": "你是题库建设专家，只返回JSON。"},
+                    {"role": "user", "content": QUESTION_EXTRACT_PROMPT.format(content=chunk["text"][:6000])},
+                ]
+            )
             text = result.get("content", "")
             start = text.find("[")
             end = text.rfind("]") + 1
@@ -361,9 +361,25 @@ async def extract_questions(
 
                 # ===== V3.0 强制后处理：过滤异常选项（解决答案/解析被当成选项的严重bug）=====
                 # 1. 过滤掉以元数据关键词开头的选项
-                metadata_prefixes = ["答案", "答：", "参考答案", "解析", "分析", "详解",
-                                     "科目", "学科", "分类", "知识点", "考点", "章节",
-                                     "难度", "来源", "题型", "正确答案", "错误原因"]
+                metadata_prefixes = [
+                    "答案",
+                    "答：",
+                    "参考答案",
+                    "解析",
+                    "分析",
+                    "详解",
+                    "科目",
+                    "学科",
+                    "分类",
+                    "知识点",
+                    "考点",
+                    "章节",
+                    "难度",
+                    "来源",
+                    "题型",
+                    "正确答案",
+                    "错误原因",
+                ]
                 cleaned_options = []
                 for opt in options:
                     opt_str = str(opt).strip()
@@ -374,7 +390,7 @@ async def extract_questions(
                     if any(opt_str.startswith(prefix) for prefix in metadata_prefixes):
                         continue
                     # 跳过明显是答案格式的选项（如"A. xxx"已经是选项，但"答案：A"不是）
-                    if re.match(r'^答案[：:]\s*[A-E]', opt_str):
+                    if re.match(r"^答案[：:]\s*[A-E]", opt_str):
                         continue
                     cleaned_options.append(opt_str)
 
@@ -388,7 +404,7 @@ async def extract_questions(
                 answer = (q_data.get("answer") or "").strip()
                 if q_type in ("single", "multiple") and options:
                     # 从答案中提取字母
-                    answer_match = re.search(r'[A-E]', answer.upper())
+                    answer_match = re.search(r"[A-E]", answer.upper())
                     if answer_match:
                         answer = answer_match.group()
                     else:
@@ -423,7 +439,9 @@ async def extract_questions(
                 if not gate_ok:
                     logger.info(
                         "内容闸门拦截（source=%s）：%s | %s",
-                        source[:40], gate_reason, content[:60],
+                        source[:40],
+                        gate_reason,
+                        content[:60],
                     )
                     continue
 
@@ -444,14 +462,17 @@ async def extract_questions(
                 # 命中则不插入：把本源并入已有题的溯源（source_ids），
                 # 并在已有题缺答案/解析时用本副本补齐。不静默丢弃。
                 decision = quiz_dedupe.decide_insert(
-                    db, content, source, dd_index,
-                    answer=answer, analysis=analysis, options=options,
+                    db,
+                    content,
+                    source,
+                    dd_index,
+                    answer=answer,
+                    analysis=analysis,
+                    options=options,
                     stats=dd_stats,
                 )
                 if not decision.is_insert:
-                    logger.info(
-                        "跨来源判重命中，合并溯源不入库：%s", decision.reason
-                    )
+                    logger.info("跨来源判重命中，合并溯源不入库：%s", decision.reason)
                     continue
 
                 db.add(q)
@@ -467,8 +488,10 @@ async def extract_questions(
     if cross_dedupe:
         logger.info(
             "跨来源去重：入库 %d / 合并重复 %d / 过短跳过 %d / 补齐 %s",
-            dd_stats.inserted, dd_stats.merged, dd_stats.too_short,
-            dd_stats.enriched or '无',
+            dd_stats.inserted,
+            dd_stats.merged,
+            dd_stats.too_short,
+            dd_stats.enriched or "无",
         )
     return extracted
 
@@ -490,6 +513,7 @@ async def analyze_document(
     返回 {chunks, knowledge_points, questions, duration_seconds}
     """
     import time
+
     start_time = time.time()
 
     if not document.content:
@@ -503,8 +527,8 @@ async def analyze_document(
     # 如需重建知识库分块
     if rebuild_chunks:
         from services.kb_service import ingest_text
-        ingest_text(db, document.id, document.file_name, document.content,
-                    subject=document.subject, replace=True)
+
+        ingest_text(db, document.id, document.file_name, document.content, subject=document.subject, replace=True)
 
     result = {
         "chunks": len(chunks),
@@ -562,10 +586,12 @@ async def batch_analyze_documents(
 
         def cb(msg, pct, _i=i, _total=total):
             if progress_callback:
-                progress_callback(f"[{_i+1}/{_total}] {msg}", (_i + pct) / _total)
+                progress_callback(f"[{_i + 1}/{_total}] {msg}", (_i + pct) / _total)
 
         result = await analyze_document(
-            db, doc, ai_service,
+            db,
+            doc,
+            ai_service,
             extract_kp=extract_kp,
             extract_questions=extract_questions,
             progress_callback=cb,

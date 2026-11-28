@@ -9,10 +9,11 @@
 输出 grade=hard_fact 的 ComplianceReport（EvidenceRecord 对齐）。
 误报红线：注释/字符串里的违禁词一律不算违规（先剥离再匹配保证）。
 """
+
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 from kernel.config_loader import ComplianceConfig
@@ -26,9 +27,9 @@ _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 @dataclass(frozen=True)
 class Violation:
-    line: int            # 1-based 源码行号
-    token: str           # 命中的标识符/头文件名
-    rule: str            # banned_function | file_io | header_not_allowed
+    line: int  # 1-based 源码行号
+    token: str  # 命中的标识符/头文件名
+    rule: str  # banned_function | file_io | header_not_allowed
     reason: str
 
 
@@ -36,7 +37,7 @@ class Violation:
 class ComplianceReport:
     mode: str
     violations: Tuple[Violation, ...]
-    grade: str = "hard_fact"     # 确定性硬事实层（总方案 §6.4）
+    grade: str = "hard_fact"  # 确定性硬事实层（总方案 §6.4）
     compliant: bool = True
 
     def to_dict(self) -> Dict:
@@ -45,9 +46,7 @@ class ComplianceReport:
             "compliant": self.compliant,
             "grade": self.grade,
             "violations": [
-                {"line": v.line, "token": v.token, "rule": v.rule,
-                 "reason": v.reason}
-                for v in self.violations
+                {"line": v.line, "token": v.token, "rule": v.rule, "reason": v.reason} for v in self.violations
             ],
         }
 
@@ -59,7 +58,7 @@ def strip_comments_and_strings(source: str) -> str:
     """
     out: List[str] = []
     i, n = 0, len(source)
-    state = "code"       # code | line_comment | block_comment | string | char
+    state = "code"  # code | line_comment | block_comment | string | char
     while i < n:
         c = source[i]
         nxt = source[i + 1] if i + 1 < n else ""
@@ -115,7 +114,7 @@ def strip_comments_and_strings(source: str) -> str:
             out.append(quote)
             i += 1
             continue
-        out.append("\n" if c == "\n" else " ")   # 字符串内换行理论上非法，保守保留行号
+        out.append("\n" if c == "\n" else " ")  # 字符串内换行理论上非法，保守保留行号
         i += 1
     return "".join(out)
 
@@ -147,11 +146,12 @@ def check(source: str, cfg: ComplianceConfig, mode: str = MODE_EXAM) -> Complian
             continue
         header = m.group(1).strip()
         if header not in allowed_headers:
-            why = ("不在 C 白名单（strict 模式不允许 C++ 头）"
-                   if mode == MODE_STRICT else
-                   "不在 C 基础库/C++ 标准子集白名单")
-            violations.append(Violation(idx, header, "header_not_allowed",
-                                        f"#include <{header}> {why}"))
+            why = (
+                "不在 C 白名单（strict 模式不允许 C++ 头）"
+                if mode == MODE_STRICT
+                else "不在 C 基础库/C++ 标准子集白名单"
+            )
+            violations.append(Violation(idx, header, "header_not_allowed", f"#include <{header}> {why}"))
 
     # 2) 函数调用 token 检查（exec* 前缀匹配；其余精确匹配）
     for idx, line in enumerate(lines, start=1):
@@ -164,14 +164,15 @@ def check(source: str, cfg: ComplianceConfig, mode: str = MODE_EXAM) -> Complian
             if _INCLUDE_RE.match(line):
                 continue
             if tok in banned or tok.startswith("exec"):
-                if tok.startswith("exec") and tok != "exec" and not re.match(
-                        r"^exec[lv][ep]*$", tok):
+                if tok.startswith("exec") and tok != "exec" and not re.match(r"^exec[lv][ep]*$", tok):
                     continue
-                violations.append(Violation(idx, tok, "banned_function",
-                                            f"{tok}() 为考场禁用函数（考点要求手写/安全原因）"))
+                violations.append(
+                    Violation(idx, tok, "banned_function", f"{tok}() 为考场禁用函数（考点要求手写/安全原因）")
+                )
             elif tok in file_io:
-                violations.append(Violation(idx, tok, "file_io",
-                                            f"{tok}() 属文件 I/O，考试禁止（stdin/stdout/stderr 除外）"))
+                violations.append(
+                    Violation(idx, tok, "file_io", f"{tok}() 属文件 I/O，考试禁止（stdin/stdout/stderr 除外）")
+                )
 
     # 去重（同一行同一 token 只报一次），保持稳定顺序
     seen = set()
@@ -182,5 +183,4 @@ def check(source: str, cfg: ComplianceConfig, mode: str = MODE_EXAM) -> Complian
             continue
         seen.add(k)
         uniq.append(v)
-    return ComplianceReport(mode=mode, violations=tuple(uniq),
-                            grade="hard_fact", compliant=not uniq)
+    return ComplianceReport(mode=mode, violations=tuple(uniq), grade="hard_fact", compliant=not uniq)

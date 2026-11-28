@@ -11,7 +11,7 @@
  * 不引入 zustand 切片（store 的 persist 白名单会整体覆盖 settings，混进去
  * 反而容易被 Settings 页的表单镜像写坏）。
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ukey, readMigrated } from '../utils/userKeys'
 
 export const UI_LAYOUT_KEY = 'ui_layout_v1' /* B4：真实键 = `ui_layout_v1:{uid}`，见 load/persist/reloadFromStorage */
@@ -139,4 +139,83 @@ export function useUiLayout() {
   const [, setTick] = useState(0)
   useEffect(() => subscribeUiLayout(() => setTick((t) => t + 1)), [])
   return prefs
+}
+/* -------------------------------------------------------------------------- */
+/* R9 跨级状态保持：L3→L2 往返时筛选/滚动/答题进度通过 sessionStorage 保持。     */
+/* 与 UI_LAYOUT_KEY 同样按账号隔离（ukey），切号时自动分桶，不串号。             */
+/* -------------------------------------------------------------------------- */
+const SS_PREFIX = 'v3.ss.'
+
+function ssKey(key) {
+  return ukey(SS_PREFIX + key)
+}
+
+/** 读 sessionStorage 中保存的跨级状态（按账号隔离）；缺失或解析失败回落 defaultValue */
+export function getSessionState(key, defaultValue = null) {
+  try {
+    const raw = sessionStorage.getItem(ssKey(key))
+    if (raw == null) return defaultValue
+    return JSON.parse(raw)
+  } catch {
+    return defaultValue
+  }
+}
+
+/** 写 sessionStorage 跨级状态 */
+export function setSessionState(key, value) {
+  try {
+    sessionStorage.setItem(ssKey(key), JSON.stringify(value))
+  } catch {
+    /* 隐私模式 / 配额满：内存态仍可用，不阻塞渲染 */
+  }
+}
+
+/** 清除指定跨级状态 */
+export function clearSessionState(key) {
+  try {
+    sessionStorage.removeItem(ssKey(key))
+  } catch { /* ignore */ }
+}
+
+/** React hook：useState + sessionStorage 同步，用于筛选状态保持。
+ *  返回 [value, setValue]；setValue 即可，写入由 effect 自动同步到 sessionStorage。 */
+export function useSessionState(key, defaultValue = null) {
+  const [value, setValue] = useState(() => getSessionState(key, defaultValue))
+  useEffect(() => {
+    setSessionState(key, value)
+  }, [key, value])
+  return [value, setValue]
+}
+
+/** 滚动位置保持：返回 ref，挂载时恢复已保存的 scrollTop，卸载时保存当前 scrollTop。
+ *  deps 控制何时重挂载并恢复（如列表数据就绪后恢复滚动）；空数组表示仅挂载/卸载时各一次。 */
+export function useScrollRestore(key, deps = []) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const saved = getSessionState(key, 0)
+    if (typeof saved === 'number' && saved > 0) {
+      window.requestAnimationFrame(() => { el.scrollTop = saved })
+    }
+    return () => {
+      if (ref.current) setSessionState(key, ref.current.scrollTop)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+  return ref
+}
+
+/** 答题进度保持：记录当前题号/作答快照，返回 [progress, setProgress, clearProgress]。
+ *  progress 形如 { index, answers, ts }，由调用方按需填充。 */
+export function useQuizProgress(key) {
+  const [progress, setProgress] = useState(() => getSessionState(key, null))
+  useEffect(() => {
+    setSessionState(key, progress)
+  }, [key, progress])
+  const clearProgress = useCallback(() => {
+    clearSessionState(key)
+    setProgress(null)
+  }, [key])
+  return [progress, setProgress, clearProgress]
 }

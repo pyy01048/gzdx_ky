@@ -17,13 +17,17 @@ from services.scheduler import scheduler
 from sqlalchemy.orm import Session
 from utils.security import require_admin
 
-router = APIRouter(prefix="/api/admin/schools/crawler", tags=["admin-schools-crawler"], dependencies=[Depends(require_admin)])
+router = APIRouter(
+    prefix="/api/admin/schools/crawler", tags=["admin-schools-crawler"], dependencies=[Depends(require_admin)]
+)
 
 
 # --- Pydantic Schemas ---
 
+
 class CrawlConfig(BaseModel):
     """爬取配置"""
+
     province_codes: Optional[list] = Field(None, description="省份代码列表，如['11','12']")
     subject_codes: Optional[list] = Field(["07", "08"], description="学科门类代码，默认理学+工学")
     max_pages: int = Field(50, ge=1, le=200, description="每省最大页数")
@@ -32,6 +36,7 @@ class CrawlConfig(BaseModel):
 
 class SchoolCrawlConfig(BaseModel):
     """单校爬取配置"""
+
     school_name: str = Field(..., min_length=1, description="院校名称")
     crawl_scorelines: bool = Field(True, description="是否抓取分数线")
     crawl_admissions: bool = Field(True, description="是否抓取录取名单")
@@ -39,6 +44,7 @@ class SchoolCrawlConfig(BaseModel):
 
 class ImportCSVConfig(BaseModel):
     """CSV导入配置"""
+
     file_path: str = Field(..., description="CSV文件路径")
     target_table: str = Field(..., description="目标表：schools/majors/scorelines/admissions")
     encoding: str = Field("utf-8", description="文件编码")
@@ -47,18 +53,14 @@ class ImportCSVConfig(BaseModel):
 
 # --- Crawler Status ---
 
+
 @router.get("/status")
 async def crawler_status(db: Session = Depends(get_db)):
     """查看爬虫运行状态"""
     from models import KaoyanCollectionRun
 
     # 最近10次运行记录
-    runs = (
-        db.query(KaoyanCollectionRun)
-        .order_by(KaoyanCollectionRun.created_at.desc())
-        .limit(10)
-        .all()
-    )
+    runs = db.query(KaoyanCollectionRun).order_by(KaoyanCollectionRun.created_at.desc()).limit(10).all()
 
     return {
         "scheduler_running": scheduler.running if scheduler else False,
@@ -74,11 +76,12 @@ async def crawler_status(db: Session = Depends(get_db)):
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in runs
-        ]
+        ],
     }
 
 
 # --- Manual Trigger ---
+
 
 @router.post("/yz-crawl")
 async def trigger_yz_crawl(
@@ -158,6 +161,7 @@ async def import_csv_data(
 
 # --- Scheduled Tasks ---
 
+
 @router.post("/schedule/toggle")
 async def toggle_scheduled_task(
     task_name: str = Query(..., description="任务名：engineering/national_line/notices"),
@@ -179,6 +183,7 @@ async def toggle_scheduled_task(
     if enable:
         # 重新添加调度任务
         from services.scheduler import add_scheduled_jobs
+
         add_scheduled_jobs(scheduler)
         return {"message": f"任务 {task_name} 已启用"}
     else:
@@ -208,11 +213,12 @@ async def list_scheduled_tasks():
                 "trigger": str(job.trigger),
             }
             for job in jobs
-        ]
+        ],
     }
 
 
 # --- Data Quality ---
+
 
 @router.get("/coverage")
 async def data_coverage_stats(db: Session = Depends(get_db)):
@@ -224,22 +230,13 @@ async def data_coverage_stats(db: Session = Depends(get_db)):
 
     total_schools = db.query(KaoyanSchool).count()
     schools_with_majors = (
-        db.query(KaoyanSchool)
-        .join(KaoyanMajor, KaoyanMajor.school_id == KaoyanSchool.id)
-        .distinct()
-        .count()
+        db.query(KaoyanSchool).join(KaoyanMajor, KaoyanMajor.school_id == KaoyanSchool.id).distinct().count()
     )
     schools_with_scorelines = (
-        db.query(KaoyanSchool)
-        .join(KaoyanScoreline, KaoyanScoreline.school_id == KaoyanSchool.id)
-        .distinct()
-        .count()
+        db.query(KaoyanSchool).join(KaoyanScoreline, KaoyanScoreline.school_id == KaoyanSchool.id).distinct().count()
     )
     schools_with_admissions = (
-        db.query(KaoyanSchool)
-        .join(KaoyanAdmission, KaoyanAdmission.school_id == KaoyanSchool.id)
-        .distinct()
-        .count()
+        db.query(KaoyanSchool).join(KaoyanAdmission, KaoyanAdmission.school_id == KaoyanSchool.id).distinct().count()
     )
 
     return {

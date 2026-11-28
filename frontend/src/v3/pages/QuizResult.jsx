@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Card, CardHead, Chip, Input, PageHeader, Progress, Ring, Segmented, toast } from '../ui'
 import {
   Bot,
@@ -30,6 +30,22 @@ const WEAK_SOURCE_LABELS = {
   ai: 'AI信号',
 }
 
+/**
+ * 刷题中心 · 复盘报告（v3）
+ * 正确率大字 + 知识点/章节掌握情况 + 重练错题 / 再练一次
+ * + V14 场景化 AI 讲题（错题逐条三问 + 追问弹层）。
+ * + P1-E 多 Agent 协作答疑（orchestrated）：answer + confidence + trace 时间线
+ * + P0-C 薄弱点强化：三信号融合薄弱点 / 生成变式题 / 掌握门控
+ * 讲题会话状态（tutor）仅本视图使用，就近下沉。
+ * @param {Object} props
+ * @param {Object} props.session - 会话快照 {title, questions, mode, ...}
+ * @param {Object} props.records - 已判分记录 {qid: {correct, selected, ...}}
+ * @param {React.RefObject} props.startedFromRef - 会话来源 ref（用于「再练一次」）
+ * @param {string} props.tutorMode - auto | exam | textbook
+ * @param {(m: string) => void} props.setTutorMode
+ * @param {Function} props.onBeginSession
+ * @param {Function} props.onGoHome
+ */
 export default function QuizResult({
   session,
   records,
@@ -48,7 +64,6 @@ export default function QuizResult({
 
   /* P1-E 多 Agent 协作答疑状态 */
   const [orch, setOrch] = useState(null) // {qid, loading, answer, confidence, degraded, trace, error}
-  const [orchQid, setOrchQid] = useState(null)
 
   /* P0-C 薄弱点强化状态 */
   const [weakPoints, setWeakPoints] = useState(null) // null=加载中 | [] | [{kp_id,name,weak_score,sources}]
@@ -58,40 +73,57 @@ export default function QuizResult({
   const [gateLoading, setGateLoading] = useState({})
 
   const list = session.questions
-  const answered = list.filter((q) => records[q.id])
   /* 浏览模式（无标准答案题）写入的是 selfCheckOnly 记录：没有 correct 字段，
      不能算进错题/正确率——以前会被当成「答错」，报告口径失真。 */
   const isSelfCheck = (r) => !!r && r.selfCheckOnly === true
-  const graded = answered.filter((q) => !isSelfCheck(records[q.id]))
-  const selfChecked = answered.length - graded.length
-  const correct = graded.filter((q) => records[q.id].correct)
-  const wrong = graded.filter((q) => !records[q.id].correct)
+  const isNeedsReview = (r) => !!r && (r.correct === null || r.needsReview === true)
+  const answered = useMemo(() => list.filter((q) => records[q.id]), [list, records])
+  const graded = useMemo(
+    () => answered.filter((q) => !isSelfCheck(records[q.id]) && !isNeedsReview(records[q.id])),
+    [answered, records],
+  )
+  const needsReviewCount = useMemo(
+    () => answered.filter((q) => isNeedsReview(records[q.id])).length,
+    [answered, records],
+  )
+  const selfChecked = answered.length - graded.length - needsReviewCount
+  const correct = useMemo(() => graded.filter((q) => records[q.id].correct === true), [graded, records])
+  const wrong = useMemo(() => graded.filter((q) => records[q.id].correct !== true), [graded, records])
   const accuracy = graded.length ? Math.round((correct.length / graded.length) * 100) : 0
 
-  const byChapter = new Map()
-  graded.forEach((q) => {
-    const k = q.chapter || q.subject || '未分组'
-    const e = byChapter.get(k) || { total: 0, correct: 0 }
-    e.total += 1
-    if (records[q.id].correct) e.correct += 1
-    byChapter.set(k, e)
-  })
+  const byChapter = useMemo(() => {
+    const map = new Map()
+    graded.forEach((q) => {
+      const k = q.chapter || q.subject || '未分组'
+      const e = map.get(k) || { total: 0, correct: 0 }
+      e.total += 1
+      if (records[q.id].correct) e.correct += 1
+      map.set(k, e)
+    })
+    return map
+  }, [graded, records])
 
-  const redoWrong = () => {
+  /** 重练错题：把本轮错题重新装入会话 */
+  const redoWrong = useCallback(() => {
     if (!wrong.length) {
       toast('本轮没有错题')
       return
     }
     const src = startedFromRef.current
     onBeginSession(`${session.title} · 错题重练`, wrong, src?.mode)
-  }
-  const redoAll = () => {
+  }, [wrong, startedFromRef, onBeginSession, session.title])
+
+  /** 再练一次：用会话来源的题目与模式重开 */
+  const redoAll = useCallback(() => {
     const src = startedFromRef.current
     onBeginSession(src?.title || session.title, src?.questions || list, src?.mode)
-  }
+  }, [startedFromRef, onBeginSession, session.title, list])
 
-  /* V14 场景化 AI 讲题：错题逐条三问 + 追问弹层 */
-  const askTutor = async (qid, angle, myAnswer) => {
+  /** V14 场景化 AI 讲题：错题逐条三问 + 追问弹层
+   *  @param {string|number} qid - 题目 id
+   *  @param {string} angle - why_wrong | solution | method
+   *  @param {string} [myAnswer] - 我的答案 */
+  const askTutor = useCallback(async (qid, angle, myAnswer) => {
     setTutor({ qid, angle, loading: true, content: '', history: [] })
     try {
       const r = await request('/ai/tutoring/explain', {
@@ -120,8 +152,11 @@ export default function QuizResult({
     } catch (e) {
       setTutor({ qid, angle, loading: false, content: e?.message || '讲题失败', history: [] })
     }
-  }
-  const askFollowup = async (message) => {
+  }, [tutorMode])
+
+  /** 追问：在已有讲题上下文里继续提问
+   *  @param {string} message - 追问内容 */
+  const askFollowup = useCallback(async (message) => {
     if (!tutor?.qid || !message.trim()) return
     const hist = tutor.history || []
     setTutor({ ...tutor, loading: true })
@@ -146,10 +181,10 @@ export default function QuizResult({
     } catch (e) {
       setTutor({ ...tutor, loading: false, content: e?.message || '追问失败' })
     }
-  }
+  }, [tutor, tutorMode])
 
-  /* 「仍未理解，加入盲点池」：把 AI 讲题后仍未搞懂的知识点沉淀到盲区池。 */
-  const markStuck = async () => {
+  /** 「仍未理解，加入盲点池」：把 AI 讲题后仍未搞懂的知识点沉淀到盲区池。 */
+  const markStuck = useCallback(async () => {
     if (!tutor?.qid || stuckMarked) return
     try {
       await request('/ai/tutoring/stuck', {
@@ -161,13 +196,13 @@ export default function QuizResult({
     } catch (e) {
       toast(e?.message || '加入盲点池失败，请稍后重试')
     }
-  }
+  }, [tutor, stuckMarked])
 
-  /* P1-E 多 Agent 协作答疑：POST /api/ai/tutoring/orchestrated
-     请求 {question_id, my_answer?}；响应 {answer, trace, confidence, degraded} */
-  const askOrchestrated = async (qid) => {
+  /** P1-E 多 Agent 协作答疑：POST /api/ai/tutoring/orchestrated
+   *  请求 {question_id, my_answer?}；响应 {answer, trace, confidence, degraded}
+   *  @param {string|number} qid */
+  const askOrchestrated = useCallback(async (qid) => {
     if (orch?.loading) return
-    setOrchQid(qid)
     setOrch({ qid, loading: true, answer: '', confidence: '', degraded: false, trace: [], error: '' })
     try {
       const rec = records[qid]
@@ -196,7 +231,7 @@ export default function QuizResult({
         error: e?.message || 'AI 协作讲解失败，请稍后重试',
       })
     }
-  }
+  }, [orch, records])
 
   /* P0-C 薄弱点加载：GET /api/recommend/weak-points?subject=&limit=5 */
   const loadWeakPoints = useCallback(async () => {
@@ -216,8 +251,9 @@ export default function QuizResult({
     loadWeakPoints()
   }, [loadWeakPoints])
 
-  /* 生成变式题：POST /api/recommend/variants {kp_id, count: 3} */
-  const generateVariants = async (kp) => {
+  /** 生成变式题：POST /api/recommend/variants {kp_id, count: 3}
+   *  @param {Object} kp - 知识点 {kp_id, id, name, ...} */
+  const generateVariants = useCallback(async (kp) => {
     const kpId = kp.kp_id ?? kp.id
     if (variantLoading[kpId]) return
     setVariantLoading((m) => ({ ...m, [kpId]: true }))
@@ -230,10 +266,11 @@ export default function QuizResult({
     } finally {
       setVariantLoading((m) => ({ ...m, [kpId]: false }))
     }
-  }
+  }, [variantLoading])
 
-  /* 掌握门控：POST /api/recommend/mastery-gate {kp_id, consecutive_required: 3} */
-  const checkMasteryGate = async (kp) => {
+  /** 掌握门控：POST /api/recommend/mastery-gate {kp_id, consecutive_required: 3}
+   *  @param {Object} kp - 知识点 {kp_id, id, name, ...} */
+  const checkMasteryGate = useCallback(async (kp) => {
     const kpId = kp.kp_id ?? kp.id
     if (gateLoading[kpId]) return
     setGateLoading((m) => ({ ...m, [kpId]: true }))
@@ -247,7 +284,7 @@ export default function QuizResult({
     } finally {
       setGateLoading((m) => ({ ...m, [kpId]: false }))
     }
-  }
+  }, [gateLoading])
 
   const tutorModeLabel =
     tutor?.mode === 'exam'
@@ -286,7 +323,9 @@ export default function QuizResult({
           <div className="v3-quiz-result-hero__copy">
             <h2>
               {graded.length === 0
-                ? '本轮没有可判分的作答：浏览模式与背题不产生对错，先补全答案或在可判分科目练习。'
+                ? needsReviewCount > 0
+                  ? '本轮答案存在待确认项，核对后再纳入正确率统计。'
+                  : '本轮没有可判分的作答：浏览模式与背题不产生对错，先补全答案或在可判分科目练习。'
                 : accuracy >= 80
                   ? '发挥稳定，继续保持这个节奏。'
                   : accuracy >= 50
@@ -311,6 +350,12 @@ export default function QuizResult({
                 <dt>答错</dt>
                 <dd>{wrong.length}</dd>
               </div>
+              {needsReviewCount > 0 && (
+                <div className="v3-quiz-result-stat is-review">
+                  <dt>待确认</dt>
+                  <dd>{needsReviewCount}</dd>
+                </div>
+              )}
               {selfChecked > 0 && (
                 <div className="v3-quiz-result-stat">
                   <dt>仅自评未判分</dt>
@@ -367,7 +412,7 @@ export default function QuizResult({
             sub={
               session.mode === 'memorize'
                 ? '背题模式：逐题回看答案与解析'
-                : `${answered.length}/${list.length} 题已判分 · 点击展开题干与解析`
+                : `${graded.length}/${list.length} 题已判分${needsReviewCount > 0 ? ` · ${needsReviewCount} 题待确认` : ''} · 点击展开题干与解析`
             }
             actions={<TrendingUp size={17} style={{ color: 'var(--v3-text-3)' }} />}
           />
@@ -380,9 +425,11 @@ export default function QuizResult({
                   : r
                     ? isSelfCheck(r)
                       ? 'self'
-                      : r.correct
-                        ? 'ok'
-                        : 'bad'
+                      : isNeedsReview(r)
+                        ? 'review'
+                        : r.correct
+                          ? 'ok'
+                          : 'bad'
                     : 'todo'
               const open = sheetOpen === q.id
               return (
@@ -395,13 +442,15 @@ export default function QuizResult({
                   >
                     <span className="v3-quiz-sheet-row__no">{i + 1}</span>
                     <span
-                      className={`v3-quiz-sheet-row__flag ${state === 'ok' ? 'is-ok' : state === 'bad' ? 'is-bad' : ''}`}
+                      className={`v3-quiz-sheet-row__flag ${state === 'ok' ? 'is-ok' : state === 'bad' ? 'is-bad' : state === 'review' ? 'is-review' : ''}`}
                     >
                       {state === 'ok'
                         ? '正确'
                         : state === 'bad'
                           ? '错误'
-                          : state === 'memo'
+                          : state === 'review'
+                            ? '待确认'
+                            : state === 'memo'
                             ? '背题'
                             : state === 'self'
                               ? '自评'
@@ -413,7 +462,7 @@ export default function QuizResult({
                     </span>
                     {r && (
                       <span className="v3-quiz-sheet-row__ans">
-                        我 {String(r.selected || '—')} / 对 {String(r.correctAnswer ?? q.answer ?? '—')}
+                        我 {String(r.selected || '—')} / {state === 'review' ? '参考' : '对'} {String(r.correctAnswer ?? q.answer ?? '—')}{state === 'review' ? '（待核对）' : ''}
                       </span>
                     )}
                     {state === 'todo' && !r && q.answer && (

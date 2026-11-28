@@ -34,13 +34,14 @@ import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from models import AnswerRecord, ErrorRecord, ReviewRecord, StudySession, Task
-from sqlalchemy import Integer, func
+from sqlalchemy import case, func
 from utils.timeutil import (
     day_bucket_expr,
     local_today,
     local_window_for_day,
 )
+
+from models import AnswerRecord, ErrorRecord, ReviewRecord, StudySession, Task
 
 __all__ = [
     "EFFECTIVE_FOCUS_MINUTES",
@@ -95,6 +96,7 @@ class DayActivity:
     errors_done: int = 0
     questions_done: int = 0
     questions_correct: int = 0
+    questions_pending: int = 0
     exams_done: int = 0
     tasks_done: int = 0
     errors_added: int = 0
@@ -105,11 +107,15 @@ class DayActivity:
         return self.words_done + self.cards_done + self.knowledge_done + self.errors_done
 
     @property
+    def questions_graded(self) -> int:
+        return self.questions_done - self.questions_pending
+
+    @property
     def correct_rate(self) -> Optional[float]:
-        """当日正确率 %；没答题返回 None（**不返回 0**，0 是"全错"不是"没做"）。"""
-        if not self.questions_done:
+        """当日已判定题目的正确率；只有待确认答题时返回 None。"""
+        if not self.questions_graded:
             return None
-        return round(100.0 * self.questions_correct / self.questions_done, 1)
+        return round(100.0 * self.questions_correct / self.questions_graded, 1)
 
     @property
     def is_effective(self) -> bool:
@@ -142,6 +148,8 @@ class DayActivity:
             "errors_done": self.errors_done,
             "questions_done": self.questions_done,
             "questions_correct": self.questions_correct,
+            "questions_graded": self.questions_graded,
+            "questions_pending": self.questions_pending,
             "correct_rate": self.correct_rate,
             "exams_done": self.exams_done,
             "tasks_done": self.tasks_done,
@@ -244,16 +252,18 @@ def day_ledger(
     q = db.query(
         day,
         func.count(AnswerRecord.id),
-        func.coalesce(func.sum(func.cast(AnswerRecord.is_correct, Integer)), 0),
+        func.count(case((AnswerRecord.is_correct.is_(None), 1))),
+        func.coalesce(func.sum(case((AnswerRecord.is_correct.is_(True), 1), else_=0)), 0),
     )
     if lower is not None:
         q = q.filter(AnswerRecord.created_at >= lower)
     q = q.filter(*_user_extra(AnswerRecord))
     q = q.filter(AnswerRecord.created_at < upper).group_by(day)
-    for d, total, correct in q.all():
+    for d, total, pending, correct in q.all():
         act = _slot(str(d))
         act.questions_done = int(total or 0)
         act.questions_correct = int(correct or 0)
+        act.questions_pending = int(pending or 0)
 
     # 4. 模考场次（真题模块）：表建在 core/sql/041，ORM 分片在 core.models.exams。
     #    B4：121 分片已补 user_id，按本人过滤；存量 NULL 行不计入任何个人统计。

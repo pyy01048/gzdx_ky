@@ -89,13 +89,11 @@ def main() -> int:
     db = sqlite3.connect(DB)
     total = dirty = optonly = cross = 0
     for did, name in TRIAL_DOCS:
-        row = db.execute(
-            "SELECT content, subject FROM documents WHERE id=?", (did,)
-        ).fetchone()
+        row = db.execute("SELECT content, subject FROM documents WHERE id=?", (did,)).fetchone()
         if not row or not row[0]:
             print(f"[skip] doc {did} 无内容")
             continue
-        text, subject = row[0], row[1]
+        text, _subject = row[0], row[1]
         qs = qbank_builder.extract_questions(text, source_hint=name)
         d = sum(1 for q in qs if _dirty_answer(q))
         o = sum(1 for q in qs if _option_only(q))
@@ -104,10 +102,7 @@ def main() -> int:
         dirty += d
         optonly += o
         cross += c
-        print(
-            f"[doc {did}] {name[:34]:34s} 切出 {len(qs):4d} 条 | "
-            f"脏答案 {d:3d} | 仅字母答案 {o:3d} | 串接 {c:3d}"
-        )
+        print(f"[doc {did}] {name[:34]:34s} 切出 {len(qs):4d} 条 | 脏答案 {d:3d} | 仅字母答案 {o:3d} | 串接 {c:3d}")
     db.close()
 
     tag = "修复前" if args.before else "修复后"

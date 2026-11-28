@@ -17,6 +17,7 @@ shell 侧接线方式（S1 落地时一行调用）：把 study_calendar.day_led
 planned_min 取当日计划总时长；缺失字段按 0 计但保留日期行（G2 由
 compute_drift 的 no_plan/insufficient_data 状态显式化，不在这里吞掉）。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -45,16 +46,17 @@ def _date_str(row: Any) -> str:
         d = getattr(row, "date", None) or getattr(row, "day", None)
     if d is None:
         raise ValueError(f"ledger 行缺少 date 字段: {row!r}")
-    if isinstance(d, (datetime.date, datetime.datetime)):
+    if isinstance(d, datetime.date | datetime.datetime):
         return d.isoformat()[:10]
     return str(d)[:10]
 
 
-def export_ledger(day_rows: Iterable[Any], *,
-                  planned_fields: tuple = ("planned_minutes", "planned_min",
-                                           "plan_minutes"),
-                  completed_fields: tuple = ("focus_minutes", "completed_min",
-                                             "completed_minutes")) -> List[DayLedger]:
+def export_ledger(
+    day_rows: Iterable[Any],
+    *,
+    planned_fields: tuple = ("planned_minutes", "planned_min", "plan_minutes"),
+    completed_fields: tuple = ("focus_minutes", "completed_min", "completed_minutes"),
+) -> List[DayLedger]:
     """day_ledger 输出行 → kernel DayLedger DTO 列表（纯函数）。
 
     Args:
@@ -66,17 +68,19 @@ def export_ledger(day_rows: Iterable[Any], *,
     """
     out: List[DayLedger] = []
     for row in day_rows:
-        out.append(DayLedger(
-            date=_date_str(row),
-            planned_min=int(_get(row, *planned_fields)),
-            completed_min=int(_get(row, *completed_fields)),
-        ))
+        out.append(
+            DayLedger(
+                date=_date_str(row),
+                planned_min=int(_get(row, *planned_fields)),
+                completed_min=int(_get(row, *completed_fields)),
+            )
+        )
     return out
 
 
-def export_ledger_from_activities(activities: Iterable[Any],
-                                  planned_by_date: Optional[Dict[str, int]] = None
-                                  ) -> List[DayLedger]:
+def export_ledger_from_activities(
+    activities: Iterable[Any], planned_by_date: Optional[Dict[str, int]] = None
+) -> List[DayLedger]:
     """便捷入口：DayActivity 序列 + 可选计划映射 → DayLedger。
 
     planned_by_date 缺省时计划为 0（compute_drift 将给出 no_plan 显式状态，
@@ -87,7 +91,5 @@ def export_ledger_from_activities(activities: Iterable[Any],
     for a in activities:
         ds = _date_str(a) if not isinstance(a, Dict) else str(a.get("date"))[:10]
         focus = _get(a, "focus_minutes", "focus_min")
-        out.append(DayLedger(date=ds,
-                             planned_min=int(pb.get(ds, 0)),
-                             completed_min=int(focus)))
+        out.append(DayLedger(date=ds, planned_min=int(pb.get(ds, 0)), completed_min=int(focus)))
     return out

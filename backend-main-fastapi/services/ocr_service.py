@@ -102,8 +102,7 @@ class OCRService:
             # 这里记录真实异常，并只对「首次」打印一次堆栈避免刷屏。
             self.last_error = f"{type(e).__name__}: {e}"
             if not getattr(self, "_warned", False):
-                logger.error("OCR 识别失败（后续同类错误不再重复打印）: %s", self.last_error,
-                             exc_info=True)
+                logger.error("OCR 识别失败（后续同类错误不再重复打印）: %s", self.last_error, exc_info=True)
                 self._warned = True
             return ""
 
@@ -143,8 +142,7 @@ class OCRService:
         except Exception as e:  # noqa: BLE001
             self.last_error = f"{type(e).__name__}: {e}"
             if not getattr(self, "_warned", False):
-                logger.error("OCR 识别失败（后续同类错误不再重复打印）: %s", self.last_error,
-                             exc_info=True)
+                logger.error("OCR 识别失败（后续同类错误不再重复打印）: %s", self.last_error, exc_info=True)
                 self._warned = True
             return []
 
@@ -166,11 +164,13 @@ class OCRService:
                     score = float(item[2])
                 except (TypeError, ValueError):
                     score = None
-            out.append({
-                "text": text.strip(),
-                "box": list(box) if isinstance(box, (list, tuple)) else None,
-                "score": score,
-            })
+            out.append(
+                {
+                    "text": text.strip(),
+                    "box": list(box) if isinstance(box, list | tuple) else None,
+                    "score": score,
+                }
+            )
         self.last_error = None
         return out
 
@@ -200,20 +200,20 @@ class OCRService:
         questions: List[Dict[str, Any]] = []
 
         # 匹配 "1." "1、" "(1)" "一、" 等题号
-        pattern = re.compile(
-            r"(?:^|\n)\s*(?:(\d+)[.、)）]\s*|[(（](\d+)[)）]\s*|([一二三四五六七八九十]+)[、.]\s*)"
-        )
+        pattern = re.compile(r"(?:^|\n)\s*(?:(\d+)[.、)）]\s*|[(（](\d+)[)）]\s*|([一二三四五六七八九十]+)[、.]\s*)")
 
         matches = list(pattern.finditer(text))
         if not matches:
             # 无法识别题号，整段作为一个题目
             if text.strip():
-                questions.append({
-                    "index": 1,
-                    "content": text.strip(),
-                    "options": [],
-                    "answer": None,
-                })
+                questions.append(
+                    {
+                        "index": 1,
+                        "content": text.strip(),
+                        "options": [],
+                        "answer": None,
+                    }
+                )
             return questions
 
         for i, match in enumerate(matches):
@@ -233,12 +233,14 @@ class OCRService:
             if options:
                 content = option_pattern.sub("", block).strip()
 
-            questions.append({
-                "index": i + 1,
-                "content": content,
-                "options": options,
-                "answer": None,
-            })
+            questions.append(
+                {
+                    "index": i + 1,
+                    "content": content,
+                    "options": options,
+                    "answer": None,
+                }
+            )
 
         return questions
 
@@ -247,6 +249,7 @@ class OCRService:
 # PaddleOCR PP-OCRv5 微服务适配层（V2.0 新增）
 # 通过 HTTP 调用独立的 PaddleOCR 微服务，精度高于 RapidOCR
 # ---------------------------------------------------------------------------
+
 
 class PaddleOCRService:
     """PaddleOCR PP-OCRv5 微服务客户端。
@@ -258,6 +261,7 @@ class PaddleOCRService:
 
     def __init__(self, service_url: Optional[str] = None, fallback_to_local: bool = True):
         from utils.compute_nodes import ocr_service_url, service_headers
+
         self.service_url = (service_url or ocr_service_url()).rstrip("/")
         self._headers = service_headers()
         self.fallback_to_local = fallback_to_local
@@ -272,6 +276,7 @@ class PaddleOCRService:
         """检查 PaddleOCR 微服务是否可用。"""
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=5.0, headers=self._headers) as client:
                 resp = await client.get(f"{self.service_url}/health")
                 return resp.json()
@@ -281,10 +286,18 @@ class PaddleOCRService:
     async def recognize_bytes(self, image_bytes: bytes, filename: str = "image.png") -> Dict[str, Any]:
         """识别图片字节，返回完整结果（含文字、时间、标注图像）。"""
         if not image_bytes:
-            return {"text": "", "lines": [], "detail_time": 0, "annotated_image": "", "engine": "none", "error": "空文件"}
+            return {
+                "text": "",
+                "lines": [],
+                "detail_time": 0,
+                "annotated_image": "",
+                "engine": "none",
+                "error": "空文件",
+            }
 
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=120.0, headers=self._headers) as client:
                 resp = await client.post(
                     f"{self.service_url}/ocr",
@@ -324,12 +337,18 @@ class PaddleOCRService:
                     }
                 except Exception as e2:
                     return {
-                        "text": "", "lines": [], "detail_time": 0,
-                        "annotated_image": "", "engine": "none",
+                        "text": "",
+                        "lines": [],
+                        "detail_time": 0,
+                        "annotated_image": "",
+                        "engine": "none",
                         "error": f"识别失败: {str(e2)}",
                     }
             return {
-                "text": "", "lines": [], "detail_time": 0,
-                "annotated_image": "", "engine": "none",
+                "text": "",
+                "lines": [],
+                "detail_time": 0,
+                "annotated_image": "",
+                "engine": "none",
                 "error": f"PaddleOCR微服务调用失败: {str(e)}",
             }

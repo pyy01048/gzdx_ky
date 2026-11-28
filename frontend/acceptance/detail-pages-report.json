@@ -1,0 +1,1394 @@
+{
+  "date": "2026-11-25T15:33:28.607Z",
+  "baseURL": "http://127.0.0.1:5173",
+  "browser": "Chromium / Playwright",
+  "viewports": [
+    {
+      "name": "1440",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "name": "390",
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "authentication": "登录态使用 /api/auth/me 与个人域接口测试夹具；公开推荐链使用真实本地后端",
+  "passed": 196,
+  "failed": 0,
+  "results": [
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "detail-url-score-350",
+      "ok": true,
+      "detail": "#/kaoyan/recommend/304?score=350&max_retest_ratio=1.5&year=2026"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "request-params-frozen",
+      "ok": true,
+      "detail": "#/kaoyan/recommend/304?score=350&max_retest_ratio=1.5&year=2026"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "deep-link-keeps-score",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/#/kaoyan/recommend/304?score=350&max_retest_ratio=1.5&year=2026"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "score-breakdown-visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "raw-evidence-visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "recommend-detail-single-h1",
+      "ok": true,
+      "detail": "[\"上海国际问题研究院，为什么推荐给你？\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "recommend-detail-title",
+      "ok": true,
+      "detail": "推荐依据详情 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "recommend-detail-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "recommend-detail-breadcrumb",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "school-profile-deep-link",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/#/kaoyan/schools/304"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "school-profile-single-h1",
+      "ok": true,
+      "detail": "[\"上海国际问题研究院\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "school-profile-title",
+      "ok": true,
+      "detail": "院校详情 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "school-profile-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "invalid-link-state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "invalid-link-single-h1",
+      "ok": true,
+      "detail": "[\"推荐依据详情\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "invalid-link-title",
+      "ok": true,
+      "detail": "推荐依据详情 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "invalid-link-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "recommend",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "list-entry",
+      "ok": true,
+      "detail": "#/error-review/42"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "single-record-loaded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "knowledge-deep-link",
+      "ok": true,
+      "detail": "#/knowledge/9"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "ai-analysis-loaded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "follow-up-has-question",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "error-detail-single-h1",
+      "ok": true,
+      "detail": "[\"错题详情与 AI 加固\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "error-detail-title",
+      "ok": true,
+      "detail": "错题详情 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "error-detail-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "error-detail-breadcrumb",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "follow-up-prefilled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "missing-record-state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "missing-record-single-h1",
+      "ok": true,
+      "detail": "[\"错题详情\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "missing-record-title",
+      "ok": true,
+      "detail": "错题详情 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "missing-record-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "error",
+      "check": "expected-http-failure-observed",
+      "ok": true,
+      "detail": "[{\"path\":\"/api/errors/404\",\"status\":404},{\"path\":\"/api/errors/404\",\"status\":404}]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "account-scoped-archive",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "archive-entry",
+      "ok": true,
+      "detail": "#/assistant/answers/mwwa9fe561thp"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "assistant-list-single-h1",
+      "ok": true,
+      "detail": "[\"AI 助手\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "assistant-list-title",
+      "ok": true,
+      "detail": "AI 助手 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "assistant-list-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "question-preserved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "engine-preserved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "empty-citations-honest",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "answer-detail-single-h1",
+      "ok": true,
+      "detail": "[\"回答与引用详情\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "answer-detail-title",
+      "ok": true,
+      "detail": "AI 回答详情 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "answer-detail-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "answer-detail-breadcrumb",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "answer-follow-up-prefilled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "missing-archive-state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "missing-answer-single-h1",
+      "ok": true,
+      "detail": "[\"回答与引用详情\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "missing-answer-title",
+      "ok": true,
+      "detail": "AI 回答详情 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "missing-answer-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant-abort",
+      "check": "partial-answer-kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant-abort",
+      "check": "no-archive-dead-link",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant-abort",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant-abort",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "assistant-abort",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "light-tree-first",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "chapter-lazy-load",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "practice-entry-visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "knowledge-map-single-h1",
+      "ok": true,
+      "detail": "[\"知识地图\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "knowledge-map-title",
+      "ok": true,
+      "detail": "知识地图 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "knowledge-map-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "article-deep-link",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/#/knowledge/9"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "single-point-loaded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "related-questions-requested",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "knowledge-article-single-h1",
+      "ok": true,
+      "detail": "[\"等价无穷小\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "knowledge-article-title",
+      "ok": true,
+      "detail": "知识点详情 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "knowledge-article-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "knowledge-article-breadcrumb",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge-error",
+      "check": "failure-state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge-error",
+      "check": "failure-single-h1",
+      "ok": true,
+      "detail": "[\"知识地图\"]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge-error",
+      "check": "failure-title",
+      "ok": true,
+      "detail": "知识地图 · 硕途考研"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge-error",
+      "check": "failure-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge-error",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge-error",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge-error",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "1440",
+      "flow": "knowledge-error",
+      "check": "expected-http-failure-observed",
+      "ok": true,
+      "detail": "[{\"path\":\"/api/taxonomy/tree\",\"status\":503},{\"path\":\"/api/taxonomy/tree\",\"status\":503}]"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "detail-url-score-350",
+      "ok": true,
+      "detail": "#/kaoyan/recommend/304?score=350&max_retest_ratio=1.5&year=2026"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "request-params-frozen",
+      "ok": true,
+      "detail": "#/kaoyan/recommend/304?score=350&max_retest_ratio=1.5&year=2026"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "deep-link-keeps-score",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/#/kaoyan/recommend/304?score=350&max_retest_ratio=1.5&year=2026"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "score-breakdown-visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "raw-evidence-visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "recommend-detail-single-h1",
+      "ok": true,
+      "detail": "[\"上海国际问题研究院，为什么推荐给你？\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "recommend-detail-title",
+      "ok": true,
+      "detail": "推荐依据详情 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "recommend-detail-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "recommend-detail-breadcrumb",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "recommend-detail-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "recommend-detail-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "school-profile-deep-link",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/#/kaoyan/schools/304"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "school-profile-single-h1",
+      "ok": true,
+      "detail": "[\"上海国际问题研究院\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "school-profile-title",
+      "ok": true,
+      "detail": "院校详情 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "school-profile-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "school-profile-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "school-profile-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "invalid-link-state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "invalid-link-single-h1",
+      "ok": true,
+      "detail": "[\"推荐依据详情\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "invalid-link-title",
+      "ok": true,
+      "detail": "推荐依据详情 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "invalid-link-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "invalid-link-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "invalid-link-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "recommend",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "list-entry",
+      "ok": true,
+      "detail": "#/error-review/42"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "single-record-loaded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "knowledge-deep-link",
+      "ok": true,
+      "detail": "#/knowledge/9"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "ai-analysis-loaded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "follow-up-has-question",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "error-detail-single-h1",
+      "ok": true,
+      "detail": "[\"错题详情与 AI 加固\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "error-detail-title",
+      "ok": true,
+      "detail": "错题详情 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "error-detail-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "error-detail-breadcrumb",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "error-detail-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "error-detail-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "follow-up-prefilled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "missing-record-state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "missing-record-single-h1",
+      "ok": true,
+      "detail": "[\"错题详情\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "missing-record-title",
+      "ok": true,
+      "detail": "错题详情 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "missing-record-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "missing-record-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "missing-record-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "error",
+      "check": "expected-http-failure-observed",
+      "ok": true,
+      "detail": "[{\"path\":\"/api/errors/404\",\"status\":404},{\"path\":\"/api/errors/404\",\"status\":404}]"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "account-scoped-archive",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "archive-entry",
+      "ok": true,
+      "detail": "#/assistant/answers/mwwa9l43xmk9y"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "assistant-list-single-h1",
+      "ok": true,
+      "detail": "[\"AI 助手\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "assistant-list-title",
+      "ok": true,
+      "detail": "AI 助手 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "assistant-list-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "assistant-list-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "assistant-list-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "question-preserved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "engine-preserved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "empty-citations-honest",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "answer-detail-single-h1",
+      "ok": true,
+      "detail": "[\"回答与引用详情\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "answer-detail-title",
+      "ok": true,
+      "detail": "AI 回答详情 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "answer-detail-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "answer-detail-breadcrumb",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "answer-detail-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "answer-detail-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "answer-follow-up-prefilled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "missing-archive-state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "missing-answer-single-h1",
+      "ok": true,
+      "detail": "[\"回答与引用详情\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "missing-answer-title",
+      "ok": true,
+      "detail": "AI 回答详情 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "missing-answer-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "missing-answer-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "missing-answer-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant-abort",
+      "check": "partial-answer-kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant-abort",
+      "check": "no-archive-dead-link",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant-abort",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant-abort",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "assistant-abort",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "light-tree-first",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "chapter-lazy-load",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "practice-entry-visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-map-single-h1",
+      "ok": true,
+      "detail": "[\"知识地图\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-map-title",
+      "ok": true,
+      "detail": "知识地图 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-map-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-map-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-map-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "article-deep-link",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/#/knowledge/9"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "single-point-loaded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "related-questions-requested",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-article-single-h1",
+      "ok": true,
+      "detail": "[\"等价无穷小\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-article-title",
+      "ok": true,
+      "detail": "知识点详情 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-article-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-article-breadcrumb",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-article-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "knowledge-article-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "failure-state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "failure-single-h1",
+      "ok": true,
+      "detail": "[\"知识地图\"]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "failure-title",
+      "ok": true,
+      "detail": "知识地图 · 硕途考研"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "failure-no-overflow",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "failure-touch-44px",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "failure-reduced-motion",
+      "ok": true,
+      "detail": "running=0"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "no-pageerror",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "no-console-error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "no-unexpected-http-error",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "viewport": "390",
+      "flow": "knowledge-error",
+      "check": "expected-http-failure-observed",
+      "ok": true,
+      "detail": "[{\"path\":\"/api/taxonomy/tree\",\"status\":503},{\"path\":\"/api/taxonomy/tree\",\"status\":503}]"
+    }
+  ]
+}

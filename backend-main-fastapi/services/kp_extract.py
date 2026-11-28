@@ -51,6 +51,7 @@
 变量，会把**本机**请求也塞进代理导致超时/空响应。因此 `_OPENER` 显式
 `ProxyHandler({})` 绕过 —— 这一点是实测踩出来的，不要"优化"掉。
 """
+
 from __future__ import annotations
 
 import json
@@ -67,6 +68,7 @@ import sqlalchemy
 from sqlalchemy import text as sql_text
 
 logger = logging.getLogger(__name__)
+
 
 # --------------------------------------------------------------------------- #
 # 配置
@@ -119,6 +121,7 @@ KP_MAX_CHUNKS_PER_DOC = _env_int("SMART_INGEST_KP_MAX_CHUNKS", 8)
 #: 交给模型的单块字符上限
 KP_CHUNK_CHARS = 4000
 
+
 def _resolve_ollama_host() -> str:
     """规范化 Ollama 地址。
 
@@ -168,19 +171,77 @@ _RE_LATIN = re.compile(r"[A-Za-z]{3,}")
 
 #: 短但确有专业含义的符号/单字，不按「过短」丢弃
 _KEEP_SHORT = {
-    "栈", "队列", "树", "图", "网", "串", "堆", "表",
-    "fH", "fL", "d", "q", "cp", "clk", "en", "oe", "wr", "rd", "cs",
-    "熵", "码", "阵", "群", "环", "域", "积", "和", "差", "角", "相", "态",
-    "键", "路", "门", "栅", "极", "阻", "容", "感", "场", "位", "线", "面",
-    "体", "点", "段", "区", "层", "序", "率", "幅", "频", "谱", "波", "峰",
-    "谷", "阶", "弧", "隙", "耗", "散", "增益", "带宽",
+    "栈",
+    "队列",
+    "树",
+    "图",
+    "网",
+    "串",
+    "堆",
+    "表",
+    "fH",
+    "fL",
+    "d",
+    "q",
+    "cp",
+    "clk",
+    "en",
+    "oe",
+    "wr",
+    "rd",
+    "cs",
+    "熵",
+    "码",
+    "阵",
+    "群",
+    "环",
+    "域",
+    "积",
+    "和",
+    "差",
+    "角",
+    "相",
+    "态",
+    "键",
+    "路",
+    "门",
+    "栅",
+    "极",
+    "阻",
+    "容",
+    "感",
+    "场",
+    "位",
+    "线",
+    "面",
+    "体",
+    "点",
+    "段",
+    "区",
+    "层",
+    "序",
+    "率",
+    "幅",
+    "频",
+    "谱",
+    "波",
+    "峰",
+    "谷",
+    "阶",
+    "弧",
+    "隙",
+    "耗",
+    "散",
+    "增益",
+    "带宽",
 }
 
 #: 纯标题类词（只有这些词构成的「知识点」是标题而非知识点）
 _TITLE_WORDS = re.compile(
     r"^(第[一二三四五六七八九十\d]+[章节篇讲]|[一二三四五六七八九十]+、|"
     r"知识点|考点|重点|难点|例题|习题|小结|总结|概述|引言|绪论|目录|"
-    r"前言|附录|参考文献|习题答案|答案|解析)$")
+    r"前言|附录|参考文献|习题答案|答案|解析)$"
+)
 
 
 def is_noise_name(name: str) -> bool:
@@ -228,12 +289,11 @@ def desc_is_substantive(desc: str, name: str) -> bool:
     if len(d) < MIN_DESC_CHARS:
         return False
     if not _RE_CJK.search(d) and not _RE_LATIN.search(d):
-        return False   # 无中文也无成词拉丁字母 → 多为公式/乱码
+        return False  # 无中文也无成词拉丁字母 → 多为公式/乱码
     # 释义 = 名称（可带标点）的复读 → 无实质信息
     core = re.sub(r"[\s\W]", "", name or "")
     body = re.sub(r"[\s\W]", "", d)
-    if core and body and (core == body or body.startswith(core)
-                          and len(body) - len(core) < 12):
+    if core and body and (core == body or (body.startswith(core) and len(body) - len(core) < 12)):
         return False
     return True
 
@@ -278,28 +338,94 @@ def sanitize_chapter(chapter: str, fallback: str = "") -> str:
 #: 模型会当成知识点抽出来（实测抓到「数字课程资源」「课程有效期」
 #!「自测题和参考答案」「拓展阅读资料」「硬件限制」）。必须拦掉。
 _BOILERPLATE_PATTERNS = (
-    "数字课程", "课程资源", "课程有效期", "配套课程", "学习网站", "配套资源",
-    "扫描全能王", "CamScanner", "仅供学习", "请勿传播", "内部资料", "盗版必究",
-    "二维码", "扫一扫", "关注公众号", "点击查看", "配套答案", "答案速查",
-    "电子书", "在线阅读", "下载App", "app下载", "客服", "微信", "QQ群",
-    "Copyright", "版权所有", "未经许可", "出版社", "印刷厂", "ISBN",
-    "自测题", "参考答案", "拓展阅读", "拓展习题", "模拟试卷", "教学课件",
-    "扫码", "视频讲解", "PPT电子教案", "版权声明",
+    "数字课程",
+    "课程资源",
+    "课程有效期",
+    "配套课程",
+    "学习网站",
+    "配套资源",
+    "扫描全能王",
+    "CamScanner",
+    "仅供学习",
+    "请勿传播",
+    "内部资料",
+    "盗版必究",
+    "二维码",
+    "扫一扫",
+    "关注公众号",
+    "点击查看",
+    "配套答案",
+    "答案速查",
+    "电子书",
+    "在线阅读",
+    "下载App",
+    "app下载",
+    "客服",
+    "微信",
+    "QQ群",
+    "Copyright",
+    "版权所有",
+    "未经许可",
+    "出版社",
+    "印刷厂",
+    "ISBN",
+    "自测题",
+    "参考答案",
+    "拓展阅读",
+    "拓展习题",
+    "模拟试卷",
+    "教学课件",
+    "扫码",
+    "视频讲解",
+    "PPT电子教案",
+    "版权声明",
     # —— 数字教材前言里的「阅读器/终端限制」说明（实测抽到「硬件限制」）——
-    "硬件限制", "手机端", "手机阅读", "无法在手机", "请按提示", "电脑访问",
-    "浏览器", "最佳阅读", "推荐使用", "阅读进度", "书签功能", "字体大小",
+    "硬件限制",
+    "手机端",
+    "手机阅读",
+    "无法在手机",
+    "请按提示",
+    "电脑访问",
+    "浏览器",
+    "最佳阅读",
+    "推荐使用",
+    "阅读进度",
+    "书签功能",
+    "字体大小",
 )
 
 
 #: **泛化元词** —— 不是知识点本身，而是「讲述知识点的套路」。
 #: 实测抓到：把线性表合并算法的具体步骤归纳成「算法描述」。
 #: 这类词做知识点毫无复习价值。
-_GENERIC_META_TERMS = frozenset({
-    "算法描述", "算法步骤", "算法思想", "解题思路", "解题步骤", "分析过程",
-    "详细说明", "具体步骤", "实现方法", "实现步骤", "过程描述", "步骤如下",
-    "本章小结", "知识梳理", "内容概述", "问题分析", "案例分析",
-    "算法分析", "算法实现", "方法说明", "结论", "总结", "概述", "简介",
-})
+_GENERIC_META_TERMS = frozenset(
+    {
+        "算法描述",
+        "算法步骤",
+        "算法思想",
+        "解题思路",
+        "解题步骤",
+        "分析过程",
+        "详细说明",
+        "具体步骤",
+        "实现方法",
+        "实现步骤",
+        "过程描述",
+        "步骤如下",
+        "本章小结",
+        "知识梳理",
+        "内容概述",
+        "问题分析",
+        "案例分析",
+        "算法分析",
+        "算法实现",
+        "方法说明",
+        "结论",
+        "总结",
+        "概述",
+        "简介",
+    }
+)
 
 
 def name_is_generic(name: str) -> bool:
@@ -310,8 +436,7 @@ def name_is_generic(name: str) -> bool:
     if n in _GENERIC_META_TERMS:
         return True
     # 「XX算法描述」「XX的具体步骤」这类后缀也算泛化
-    for suffix in ("算法描述", "算法步骤", "算法思想", "具体步骤", "实现步骤",
-                   "步骤如下", "详细说明"):
+    for suffix in ("算法描述", "算法步骤", "算法思想", "具体步骤", "实现步骤", "步骤如下", "详细说明"):
         if n.endswith(suffix):
             return True
     return False
@@ -339,7 +464,7 @@ def _bigrams(s: str) -> Set[str]:
     t = re.sub(r"[\s\W_]+", "", (s or "").lower())
     if len(t) < 2:
         return {t} if t else set()
-    return {t[i:i + 2] for i in range(len(t) - 1)}
+    return {t[i : i + 2] for i in range(len(t) - 1)}
 
 
 def jaccard(a: Set[str], b: Set[str]) -> float:
@@ -350,9 +475,15 @@ def jaccard(a: Set[str], b: Set[str]) -> float:
     return inter / float(len(a) + len(b) - inter)
 
 
-def is_near_duplicate(name: str, desc: str, seen_names: Dict[str, str],
-                      seen_grams: List[Set[str]], *, sim_thresh: float = 0.82,
-                      name_prefix_thresh: int = 6) -> bool:
+def is_near_duplicate(
+    name: str,
+    desc: str,
+    seen_names: Dict[str, str],
+    seen_grams: List[Set[str]],
+    *,
+    sim_thresh: float = 0.82,
+    name_prefix_thresh: int = 6,
+) -> bool:
     """近似重复判定（比纯名称去重更严）。
 
     实测踩到的坑：同一段正文里模型会吐出两条名字完全一样的知识点，
@@ -371,8 +502,7 @@ def is_near_duplicate(name: str, desc: str, seen_names: Dict[str, str],
     # 1) 名称前缀包含（限长度，避免「数」这类单字误伤）
     if len(key) >= name_prefix_thresh:
         for other in seen_names:
-            if abs(len(other) - len(key)) <= 12 and (
-                    other.startswith(key) or key.startswith(other)):
+            if abs(len(other) - len(key)) <= 12 and (other.startswith(key) or key.startswith(other)):
                 return True
     # 2) 释义近似重复
     g = _bigrams(desc)
@@ -396,14 +526,12 @@ def _core_subjects() -> Tuple[str, ...]:
         return ("数字电子技术", "模拟电子技术", "数学", "英语", "政治", "真题综合")
 
 
-def _keyword_subject(file_name: str, chunk_text: str,
-                     doc_subject: str = "") -> Tuple[str, bool]:
+def _keyword_subject(file_name: str, chunk_text: str, doc_subject: str = "") -> Tuple[str, bool]:
     """关键词推断路：文件名 + 块正文 → (学科, 高置信)。"""
     try:
         from services.kb_service import classify_subject_confidence
 
-        subj, confident = classify_subject_confidence(
-            file_name, chunk_text or "")
+        subj, confident = classify_subject_confidence(file_name, chunk_text or "")
         return subj, bool(confident)
     except Exception:  # noqa: BLE001
         return (doc_subject or ""), False
@@ -415,10 +543,23 @@ def _keyword_subject(file_name: str, chunk_text: str,
 #: `"模电" in "数模电"` 成立 → `"数模电"` 会被静默归一成 `模拟电子技术`。
 #: 一旦入库，数字电子技术的知识点就被挂到模拟电子技术名下，整条匹配链路错位。
 #: 所以模型给出这类标签时**不猜**，直接判为非法，交由关键词路/兜底决定。
-_FLATTENED_LABELS = frozenset({
-    "数模电", "数电模电", "模电数电", "电类", "电子类", "电子技术",
-    "公共课", "公共基础课", "统考", "全部", "综合", "其他", "其它",
-})
+_FLATTENED_LABELS = frozenset(
+    {
+        "数模电",
+        "数电模电",
+        "模电数电",
+        "电类",
+        "电子类",
+        "电子技术",
+        "公共课",
+        "公共基础课",
+        "统考",
+        "全部",
+        "综合",
+        "其他",
+        "其它",
+    }
+)
 
 
 def _model_subject(raw: str) -> str:
@@ -429,7 +570,7 @@ def _model_subject(raw: str) -> str:
     if not s:
         return ""
     if s in _FLATTENED_LABELS:
-        return ""      # 压平标签 → 判非法，不走 normalize（防子串误归一）
+        return ""  # 压平标签 → 判非法，不走 normalize（防子串误归一）
     std = normalize_subject(s)
     return std if std in _core_subjects() else ""
 
@@ -438,6 +579,7 @@ def _model_subject(raw: str) -> str:
 #: `其他` 在 `ALL_SUBJECTS` 里（枚举兜底值），若当学科用会导致
 #: 文档学科=其他 时把知识点全锁成「其他」（实测踩到）。
 _VACUOUS_SUBJECTS = frozenset({"其他", "其它", "未知", "未分类", "综合", "none", "null"})
+
 
 #: 文档学科锁白名单 —— **叶子级真学科**，独立于 `ALL_SUBJECTS`。
 #: 原因：`ALL_SUBJECTS` 混入了 408 的二级学科（数据结构/操作系统/计算机网络/
@@ -471,8 +613,7 @@ def _is_known_subject(name: str) -> bool:
     return n in DOC_LOCK_ALLOWLIST
 
 
-def resolve_subject(model_subject: str, kw_subject: str,
-                    kw_confident: bool, doc_subject: str) -> Tuple[str, str]:
+def resolve_subject(model_subject: str, kw_subject: str, kw_confident: bool, doc_subject: str) -> Tuple[str, str]:
     """合并双路判定结果 → `(最终学科, 判定来源留痕)`。
 
     规则（不一致时以模型为准，但要留痕）：
@@ -522,8 +663,7 @@ def _build_opener() -> urllib.request.OpenerDirector:
 _OPENER = _build_opener()
 
 
-def _chat_local(messages: Sequence[Dict[str, str]], *, timeout: float,
-                temperature: float = 0.2) -> str:
+def _chat_local(messages: Sequence[Dict[str, str]], *, timeout: float, temperature: float = 0.2) -> str:
     """同步调用本地模型，返回文本。
 
     走 `urllib` 而不是 `services.ai_service.AIService`（后者是 async）——
@@ -595,10 +735,15 @@ def _build_prompt(chunk_text: str, heading: str, file_name: str) -> str:
     )
 
 
-def _extract_from_chunk(chunk: Dict[str, Any], *, file_name: str,
-                        doc_subject: str, doc_chapter: str,
-                        doc_id: Optional[int],
-                        chunk_row_id: Optional[int]) -> Dict[str, Any]:
+def _extract_from_chunk(
+    chunk: Dict[str, Any],
+    *,
+    file_name: str,
+    doc_subject: str,
+    doc_chapter: str,
+    doc_id: Optional[int],
+    chunk_row_id: Optional[int],
+) -> Dict[str, Any]:
     """对单个 chunk 调模型并做质量门禁。
 
     Returns: `{items, dropped, failed, error}`；`items` 已过门禁但**未**去重
@@ -648,13 +793,12 @@ def _extract_from_chunk(chunk: Dict[str, Any], *, file_name: str,
         if not desc_is_substantive(desc, name):
             stat["dropped"] += 1
             continue
-        #宣传/版权页噪声（教材前言、数字课程说明）
+        # 宣传/版权页噪声（教材前言、数字课程说明）
         if is_boilerplate(name, desc, chapter_raw):
             stat["dropped"] += 1
             continue
 
-        subject, subject_source = resolve_subject(
-            d.get("subject") or "", kw_subject, kw_confident, doc_subject)
+        subject, subject_source = resolve_subject(d.get("subject") or "", kw_subject, kw_confident, doc_subject)
         try:
             freq = int(d.get("exam_frequency", 3))
         except (TypeError, ValueError):
@@ -662,18 +806,20 @@ def _extract_from_chunk(chunk: Dict[str, Any], *, file_name: str,
 
         # 章节兜底链：模型给的章 → 块标题 → 文档级章节（逐级过天书门禁）
         chapter = sanitize_chapter(chapter_raw, doc_chapter)
-        stat["items"].append({
-            "name": name[:300],
-            "description": desc[:2000],
-            "subject": subject,
-            "subject_source": subject_source,
-            "chapter": chapter,
-            "exam_frequency": min(5, max(1, freq)),
-            "document_id": doc_id,
-            "source_chunk_id": chunk_row_id,
-            "source_chunk_index": chunk.get("index"),
-            "extract_source": "smart_ingest",
-        })
+        stat["items"].append(
+            {
+                "name": name[:300],
+                "description": desc[:2000],
+                "subject": subject,
+                "subject_source": subject_source,
+                "chapter": chapter,
+                "exam_frequency": min(5, max(1, freq)),
+                "document_id": doc_id,
+                "source_chunk_id": chunk_row_id,
+                "source_chunk_index": chunk.get("index"),
+                "extract_source": "smart_ingest",
+            }
+        )
     return stat
 
 
@@ -691,10 +837,7 @@ def ensure_kp_trace_columns(db) -> List[str]:
     """
     added: List[str] = []
     try:
-        inspector_cols = {
-            c["name"] for c in sqlalchemy.inspect(db).get_columns(
-                "knowledge_points")
-        }
+        inspector_cols = {c["name"] for c in sqlalchemy.inspect(db).get_columns("knowledge_points")}
     except Exception:  # noqa: BLE001
         inspector_cols = set()
     for col, ddl in KP_TRACE_COLUMNS:
@@ -733,8 +876,7 @@ def _norm_for_match(s: str) -> str:
     return re.sub(r"[\s\W_]+", "", (s or "").lower())
 
 
-def _map_chunks_to_rows(db, doc_id: int,
-                        chunks: Sequence[Dict[str, Any]]) -> Dict[int, int]:
+def _map_chunks_to_rows(db, doc_id: int, chunks: Sequence[Dict[str, Any]]) -> Dict[int, int]:
     """把分析块映射到 `knowledge_chunks` 行 id（按内容匹配，非下标）。
 
     `smart_chunk_text` 与 `kb_service.chunk_text` 是两套分段，直接按下标对齐会
@@ -747,9 +889,8 @@ def _map_chunks_to_rows(db, doc_id: int,
     out_map: Dict[int, int] = {}
     try:
         rows = db.execute(
-            sql_text("SELECT id, text FROM knowledge_chunks "
-                     "WHERE document_id=:d ORDER BY id"),
-            {"d": doc_id}).fetchall()
+            sql_text("SELECT id, text FROM knowledge_chunks WHERE document_id=:d ORDER BY id"), {"d": doc_id}
+        ).fetchall()
     except Exception as e:  # noqa: BLE001
         logger.warning("读取 knowledge_chunks 失败（溯源降级为仅 chunk_index）: %s", e)
         return out_map
@@ -764,7 +905,7 @@ def _map_chunks_to_rows(db, doc_id: int,
             continue
         # 取中段120 字作指纹（避开块首尾的章节标题与重叠区）
         mid = len(body) // 2
-        fingerprint = body[max(0, mid - 60): mid + 60]
+        fingerprint = body[max(0, mid - 60) : mid + 60]
         if len(fingerprint) < 40:
             fingerprint = body[:120]
         for rid, ntext in norm_rows:
@@ -773,8 +914,7 @@ def _map_chunks_to_rows(db, doc_id: int,
                 break
     if chunks:
         hit = sum(1 for c in chunks if int(c.get("index", -1)) in out_map)
-        logger.info("溯源映射: %d/%d 块命中 knowledge_chunks 行",
-                    hit, len(chunks))
+        logger.info("溯源映射: %d/%d 块命中 knowledge_chunks 行", hit, len(chunks))
     return out_map
 
 
@@ -815,10 +955,19 @@ def extract_kps_for_document(
     """
     t0 = time.time()
     out: Dict[str, Any] = {
-        "enabled": KP_EXTRACT_ENABLED, "skipped": False, "reason": "",
-        "chunks": 0, "chunks_total": 0,
-        "extracted": 0, "kept": 0, "dropped": 0, "failed": 0,
-        "errors": [], "subject_mix": {}, "seconds": 0.0, "sample": [],
+        "enabled": KP_EXTRACT_ENABLED,
+        "skipped": False,
+        "reason": "",
+        "chunks": 0,
+        "chunks_total": 0,
+        "extracted": 0,
+        "kept": 0,
+        "dropped": 0,
+        "failed": 0,
+        "errors": [],
+        "subject_mix": {},
+        "seconds": 0.0,
+        "sample": [],
     }
     if not KP_EXTRACT_ENABLED:
         out["skipped"], out["reason"] = True, "SMART_INGEST_KP=0 已关闭"
@@ -854,7 +1003,7 @@ def extract_kps_for_document(
     ensure_kp_trace_columns(db)
 
     # ---- 建立「分析块 → knowledge_chunks 行」的映射 ----
-    #⚠️ 不能按下标对齐：`smart_chunk_text`（按章节标题切，3000字）与
+    # ⚠️ 不能按下标对齐：`smart_chunk_text`（按章节标题切，3000字）与
     # `kb_service.chunk_text`（按段落切，600字）是**两套不同的分段**，
     # 下标第 i 个根本不对应。必须按**文本内容**匹配，否则溯源指到无关原文。
     row_ids = _map_chunks_to_rows(db, doc_id, chunks)
@@ -864,14 +1013,13 @@ def extract_kps_for_document(
     # 跨文档只按名称去重，近似重复只在本文档范围内判定）。
     seen: Dict[str, str] = {}
     try:
-        for (nm,) in db.execute(
-                sql_text("SELECT name FROM knowledge_points")).fetchall():
+        for (nm,) in db.execute(sql_text("SELECT name FROM knowledge_points")).fetchall():
             k = normalize_name_key(nm)
             if k:
                 seen[k] = nm
     except Exception as e:  # noqa: BLE001
         logger.warning("读取已有知识点名失败（本次仅做文档内去重）: %s", e)
-    for nm in (extra_existing_names or ()):
+    for nm in extra_existing_names or ():
         k = normalize_name_key(nm)
         if k:
             seen.setdefault(k, nm)
@@ -883,18 +1031,23 @@ def extract_kps_for_document(
     collected: List[Dict[str, Any]] = []
     per_chunk: List[Dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(workers, len(chunks))) as pool:
-        futs = [pool.submit(
-            _extract_from_chunk, ch,
-            file_name=file_name, doc_subject=doc_subject, doc_chapter=chapter,
-            doc_id=doc_id,
-            chunk_row_id=row_ids.get(int(ch.get("index", -1))),
-        ) for ch in chunks]
+        futs = [
+            pool.submit(
+                _extract_from_chunk,
+                ch,
+                file_name=file_name,
+                doc_subject=doc_subject,
+                doc_chapter=chapter,
+                doc_id=doc_id,
+                chunk_row_id=row_ids.get(int(ch.get("index", -1))),
+            )
+            for ch in chunks
+        ]
         for fu in futs:
             try:
                 per_chunk.append(fu.result())
             except Exception as e:  # noqa: BLE001
-                per_chunk.append({"items": [], "dropped": 0, "failed": 1,
-                                  "error": f"{type(e).__name__}: {e}"[:200]})
+                per_chunk.append({"items": [], "dropped": 0, "failed": 1, "error": f"{type(e).__name__}: {e}"[:200]})
 
     # ---- 汇总 + 跨 chunk 去重（含近似重复）+ 落库 ----
     from models import KnowledgePoint
@@ -914,7 +1067,7 @@ def extract_kps_for_document(
             if not key:
                 out["dropped"] += 1
                 continue
-            #近似重复：同名 / 名前缀包含 / 释义高度重叠
+            # 近似重复：同名 / 名前缀包含 / 释义高度重叠
             if is_near_duplicate(it["name"], it["description"], seen, kept_grams):
                 out["dropped"] += 1
                 continue
@@ -931,14 +1084,16 @@ def extract_kps_for_document(
             db.commit()
             out["kept"] = len(collected)
             out["sample"] = [
-                {"name": it["name"][:40], "subject": it["subject"],
-                 "subject_source": it["subject_source"],
-                 "chapter": it["chapter"][:40]}
+                {
+                    "name": it["name"][:40],
+                    "subject": it["subject"],
+                    "subject_source": it["subject_source"],
+                    "chapter": it["chapter"][:40],
+                }
                 for it in collected[:5]
             ]
             for it in collected:
-                out["subject_mix"][it["subject"]] = \
-                    out["subject_mix"].get(it["subject"], 0) + 1
+                out["subject_mix"][it["subject"]] = out["subject_mix"].get(it["subject"], 0) + 1
         except Exception as e:  # noqa: BLE001
             try:
                 db.rollback()
@@ -950,7 +1105,14 @@ def extract_kps_for_document(
     out["seconds"] = round(time.time() - t0, 1)
     logger.info(
         "KP抽取 doc#%s《%s》块=%d 抽=%d 留=%d 丢弃=%d 失败=%d 学科=%s %.1fs",
-        doc_id, (file_name or "")[:40], out["chunks"], out["extracted"],
-        out["kept"], out["dropped"], out["failed"], out["subject_mix"],
-        out["seconds"])
+        doc_id,
+        (file_name or "")[:40],
+        out["chunks"],
+        out["extracted"],
+        out["kept"],
+        out["dropped"],
+        out["failed"],
+        out["subject_mix"],
+        out["seconds"],
+    )
     return out

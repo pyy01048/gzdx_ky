@@ -27,6 +27,7 @@
     D:/Anaconda/python.exe scripts/fix_error_review_schedule.py            # dry-run，只报告
     D:/Anaconda/python.exe scripts/fix_error_review_schedule.py --apply    # 先备份后修复
 """
+
 from __future__ import annotations
 
 import argparse
@@ -129,14 +130,17 @@ def _report_legacy(conn, now: datetime.datetime) -> None:
         (now.strftime(_FMT),),
     ).fetchone()[0]
     if n:
-        print(f"\n附带发现（仅报告，不修改）: {n} 条 active 错题从未复习但已到期/逾期"
-              f"（旧『入册 +20 分钟』首排程的产物，代码修复后新错题不再如此）。")
+        print(
+            f"\n附带发现（仅报告，不修改）: {n} 条 active 错题从未复习但已到期/逾期"
+            f"（旧『入册 +20 分钟』首排程的产物，代码修复后新错题不再如此）。"
+        )
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="存量错题 next_review 缺失一次性修复（默认 dry-run）")
-    ap.add_argument("--apply", action="store_true",
-                    help="实际执行修复（先经 src.backup() API 备份真库）；不加则只做 dry-run 报告")
+    ap.add_argument(
+        "--apply", action="store_true", help="实际执行修复（先经 src.backup() API 备份真库）；不加则只做 dry-run 报告"
+    )
     args = ap.parse_args()
 
     now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)  # naive UTC，与 DB 列同语义

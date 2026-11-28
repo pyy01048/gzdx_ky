@@ -9,17 +9,17 @@ from typing import Any
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from database import SessionLocal
-from models import NetdiskFile, PlatformConfig
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
 
+from models import NetdiskFile, PlatformConfig
 from services.review_scheduler import ReviewScheduler
 
 logger = logging.getLogger("kaoyan.scheduler")
 
 # --------------------------------------------------------------------------- #
-#时区（Windows 关键修复）
+# 时区（Windows 关键修复）
 # --------------------------------------------------------------------------- #
-#历史坑：Windows 上若缺少 tzdata 包，APScheduler 用字符串 "Asia/Shanghai" 构造
+# 历史坑：Windows 上若缺少 tzdata 包，APScheduler 用字符串 "Asia/Shanghai" 构造
 # 调度器会抛/静默失败：
 #     No time zone found with key Asia/Shanghai
 # 结果是 **定时任务根本没注册**，日志却什么都看不到（静默失败）。
@@ -93,11 +93,7 @@ def _review_reminder_job() -> None:
 def _netdisk_sync_job() -> None:
     db = SessionLocal()
     try:
-        cfg = (
-            db.query(PlatformConfig)
-            .filter(PlatformConfig.platform_name == "baidu_netdisk")
-            .first()
-        )
+        cfg = db.query(PlatformConfig).filter(PlatformConfig.platform_name == "baidu_netdisk").first()
         if not cfg or not cfg.sync_enabled or not cfg.token:
             logger.info("网盘同步跳过：未启用或无 token")
             return
@@ -111,11 +107,7 @@ def _netdisk_sync_job() -> None:
             synced = 0
             for f in files:
                 fs_id = str(f.get("fs_id", ""))
-                existing = (
-                    db.query(NetdiskFile).filter(NetdiskFile.fs_id == fs_id).first()
-                    if fs_id
-                    else None
-                )
+                existing = db.query(NetdiskFile).filter(NetdiskFile.fs_id == fs_id).first() if fs_id else None
                 file_data = {
                     "file_name": f.get("server_filename", f.get("filename", "")),
                     "path": f.get("path", ""),
@@ -171,9 +163,7 @@ def _completion_selfcheck_job() -> None:
         # 1. 文档索引率（documents.index_status = 'indexed'）
         doc_total = db.query(Document).count()
         doc_indexed = (
-            db.query(Document)
-            .filter(Document.index_status == "indexed")
-            .count()
+            db.query(Document).filter(Document.index_status == "indexed").count()
             if hasattr(Document, "index_status")
             else doc_total
         )
@@ -197,12 +187,7 @@ def _completion_selfcheck_job() -> None:
             if vec_table is None:
                 # 非 PG 环境（SQLite）：直接尝试旧表名
                 vec_table = "knowledge_chunks_vec"
-            vec_total = (
-                db.execute(
-                    text(f'SELECT COUNT(*) FROM "{vec_table}"')
-                ).scalar()
-                or 0
-            )
+            vec_total = db.execute(text(f'SELECT COUNT(*) FROM "{vec_table}"')).scalar() or 0
         except Exception:
             db.rollback()  # 事务可能已 aborted，先恢复再继续
             vec_total = 0
@@ -213,14 +198,7 @@ def _completion_selfcheck_job() -> None:
         error_total = db.query(ErrorRecord).count()
         linked_total = 0
         try:
-            linked_total = (
-                db.execute(
-                    text(
-                        "SELECT COUNT(DISTINCT error_id) FROM error_knowledge_links"
-                    )
-                ).scalar()
-                or 0
-            )
+            linked_total = db.execute(text("SELECT COUNT(DISTINCT error_id) FROM error_knowledge_links")).scalar() or 0
         except Exception:
             db.rollback()  # 事务可能已 aborted，先恢复再继续
             linked_total = 0
@@ -228,10 +206,7 @@ def _completion_selfcheck_job() -> None:
         # 4. 题库解析率（quiz_questions.analysis 非空）
         quiz_total = db.query(QuizQuestion).count()
         quiz_analysis = (
-            db.query(QuizQuestion)
-            .filter(QuizQuestion.analysis.isnot(None))
-            .filter(QuizQuestion.analysis != "")
-            .count()
+            db.query(QuizQuestion).filter(QuizQuestion.analysis.isnot(None)).filter(QuizQuestion.analysis != "").count()
         )
 
         def _pct(n: int, d: int) -> float:
@@ -380,7 +355,7 @@ def start_scheduler():
         replace_existing=True,
         misfire_grace_time=3600,
     )
-# T5 择校数据采集：每周一 06:00（轻量增量：国家线+公告）
+    # T5 择校数据采集：每周一 06:00（轻量增量：国家线+公告）
     scheduler.add_job(
         _kaoyan_collect_job,
         CronTrigger(day_of_week="mon", hour=6, minute=0, timezone=_SHANGHAI_TZ),

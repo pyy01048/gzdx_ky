@@ -120,6 +120,11 @@ def test_low_mastery_keeps_user_scoped_three_states(memory_db, monkeypatch):
         return {learning.id, mastered.id}
 
     monkeypatch.setattr(kp_mastery, "learned_kp_ids", learned)
+    monkeypatch.setattr(
+        kp_mastery,
+        "user_mastery",
+        lambda _session, user_id: {learning.id: 10, mastered.id: 90},
+    )
     user = SimpleNamespace(id=7)
     result = _list(db, user=user, low_mastery=True)
     assert seen_user_ids == [7]

@@ -2,6 +2,7 @@
 V3.0 本地存储库管理路由
 提供存储库扫描、文件入库、统计等API接口。
 """
+
 from database import get_db
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -43,11 +44,7 @@ def scan_storage(force: bool = False, db: Session = Depends(get_db)):
 
 
 @router.post("/ingest")
-def ingest_files(
-    req: IngestRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
-):
+def ingest_files(req: IngestRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     批量入库新文件或变更文件。
     如果文件较多，会在后台任务中执行。
@@ -59,8 +56,8 @@ def ingest_files(
     # 如果指定了单个文件，先扫描找到它
     if req.file_path:
         scan_result = watcher.scan_storage(force=req.force)
-        all_files = scan_result.get('new_files_list', []) + scan_result.get('modified_files_list', [])
-        target = next((f for f in all_files if f['path'] == req.file_path or f['relative_path'] == req.file_path), None)
+        all_files = scan_result.get("new_files_list", []) + scan_result.get("modified_files_list", [])
+        target = next((f for f in all_files if f["path"] == req.file_path or f["relative_path"] == req.file_path), None)
         if not target:
             raise HTTPException(status_code=404, detail=f"未找到文件: {req.file_path}")
         return watcher.ingest_file(target)

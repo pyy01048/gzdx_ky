@@ -27,6 +27,7 @@ A7 真题双引擎（services/exam_engine.py）
   search_with_exam(db, query, query_vec, limit, subject)
                                    —— 与 search_service 三路 RRF 融合（exam K=20）
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,28 +69,42 @@ def resolve_index_file() -> Optional[Path]:
     cands.append(_DEFAULT_INDEX_DIR / "index.pkl")
     return next((p for p in cands if p.is_file()), None)
 
+
 SUBJECTS = ["math2", "english1", "english2", "politics"]
 SUBJECT_ALIAS = {
-    "数学": "math2", "数二": "math2", "数2": "math2", "数学二": "math2",
-    "数一": "math1", "数学一": "math1", "数三": "math3", "数学三": "math3",
-    "英语": "english1", "英语一": "english1", "英一": "english1", "英二": "english2",
+    "数学": "math2",
+    "数二": "math2",
+    "数2": "math2",
+    "数学二": "math2",
+    "数一": "math1",
+    "数学一": "math1",
+    "数三": "math3",
+    "数学三": "math3",
+    "英语": "english1",
+    "英语一": "english1",
+    "英一": "english1",
+    "英二": "english2",
     "英语二": "english2",
-    "政治": "politics", "马原": "politics", "毛中特": "politics",
-    "math2": "math2", "math1": "math1", "math3": "math3",
-    "english1": "english1", "english2": "english2", "politics": "politics",
+    "政治": "politics",
+    "马原": "politics",
+    "毛中特": "politics",
+    "math2": "math2",
+    "math1": "math1",
+    "math3": "math3",
+    "english1": "english1",
+    "english2": "english2",
+    "politics": "politics",
 }
 
 IDF_K1 = 1.2
 IDF_B = 0.75
 DEFAULT_K = 5
 MAX_K = 20
-RRF_K_EXAM = 20          # exam lane 用 K=20：权重 1/21 ≈ 2.9 倍于 K=60
+RRF_K_EXAM = 20  # exam lane 用 K=20：权重 1/21 ≈ 2.9 倍于 K=60
 EXAM_LANE_BASE = -300000  # 负 ID 区分第 4 路
 
 _YEAR_RE = re.compile(r"(?:19|20)\d{2}")
-_OCR_WEIRD_RE = re.compile(
-    r"[^\u4e00-\u9fffA-Za-z0-9=+*/\-−()（）,，.。:：;；'\"_【】〖〗\[\]{}、？！？%√∞πλθμ∑∫≤≥]"
-)
+_OCR_WEIRD_RE = re.compile(r"[^\u4e00-\u9fffA-Za-z0-9=+*/\-−()（）,，.。:：;；'\"_【】〖〗\[\]{}、？！？%√∞πλθμ∑∫≤≥]")
 
 # 考点中英等价映射（OCR 题面常丢失中文考点词、仅保留数学符号）
 _ALIAS_MAP = {
@@ -123,7 +138,7 @@ def char_ngrams(text: Any, n: int = 2) -> set:
     text = norm_text(text)
     if len(text) < n:
         return {text} if text else set()
-    return {text[i:i + n] for i in range(len(text) - n + 1)}
+    return {text[i : i + n] for i in range(len(text) - n + 1)}
 
 
 def ocr_noise_ratio(stem: Any) -> float:
@@ -195,7 +210,9 @@ class ExamIndex:
         logger.warning(
             "真题索引缺失，第 4 路检索缺席。期望位置：%s（文件）/ %s（目录）/ %s；"
             "构建好 index.pkl 后用 KAOYAN_EXAM_INDEX 指过来即可。",
-            INDEX_FILE_ENV, INDEX_DIR_ENV, _DEFAULT_INDEX_DIR / "index.pkl",
+            INDEX_FILE_ENV,
+            INDEX_DIR_ENV,
+            _DEFAULT_INDEX_DIR / "index.pkl",
         )
 
     # ---- 工具 ----
@@ -204,6 +221,7 @@ class ExamIndex:
         if isinstance(q, str):
             try:
                 import ast
+
                 q = ast.literal_eval(q)
             except Exception:
                 q = {}
@@ -387,14 +405,16 @@ class ExamIndex:
         variants = []
         try:
             vlist = self.find_variants(doc_id, k=3)
-            for did, jac, score, hits_n in vlist:
-                variants.append({
-                    "doc_id": did,
-                    "similarity": round(jac, 4),
-                    "question": self.format_question(did, with_answer=True),
-                    "subject": self._q(did).get("subject"),
-                    "year": self._q(did).get("year"),
-                })
+            for did, jac, _score, _hits_n in vlist:
+                variants.append(
+                    {
+                        "doc_id": did,
+                        "similarity": round(jac, 4),
+                        "question": self.format_question(did, with_answer=True),
+                        "subject": self._q(did).get("subject"),
+                        "year": self._q(did).get("year"),
+                    }
+                )
         except Exception as e:  # 变式题失败不影响主结果
             logger.warning("find_variants(%s) 失败: %s", doc_id, e)
         return {
@@ -480,7 +500,7 @@ def search_with_exam(
     # 取详情（base 结果直接映射；exam 用负 ID 区分）
     base_by_id = {i + 1: r for i, r in enumerate(base)}
     results: List[Dict[str, Any]] = []
-    for cid, _score in fused_sorted[:limit * 2]:
+    for cid, _score in fused_sorted[: limit * 2]:
         if cid <= 0:  # exam lane（负 ID，cid = EXAM_LANE_BASE - doc_id）
             doc_id = EXAM_LANE_BASE - cid
             det = get_exam_index().question_detail(doc_id)

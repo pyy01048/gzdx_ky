@@ -42,6 +42,7 @@
     python scripts/expand_knowledge_points.py --apply         # 写库（先自动备份）
     python scripts/expand_knowledge_points.py --apply --backfill-count  # 写库并回填题数
 """
+
 from __future__ import annotations
 
 import argparse
@@ -85,11 +86,35 @@ SUBTOPIC_MAP: dict[str, dict[str, list[str]]] = {
     "计算机学科专业基础408": {
         "数据结构·线性表": ["顺序表", "单链表", "双链表", "循环链表", "静态链表"],
         "数据结构·栈队列与数组": ["栈", "队列", "循环队列", "双端队列", "特殊矩阵的压缩存储"],
-        "数据结构·树与二叉树": ["二叉树遍历", "线索二叉树", "树与森林的转换", "哈夫曼树与哈夫曼编码", "二叉排序树", "平衡二叉树", "并查集"],
+        "数据结构·树与二叉树": [
+            "二叉树遍历",
+            "线索二叉树",
+            "树与森林的转换",
+            "哈夫曼树与哈夫曼编码",
+            "二叉排序树",
+            "平衡二叉树",
+            "并查集",
+        ],
         "数据结构·图": ["图的存储结构", "图的遍历", "最小生成树", "最短路径", "拓扑排序", "关键路径"],
         "数据结构·查找": ["顺序查找", "折半查找", "分块查找", "B树与B+树", "散列表", "KMP算法"],
-        "数据结构·排序": ["插入排序", "希尔排序", "冒泡排序", "快速排序", "选择排序", "堆排序", "归并排序", "基数排序", "外部排序"],
-        "计算机组成原理·数据的表示和运算": ["定点数的表示与运算", "浮点数的表示与运算", "溢出判断", "ALU与加法器", "校验码"],
+        "数据结构·排序": [
+            "插入排序",
+            "希尔排序",
+            "冒泡排序",
+            "快速排序",
+            "选择排序",
+            "堆排序",
+            "归并排序",
+            "基数排序",
+            "外部排序",
+        ],
+        "计算机组成原理·数据的表示和运算": [
+            "定点数的表示与运算",
+            "浮点数的表示与运算",
+            "溢出判断",
+            "ALU与加法器",
+            "校验码",
+        ],
         "计算机组成原理·存储系统": ["Cache", "主存与存储芯片", "虚拟存储器", "磁盘与存储器层次结构"],
         "计算机组成原理·指令系统": ["指令格式", "寻址方式", "CISC与RISC", "指令流水线"],
         "计算机组成原理·中央处理器": ["CPU的功能与结构", "数据通路", "控制器", "异常与中断", "多处理器基础"],
@@ -99,16 +124,54 @@ SUBTOPIC_MAP: dict[str, dict[str, list[str]]] = {
         "操作系统·文件管理": ["文件逻辑结构", "文件物理结构", "目录结构", "文件共享与保护", "磁盘空间管理"],
         "操作系统·IO管理": ["IO软件层次结构", "缓冲区管理", "设备分配", "磁盘调度算法"],
         "计算机网络·体系结构": ["OSI参考模型", "TCP/IP模型", "性能指标"],
-        "计算机网络·物理层与数据链路层": ["编码与调制", "传输介质", "差错控制", "流量控制与可靠传输", "介质访问控制", "以太网与交换机", "组帧"],
+        "计算机网络·物理层与数据链路层": [
+            "编码与调制",
+            "传输介质",
+            "差错控制",
+            "流量控制与可靠传输",
+            "介质访问控制",
+            "以太网与交换机",
+            "组帧",
+        ],
         "计算机网络·网络层": ["IPv4", "子网划分与CIDR", "ARP", "ICMP", "路由算法", "RIP与OSPF", "IPv6", "NAT"],
         "计算机网络·传输层": ["UDP", "TCP连接管理", "TCP可靠传输", "TCP流量控制", "TCP拥塞控制"],
         "计算机网络·应用层": ["DNS", "HTTP", "FTP", "电子邮件", "DHCP"],
     },
     "政治": {
-        "马克思主义基本原理": ["唯物论", "辩证法", "认识论", "唯物史观", "资本主义本质", "垄断资本主义", "社会主义发展"],
-        "毛泽东思想和中国特色社会主义理论体系": ["毛泽东思想", "新民主主义革命理论", "社会主义改造理论", "邓小平理论", "三个代表重要思想", "科学发展观", "习近平新时代中国特色社会主义思想"],
-        "中国近现代史纲要": ["近代中国屈辱史", "旧民主主义革命", "新民主主义革命", "社会主义革命与建设", "改革开放与现代化建设"],
-        "思想道德与法治": ["人生观与价值观", "理想信念", "中国精神", "社会主义核心价值观", "道德修养", "法治素养", "宪法与法律体系"],
+        "马克思主义基本原理": [
+            "唯物论",
+            "辩证法",
+            "认识论",
+            "唯物史观",
+            "资本主义本质",
+            "垄断资本主义",
+            "社会主义发展",
+        ],
+        "毛泽东思想和中国特色社会主义理论体系": [
+            "毛泽东思想",
+            "新民主主义革命理论",
+            "社会主义改造理论",
+            "邓小平理论",
+            "三个代表重要思想",
+            "科学发展观",
+            "习近平新时代中国特色社会主义思想",
+        ],
+        "中国近现代史纲要": [
+            "近代中国屈辱史",
+            "旧民主主义革命",
+            "新民主主义革命",
+            "社会主义革命与建设",
+            "改革开放与现代化建设",
+        ],
+        "思想道德与法治": [
+            "人生观与价值观",
+            "理想信念",
+            "中国精神",
+            "社会主义核心价值观",
+            "道德修养",
+            "法治素养",
+            "宪法与法律体系",
+        ],
         "形势与政策": ["年度时事政治", "党和国家重大方针政策", "国际形势与外交"],
     },
     "信号与系统": {
@@ -178,6 +241,7 @@ def _strip_chapter_prefix(chapter: str) -> str:
     # 1) 复用项目现有归一（对齐大纲标准章名；无大纲时原样返回）
     try:
         from services.structure_parser import _normalize_chapter  # 延迟导入，避免启动期依赖
+
         normalized = _normalize_chapter(raw, "") or raw
     except Exception:
         normalized = raw
@@ -216,9 +280,7 @@ def _backup_db(con: sqlite3.Connection) -> str:
     """备份真库到 data/backups/，返回备份文件路径。"""
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_expand_kp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+    bak = os.path.join(bak_dir, f"kaoyan_pre_expand_kp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     return bak
@@ -242,9 +304,7 @@ def _load_kp_keys(cur: sqlite3.Cursor) -> dict[str, set[str]]:
 def _load_kp_counts(cur: sqlite3.Cursor) -> dict[str, int]:
     """加载现有知识点「科目 → 数量」，用于扩充前后对比。"""
     out: dict[str, int] = {}
-    for subject, cnt in cur.execute(
-        "SELECT subject, COUNT(*) FROM knowledge_points GROUP BY subject"
-    ):
+    for subject, cnt in cur.execute("SELECT subject, COUNT(*) FROM knowledge_points GROUP BY subject"):
         out[(subject or "").strip()] = cnt
     return out
 
@@ -332,12 +392,13 @@ def _build_candidates(
     # ---- 第 1 层：题目章节派生（主路径）----
     if 1 in layers:
         for subject in subjects:
-            for raw_chapter, cnt in sorted(
-                chapters.get(subject, {}).items(), key=lambda kv: -kv[1]
-            ):
+            for raw_chapter, cnt in sorted(chapters.get(subject, {}).items(), key=lambda kv: -kv[1]):
                 semantic = _strip_chapter_prefix(raw_chapter)
                 _add(
-                    subject, semantic, raw_chapter, "q_chapter",
+                    subject,
+                    semantic,
+                    raw_chapter,
+                    "q_chapter",
                     f"题目章节派生（{cnt} 题同章）",
                 )
 
@@ -345,11 +406,15 @@ def _build_candidates(
     if 2 in layers:
         try:
             from services import taxonomy  # 延迟导入
+
             for subject in subjects:
                 for std_chapter in taxonomy.chapters_of(subject):
                     semantic = _strip_chapter_prefix(std_chapter)
                     _add(
-                        subject, semantic, std_chapter, "syllabus",
+                        subject,
+                        semantic,
+                        std_chapter,
+                        "syllabus",
                         "大纲章节补全（syllabus）",
                     )
         except Exception as exc:  # 大纲不可用时优雅降级，不阻断第 1/3/4 层
@@ -358,9 +423,7 @@ def _build_candidates(
     # ---- 第 3 层：题目 knowledge_point 字段 ----
     if 3 in layers:
         for subject in subjects:
-            for kp_name, cnt in sorted(
-                q_kps.get(subject, {}).items(), key=lambda kv: -kv[1]
-            ):
+            for kp_name, cnt in sorted(q_kps.get(subject, {}).items(), key=lambda kv: -kv[1]):
                 _add(subject, kp_name, None, "q_kp", f"题目知识点字段（{cnt} 题）")
 
     # ---- 第 4 层：考点级细分（curated syllabus sub-points）----
@@ -373,7 +436,10 @@ def _build_candidates(
                 parent_name = _strip_chapter_prefix(std_chapter)
                 for st in subtopics:
                     _add(
-                        subject, st, std_chapter, "subtopic",
+                        subject,
+                        st,
+                        std_chapter,
+                        "subtopic",
                         f"考点级细分（{std_chapter}，标准考研大纲）",
                         parent_name=parent_name,
                     )
@@ -451,9 +517,7 @@ def _print_samples(plan: dict[str, list[dict]], sample: int) -> None:
     print(f"【抽查 {sample} 个新增知识点（供人工核验命名质量）】")
     print("=" * 78)
     # 优先展示重点科目
-    ordered = [s for s in FOCUS_SUBJECTS if s in plan] + [
-        s for s in plan if s not in FOCUS_SUBJECTS
-    ]
+    ordered = [s for s in FOCUS_SUBJECTS if s in plan] + [s for s in plan if s not in FOCUS_SUBJECTS]
     picked: list[dict] = []
     idx = 0
     while len(picked) < sample:
@@ -469,10 +533,7 @@ def _print_samples(plan: dict[str, list[dict]], sample: int) -> None:
             break
         idx += 1
     for i, it in enumerate(picked, 1):
-        print(
-            f"  {i:>2}. [{it['subject']}] name='{it['name']}'  "
-            f"chapter='{it['chapter']}'  来源={it['source']}"
-        )
+        print(f"  {i:>2}. [{it['subject']}] name='{it['name']}'  chapter='{it['chapter']}'  来源={it['source']}")
     if not picked:
         print("  （无新增）")
 
@@ -492,9 +553,7 @@ def _apply_inserts(cur: sqlite3.Cursor, plan: dict[str, list[dict]]) -> int:
         # 当前科目「归一化名 → id」映射（含已有 + 本批已插入）
         name_to_id: dict[str, int] = {
             _norm_key(n): i
-            for (n, i) in cur.execute(
-                "SELECT name, id FROM knowledge_points WHERE subject = ?", (subject,)
-            )
+            for (n, i) in cur.execute("SELECT name, id FROM knowledge_points WHERE subject = ?", (subject,))
         }
         for it in items:
             key = _norm_key(it["name"])
@@ -532,8 +591,7 @@ def _backfill_question_count(cur: sqlite3.Cursor) -> int:
     这是保守口径，避免与 M1-1 的关联回填口径冲突。
     """
     rows = cur.execute(
-        "SELECT id, subject, chapter FROM knowledge_points "
-        "WHERE chapter IS NOT NULL AND TRIM(chapter) != ''"
+        "SELECT id, subject, chapter FROM knowledge_points WHERE chapter IS NOT NULL AND TRIM(chapter) != ''"
     ).fetchall()
     updated = 0
     for kp_id, subject, chapter in rows:
@@ -623,9 +681,7 @@ def main() -> int:
 
     # ---- 扩充后各科分布（落库后复核）----
     print("\n【落库后各科知识点数】")
-    for subj, cnt in cur.execute(
-        "SELECT subject, COUNT(*) FROM knowledge_points GROUP BY subject ORDER BY 2 DESC"
-    ):
+    for subj, cnt in cur.execute("SELECT subject, COUNT(*) FROM knowledge_points GROUP BY subject ORDER BY 2 DESC"):
         print(f"  {(subj or ''):<26}{cnt:>6}")
 
     con.close()

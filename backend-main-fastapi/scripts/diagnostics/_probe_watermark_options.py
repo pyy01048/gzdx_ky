@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """只读实测：① 水印/广告污染在库里的真实占比 ② 题目选项数量分布 ③ 题图残留。"""
+
 import os
 import re
 import sqlite3
@@ -98,13 +99,17 @@ for w in weird[:6]:
 
 print()
 print("=== ④ 题干里混进图片的题（'题目识别的图'）===")
-for pat, label in [(r"!\[[^\]]*\]\([^)]*\)", "markdown 图"), (r"<img", "html img"),
-                   (r"微信图片_|Screenshot_|image_\d{4}", "截图文件名"), (r"data:image/", "base64 内嵌")]:
+for pat, label in [
+    (r"!\[[^\]]*\]\([^)]*\)", "markdown 图"),
+    (r"<img", "html img"),
+    (r"微信图片_|Screenshot_|image_\d{4}", "截图文件名"),
+    (r"data:image/", "base64 内嵌"),
+]:
     rx = re.compile(pat)
     n = sum(1 for (c,) in cur.execute("SELECT content FROM quiz_questions") if c and rx.search(c))
     n2 = sum(1 for (c,) in cur.execute("SELECT content FROM documents WHERE content IS NOT NULL") if c and rx.search(c))
     print(f"  {label:<14} 题目 {n:>5} 条 / 文档 {n2:>5} 篇")
-for tbl, col, pk in [("documents", "content", "id"), ("knowledge_chunks", "text", "id")]:
+for tbl, col, _pk in [("documents", "content", "id"), ("knowledge_chunks", "text", "id")]:
     rx = re.compile(r"!\[[^\]]*\]\([^)]*\)")
     n = cur.execute(f"SELECT count(*) FROM {tbl} WHERE {col} IS NOT NULL").fetchone()[0]
     hits = sum(1 for (c,) in cur.execute(f"SELECT {col} FROM {tbl} WHERE {col} IS NOT NULL") if c and rx.search(c))

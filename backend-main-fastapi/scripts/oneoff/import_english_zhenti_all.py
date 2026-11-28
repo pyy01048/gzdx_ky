@@ -12,6 +12,7 @@
 
 运行: python scripts/import_english_zhenti_all.py
 """
+
 # [STATUS] 一次性数据脚本（迁入 oneoff/，docs/完善方案/04 §3.4）。执行前确认数据源与备份。
 import json
 import logging
@@ -29,13 +30,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
+from scripts._conn import dsn as DB_DSN_F
+
+DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("import_english_all")
 
 EXT_PREFIX = "eng_zhenti"
 stats = Counter()
+
 
 # =========================================================
 # 文本清洗
@@ -232,7 +236,7 @@ def normalize_stem_text(text):
                 end = j
             else:
                 end = n - 1
-            buf = lines[i:end + 1]
+            buf = lines[i : end + 1]
             table_text = "\n".join(buf)
             rows = re.findall(r"<tr[^>]*>(.*?)</tr>", table_text, re.S)
             for row in rows:
@@ -323,20 +327,20 @@ def parse_stem_text(text):
     text = normalize_stem_text(text)
     lines = text.splitlines()
 
-    questions = {}      # qno -> dict
-    region = None       # 'cloze' | 'reading' | 'xtx' | 'writing' | None
+    questions = {}  # qno -> dict
+    region = None  # 'cloze' | 'reading' | 'xtx' | 'writing' | None
     current_q = None
-    ctx_buffer = []     # 文章段落缓存
+    ctx_buffer = []  # 文章段落缓存
 
     # 完形分离格式收集
-    cloze_a = {}        # qno -> A选项文本
-    cloze_b = []        # B选项文本（按出现顺序）
+    cloze_a = {}  # qno -> A选项文本
+    cloze_b = []  # B选项文本（按出现顺序）
     cloze_c = []
     cloze_d = []
-    cloze_ctx = {}      # qno -> 文章上下文
+    cloze_ctx = {}  # qno -> 文章上下文
 
     # 新题型收集
-    xtx_opts = []       # 选项段落 A-H
+    xtx_opts = []  # 选项段落 A-H
 
     def reset_cloze():
         return {}, [], [], [], {}
@@ -359,7 +363,11 @@ def parse_stem_text(text):
             ctx_buffer = []
             cloze_a, cloze_b, cloze_c, cloze_d, cloze_ctx = reset_cloze()
             continue
-        if re.match(r"^#*\s*Part\s*C\b", ln) or re.match(r"^#*\s*Section\s*III\b", ln) or re.match(r"^#*\s*Section\s*IV\b", ln):
+        if (
+            re.match(r"^#*\s*Part\s*C\b", ln)
+            or re.match(r"^#*\s*Section\s*III\b", ln)
+            or re.match(r"^#*\s*Section\s*IV\b", ln)
+        ):
             region = "writing"
             current_q = None
             continue

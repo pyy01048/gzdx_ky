@@ -18,6 +18,7 @@ import { currentUid } from '../utils/userKeys'
    无条件 setState，A 的数据会落进 B 的 store 并按 B 的 uid 落盘。
    每个 loader 发起时记录当时的 uid，回写前校验未变；变了就丢弃响应。 */
 const stale = (uidAtStart) => currentUid() !== uidAtStart
+const inactive = (uidAtStart, signal) => stale(uidAtStart) || signal?.aborted
 
 /* 分类为空就留空：补成「专业课」等于凭空造了一个分类，筛选里会多出一个假桶。 */
 const PAN_TYPE_LABEL = { pdf: 'PDF', video: '视频', doc: '文档', zip: '压缩包' }
@@ -126,31 +127,34 @@ function toProvider(p) {
    取全量一律走 fetchAllPages —— 后端 page_size 上限 200，写 500 是 422 而不是截断，
    以前三个域都因此从未真正回填过。 */
 const LOADERS = {
-  tasks: async () => {
+  tasks: async (signal) => {
     const uidAtStart = currentUid()
-    const list = await fetchAllPages((p) => tasksApi.list(p), { keys: ['tasks'] })
-    if (stale(uidAtStart)) return
+    const list = await fetchAllPages((p, requestSignal) => tasksApi.list(p, { signal: requestSignal }), { keys: ['tasks'], signal })
+    if (inactive(uidAtStart, signal)) return
     useStore.setState({ tasks: list.map(toTask) })
   },
-  notebook: async () => {
+  notebook: async (signal) => {
     const uidAtStart = currentUid()
-    const list = await fetchAllPages((p) => errorsApi.list(p), { keys: ['errors'] })
-    if (stale(uidAtStart)) return
+    const list = await fetchAllPages((p, requestSignal) => errorsApi.list(p, { signal: requestSignal }), { keys: ['errors'], signal })
+    if (inactive(uidAtStart, signal)) return
     useStore.setState({ notebook: list.map(toNote) })
   },
-  cards: async () => {
+  cards: async (signal) => {
     const uidAtStart = currentUid()
-    const list = await fetchAllPages((p) => flashcardsApi.list(p), { keys: ['cards'] })
-    if (stale(uidAtStart)) return
+    const list = await fetchAllPages((p, requestSignal) => flashcardsApi.list(p, { signal: requestSignal }), { keys: ['cards'], signal })
+    if (inactive(uidAtStart, signal)) return
     useStore.setState({ cards: list.map(toCard) })
   },
   /* 单词域：Settings 的「学习数据一览」读 store.words，但这里从来没有加载器，
      导致后端 /api/words 明明有数据、页面永远显示 0。补上（响应是统一分页壳 items）。 */
-  words: async () => {
+  words: async (signal) => {
     const uidAtStart = currentUid()
     // include_extra=false：词库页自己会按需补详情，后台同步不必为近义词/短语付八成载荷。
-    const list = await fetchAllPages((p) => wordsApi.list({ ...p, include_extra: false }), { keys: ['items', 'words'] })
-    if (stale(uidAtStart)) return
+    const list = await fetchAllPages(
+      (p, requestSignal) => wordsApi.list({ ...p, include_extra: false }, { signal: requestSignal }),
+      { keys: ['items', 'words'], signal },
+    )
+    if (inactive(uidAtStart, signal)) return
     useStore.setState({ words: list })
   },
   /* 网盘域（P2-1）：
@@ -159,29 +163,30 @@ const LOADERS = {
      未绑网盘的机器以前每次都吃一个 409 噪音。
      这里再兜一层：即使后端仍抛 409（token 途中过期），本域也静默降级 ——
      store.pan 只喂给助手/设置页的本地文件视图，不该让整次 hydrate 记为失败。 */
-  pan: async () => {
+  pan: async (signal) => {
     const uidAtStart = currentUid()
     try {
-      const list = await fetchAllPages((p) => netdiskApi.files(p), { keys: ['local_files'] })
-      if (stale(uidAtStart)) return
+      const list = await fetchAllPages((p, requestSignal) => netdiskApi.files(p, { signal: requestSignal }), { keys: ['local_files'], signal })
+      if (inactive(uidAtStart, signal)) return
       useStore.setState({ pan: list.map(toPan) })
     } catch (e) {
+      if (inactive(uidAtStart, signal)) return
       // ApiError.status 是 HTTP 码；网盘授权类错误体里带 code=NETDISK_AUTH_*
       const code = e?.data?.code || ''
       if (e?.status === 409 || String(code).startsWith('NETDISK_AUTH')) return
       throw e
     }
   },
-  countdown: async () => {
+  countdown: async (signal) => {
     const uidAtStart = currentUid()
-    const d = await dashboardApi.countdown()
-    if (stale(uidAtStart)) return
+    const d = await dashboardApi.countdown({ signal })
+    if (inactive(uidAtStart, signal)) return
     if (d && d.exam_date) useStore.setState({ countdown: d })
   },
-  settings: async () => {
+  settings: async (signal) => {
     const uidAtStart = currentUid()
-    const g = await goalsApi.list()
-    if (stale(uidAtStart)) return
+    const g = await goalsApi.list({ signal })
+    if (inactive(uidAtStart, signal)) return
     const goal = Array.isArray(g) ? (g[0] || null) : (g || null)
     if (goal) {
       const patch = {}
@@ -192,10 +197,10 @@ const LOADERS = {
       useStore.setState((s) => ({ settings: { ...s.settings, ...patch } }))
     }
   },
-  aiProviders: async () => {
+  aiProviders: async (signal) => {
     const uidAtStart = currentUid()
-    const d = await aiApi.providers()
-    if (stale(uidAtStart)) return
+    const d = await aiApi.providers({ signal })
+    if (inactive(uidAtStart, signal)) return
     const list = d.providers || d.items || (Array.isArray(d) ? d : [])
     if (Array.isArray(list) && list.length) {
       useStore.setState((s) => ({ settings: { ...s.settings, aiProviders: list.map(toProvider) } }))
@@ -225,19 +230,19 @@ export function loadDomain(key) {
 const DEFERRED_DOMAINS = ['words', 'cards', 'pan']
 const DEFERRED_SLICE = { words: 'words', cards: 'cards', pan: 'pan' }
 
-function runDeferredDomains(uidAtStart) {
-  if (stale(uidAtStart)) return
+function runDeferredDomains(uidAtStart, signal) {
+  if (inactive(uidAtStart, signal)) return Promise.resolve()
   /* 重域之间串行错峰：即便放到后台，也不再形成数十并发的洪水，减轻 DB 与连接池压力。
      若对应 store 切片已有数据（功能页已自加载或本地缓存命中），跳过重复全量拉取。 */
-  DEFERRED_DOMAINS.reduce(
+  return DEFERRED_DOMAINS.reduce(
     (chain, key) =>
       chain.then(() => {
-        if (stale(uidAtStart)) return null
+        if (inactive(uidAtStart, signal)) return null
         const slice = DEFERRED_SLICE[key]
         if (slice && Array.isArray(useStore.getState()[slice]) && useStore.getState()[slice].length > 0) {
           return null
         }
-        return LOADERS[key]().catch(() => {
+        return LOADERS[key](signal).catch(() => {
           /* 单域失败不影响其它域；离线时静默保留本地已有内容 */
         })
       }),
@@ -245,23 +250,39 @@ function runDeferredDomains(uidAtStart) {
   )
 }
 
-function scheduleDeferredHydrate(uidAtStart) {
+function scheduleDeferredHydrate(uidAtStart, signal) {
+  if (signal?.aborted) return
+  const target = window
   let done = false
+  let timer
+  const cleanupTriggers = () => {
+    target.removeEventListener('pointerdown', run)
+    target.removeEventListener('keydown', run)
+    target.removeEventListener('scroll', run, true)
+    if (timer != null) clearTimeout(timer)
+  }
+  const cleanup = () => {
+    cleanupTriggers()
+    signal?.removeEventListener('abort', onAbort)
+  }
   const run = () => {
     if (done) return
     done = true
-    window.removeEventListener('pointerdown', run)
-    window.removeEventListener('keydown', run)
-    window.removeEventListener('scroll', run, true)
-    runDeferredDomains(uidAtStart)
+    cleanupTriggers()
+    void runDeferredDomains(uidAtStart, signal).finally(cleanup)
+  }
+  const onAbort = () => {
+    done = true
+    cleanup()
   }
   /* 「浏览器空闲」≠「首屏已渲染」：requestIdleCallback 会在 JS 执行完的短暂空闲里
      立即触发，仍与首屏路由/数据争抢连接。改用首次用户交互（必然发生在首屏渲染之后）
      或 4s 兜底，确保 words/cards/pan 的全量翻页请求绝不进入首屏关键路径。 */
-  window.addEventListener('pointerdown', run, { passive: true, once: true })
-  window.addEventListener('keydown', run, { passive: true, once: true })
-  window.addEventListener('scroll', run, { passive: true, once: true })
-  setTimeout(run, 4000)
+  target.addEventListener('pointerdown', run, { passive: true, once: true })
+  target.addEventListener('keydown', run, { passive: true, once: true })
+  target.addEventListener('scroll', run, { passive: true, once: true })
+  signal?.addEventListener('abort', onAbort, { once: true })
+  timer = setTimeout(run, 4000)
 }
 
 /**
@@ -269,10 +290,11 @@ function scheduleDeferredHydrate(uidAtStart) {
  * 仅做“后端优先”，任何单域失败不影响其它域；全部失败则保持本地兜底。
  * 重域（words/cards/pan）延迟到首屏后加载，避免拖慢首屏关键路径。
  */
-export async function hydrate() {
+export async function hydrate(signal) {
+  if (signal?.aborted) return { online: false, total: 0, ok: 0 }
   const uidAtStart = currentUid()
   const immediateKeys = Object.keys(LOADERS).filter((k) => !DEFERRED_DOMAINS.includes(k))
-  const results = await Promise.allSettled(immediateKeys.map((k) => LOADERS[k]()))
+  const results = await Promise.allSettled(immediateKeys.map((k) => LOADERS[k](signal)))
   const ok = results.filter((r) => r.status === 'fulfilled').length
   /* C5：backendOnline 不再是「任一数据域成功」的独立结论，而是三态的布尔投影。
      三态尚未探测（unknown）时才用本次 hydrate 的成功数临时兜底。
@@ -281,7 +303,7 @@ export async function hydrate() {
   const derived = typeof isBackendOnline === 'function' ? isBackendOnline(health) : null
   /* 只接受布尔结果：unknown（或测试桩未实现）才回落到本次 hydrate 成功数 */
   const online = typeof derived === 'boolean' ? derived : ok > 0
-  if (!stale(uidAtStart)) useStore.setState({ backendOnline: online })
-  scheduleDeferredHydrate(uidAtStart)
+  if (!inactive(uidAtStart, signal)) useStore.setState({ backendOnline: online })
+  if (!signal?.aborted) scheduleDeferredHydrate(uidAtStart, signal)
   return { online, total: results.length, ok }
 }

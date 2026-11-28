@@ -24,6 +24,7 @@ tokens.css 使用铁律第 1 条：「业务 CSS / 内联 style 禁止出现裸 
   · 默认 dry-run；--apply 前逐文件备份
   · 替换后复核：内联 style 中非白黑色值应为 0
 """
+
 from __future__ import annotations
 
 import argparse
@@ -80,9 +81,9 @@ HEX_RE = re.compile(r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b")
 def iter_jsx() -> list[Path]:
     out: list[Path] = []
     for root, dirs, names in os.walk(SRC_ROOT):
-        dirs[:] = [d for d in dirs
-                   if d not in ("node_modules", "_removed", "dist")
-                   and not d.startswith("_migration_backup")]
+        dirs[:] = [
+            d for d in dirs if d not in ("node_modules", "_removed", "dist") and not d.startswith("_migration_backup")
+        ]
         for n in names:
             if n.endswith((".jsx", ".js")) and ".bak" not in n:
                 out.append(Path(root) / n)
@@ -95,7 +96,7 @@ def main() -> int:
     args = ap.parse_args()
 
     files = iter_jsx()
-    hits: list[tuple[Path, str, str]] = []   # (文件, 原色, 新令牌)
+    hits: list[tuple[Path, str, str]] = []  # (文件, 原色, 新令牌)
     unknown: dict[str, int] = {}
 
     for fp in files:
@@ -118,6 +119,7 @@ def main() -> int:
     print(f"  未映射（需人工判断）：{len(unknown)} 种")
 
     from collections import Counter
+
     c1 = Counter(f"{old} → {new}" for _f, old, new in hits)
     print("\n  替换明细：")
     for k, v in c1.most_common(30):

@@ -40,15 +40,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal  # noqa: E402
-from models import KnowledgeChunk, KnowledgePoint, QuizQuestion  # noqa: E402
 from services import taxonomy  # noqa: E402
+
+from models import KnowledgeChunk, KnowledgePoint, QuizQuestion  # noqa: E402
 
 DRY_RUN = "--dry-run" in sys.argv
 # 输出目录可经 --out-dir 指定：v3 起换新目录，避免覆盖已进 git 的 v2 数据集
 # （training/pai_dsw/data/lora_finetune_v2 有 276 条，是 DSW 包自带数据）。
 OUT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "lora_finetune_v2",
+    "data",
+    "lora_finetune_v2",
 )
 if "--out-dir" in sys.argv:
     _i = sys.argv.index("--out-dir")
@@ -71,6 +73,7 @@ SYSTEM = (
     "④ 不确定时明确说明并给出最稳妥的复习建议，不编造。"
 )
 
+
 # 答案不能是题干的切片 —— 这是原数据集最大的问题
 def _normalize(s: str) -> str:
     return re.sub(r"\s+", "", s or "")
@@ -81,7 +84,7 @@ def answer_is_copy(question: str, answer: str, *, n: int = 16) -> bool:
     a, q = _normalize(answer), _normalize(question)
     if len(a) < n:
         return False
-    grams = [a[i:i + n] for i in range(len(a) - n + 1)]
+    grams = [a[i : i + n] for i in range(len(a) - n + 1)]
     if not grams:
         return False
     return sum(1 for g in grams if g in q) / len(grams) > 0.5
@@ -93,7 +96,7 @@ def _is_repeat(a: str, b: str, *, n: int = 12) -> bool:
     if len(x) < n or len(y) < n:
         return x == y or (x and y and (x in y or y in x))
     short, long_ = (x, y) if len(x) <= len(y) else (y, x)
-    grams = [short[i:i + n] for i in range(len(short) - n + 1)]
+    grams = [short[i : i + n] for i in range(len(short) - n + 1)]
     return sum(1 for g in grams if g in long_) / len(grams) > 0.6
 
 
@@ -104,10 +107,31 @@ def _clean_zh(s: str) -> str:
 
 
 #: 定义句里出现这些就是 OCR 把广告/水印/公众号水印抽进来了，不是知识
-_BODY_NOISE = ("微信", "公众号", "QQ", "www", ".com", "网学天地", "学长",
-               "初试", "复试", "扫码", "加群", "免费分享", "考试点", "答疑",
-               # 题干残留：定义内容里出现这些，说明抽到的是题目不是知识
-               "什么", "怎么", "哪些", "下列", "本题", "解析", "简答", "填空")
+_BODY_NOISE = (
+    "微信",
+    "公众号",
+    "QQ",
+    "www",
+    ".com",
+    "网学天地",
+    "学长",
+    "初试",
+    "复试",
+    "扫码",
+    "加群",
+    "免费分享",
+    "考试点",
+    "答疑",
+    # 题干残留：定义内容里出现这些，说明抽到的是题目不是知识
+    "什么",
+    "怎么",
+    "哪些",
+    "下列",
+    "本题",
+    "解析",
+    "简答",
+    "填空",
+)
 
 
 def _body_ok(body: str) -> bool:
@@ -136,6 +160,7 @@ def _strip_opt_prefix(s: str) -> str:
     """去掉 "B．5421BCD码" 里的选项字母，答案里已由 letter 承担标号。"""
     return re.sub(r"^[A-HＡ-Ｈ]\s*[.。、．）)：:]\s*", "", (s or "").strip())
 
+
 #: 题库 answer 字段里混着题型标题/占位符（"一、填空题"、"略"、"见解析"），
 #: 这类"答案"进训练集等于教模型答非所问。
 _JUNK_ANSWER = re.compile(
@@ -161,9 +186,7 @@ def _answer_ok(a: str) -> bool:
 def from_quiz_questions(db) -> list[dict]:
     """真题 → Q&A。只有拿到答案（字母或文本）才可用。"""
     out = []
-    rows = db.query(QuizQuestion).filter(
-        QuizQuestion.answer.isnot(None), QuizQuestion.answer != ""
-    ).all()
+    rows = db.query(QuizQuestion).filter(QuizQuestion.answer.isnot(None), QuizQuestion.answer != "").all()
     for q in rows:
         stem = _clean_zh(q.content)
         if len(stem) < 10:
@@ -219,22 +242,37 @@ def from_quiz_questions(db) -> list[dict]:
         question = stem + ("\n" + "\n".join(opts) if opts else "")
         if answer_is_copy(question, answer):
             continue
-        out.append({
-            "messages": [
-                {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": answer},
-            ],
-            "subject": taxonomy.normalize_subject(q.subject),
-            "source": "quiz",
-        })
+        out.append(
+            {
+                "messages": [
+                    {"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": question},
+                    {"role": "assistant", "content": answer},
+                ],
+                "subject": taxonomy.normalize_subject(q.subject),
+                "source": "quiz",
+            }
+        )
     return out
 
 
 # 页面导航/OCR 残留前缀：定义句常被抽到"上页输出脉冲的幅度"这种带噪声的术语
 _TERM_NOISE = [
-    "上页", "下页", "返回", "总目录", "推出", "目录", "单击", "标题文字",
-    "本节", "本章", "小结", "作业", "思考题", "如图所示", "如下图",
+    "上页",
+    "下页",
+    "返回",
+    "总目录",
+    "推出",
+    "目录",
+    "单击",
+    "标题文字",
+    "本节",
+    "本章",
+    "小结",
+    "作业",
+    "思考题",
+    "如图所示",
+    "如下图",
 ]
 # 明显不是术语的开头/结尾
 #: 补"故/则/即"等承接词：OCR 断句常把"故所求平面方程"、"则函数"整段切下来，
@@ -252,7 +290,7 @@ def _clean_term(term: str) -> str | None:
     # 去掉导航噪声前缀
     for noise in _TERM_NOISE:
         if t.startswith(noise) and len(t) > len(noise) + 1:
-            t = t[len(noise):].strip()
+            t = t[len(noise) :].strip()
     # 去掉出现的标点/空白
     t = re.sub(r"^[\s，,。.、：:；;（）()【】\[\]]+", "", t)
     t = re.sub(r"[\s，,。.、：:；;（）()【】\[\]]+$", "", t)
@@ -276,9 +314,13 @@ def _clean_term(term: str) -> str | None:
 # --------------------------------------------------------------------------- #
 # 只认明确的定义句式，避免把普通叙述句当定义
 _DEF_PATTERNS = [
-    re.compile(r"([\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9\-]{1,14})\s*(?:是指|指的是|定义为|称为|叫做)\s*([^。；\n]{8,120})"),
+    re.compile(
+        r"([\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9\-]{1,14})\s*(?:是指|指的是|定义为|称为|叫做)\s*([^。；\n]{8,120})"
+    ),
     re.compile(r"([\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9\-]{1,14})\s*的?定义\s*[:：是]\s*([^。；\n]{8,120})"),
-    re.compile(r"所谓\s*([\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9\-]{1,14})\s*[,，]?\s*(?:就是|是指)\s*([^。；\n]{8,120})"),
+    re.compile(
+        r"所谓\s*([\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9\-]{1,14})\s*[,，]?\s*(?:就是|是指)\s*([^。；\n]{8,120})"
+    ),
 ]
 # 更宽松的一路：教科书里大量 "X 是/为 Y" 的判定句，只要 term/body 通过清洗就收。
 # 配合 _clean_term / _body_ok 兜底，假阳性会被挡掉。
@@ -300,11 +342,11 @@ def from_definitions(db, *, limit: int = 10000, per_chunk: int = 3) -> list[dict
     """
     from services import chunk_classifier as cc
 
-    rows = db.query(KnowledgeChunk).filter(
-        KnowledgeChunk.subject.in_(list(taxonomy.CORE_SUBJECTS))
-    ).limit(limit * 4).all()
+    rows = (
+        db.query(KnowledgeChunk).filter(KnowledgeChunk.subject.in_(list(taxonomy.CORE_SUBJECTS))).limit(limit * 4).all()
+    )
     seen: set[str] = set()
-    picked: list[tuple[str, str, str]] = []          # (term, body, doc_subject)
+    picked: list[tuple[str, str, str]] = []  # (term, body, doc_subject)
     for c in rows:
         text = (c.text or "").strip()
         if len(text) < 30:
@@ -338,7 +380,7 @@ def from_definitions(db, *, limit: int = 10000, per_chunk: int = 3) -> list[dict
                         continue
                     if _EXTRA_BAD_TERM.search(term) or not _topic_ok(term):
                         continue
-                    if len(body) < 10:          # 太短的"是 Y"多半是断句碎片
+                    if len(body) < 10:  # 太短的"是 Y"多半是断句碎片
                         continue
                     seen.add(term)
                     picked.append((term, body, subject))
@@ -369,15 +411,17 @@ def from_definitions(db, *, limit: int = 10000, per_chunk: int = 3) -> list[dict
         answer = f"{term}是指{body}。\n理解时要抓住它的判定条件与典型应用场景。{tail}".strip()
         if answer_is_copy(question, answer):
             continue
-        out.append({
-            "messages": [
-                {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": answer},
-            ],
-            "subject": subject or "其他",
-            "source": "definition",
-        })
+        out.append(
+            {
+                "messages": [
+                    {"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": question},
+                    {"role": "assistant", "content": answer},
+                ],
+                "subject": subject or "其他",
+                "source": "definition",
+            }
+        )
     return out
 
 
@@ -389,8 +433,7 @@ def from_definitions(db, *, limit: int = 10000, per_chunk: int = 3) -> list[dict
 # 数据时自动生效，不能凭空造。但 OCR 把目录页、图书勘误页、课程广告页也切成了
 # chunk，这类"正文"里只有页码和广告，拿去合成问答等于把噪声训进模型，
 # 必须先由 _chunk_ok 挡掉。
-_CHUNK_NOISE = ("[解析失败", "[扫描版", "[图片", "勘误", "全程班", "网盘",
-                "课后答案", "购买", "正版")
+_CHUNK_NOISE = ("[解析失败", "[扫描版", "[图片", "勘误", "全程班", "网盘", "课后答案", "购买", "正版")
 #: 目录页特征：章节/习题索引密集出现（正文里不会这么密）
 _TOC_PATTERNS = [
     re.compile(r"习题\s*[\d\-—]+"),
@@ -409,9 +452,7 @@ _GARBLE = re.compile(r"[\u4e00-\u9fff][A-Za-z0-9'\[\]]|[A-Za-z0-9'\[\]][\u4e00-\
 #: 落在这些范围之外的就是 OCR 认错的字（扩展 A 区生僻字、康熙部首、盲文点字…）。
 #: 整库实测中位异常率约 5%（OCR 质量整体偏差），故阈值取 0.10 而非 0.02，
 #: 否则 361 个 chunk 只剩 2 个可用。
-_OK_CHAR = re.compile(
-    r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u0370-\u03ff\u2200-\u22ff\u0020-\u007e]"
-)
+_OK_CHAR = re.compile(r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u0370-\u03ff\u2200-\u22ff\u0020-\u007e]")
 _GARBLE_RATIO = 0.10
 
 
@@ -421,6 +462,7 @@ def _garbled_ratio(text: str) -> float:
     if not t:
         return 1.0
     return sum(1 for ch in t if not _OK_CHAR.match(ch)) / len(t)
+
 
 #: 回退抽主题时，以这些字开头/结尾的 n-gram 不是术语
 _NGRAM_STOP = set(
@@ -467,7 +509,7 @@ def _split_sentences(text: str) -> list[str]:
             continue
         if re.search(r"[，,、；;：:（(]$", s):
             continue
-        if len(_GARBLE.findall(s)) >= 3:      # OCR 把字形认串了的行
+        if len(_GARBLE.findall(s)) >= 3:  # OCR 把字形认串了的行
             continue
         # 考纲条目句："(5)了解集成运放…"、"…反馈 (1)掌握各种…"——是要求罗列
         if re.search(r"[（(]\s*\d{1,2}\s*[)）]", s):
@@ -476,7 +518,7 @@ def _split_sentences(text: str) -> list[str]:
             continue
         if len(re.findall(r"了解|掌握|熟悉", s)) >= 2:
             continue
-        if "(OCR" in s or "---" in s:      # 入库时留下的页码标记
+        if "(OCR" in s or "---" in s:  # 入库时留下的页码标记
             continue
         out.append(s)
     return out
@@ -491,9 +533,7 @@ def _topic_ok(t: str) -> bool:
 #: 但 "X 是/为 Y" 会把句子中间截断的片段也当成术语 —— 实测抽出了
 #: "也是广大青年大学生成"、"于以向量a和b"、"也能成" 这类垃圾。
 #: 术语里出现副词/连词，几乎可以断定是从半句话里截出来的。
-_EXTRA_BAD_TERM = re.compile(
-    "[也还就才更最又再只仅均都却但而并且或及则即如若使被把从向对由在是有无不但将]"
-)
+_EXTRA_BAD_TERM = re.compile("[也还就才更最又再只仅均都却但而并且或及则即如若使被把从向对由在是有无不但将]")
 
 
 def _pick_topic(text: str) -> str | None:
@@ -514,7 +554,7 @@ def _pick_topic(text: str) -> str | None:
     for n, need in ((4, 2), (3, 2), (2, 4)):
         counter: dict[str, int] = {}
         for i in range(len(zh) - n + 1):
-            g = zh[i:i + n]
+            g = zh[i : i + n]
             if g[0] in _NGRAM_STOP or g[-1] in _NGRAM_STOP:
                 continue
             counter[g] = counter.get(g, 0) + 1
@@ -530,12 +570,58 @@ def _pick_topic(text: str) -> str | None:
 
 #: 高频但不是术语的词：n-gram 统计最容易把这类虚词/动词捞成"主题"
 _FAKE_TERMS = {
-    "分别", "各自", "其中", "通过", "由于", "对于", "关于", "并且", "或者",
-    "因此", "而且", "但是", "如果", "那么", "这样", "那样", "什么", "怎么",
-    "哪些", "可以", "应该", "必须", "需要", "进行", "实现", "表示", "说明",
-    "指出", "认为", "如下", "上述", "这种", "那种", "某种", "一般", "通常",
-    "主要", "重要", "基本", "直接", "间接", "不同", "相同", "有关", "所有",
-    "任何", "每个", "一个", "两个", "三个", "以及", "同时",
+    "分别",
+    "各自",
+    "其中",
+    "通过",
+    "由于",
+    "对于",
+    "关于",
+    "并且",
+    "或者",
+    "因此",
+    "而且",
+    "但是",
+    "如果",
+    "那么",
+    "这样",
+    "那样",
+    "什么",
+    "怎么",
+    "哪些",
+    "可以",
+    "应该",
+    "必须",
+    "需要",
+    "进行",
+    "实现",
+    "表示",
+    "说明",
+    "指出",
+    "认为",
+    "如下",
+    "上述",
+    "这种",
+    "那种",
+    "某种",
+    "一般",
+    "通常",
+    "主要",
+    "重要",
+    "基本",
+    "直接",
+    "间接",
+    "不同",
+    "相同",
+    "有关",
+    "所有",
+    "任何",
+    "每个",
+    "一个",
+    "两个",
+    "三个",
+    "以及",
+    "同时",
 }
 
 
@@ -566,18 +652,29 @@ def _truncated(zh: str, term: str) -> bool:
 #:    同一个高频术语（如"函数"）在几十个 chunk 里反复出现，若只用一个模板，
 #:    问题文本会完全相同、被去重脚本整批删掉（实测去重能吃掉 1/3 样本）。
 _QA_KINDS = (
-    ("是什么", ("是指", "指的是", "定义为", "称为", "叫做", "定义是", "所谓"),
-     ("{sub}里，{t}是什么？", "能给我讲讲{t}吗？", "{t}的定义到底是什么？")),
-    ("怎么理解", ("因为", "由于", "所以", "因此", "原理", "本质", "从而", "意味着"),
-     ("怎么理解{t}？", "{t}为什么是这样？", "{t}背后的原理是什么？")),
+    (
+        "是什么",
+        ("是指", "指的是", "定义为", "称为", "叫做", "定义是", "所谓"),
+        ("{sub}里，{t}是什么？", "能给我讲讲{t}吗？", "{t}的定义到底是什么？"),
+    ),
+    (
+        "怎么理解",
+        ("因为", "由于", "所以", "因此", "原理", "本质", "从而", "意味着"),
+        ("怎么理解{t}？", "{t}为什么是这样？", "{t}背后的原理是什么？"),
+    ),
     # 只有数学/电类才谈得上"求解"；问政治概念"该怎么求解"是不通的
-    ("怎么做", ("先", "首先", "然后", "再", "步骤", "代入", "求解", "方法", "求得"),
-     ("{t}这类问题该怎么做？", "遇到{t}，解题步骤是什么？", "{t}该怎么求解？"),
-     ("{t}这类问题该怎么做？", "{t}该怎么把握？", "复习{t}时该抓什么？")),
-    ("要注意什么", ("注意", "不能", "否则", "易错", "常见错误", "避免"),
-     ("处理{t}时容易踩哪些坑？", "{t}有什么需要特别注意的？", "做{t}时最容易错在哪？")),
-    ("怎么区分", ("区别", "不同", "不同于", "相比", "而不是", "两者"),
-     ("{t}和相近概念有什么区别？", "怎么区分{t}？")),
+    (
+        "怎么做",
+        ("先", "首先", "然后", "再", "步骤", "代入", "求解", "方法", "求得"),
+        ("{t}这类问题该怎么做？", "遇到{t}，解题步骤是什么？", "{t}该怎么求解？"),
+        ("{t}这类问题该怎么做？", "{t}该怎么把握？", "复习{t}时该抓什么？"),
+    ),
+    (
+        "要注意什么",
+        ("注意", "不能", "否则", "易错", "常见错误", "避免"),
+        ("处理{t}时容易踩哪些坑？", "{t}有什么需要特别注意的？", "做{t}时最容易错在哪？"),
+    ),
+    ("怎么区分", ("区别", "不同", "不同于", "相比", "而不是", "两者"), ("{t}和相近概念有什么区别？", "怎么区分{t}？")),
 )
 
 _ANSWER_HEAD = {
@@ -595,9 +692,7 @@ def from_chunks(db, *, per_chunk: int = 5) -> list[dict]:
     答案只由 chunk 原文里的句子拼装，**不编造任何原文没有的内容**；
     只保留与主题相关的句子，保证"问 X 答 X"。
     """
-    rows = db.query(KnowledgeChunk).filter(
-        KnowledgeChunk.subject.in_(list(taxonomy.CORE_SUBJECTS))
-    ).all()
+    rows = db.query(KnowledgeChunk).filter(KnowledgeChunk.subject.in_(list(taxonomy.CORE_SUBJECTS))).all()
     out = []
     for c in rows:
         text = (c.text or "").strip()
@@ -642,10 +737,9 @@ def from_chunks(db, *, per_chunk: int = 5) -> list[dict]:
 
             head = _ANSWER_HEAD[kind].format(t=topic)
             tail = (
-                "记忆建议：这是纯记忆型结论，按间隔重复来巩固——"
-                "当天、1 天后、3 天后、7 天后各回顾一次。"
-                if kind == "是什么" else
-                "先自己试着说一遍再看这段，卡住的地方就是你的盲点。"
+                "记忆建议：这是纯记忆型结论，按间隔重复来巩固——当天、1 天后、3 天后、7 天后各回顾一次。"
+                if kind == "是什么"
+                else "先自己试着说一遍再看这段，卡住的地方就是你的盲点。"
             )
             # crc32 而非内置 hash()：后者受 PYTHONHASHSEED 影响，同一份库
             # 两次运行会选出不同模板，破坏"确定性生成"。
@@ -654,15 +748,17 @@ def from_chunks(db, *, per_chunk: int = 5) -> list[dict]:
             answer = f"{head}\n{body}\n{tail}"
             if answer_is_copy(question, answer):
                 continue
-            out.append({
-                "messages": [
-                    {"role": "system", "content": SYSTEM},
-                    {"role": "user", "content": question},
-                    {"role": "assistant", "content": answer},
-                ],
-                "subject": subject,
-                "source": "chunk_qa",
-            })
+            out.append(
+                {
+                    "messages": [
+                        {"role": "system", "content": SYSTEM},
+                        {"role": "user", "content": question},
+                        {"role": "assistant", "content": answer},
+                    ],
+                    "subject": subject,
+                    "source": "chunk_qa",
+                }
+            )
             made += 1
     return out
 
@@ -673,10 +769,14 @@ def from_chunks(db, *, per_chunk: int = 5) -> list[dict]:
 def from_outline_points(db) -> list[dict]:
     """考纲考点 → 「怎么考」问答（用考纲要求与难度作答）。"""
     out = []
-    rows = db.query(KnowledgePoint).filter(
-        KnowledgePoint.description.isnot(None),
-        KnowledgePoint.description != "",
-    ).all()
+    rows = (
+        db.query(KnowledgePoint)
+        .filter(
+            KnowledgePoint.description.isnot(None),
+            KnowledgePoint.description != "",
+        )
+        .all()
+    )
     for kp in rows:
         desc = (kp.description or "").strip()
         m = re.search(r"【考纲要求·(.+?)】(.+)", desc)
@@ -691,23 +791,27 @@ def from_outline_points(db) -> list[dict]:
             f"考纲对这部分的要求是「{verb}」：{requirement}。\n"
             f"它在「{kp.chapter or subject}」这一章，可能的题型包括 {qtypes}。\n"
             f"复习建议：按「{verb}」的力度分配时间 —— "
-            + ("要求掌握的内容需要能独立推算并写出完整过程。"
-               if "掌握" in verb else
-               "要求理解/熟悉的内容重在辨析概念与判别正误。"
-               if ("理解" in verb or "熟悉" in verb) else
-               "要求了解的内容把握基本结论和适用范围即可，不必深挖推导。")
+            + (
+                "要求掌握的内容需要能独立推算并写出完整过程。"
+                if "掌握" in verb
+                else "要求理解/熟悉的内容重在辨析概念与判别正误。"
+                if ("理解" in verb or "熟悉" in verb)
+                else "要求了解的内容把握基本结论和适用范围即可，不必深挖推导。"
+            )
         )
         if answer_is_copy(question, answer):
             continue
-        out.append({
-            "messages": [
-                {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": answer},
-            ],
-            "subject": subject,
-            "source": "outline",
-        })
+        out.append(
+            {
+                "messages": [
+                    {"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": question},
+                    {"role": "assistant", "content": answer},
+                ],
+                "subject": subject,
+                "source": "outline",
+            }
+        )
     return out
 
 
@@ -733,35 +837,33 @@ def from_exam_stats(db) -> list[dict]:
         top = kps_sorted[:5]
         types: list[str] = []
         for k in kps_sorted:
-            for t in (k.question_types or []):
+            for t in k.question_types or []:
                 if t not in types:
                     types.append(t)
         question = f"{subject}的「{chapter}」主要考哪些知识点？题量大吗？"
         lines = [
             # 同一道题会挂在多个考点下，直接把 question_count 相加会虚报总量，
             # 所以只报"考得最多的考点及其题量"，不宣称章节总题数。
-            f"这一章是{subject}的重点章节，收录了 {len(kps_sorted)} 个考点，"
-            "考得最多的依次是：",
+            f"这一章是{subject}的重点章节，收录了 {len(kps_sorted)} 个考点，考得最多的依次是：",
         ]
         for i, k in enumerate(top, 1):
             lines.append(f"{i}. {k.name}（{k.question_count} 题）")
         lines.append(f"常见题型：{'、'.join(types[:6])}。")
-        lines.append(
-            f"复习优先级建议：先把「{top[0].name}」这类高频考点吃透，"
-            f"再往下铺开覆盖面。"
-        )
+        lines.append(f"复习优先级建议：先把「{top[0].name}」这类高频考点吃透，再往下铺开覆盖面。")
         answer = "\n".join(lines)
         if answer_is_copy(question, answer):
             continue
-        out.append({
-            "messages": [
-                {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": answer},
-            ],
-            "subject": subject,
-            "source": "exam_stats",
-        })
+        out.append(
+            {
+                "messages": [
+                    {"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": question},
+                    {"role": "assistant", "content": answer},
+                ],
+                "subject": subject,
+                "source": "exam_stats",
+            }
+        )
     return out
 
 
@@ -804,12 +906,10 @@ def main() -> int:
                 continue
             seen.add(key)
             deduped.append(it)
-        print(f"  去重后 {len(deduped)} 条（去掉 {len(all_items)-len(deduped)} 条重复）")
+        print(f"  去重后 {len(deduped)} 条（去掉 {len(all_items) - len(deduped)} 条重复）")
 
         # —— 质检：确保没有照抄样本 —— #
-        bad = [it for it in deduped
-               if answer_is_copy(it["messages"][1]["content"],
-                                 it["messages"][2]["content"])]
+        bad = [it for it in deduped if answer_is_copy(it["messages"][1]["content"], it["messages"][2]["content"])]
         print(f"  照抄样本残留 {len(bad)} 条（应为 0）")
         # 用 id 集合过滤：样本量上千后 `it not in bad` 的全量 dict 比较是 O(n²)
         bad_ids = {id(it) for it in bad}
@@ -817,6 +917,7 @@ def main() -> int:
 
         # —— 分布 —— #
         from collections import Counter
+
         print("\n  按来源:")
         for k, v in Counter(it["source"] for it in deduped).most_common():
             print(f"     {k:<14} {v:>5}")
@@ -835,15 +936,14 @@ def main() -> int:
             else:
                 lc["非字母"] += 1
         tot_letters = sum(v for k, v in lc.items() if k != "非字母") or 1
-        print("  答案字母分布:", "  ".join(
-            f"{k} {v}({v/tot_letters:.0%})" for k, v in sorted(lc.items())))
+        print("  答案字母分布:", "  ".join(f"{k} {v}({v / tot_letters:.0%})" for k, v in sorted(lc.items())))
 
         # —— 长度分布 —— #
         ql = [len(it["messages"][1]["content"]) for it in deduped]
         al = [len(it["messages"][2]["content"]) for it in deduped]
         if ql:
-            print(f"\n  提问长度  均值 {sum(ql)/len(ql):.0f}  最大 {max(ql)}")
-            print(f"  回答长度  均值 {sum(al)/len(al):.0f}  最大 {max(al)}")
+            print(f"\n  提问长度  均值 {sum(ql) / len(ql):.0f}  最大 {max(ql)}")
+            print(f"  回答长度  均值 {sum(al) / len(al):.0f}  最大 {max(al)}")
 
         # —— 样例 —— #
         print("\n  样例（每来源 1 条）:")

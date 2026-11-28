@@ -7,6 +7,7 @@
 
 开关：USER_ISOLATION=off 时 scoped() 恒真 = 一键回退旧行为（回滚开关，清单 §3.3）。
 """
+
 from __future__ import annotations
 
 import os
@@ -14,7 +15,7 @@ import os
 from sqlalchemy import true as sa_true
 
 #: 隔离开关（进程启动时读取一次；需要运行期切换请重启服务）。
-USER_ISOLATION = (os.getenv("USER_ISOLATION", "on").strip().lower() != "off")
+USER_ISOLATION = os.getenv("USER_ISOLATION", "on").strip().lower() != "off"
 
 
 def scoped(model, user):

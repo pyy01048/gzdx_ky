@@ -22,6 +22,7 @@
 幂等：已带 `enc:v1:` 前缀的值跳过，重复跑无副作用。全程不打印凭据原值，
 只打印 sha256 摘要前 8 位用于比对往返。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,15 +36,15 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from core.db_session import IS_POSTGRES, SessionLocal  # noqa: E402
-from models import PlatformConfig  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.orm.attributes import flag_modified  # noqa: E402
 from utils.secret_codec import SECRET_EXTRA_KEYS, is_sealed, seal_extra, unseal, unseal_extra  # noqa: E402
 
+from models import PlatformConfig  # noqa: E402
+
 CRED_COLUMNS = ("token", "app_key", "secret_key")
 _RAW_SQL = (
-    "SELECT platform_name, token, app_key, secret_key, CAST(extra AS TEXT) "
-    "FROM platform_configs ORDER BY platform_name"
+    "SELECT platform_name, token, app_key, secret_key, CAST(extra AS TEXT) FROM platform_configs ORDER BY platform_name"
 )
 
 
@@ -54,7 +55,7 @@ def _digest(value: Optional[str]) -> str:
 def _raw_rows(db) -> Dict[str, Dict[str, Optional[str]]]:
     out: Dict[str, Dict[str, Optional[str]]] = {}
     for platform, *cols in db.execute(text(_RAW_SQL)).fetchall():
-        out[platform] = dict(zip(CRED_COLUMNS, cols[:3]), extra=cols[3])
+        out[platform] = dict(zip(CRED_COLUMNS, cols[:3], strict=False), extra=cols[3])
     return out
 
 
@@ -103,11 +104,7 @@ def rewrite(db, targets: List[str]) -> int:
 
     touched = 0
     for platform, fields in by_platform.items():
-        row = (
-            db.query(PlatformConfig)
-            .filter(PlatformConfig.platform_name == platform)
-            .one_or_none()
-        )
+        row = db.query(PlatformConfig).filter(PlatformConfig.platform_name == platform).one_or_none()
         if row is None:
             continue
         for field in fields:

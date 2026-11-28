@@ -69,9 +69,7 @@ def resolve_db_path(explicit: Optional[str]) -> str:
 # --------------------------------------------------------------------------- #
 def cmd_list(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     """列出最近删除的记录。"""
-    has_log = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='soft_delete_log'"
-    ).fetchone()
+    has_log = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='soft_delete_log'").fetchone()
 
     if has_log:
         # 有流水表：能按时间窗口精确列出。
@@ -85,9 +83,7 @@ def cmd_list(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
             params.append(args.batch)
         if args.minutes:
             where += " AND deleted_at >= ?"
-            params.append(
-                (datetime.now() - timedelta(minutes=args.minutes)).strftime("%Y-%m-%d %H:%M:%S")
-            )
+            params.append((datetime.now() - timedelta(minutes=args.minutes)).strftime("%Y-%m-%d %H:%M:%S"))
         params.append(args.limit)
         rows = conn.execute(
             f"SELECT id, table_name, row_id, deleted_at, deleted_by, reason, batch_id "
@@ -96,15 +92,16 @@ def cmd_list(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
         ).fetchall()
         print(f"[soft_delete] soft_delete_log 中未恢复的删除记录 {len(rows)} 条")
         for r in rows:
-            print(f"  log#{r[0]:<6} {r[1]:<18} id={r[2]:<8} at={r[3]} by={r[4]} "
-                  f"batch={r[6]} reason={(r[5] or '')[:50]}")
+            print(
+                f"  log#{r[0]:<6} {r[1]:<18} id={r[2]:<8} at={r[3]} by={r[4]} batch={r[6]} reason={(r[5] or '')[:50]}"
+            )
         return 0
 
     # 无流水表（迁移时用了 --no-log-table）：只能按主表当前标记列出，
     # **无法区分删除时间**，因此不能做时间窗口恢复。
     print("[soft_delete] 提示：soft_delete_log 不存在，无法按时间列出/恢复。")
     print("[soft_delete]       仅能列出当前 is_deleted=1 的记录（无时间信息）。")
-    for table in ([args.table] if args.table else SOFT_TABLES):
+    for table in [args.table] if args.table else SOFT_TABLES:
         try:
             rows = conn.execute(
                 f"SELECT id FROM {table} WHERE COALESCE(is_deleted,0)=1 LIMIT ?",
@@ -135,9 +132,7 @@ def _resolve_targets(conn: sqlite3.Connection, args: argparse.Namespace) -> list
     if not args.batch and not args.minutes:
         raise SystemExit("[soft_delete] 请用 --ids / --batch / --minutes 至少指定一个恢复范围")
 
-    if conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='soft_delete_log'"
-    ).fetchone() is None:
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='soft_delete_log'").fetchone() is None:
         raise SystemExit(
             "[soft_delete] 按批次/时间恢复需要 soft_delete_log 表。"
             "该库未创建（迁移时用了 --no-log-table），只能按 --ids 恢复。"
@@ -153,9 +148,7 @@ def _resolve_targets(conn: sqlite3.Connection, args: argparse.Namespace) -> list
         params.append(args.batch)
     if args.minutes:
         where += " AND deleted_at >= ?"
-        params.append(
-            (datetime.now() - timedelta(minutes=args.minutes)).strftime("%Y-%m-%d %H:%M:%S")
-        )
+        params.append((datetime.now() - timedelta(minutes=args.minutes)).strftime("%Y-%m-%d %H:%M:%S"))
     params.append(args.limit)
     for table, row_id in conn.execute(
         f"SELECT table_name, row_id FROM soft_delete_log WHERE {where} ORDER BY id DESC LIMIT ?",
@@ -172,8 +165,7 @@ def cmd_restore(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
         print("[soft_delete] 没有匹配到任何待恢复记录。")
         return 0
 
-    print(f"[soft_delete] 将恢复 {len(targets)} 条记录"
-          f"{'（dry-run，未写库）' if not args.apply else ''}")
+    print(f"[soft_delete] 将恢复 {len(targets)} 条记录{'（dry-run，未写库）' if not args.apply else ''}")
     by_table: dict[str, list[int]] = {}
     for table, rid in targets:
         by_table.setdefault(table, []).append(rid)
@@ -189,13 +181,14 @@ def cmd_restore(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
         placeholders = ",".join("?" * len(ids))
         # 先确认这些 id 确实存在且处于软删态，避免把别的行误"恢复"。
         alive = conn.execute(
-            f"SELECT COUNT(*) FROM {table} WHERE id IN ({placeholders}) "
-            f"AND COALESCE(is_deleted,0)=1",
+            f"SELECT COUNT(*) FROM {table} WHERE id IN ({placeholders}) AND COALESCE(is_deleted,0)=1",
             ids,
         ).fetchone()[0]
         if alive != len(ids):
-            print(f"[soft_delete] 警告: {table} 期望恢复 {len(ids)} 条，"
-                  f"实际匹配 {alive} 条（部分 id 不存在或本就没被删），按实际执行")
+            print(
+                f"[soft_delete] 警告: {table} 期望恢复 {len(ids)} 条，"
+                f"实际匹配 {alive} 条（部分 id 不存在或本就没被删），按实际执行"
+            )
         conn.execute(
             f"UPDATE {table} SET is_deleted=0 WHERE id IN ({placeholders})",
             ids,
@@ -203,9 +196,7 @@ def cmd_restore(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
         print(f"[soft_delete] 已恢复 {table}: {alive} 条")
 
         # 流水表标记为已恢复（若存在）
-        if conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='soft_delete_log'"
-        ).fetchone():
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='soft_delete_log'").fetchone():
             conn.execute(
                 f"UPDATE soft_delete_log SET restored_at=?, restored_by=?, restore_reason=? "
                 f"WHERE table_name=? AND row_id IN ({placeholders}) AND restored_at IS NULL",
@@ -234,25 +225,25 @@ def cmd_purge(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     )
 
     cutoff = (datetime.now() - timedelta(days=args.keep_days)).strftime("%Y-%m-%d %H:%M:%S")
-    has_log = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='soft_delete_log'"
-    ).fetchone()
+    has_log = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='soft_delete_log'").fetchone()
 
-    print(f"[soft_delete] 物化清理：删除 {args.table or '全部软删表'} 中早于 {cutoff} "
-          f"（保留 {args.keep_days} 天）的软删记录")
+    print(
+        f"[soft_delete] 物化清理：删除 {args.table or '全部软删表'} 中早于 {cutoff} "
+        f"（保留 {args.keep_days} 天）的软删记录"
+    )
     print(f"[soft_delete] 模式: {'dry-run' if not args.apply else 'APPLY'}")
 
     total = 0
     untracked = 0
-    for table in ([args.table] if args.table else SOFT_TABLES):
+    for table in [args.table] if args.table else SOFT_TABLES:
         if not has_log:
             # 无流水表：拿不到删除时间，**拒绝**按窗口物化清理。
             # 宁可让人显式指定 --ids 也不盲目物理删除。
-            n = conn.execute(
-                f"SELECT COUNT(*) FROM {table} WHERE COALESCE(is_deleted,0)=1"
-            ).fetchone()[0]
-            print(f"  {table}: {n} 条软删，但 soft_delete_log 不存在 —— "
-                  f"无法判断删除时间，跳过（如需清理请用 --ids 显式指定）")
+            n = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE COALESCE(is_deleted,0)=1").fetchone()[0]
+            print(
+                f"  {table}: {n} 条软删，但 soft_delete_log 不存在 —— "
+                f"无法判断删除时间，跳过（如需清理请用 --ids 显式指定）"
+            )
             continue
 
         # LEFT JOIN 而非 IN 子查询：把「有流水且已超期」与「无流水的孤儿软删」
@@ -273,9 +264,10 @@ def cmd_purge(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
 
         ids = expired
         untracked += len(orphan)
-        print(f"  {table}: 超期可清理 {len(ids)} 条"
-              + (f"；另有 {len(orphan)} 条无流水记录（删除时间未知，不自动清理）"
-                 if orphan else ""))
+        print(
+            f"  {table}: 超期可清理 {len(ids)} 条"
+            + (f"；另有 {len(orphan)} 条无流水记录（删除时间未知，不自动清理）" if orphan else "")
+        )
         if orphan:
             print(f"    ⚠ 无流水 ids 样例: {orphan[:20]}")
         total += len(ids)
@@ -313,8 +305,7 @@ def cmd_purge(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
             conn.execute("VACUUM")
         print(f"[soft_delete] 物化清理完成，共 {total} 条。")
     else:
-        print(f"\n合计可清理 {total} 条"
-              + (f"；{untracked} 条无流水记录需人工决策" if untracked else ""))
+        print(f"\n合计可清理 {total} 条" + (f"；{untracked} 条无流水记录需人工决策" if untracked else ""))
         print(f"确认无误后追加 --apply 执行（需先设 {ENV_FLAG}=1）。")
     return 0
 

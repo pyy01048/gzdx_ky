@@ -39,6 +39,7 @@ DOMAIN_ROUTERS: dict[str, List[Tuple[str, List[str]]]] = {
         ("words", ["router"]),
         ("errors", ["router"]),
         ("quiz", ["router"]),
+        ("personal_quiz", ["router"]),
         ("papers", ["router"]),
         ("exam", ["router"]),
         ("answers", ["router"]),
@@ -73,11 +74,13 @@ DOMAIN_ROUTERS: dict[str, List[Tuple[str, List[str]]]] = {
         ("memory", ["router"]),
         ("recommend", ["router"]),
         ("model_training", ["router"]),
+        ("feedback", ["router"]),
     ],
     "kaoyan": [
         ("kaoyan", ["router"]),
         ("kaoyan_ext", ["router"]),
         ("school_eval", ["router"]),
+        ("engineering08", ["router"]),
         ("notices", ["router"]),
         ("notice_alert", ["router"]),
         ("admin_schools", ["router"]),
@@ -90,6 +93,9 @@ DOMAIN_ROUTERS: dict[str, List[Tuple[str, List[str]]]] = {
         ("watermark_admin", ["router"]),
         ("admin_system", ["router"]),
         ("backup", ["router"]),
+    ],
+    "community": [
+        ("experiences", ["router"]),
     ],
 }
 

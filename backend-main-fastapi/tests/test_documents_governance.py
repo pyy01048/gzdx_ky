@@ -9,6 +9,7 @@
 
 隔离：全部落在 conftest 的临时测试库 + tmp 目录里，绝不碰真库 / 真 knowledge_base。
 """
+
 from __future__ import annotations
 
 import os
@@ -28,8 +29,13 @@ def _mk_doc(db, *, file_name, file_path, content="", subject=None):
     from models import Document
 
     doc = Document(
-        file_name=file_name, file_path=file_path, file_type="txt",
-        size=10, subject=subject, index_status="indexed", content=content or "# 测试文档",
+        file_name=file_name,
+        file_path=file_path,
+        file_type="txt",
+        size=10,
+        subject=subject,
+        index_status="indexed",
+        content=content or "# 测试文档",
         parse_progress=1.0,
     )
     db.add(doc)
@@ -136,11 +142,15 @@ def test_scan_root_dry_run_does_not_touch_disk(db_schema, kb_tmp, monkeypatch):
 
 def test_export_md_and_txt(db_schema, kb_tmp, monkeypatch):
     """导出统一快照：md 带 front-matter；txt 是纯正文；两者都做水印预清洗。"""
-    from models import Document
     from services.kb_service import export_document
 
+    from models import Document
+
     doc = Document(
-        id=999001, file_name="数电真题.txt", file_type="txt", subject="数字电子技术",
+        id=999001,
+        file_name="数电真题.txt",
+        file_type="txt",
+        subject="数字电子技术",
         content="8位DAC转换器，设转换系数k=0.05\n东坡哥微信:haidongpo8\n正文续行",
     )
 
@@ -176,6 +186,7 @@ def test_preclean_watermarks_shared_rule():
 # M0-5 断链可追溯性：broken-links（只读）+ repair-file-paths（默认 dry_run）
 # --------------------------------------------------------------------------- #
 
+
 def _isolate_kb_index(tmp_path, monkeypatch):
     """把文件索引根与本地可读白名单都换成临时目录，绝不扫真 knowledge_base。"""
     import routers.knowledge.documents as docs_router
@@ -205,11 +216,9 @@ def test_broken_links_marks_recoverable_and_not_found(db_schema, tmp_path, monke
     db = SessionLocal()
     try:
         # 可找回：登记路径已失效，但同名文件在 knowledge_base 里
-        recov = _mk_doc(db, file_name="数电真题2020.pdf",
-                        file_path=str(tmp_path / "旧位置" / "数电真题2020.pdf"))
+        recov = _mk_doc(db, file_name="数电真题2020.pdf", file_path=str(tmp_path / "旧位置" / "数电真题2020.pdf"))
         # 找不回：登记路径失效，盘上也没有同名文件
-        lost = _mk_doc(db, file_name="彻底没了-孤本.pdf",
-                       file_path=str(tmp_path / "旧位置" / "彻底没了-孤本.pdf"))
+        lost = _mk_doc(db, file_name="彻底没了-孤本.pdf", file_path=str(tmp_path / "旧位置" / "彻底没了-孤本.pdf"))
         recov_id, lost_id = recov.id, lost.id
 
         report = asyncio.run(docs_router.list_broken_links(db))
@@ -246,13 +255,10 @@ def test_repair_file_paths_dry_run_does_not_write(db_schema, tmp_path, monkeypat
 
     db = SessionLocal()
     try:
-        doc = _mk_doc(db, file_name="模电笔记.txt",
-                      file_path=str(tmp_path / "旧位置" / "模电笔记.txt"))
+        doc = _mk_doc(db, file_name="模电笔记.txt", file_path=str(tmp_path / "旧位置" / "模电笔记.txt"))
         old_path = doc.file_path
 
-        report = asyncio.run(
-            docs_router.repair_document_file_paths(dry_run=True, db=db)
-        )
+        report = asyncio.run(docs_router.repair_document_file_paths(dry_run=True, db=db))
 
         assert report["dry_run"] is True
         assert report["recoverable"] >= 1

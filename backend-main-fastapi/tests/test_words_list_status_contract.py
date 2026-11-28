@@ -16,6 +16,7 @@ DB 权威枚举是 not_mastered（没有 'new'），API/前端契约用 new；
 所以本模块把 current_user 覆盖为测试库已有的引导管理员，契约词挂它名下；
 词名带 uuid、每个用例自建自清，全量套件里的其它单词评分测试不会碰这批数据。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -25,9 +26,10 @@ from types import SimpleNamespace
 import pytest
 from database import SessionLocal
 from main import app
-from models import User, Word
 from tests.asgi_client import ASGIClient
 from utils.security import current_user
+
+from models import User, Word
 
 client = ASGIClient(app)
 
@@ -41,8 +43,7 @@ def _owner_user():
     db = SessionLocal()
     try:
         # password_hash 非空约束：本用户永不登录，落一个明确的测试占位串即可
-        u = User(username=f"contract{uuid.uuid4().hex[:8]}", display_name="契约用户",
-                 role="user", is_active=True)
+        u = User(username=f"contract{uuid.uuid4().hex[:8]}", display_name="契约用户", role="user", is_active=True)
         u.password_hash = "test-placeholder-never-used-for-login"
         db.add(u)
         db.commit()
@@ -51,17 +52,19 @@ def _owner_user():
         db.close()
 
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(
-        id=uid, username=uname, role="user",
+        id=uid,
+        username=uname,
+        role="user",
     )
     yield uid
     # 恢复 conftest.auth_bypass 的默认桩（不能 pop，否则后续测试文件全部 401）
     from utils.security import stub_principal
+
     app.dependency_overrides[current_user] = lambda: stub_principal()
 
     db = SessionLocal()
     try:
-        db.query(Word).filter(Word.user_id == uid,
-                              Word.word.like("contract%")).delete(synchronize_session=False)
+        db.query(Word).filter(Word.user_id == uid, Word.word.like("contract%")).delete(synchronize_session=False)
         db.query(User).filter(User.id == uid).delete(synchronize_session=False)
         db.commit()
     finally:
@@ -73,8 +76,11 @@ def _make_word(owner_id: int) -> str:
     name = f"contract{uuid.uuid4().hex[:10]}"
     db = SessionLocal()
     try:
-        db.add(Word(word=name, meaning="契约测试词", status="not_mastered",
-                    due_date=datetime.date.today(), user_id=owner_id))
+        db.add(
+            Word(
+                word=name, meaning="契约测试词", status="not_mastered", due_date=datetime.date.today(), user_id=owner_id
+            )
+        )
         db.commit()
     finally:
         db.close()

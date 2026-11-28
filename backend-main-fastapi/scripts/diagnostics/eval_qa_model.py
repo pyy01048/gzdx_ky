@@ -51,10 +51,51 @@ DEFAULT_SYSTEM = (
 
 # 停用词：这些不算"关键术语"，命中它们没有区分度
 STOPWORDS = {
-    "的", "了", "是", "在", "和", "与", "或", "有", "为", "对", "从", "到", "把", "被",
-    "这个", "那个", "可以", "因此", "所以", "但是", "如果", "就是", "一个", "以及",
-    "我们", "他们", "它", "这", "那", "其", "之", "也", "都", "而", "等", "中",
-    "答案", "解析", "题目", "本题", "如下", "以下", "上述", "例如", "如图",
+    "的",
+    "了",
+    "是",
+    "在",
+    "和",
+    "与",
+    "或",
+    "有",
+    "为",
+    "对",
+    "从",
+    "到",
+    "把",
+    "被",
+    "这个",
+    "那个",
+    "可以",
+    "因此",
+    "所以",
+    "但是",
+    "如果",
+    "就是",
+    "一个",
+    "以及",
+    "我们",
+    "他们",
+    "它",
+    "这",
+    "那",
+    "其",
+    "之",
+    "也",
+    "都",
+    "而",
+    "等",
+    "中",
+    "答案",
+    "解析",
+    "题目",
+    "本题",
+    "如下",
+    "以下",
+    "上述",
+    "例如",
+    "如图",
 }
 
 
@@ -122,7 +163,7 @@ def repetition_rate(answer: str, *, n: int = 8) -> float:
     s = re.sub(r"\s+", "", answer or "")
     if len(s) < n * 2:
         return 0.0
-    grams = [s[i:i + n] for i in range(len(s) - n + 1)]
+    grams = [s[i : i + n] for i in range(len(s) - n + 1)]
     if not grams:
         return 0.0
     return round(1 - len(set(grams)) / len(grams), 4)
@@ -150,7 +191,7 @@ def copy_ratio(answer: str, question: str, *, n: int = 12) -> float:
     q = re.sub(r"\s+", "", question or "")
     if len(a) < n or not q:
         return 0.0
-    grams = [a[i:i + n] for i in range(len(a) - n + 1)]
+    grams = [a[i : i + n] for i in range(len(a) - n + 1)]
     if not grams:
         return 0.0
     copied = sum(1 for g in grams if g in q)
@@ -209,13 +250,11 @@ class Runner:
             self.model.to("cpu")
         self.model.eval()
 
-    def ask(self, question: str, *, system: str = DEFAULT_SYSTEM,
-            max_new_tokens: int = 300, temperature: float = 0.0) -> tuple[str, float]:
-        messages = [{"role": "system", "content": system},
-                    {"role": "user", "content": question}]
-        text = self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+    def ask(
+        self, question: str, *, system: str = DEFAULT_SYSTEM, max_new_tokens: int = 300, temperature: float = 0.0
+    ) -> tuple[str, float]:
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": question}]
+        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
         gen_kwargs = {
             "max_new_tokens": max_new_tokens,
@@ -231,7 +270,7 @@ class Runner:
         with self.torch.no_grad():
             out = self.model.generate(**inputs, **gen_kwargs)
         elapsed = time.time() - t0
-        gen = out[0][inputs["input_ids"].shape[1]:]
+        gen = out[0][inputs["input_ids"].shape[1] :]
         return self.tokenizer.decode(gen, skip_special_tokens=True).strip(), elapsed
 
 
@@ -259,11 +298,13 @@ def load_questions(path: str, limit: int) -> list[dict]:
                     ref = m.get("content")
             if not q or not ref:
                 continue
-            items.append({
-                "question": q,
-                "reference": ref,
-                "terms": extract_key_terms(ref),
-            })
+            items.append(
+                {
+                    "question": q,
+                    "reference": ref,
+                    "terms": extract_key_terms(ref),
+                }
+            )
             if len(items) >= limit:
                 break
     return items
@@ -272,8 +313,7 @@ def load_questions(path: str, limit: int) -> list[dict]:
 # --------------------------------------------------------------------------- #
 # 评测主流程
 # --------------------------------------------------------------------------- #
-def evaluate(runner: Runner, items: list[dict], *, label: str,
-             max_new_tokens: int, verbose: bool = True) -> dict:
+def evaluate(runner: Runner, items: list[dict], *, label: str, max_new_tokens: int, verbose: bool = True) -> dict:
     rows = []
     for i, it in enumerate(items, 1):
         ans, secs = runner.ask(it["question"], max_new_tokens=max_new_tokens)
@@ -292,10 +332,12 @@ def evaluate(runner: Runner, items: list[dict], *, label: str,
         rows.append(row)
         if verbose:
             flag = " ⚠️照抄" if row["copy_ratio"] > 0.5 else ""
-            print(f"  [{i}/{len(items)}] term_hit={row['term_hit']:.2f} "
-                  f"copy={row['copy_ratio']:.2f} rep={row['repetition']:.2f} "
-                  f"cn={row['chinese']:.2f} len={row['length']:>4} "
-                  f"{row['seconds']:>5.1f}s{flag}")
+            print(
+                f"  [{i}/{len(items)}] term_hit={row['term_hit']:.2f} "
+                f"copy={row['copy_ratio']:.2f} rep={row['repetition']:.2f} "
+                f"cn={row['chinese']:.2f} len={row['length']:>4} "
+                f"{row['seconds']:>5.1f}s{flag}"
+            )
 
     n = len(rows) or 1
     summary = {
@@ -370,15 +412,12 @@ def compare(a: dict, b: dict) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="答疑模型评测")
-    ap.add_argument("--model", default=os.path.join(LORA_DIR, "merged"),
-                    help="模型路径（默认微调后的 merged）")
-    ap.add_argument("--questions", default=os.path.join(LORA_DIR, "val.jsonl"),
-                    help="评测样本 jsonl（默认验证集）")
+    ap.add_argument("--model", default=os.path.join(LORA_DIR, "merged"), help="模型路径（默认微调后的 merged）")
+    ap.add_argument("--questions", default=os.path.join(LORA_DIR, "val.jsonl"), help="评测样本 jsonl（默认验证集）")
     ap.add_argument("--limit", type=int, default=8, help="评测题数（CPU 上别设太大）")
     ap.add_argument("--max-new-tokens", type=int, default=250)
     ap.add_argument("--compare", action="store_true", help="与基座模型对照")
-    ap.add_argument("--base-model", default="Qwen/Qwen2.5-3B-Instruct",
-                    help="对照用基座模型（本地路径或 HF id）")
+    ap.add_argument("--base-model", default="Qwen/Qwen2.5-3B-Instruct", help="对照用基座模型（本地路径或 HF id）")
     ap.add_argument("--no-4bit", action="store_true", help="禁用 4bit 量化")
     ap.add_argument("--out", default=os.path.join(LORA_DIR, "eval_result.json"))
     args = ap.parse_args()
@@ -399,8 +438,11 @@ def main() -> int:
     print(f"期望术语: {items[0]['terms'][:6]}")
 
     import torch
-    print(f"\ntorch {torch.__version__} | cuda={torch.cuda.is_available()}"
-          + (f" | {torch.cuda.get_device_name(0)}" if torch.cuda.is_available() else ""))
+
+    print(
+        f"\ntorch {torch.__version__} | cuda={torch.cuda.is_available()}"
+        + (f" | {torch.cuda.get_device_name(0)}" if torch.cuda.is_available() else "")
+    )
 
     results = {}
 
@@ -413,8 +455,7 @@ def main() -> int:
         return 1
     r_ft = Runner(args.model, load_4bit=not args.no_4bit)
     print(f"  设备={r_ft.device} 4bit={r_ft.quantized}")
-    results["finetuned"] = evaluate(r_ft, items, label="微调模型",
-                                    max_new_tokens=args.max_new_tokens)
+    results["finetuned"] = evaluate(r_ft, items, label="微调模型", max_new_tokens=args.max_new_tokens)
     print_summary(results["finetuned"])
 
     # 基座对照
@@ -425,8 +466,7 @@ def main() -> int:
         try:
             r_base = Runner(args.base_model, load_4bit=not args.no_4bit)
             print(f"  设备={r_base.device} 4bit={r_base.quantized}")
-            results["base"] = evaluate(r_base, items, label="基座模型",
-                                       max_new_tokens=args.max_new_tokens)
+            results["base"] = evaluate(r_base, items, label="基座模型", max_new_tokens=args.max_new_tokens)
             print_summary(results["base"])
             compare(results["base"], results["finetuned"])
         except Exception as e:
@@ -435,8 +475,7 @@ def main() -> int:
     # 存结果
     try:
         with open(args.out, "w", encoding="utf-8") as f:
-            json.dump({"args": vars(args), "results": results}, f,
-                      ensure_ascii=False, indent=1)
+            json.dump({"args": vars(args), "results": results}, f, ensure_ascii=False, indent=1)
         print(f"\n[✓] 结果已保存: {args.out}")
     except Exception as e:
         print(f"[!] 保存结果失败: {e}")

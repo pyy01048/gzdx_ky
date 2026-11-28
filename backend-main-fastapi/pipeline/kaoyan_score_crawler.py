@@ -21,6 +21,7 @@ diff_total 为「院线总分 - 国家线」，故 national_line = total - diff_
     python pipeline/kaoyan_score_crawler.py --school-name 清华大学
     python pipeline/kaoyan_score_crawler.py --years 2022,2023,2024,2025,2026
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,8 +39,9 @@ from sqlalchemy import text
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from database import SessionLocal  # noqa: E402
-from models import KaoyanCollectionRun, KaoyanMajor, KaoyanSchool, KaoyanScoreLine  # noqa: E402
 from utils.timeutil import naive_utc_iso  # noqa: E402
+
+from models import KaoyanCollectionRun, KaoyanMajor, KaoyanSchool, KaoyanScoreLine  # noqa: E402
 
 SCORE_API = "https://api.kaoyan.cn/pc/school/schoolScore"
 CODE_JSON = "https://static.kaoyan.cn/json/school/code.json"
@@ -117,8 +119,7 @@ def normalize_row(raw: dict, school_id: int, year: int) -> Optional[dict]:
     }
 
 
-def fetch_year(session: requests.Session, kaoyan_id: int, year: int,
-               retries: int = 3) -> List[dict]:
+def fetch_year(session: requests.Session, kaoyan_id: int, year: int, retries: int = 3) -> List[dict]:
     body = {"school_id": str(kaoyan_id), "year": year, "degree_type": ""}
     last_err = None
     for attempt in range(retries):
@@ -134,14 +135,13 @@ def fetch_year(session: requests.Session, kaoyan_id: int, year: int,
             return data
         except Exception as exc:  # noqa: BLE001 —— 单年失败重试后继续下一所
             last_err = exc
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     raise RuntimeError(f"year={year} 失败: {last_err}")
 
 
 def major_id_map(db, school_id: int) -> Dict[str, int]:
     """专业代码 → major_id，仅保留唯一匹配（同码多学院时无法一一对应）。"""
-    rows = db.query(KaoyanMajor.id, KaoyanMajor.code).filter(
-        KaoyanMajor.school_id == school_id).all()
+    rows = db.query(KaoyanMajor.id, KaoyanMajor.code).filter(KaoyanMajor.school_id == school_id).all()
     seen: Dict[str, List[int]] = {}
     for mid, code in rows:
         if code:
@@ -149,8 +149,7 @@ def major_id_map(db, school_id: int) -> Dict[str, int]:
     return {c: ids[0] for c, ids in seen.items() if len(ids) == 1}
 
 
-def write_year(db, school_id: int, year: int, rows: List[dict],
-               mid_map: Dict[str, int]) -> Tuple[int, int]:
+def write_year(db, school_id: int, year: int, rows: List[dict], mid_map: Dict[str, int]) -> Tuple[int, int]:
     """整年替换：先取到数据再删旧行，避免请求失败时清空历史数据。"""
     code_count = Counter(r["major_code"] for r in rows if r.get("major_code"))
     for r in rows:
@@ -158,25 +157,51 @@ def write_year(db, school_id: int, year: int, rows: List[dict],
         # uq_scoreline(school_id, major_id, year, line_type) 要求同码唯一才能挂 major_id
         r["major_id"] = mid_map.get(code) if code and code_count[code] == 1 else None
 
-    existed = db.execute(text(
-        "SELECT count(*) FROM kaoyan_scorelines WHERE school_id=:s AND year=:y AND source=:src"
-    ), {"s": school_id, "y": year, "src": SOURCE}).scalar() or 0
+    existed = (
+        db.execute(
+            text("SELECT count(*) FROM kaoyan_scorelines WHERE school_id=:s AND year=:y AND source=:src"),
+            {"s": school_id, "y": year, "src": SOURCE},
+        ).scalar()
+        or 0
+    )
 
-    db.execute(text(
-        "DELETE FROM kaoyan_scorelines WHERE school_id=:s AND year=:y AND source=:src"
-    ), {"s": school_id, "y": year, "src": SOURCE})
+    db.execute(
+        text("DELETE FROM kaoyan_scorelines WHERE school_id=:s AND year=:y AND source=:src"),
+        {"s": school_id, "y": year, "src": SOURCE},
+    )
 
     cols = [
-        "school_id", "major_id", "year", "total_line", "politics_line", "english_line",
-        "math_line", "major_line", "national_line", "line_type", "source",
-        "major_code", "major_name", "depart_name", "degree_type", "note",
-        "special_remark", "diff_total", "source_id",
+        "school_id",
+        "major_id",
+        "year",
+        "total_line",
+        "politics_line",
+        "english_line",
+        "math_line",
+        "major_line",
+        "national_line",
+        "line_type",
+        "source",
+        "major_code",
+        "major_name",
+        "depart_name",
+        "degree_type",
+        "note",
+        "special_remark",
+        "diff_total",
+        "source_id",
     ]
     if rows:
-        db.execute(text(
-            "INSERT INTO kaoyan_scorelines (" + ", ".join(cols) + ") VALUES ("
-            + ", ".join(f":{c}" for c in cols) + ")"
-        ), rows)
+        db.execute(
+            text(
+                "INSERT INTO kaoyan_scorelines ("
+                + ", ".join(cols)
+                + ") VALUES ("
+                + ", ".join(f":{c}" for c in cols)
+                + ")"
+            ),
+            rows,
+        )
     return existed, len(rows)
 
 
@@ -216,8 +241,8 @@ def run(args) -> int:
             targets.append((s, hit[0]))
         if args.skip_existing:
             done = {
-                sid for (sid,) in db.query(KaoyanScoreLine.school_id)
-                .filter(KaoyanScoreLine.source == SOURCE).distinct()
+                sid
+                for (sid,) in db.query(KaoyanScoreLine.school_id).filter(KaoyanScoreLine.source == SOURCE).distinct()
             }
             before = len(targets)
             targets = [(s, kid) for s, kid in targets if s.id not in done]
@@ -272,19 +297,29 @@ def run(args) -> int:
                 time.sleep(random.uniform(args.delay * 0.7, args.delay * 1.3))
             print(f"[{i}/{len(targets)}] {school.name}: {school_rows} 行")
             if i % 25 == 0:
-                db.add(KaoyanCollectionRun(
-                    source="kaoyan_cn_scores", scope="scorelines", item_type="scorelines",
-                    row_count=stats["rows_in"], status="partial",
-                    detail={"started_at": started, "progress": f"{i}/{len(targets)}",
-                            "requests": stats["requests"]},
-                ))
+                db.add(
+                    KaoyanCollectionRun(
+                        source="kaoyan_cn_scores",
+                        scope="scorelines",
+                        item_type="scorelines",
+                        row_count=stats["rows_in"],
+                        status="partial",
+                        detail={
+                            "started_at": started,
+                            "progress": f"{i}/{len(targets)}",
+                            "requests": stats["requests"],
+                        },
+                    )
+                )
                 db.commit()
 
         status = "success" if not stats["failed"] else "partial"
         _record_run(db, started, stats, status, finished=True)
-        print(f"[DONE] 院校 {len(targets)}，写入 {stats['rows_in']} 行"
-              f"（覆盖旧行 {stats['rows_replaced']}），空年份 {stats['empty']}，"
-              f"失败 {len(stats['failed'])}，请求 {stats['requests']}")
+        print(
+            f"[DONE] 院校 {len(targets)}，写入 {stats['rows_in']} 行"
+            f"（覆盖旧行 {stats['rows_replaced']}），空年份 {stats['empty']}，"
+            f"失败 {len(stats['failed'])}，请求 {stats['requests']}"
+        )
         return 0 if not stats["failed"] else 1
     finally:
         db.close()
@@ -302,10 +337,16 @@ def _record_run(db, started: str, stats: dict, status: str, finished: bool = Fal
         "failed": stats["failed"][:50],
         "requests": stats["requests"],
     }
-    db.add(KaoyanCollectionRun(
-        source="kaoyan_cn_scores", scope="scorelines", item_type="scorelines",
-        row_count=stats["rows_in"], status=status, detail=detail,
-    ))
+    db.add(
+        KaoyanCollectionRun(
+            source="kaoyan_cn_scores",
+            scope="scorelines",
+            item_type="scorelines",
+            row_count=stats["rows_in"],
+            status=status,
+            detail=detail,
+        )
+    )
     db.commit()
 
 

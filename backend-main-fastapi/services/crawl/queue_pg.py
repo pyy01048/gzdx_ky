@@ -189,9 +189,7 @@ class PgJobStore(JobStore):
     def dead_letters(self, limit: int = 50) -> List[Dict[str, Any]]:
         rows = (
             self.db.execute(
-                select(self.CrawlDeadLetter)
-                .order_by(self.CrawlDeadLetter.id.desc())
-                .limit(max(0, int(limit)))
+                select(self.CrawlDeadLetter).order_by(self.CrawlDeadLetter.id.desc()).limit(max(0, int(limit)))
             )
             .scalars()
             .all()
@@ -212,9 +210,7 @@ class PgJobStore(JobStore):
 
     def counts(self) -> Dict[str, int]:
         result = {status: 0 for status in ALL_STATUSES}
-        rows = self.db.execute(
-            select(self.CrawlJob.status).select_from(self.CrawlJob)
-        ).fetchall()
+        rows = self.db.execute(select(self.CrawlJob.status).select_from(self.CrawlJob)).fetchall()
         for row in rows:
             result[row.status] = result.get(row.status, 0) + 1
         result["total"] = sum(result.get(status, 0) for status in ALL_STATUSES)
@@ -233,26 +229,20 @@ class PgPageIndex:
         model = self.CrawlPage
         if canonical_url:
             row = self.db.execute(
-                select(model.canonical_url)
-                .where(model.canonical_url == canonical_url)
-                .limit(1)
+                select(model.canonical_url).where(model.canonical_url == canonical_url).limit(1)
             ).first()
             if row:
                 return f"canonical_url:{row.canonical_url}"
         if content_hash_:
             row = self.db.execute(
-                select(model.canonical_url)
-                .where(model.content_hash == content_hash_)
-                .limit(1)
+                select(model.canonical_url).where(model.content_hash == content_hash_).limit(1)
             ).first()
             if row:
                 return f"content_hash:{row.canonical_url}"
         if simhash:
             from services.crawl.urls import hamming_distance
 
-            rows = self.db.execute(
-                select(model.canonical_url, model.simhash).limit(500)
-            ).fetchall()
+            rows = self.db.execute(select(model.canonical_url, model.simhash).limit(500)).fetchall()
             for cand_url, cand_hash in rows:
                 if cand_hash and hamming_distance(cand_hash, simhash) <= self.simhash_threshold:
                     return f"simhash:{cand_url}"

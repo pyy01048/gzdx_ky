@@ -8,6 +8,7 @@
 
 幂等：按 file_name 查重 + content_hash 查重。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,13 +54,28 @@ SUBJECT_MAP = {
 }
 
 MODULES = [
-    "politics_mks", "politics_mzt", "politics_history", "politics_sixiu",
-    "math_gaoshu", "math_xiandai", "math_prob",
-    "english_vocab", "english_grammar", "english_sentences", "english_writing",
-    "cs_ds", "cs_os", "cs_network",
-    "electronics_digital", "electronics_analog",
-    "communications_principles", "signals_systems",
-    "general_physics", "cs_408", "electromagnetics", "dsp",
+    "politics_mks",
+    "politics_mzt",
+    "politics_history",
+    "politics_sixiu",
+    "math_gaoshu",
+    "math_xiandai",
+    "math_prob",
+    "english_vocab",
+    "english_grammar",
+    "english_sentences",
+    "english_writing",
+    "cs_ds",
+    "cs_os",
+    "cs_network",
+    "electronics_digital",
+    "electronics_analog",
+    "communications_principles",
+    "signals_systems",
+    "general_physics",
+    "cs_408",
+    "electromagnetics",
+    "dsp",
 ]
 
 
@@ -169,9 +185,23 @@ def main() -> int:
                 RETURNING id
                 """,
                 (
-                    title, body, subject_id, subject_full, chapter, category,
-                    "note", "structured", "indexed", "ai_generated",
-                    "md", h, 0, 0, 1.0, "初试", False,
+                    title,
+                    body,
+                    subject_id,
+                    subject_full,
+                    chapter,
+                    category,
+                    "note",
+                    "structured",
+                    "indexed",
+                    "ai_generated",
+                    "md",
+                    h,
+                    0,
+                    0,
+                    1.0,
+                    "初试",
+                    False,
                 ),
             )
             doc_id = cur.fetchone()[0]
@@ -199,8 +229,7 @@ def main() -> int:
                          difficulty, exam_frequency, question_types, extract_source)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (kp_name, subject_full, subject_id, chapter, doc_id, desc,
-                     difficulty, frequency, "[]", "manual"),
+                    (kp_name, subject_full, subject_id, chapter, doc_id, desc, difficulty, frequency, "[]", "manual"),
                 )
                 kp_count += 1
 

@@ -16,13 +16,13 @@ import csv
 import json
 import os
 
-import psycopg
-
 # ---------------------------------------------------------------------------
 # 数据库连接
 # ---------------------------------------------------------------------------
 import sys
 from pathlib import Path
+
+import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts._conn import dsn
@@ -124,14 +124,37 @@ KY_LIST = [
 ]
 
 REGION_MAP = {
-    "北京": "华北", "天津": "华北", "河北": "华北", "山西": "华北", "内蒙古": "华北",
-    "辽宁": "东北", "吉林": "东北", "黑龙江": "东北",
-    "上海": "华东", "江苏": "华东", "浙江": "华东", "安徽": "华东", "福建": "华东",
-    "江西": "华东", "山东": "华东",
-    "河南": "华中", "湖北": "华中", "湖南": "华中",
-    "广东": "华南", "广西": "华南", "海南": "华南",
-    "重庆": "西南", "四川": "西南", "贵州": "西南", "云南": "西南", "西藏": "西南",
-    "陕西": "西北", "甘肃": "西北", "青海": "西北", "宁夏": "西北", "新疆": "西北",
+    "北京": "华北",
+    "天津": "华北",
+    "河北": "华北",
+    "山西": "华北",
+    "内蒙古": "华北",
+    "辽宁": "东北",
+    "吉林": "东北",
+    "黑龙江": "东北",
+    "上海": "华东",
+    "江苏": "华东",
+    "浙江": "华东",
+    "安徽": "华东",
+    "福建": "华东",
+    "江西": "华东",
+    "山东": "华东",
+    "河南": "华中",
+    "湖北": "华中",
+    "湖南": "华中",
+    "广东": "华南",
+    "广西": "华南",
+    "海南": "华南",
+    "重庆": "西南",
+    "四川": "西南",
+    "贵州": "西南",
+    "云南": "西南",
+    "西藏": "西南",
+    "陕西": "西北",
+    "甘肃": "西北",
+    "青海": "西北",
+    "宁夏": "西北",
+    "新疆": "西北",
 }
 
 
@@ -173,10 +196,42 @@ def judge_type(name: str) -> str:
         return "民族"
     if any(k in n for k in ("军事", "国防", "陆军", "海军", "空军", "武警", "火箭军", "战略支援", "军医")):
         return "军事"
-    if any(k in n for k in (
-            "理工", "工业", "科技", "工程", "交通", "邮电", "电力", "建筑", "化工", "航空",
-            "航天", "矿业", "石油", "地质", "信息", "电子", "机械", "冶金", "纺织", "轻工",
-            "水利", "海事", "铁道", "车辆", "船舶", "能源", "材料", "测绘", "统计", "计量", "海关")):
+    if any(
+        k in n
+        for k in (
+            "理工",
+            "工业",
+            "科技",
+            "工程",
+            "交通",
+            "邮电",
+            "电力",
+            "建筑",
+            "化工",
+            "航空",
+            "航天",
+            "矿业",
+            "石油",
+            "地质",
+            "信息",
+            "电子",
+            "机械",
+            "冶金",
+            "纺织",
+            "轻工",
+            "水利",
+            "海事",
+            "铁道",
+            "车辆",
+            "船舶",
+            "能源",
+            "材料",
+            "测绘",
+            "统计",
+            "计量",
+            "海关",
+        )
+    ):
         return "理工"
     return "综合"
 
@@ -212,17 +267,19 @@ def load_csv_universities() -> list:
         nm = normalize(r["name"])
         if is_zhiye(r):
             continue
-        selected.append({
-            "name": nm,
-            "province": r["province"].strip(),
-            "city": r["city"].strip(),
-            "level": judge_level(r.get("project_985", ""), r.get("project_211", ""), nm),
-            "type": judge_type(nm),
-            "region": judge_region(r["province"].strip()),
-            "official_url": r.get("website", "").strip(),
-            "tags": [],
-            "data_source": "open_dataset",
-        })
+        selected.append(
+            {
+                "name": nm,
+                "province": r["province"].strip(),
+                "city": r["city"].strip(),
+                "level": judge_level(r.get("project_985", ""), r.get("project_211", ""), nm),
+                "type": judge_type(nm),
+                "region": judge_region(r["province"].strip()),
+                "official_url": r.get("website", "").strip(),
+                "tags": [],
+                "data_source": "open_dataset",
+            }
+        )
     return selected
 
 
@@ -230,17 +287,19 @@ def load_ky_universities() -> list:
     """生成科研院所插入数据。"""
     result = []
     for name, province, city in KY_LIST:
-        result.append({
-            "name": name,
-            "province": province,
-            "city": city,
-            "level": "双非",
-            "type": "科研院所",
-            "region": judge_region(province),
-            "official_url": "",
-            "tags": [],
-            "data_source": "manual",
-        })
+        result.append(
+            {
+                "name": name,
+                "province": province,
+                "city": city,
+                "level": "双非",
+                "type": "科研院所",
+                "region": judge_region(province),
+                "official_url": "",
+                "tags": [],
+                "data_source": "manual",
+            }
+        )
     return result
 
 
@@ -286,17 +345,20 @@ def main():
     inserted = 0
     for item in to_insert:
         try:
-            cur.execute(sql, {
-                "name": item["name"],
-                "level": item["level"],
-                "province": item["province"],
-                "city": item["city"],
-                "tags": json.dumps(item["tags"], ensure_ascii=False),
-                "official_url": item["official_url"] or None,
-                "data_source": item["data_source"],
-                "type": item["type"],
-                "region": item["region"],
-            })
+            cur.execute(
+                sql,
+                {
+                    "name": item["name"],
+                    "level": item["level"],
+                    "province": item["province"],
+                    "city": item["city"],
+                    "tags": json.dumps(item["tags"], ensure_ascii=False),
+                    "official_url": item["official_url"] or None,
+                    "data_source": item["data_source"],
+                    "type": item["type"],
+                    "region": item["region"],
+                },
+            )
             inserted += 1
         except psycopg.errors.UniqueViolation:
             conn.rollback()

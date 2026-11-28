@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """临时诊断：数字/模拟 sibling 余弦间隙，用于设置兄弟科自动入库守卫阈值。"""
+
 import json
 import os
 import sys

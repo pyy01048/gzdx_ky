@@ -3,27 +3,60 @@
 
 隔离：conftest 临时库。合成 JSON 题库包（数电/数逻各 3 题，含缺答案与重复条）。
 """
+
 from __future__ import annotations
 
 import pytest
 from database import Base, SessionLocal, engine
 from main import app
-from models import Paper, QuizQuestion
 from services import qa_foundation
 from tests.asgi_client import ASGIClient
+
+from models import Paper, QuizQuestion
 
 client = ASGIClient(app)
 
 QBANK = {
     "数字电路": [
-        {"question": "TTL 与非门多余输入端应如何处理？", "options": {"A": "接地", "B": "接高电平或悬空", "C": "接低电平", "D": "任意"}, "answer": "B", "analysis": "多余端接高电平不影响逻辑", "year": 2023},
-        {"question": "TTL 与非门多余输入端应如何处理？", "options": {"A": "接地", "B": "接高电平或悬空", "C": "接低电平", "D": "任意"}, "answer": "B", "year": 2023},  # 同科重复 → 去重
-        {"question": "组合逻辑电路的特点是什么？", "options": {"A": "有记忆", "B": "无记忆", "C": "含触发器", "D": "反馈结构"}, "answer": "B", "year": 2023},
-        {"question": "卡诺图化简的依据是？", "options": {"A": "摩根定律", "B": "相邻最小项合并", "C": "德摩根", "D": "真值表"}, "answer": None, "year": 2024},  # 缺答案 → QC
+        {
+            "question": "TTL 与非门多余输入端应如何处理？",
+            "options": {"A": "接地", "B": "接高电平或悬空", "C": "接低电平", "D": "任意"},
+            "answer": "B",
+            "analysis": "多余端接高电平不影响逻辑",
+            "year": 2023,
+        },
+        {
+            "question": "TTL 与非门多余输入端应如何处理？",
+            "options": {"A": "接地", "B": "接高电平或悬空", "C": "接低电平", "D": "任意"},
+            "answer": "B",
+            "year": 2023,
+        },  # 同科重复 → 去重
+        {
+            "question": "组合逻辑电路的特点是什么？",
+            "options": {"A": "有记忆", "B": "无记忆", "C": "含触发器", "D": "反馈结构"},
+            "answer": "B",
+            "year": 2023,
+        },
+        {
+            "question": "卡诺图化简的依据是？",
+            "options": {"A": "摩根定律", "B": "相邻最小项合并", "C": "德摩根", "D": "真值表"},
+            "answer": None,
+            "year": 2024,
+        },  # 缺答案 → QC
     ],
     "数字逻辑": [
-        {"question": "十进制 25 的 8421BCD 码是？", "options": {"A": "00100101", "B": "00110011", "C": "00011001", "D": "11001"}, "answer": "A", "year": 2024},
-        {"question": "竞争冒险的消除方法不包括？", "options": {"A": "加冗余项", "B": "加滤波电容", "C": "修改真值表", "D": "选通法"}, "answer": "C", "year": 2024},
+        {
+            "question": "十进制 25 的 8421BCD 码是？",
+            "options": {"A": "00100101", "B": "00110011", "C": "00011001", "D": "11001"},
+            "answer": "A",
+            "year": 2024,
+        },
+        {
+            "question": "竞争冒险的消除方法不包括？",
+            "options": {"A": "加冗余项", "B": "加滤波电容", "C": "修改真值表", "D": "选通法"},
+            "answer": "C",
+            "year": 2024,
+        },
     ],
 }
 
@@ -40,8 +73,11 @@ def _seed():
     db = SessionLocal()
     try:
         stems = [
-            "%多余输入端应如何处理%", "%组合逻辑电路的特点%", "%卡诺图化简的依据%",
-            "%8421BCD 码是%", "%竞争冒险的消除方法%",
+            "%多余输入端应如何处理%",
+            "%组合逻辑电路的特点%",
+            "%卡诺图化简的依据%",
+            "%8421BCD 码是%",
+            "%竞争冒险的消除方法%",
         ]
         like = " OR ".join(f"content LIKE '{x}'" for x in stems)
         # 顺序要紧：先删所有**引用**题目的表，再删题目本身。
@@ -49,9 +85,9 @@ def _seed():
         # question_id 指向已删题目，测试取到它再查库就是 None
         # （实测：AttributeError 'NoneType' object has no attribute 'answer'）。
         for ref_tbl in ("paper_questions", "answer_review_queue"):
-            db.execute(_text(
-                f"DELETE FROM {ref_tbl} WHERE question_id IN "
-                f"(SELECT id FROM quiz_questions WHERE {like})"))
+            db.execute(
+                _text(f"DELETE FROM {ref_tbl} WHERE question_id IN (SELECT id FROM quiz_questions WHERE {like})")
+            )
         db.execute(_text(f"DELETE FROM quiz_questions WHERE {like}"))
         db.execute(_text("DELETE FROM papers WHERE title LIKE '%（题库包导入）'"))
         db.commit()
@@ -59,7 +95,7 @@ def _seed():
         db.rollback()
         import warnings
 
-        warnings.warn(f"QBANK 前置清理失败（断言可能不可复现）: {exc}")
+        warnings.warn(f"QBANK 前置清理失败（断言可能不可复现）: {exc}", stacklevel=2)
     finally:
         db.close()
 
@@ -127,7 +163,9 @@ def test_review_queue_resolve():
             q = QuizQuestion(
                 content="QA 队列自造缺答案题：门电路输出电平？",
                 options=[{"key": "A", "text": "高电平"}, {"key": "B", "text": "低电平"}],
-                answer=None, subject="数电", question_type="single",
+                answer=None,
+                subject="数电",
+                question_type="single",
                 answer_source="llm_generated",
             )
             db.add(q)
@@ -140,11 +178,14 @@ def test_review_queue_resolve():
         from sqlalchemy import text as _t
 
         with _eng.begin() as conn:
-            conn.execute(_t(
-                "INSERT INTO answer_review_queue "
-                "(question_id, conflict_type, detail, status, created_at) "
-                f"VALUES ({q.id}, 'missing', '\"导入缺答案\"', 'pending', 'now') "
-                "ON CONFLICT DO NOTHING"))
+            conn.execute(
+                _t(
+                    "INSERT INTO answer_review_queue "
+                    "(question_id, conflict_type, detail, status, created_at) "
+                    f"VALUES ({q.id}, 'missing', '\"导入缺答案\"', 'pending', 'now') "
+                    "ON CONFLICT DO NOTHING"
+                )
+            )
     finally:
         db.close()
     items = client.get("/api/qa/review-queue").json()
@@ -166,15 +207,23 @@ def test_review_queue_resolve():
 def test_submit_low_confidence_question():
     db = SessionLocal()
     try:
-        q = QuizQuestion(content="低置信测试题", options='{"A":"1","B":"2"}',
-                         answer="llm猜想", answer_source="llm_generated",
-                         answer_confidence=0.55, subject="数电")
-        db.add(q); db.commit(); qid = q.id
+        q = QuizQuestion(
+            content="低置信测试题",
+            options='{"A":"1","B":"2"}',
+            answer="llm猜想",
+            answer_source="llm_generated",
+            answer_confidence=0.55,
+            subject="数电",
+        )
+        db.add(q)
+        db.commit()
+        qid = q.id
     finally:
         db.close()
-    r = client.post("/api/quiz/submit", json={
-        "question_id": qid, "my_answer": "A", "mode": "practice", "cost_seconds": 5})
+    r = client.post(
+        "/api/quiz/submit", json={"question_id": qid, "my_answer": "A", "mode": "practice", "cost_seconds": 5}
+    )
     assert r.status_code == 200
     d = r.json()
     assert d["needs_review"] is True
-    assert d["correct"] is False  # 低置信不判分
+    assert d["correct"] is None  # 低置信待确认，不判对也不判错

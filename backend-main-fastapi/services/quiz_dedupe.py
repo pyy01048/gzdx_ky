@@ -87,9 +87,9 @@ _FALSY = {"0", "false", "no", "off", "n", "f", "disable", "disabled", ""}
 #: OCR 噪声字符：U+FFFD 替换符、U+FEFFBOM、替换符变体、私用区。
 #:同一道题被不同来源 OCR 出来，最典型的差异就是「一份带乱码一份不带」。
 _OCR_JUNK = re.compile(
-    "[\ufffd\ufeff\ufffe\uffff]"          # U+FFFD 替换符 / U+FEFF BOM / 非字符
-    "|[\ue000-\uf8ff]"                      # BMP 私用区
-    "|[\U000f0000-\U0010ffff]"              # SMP 私用区 / 未分配码位
+    "[\ufffd\ufeff\ufffe\uffff]"  # U+FFFD 替换符 / U+FEFF BOM / 非字符
+    "|[\ue000-\uf8ff]"  # BMP 私用区
+    "|[\U000f0000-\U0010ffff]"  # SMP 私用区 / 未分配码位
 )
 
 #: 去掉全部空白与中英文标点。保留实义字符（数字/字母/汉字/数学符号）。
@@ -204,8 +204,7 @@ class FingerprintIndex:
         #: question_id -> canonical_text（复核时需要题干全文，只存归一化串）
         self._texts: dict[int, str] = {}
 
-    def add(self, h: str, qid: int, source: str = "",
-            text: str = "") -> None:
+    def add(self, h: str, qid: int, source: str = "", text: str = "") -> None:
         """登记一条题目的指纹。空指纹（题干过短/为空）或未知 id 忽略。
 
         ``qid`` 传None/负数表示「已知指纹但 id 未知」（例如调用方自己在
@@ -348,7 +347,7 @@ def _load_source_ids(q: Any) -> list[str]:
                 return [str(x) for x in parsed] if isinstance(parsed, list) else []
             except (ValueError, TypeError):
                 return [raw]
-        if isinstance(raw, (list, tuple)):
+        if isinstance(raw, list | tuple):
             return [str(x) for x in raw]
     src = (getattr(q, "source", "") or "").strip()
     return [src] if src else []
@@ -432,13 +431,10 @@ def decide_insert(
     h = canonical_hash(content)
     norm_text = canonical_text(content)
     norm_len = len(norm_text)
-    near_reason = "exact_duplicate"
     if not h or norm_len < MIN_CANONICAL_LEN:
         if stats is not None:
             stats.too_short += 1
-        return DedupeDecision(
-            action="insert", fingerprint=h, reason="too_short_for_dedupe"
-        )
+        return DedupeDecision(action="insert", fingerprint=h, reason="too_short_for_dedupe")
 
     hit = index.lookup(h)
     if hit is None:
@@ -448,7 +444,6 @@ def decide_insert(
             return DedupeDecision(action="insert", fingerprint=h, reason="new")
         qid = near[0]
         hit = (qid, _index_source(index, qid))
-        near_reason = "near_duplicate"
 
     qid, old_source = hit
     if qid < 0:

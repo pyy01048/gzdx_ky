@@ -7,6 +7,7 @@
   · 行内选项拆分（题干与选项挤在一行）
   · 选项键与内容分家的补全
 """
+
 import unittest
 
 from pipeline.exam_bank_extractor import SECTION_RE, extract_from_text
@@ -78,7 +79,7 @@ class TestExtractPdfLayer(unittest.TestCase):
 10
 的补码是
 (
-　
+
 )
 。(
 连符号位在内取

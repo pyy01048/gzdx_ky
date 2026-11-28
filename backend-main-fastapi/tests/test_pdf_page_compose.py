@@ -11,6 +11,7 @@
 输出是「两个公式在前，一整段文字挤在最后」——语序完全错乱。
 改用 OCR 行骨架后才正确，所以这里必须有断言守住。
 """
+
 from __future__ import annotations
 
 import os

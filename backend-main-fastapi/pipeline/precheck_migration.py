@@ -11,6 +11,7 @@
   5. knowledge_points.exam_frequency 0..5 / difficulty 1..5 / ease_factor 1.3..3.5
   6. knowledge_point_relations 自引用（source_kp_id = target_kp_id）
 """
+
 from __future__ import annotations
 
 import json
@@ -59,9 +60,9 @@ def main() -> int:
     # --- 2. knowledge_chunks.text 非空 ---
     try:
         total = conn.execute("SELECT COUNT(*) FROM knowledge_chunks").fetchone()[0]
-        empty = conn.execute(
-            "SELECT COUNT(*) FROM knowledge_chunks WHERE text IS NULL OR TRIM(text) = ''"
-        ).fetchone()[0]
+        empty = conn.execute("SELECT COUNT(*) FROM knowledge_chunks WHERE text IS NULL OR TRIM(text) = ''").fetchone()[
+            0
+        ]
         report["knowledge_chunks"] = {"total": total, "empty_text_will_be_rejected": empty}
     except sqlite3.Error as exc:
         report["knowledge_chunks"] = {"error": str(exc)}
@@ -73,7 +74,7 @@ def main() -> int:
         rows = conn.execute("SELECT id, options, question_type, source FROM quiz_questions").fetchall()
         bad_opts = 0
         bad_opts_ids: list[int] = []
-        for qid, raw, qtype, source in rows:
+        for qid, raw, qtype, _source in rows:
             # 主观题不要求选项
             qt = (qtype or "").strip().lower()
             if qt in {"calc", "essay", "proof", "draw", "other"}:

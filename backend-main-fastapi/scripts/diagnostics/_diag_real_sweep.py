@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """真实库阈值扫描：数字/模拟题上扫 subject/type 阈值，定位 ≥99% 精度落点。"""
+
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
-from models import QuizQuestion
 from services.quiz_classifier_v2 import classify_batch_v2
 from sqlalchemy import func
+
+from models import QuizQuestion
 
 
 def main():
@@ -23,8 +25,7 @@ def main():
             .limit(3000)
             .all()
         )
-        qs = [{"content": r.content, "options": r.options if isinstance(r.options, list) else None}
-              for r in rows]
+        qs = [{"content": r.content, "options": r.options if isinstance(r.options, list) else None} for r in rows]
         truth = [r.subject for r in rows]
         decs = classify_batch_v2(qs, db=db, use_llm=False)
         n = len(rows)
@@ -33,15 +34,15 @@ def main():
         for s_th in (0.80, 0.85, 0.90, 0.92):
             for t_th in (0.72, 0.80, 0.85, 0.90):
                 auto = ok = 0
-                for t, d in zip(truth, decs):
+                for t, d in zip(truth, decs, strict=False):
                     if d.subject.confidence >= s_th and d.question_type.confidence >= t_th:
                         auto += 1
                         if d.subject.value == t:
                             ok += 1
                 prec = ok / auto if auto else float("nan")
-                print(f"{s_th:>7.2f}{t_th:>7.2f}{auto/n:>8.1%}{prec:>8.3f}{auto:>8}")
+                print(f"{s_th:>7.2f}{t_th:>7.2f}{auto / n:>8.1%}{prec:>8.3f}{auto:>8}")
         # 题型准确率（全量）
-        ttype_ok = sum(1 for d in decs if True)
+        sum(1 for d in decs if True)
         print("\n[注] 库内题型标签含噪声，精度以科目为准；自动集精度为下界。")
     finally:
         db.close()

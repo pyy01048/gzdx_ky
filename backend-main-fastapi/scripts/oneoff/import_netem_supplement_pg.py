@@ -14,6 +14,7 @@ NETEMVocabulary 大纲词补全 + 例句回填 (PostgreSQL)
 幂等: 依赖唯一索引 uq_word_in_deck(deck_id, word) + ON CONFLICT DO NOTHING / DO UPDATE
 运行: python scripts/import_netem_supplement_pg.py
 """
+
 # [STATUS] 一次性数据脚本（迁入 oneoff/，docs/完善方案/04 §3.4）。执行前确认数据源与备份。
 import json
 import os
@@ -26,7 +27,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 NETEM_JSON = os.path.join(PROJECT_ROOT, "..", "data_sources", "NETEMVocabulary", "netem_full_list.json")
 
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -86,10 +86,27 @@ def main():
             if lower_w in existing:
                 update_batch.append((example, example_cn, deck_id, lower_w))
             else:
-                insert_batch.append((
-                    deck_id, word, meaning or None, example, example_cn, TAG,
-                    STATUS, 2.5, 0, 0, 0, today, None, [], now, now, uid,
-                ))
+                insert_batch.append(
+                    (
+                        deck_id,
+                        word,
+                        meaning or None,
+                        example,
+                        example_cn,
+                        TAG,
+                        STATUS,
+                        2.5,
+                        0,
+                        0,
+                        0,
+                        today,
+                        None,
+                        [],
+                        now,
+                        now,
+                        uid,
+                    )
+                )
 
         # 回填例句（仅当 example 为空）
         if update_batch:
@@ -116,7 +133,7 @@ def main():
             """
             BATCH = 500
             for i in range(0, len(insert_batch), BATCH):
-                cur.executemany(INSERT_SQL, insert_batch[i:i + BATCH])
+                cur.executemany(INSERT_SQL, insert_batch[i : i + BATCH])
             total_insert += cur.rowcount
 
         # 更新 word_count

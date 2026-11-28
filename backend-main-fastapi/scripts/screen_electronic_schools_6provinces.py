@@ -16,6 +16,7 @@ C. **已知行业强校兜底**：用一份人工核对过的校名清单兜底
 
 本脚本**只读**，不写库、不抓取。
 """
+
 from __future__ import annotations
 
 import re
@@ -42,41 +43,99 @@ KW = STRONG_KW + WEAK_KW
 #: 西南科技大学命中「电子」实为「电子图书798万余册」；
 #: 西南政法大学命中「信息」实为 intro 是「请点击：西南政法大学院校简…」的截断模板。
 NOISE_CTX = [
-    "电子图书", "电子馆藏", "电子文献", "电子资源",
-    "招生信息网", "信息交互", "信息化建设", "信息公开",
-    "信息管理", "信息技术应用", "信息工作",
+    "电子图书",
+    "电子馆藏",
+    "电子文献",
+    "电子资源",
+    "招生信息网",
+    "信息交互",
+    "信息化建设",
+    "信息公开",
+    "信息管理",
+    "信息技术应用",
+    "信息工作",
     # 西南政法大学的 intro 是被截断的导航模板（"请点击：西南政法大学院校简介"），
     # 不是学校介绍，整段剔除。
     "请点击",
 ]
 
 #: 学科语境后缀：关键词只有落进这些语境才算「学科实力信号」。
-DISCIPLINE_CTX = ["学院", "工程", "科学", "技术", "专业", "学科", "系", "实验室",
-                  "研究院", "中心", "一级学科", "优势", "特色", "重点", "援建",
-                  "世界一流学科", "学位"]
+DISCIPLINE_CTX = [
+    "学院",
+    "工程",
+    "科学",
+    "技术",
+    "专业",
+    "学科",
+    "系",
+    "实验室",
+    "研究院",
+    "中心",
+    "一级学科",
+    "优势",
+    "特色",
+    "重点",
+    "援建",
+    "世界一流学科",
+    "学位",
+]
 
 #: 行业强校兜底清单（校名精确匹配）。level 为 NULL 也纳入。
 #: 收录依据：① 校名即行业属性（电子/邮电/信息）② 工信/电子信息类行业强校。
 #: 已剔除早期误收的师范/体育/美术类院校（四川师范大学、云南师范大学等）。
 KNOWN_STRONG = {
-    "桂林电子科技大学", "桂林理工大学", "成都信息工程大学", "重庆邮电大学",
-    "重庆理工大学", "广东工业大学", "深圳大学", "南方科技大学",
-    "昆明理工大学", "西南科技大学", "东莞理工学院",
+    "桂林电子科技大学",
+    "桂林理工大学",
+    "成都信息工程大学",
+    "重庆邮电大学",
+    "重庆理工大学",
+    "广东工业大学",
+    "深圳大学",
+    "南方科技大学",
+    "昆明理工大学",
+    "西南科技大学",
+    "东莞理工学院",
 }
 
 #: 已知非电子信息类的名校（医/法/农/财/师范/综合）。
 #: 按用户「level 硬门槛」仍入选候选池，但标注为「名校但非电子信息」，
 #: 供用户决定是否纳入关注清单。
 NON_ICT_ELITE = {
-    "广州医科大学", "广州中医药大学", "南方医科大学", "遵义医科大学",
-    "贵州医科大学", "广西医科大学", "桂林医科大学", "昆明医科大学",
-    "重庆医科大学", "成都中医药大学", "贵州中医药大学", "广西中医药大学",
-    "云南中医药大学", "广东药科大学", "广东医科大学", "右江民族医学院",
-    "陆军军医大学", "西南政法大学", "西南财经大学", "四川农业大学",
-    "华南农业大学", "华南师范大学", "云南师范大学", "贵州师范大学",
-    "广西师范大学", "南宁师范大学", "重庆师范大学", "西华师范大学",
-    "四川师范大学", "云南民族大学", "贵州民族大学", "广西民族大学",
-    "西南民族大学", "西藏大学", "青海大学",
+    "广州医科大学",
+    "广州中医药大学",
+    "南方医科大学",
+    "遵义医科大学",
+    "贵州医科大学",
+    "广西医科大学",
+    "桂林医科大学",
+    "昆明医科大学",
+    "重庆医科大学",
+    "成都中医药大学",
+    "贵州中医药大学",
+    "广西中医药大学",
+    "云南中医药大学",
+    "广东药科大学",
+    "广东医科大学",
+    "右江民族医学院",
+    "陆军军医大学",
+    "西南政法大学",
+    "西南财经大学",
+    "四川农业大学",
+    "华南农业大学",
+    "华南师范大学",
+    "云南师范大学",
+    "贵州师范大学",
+    "广西师范大学",
+    "南宁师范大学",
+    "重庆师范大学",
+    "西华师范大学",
+    "四川师范大学",
+    "云南民族大学",
+    "贵州民族大学",
+    "广西民族大学",
+    "西南民族大学",
+    "西藏大学",
+    "青海大学",
 }
 
 
@@ -90,7 +149,7 @@ def kw_hits(intro: str | None) -> tuple[list[str], list[str]]:
     strong, weak = [], []
     for k in KW:
         for m in re.finditer(re.escape(k), text):
-            window = text[max(0, m.start() - 6):m.end() + 8]
+            window = text[max(0, m.start() - 6) : m.end() + 8]
             if any(ctx in window for ctx in DISCIPLINE_CTX):
                 (strong if k in STRONG_KW else weak).append(k)
                 break
@@ -100,8 +159,7 @@ def kw_hits(intro: str | None) -> tuple[list[str], list[str]]:
 def load(conn: sqlite3.Connection) -> list[dict]:
     # 按用户给的省份顺序排序（云南/贵州/广西/广东/四川/重庆），
     # 用 CASE 而非字符串排序，保证输出顺序稳定可读。
-    order_case = "CASE s.province " + " ".join(
-        f"WHEN ? THEN {i}" for i in range(len(PROVINCES))) + " ELSE 99 END"
+    order_case = "CASE s.province " + " ".join(f"WHEN ? THEN {i}" for i in range(len(PROVINCES))) + " ELSE 99 END"
     rows = conn.execute(
         "SELECT s.id, s.name, s.province, s.city, s.level, s.type, s.tags, s.intro, "
         "       s.official_url, "
@@ -111,9 +169,8 @@ def load(conn: sqlite3.Connection) -> list[dict]:
         f"ORDER BY {order_case}, s.id",
         tuple(PROVINCES) + tuple(PROVINCES),
     ).fetchall()
-    keys = ["id", "name", "province", "city", "level", "type", "tags", "intro",
-            "official_url", "notice_cnt"]
-    return [dict(zip(keys, r)) for r in rows]
+    keys = ["id", "name", "province", "city", "level", "type", "tags", "intro", "official_url", "notice_cnt"]
+    return [dict(zip(keys, r, strict=False)) for r in rows]
 
 
 def main() -> int:
@@ -133,11 +190,12 @@ def main() -> int:
         lst = by_prov[p]
         elite = [s for s in lst if s["level"] in ("985", "211", "双一流")]
         withn = [s for s in lst if s["notice_cnt"] > 0]
-        print(f"  {p:4s} 共 {len(lst):3d} 所 | 名校(985/211/双一流) {len(elite):2d} 所 "
-              f"| 有通知 {len(withn):2d} 所")
-    print(f"  合计 共 {len(schools)} 所 | 名校 "
-          f"{sum(1 for s in schools if s['level'] in ('985','211','双一流'))} 所 | "
-          f"有通知 {sum(1 for s in schools if s['notice_cnt'] > 0)} 所")
+        print(f"  {p:4s} 共 {len(lst):3d} 所 | 名校(985/211/双一流) {len(elite):2d} 所 | 有通知 {len(withn):2d} 所")
+    print(
+        f"  合计 共 {len(schools)} 所 | 名校 "
+        f"{sum(1 for s in schools if s['level'] in ('985', '211', '双一流'))} 所 | "
+        f"有通知 {sum(1 for s in schools if s['notice_cnt'] > 0)} 所"
+    )
 
     # ---- 候选池 ----
     pool = []
@@ -197,21 +255,31 @@ def main() -> int:
             url = s["official_url"] or "-"
             is_url = url.startswith("http")
             flag = "" if is_url else "  [非URL!]"
-            print(f"  {s['tier']} | {s['province']:3s} | {s['name'][:20]:22s} "
-                  f"| {str(s['level'] or 'NULL'):5s} | 通知={s['notice_cnt']:<3d} "
-                  f"| {url[:44]:46s}{flag}")
+            print(
+                f"  {s['tier']} | {s['province']:3s} | {s['name'][:20]:22s} "
+                f"| {str(s['level'] or 'NULL'):5s} | 通知={s['notice_cnt']:<3d} "
+                f"| {url[:44]:46s}{flag}"
+            )
             print(f"        理由: {'; '.join(s['reasons'])}")
 
-    block(f"★ A 类·零通知 + 有 official_url（最优先补导，{len([s for s in zero_url if s['tier']=='A'])} 所）",
-          [s for s in zero_url if s["tier"] == "A"])
-    block(f"A 类·零通知 + 无 official_url（需先补URL映射，{len([s for s in zero_nourl if s['tier']=='A'])} 所）",
-          [s for s in zero_nourl if s["tier"] == "A"])
-    block(f"A 类·已有通知（{len([s for s in has_notice if s['tier']=='A'])} 所）",
-          [s for s in has_notice if s["tier"] == "A"])
+    block(
+        f"★ A 类·零通知 + 有 official_url（最优先补导，{len([s for s in zero_url if s['tier'] == 'A'])} 所）",
+        [s for s in zero_url if s["tier"] == "A"],
+    )
+    block(
+        f"A 类·零通知 + 无 official_url（需先补URL映射，{len([s for s in zero_nourl if s['tier'] == 'A'])} 所）",
+        [s for s in zero_nourl if s["tier"] == "A"],
+    )
+    block(
+        f"A 类·已有通知（{len([s for s in has_notice if s['tier'] == 'A'])} 所）",
+        [s for s in has_notice if s["tier"] == "A"],
+    )
     block(f"W 类·仅弱信号待人工确认（{len(w_pool)} 所）", w_pool)
-    block(f"B 类·名校但非电子信息（零通知 {len([s for s in zero_url+zero_nourl if s['tier']=='B'])} 所 / "
-          f"有通知 {len([s for s in has_notice if s['tier']=='B'])} 所）",
-          [s for s in zero_url + zero_nourl + has_notice if s["tier"] == "B"])
+    block(
+        f"B 类·名校但非电子信息（零通知 {len([s for s in zero_url + zero_nourl if s['tier'] == 'B'])} 所 / "
+        f"有通知 {len([s for s in has_notice if s['tier'] == 'B'])} 所）",
+        [s for s in zero_url + zero_nourl + has_notice if s["tier"] == "B"],
+    )
 
     # ---- 可操作比例 ----
     print()
@@ -221,13 +289,15 @@ def main() -> int:
     a_zero = [s for s in zero_url + zero_nourl if s["tier"] == "A"]
     a_click = [s for s in zero_url if s["tier"] == "A" and s["official_url"].startswith("http")]
     print(f"  A 类零通知候选校         {len(a_zero)} 所")
-    print(f"    其中有 official_url   {len([s for s in zero_url if s['tier']=='A'])} 所")
+    print(f"    其中有 official_url   {len([s for s in zero_url if s['tier'] == 'A'])} 所")
     print(f"      └─ 真 URL 可点开     {len(a_click)} 所")
-    print(f"      └─ 非 URL（数字schid）{len([s for s in zero_url if s['tier']=='A']) - len(a_click)} 所")
-    print(f"    无 official_url       {len([s for s in zero_nourl if s['tier']=='A'])} 所")
+    print(f"      └─ 非 URL（数字schid）{len([s for s in zero_url if s['tier'] == 'A']) - len(a_click)} 所")
+    print(f"    无 official_url       {len([s for s in zero_nourl if s['tier'] == 'A'])} 所")
     print()
-    print(f"  【可操作院校数 / A类候选院校数】 = {len(a_click)} / {len(a_zero)}"
-          f" = {len(a_click) / max(1, len(a_zero)) * 100:.0f}%")
+    print(
+        f"  【可操作院校数 / A类候选院校数】 = {len(a_click)} / {len(a_zero)}"
+        f" = {len(a_click) / max(1, len(a_zero)) * 100:.0f}%"
+    )
 
     # ---- official_url 指向分析 ----
     print()
@@ -235,8 +305,7 @@ def main() -> int:
     print("official_url 指向分析（首页 vs 研究生院/招生网）")
     print("=" * 78)
     pats = {
-        "研究生院/招生网(yjs/yz/gs/grs/yzb/graduate)":
-            r"yjs|/yz|yz\.|grs|yzb|graduate",
+        "研究生院/招生网(yjs/yz/gs/grs/yzb/graduate)": r"yjs|/yz|yz\.|grs|yzb|graduate",
         "学校官网首页(裸域 www.xxx.edu.cn)": r"^https?://www\.[a-z0-9-]+\.edu\.cn/?$",
         "研招网(yz.chsi.com.cn)": r"yz\.chsi\.com\.cn",
     }

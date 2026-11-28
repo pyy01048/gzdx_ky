@@ -9,6 +9,7 @@
 每次运行写 ``kaoyan_collection_runs``（表已存在）记录来源/计数/状态，前端
 「数据管理」页可查历史。全程幂等：重跑只补增量。
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,14 +27,16 @@ def _record_run(db_session, source: str, status: str, detail: Dict) -> None:
 
     from models import KaoyanCollectionRun
 
-    db_session.add(KaoyanCollectionRun(
-        source=source,
-        scope=str(detail.get("source", source))[:100],
-        item_type="mixed",
-        row_count=int(detail.get("items", detail.get("updated", detail.get("notices", 0)) or 0)),
-        status=status,
-        detail=json.dumps(detail, ensure_ascii=False, default=str)[:4000],
-    ))
+    db_session.add(
+        KaoyanCollectionRun(
+            source=source,
+            scope=str(detail.get("source", source))[:100],
+            item_type="mixed",
+            row_count=int(detail.get("items", detail.get("updated", detail.get("notices", 0)) or 0)),
+            status=status,
+            detail=json.dumps(detail, ensure_ascii=False, default=str)[:4000],
+        )
+    )
     db_session.commit()
 
 
@@ -62,7 +65,8 @@ def collect_engineering(db_session=None, provinces: Optional[list] = None, dry_r
 
         # majors 过滤统计：现库中工科定向代码的专业数（采集增量口径）
         eng_majors = [
-            m.id for m in db_session.query(KaoyanMajor).all()
+            m.id
+            for m in db_session.query(KaoyanMajor).all()
             if is_engineering_code(m.subject_code) or is_engineering_code(m.code)
         ]
         detail = {
@@ -70,7 +74,7 @@ def collect_engineering(db_session=None, provinces: Optional[list] = None, dry_r
             "schools_before": before_schools,
             "schools_after": after_schools,
             "engineering_majors": len(eng_majors),
-            "crawl_result": {k: v for k, v in res.items() if isinstance(v, (int, str, bool))},
+            "crawl_result": {k: v for k, v in res.items() if isinstance(v, int | str | bool)},
         }
         if not dry_run:
             _record_run(db_session, "engineering", "success" if res.get("success", True) else "blocked", detail)

@@ -1296,10 +1296,12 @@
 }
 
 .v3-quiz-opt {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 12px;
   width: 100%;
+  cursor: pointer;
   padding: 13px 14px;
   border-radius: var(--v3-r-md);
   border: 1px solid var(--v3-outline);
@@ -1312,14 +1314,28 @@
     background var(--v3-dur-2) var(--v3-ease-standard);
 }
 
-.v3-quiz-opt:hover:not(:disabled) {
+.v3-quiz-opt:hover:not(:disabled, .is-disabled) {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--v3-primary) 34%, var(--v3-outline));
   background: var(--v3-surface-1);
 }
 
-.v3-quiz-opt:disabled {
+.v3-quiz-opt:disabled,
+.v3-quiz-opt.is-disabled {
   cursor: default;
+}
+
+.v3-quiz-opt__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.v3-quiz-opt:has(.v3-quiz-opt__input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--v3-primary) 62%, var(--v3-outline));
+  outline-offset: 2px;
 }
 
 .v3-quiz-opt__letter {
@@ -1385,6 +1401,17 @@
   font-size: 10px;
 }
 
+.v3-quiz-opt.is-review {
+  border-color: color-mix(in srgb, var(--v3-warning) 46%, var(--v3-outline));
+  background: color-mix(in srgb, var(--v3-warning-container) 62%, var(--v3-surface));
+}
+
+.v3-quiz-opt.is-review .v3-quiz-opt__letter {
+  background: var(--v3-warning-container);
+  border-color: color-mix(in srgb, var(--v3-warning) 36%, var(--v3-outline));
+  color: var(--v3-on-warning-container);
+}
+
 .v3-quiz-opt.is-muted {
   opacity: 0.72;
 }
@@ -1442,6 +1469,11 @@
   background: color-mix(in srgb, var(--v3-danger-container) 42%, var(--v3-surface));
 }
 
+.v3-quiz-reveal.is-review {
+  border-color: color-mix(in srgb, var(--v3-warning) 34%, var(--v3-outline));
+  background: color-mix(in srgb, var(--v3-warning-container) 46%, var(--v3-surface));
+}
+
 .v3-quiz-reveal__row {
   display: flex;
   align-items: baseline;
@@ -1456,6 +1488,10 @@
 .v3-quiz-reveal__ans {
   font-weight: 700;
   color: var(--v3-success);
+}
+
+.v3-quiz-reveal__ans.is-review {
+  color: var(--v3-on-warning-container);
 }
 
 .v3-quiz-reveal__analysis {
@@ -1614,6 +1650,13 @@
   font-weight: 650;
 }
 
+.v3-quiz-sheet-cell.is-review {
+  background: var(--v3-warning-container);
+  border-color: color-mix(in srgb, var(--v3-warning) 40%, var(--v3-outline));
+  color: var(--v3-on-warning-container);
+  font-weight: 650;
+}
+
 .v3-quiz-sheet-cell.is-draft {
   border-color: color-mix(in srgb, var(--v3-primary) 44%, var(--v3-outline));
   color: var(--v3-primary);
@@ -1662,6 +1705,9 @@
 .v3-quiz-dot.is-bad {
   background: var(--v3-danger);
 }
+.v3-quiz-dot.is-review {
+  background: var(--v3-warning);
+}
 .v3-quiz-dot.is-todo {
   background: var(--v3-outline-strong);
 }
@@ -1678,7 +1724,7 @@
 .v3-quiz-sheet-fab {
   position: fixed;
   right: 16px;
-  bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(152px + env(safe-area-inset-bottom, 0px));
   z-index: 45;
   display: none;
   align-items: center;
@@ -1796,6 +1842,13 @@
 }
 .v3-quiz-result-stat.is-bad dd {
   color: var(--v3-danger);
+}
+.v3-quiz-result-stat.is-review {
+  border-color: color-mix(in srgb, var(--v3-warning) 45%, var(--v3-outline));
+  background: var(--v3-warning-container);
+}
+.v3-quiz-result-stat.is-review dd {
+  color: var(--v3-on-warning-container);
 }
 
 .v3-quiz-result-actions {
@@ -2388,7 +2441,7 @@
   }
   .v3-quiz-chapter:hover,
   .v3-quiz-cell:hover,
-  .v3-quiz-opt:hover:not(:disabled) {
+  .v3-quiz-opt:hover:not(:disabled, .is-disabled) {
     transform: none;
   }
 }
@@ -2863,6 +2916,11 @@
   font-weight: 600;
 }
 
+.v3-quiz-reveal__review {
+  color: var(--v3-on-warning-container);
+  font-weight: 600;
+}
+
 /* ---------- W4 复盘报告：答题明细（逐题答题卡） ---------- */
 .v3-quiz-sheet-rows {
   display: flex;
@@ -2885,6 +2943,10 @@
 }
 .v3-quiz-sheet-row.is-self {
   border-left: 3px solid var(--v3-warning);
+}
+.v3-quiz-sheet-row.is-review {
+  border-left: 3px solid var(--v3-warning);
+  background: color-mix(in srgb, var(--v3-warning-container) 38%, var(--v3-surface));
 }
 .v3-quiz-sheet-row.is-todo {
   border-left: 3px solid var(--v3-outline);
@@ -2934,6 +2996,9 @@
 }
 .v3-quiz-sheet-row__flag.is-bad {
   color: var(--v3-danger);
+}
+.v3-quiz-sheet-row__flag.is-review {
+  color: var(--v3-on-warning-container);
 }
 
 .v3-quiz-sheet-row__q {

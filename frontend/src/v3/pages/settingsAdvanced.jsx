@@ -40,7 +40,9 @@ import { Book, Calendar, Check, List, RefreshCw, Sparkles, Star, Target, Trophy,
 import { applyProfilePrefs } from '../../hooks/useProfilePrefs'
 import '../styles/gamification-v3.css'
 
+/** 取 ISO 日期的「MM-DD」片段；空值返回「—」。 */
 const fmtDay = (iso) => (iso ? iso.slice(5) : '—')
+/** 将 ISO 字符串格式化为本地时间；空值返回「—」。 */
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('zh-CN', { hour12: false }) : '—')
 const MONTH_CN = { sm: '紧凑', md: '标准', lg: '宽松' }
 
@@ -67,6 +69,7 @@ function profileBase(d) {
 /* ------------------------------------------------------------------ */
 /* 个人资料                                                            */
 /* ------------------------------------------------------------------ */
+/** 头像预览：根据 kind 渲染外链图片 / 内置表情 / 首字色块，叠加头像框与称号。 */
 function AvatarPreview({ profile }) {
   const kind = profile?.avatar_kind || 'initials'
   const value = profile?.avatar_value || 'teal'
@@ -112,6 +115,7 @@ function AvatarPreview({ profile }) {
   )
 }
 
+/** 个人资料分区：维护草稿 diff，按改动键提交 PATCH，偏好即时保存并落到 <html data-*>。 */
 export function ProfilePanel({ profileState }) {
   const { data, loading, error, reload, setData } = profileState
   const [draft, setDraft] = useState({})
@@ -129,7 +133,7 @@ export function ProfilePanel({ profileState }) {
   // 422 门禁：后端只接受 profile.unlocked.frames/.titles 里的 code，未解锁的候选根本不给选
   const frames = (data?.profile?.frame_catalog || []).filter((f) => unlocked.frames.includes(f.code))
   const titles = (data?.profile?.title_catalog || []).filter((t) => unlocked.titles.includes(t.code))
-  const set = (key) => (e) => setDraft((d) => ({ ...d, [key]: e?.target ? e.target.value : e }))
+  const set = useCallback((key) => (e) => setDraft((d) => ({ ...d, [key]: e?.target ? e.target.value : e })), [])
 
   const dirty = useMemo(() => {
     if (!data) return false
@@ -137,7 +141,7 @@ export function ProfilePanel({ profileState }) {
     return Object.keys(base).some((k) => (draft[k] || '') !== base[k])
   }, [data, draft])
 
-  const save = async () => {
+  const save = useCallback(async () => {
     if (!dirty) {
       toast('没有需要保存的修改')
       return
@@ -163,9 +167,9 @@ export function ProfilePanel({ profileState }) {
     } finally {
       setSaving(false)
     }
-  }
+  }, [data, draft, dirty, reload])
 
-  const savePref = async (key, value) => {
+  const savePref = useCallback(async (key, value) => {
     const nextPrefs = { ...prefs, [key]: value }
     setData((d) => (d ? { ...d, profile: { ...d.profile, prefs: nextPrefs } } : d))
     applyProfilePrefs(nextPrefs)
@@ -180,7 +184,7 @@ export function ProfilePanel({ profileState }) {
       toastErr(e?.message || '偏好保存失败，已恢复')
       await reload()
     }
-  }
+  }, [prefs, setData, reload])
 
   if (loading && !data) {
     return (

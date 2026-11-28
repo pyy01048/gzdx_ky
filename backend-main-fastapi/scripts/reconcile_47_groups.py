@@ -8,6 +8,7 @@
 其中 6 组是「两侧都错」→ team-lead 已裁决并于 16:01 写库隔离
 剩余 41 组是「有正确侧」→ **当时未写库**（等 team-lead 放行）
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -74,31 +75,27 @@ def main() -> int:
     conn.row_factory = sqlite3.Row
     allids = sorted({i for _, a, b, _, _ in TABLE for i in (a, b)})
     marks = ",".join("?" * len(allids))
-    rows = conn.execute(
-        f"SELECT id, is_junk, answer FROM quiz_questions WHERE id IN ({marks})", allids
-    ).fetchall()
+    rows = conn.execute(f"SELECT id, is_junk, answer FROM quiz_questions WHERE id IN ({marks})", allids).fetchall()
     conn.close()
     m = {r["id"]: r for r in rows}
 
-    print(f"{'组':<5}{'idA':<7}{'idB':<7}{'正确侧':<8}{'错误侧':<8}"
-          f"{'错误侧is_junk':<14}{'状态'}")
+    print(f"{'组':<5}{'idA':<7}{'idB':<7}{'正确侧':<8}{'错误侧':<8}{'错误侧is_junk':<14}{'状态'}")
     print("-" * 78)
 
-    both_wrong = []      # 两侧都错（已执行）
-    pending = []         # 有正确侧但错误侧还没标 junk
+    both_wrong = []  # 两侧都错（已执行）
+    pending = []  # 有正确侧但错误侧还没标 junk
     missing = []
-    for gid, a, b, keep, note in TABLE:
+    for gid, a, b, keep, _note in TABLE:
         ra, rb = m.get(a), m.get(b)
         if not ra or not rb:
             missing.append((gid, a, b))
             print(f"{gid:<5}{a:<7}{b:<7} —— 数据库中缺失")
             continue
-        if keep is None:                      # 两侧都错
+        if keep is None:  # 两侧都错
             bad = sorted([a, b])
             both_wrong.append((gid, bad, ra, rb))
             st = "✅ 已写库" if all(m[i]["is_junk"] == 1 for i in bad) else "❌ 未写库"
-            print(f"{gid:<5}{a:<7}{b:<7}{'—':<8}"
-                  f"{'/'.join(map(str,bad)):<8}{ra['is_junk']}/{rb['is_junk']:<12}{st}")
+            print(f"{gid:<5}{a:<7}{b:<7}{'—':<8}{'/'.join(map(str, bad)):<8}{ra['is_junk']}/{rb['is_junk']:<12}{st}")
         else:
             wrong = b if keep == a else a
             r = m[wrong]

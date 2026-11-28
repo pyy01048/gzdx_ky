@@ -12,9 +12,10 @@
    诚实口径：只内置有把握的年份；专硕按类（电子信息0854 与工学同线的历史年份为准）。
    缺的年份宁缺毋滥，后续可从教育部官网核实后补。
 """
+
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 # --------------------------------------------------------------------------- #
 # 工科定向采集专业代码集（用户指定的 6 系列）
@@ -23,23 +24,39 @@ from typing import Dict, Optional
 # 0803 光学工程 | 0804 仪器科学 | 0808 电气工程 | 0809 电子科学与技术
 # 0810 信息与通信工程 | 0811 控制科学与工程 | 0812 计算机科学与技术(408)
 ENGINEERING_CODE_SET: set = {
-    "0803",   # 光学工程（含 080300 学硕 / 085408 光电信息工程专硕）
-    "0804",   # 仪器科学与技术
-    "0808",   # 电气工程（080800 学硕 / 085801 电气工程专硕）
-    "0809",   # 电子科学与技术
-    "0810",   # 信息与通信工程
-    "0811",   # 控制科学与工程（自动化，AI 相关）
-    "0812",   # 计算机科学与技术（408 统考）
+    "0803",  # 光学工程（含 080300 学硕 / 085408 光电信息工程专硕）
+    "0804",  # 仪器科学与技术
+    "0808",  # 电气工程（080800 学硕 / 085801 电气工程专硕）
+    "0809",  # 电子科学与技术
+    "0810",  # 信息与通信工程
+    "0811",  # 控制科学与工程（自动化，AI 相关）
+    "0812",  # 计算机科学与技术（408 统考）
     # 专业学位（0854 电子信息大类的核心子领域 + 0858 能源/电气 + 0861 交通运输）
-    "0854", "085400", "085401", "085402", "085403", "085404", "085405",
-    "085406", "085407", "085408", "085410", "085411", "085412",
-    "0858", "085801",  # 能源动力/电气工程
-    "0861",            # 交通运输（部分院校信号方向挂靠）
-    "1401", "140100",  # 集成电路科学与工程（交叉学科，电子系列）
-    "1405", "140500",  # 智能科学与技术（人工智能，交叉学科）
-    "0774", "077400",  # 电子科学与技术（理学门类下部分院校设）
-    "0702", "070208",  # 科学技术史外——光学挂靠理学时常见 070207 光学
-    "070207",          # 光学（理学）
+    "0854",
+    "085400",
+    "085401",
+    "085402",
+    "085403",
+    "085404",
+    "085405",
+    "085406",
+    "085407",
+    "085408",
+    "085410",
+    "085411",
+    "085412",
+    "0858",
+    "085801",  # 能源动力/电气工程
+    "0861",  # 交通运输（部分院校信号方向挂靠）
+    "1401",
+    "140100",  # 集成电路科学与工程（交叉学科，电子系列）
+    "1405",
+    "140500",  # 智能科学与技术（人工智能，交叉学科）
+    "0774",
+    "077400",  # 电子科学与技术（理学门类下部分院校设）
+    "0702",
+    "070208",  # 科学技术史外——光学挂靠理学时常见 070207 光学
+    "070207",  # 光学（理学）
 }
 
 # 人类可读的系列名（前端展示/日志用）
@@ -78,21 +95,25 @@ NATIONAL_LINES: Dict[int, Dict[str, tuple]] = {
         "工学": (264, 35, 53),
         "电子信息": (264, 35, 53),
         "理学": (275, 35, 53),
+        "交叉学科": (266, 36, 54),
     },
     2025: {
         "工学": (260, 34, 51),
         "电子信息": (260, 34, 51),
         "理学": (274, 34, 51),
+        "交叉学科": (266, 36, 54),
     },
     2024: {
         "工学": (273, 37, 56),
         "电子信息": (273, 37, 56),
         "理学": (288, 41, 62),
+        "交叉学科": (275, 39, 59),
     },
     2023: {
         "工学": (273, 38, 57),
         "电子信息": (273, 38, 57),
         "理学": (279, 38, 57),
+        "交叉学科": (265, 36, 54),
     },
     2022: {
         "工学": (273, 38, 57),
@@ -103,22 +124,43 @@ NATIONAL_LINES: Dict[int, Dict[str, tuple]] = {
 
 # 专业代码 → 国家线科类映射（回填时按 major 的 subject_code 找对应科类线）
 _CODE_TO_LINE_CATEGORY: Dict[str, str] = {
-    "0803": "工学", "0804": "工学", "0808": "工学", "0809": "工学",
-    "0810": "工学", "0811": "工学", "0812": "工学",
-    "0854": "电子信息", "0858": "工学", "0861": "工学", "1401": "工学",
-    "1405": "工学", "0774": "理学", "0702": "理学",
+    "0803": "工学",
+    "0804": "工学",
+    "0808": "工学",
+    "0809": "工学",
+    "0810": "工学",
+    "0811": "工学",
+    "0812": "工学",
+    "0854": "电子信息",
+    "0858": "工学",
+    "0861": "工学",
+    "1401": "交叉学科",
+    "1405": "交叉学科",
+    "0774": "理学",
+    "0702": "理学",
 }
 
 
+def derive_code_parts(code: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """从专业目录代码派生门类、四位专业和完整方向代码。"""
+    value = str(code or "").strip().upper()
+    if len(value) < 2 or not value[:2].isdigit():
+        return None, None, None
+    category_code = value[:2]
+    major_code = value[:4] if len(value) >= 4 and value[:4].isdigit() else None
+    direction_code = value if len(value) > 4 else None
+    return category_code, major_code, direction_code
+
+
 def line_category_for_code(subject_code: Optional[str]) -> Optional[str]:
-    """专业代码 → 国家线科类。未知代码默认工学（工科平台口径）。"""
+    """专业代码 → 国家线科类。未知代码返回 None，避免伪填工学线。"""
     if not subject_code:
-        return "工学"
+        return None
     c = str(subject_code).strip()
     for k, v in _CODE_TO_LINE_CATEGORY.items():
         if c.startswith(k):
             return v
-    return "工学"
+    return None
 
 
 def get_national_line(year: int, category: str) -> Optional[tuple]:
@@ -130,37 +172,43 @@ def get_national_line(year: int, category: str) -> Optional[tuple]:
 def backfill_national_lines(db_session) -> Dict[str, int]:
     """回填 kaoyan_scorelines.national_line / politics_line / english_line。
 
-    对每条 scoreline：经其 major 的 subject_code 定科类 → 取同年国家线写入。
+    对每条 scoreline：优先经其 major 的 code 定科类；未关联时使用
+    scoreline.major_code → 取同年国家线写入。
     只补空值，不覆盖已有数据；返回统计。
     """
     from sqlalchemy import text
 
-    rows = db_session.execute(text(
-        """
-        SELECT s.id, s.year, m.subject_code
+    rows = db_session.execute(
+        text(
+            """
+        SELECT s.id, s.year, COALESCE(m.code, s.major_code) AS major_code
         FROM kaoyan_scorelines s
         LEFT JOIN kaoyan_majors m ON s.major_id = m.id
         WHERE s.national_line IS NULL
         """
-    )).fetchall()
+        )
+    ).fetchall()
     updated = missing = 0
-    for sid, year, subject_code in rows:
+    for sid, year, major_code in rows:
         if year is None:
             continue
-        cat = line_category_for_code(subject_code)
+        cat = line_category_for_code(major_code)
         line = get_national_line(year, cat)
         if not line:
             missing += 1
             continue
         total, single, over100 = line
-        db_session.execute(text(
-            """
+        db_session.execute(
+            text(
+                """
             UPDATE kaoyan_scorelines
             SET national_line = :total, politics_line = COALESCE(politics_line, :single),
                 english_line = COALESCE(english_line, :single)
             WHERE id = :sid
             """
-        ), {"total": total, "single": single, "sid": sid})
+            ),
+            {"total": total, "single": single, "sid": sid},
+        )
         updated += 1
     db_session.commit()
     return {"scoreline_rows": len(rows), "updated": updated, "no_line_data": missing}

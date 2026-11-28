@@ -18,6 +18,7 @@
     python scripts/clean_knowledge_points.py
     python scripts/clean_knowledge_points.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,7 +33,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 
 # ---- 噪声判定（保守，宁可漏删不可误删） ----
-_RE_ONLY_NUM = re.compile(r"^[\d\s]+$")                      # 555 / 78 79
+_RE_ONLY_NUM = re.compile(r"^[\d\s]+$")  # 555 / 78 79
 _RE_ONLY_SEQ = re.compile(r"^[（(【\[]?\s*\d{1,2}\s*[)）】\].、,，]?$")  # (1) / 2、 / 3.
 _RE_SUBSCRIPT = re.compile(r"^[\(（]?\d+[\)）]?[\(（]?[\d\.\{\}_a-zA-Z]{0,12}[\)）]?_\{?\d+\}?$")
 _RE_ONLY_PUNCT = re.compile(r"^[\W_]+$", re.U)
@@ -41,13 +42,70 @@ _RE_CJK_MIN = re.compile(r"[一-龥]")
 # 短符号但确有专业含义，不删（如 fH/fL 触发器参数、栈/队列等数据结构）
 _KEEP_SHORT = {
     # 数据结构 / 电路
-    "栈", "队列", "树", "图", "网", "串", "堆", "表",
-    "fH", "fL", "d", "q", "cp", "clk", "en", "oe", "wr", "rd", "cs",
+    "栈",
+    "队列",
+    "树",
+    "图",
+    "网",
+    "串",
+    "堆",
+    "表",
+    "fH",
+    "fL",
+    "d",
+    "q",
+    "cp",
+    "clk",
+    "en",
+    "oe",
+    "wr",
+    "rd",
+    "cs",
     # 数论 / 代数
-    "熵", "码", "阵", "群", "环", "域", "积", "和", "差", "角", "相", "态",
-    "键", "路", "门", "栅", "极", "阻", "容", "感", "场", "位", "线", "面",
-    "体", "点", "段", "区", "层", "序", "率", "幅", "频", "谱", "波", "峰",
-    "谷", "阶", "弧", "隙", "耗", "散", "增益", "带宽",
+    "熵",
+    "码",
+    "阵",
+    "群",
+    "环",
+    "域",
+    "积",
+    "和",
+    "差",
+    "角",
+    "相",
+    "态",
+    "键",
+    "路",
+    "门",
+    "栅",
+    "极",
+    "阻",
+    "容",
+    "感",
+    "场",
+    "位",
+    "线",
+    "面",
+    "体",
+    "点",
+    "段",
+    "区",
+    "层",
+    "序",
+    "率",
+    "幅",
+    "频",
+    "谱",
+    "波",
+    "峰",
+    "谷",
+    "阶",
+    "弧",
+    "隙",
+    "耗",
+    "散",
+    "增益",
+    "带宽",
 }
 
 # ---- subject 归一 ----
@@ -84,9 +142,7 @@ _SUBJECT_MAP: Dict[str, str] = {
 def backup(con: sqlite3.Connection) -> str:
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_kpclean_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+    bak = os.path.join(bak_dir, f"kaoyan_pre_kpclean_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     return bak
@@ -136,6 +192,7 @@ def main() -> int:
     print(f"subject 需归一: {len(remap)}")
 
     from collections import Counter
+
     pairs = Counter((old, new) for new, i, old in remap)
     print("归一明细:")
     for (old, new), c in pairs.most_common():

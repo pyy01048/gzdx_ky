@@ -1,4 +1,5 @@
 """解析层公共契约的单测：页码基线、块类型归一、阅读顺序、注册表。"""
+
 from __future__ import annotations
 
 import pytest

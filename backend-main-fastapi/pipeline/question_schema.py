@@ -23,6 +23,7 @@
 比「从第一个 A 开始取」稳健得多——id=18 如果从第一个 A 开始，会把空壳和
 碎片当成选项；取最长递增段则能精确命中真正那组 A/B/C/D。
 """
+
 from __future__ import annotations
 
 import json
@@ -49,9 +50,7 @@ MIN_STEM_CHARS = MIN_CONTENT_CHARS
 OBJECTIVE_TYPES = frozenset({"single", "multiple", "judge", "multi", "choice", "单选", "多选", "判断"})
 
 # 选项标签：支持 A、 / A. / A． / A) / A） / （A） / [A] / 【A】
-_OPTION_LABEL_RE = re.compile(
-    r"^\s*[（(\[【]?\s*([A-F])\s*[、.．)）\]】]\s*(.*)$", re.I | re.S
-)
+_OPTION_LABEL_RE = re.compile(r"^\s*[（(\[【]?\s*([A-F])\s*[、.．)）\]】]\s*(.*)$", re.I | re.S)
 
 # 选项文本尾部粘连的「下一个题型大标题」
 _TRAILING_SECTION_RE = re.compile(
@@ -71,12 +70,12 @@ class CanonicalQuestion:
 
     question_id: int | None = None
     stem: str = ""
-    options: list[dict] = field(default_factory=list)      # [{key, text}]
+    options: list[dict] = field(default_factory=list)  # [{key, text}]
     answer: str = ""
     analysis: str = ""
     knowledge_points: list[str] = field(default_factory=list)
     question_type: str = ""
-    origin: str = "unknown"          # textbook / past_exam / exercise / mock
+    origin: str = "unknown"  # textbook / past_exam / exercise / mock
     origin_confidence: float = 0.0
     subject_raw: str = ""
     subject_norm: str = ""
@@ -120,7 +119,7 @@ def parse_options_raw(raw: Any) -> tuple[list[str], dict]:
     if raw is None:
         info.update(shape="null", n=0)
         return [], info
-    if isinstance(raw, (list, tuple)):
+    if isinstance(raw, list | tuple):
         items = list(raw)
     else:
         text = raw.decode("utf-8", "ignore") if isinstance(raw, bytes) else str(raw)
@@ -134,9 +133,8 @@ def parse_options_raw(raw: Any) -> tuple[list[str], dict]:
             info.update(shape="unparsable", n=1)
             return [text], info
         if isinstance(parsed, dict):
-            items = [f"{k}、{v}" if str(k).strip() not in str(v)[:2] else str(v)
-                     for k, v in parsed.items()]
-        elif isinstance(parsed, (list, tuple)):
+            items = [f"{k}、{v}" if str(k).strip() not in str(v)[:2] else str(v) for k, v in parsed.items()]
+        elif isinstance(parsed, list | tuple):
             items = list(parsed)
         else:
             info.update(shape=f"scalar_{type(parsed).__name__}", n=0)
@@ -198,10 +196,11 @@ def normalize_options(raw: Any) -> tuple[list[dict], dict]:
         碎片）、``dropped``（被丢弃项及原因）、``before/after`` 数量等证据。
     """
     items, diag = parse_options_raw(raw)
-    diag.update(stem_leaks=[], dropped=[], trailing_removed=[],
-                before=len(items), after=0, label_inferred=False, run_len=0)
+    diag.update(
+        stem_leaks=[], dropped=[], trailing_removed=[], before=len(items), after=0, label_inferred=False, run_len=0
+    )
 
-    labeled: list[tuple[str, str, int]] = []   # (key, text, item_index)
+    labeled: list[tuple[str, str, int]] = []  # (key, text, item_index)
     leaks: list[str] = []
     for i, item in enumerate(items):
         m = _OPTION_LABEL_RE.match(item)
@@ -227,7 +226,7 @@ def normalize_options(raw: Any) -> tuple[list[dict], dict]:
         diag["stem_leaks"] = [it.strip() for it in items if it.strip()]
         return [], diag
 
-    run = labeled[start: start + run_len]
+    run = labeled[start : start + run_len]
     options: list[dict] = []
     for key, text, item_index in run:
         orig = items[item_index].strip()

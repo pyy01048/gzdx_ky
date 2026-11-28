@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """检查扫描版真题 OCR 链路依赖是否齐备。"""
+
 import importlib
 import sys
 

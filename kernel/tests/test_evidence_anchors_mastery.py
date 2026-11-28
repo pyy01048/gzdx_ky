@@ -1,16 +1,28 @@
 # -*- coding: utf-8 -*-
 """evidence / anchors / mastery：grade 对齐 EvidenceRecord、冲突 anchor、
 六态升降级证据约束（self_report 禁升级）。"""
+
 import pytest
 
 from kernel.anchors import (
-    SEVERITIES, SUBTYPES, AuditAnchor, from_conflict,
+    SEVERITIES,
+    SUBTYPES,
+    AuditAnchor,
+    from_conflict,
 )
 from kernel.evidence import (
-    GRADES, EvidenceRecord, confidence_from_completeness, grade_from_source,
+    GRADES,
+    EvidenceRecord,
+    confidence_from_completeness,
+    grade_from_source,
 )
 from kernel.mastery import (
-    STATES_6, EvidenceEvent, MasteryError, demote, from_4state, promote,
+    STATES_6,
+    EvidenceEvent,
+    MasteryError,
+    demote,
+    from_4state,
+    promote,
     to_display_4state,
 )
 
@@ -28,35 +40,44 @@ class TestEvidenceGrades:
             grade_from_source("telepathy")
 
     def test_grades_enum_frozen(self):
-        assert set(GRADES) == {"official", "inferred", "anecdotal",
-                               "hard_fact", "needs_confirm"}
+        assert set(GRADES) == {"official", "inferred", "anecdotal", "hard_fact", "needs_confirm"}
 
     def test_completeness_bands(self):
-        assert confidence_from_completeness(80) == "high"     # 等号归 high
+        assert confidence_from_completeness(80) == "high"  # 等号归 high
         assert confidence_from_completeness(79.9) == "medium"
-        assert confidence_from_completeness(50) == "medium"   # 等号归 medium
+        assert confidence_from_completeness(50) == "medium"  # 等号归 medium
         assert confidence_from_completeness(49.9) == "low"
         assert confidence_from_completeness(0) == "low"
 
     def test_record_rejects_bad_grade(self):
         with pytest.raises(ValueError):
-            EvidenceRecord(ev_id="e1", claim="x", grade="definitely_true",
-                           confidence="high", missing_fields=(), is_sample=False)
+            EvidenceRecord(
+                ev_id="e1", claim="x", grade="definitely_true", confidence="high", missing_fields=(), is_sample=False
+            )
 
     def test_record_is_frozen(self):
-        r = EvidenceRecord(ev_id="e1", claim="x", grade="hard_fact",
-                           confidence="low", missing_fields=(), is_sample=False)
+        r = EvidenceRecord(
+            ev_id="e1", claim="x", grade="hard_fact", confidence="low", missing_fields=(), is_sample=False
+        )
         with pytest.raises(Exception):
-            r.claim = "y"   # type: ignore[misc]
+            r.claim = "y"  # type: ignore[misc]
 
 
 class TestAnchors:
     def _anchor(self, **kw):
-        base = dict(anchor_id="a1", subtype="evidence_anchor", claim="c",
-                    based_on=("e1",), line_hint="", missing=(),
-                    upgrade_hint="u", minimal_fix="f", severity="minor"
-                    if "minor" in SEVERITIES else "boundary",
-                    kp_ids=("kp1",), consumed_by_plan=False)
+        base = dict(
+            anchor_id="a1",
+            subtype="evidence_anchor",
+            claim="c",
+            based_on=("e1",),
+            line_hint="",
+            missing=(),
+            upgrade_hint="u",
+            minimal_fix="f",
+            severity="minor" if "minor" in SEVERITIES else "boundary",
+            kp_ids=("kp1",),
+            consumed_by_plan=False,
+        )
         base.update(kw)
         return AuditAnchor(**base)
 
@@ -73,20 +94,18 @@ class TestAnchors:
             self._anchor(subtype="vibes")
 
     def test_from_conflict_needs_confirm(self):
-        cc = {"question_id": 7, "conflicts": [("bank", "llm_generated")],
-              "checked_at": "2026-11-20T00:00:00"}
+        cc = {"question_id": 7, "conflicts": [("bank", "llm_generated")], "checked_at": "2026-11-20T00:00:00"}
         a = from_conflict(cc, anchor_id="ac1", kp_ids=("kp_math_1",))
         assert isinstance(a, AuditAnchor)
         assert a.subtype == "evidence_anchor"
         assert a.severity in SEVERITIES
-        assert "7" in a.claim                       # 题目 id 锚进 claim
+        assert "7" in a.claim  # 题目 id 锚进 claim
         assert "question:7" in a.based_on
-        assert a.missing                            # 冲突未消解必须带 missing
+        assert a.missing  # 冲突未消解必须带 missing
 
     def test_from_conflict_empty_raises(self):
         with pytest.raises(ValueError):
-            from_conflict({"question_id": 1, "conflicts": []},
-                          anchor_id="x", kp_ids=())
+            from_conflict({"question_id": 1, "conflicts": []}, anchor_id="x", kp_ids=())
 
 
 class TestMastery:

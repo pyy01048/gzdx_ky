@@ -16,7 +16,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 HEADER = "@echo off\nchcp 65001 >nul\n"
 
-LOCAL = HEADER + r'''title 考研平台 · 本机模式
+LOCAL = (
+    HEADER
+    + r"""title 考研平台 · 本机模式
 cd /d "%~dp0"
 set "BACKEND=%~dp0backend-main-fastapi"
 set "PORT=8000"
@@ -40,9 +42,12 @@ cd /d "%BACKEND%"
 set "HOST=127.0.0.1"
 start "" cmd /c "ping -n 7 127.0.0.1 >nul & start "" "http://127.0.0.1:%PORT%""
 python main.py
-'''
+"""
+)
 
-LAN = HEADER + r'''title 考研平台 · 局域网模式（手机可访问）
+LAN = (
+    HEADER
+    + r"""title 考研平台 · 局域网模式（手机可访问）
 cd /d "%~dp0"
 set "BACKEND=%~dp0backend-main-fastapi"
 set "PORT=8000"
@@ -71,9 +76,12 @@ cd /d "%BACKEND%"
 set "HOST=0.0.0.0"
 python show_access.py 2>nul
 python main.py
-'''
+"""
+)
 
-STOP = HEADER + r'''title 考研平台 · 停止服务
+STOP = (
+    HEADER
+    + r"""title 考研平台 · 停止服务
 cd /d "%~dp0"
 set "BACKEND=%~dp0backend-main-fastapi"
 set "PIDFILE=%BACKEND%\data\server.pid"
@@ -109,7 +117,8 @@ echo.
 echo [OK] 已停止
 ping -n 4 127.0.0.1 >nul
 exit /b 0
-'''
+"""
+)
 
 FILES = {
     "启动-本机.bat": LOCAL,

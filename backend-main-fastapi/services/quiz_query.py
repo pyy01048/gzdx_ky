@@ -12,13 +12,15 @@
   * `is_junk = TRUE` 的题 = OCR 碎片/答案串，**默认不可见**；
   * `is_junk = NULL`（历史行、未标记）视为**非碎片**，可见（向后兼容）。
 """
+
 from __future__ import annotations
 
 import re
 from typing import Any, Optional
 
+from sqlalchemy import and_, func, not_, or_, text, true
+
 from models import QuizQuestion
-from sqlalchemy import and_, func, not_, or_, text
 
 
 # --------------------------------------------------------------------------- #
@@ -39,6 +41,7 @@ def _is_pg_backend() -> bool:
     """当前是否 PG 后端。读 database.IS_POSTGRES（由 core.db_session 统一决定）。"""
     try:
         from database import IS_POSTGRES
+
         return bool(IS_POSTGRES)
     except Exception:  # noqa: BLE001
         return False
@@ -154,6 +157,17 @@ def source_kind_expr(source_kind: Optional[str], model: Any = QuizQuestion) -> A
     )
 
 
+def question_owner_expr(user: Any, model: Any = QuizQuestion) -> Any:
+    """题目归属可见性：普通用户只能看公共题或本人私有题。
+
+    管理员保留既有全库管理能力；没有有效用户时不过滤，供内部统计/旧调用兼容。
+    个人题库路由不能使用此表达式代替资产过滤：管理员也不应操作他人个人资产。
+    """
+    if getattr(user, "role", None) == "admin" or getattr(user, "id", None) is None:
+        return true()
+    return or_(model.owner_user_id.is_(None), model.owner_user_id == user.id)
+
+
 def answerable_expr(model: Any = QuizQuestion) -> Any:
     """「可作答」判定表达式：is_available 为 True 或 NULL（NULL 视为可用，向后兼容）。
 
@@ -179,8 +193,29 @@ _ANSWER_SHELL_LABELS = ("参考答案", "答案")
 _ANSWER_WRAP_CHARS = ("【", "】", "[", "]", "\u3000")
 # 纯标点（去掉后若为空，说明答案只有标点，仍算空壳）
 _ANSWER_PUNCT_CHARS = (
-    "：", ":", "．", ".", "、", ",", "，", ";", "；", "。", "!", "！", "?",
-    "？", "·", "-", "—", "－", "_", "'", "\"", "“", "”",
+    "：",
+    ":",
+    "．",
+    ".",
+    "、",
+    ",",
+    "，",
+    ";",
+    "；",
+    "。",
+    "!",
+    "！",
+    "?",
+    "？",
+    "·",
+    "-",
+    "—",
+    "－",
+    "_",
+    "'",
+    '"',
+    "“",
+    "”",
 )
 # 明显不是答案的体裁（实测 top 噪声，逐条有据）：
 #   * 「一、填空题 / 二、判断题」等题型标题
@@ -301,15 +336,10 @@ def blank_options_expr(model: Any = QuizQuestion) -> Any:
         )
 
     # 直接写 EXISTS / NOT EXISTS 两条 text（TextClause 不能被 not_() 取反）
-    has_content = text(
-        f"EXISTS (SELECT 1 FROM json_each({col}) WHERE trim(json_each.value) <> '')"
-    )
-    no_content = text(
-        f"NOT EXISTS (SELECT 1 FROM json_each({col}) WHERE trim(json_each.value) <> '')"
-    )
+    text(f"EXISTS (SELECT 1 FROM json_each({col}) WHERE trim(json_each.value) <> '')")
+    no_content = text(f"NOT EXISTS (SELECT 1 FROM json_each({col}) WHERE trim(json_each.value) <> '')")
     legacy_blank = text(
-        "trim(replace(replace(replace(replace("
-        f"{col},'[',''),']',''),'\"',''),' ','')) IN ('','null','{{}}')"
+        f"trim(replace(replace(replace(replace({col},'[',''),']',''),'\"',''),' ','')) IN ('','null','{{}}')"
     )
     return or_(
         model.options.is_(None),
@@ -354,6 +384,4 @@ def visible_quiz_filter(query: Any, include_junk: bool = False) -> Any:
     if include_junk:
         return query
     # NULL 视为未标记（非碎片）→ 保留；仅排除显式 is_junk = TRUE
-    return query.filter(
-        or_(QuizQuestion.is_junk.is_(False), QuizQuestion.is_junk.is_(None))
-    )
+    return query.filter(or_(QuizQuestion.is_junk.is_(False), QuizQuestion.is_junk.is_(None)))

@@ -14,6 +14,7 @@ team-lead 指定的 4 类用例：
     python -m pytest tests/test_quiz_content_gate_l2.py -v
     python tests/test_quiz_content_gate_l2.py
 """
+
 from __future__ import annotations
 
 import logging
@@ -66,8 +67,7 @@ def test_similar_with_gate_on_counts_alert_stat():
     os.environ["QUIZ_STEM_SIMILARITY_ALERT"] = "1"
     try:
         gate_reset_stats()
-        admit(STEM_A, answer="答案甲", section_type="简答",
-              stem_text_list=_stems(STEM_B))
+        admit(STEM_A, answer="答案甲", section_type="简答", stem_text_list=_stems(STEM_B))
         assert gate_stats_snapshot().get("alert:stem_similarity", 0) >= 1
     finally:
         os.environ.pop("QUIZ_STEM_SIMILARITY_ALERT", None)
@@ -102,8 +102,7 @@ def test_l2_disabled_is_silent():
     try:
         assert stem_similarity_alert_enabled() is False
         gate_reset_stats()
-        ok, _ = admit(STEM_A, answer="答案甲", section_type="简答",
-                      stem_text_list=_stems(STEM_B))
+        ok, _ = admit(STEM_A, answer="答案甲", section_type="简答", stem_text_list=_stems(STEM_B))
         assert ok
         # 开关关闭时不得产生任何 L2 计数
         assert "alert:stem_similarity" not in gate_stats_snapshot()
@@ -165,8 +164,7 @@ def test_build_stem_text_list_keeps_non_dup():
 
 
 def _run_all() -> int:
-    fns = [(n, f) for n, f in sorted(globals().items())
-           if n.startswith("test_") and callable(f)]
+    fns = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_") and callable(f)]
     failed = []
     for name, fn in fns:
         try:

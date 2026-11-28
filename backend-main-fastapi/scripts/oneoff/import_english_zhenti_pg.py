@@ -15,6 +15,7 @@
 题型: 完形填空 / 阅读理解 / 新题型 均为单选题
 运行: python scripts/import_english_zhenti_pg.py
 """
+
 # [DONE 2026-10] 考研英语一真题导入（2017-2024）。回滚：按 EXT_PREFIX 删除 quiz_questions 外部记录。
 import glob
 import json
@@ -33,7 +34,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
+from scripts._conn import dsn as DB_DSN_F
+
+DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("import_english_zhenti")
@@ -41,6 +44,7 @@ log = logging.getLogger("import_english_zhenti")
 EXT_PREFIX = "eng_zhenti"
 
 stats = Counter()
+
 
 # =========================================================
 # 文本清洗（复用 import_open_quiz_bank_pg 的 clean_text 逻辑）
@@ -335,9 +339,11 @@ def parse_full_year(text, year):
 
         # 非题号行
         # 判断是否为纯选项行（整行由 [A]/[B]/[C]/[D] 选项组成）
-        is_option_line = bool(re.match(r"^\s*\[[A-D]\]\s*\S", stripped)) or \
-                          bool(re.match(r"^\s*[A-D][\.、]\s*\S", stripped)) or \
-                          (stripped.count("[A]") >= 1 and stripped.count("[B]") >= 1)
+        is_option_line = (
+            bool(re.match(r"^\s*\[[A-D]\]\s*\S", stripped))
+            or bool(re.match(r"^\s*[A-D][\.、]\s*\S", stripped))
+            or (stripped.count("[A]") >= 1 and stripped.count("[B]") >= 1)
+        )
         if current_q is not None and current_q in questions and is_option_line:
             questions[current_q]["lines"].append(stripped)
         else:
@@ -374,11 +380,10 @@ def parse_full_year(text, year):
         # 按顺序配对: 每个题号行之后最近的 【答案】 属于该题
         if numbered_rows and ans_mark_rows:
             # 双指针
-            ni = 0
-            for ai, (aidx, letter, full) in enumerate(ans_mark_rows):
+            for _ai, (aidx, letter, full) in enumerate(ans_mark_rows):
                 # 找到最后一个 <= aidx 的题号行
                 best_qno = None
-                for (nidx, qno) in numbered_rows:
+                for nidx, qno in numbered_rows:
                     if nidx < aidx:
                         best_qno = qno
                     else:
@@ -406,7 +411,7 @@ def parse_full_year(text, year):
             # 只保留 【解析】 之后的内容
             jx_pos = block.find("【解析】")
             if jx_pos >= 0:
-                analysis_text = block[jx_pos + len("【解析】"):]
+                analysis_text = block[jx_pos + len("【解析】") :]
             else:
                 # 没有【解析】标记：可能是 2024 简表答案区，跳过
                 analysis_text = ""

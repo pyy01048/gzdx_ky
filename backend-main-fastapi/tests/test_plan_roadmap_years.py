@@ -11,6 +11,7 @@
 另附采集端点的参数守卫：``year`` 不能有写死的 2026 默认值，``notices`` 的
 院校数上限必须是独立参数（历史上它复用 year 当 max_schools，2026 所到之处全量爬站）。
 """
+
 from __future__ import annotations
 
 import inspect
@@ -32,7 +33,8 @@ def test_roadmap_follows_backend_year_authority(client):
     assert isinstance(body["year"], int)
     _assert_year_list_shape(body["available_years"], body["year"])
     assert isinstance(body["exam_date_is_official"], bool), (
-        "初试日必须带「是否官方公布」标记，未公布的届前端要显示「预估」")
+        "初试日必须带「是否官方公布」标记，未公布的届前端要显示「预估」"
+    )
 
 
 def test_milestones_exposes_same_years(client):
@@ -50,7 +52,8 @@ def test_available_years_grows_after_generating_another_cohort(client):
 
     after = client.get("/api/plan/roadmap").json()
     assert extra in after["available_years"], (
-        f"已为 {extra} 届生成节点，候选里却查不到 —— available_years 又变成写死的了")
+        f"已为 {extra} 届生成节点，候选里却查不到 —— available_years 又变成写死的了"
+    )
     # 不传 year 仍然回到权威推导出来的那一届，而不是列表里最大的
     assert after["year"] == base["year"]
 
@@ -67,13 +70,17 @@ def test_missing_start_date_never_yields_nan_days_left(client):
     JSON 解析器（浏览器 response.json）整页失败，前端只看到「NaN 天」。
     """
     from core.db_session import SessionLocal
+
     from models import Milestone
 
     year = client.get("/api/plan/roadmap").json()["year"]
     db = SessionLocal()
     try:
-        db.add(Milestone(year=year, name="__null_start_probe__", category="测试",
-                         start_date=None, importance=1, is_active=True))
+        db.add(
+            Milestone(
+                year=year, name="__null_start_probe__", category="测试", start_date=None, importance=1, is_active=True
+            )
+        )
         db.commit()
 
         for path in ("/api/plan/milestones", "/api/plan/roadmap"):
@@ -93,10 +100,10 @@ def _default_of(fn, name):
 
 
 def test_collection_refresh_has_no_frozen_year_default():
-    assert _default_of(collection_refresh, "year") is None, (
-        "采集年度不能写死，应由 exam_calendar 按时间推断")
+    assert _default_of(collection_refresh, "year") is None, "采集年度不能写死，应由 exam_calendar 按时间推断"
     assert _default_of(collection_refresh, "max_schools") == 20, (
-        "notices 源应有独立的院校数上限；历史上它拿 year 参数当 max_schools 用")
+        "notices 源应有独立的院校数上限；历史上它拿 year 参数当 max_schools 用"
+    )
 
 
 def test_plan_route_signatures_accept_optional_year():

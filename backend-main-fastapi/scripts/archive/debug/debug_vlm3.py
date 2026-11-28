@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """再测：用真实照片 + JPEG + 不同尺寸，定位视觉塔问题。"""
+
 import base64
 import io
 import json
@@ -10,11 +11,13 @@ from PIL import Image
 
 
 def post(url, payload):
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}, method="POST")
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST"
+    )
     t0 = time.time()
     with urllib.request.urlopen(req, timeout=300) as r:
         return json.loads(r.read()), time.time() - t0
+
 
 # 造一张最简单的图：白底黑字 "HELLO"
 img = Image.new("RGB", (400, 200), "white")
@@ -39,8 +42,14 @@ for tag, b64, prompt in [
     ("red-blue-png", b64_png, "What colors do you see? Answer briefly."),
 ]:
     print(f"\n=== {tag} ===")
-    data, dt = post("http://127.0.0.1:11434/api/generate", {
-        "model": "qwen2.5vl:7b", "prompt": prompt, "images": [b64],
-        "stream": False, "options": {"temperature": 0.0, "num_predict": 60},
-    })
+    data, dt = post(
+        "http://127.0.0.1:11434/api/generate",
+        {
+            "model": "qwen2.5vl:7b",
+            "prompt": prompt,
+            "images": [b64],
+            "stream": False,
+            "options": {"temperature": 0.0, "num_predict": 60},
+        },
+    )
     print(f"{dt:.1f}s ->", repr(data.get("response", "")[:300]))

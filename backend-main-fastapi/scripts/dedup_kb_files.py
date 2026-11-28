@@ -22,6 +22,7 @@
     python scripts/dedup_kb_files.py            # dry-run 报数
     python scripts/dedup_kb_files.py --apply    # 删冗余 + 写 manifest
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,16 +44,14 @@ def norm_rel(path: str) -> str:
     p = path.replace("\\", "/").lower()
     idx = p.find("knowledge_base/")
     if idx >= 0:
-        return p[idx + len("knowledge_base/"):]
+        return p[idx + len("knowledge_base/") :]
     return p
 
 
 def referenced_rel_paths() -> set:
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     try:
-        rows = conn.execute(
-            "SELECT file_path FROM documents WHERE file_path IS NOT NULL"
-        ).fetchall()
+        rows = conn.execute("SELECT file_path FROM documents WHERE file_path IS NOT NULL").fetchall()
     finally:
         conn.close()
     refs = set()
@@ -80,7 +79,7 @@ def main() -> int:
 
     # 1) 按大小预分组
     size_map: dict[int, list[str]] = {}
-    for dp, dn, fn in os.walk(KB):
+    for dp, _dn, fn in os.walk(KB):
         if "_trash" in dp:
             continue
         for f in fn:
@@ -95,7 +94,7 @@ def main() -> int:
 
     # 2) 对同大小文件做内容哈希，找精确重复组
     groups: list[list[str]] = []
-    for s, ps in dup_sizes.items():
+    for _s, ps in dup_sizes.items():
         hm: dict[str, list[str]] = {}
         for p in ps:
             try:
@@ -112,7 +111,7 @@ def main() -> int:
     referenced_in_groups = 0
     for members in groups:
         rels = [norm_rel(m) for m in members]
-        ref_members = [m for m, r in zip(members, rels) if r in refs]
+        ref_members = [m for m, r in zip(members, rels, strict=False) if r in refs]
         if ref_members:
             referenced_in_groups += 1
             keep.extend(ref_members)
@@ -131,7 +130,7 @@ def main() -> int:
     print(f"其中含被引用成员  : {referenced_in_groups} 组")
     print(f"将保留副本        : {len(keep)} 个文件")
     print(f"将删除冗余        : {len(delete)} 个文件")
-    print(f"预计回收空间      : {total_reclaim/1e9:.2f} GB")
+    print(f"预计回收空间      : {total_reclaim / 1e9:.2f} GB")
 
     if not args.apply:
         print("\n[dry-run] 未删除。加 --apply 执行（并写 manifest）。")
@@ -139,7 +138,7 @@ def main() -> int:
         shown = 0
         for members in groups:
             rels = [norm_rel(m) for m in members]
-            ref_members = [m for m, r in zip(members, rels) if r in refs]
+            ref_members = [m for m, r in zip(members, rels, strict=False) if r in refs]
             kept = ref_members if ref_members else [sorted(members)[0]]
             removed = [m for m in members if m not in kept]
             if removed:
@@ -164,7 +163,7 @@ def main() -> int:
             for grp in groups:
                 if m in grp:
                     rels = [norm_rel(x) for x in grp]
-                    ref_members = [x for x, r in zip(grp, rels) if r in refs]
+                    ref_members = [x for x, r in zip(grp, rels, strict=False) if r in refs]
                     twins = ref_members if ref_members else [sorted(grp)[0]]
                     kept_twin = "; ".join(os.path.relpath(t, KB) for t in twins if t != m)
                     break

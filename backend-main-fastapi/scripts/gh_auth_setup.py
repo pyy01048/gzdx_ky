@@ -20,6 +20,7 @@ store（文件权限受限），之后 git push 免输。
     Personal access tokens → Tokens (classic) → Generate new token (classic)
     勾选权限：repo（全部）→ Generate → 复制 ghp_ 开头的字符串
 """
+
 from __future__ import annotations
 
 import getpass
@@ -35,17 +36,15 @@ def _store_token(token: str) -> None:
     """把 Token 写入 git credential store（仅当前用户可读）。"""
     subprocess.run(
         ["git", "config", "--global", "credential.helper", "store"],
-        check=True, cwd=REPO,
+        check=True,
+        cwd=REPO,
     )
     cred_file = Path.home() / ".git-credentials"
     line = f"https://pyy01048:{token}@github.com\n"
     existing = ""
     if cred_file.exists():
         existing = cred_file.read_text(encoding="utf-8")
-        existing = "\n".join(
-            l for l in existing.splitlines()
-            if "github.com" not in l
-        )
+        existing = "\n".join(l for l in existing.splitlines() if "github.com" not in l)
         if existing:
             existing += "\n"
     cred_file.write_text(existing + line, encoding="utf-8")
@@ -71,7 +70,10 @@ def main() -> int:
     # 验证认证
     r = subprocess.run(
         ["git", "ls-remote", "--heads", "origin"],
-        cwd=REPO, capture_output=True, text=True, timeout=30,
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=30,
         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     )
     if r.returncode == 0:

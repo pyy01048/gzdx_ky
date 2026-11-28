@@ -13,6 +13,7 @@ answer（如「及总结」「必须写在答题纸上否则后果自负！」�
 
 幂等；--apply 前自动备份。
 """
+
 from __future__ import annotations
 
 import re
@@ -27,8 +28,11 @@ DB_PATH = _REPO / "database" / "kaoyan.db"
 
 # 垃圾答案特征：OCR 页眉页脚/警告语/无意义超短串
 _GARBAGE_PATTERNS = [
-    r"^及总结", r"答题纸上否则后果自负", r"^必须写", r"^\s*$",
-    r"^\W{1,4}$",                      # 纯符号
+    r"^及总结",
+    r"答题纸上否则后果自负",
+    r"^必须写",
+    r"^\s*$",
+    r"^\W{1,4}$",  # 纯符号
     r"^(?:第?\s*[一二三四五六七八九十\d]+\s*[页题部分]|共\s*\d+\s*页)",
     r"公众号|QQ|微信|扫码|下载|百度网盘",  # 广告水印
 ]
@@ -40,7 +44,7 @@ def is_garbage(answer: str) -> bool:
     if not a:
         return False  # 空不算垃圾（本来就空）
     if len(a) <= 4 and not re.search(r"[A-D\d]", a):
-        return True   # 超短且不含选项字母/数字
+        return True  # 超短且不含选项字母/数字
     return bool(_GARBAGE_RE.search(a))
 
 
@@ -58,7 +62,7 @@ def main() -> int:
     print(f"AI未核验答案: {len(rows)} 道，其中垃圾特征命中: {len(garbage)} 道")
 
     replace_plan, clear_plan = [], []
-    for qid, ans in garbage:
+    for qid, _ans in garbage:
         cand = cur.execute(
             "SELECT answer FROM answer_candidates"
             " WHERE question_id = ? AND used_for_grading = 1 AND confidence >= 0.7"

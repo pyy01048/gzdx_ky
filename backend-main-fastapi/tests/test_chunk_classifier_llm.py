@@ -8,6 +8,7 @@
 
 隔离：全部走 conftest 的临时库，且 monkeypatch 掉 ``_chat_local``，不发真实网络请求。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -58,6 +59,7 @@ def test_parse_llm_output_returns_none_on_unparsable(raw):
 
 def test_llm_classify_never_raises(monkeypatch):
     """契约：任何异常/垃圾输出 → None，绝不把整篇回填带崩。"""
+
     def _boom(messages, **kw):  # noqa: ARG001
         raise RuntimeError("model runner has unexpectedly stopped")
 
@@ -76,14 +78,16 @@ def test_llm_classify_never_raises(monkeypatch):
 
 def test_llm_classify_drops_subject_outside_candidates(monkeypatch):
     """非法学科（候选集外）→ 空串，绝不落库；合法值原样保留并裁剪越界 L3。"""
-    raw = ('{"l1_subject": "中医学", "l2_chapter": "藏象", '
-           '"l3_content_type": "不存在的类型", "confidence": 1.7, "reason": "x"}')
+    raw = (
+        '{"l1_subject": "中医学", "l2_chapter": "藏象", '
+        '"l3_content_type": "不存在的类型", "confidence": 1.7, "reason": "x"}'
+    )
     monkeypatch.setattr(cc, "_chat_local", lambda messages, **kw: raw)
     out = cc.llm_classify("a.pdf", "肺属金……")
     assert out is not None
-    assert out["l1_subject"] == ""            # 候选集外科目一律归零
-    assert out["l3_content_type"] == ""       # 非枚举 L3 丢弃
-    assert out["confidence"] == 1.0           # 越界裁剪
+    assert out["l1_subject"] == ""  # 候选集外科目一律归零
+    assert out["l3_content_type"] == ""  # 非枚举 L3 丢弃
+    assert out["confidence"] == 1.0  # 越界裁剪
 
 
 # --------------------------------------------------------------------------- #
@@ -92,18 +96,31 @@ def test_llm_classify_drops_subject_outside_candidates(monkeypatch):
 def test_llm_cap_counts_attempts_not_success(db_schema, monkeypatch):  # noqa: ARG001
     """模型全失败时也必须停在 LLM_MAX_PER_DOC，否则每篇低置信文档无限重试。"""
     from database import SessionLocal
+
     from models import Document, KnowledgeChunk
 
     db = SessionLocal()
     try:
-        doc = Document(file_name="qa-l3-cap.pdf", file_path="qa-l3-cap.pdf",
-                       file_type="pdf", size=1, subject="",
-                       index_status="indexed", parse_progress=1.0)
+        doc = Document(
+            file_name="qa-l3-cap.pdf",
+            file_path="qa-l3-cap.pdf",
+            file_type="pdf",
+            size=1,
+            subject="",
+            index_status="indexed",
+            parse_progress=1.0,
+        )
         db.add(doc)
         db.commit()
         for i in range(cc.LLM_MAX_PER_DOC + 15):
-            db.add(KnowledgeChunk(document_id=doc.id, doc_name=doc.file_name,
-                                  chunk_id=i, text=f"第{i}段 完全没有关键词线索 也没有质心相似度 zzqq{i}"))
+            db.add(
+                KnowledgeChunk(
+                    document_id=doc.id,
+                    doc_name=doc.file_name,
+                    chunk_id=i,
+                    text=f"第{i}段 完全没有关键词线索 也没有质心相似度 zzqq{i}",
+                )
+            )
         db.commit()
 
         # 关掉路1/路2，保证每个块都是低置信 → 全部想进路3
@@ -112,20 +129,20 @@ def test_llm_cap_counts_attempts_not_success(db_schema, monkeypatch):  # noqa: A
         monkeypatch.setattr(cc, "keyword_scores", lambda fn, t: ("", 0.0))
 
         attempts = []
-        monkeypatch.setattr(cc, "llm_classify",
-                            lambda fn, t, n=0: attempts.append(n) or None)
+        monkeypatch.setattr(cc, "llm_classify", lambda fn, t, n=0: attempts.append(n) or None)
 
         r = cc.classify_document(db, doc.id, use_llm=True, only_unlabeled=False)
         assert r["ok"] is True
-        assert len(attempts) == cc.LLM_MAX_PER_DOC, \
-            f"路3 未按发起次数封顶：实际 {len(attempts)} 次"
+        assert len(attempts) == cc.LLM_MAX_PER_DOC, f"路3 未按发起次数封顶：实际 {len(attempts)} 次"
         assert r["llm_calls"] == 0
         assert r["llm_failed"] == cc.LLM_MAX_PER_DOC
 
-        labeled = (db.query(KnowledgeChunk)
-                   .filter(KnowledgeChunk.document_id == doc.id)
-                   .filter(KnowledgeChunk.l3_content_type.isnot(None))
-                   .count())
+        labeled = (
+            db.query(KnowledgeChunk)
+            .filter(KnowledgeChunk.document_id == doc.id)
+            .filter(KnowledgeChunk.l3_content_type.isnot(None))
+            .count()
+        )
         assert labeled == cc.LLM_MAX_PER_DOC + 15, "失败降级后仍应完成两路打标并落库"
         db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.id).delete()
         db.delete(doc)

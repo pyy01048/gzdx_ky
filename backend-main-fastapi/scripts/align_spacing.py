@@ -32,6 +32,7 @@
   · 默认 dry-run；--apply 前逐文件备份
   · 字号单列处理：13.5 → var(--text-sm)，12 → var(--text-xs)，14 → var(--text-base)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,9 +52,15 @@ SPACE_FIX = {2: 4, 6: 8, 7: 8, 9: 8, 10: 12, 11: 12, 14: 16, 18: 20, 22: 24, 26:
 
 #: 间距 px → 令牌（覆盖 tokens.css 的 --space-* 阶梯）
 SPACE_TOKEN = {
-    4: "var(--space-1)", 8: "var(--space-2)", 12: "var(--space-3)",
-    16: "var(--space-4)", 20: "var(--space-5)", 24: "var(--space-6)",
-    32: "var(--space-8)", 40: "var(--space-10)", 48: "var(--space-12)",
+    4: "var(--space-1)",
+    8: "var(--space-2)",
+    12: "var(--space-3)",
+    16: "var(--space-4)",
+    20: "var(--space-5)",
+    24: "var(--space-6)",
+    32: "var(--space-8)",
+    40: "var(--space-10)",
+    48: "var(--space-12)",
     64: "var(--space-16)",
 }
 
@@ -64,21 +71,48 @@ SPACE_TOKEN = {
 #: 一律就近归入阶梯。小于 12 的（10/11）归 xs —— 中文正文低于 12px 已不可读，
 #: 这些多是给紧凑徽标用的，保持最小值即可。
 FONT_FIX = {
-    "10": "var(--text-xs)", "11": "var(--text-xs)", "11.5": "var(--text-xs)",
-    "12": "var(--text-xs)", "12.5": "var(--text-xs)", "12.8": "var(--text-xs)",
-    "13": "var(--text-sm)", "13.5": "var(--text-sm)",
-    "14": "var(--text-base)", "15": "var(--text-base)", "16": "var(--text-md)",
-    "17": "var(--text-md)", "18": "var(--text-md)", "19": "var(--text-lg)",
-    "20": "var(--text-lg)", "22": "var(--text-xl)", "24": "var(--text-xl)",
-    "26": "var(--text-2xl)", "28": "var(--text-2xl)", "30": "var(--text-2xl)",
-    "32": "var(--text-2xl)", "36": "var(--text-3xl)", "40": "var(--text-3xl)",
+    "10": "var(--text-xs)",
+    "11": "var(--text-xs)",
+    "11.5": "var(--text-xs)",
+    "12": "var(--text-xs)",
+    "12.5": "var(--text-xs)",
+    "12.8": "var(--text-xs)",
+    "13": "var(--text-sm)",
+    "13.5": "var(--text-sm)",
+    "14": "var(--text-base)",
+    "15": "var(--text-base)",
+    "16": "var(--text-md)",
+    "17": "var(--text-md)",
+    "18": "var(--text-md)",
+    "19": "var(--text-lg)",
+    "20": "var(--text-lg)",
+    "22": "var(--text-xl)",
+    "24": "var(--text-xl)",
+    "26": "var(--text-2xl)",
+    "28": "var(--text-2xl)",
+    "30": "var(--text-2xl)",
+    "32": "var(--text-2xl)",
+    "36": "var(--text-3xl)",
+    "40": "var(--text-3xl)",
     "48": "var(--text-3xl)",
 }
 
 #: 只处理这些 CSS 属性
-SPACE_PROPS = ("margin", "marginTop", "marginBottom", "marginLeft", "marginRight",
-               "padding", "paddingTop", "paddingBottom", "paddingLeft", "paddingRight",
-               "gap", "rowGap", "columnGap")
+SPACE_PROPS = (
+    "margin",
+    "marginTop",
+    "marginBottom",
+    "marginLeft",
+    "marginRight",
+    "padding",
+    "paddingTop",
+    "paddingBottom",
+    "paddingLeft",
+    "paddingRight",
+    "gap",
+    "rowGap",
+    "columnGap",
+)
 
 STYLE_RE = re.compile(r"style=\{\{(.*?)\}\}", re.S)
 
@@ -86,9 +120,12 @@ STYLE_RE = re.compile(r"style=\{\{(.*?)\}\}", re.S)
 def iter_files() -> list[Path]:
     out: list[Path] = []
     for root, dirs, names in os.walk(SRC):
-        dirs[:] = [d for d in dirs
-                   if d not in ("node_modules", "_removed", "dist")
-                   and not d.startswith(("_migration_backup", "_color_backup", "_spacing_backup"))]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in ("node_modules", "_removed", "dist")
+            and not d.startswith(("_migration_backup", "_color_backup", "_spacing_backup"))
+        ]
         for n in names:
             if n.endswith((".jsx", ".js")) and ".bak" not in n:
                 out.append(Path(root) / n)
@@ -108,9 +145,7 @@ def fix_block(block: str) -> tuple[str, int]:
     # 早期实现逐段替换时把 0 落在引号外，产出
     #   margin: 'var(--space-2)' 0 0'   ← 语法错误，构建失败。
     # 因此这里一次性重写整个值字符串。
-    pat_num = re.compile(
-        rf"\b({'|'.join(SPACE_PROPS)})\s*:\s*'([\d\s]*px[\d\spx]*|\d+(?:\s+\d+)*)'(?=\s*[,}}]|\s*$)"
-    )
+    pat_num = re.compile(rf"\b({'|'.join(SPACE_PROPS)})\s*:\s*'([\d\s]*px[\d\spx]*|\d+(?:\s+\d+)*)'(?=\s*[,}}]|\s*$)")
 
     def repl_space(m: re.Match) -> str:
         nonlocal n
@@ -124,7 +159,7 @@ def fix_block(block: str) -> tuple[str, int]:
         for p in parts:
             v = int(p)
             if v == 0:
-                out_parts.append("0")          # 0 保留在引号内
+                out_parts.append("0")  # 0 保留在引号内
                 continue
             v = SPACE_FIX.get(v, v)
             tok = SPACE_TOKEN.get(v)

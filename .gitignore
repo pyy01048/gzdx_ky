@@ -51,6 +51,13 @@ frontend/temp/
 _audit_db.py
 _test_db.py
 
+# 大文件产物（一次性回填/验收截图/工程目录JSON，不入库）
+backfill_local/
+backend-main-fastapi/.engineering_catalog_*.json
+frontend/acceptance/*.png
+backend-main-fastapi/core/sql/138_school_profile_backfill.sql
+backend-main-fastapi/core/sql/145_school_intro_from_official_site.sql
+
 # --- test artifacts (added for github upload) ---
 test-results/
 frontend/test-results/

@@ -9,6 +9,7 @@ needed and no dependency versions are touched. Calls
 
 Prints, per document: extracted count and the knowledge-point names.
 """
+
 import json
 import os
 import sys

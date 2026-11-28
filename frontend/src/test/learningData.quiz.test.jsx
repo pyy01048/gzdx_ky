@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -11,6 +11,7 @@ vi.mock('../api/client', async (importOriginal) => ({
 }))
 
 import QuizPractice from '../v3/pages/QuizPractice'
+import { ToastHost } from '../v3/ui'
 
 const choiceQuestion = {
   id: '101',
@@ -36,9 +37,10 @@ const textQuestion = {
 function Harness({ question }) {
   const [records, setRecords] = useState({})
   const [submitting, setSubmitting] = useState(false)
+  const session = useMemo(() => ({ questions: [question], noAnswer: false, startIdx: 0 }), [question])
   return (
     <QuizPractice
-      session={{ questions: [question], noAnswer: false, startIdx: 0 }}
+      session={session}
       records={records}
       basis={null}
       favs={{}}
@@ -57,7 +59,7 @@ function Harness({ question }) {
 }
 
 const renderPractice = (question) => render(
-  <MemoryRouter><Harness question={question} /></MemoryRouter>,
+  <MemoryRouter><Harness question={question} /><ToastHost /></MemoryRouter>,
 )
 
 beforeEach(() => {
@@ -71,19 +73,21 @@ afterEach(() => {
 })
 
 describe('QuizPractice 提交失败语义', () => {
-  it('选择题提交失败时只标记本地判分，不再声称已计入后端错题本', async () => {
+  it('选择题提交失败时不本地判分、不写错题本，并保留选择供重试', async () => {
     quizApiMock.submit.mockRejectedValue(new Error('网络断开'))
     renderPractice(choiceQuestion)
 
     fireEvent.click(screen.getByRole('button', { name: /错误选项/ }))
 
-    expect(await screen.findByText(/本地判分，后端未同步（网络断开）/)).toBeInTheDocument()
-    expect(screen.queryByText(/已计入错题本/)).not.toBeInTheDocument()
+    expect(await screen.findByText('网络断开')).toBeInTheDocument()
+    expect(screen.queryByText(/答错已计入错题本/)).not.toBeInTheDocument()
+    expect(screen.queryByText('选择 A')).not.toBeInTheDocument()
     expect(quizApiMock.submit).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(localStorage.getItem('quiz_wrong'))).toEqual(['101'])
+    expect(localStorage.getItem('quiz_wrong')).toBeNull()
+    expect(screen.getByRole('button', { name: /错误选项/ })).toHaveClass('is-sel')
   })
 
-  it('文本题失败自评保留本机结果并可见地标记未同步', async () => {
+  it('文本题自评提交失败时保留对照结果，但不写判分记录或错题本', async () => {
     quizApiMock.submit.mockRejectedValue(new Error('提交超时'))
     renderPractice(textQuestion)
 
@@ -92,9 +96,10 @@ describe('QuizPractice 提交失败语义', () => {
     expect(quizApiMock.submit).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '我答错了' }))
 
-    expect(await screen.findByText(/本地判分，后端未同步（提交超时）/)).toBeInTheDocument()
-    expect(screen.queryByText(/已计入错题本/)).not.toBeInTheDocument()
+    expect(await screen.findByText('提交超时')).toBeInTheDocument()
+    expect(screen.queryByText(/答错已计入错题本/)).not.toBeInTheDocument()
     expect(quizApiMock.submit).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem('quiz_wrong')).toBeNull()
   })
 })
 
@@ -126,7 +131,7 @@ describe('QuizPractice 主观题自评提交契约', () => {
       self_score: 0,
       max_score: 20,
     })
-    expect(await screen.findByText(/已计入错题本/)).toBeInTheDocument()
+    expect(await screen.findByText(/答错已计入错题本/)).toBeInTheDocument()
     expect(screen.queryByText(/本地判分，后端未同步/)).not.toBeInTheDocument()
   })
 
@@ -144,6 +149,8 @@ describe('QuizPractice 主观题自评提交契约', () => {
       self_score: 20,
       max_score: 20,
     }))
-    expect(await screen.findByText(/回答正确/)).toBeInTheDocument()
+    await waitFor(() => expect(
+      screen.getAllByRole('status').some((node) => node.textContent.includes('回答正确')),
+    ).toBe(true))
   })
 })

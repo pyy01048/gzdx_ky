@@ -74,6 +74,14 @@ function renderSide(val) {
   return <p className="v3-study-flip__text">{sideText(val)}</p>
 }
 
+/** 评分等级 → 会话统计字段名映射。 */
+const GRADE_TO_STAT_KEY = { [GRADE.AGAIN]: 'again', [GRADE.HARD]: 'hard', [GRADE.GOOD]: 'good', [GRADE.EASY]: 'easy' }
+
+/**
+ * 记忆卡片页：把知识点整理成正反面，按 SM-2 / FSRS 间隔重复安排复习。
+ * 数据源：flashcardsApi.list / review / remove；科目来自 fetchSubjectNames。
+ * @returns {JSX.Element} 记忆卡片页面
+ */
 export default function Cards() {
   /* 字段级选择器：store 其他字段变化不触发整页重渲染 */
   const cards = useStore((s) => s.cards)
@@ -238,10 +246,10 @@ export default function Cards() {
     setView('study')
   }, [])
 
-  const grade = async (g) => {
+  const grade = useCallback(async (g) => {
     if (!current || grading) return
     setGrading(true)
-    const gradeKey = g === GRADE.AGAIN ? 'again' : g === GRADE.HARD ? 'hard' : g === GRADE.GOOD ? 'good' : 'easy'
+    const gradeKey = GRADE_TO_STAT_KEY[g] || 'easy'
     setSessionStats((prev) => ({
       ...prev,
       [gradeKey]: prev[gradeKey] + 1,
@@ -264,29 +272,29 @@ export default function Cards() {
       if (curIdx + 1 >= remaining.length) setView('summary')
       setGrading(false)
     }
-  }
+  }, [current, grading, curIdx, remaining.length, reviewCard])
 
-  const prevCard = () => {
+  const prevCard = useCallback(() => {
     if (curIdx > 0) {
       setCurIdx(curIdx - 1)
       setShowBack(false)
       setFlipped(false)
     }
-  }
+  }, [curIdx])
 
   /* 不评分，直接跳过到下一张 */
-  const nextCard = () => {
+  const nextCard = useCallback(() => {
     if (curIdx + 1 < remaining.length) {
       setCurIdx(curIdx + 1)
       setShowBack(false)
       setFlipped(false)
     }
-  }
+  }, [curIdx, remaining.length])
 
-  const flipCard = () => {
+  const flipCard = useCallback(() => {
     setFlipped((v) => !v)
     setShowBack((v) => !v)
-  }
+  }, [])
 
   /* 显示答案后支持 1-4 快捷键评分（与页面提示一致） */
   useEffect(() => {
@@ -306,12 +314,12 @@ export default function Cards() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, showBack, current?.id, curIdx, remaining.length, grading])
 
-  const openAddCard = () => {
+  const openAddCard = useCallback(() => {
     setCardErr('')
     setShowAddCard(true)
-  }
+  }, [])
 
-  const createPack = () => {
+  const createPack = useCallback(() => {
     if (!packName.trim()) {
       toastWarn('请输入卡包名称')
       return
@@ -324,10 +332,10 @@ export default function Cards() {
     toastOk('卡包已创建')
     setPackName('')
     setShowAddPack(false)
-  }
+  }, [packName, packSubject, addPack])
 
   // 创建由 useStore.addCard 独占：它负责乐观插入、完整字段同步与后端 ID adoption。
-  const noteToCardNow = (note) => {
+  const noteToCardNow = useCallback((note) => {
     const pack = packs[0]
     if (!pack) {
       toastWarn('请先创建卡包')
@@ -336,9 +344,9 @@ export default function Cards() {
     addCard({ ...noteToCard(note), packId: pack.id })
     toastOk('已生成记忆卡片，正在后台同步')
     setShowFromNote(false)
-  }
+  }, [packs, addCard])
 
-  const createCard = () => {
+  const createCard = useCallback(() => {
     if (!form.packId) {
       setCardErr(packs.length ? '请先选择卡包' : '还没有卡包：请先新建一个卡包再添加卡片')
       return
@@ -352,9 +360,9 @@ export default function Cards() {
     toastOk('卡片已添加，正在后台同步')
     setForm({ packId: '', front: '', back: '', hint: '' })
     setShowAddCard(false)
-  }
+  }, [form, packs.length, addCard])
 
-  const handleRemoveCard = async (id) => {
+  const handleRemoveCard = useCallback(async (id) => {
     try {
       await flashcardsApi.remove(id)
     } catch (err) {
@@ -362,15 +370,15 @@ export default function Cards() {
     }
     removeCard(id)
     toastOk('卡片已删除')
-  }
+  }, [removeCard])
 
-  const handleRemovePack = (pack) => {
+  const handleRemovePack = useCallback((pack) => {
     removePack(pack.id)
     if (packId === pack.id) setPackId('all')
     toastOk('卡包已删除')
-  }
+  }, [removePack, packId])
 
-  const selectPack = (id) => {
+  const selectPack = useCallback((id) => {
     if (id !== packId) {
       setSessionStats({ again: 0, hard: 0, good: 0, easy: 0, startTime: null, cards: [] })
     }
@@ -379,17 +387,17 @@ export default function Cards() {
     setCurIdx(0)
     setShowBack(false)
     setFlipped(false)
-  }
+  }, [packId])
 
-  const openPackStudy = (pack) => {
+  const openPackStudy = useCallback((pack) => {
     selectPack(pack.id)
     setView('study')
     toast(`已切换到卡包：${pack.name}`)
-  }
+  }, [selectPack])
 
-  const packNameOf = (id) => packs.find((p) => p.id === id)?.name || '卡片'
+  const packNameOf = useCallback((id) => packs.find((p) => p.id === id)?.name || '卡片', [packs])
 
-  const renderLoading = () => (
+  const renderLoading = useCallback(() => (
     <div className="v3-bento">
       {Array.from({ length: 4 }).map((_, i) => (
         <Tile span={3} key={i} className="v3-study-skeleton-tile"><Skeleton height={64} /></Tile>
@@ -397,7 +405,7 @@ export default function Cards() {
       <Tile span={8}><Skeleton height={250} /></Tile>
       <Tile span={4}><Skeleton height={250} /></Tile>
     </div>
-  )
+  ), [])
 
   return (
     <div className="v3-stack v3-study v3-glasspage">

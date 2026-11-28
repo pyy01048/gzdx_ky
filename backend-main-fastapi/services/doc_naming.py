@@ -21,6 +21,7 @@
 改名只动显示名：`file_path` 与磁盘文件名一律不动，#26 的
 `GET /api/documents/{id}/raw|download` 靠 `file_path` 定位原文。
 """
+
 from __future__ import annotations
 
 import os
@@ -34,26 +35,28 @@ MAX_LEN = 60
 
 #: 导入器留下的无语义前缀 / 时间戳，判「低信息名」前先剥掉
 JUNK_PREFIX = re.compile(
-    r"^(微信图片|wechat_temp|mmexport|IMG_|Screenshot|截图|扫描件|未命名|新建文件?|document|file)", re.I)
+    r"^(微信图片|wechat_temp|mmexport|IMG_|Screenshot|截图|扫描件|未命名|新建文件?|document|file)", re.I
+)
 STAMP = re.compile(r"20\d{6,12}")
 CJK = re.compile(r"[\u4e00-\u9fff]")
 LATIN = re.compile(r"[A-Za-z]{4,}")
 YEAR = re.compile(r"(?:19|20)\d{2}")
 
-FORM = (r"真题|答案|解析|讲解|精讲|讲义|笔记|大纲|考纲|指南|教材|课件|习题|练习|月考"
-        r"|模拟|模考|预测|冲刺|背诵|考点|单词|作文|阅读|翻译|套卷|试题|试卷|题库|手册"
-        r"|全书|总结|导图|复习|指导|细解|逐句|逐题")
+FORM = (
+    r"真题|答案|解析|讲解|精讲|讲义|笔记|大纲|考纲|指南|教材|课件|习题|练习|月考"
+    r"|模拟|模考|预测|冲刺|背诵|考点|单词|作文|阅读|翻译|套卷|试题|试卷|题库|手册"
+    r"|全书|总结|导图|复习|指导|细解|逐句|逐题"
+)
 CHAPTER = r"第\s*[0-9０-９一二三四五六七八九十百]{1,3}\s*[章节讲部篇]"
 FORM_RE = re.compile(FORM)
 CHAPTER_RE = re.compile(CHAPTER)
-CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
-          "六": 6, "七": 7, "八": 8, "九": 9}
+CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 
 #: 一眼就不是标题的行：选项题干、问答句、图注、列表序号、分页标记、APP 残渣、网页残渣
 DENY = re.compile(
-    r"(^[A-Ha-h][、.．\)])"          # A、B. 选项
-    r"|(、)"                        # 顿号 = 并列句，不是标题
-    r"|[。！？；;]"                 # 句读
+    r"(^[A-Ha-h][、.．\)])"  # A、B. 选项
+    r"|(、)"  # 顿号 = 并列句，不是标题
+    r"|[。！？；;]"  # 句读
     r"|(答案[：:])|(解析[：:])"
     r"|(^\W{0,3}(简述|试述|说明|请|为什么|如何|分析))"
     r"|(^\s*图\s*\d)|(^\s*表\s*\d)|(^\s*\d+\s*[)）.、])"
@@ -61,7 +64,9 @@ DENY = re.compile(
     r"|(新建|登录|开通|会员|下载|扫一扫|二维码|水印|PowerPoint|WPS|OneNote|微信|文库|APP)"
     # 解析失败时各入库点写的占位串，绝不能反过来当标题来源
     r"|(未能提取到文本内容|文件缺失|未识别|未命名)"
-    r"|(img |src=|width=|\.jpg|\.png|\.gif|https?://)", re.I)
+    r"|(img |src=|width=|\.jpg|\.png|\.gif|https?://)",
+    re.I,
+)
 
 
 def sanitize(name: str) -> str:
@@ -169,8 +174,7 @@ def propose(file_name: str, text: str) -> Dict[str, str]:
     if not (CHAPTER_RE.search(title) or FORM_RE.search(title) or CHAPTER_RE.search(anchor)):
         return {"reason": "标题行无章节词/形态词，不敢断定是标题", "note": title}
 
-    dup_chapter = (CHAPTER_RE.search(anchor) is not None
-                   and chapter_num(anchor) == chapter_num(title))
+    dup_chapter = CHAPTER_RE.search(anchor) is not None and chapter_num(anchor) == chapter_num(title)
     if anchor and anchor not in title and not dup_chapter:
         full = sanitize(f"{anchor} {title}")
     else:
@@ -182,12 +186,16 @@ def propose(file_name: str, text: str) -> Dict[str, str]:
     proposed = full + ext
     if proposed == file_name:
         return {"reason": "拟改名与现名一致"}
-    basis = "/".join(x.group(0) for x in
-                     [CHAPTER_RE.search(title) or CHAPTER_RE.search(proposed),
-                      FORM_RE.search(title)] if x)
-    return {"proposed": proposed, "anchor": anchor, "basis": basis,
-            "verbatim": "yes" if raw == title else "yes（已折叠空白/替换非法字符）",
-            "reason": ""}
+    basis = "/".join(
+        x.group(0) for x in [CHAPTER_RE.search(title) or CHAPTER_RE.search(proposed), FORM_RE.search(title)] if x
+    )
+    return {
+        "proposed": proposed,
+        "anchor": anchor,
+        "basis": basis,
+        "verbatim": "yes" if raw == title else "yes（已折叠空白/替换非法字符）",
+        "reason": "",
+    }
 
 
 def _clip(name: str) -> str:
@@ -225,12 +233,19 @@ def apply_display_name(db, doc, text) -> str:
     `knowledge_chunks.doc_name`，免得答疑引用（`ai_service` 用 `c.doc_name`）挂旧名。
     调用方负责 commit。
     """
-    from models import Document, KnowledgeChunk
     from sqlalchemy import func
 
+    from models import Document, KnowledgeChunk
+
     current = doc.file_name or ""
-    new = auto_rename(current, text, taken_names=lambda n: db.query(Document.id).filter(
-        func.lower(Document.file_name) == n.lower(), Document.id != doc.id).first() is not None)
+    new = auto_rename(
+        current,
+        text,
+        taken_names=lambda n: db.query(Document.id)
+        .filter(func.lower(Document.file_name) == n.lower(), Document.id != doc.id)
+        .first()
+        is not None,
+    )
     if not new:
         return current
     doc.file_name = new
@@ -239,5 +254,6 @@ def apply_display_name(db, doc, text) -> str:
         # 用 False 时若会话里已躺着同一文档的分块实例，它随后 flush 会把旧
         # doc_name 写回去，静默抵消这次写穿。
         db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.id).update(
-            {KnowledgeChunk.doc_name: new}, synchronize_session="fetch")
+            {KnowledgeChunk.doc_name: new}, synchronize_session="fetch"
+        )
     return new

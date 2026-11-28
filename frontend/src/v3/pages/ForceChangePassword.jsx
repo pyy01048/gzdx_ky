@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { Button, Field, Input } from '../ui'
@@ -9,6 +9,10 @@ import '../styles/aux-v3.css'
 
 const MIN_LEN = 8
 
+/**
+ * 强制修改初始/重置密码页：账号处于 must-change 状态时进入，
+ * 修改成功后跳转首页，亦可退出登录。
+ */
 export default function ForceChangePassword() {
   const { status, user, changePassword, logout } = useAuth()
   const navigate = useNavigate()
@@ -20,10 +24,8 @@ export default function ForceChangePassword() {
 
   /* P1（F-06）：title 由 App 的 RouteTitle 从 ROUTE_META 统一派生 */
 
-  if (status === 'anon') return <Navigate to="/login" replace />
-  if (status === 'ready') return <Navigate to="/" replace />
-
-  const submit = async (e) => {
+  /** 提交修改密码：校验长度与一致性后调用 changePassword */
+  const submit = useCallback(async (e) => {
     e.preventDefault()
     if (newPassword.length < MIN_LEN) { setError(`新密码至少 ${MIN_LEN} 位`); return }
     if (newPassword !== confirm) { setError('两次输入的新密码不一致'); return }
@@ -37,7 +39,10 @@ export default function ForceChangePassword() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [oldPassword, newPassword, confirm, changePassword, navigate])
+
+  if (status === 'anon') return <Navigate to="/login" replace />
+  if (status === 'ready') return <Navigate to="/" replace />
 
   return (
     <div className="v3-aux-auth">

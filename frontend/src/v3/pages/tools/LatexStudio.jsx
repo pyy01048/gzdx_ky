@@ -5,7 +5,7 @@
  * - 导出：SVG / PNG（foreignObject + 内嵌 KaTeX 字体，全离线）、独立 HTML、复制 LaTeX / MathML / HTML
  * - 语法错误实时指出（KaTeX throwOnError），不静默吞错
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import 'katex/contrib/mhchem'

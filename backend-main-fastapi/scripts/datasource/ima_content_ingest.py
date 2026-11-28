@@ -11,6 +11,7 @@ field, truncates it to `max_chars` (default 30000) and writes it into
 
 Only `documents.content` and `documents.updated_at` are touched.
 """
+
 import json
 import sqlite3
 import sys
@@ -79,9 +80,7 @@ def ingest(path: str, doc_id: int, max_chars: int = DEFAULT_MAX_CHARS) -> dict:
         if not row:
             raise SystemExit("documents.id=%s not found" % doc_id)
         _, file_name, subject, media_id = row
-        old_len = conn.execute(
-            "SELECT COALESCE(LENGTH(content),0) FROM documents WHERE id=?", (doc_id,)
-        ).fetchone()[0]
+        old_len = conn.execute("SELECT COALESCE(LENGTH(content),0) FROM documents WHERE id=?", (doc_id,)).fetchone()[0]
         conn.execute(
             "UPDATE documents SET content=?, updated_at=? WHERE id=?",
             (stored, now, doc_id),

@@ -55,6 +55,7 @@
     23-题库脏数据体检报告-20261013.json
     23-题库脏数据体检报告-20261013.md
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,8 +69,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-BASE_DIR = Path(__file__).resolve().parent.parent          # backend-main-fastapi
-REPO_ROOT = BASE_DIR.parent                                # D:/平台
+BASE_DIR = Path(__file__).resolve().parent.parent  # backend-main-fastapi
+REPO_ROOT = BASE_DIR.parent  # D:/平台
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
@@ -85,6 +86,7 @@ from services.quiz_content_gate import (  # noqa: E402
 )
 
 REPORT_STEM = "23-题库脏数据体检报告-20261013"
+
 
 # --------------------------------------------------------------------------- #
 # 一、真库路径解析（与 services/delete_guard._resolve_db_path 同源同序）
@@ -135,13 +137,20 @@ _CJK_RE = re.compile(r"[\u4e00-\u9fa5]")
 #: 对错标记串（OCR 答案页碎片，如 "× 2． × 3． √"）
 _ANSWER_TOGGLE_RE = re.compile(r"^[×√✓✗\s\d．.、，,；;|/]+$")
 #: 题干引用图的特征（识别图缺失的判定信号）
-_FIGURE_REF_RE = re.compile(
-    r"如下\s*图|如图|图中|见图|如图所示|所示|【图|图\s*\d|图[a-zA-Z]|[（(]\s*图"
-)
+_FIGURE_REF_RE = re.compile(r"如下\s*图|如图|图中|见图|如图所示|所示|【图|图\s*\d|图[a-zA-Z]|[（(]\s*图")
 #: 管综·写作/逻辑特征词
 _MGZ_WRITING_TERMS = (
-    "论证有效性分析", "论说文", "管理类联考", "管综", "逻辑推理",
-    "形式逻辑", "论证逻辑", "批判性思维", "MBA", "MPAcc", "审计硕士",
+    "论证有效性分析",
+    "论说文",
+    "管理类联考",
+    "管综",
+    "逻辑推理",
+    "形式逻辑",
+    "论证逻辑",
+    "批判性思维",
+    "MBA",
+    "MPAcc",
+    "审计硕士",
 )
 #: 管综·数学（条件充分性判断）特征：条件(1)和条件(2) / 条件充分性
 _MGZ_MATH_RE = re.compile(
@@ -150,20 +159,66 @@ _MGZ_MATH_RE = re.compile(
 )
 #: 模电专属术语（用于模电/数电交叉检测）
 _ANALOG_TERMS = (
-    "三极管", "放大电路", "负反馈", "正反馈", "PN结", "伏安特性", "集成运放",
-    "运放", "静态工作点", "零点漂移", "整流", "功率放大", "频率响应", "波特图",
-    "共射", "共集", "共基", "差动放大", "失真",
+    "三极管",
+    "放大电路",
+    "负反馈",
+    "正反馈",
+    "PN结",
+    "伏安特性",
+    "集成运放",
+    "运放",
+    "静态工作点",
+    "零点漂移",
+    "整流",
+    "功率放大",
+    "频率响应",
+    "波特图",
+    "共射",
+    "共集",
+    "共基",
+    "差动放大",
+    "失真",
 )
 #: 数电专属术语
 _DIGITAL_TERMS = (
-    "逻辑门", "触发器", "译码器", "编码器", "计数器", "寄存器", "时序逻辑",
-    "组合逻辑", "卡诺图", "布尔", "BCD", "加法器", "数据选择器", "存储器",
-    "竞争冒险", "D触发器", "JK", "或门", "与门", "非门",
+    "逻辑门",
+    "触发器",
+    "译码器",
+    "编码器",
+    "计数器",
+    "寄存器",
+    "时序逻辑",
+    "组合逻辑",
+    "卡诺图",
+    "布尔",
+    "BCD",
+    "加法器",
+    "数据选择器",
+    "存储器",
+    "竞争冒险",
+    "D触发器",
+    "JK",
+    "或门",
+    "与门",
+    "非门",
 )
 #: 高数/线代/概率特征（错配进工科/英语科目的疑似信号）
 _MATH_TERMS = (
-    "极限", "导数", "微分", "积分", "矩阵", "行列式", "特征值", "特征向量",
-    "正交", "可导", "连续", "级数", "方差", "分布列", "概率",
+    "极限",
+    "导数",
+    "微分",
+    "积分",
+    "矩阵",
+    "行列式",
+    "特征值",
+    "特征向量",
+    "正交",
+    "可导",
+    "连续",
+    "级数",
+    "方差",
+    "分布列",
+    "概率",
 )
 
 
@@ -204,7 +259,9 @@ def detect_subject_mismatch(row: Dict[str, Any]) -> List[str]:
     subject = row["subject"] or ""
     # C5a 管综·写作/逻辑 错配进非管综科目
     if any(k in content for k in _MGZ_WRITING_TERMS) and subject not in (
-        "管理类联考", "管综", "真题综合",
+        "管理类联考",
+        "管综",
+        "真题综合",
     ):
         hits.append("管综写作逻辑错配")
     # C5b 管综·数学 错配
@@ -272,9 +329,9 @@ def run_health_check(con: sqlite3.Connection, sample_n: int) -> Dict[str, Any]:
     total = len(rows)
 
     # ---- 汇总容器 ----
-    cat: Dict[str, Counter] = defaultdict(Counter)          # 类别 -> Counter(科目)
-    cat_type: Dict[str, Counter] = defaultdict(Counter)     # 类别 -> Counter(题型)
-    cat_sub: Dict[str, Counter] = defaultdict(Counter)      # 类别 -> Counter(子类)
+    cat: Dict[str, Counter] = defaultdict(Counter)  # 类别 -> Counter(科目)
+    cat_type: Dict[str, Counter] = defaultdict(Counter)  # 类别 -> Counter(题型)
+    cat_sub: Dict[str, Counter] = defaultdict(Counter)  # 类别 -> Counter(子类)
     samples: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     ids_by_cat: Dict[str, List[int]] = defaultdict(list)
 
@@ -285,13 +342,15 @@ def run_health_check(con: sqlite3.Connection, sample_n: int) -> Dict[str, Any]:
             cat_sub[cat_name][sub] += 1
         ids_by_cat[cat_name].append(row["id"])
         if len(samples[cat_name]) < sample_n:
-            samples[cat_name].append({
-                "id": row["id"],
-                "subject": row["subject"],
-                "question_type": row["question_type"],
-                "sub": sub,
-                "content": (row["content"] or "")[:80],
-            })
+            samples[cat_name].append(
+                {
+                    "id": row["id"],
+                    "subject": row["subject"],
+                    "question_type": row["question_type"],
+                    "sub": sub,
+                    "content": (row["content"] or "")[:80],
+                }
+            )
 
     # ---- C1 无选项 ----
     for r in rows:
@@ -364,23 +423,27 @@ def run_health_check(con: sqlite3.Connection, sample_n: int) -> Dict[str, Any]:
 
     # ---- C9 关联表引用 ----
     related: Dict[str, Dict[str, int]] = {}
-    for tbl in ("error_records", "answer_records", "paper_questions",
-                "question_knowledge_links", "answer_candidates"):
+    for tbl in ("error_records", "answer_records", "paper_questions", "question_knowledge_links", "answer_candidates"):
         try:
             tot = con.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-            dist = con.execute(
-                f"SELECT COUNT(DISTINCT question_id) FROM {tbl}"
-            ).fetchone()[0]
+            dist = con.execute(f"SELECT COUNT(DISTINCT question_id) FROM {tbl}").fetchone()[0]
             related[tbl] = {"rows": tot, "distinct_question_id": dist}
         except sqlite3.Error as e:  # 表不存在等情况
             related[tbl] = {"rows": -1, "distinct_question_id": -1, "error": str(e)}
 
     # ---- 图片存储存在性证据（证明「图缺失」判定成立）----
-    img_cols = [c[1] for c in con.execute("PRAGMA table_info(quiz_questions)")
-                if any(k in c[1].lower() for k in ("img", "image", "figure", "pic"))]
-    img_tables = [r[0] for r in con.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND ("
-        "name LIKE '%image%' OR name LIKE '%img%' OR name LIKE '%figure%')")]
+    img_cols = [
+        c[1]
+        for c in con.execute("PRAGMA table_info(quiz_questions)")
+        if any(k in c[1].lower() for k in ("img", "image", "figure", "pic"))
+    ]
+    img_tables = [
+        r[0]
+        for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND ("
+            "name LIKE '%image%' OR name LIKE '%img%' OR name LIKE '%figure%')"
+        )
+    ]
 
     # ---- 按科目交叉矩阵 ----
     matrix: Dict[str, Dict[str, int]] = defaultdict(Counter)
@@ -423,58 +486,101 @@ def run_health_check(con: sqlite3.Connection, sample_n: int) -> Dict[str, Any]:
 # 五、处置建议（每类数据的处置矩阵；本轮只建议不执行）
 # --------------------------------------------------------------------------- #
 DISPOSAL = [
-    ("no_options", "选择/判断题缺选项(结构残缺)",
-     "补全（同 source 原卷重新 OCR 提取选项）；无法补全的隔离 is_available=0",
-     "中", "补全依赖原 PDF；隔离即时生效、零风险"),
-    ("no_options", "非选择题型无选项(正常)",
-     "不处置（简答/计算/填空题本无选项）", "无", "—"),
-    ("no_answer", "答案与解析均空",
-     "补全（从 source 原卷回填答案）；短期降级 quality=C 仅浏览不可刷",
-     "中", "回填需人工/模型校对，错误答案比无答案更糟"),
-    ("no_answer", "analysis非空(可回填)",
-     "补全（从 analysis 提炼标准答案，可立即执行）", "低", "analysis 已是既有事实数据，提炼答案风险低"),
-    ("options_abnormal", "选项不足4个(<4)",
-     "补全缺失选项；补不全的隔离", "中", "用户反馈「只有两三个 ABCD」的直接来源"),
-    ("options_abnormal", "选项超过4个(>4)",
-     "人工复核（多选残留 or 切分错误）；确认后合并或重修", "中", "勿直接删"),
-    ("options_abnormal", "4选项但答案非单字母",
-     "复核答案列（可能是解析文本混入 or 答案格式错误）", "低", "格式问题居多"),
-    ("options_abnormal", "JSON解析失败",
-     "人工核查 options 原文后重修", "低", "—"),
-    ("stem_anomaly", "空题干",
-     "删除（无出题价值）", "低", "需先清理关联表引用"),
-    ("stem_anomaly", "微题干(<15字)",
-     "删除或转 flashcards（名词条目类）", "中", "转存比删除更利用存量"),
-    ("stem_anomaly", "名词条目(无题目特征)",
-     "重分类为 flashcards/知识点，退出题库", "低", "非题内容占库存是「空题假题」观感来源"),
-    ("subject_mismatch", "管综写作逻辑错配",
-     "重分类到新科目「管理类联考」并重设题型（写作/逻辑）", "中",
-     "需先建科目与题型映射；本题库服务对象若不含管综则改为隔离"),
-    ("subject_mismatch", "管综数学错配",
-     "重分类到「管理类联考·数学」或「数学」", "中", "同上"),
-    ("subject_mismatch", "英语科目中文内容",
-     "按内容实际科目重分类（管综/数学/政治）", "中", "英语科目 92 题几乎全是错配"),
-    ("subject_mismatch", "数电科目含模电内容(疑似)",
-     "人工抽审后重分类或合并科目", "高", "术语交叉有误判风险，必须先抽样确认"),
-    ("subject_mismatch", "模电科目含数电内容(疑似)",
-     "人工抽审后重分类或合并科目", "高", "同上"),
-    ("subject_mismatch", "高数线代特征错配(疑似)",
-     "人工抽审后重分类到「数学」", "高", "疑似信号，勿批量执行"),
-    ("junk_isolated", "",
-     "维持 is_junk=1 隔离（列表默认已排除，零风险）", "无", "现状已正确"),
-    ("junk_candidate", "",
-     "分批标记 is_junk=1（先小批 --apply + 复核，再放量）", "中",
-     "宁可漏判不误删；与 quiz_quality_gate.py 判据同源"),
-    ("figure_missing", "",
-     "补图（从 source PDF 页定位裁剪）或题干补文字描述；短期隔离", "高",
-     "无图的选择题/计算题不可刷；补图成本最高，建议先隔离"),
-    ("status_anomaly", "junk但is_available=1(状态矛盾)",
-     "立即修正 is_available=0（用户可能正刷到垃圾题）", "低",
-     "状态矛盾属确定性 bug，无判定风险"),
-    ("status_anomaly", "junk但quality=A/B",
-     "复核后清除 quality 或解除 junk（二选一，不允许并存）", "低", "—"),
-    ("status_anomaly", "可刷但quality未分级",
-     "跑 quiz_quality_gate.py 补分级", "低", "—"),
+    (
+        "no_options",
+        "选择/判断题缺选项(结构残缺)",
+        "补全（同 source 原卷重新 OCR 提取选项）；无法补全的隔离 is_available=0",
+        "中",
+        "补全依赖原 PDF；隔离即时生效、零风险",
+    ),
+    ("no_options", "非选择题型无选项(正常)", "不处置（简答/计算/填空题本无选项）", "无", "—"),
+    (
+        "no_answer",
+        "答案与解析均空",
+        "补全（从 source 原卷回填答案）；短期降级 quality=C 仅浏览不可刷",
+        "中",
+        "回填需人工/模型校对，错误答案比无答案更糟",
+    ),
+    (
+        "no_answer",
+        "analysis非空(可回填)",
+        "补全（从 analysis 提炼标准答案，可立即执行）",
+        "低",
+        "analysis 已是既有事实数据，提炼答案风险低",
+    ),
+    (
+        "options_abnormal",
+        "选项不足4个(<4)",
+        "补全缺失选项；补不全的隔离",
+        "中",
+        "用户反馈「只有两三个 ABCD」的直接来源",
+    ),
+    ("options_abnormal", "选项超过4个(>4)", "人工复核（多选残留 or 切分错误）；确认后合并或重修", "中", "勿直接删"),
+    (
+        "options_abnormal",
+        "4选项但答案非单字母",
+        "复核答案列（可能是解析文本混入 or 答案格式错误）",
+        "低",
+        "格式问题居多",
+    ),
+    ("options_abnormal", "JSON解析失败", "人工核查 options 原文后重修", "低", "—"),
+    ("stem_anomaly", "空题干", "删除（无出题价值）", "低", "需先清理关联表引用"),
+    ("stem_anomaly", "微题干(<15字)", "删除或转 flashcards（名词条目类）", "中", "转存比删除更利用存量"),
+    (
+        "stem_anomaly",
+        "名词条目(无题目特征)",
+        "重分类为 flashcards/知识点，退出题库",
+        "低",
+        "非题内容占库存是「空题假题」观感来源",
+    ),
+    (
+        "subject_mismatch",
+        "管综写作逻辑错配",
+        "重分类到新科目「管理类联考」并重设题型（写作/逻辑）",
+        "中",
+        "需先建科目与题型映射；本题库服务对象若不含管综则改为隔离",
+    ),
+    ("subject_mismatch", "管综数学错配", "重分类到「管理类联考·数学」或「数学」", "中", "同上"),
+    (
+        "subject_mismatch",
+        "英语科目中文内容",
+        "按内容实际科目重分类（管综/数学/政治）",
+        "中",
+        "英语科目 92 题几乎全是错配",
+    ),
+    (
+        "subject_mismatch",
+        "数电科目含模电内容(疑似)",
+        "人工抽审后重分类或合并科目",
+        "高",
+        "术语交叉有误判风险，必须先抽样确认",
+    ),
+    ("subject_mismatch", "模电科目含数电内容(疑似)", "人工抽审后重分类或合并科目", "高", "同上"),
+    ("subject_mismatch", "高数线代特征错配(疑似)", "人工抽审后重分类到「数学」", "高", "疑似信号，勿批量执行"),
+    ("junk_isolated", "", "维持 is_junk=1 隔离（列表默认已排除，零风险）", "无", "现状已正确"),
+    (
+        "junk_candidate",
+        "",
+        "分批标记 is_junk=1（先小批 --apply + 复核，再放量）",
+        "中",
+        "宁可漏判不误删；与 quiz_quality_gate.py 判据同源",
+    ),
+    (
+        "figure_missing",
+        "",
+        "补图（从 source PDF 页定位裁剪）或题干补文字描述；短期隔离",
+        "高",
+        "无图的选择题/计算题不可刷；补图成本最高，建议先隔离",
+    ),
+    (
+        "status_anomaly",
+        "junk但is_available=1(状态矛盾)",
+        "立即修正 is_available=0（用户可能正刷到垃圾题）",
+        "低",
+        "状态矛盾属确定性 bug，无判定风险",
+    ),
+    ("status_anomaly", "junk但quality=A/B", "复核后清除 quality 或解除 junk（二选一，不允许并存）", "低", "—"),
+    ("status_anomaly", "可刷但quality未分级", "跑 quiz_quality_gate.py 补分级", "低", "—"),
 ]
 
 
@@ -513,9 +619,17 @@ def render_markdown(data: Dict[str, Any], meta: Dict[str, Any]) -> str:
     L.append("")
     L.append("| 类别 | 条数 | 占比 |")
     L.append("|---|---|---|")
-    for key in ("no_options", "no_answer", "options_abnormal", "stem_anomaly",
-                "subject_mismatch", "junk_isolated", "junk_candidate",
-                "figure_missing", "status_anomaly"):
+    for key in (
+        "no_options",
+        "no_answer",
+        "options_abnormal",
+        "stem_anomaly",
+        "subject_mismatch",
+        "junk_isolated",
+        "junk_candidate",
+        "figure_missing",
+        "status_anomaly",
+    ):
         n = data["cat_counts"].get(key, 0)
         L.append(f"| {CAT_TITLES[key]} | {n} | {_pct(n, total)} |")
     L.append("")
@@ -523,9 +637,17 @@ def render_markdown(data: Dict[str, Any], meta: Dict[str, Any]) -> str:
     L.append("")
 
     L.append("## 二、分类明细")
-    for key in ("no_options", "no_answer", "options_abnormal", "stem_anomaly",
-                "subject_mismatch", "junk_isolated", "junk_candidate",
-                "figure_missing", "status_anomaly"):
+    for key in (
+        "no_options",
+        "no_answer",
+        "options_abnormal",
+        "stem_anomaly",
+        "subject_mismatch",
+        "junk_isolated",
+        "junk_candidate",
+        "figure_missing",
+        "status_anomaly",
+    ):
         n = data["cat_counts"].get(key, 0)
         if n == 0:
             continue
@@ -540,28 +662,27 @@ def render_markdown(data: Dict[str, Any], meta: Dict[str, Any]) -> str:
         by_subject = data["cat_by_subject"].get(key) or {}
         if by_subject:
             L.append("")
-            L.append("按科目：" + "；".join(
-                f"{s} {c}" for s, c in sorted(by_subject.items(), key=lambda x: -x[1])))
+            L.append("按科目：" + "；".join(f"{s} {c}" for s, c in sorted(by_subject.items(), key=lambda x: -x[1])))
         samples = data["samples"].get(key) or []
         if samples:
             L.append("")
             L.append("样例：")
             for s in samples:
                 sub = f"[{s['sub']}] " if s.get("sub") else ""
-                L.append(f"- id={s['id']} {s['subject']}/{s['question_type']} "
-                         f"{sub}{s['content']}")
+                L.append(f"- id={s['id']} {s['subject']}/{s['question_type']} {sub}{s['content']}")
     L.append("")
 
     L.append("## 三、junk 分布（按科目）")
     L.append("")
     L.append("| 科目 | 总数 | 已隔离junk | 可刷 | 无选项 | 无答案 | 缺图 | 错配 |")
     L.append("|---|---|---|---|---|---|---|---|")
-    for s, m in sorted(data["subject_matrix"].items(),
-                       key=lambda x: -x[1].get("total", 0)):
-        L.append(f"| {s} | {m.get('total', 0)} | {m.get('junk', 0)} | "
-                 f"{m.get('available', 0)} | {m.get('no_options', 0)} | "
-                 f"{m.get('no_answer', 0)} | {m.get('figure_missing', 0)} | "
-                 f"{m.get('subject_mismatch', 0)} |")
+    for s, m in sorted(data["subject_matrix"].items(), key=lambda x: -x[1].get("total", 0)):
+        L.append(
+            f"| {s} | {m.get('total', 0)} | {m.get('junk', 0)} | "
+            f"{m.get('available', 0)} | {m.get('no_options', 0)} | "
+            f"{m.get('no_answer', 0)} | {m.get('figure_missing', 0)} | "
+            f"{m.get('subject_mismatch', 0)} |"
+        )
     L.append("")
 
     L.append("## 四、识别图缺失的判定依据")
@@ -579,8 +700,10 @@ def render_markdown(data: Dict[str, Any], meta: Dict[str, Any]) -> str:
     for t, m in data["related_refs"].items():
         L.append(f"| {t} | {m['rows']} | {m['distinct_question_id']} |")
     L.append("")
-    L.append("> 建议：优先用 is_junk / is_available 软隔离（零风险），不轻易物理删除；"
-             "确需 DELETE 时必须同步清理上表引用，且先过 delete_guard 双闸门。")
+    L.append(
+        "> 建议：优先用 is_junk / is_available 软隔离（零风险），不轻易物理删除；"
+        "确需 DELETE 时必须同步清理上表引用，且先过 delete_guard 双闸门。"
+    )
     L.append("")
 
     L.append("## 六、处置建议矩阵（本轮只建议，不执行）")
@@ -588,19 +711,24 @@ def render_markdown(data: Dict[str, Any], meta: Dict[str, Any]) -> str:
     L.append("| 类别 | 子类 | 建议动作 | 风险 | 备注 |")
     L.append("|---|---|---|---|---|")
     for cat_name, sub, action, risk, note in DISPOSAL:
-        L.append(f"| {CAT_TITLES.get(cat_name, cat_name)} | {sub or '—'} | "
-                 f"{action} | {risk} | {note} |")
+        L.append(f"| {CAT_TITLES.get(cat_name, cat_name)} | {sub or '—'} | {action} | {risk} | {note} |")
     L.append("")
 
     L.append("## 七、铁律（后续清洗执行前必须满足）")
     L.append("")
-    L.append("1. 任何写操作前必须调用 SQLite backup API 备份（本模块 `backup()`，"
-             "即项目 `src.backup(dst)` 约定）；**严禁 shutil.copy2 / cp / 文件级拷贝**"
-             "（WAL 模式下会丢 -wal 未合并数据）。")
-    L.append("2. 物理删除 quiz_questions 需 `KAOYAN_ALLOW_PHYSICAL_DELETE=1` 且通过 "
-             "`services.delete_guard.require_physical_delete_enabled()`。")
-    L.append("3. 建议执行顺序：先修状态矛盾（C8，零风险）→ 再软隔离（junk 漏网/缺图）→ "
-             "再补全（答案回填）→ 最后重分类（科目错配，需先抽审）。")
+    L.append(
+        "1. 任何写操作前必须调用 SQLite backup API 备份（本模块 `backup()`，"
+        "即项目 `src.backup(dst)` 约定）；**严禁 shutil.copy2 / cp / 文件级拷贝**"
+        "（WAL 模式下会丢 -wal 未合并数据）。"
+    )
+    L.append(
+        "2. 物理删除 quiz_questions 需 `KAOYAN_ALLOW_PHYSICAL_DELETE=1` 且通过 "
+        "`services.delete_guard.require_physical_delete_enabled()`。"
+    )
+    L.append(
+        "3. 建议执行顺序：先修状态矛盾（C8，零风险）→ 再软隔离（junk 漏网/缺图）→ "
+        "再补全（答案回填）→ 最后重分类（科目错配，需先抽审）。"
+    )
     L.append("")
     L.append("## 八、复现命令")
     L.append("")
@@ -649,16 +777,23 @@ def main() -> int:
     json_path = out_dir / f"{REPORT_STEM}.json"
     md_path = out_dir / f"{REPORT_STEM}.md"
     payload = {"meta": meta, **data}
-    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
-                         encoding="utf-8")
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     md_path.write_text(render_markdown(data, meta), encoding="utf-8")
 
     # ---- 控制台摘要 ----
     total = data["total"]
     print(f"\n题库总数: {total}")
-    for key in ("no_options", "no_answer", "options_abnormal", "stem_anomaly",
-                "subject_mismatch", "junk_isolated", "junk_candidate",
-                "figure_missing", "status_anomaly"):
+    for key in (
+        "no_options",
+        "no_answer",
+        "options_abnormal",
+        "stem_anomaly",
+        "subject_mismatch",
+        "junk_isolated",
+        "junk_candidate",
+        "figure_missing",
+        "status_anomaly",
+    ):
         n = data["cat_counts"].get(key, 0)
         print(f"  {CAT_TITLES[key]}: {n} ({_pct(n, total)})")
     print(f"\n报告已生成:\n  {json_path}\n  {md_path}")

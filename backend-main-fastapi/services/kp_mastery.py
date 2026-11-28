@@ -83,7 +83,9 @@ SELECT item_id FROM review_records
   WHERE user_id = :uid AND item_type IN ('knowledge', 'knowledge_point')
 UNION
 SELECT l.knowledge_point_id FROM question_knowledge_links l
-  WHERE l.question_id IN (SELECT question_id FROM answer_records WHERE user_id = :uid)
+  WHERE l.question_id IN (
+      SELECT question_id FROM answer_records WHERE user_id = :uid AND is_correct IS NOT NULL
+  )
 UNION
 SELECT l.knowledge_point_id FROM question_knowledge_links l
   WHERE l.question_id IN (SELECT question_id FROM error_records WHERE user_id = :uid)
@@ -224,17 +226,70 @@ def learned_kp_ids(session, user_id=None) -> set:
     return {row[0] for row in session.execute(text(LEARNED_KP_SQL_USER), {"uid": int(user_id)})}
 
 
+def user_mastery(session, user_id: int) -> dict[int, int]:
+    """按用户聚合 30 天衰减加权正确率，未产生已判定流水的知识点不返回。"""
+    from sqlalchemy import text
+    from utils.timeutil import utcnow
+
+    if session.bind.dialect.name == "sqlite":
+        age_seconds = "(julianday(:now) - julianday(at)) * 86400.0"
+    else:
+        age_seconds = "EXTRACT(EPOCH FROM (:now - at))"
+    sql = f"""
+    WITH answered AS (
+        SELECT qkl.knowledge_point_id AS kp_id,
+               ar.created_at AS at,
+               CASE WHEN ar.is_correct THEN 1 ELSE 0 END AS ok,
+               qkl.weight AS kweight
+          FROM answer_records ar
+          JOIN question_knowledge_links qkl ON qkl.question_id = ar.question_id
+         WHERE ar.user_id = :uid AND ar.is_correct IS NOT NULL
+           AND ar.question_id IS NOT NULL
+    ), reviewed AS (
+        SELECT rr.item_id AS kp_id,
+               rr.created_at AS at,
+               CASE WHEN rr.result IN ('good','easy') THEN 1 ELSE 0 END AS ok,
+               1.0 AS kweight
+          FROM review_records rr
+         WHERE rr.user_id = :uid
+           AND rr.item_type IN ('knowledge', 'knowledge_point')
+           AND rr.result IS NOT NULL
+    ), merged AS (
+        SELECT kp_id, ok, kweight,
+               exp(-{age_seconds} / (30.0 * 86400.0)) AS decay
+          FROM answered
+        UNION ALL
+        SELECT kp_id, ok, kweight,
+               exp(-{age_seconds} / (30.0 * 86400.0)) AS decay
+          FROM reviewed
+    ), agg AS (
+        SELECT kp_id,
+               COALESCE(SUM(ok * decay * kweight), 0) AS weighted_correct,
+               COALESCE(SUM(decay * kweight), 0) AS weighted_total
+          FROM merged
+         GROUP BY kp_id
+    )
+    SELECT kp_id,
+           CASE WHEN weighted_total = 0 THEN 0
+                ELSE ROUND(100.0 * weighted_correct / weighted_total)
+           END AS mastery
+      FROM agg
+    """
+    return {int(row[0]): int(row[1]) for row in session.execute(text(sql), {"uid": int(user_id), "now": utcnow()})}
+
+
 def learned_kp_ids_raw(conn: sqlite3.Connection) -> set:
     """有学习记录的知识点 ID 集合（裸 sqlite3 连接）。"""
     return {row[0] for row in conn.execute(LEARNED_KP_SQL)}
 
 
-def tally(rows: Iterable, learned_ids: set) -> dict:
+def tally(rows: Iterable, learned_ids: set, mastery_by_id: dict[int, int] | None = None) -> dict:
     """对一批 KnowledgePoint 对象做四态计数。
 
     返回 {"total", "unlearned", "learning", "weak", "mastered", "mastery_sum",
           "learned_mastery_sum"}，其中 mastery_sum/learned_mastery_sum
-          供调用方算均值（未学不计入已学均值）。
+          供调用方算均值（未学不计入已学均值）。``mastery_by_id`` 传入时使用
+          个人掌握度，不读取全库派生值。
     """
     out = {
         "total": 0,
@@ -246,7 +301,7 @@ def tally(rows: Iterable, learned_ids: set) -> dict:
         "learned_mastery_sum": 0,
     }
     for kp in rows:
-        mastery = int(kp.mastery or 0)
+        mastery = int(mastery_by_id.get(kp.id, 0) if mastery_by_id is not None else (kp.mastery or 0))
         state = classify_state(mastery, kp.id in learned_ids)
         out["total"] += 1
         out["mastery_sum"] += mastery

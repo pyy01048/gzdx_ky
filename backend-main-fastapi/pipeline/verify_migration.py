@@ -9,6 +9,7 @@
 
 输出 data/migration_verify.json 并打印结论。
 """
+
 from __future__ import annotations
 
 import json
@@ -29,11 +30,25 @@ OUT = BASE_DIR.parent / "data" / "migration_verify.json"
 
 #: 必须 100% 一致的核心表（按**去重后**的口径比对）
 CRITICAL = {
-    "documents", "knowledge_chunks", "quiz_questions", "knowledge_points",
-    "kaoyan_schools", "kaoyan_colleges", "kaoyan_majors", "kaoyan_admissions",
-    "kaoyan_scorelines", "kaoyan_notices", "words", "word_decks",
-    "question_knowledge_links", "knowledge_point_relations", "flashcards",
-    "ai_providers", "platform_configs", "school_aliases", "kaoyan_major_kb_link",
+    "documents",
+    "knowledge_chunks",
+    "quiz_questions",
+    "knowledge_points",
+    "kaoyan_schools",
+    "kaoyan_colleges",
+    "kaoyan_majors",
+    "kaoyan_admissions",
+    "kaoyan_scorelines",
+    "kaoyan_notices",
+    "words",
+    "word_decks",
+    "question_knowledge_links",
+    "knowledge_point_relations",
+    "flashcards",
+    "ai_providers",
+    "platform_configs",
+    "school_aliases",
+    "kaoyan_major_kb_link",
 }
 
 #: 允许的合理降级（实测已逐条查明原因，非数据丢失）：
@@ -69,14 +84,19 @@ def main() -> int:
                     cur.execute(f'SELECT COUNT(*) FROM "{dst}"')
                     p_n = cur.fetchone()[0]
                 except Exception as exc:  # noqa: BLE001
-                    report["tables"].append({"table": src, "sqlite": s_n, "pg": None,
-                                             "error": str(exc)[:120]})
+                    report["tables"].append({"table": src, "sqlite": s_n, "pg": None, "error": str(exc)[:120]})
                     ok = False
                     continue
                 gap = s_n - p_n
                 rate = (gap / s_n) if s_n else 0
-                row = {"table": src, "sqlite": s_n, "pg": p_n, "gap": gap,
-                       "gap_rate": round(rate, 4), "critical": src in CRITICAL}
+                row = {
+                    "table": src,
+                    "sqlite": s_n,
+                    "pg": p_n,
+                    "gap": gap,
+                    "gap_rate": round(rate, 4),
+                    "critical": src in CRITICAL,
+                }
                 if src in EXPECTED_SKIP and gap > 0:
                     row["expected_reason"] = EXPECTED_SKIP[src]
                 report["tables"].append(row)
@@ -114,8 +134,10 @@ def main() -> int:
             flag, mark = "!", f"核心表缺口 {gap}！"
         else:
             flag, mark = "~", f"可降级缺口 {gap}"
-        print(f"{r['table']:<30}{r['sqlite']:>9}{r.get('pg') if r.get('pg') is not None else 'ERR':>9}"
-              f"{(gap if gap is not None else '-'):>7}  {flag} {mark}")
+        print(
+            f"{r['table']:<30}{r['sqlite']:>9}{r.get('pg') if r.get('pg') is not None else 'ERR':>9}"
+            f"{(gap if gap is not None else '-'):>7}  {flag} {mark}"
+        )
     print("-" * 78)
     total_s = sum(r["sqlite"] for r in report["tables"])
     total_p = sum(r.get("pg") or 0 for r in report["tables"])

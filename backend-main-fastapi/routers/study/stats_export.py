@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from services.delete_guard import require_physical_delete_enabled
 from services.kb_service import ensure_write_backup
-from sqlalchemy import Integer, cast, func
+from services.quiz_query import question_owner_expr
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 from utils.scope import scoped  # B4 行级隔离（只读不写，不需 owner_id）
 from utils.security import client_ip, current_user, require_admin
@@ -41,7 +42,9 @@ async def stats_overview(db: Session = Depends(get_db), user: User = Depends(cur
         db.query(
             AnswerRecord.subject,
             func.count(AnswerRecord.id),
-            func.sum(cast(AnswerRecord.is_correct, Integer)),
+            func.count(case((AnswerRecord.is_correct.is_not(None), 1))),
+            func.count(case((AnswerRecord.is_correct.is_(None), 1))),
+            func.coalesce(func.sum(case((AnswerRecord.is_correct.is_(True), 1), else_=0)), 0),
         )
         .filter(AnswerRecord.subject.isnot(None), AnswerRecord.subject != "", scoped(AnswerRecord, user))
         .group_by(AnswerRecord.subject)
@@ -52,9 +55,11 @@ async def stats_overview(db: Session = Depends(get_db), user: User = Depends(cur
             "subject": s or "未分类",
             "answered": int(total or 0),
             "correct": int(correct or 0),
-            "accuracy": round((correct or 0) / total * 100, 1) if total else 0.0,
+            "graded": int(graded or 0),
+            "pending": int(pending or 0),
+            "accuracy": round((correct or 0) / graded * 100, 1) if graded else 0.0,
         }
-        for s, total, correct in subject_rows
+        for s, total, graded, pending, correct in subject_rows
     ]
     subjects.sort(key=lambda x: -x["answered"])
 
@@ -66,13 +71,25 @@ async def stats_overview(db: Session = Depends(get_db), user: User = Depends(cur
         .filter(scoped(AnswerRecord, user), AnswerRecord.created_at >= trend_start)
         .all()
     )
-    trend = {(today - datetime.timedelta(days=i)).isoformat(): {"answered": 0, "correct": 0} for i in range(6, -1, -1)}
+    trend = {
+        (today - datetime.timedelta(days=i)).isoformat(): {
+            "answered": 0,
+            "correct": 0,
+            "graded": 0,
+            "pending": 0,
+        }
+        for i in range(6, -1, -1)
+    }
     for created_at, is_correct in trend_rows:
         key = local_date_of(created_at).isoformat() if created_at else None
         if key in trend:
             trend[key]["answered"] += 1
-            if is_correct:
-                trend[key]["correct"] += 1
+            if is_correct is None:
+                trend[key]["pending"] += 1
+            else:
+                trend[key]["graded"] += 1
+                if is_correct:
+                    trend[key]["correct"] += 1
 
     # 3) 错题标签 Top10（tags 为 JSON 数组）
     tag_counter: Counter = Counter()
@@ -187,9 +204,10 @@ async def export_quiz_questions(
     year: Optional[int] = None,
     is_retest: Optional[bool] = None,
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """题库 CSV 导出（Excel 兼容：UTF-8 with BOM）。默认排除 OCR 碎片题。"""
-    query = db.query(QuizQuestion)
+    query = db.query(QuizQuestion).filter(question_owner_expr(user))
     if subject:
         query = query.filter(QuizQuestion.subject == subject)
     if question_type:

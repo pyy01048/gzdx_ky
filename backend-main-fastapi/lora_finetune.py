@@ -75,6 +75,7 @@ def prepare_data():
     print("=" * 60)
 
     from database import SessionLocal
+
     from models import SFTExample
 
     db = SessionLocal()
@@ -95,14 +96,17 @@ def prepare_data():
         messages.append({"role": "user", "content": ex.user or ""})
         messages.append({"role": "assistant", "content": ex.assistant or ""})
 
-        train_data.append({
-            "messages": messages,
-            "subject": ex.subject or "general",
-            "source": "database",
-        })
+        train_data.append(
+            {
+                "messages": messages,
+                "subject": ex.subject or "general",
+                "source": "database",
+            }
+        )
 
     # 划分训练集和验证集（9:1）
     import random
+
     random.shuffle(train_data)
     split_idx = int(len(train_data) * 0.9)
     train_set = train_data[:split_idx]
@@ -125,6 +129,7 @@ def prepare_data():
 
     # 统计学科分布
     from collections import Counter
+
     subjects = Counter(item["subject"] for item in train_data)
     print("\n学科分布:")
     for subj, count in subjects.most_common():
@@ -139,23 +144,51 @@ def create_demo_examples():
     """创建示例 SFT 数据（用于测试）。"""
     examples = []
     demo_data = [
-        ("数字电子技术", "什么是与门？", "与门是一种基本逻辑门，当所有输入都为高电平时，输出才为高电平。逻辑表达式：Y = A · B"),
-        ("数字电子技术", "什么是触发器？", "触发器是具有记忆功能的基本存储单元，可存储1位二进制信息。常见类型有SR触发器、JK触发器、D触发器、T触发器。"),
-        ("英语", "abandon是什么意思？", "abandon /əˈbændən/ v. 放弃，抛弃；遗弃 n. 狂热，放任。例句：He abandoned his car in the snow."),
-        ("英语", "如何写考研英语作文开头？", "考研英语作文开头常用方法：1. 描述现象：Nowadays, ... has become a common phenomenon. 2. 引用名言：As a saying goes, ... 3. 提出问题：Should we ...? 4. 数据引入：According to a recent survey, ..."),
-        ("数学", "什么是极限？", "极限是微积分的基本概念，描述函数在某点附近的变化趋势。定义：对于任意ε>0，存在δ>0，当0<|x-x₀|<δ时，|f(x)-A|<ε，则称A为f(x)在x₀处的极限。"),
-        ("政治", "什么是矛盾的普遍性？", "矛盾的普遍性是指矛盾存在于一切事物的发展过程中，即事事有矛盾；每一事物的发展过程中存在着自始至终的矛盾运动，即时时有矛盾。"),
+        (
+            "数字电子技术",
+            "什么是与门？",
+            "与门是一种基本逻辑门，当所有输入都为高电平时，输出才为高电平。逻辑表达式：Y = A · B",
+        ),
+        (
+            "数字电子技术",
+            "什么是触发器？",
+            "触发器是具有记忆功能的基本存储单元，可存储1位二进制信息。常见类型有SR触发器、JK触发器、D触发器、T触发器。",
+        ),
+        (
+            "英语",
+            "abandon是什么意思？",
+            "abandon /əˈbændən/ v. 放弃，抛弃；遗弃 n. 狂热，放任。例句：He abandoned his car in the snow.",
+        ),
+        (
+            "英语",
+            "如何写考研英语作文开头？",
+            "考研英语作文开头常用方法：1. 描述现象：Nowadays, ... has become a common phenomenon. 2. 引用名言：As a saying goes, ... 3. 提出问题：Should we ...? 4. 数据引入：According to a recent survey, ...",
+        ),
+        (
+            "数学",
+            "什么是极限？",
+            "极限是微积分的基本概念，描述函数在某点附近的变化趋势。定义：对于任意ε>0，存在δ>0，当0<|x-x₀|<δ时，|f(x)-A|<ε，则称A为f(x)在x₀处的极限。",
+        ),
+        (
+            "政治",
+            "什么是矛盾的普遍性？",
+            "矛盾的普遍性是指矛盾存在于一切事物的发展过程中，即事事有矛盾；每一事物的发展过程中存在着自始至终的矛盾运动，即时时有矛盾。",
+        ),
     ]
 
     for subject, instruction, output in demo_data:
-        ex = type('obj', (object,), {
-            'system_prompt': f'你是一个考研{subject}辅导老师，请用简洁明了的语言回答问题。',
-            'instruction': instruction,
-            'input': '',
-            'output': output,
-            'subject': subject,
-            'source': 'demo',
-        })()
+        ex = type(
+            "obj",
+            (object,),
+            {
+                "system_prompt": f"你是一个考研{subject}辅导老师，请用简洁明了的语言回答问题。",
+                "instruction": instruction,
+                "input": "",
+                "output": output,
+                "subject": subject,
+                "source": "demo",
+            },
+        )()
         examples.append(ex)
 
     return examples
@@ -176,9 +209,7 @@ def train_lora(data_dir: str = None, output_dir: str = None):
     print("=" * 60)
 
     data_dir = data_dir or DATA_DIR
-    out_dir = output_dir or (
-        os.path.join(data_dir, "checkpoints") if data_dir != DATA_DIR else OUTPUT_DIR
-    )
+    out_dir = output_dir or (os.path.join(data_dir, "checkpoints") if data_dir != DATA_DIR else OUTPUT_DIR)
 
     try:
         import torch
@@ -208,8 +239,7 @@ def train_lora(data_dir: str = None, output_dir: str = None):
     else:
         print("警告：未检测到 GPU，训练将非常缓慢，建议使用 GPU")
         print("      提示：当前 torch 可能是 CPU 版（torch.__version__ 带 +cpu），")
-        print("            需装 CUDA 版：pip install torch --index-url "
-              "https://download.pytorch.org/whl/cu124")
+        print("            需装 CUDA 版：pip install torch --index-url https://download.pytorch.org/whl/cu124")
 
     # QLoRA 4bit量化配置（8GB显存必备）
     use_qlora = device == "cuda" and gpu_memory < 12
@@ -236,10 +266,13 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         else:
             return
 
-    dataset = load_dataset("json", data_files={
-        "train": train_path,
-        "validation": val_path,
-    })
+    dataset = load_dataset(
+        "json",
+        data_files={
+            "train": train_path,
+            "validation": val_path,
+        },
+    )
     print(f"训练集: {len(dataset['train'])} 条")
     print(f"验证集: {len(dataset['validation'])} 条")
 
@@ -294,25 +327,24 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         max_len = _env_int("TRAIN_MAX_LEN", 640)
         # 开梯度检查必须关 KV cache，否则每步白算一遍 past_key_values
         model.config.use_cache = False
-        print(f"\nQLoRA模式: batch_size={train_batch_size}, grad_accum={grad_accum}, "
-              f"max_len={max_len}, grad_ckpt={use_gc}, epochs={epochs}")
+        print(
+            f"\nQLoRA模式: batch_size={train_batch_size}, grad_accum={grad_accum}, "
+            f"max_len={max_len}, grad_ckpt={use_gc}, epochs={epochs}"
+        )
     else:
         max_len = _env_int("TRAIN_MAX_LEN", MAX_LENGTH)
         model.config.use_cache = True
-        print(f"\n训练模式: batch_size={train_batch_size}, grad_accum={grad_accum}, "
-              f"max_len={max_len}, epochs={epochs}")
+        print(f"\n训练模式: batch_size={train_batch_size}, grad_accum={grad_accum}, max_len={max_len}, epochs={epochs}")
 
     # 数据预处理
     def preprocess_function(examples):
         texts = []
         prompt_lens = []
         for messages in examples["messages"]:
-            full = tokenizer.apply_chat_template(messages, tokenize=False,
-                                                 add_generation_prompt=False)
+            full = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
             # 只有 assistant 轮参与 loss：旧写法把题干/prompt 也当学习目标，
             # 模型学到的是"复述问题"，这正是上一版 LoRA 照抄率 0.72 的直接来源。
-            head = tokenizer.apply_chat_template(messages[:-1], tokenize=False,
-                                                 add_generation_prompt=True)
+            head = tokenizer.apply_chat_template(messages[:-1], tokenize=False, add_generation_prompt=True)
             texts.append(full)
             prompt_lens.append(len(tokenizer(head, add_special_tokens=False)["input_ids"]))
 
@@ -321,7 +353,7 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         # labels 的 pad 位由 DataCollatorForSeq2Seq 统一填 -100（不进 loss）。
         tokenized = tokenizer(texts, truncation=True, max_length=max_len)
         labels = []
-        for ids, plen in zip(tokenized["input_ids"], prompt_lens):
+        for ids, plen in zip(tokenized["input_ids"], prompt_lens, strict=False):
             labels.append([-100 if i < plen else tid for i, tid in enumerate(ids)])
         tokenized["labels"] = labels
         return tokenized
@@ -342,16 +374,14 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         before = len(tokenized_datasets[split])
         tokenized_datasets[split] = tokenized_datasets[split].filter(_has_target)
         dropped[split] = before - len(tokenized_datasets[split])
-    print(f"  截断后无学习目标样本已剔除: train {dropped['train']} 条, "
-          f"val {dropped['validation']} 条")
+    print(f"  截断后无学习目标样本已剔除: train {dropped['train']} 条, val {dropped['validation']} 条")
 
     # 训练参数
     # 计算warmup_steps（transformers 5.x移除了warmup_ratio）
     n_train = len(tokenized_datasets["train"])
     total_steps = max(1, (n_train // (train_batch_size * grad_accum)) * epochs)
     warmup_steps = int(total_steps * 0.03)
-    print(f"\n训练配置: 总步数={total_steps}, warmup_steps={warmup_steps}, "
-          f"有效批量={train_batch_size * grad_accum}")
+    print(f"\n训练配置: 总步数={total_steps}, warmup_steps={warmup_steps}, 有效批量={train_batch_size * grad_accum}")
 
     max_steps = _env_int("TRAIN_MAX_STEPS", -1)
 
@@ -391,8 +421,7 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         eval_dataset=tokenized_datasets["validation"],
         # 不能用 DataCollatorForLanguageModeling：它会拿 input_ids 覆盖我们算好的
         # prompt-mask labels。Seq2Seq 版才按 -100 填充 labels。
-        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model,
-                                             padding="longest", max_length=max_len),
+        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model, padding="longest", max_length=max_len),
     )
 
     # 开始训练
@@ -404,9 +433,12 @@ def train_lora(data_dir: str = None, output_dir: str = None):
         reserved = torch.cuda.max_memory_reserved() / 1024**3
         steps = int(result.global_step) or 1
         secs = (datetime.datetime.now() - t0).total_seconds()
-        print(f"[基准] 步数={steps} 用时={secs:.0f}s 单步={secs / steps:.1f}s/it "
-              f"峰值allocated={peak:.2f}GB reserved={reserved:.2f}GB "
-              f"每千步={secs / steps * 1000 / 3600:.2f}h", flush=True)
+        print(
+            f"[基准] 步数={steps} 用时={secs:.0f}s 单步={secs / steps:.1f}s/it "
+            f"峰值allocated={peak:.2f}GB reserved={reserved:.2f}GB "
+            f"每千步={secs / steps * 1000 / 3600:.2f}h",
+            flush=True,
+        )
 
     if max_steps > 0:
         print("[基准模式] 不保存权重", flush=True)
@@ -431,9 +463,7 @@ def merge_model(data_dir: str = None, output_dir: str = None):
     print("阶段3：合并模型并导出")
     print("=" * 60)
 
-    lora_dir = output_dir or (
-        os.path.join(data_dir, "checkpoints") if data_dir else OUTPUT_DIR
-    )
+    lora_dir = output_dir or (os.path.join(data_dir, "checkpoints") if data_dir else OUTPUT_DIR)
     merged_dir = os.path.join(os.path.dirname(os.path.abspath(lora_dir)), "merged")
 
     try:
@@ -493,8 +523,9 @@ def _write_ollama_compat_config(merged_dir: str) -> None:
 
     changed = []
     if cfg.get("rope_theta") is None:
-        theta = (cfg.get("rope_parameters") or {}).get("rope_theta") or \
-                (cfg.get("rope_scaling") or {}).get("rope_theta")
+        theta = (cfg.get("rope_parameters") or {}).get("rope_theta") or (cfg.get("rope_scaling") or {}).get(
+            "rope_theta"
+        )
         if theta is not None:
             cfg["rope_theta"] = theta
             changed.append(f"rope_theta={theta}")
@@ -510,16 +541,13 @@ def _write_ollama_compat_config(merged_dir: str) -> None:
     print(f"✓ config.json 补齐 Ollama 兼容键: {', '.join(changed)}")
 
 
-def create_ollama_modelfile(data_dir: str = None, output_dir: str = None,
-                            tag: str = "kaoyan-assistant-v2"):
+def create_ollama_modelfile(data_dir: str = None, output_dir: str = None, tag: str = "kaoyan-assistant-v2"):
     """创建 Modelfile（默认新标签，不覆盖线上 kaoyan-assistant，便于新旧对照）。"""
     print("=" * 60)
     print("阶段4：生成 Ollama Modelfile")
     print("=" * 60)
 
-    lora_dir = output_dir or (
-        os.path.join(data_dir, "checkpoints") if data_dir else OUTPUT_DIR
-    )
+    lora_dir = output_dir or (os.path.join(data_dir, "checkpoints") if data_dir else OUTPUT_DIR)
     merged_path = os.path.join(os.path.dirname(os.path.abspath(lora_dir)), "merged")
     if not os.path.exists(merged_path):
         print(f"合并模型不存在: {merged_path}")
@@ -530,8 +558,13 @@ def create_ollama_modelfile(data_dir: str = None, output_dir: str = None,
     # 这里按 Qwen2.5 原生 ChatML 复原，stop 词也补齐。
     template_str = (
         "{{ if .System }}" + CHATML_START + "system\n{{ .System }}" + CHATML_END + "\n{{ end }}"
-        "{{ if .Prompt }}" + CHATML_START + "user\n{{ .Prompt }}" + CHATML_END + "\n{{ end }}"
-        + CHATML_START + "assistant\n"
+        "{{ if .Prompt }}"
+        + CHATML_START
+        + "user\n{{ .Prompt }}"
+        + CHATML_END
+        + "\n{{ end }}"
+        + CHATML_START
+        + "assistant\n"
     )
     system_str = (
         "你是一位考研辅导老师，负责计算机与电子信息类考研的答疑，"
@@ -550,9 +583,9 @@ def create_ollama_modelfile(data_dir: str = None, output_dir: str = None,
         "PARAMETER num_predict 2048\n\n"
         # 自定义 TEMPLATE 不会自动带 stop 词，缺了它模型会一路生成到
         # num_predict 上限（把下一轮 user 内容也编出来）。
-        f"PARAMETER stop \"{CHATML_END}\"\n"
-        f"PARAMETER stop \"{CHATML_START}\"\n\n"
-        f'SYSTEM \"\"\"{system_str}\"\"\"\n'
+        f'PARAMETER stop "{CHATML_END}"\n'
+        f'PARAMETER stop "{CHATML_START}"\n\n'
+        f'SYSTEM """{system_str}"""\n'
     )
 
     modelfile_path = os.path.join(os.path.dirname(os.path.abspath(merged_path)), "Modelfile")
@@ -580,8 +613,7 @@ def main():
     parser.add_argument(
         "--data-dir",
         default=None,
-        help="训练数据目录（默认 data/lora_finetune）。"
-             "推荐用重建后的干净数据集：data/lora_finetune_v2",
+        help="训练数据目录（默认 data/lora_finetune）。推荐用重建后的干净数据集：data/lora_finetune_v2",
     )
     parser.add_argument(
         "--output-dir",

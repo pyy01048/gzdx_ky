@@ -9,6 +9,7 @@
   - 真实路径：PIL 自绘一张简单电路图，真实跑一遍本地 RapidOCR（Paddle 8888
     预期不可达，会快速失败回退），LLM 层 mock 掉避免单元测试等几分钟。
 """
+
 import asyncio
 import os
 import sys
@@ -99,9 +100,13 @@ def test_map_circuit_vision():
 def test_priority_circuit_vision_short_circuits(monkeypatch):
     """优先引擎返回 ok 映射时，主路径（OCR/LLM）一次都不该被调用。"""
     mapped = {
-        "status": "ok", "engine": "circuit_vision(qwen2.5vl:7b)",
-        "labels": ["R1", "C1"], "description": "已有描述", "circuit_type": "共射放大",
-        "degraded_reason": None, "question_text": QUESTION,
+        "status": "ok",
+        "engine": "circuit_vision(qwen2.5vl:7b)",
+        "labels": ["R1", "C1"],
+        "description": "已有描述",
+        "circuit_type": "共射放大",
+        "degraded_reason": None,
+        "question_text": QUESTION,
     }
     monkeypatch.setattr(ca, "_circuit_vision_priority", AsyncMock(return_value=mapped))
 
@@ -120,7 +125,7 @@ def test_fallback_when_priority_unavailable(monkeypatch, fake_image_path):
 
     result = run(ca.analyze_circuit_image(fake_image_path, QUESTION))
 
-    assert result["status"] == "degraded"          # Paddle 失败 → 如实降级
+    assert result["status"] == "degraded"  # Paddle 失败 → 如实降级
     assert "PaddleOCR" in result["degraded_reason"]
     assert "R1" in result["labels"] and "GND" in result["labels"]
     assert result["circuit_type"] == "共射极放大电路"
@@ -163,8 +168,7 @@ def test_all_fail_degraded_with_question(monkeypatch):
     # 题面兜底描述里必须能看到题面文字
     assert QUESTION in result["description"]
     # 冻结键齐全
-    for k in ("status", "engine", "labels", "description",
-              "circuit_type", "degraded_reason", "question_text"):
+    for k in ("status", "engine", "labels", "description", "circuit_type", "degraded_reason", "question_text"):
         assert k in result
     assert result["question_text"] == QUESTION
 
@@ -199,7 +203,7 @@ def test_few_labels_trigger_vlm_not_text_llm(monkeypatch, fake_image_path):
 
     text_llm.assert_not_awaited()  # 标签过少，文本 LLM 不该被调用
     vlm.assert_awaited_once()
-    assert result["status"] == "degraded"          # OCR 标签过少本身即降级
+    assert result["status"] == "degraded"  # OCR 标签过少本身即降级
     assert result["circuit_type"] == "反相比例运算放大电路"
     assert "llm:qwen2.5vl:7b" in result["engine"]
 
@@ -257,8 +261,8 @@ def _draw_dummy_circuit(path: str) -> None:
         font = ImageFont.load_default()
 
     # 导线
-    draw.line([(60, 60), (580, 60)], fill="black", width=3)      # 电源母线
-    draw.line([(60, 360), (580, 360)], fill="black", width=3)    # 地母线
+    draw.line([(60, 60), (580, 60)], fill="black", width=3)  # 电源母线
+    draw.line([(60, 360), (580, 360)], fill="black", width=3)  # 地母线
     draw.line([(160, 60), (160, 120)], fill="black", width=3)
     draw.line([(160, 220), (160, 360)], fill="black", width=3)
 
@@ -289,11 +293,18 @@ def test_real_image_ocr_smoke(tmp_path, monkeypatch):
 
     # 无论 RapidOCR 识别出多少，都必须返回合法冻结结构且不抛异常
     assert set(result.keys()) == {
-        "status", "engine", "labels", "description",
-        "circuit_type", "degraded_reason", "question_text",
+        "status",
+        "engine",
+        "labels",
+        "description",
+        "circuit_type",
+        "degraded_reason",
+        "question_text",
     }
     assert result["status"] in ("ok", "degraded")
     assert result["description"]  # 题面/标签兜底也一定有内容
     # 如实打印本次真实 OCR 识别到的标签（自检报告用）
-    print(f"\n[smoke] engine={result['engine']} labels={result['labels']} "
-          f"status={result['status']} reason={result['degraded_reason']}")
+    print(
+        f"\n[smoke] engine={result['engine']} labels={result['labels']} "
+        f"status={result['status']} reason={result['degraded_reason']}"
+    )

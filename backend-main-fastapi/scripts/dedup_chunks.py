@@ -29,6 +29,7 @@
     python scripts/dedup_chunks.py --apply --soft      # 有软删字段时用标记代替硬删
     python scripts/dedup_chunks.py --apply --keep-doc latest  # 跨doc重复时保留最新文档的块
 """
+
 from __future__ import annotations
 
 import argparse
@@ -121,9 +122,7 @@ def analyze(conn: sqlite3.Connection, limit_groups: int | None) -> dict[str, Any
         ph = ",".join("?" * len(dup_ids))
         for t in DEP_TABLES:
             try:
-                n = conn.execute(
-                    f"SELECT COUNT(*) FROM {t} WHERE chunk_id IN ({ph})", dup_ids
-                ).fetchone()[0]
+                n = conn.execute(f"SELECT COUNT(*) FROM {t} WHERE chunk_id IN ({ph})", dup_ids).fetchone()[0]
             except sqlite3.Error:
                 n = -1  # 表不存在或无该列
             dep_impact[t] = n
@@ -177,9 +176,7 @@ def apply_dedup(conn: sqlite3.Connection, dup_ids: list[int], *, soft: bool) -> 
                 "--soft 需要 knowledge_chunks 上存在 is_deleted/is_junk/deleted_at 字段，"
                 "当前表没有这些字段，请改用硬删（不加 --soft）"
             )
-        cur = conn.execute(
-            f"UPDATE knowledge_chunks SET {col}=1 WHERE id IN ({ph})", dup_ids
-        )
+        cur = conn.execute(f"UPDATE knowledge_chunks SET {col}=1 WHERE id IN ({ph})", dup_ids)
         return {"deleted": cur.rowcount, "dep_deleted": {}, "soft_col": col}
 
     # 物理删除闸门：硬删 knowledge_chunks 不可逆。判重逻辑正是本周
@@ -204,8 +201,7 @@ def main() -> int:
     ap.add_argument("--db", default=DB_PATH)
     ap.add_argument("--apply", action="store_true", help="真正写库（默认 dry-run）")
     ap.add_argument("--soft", action="store_true", help="标记而非硬删（需软删字段）")
-    ap.add_argument("--limit-groups", type=int, default=None,
-                    help="只处理冗余最严重的 N 个 document_id")
+    ap.add_argument("--limit-groups", type=int, default=None, help="只处理冗余最严重的 N 个 document_id")
     ap.add_argument("--backup", default=None, help="备份目标路径（默认 <db>.dedup.bak）")
     args = ap.parse_args()
 
@@ -239,10 +235,8 @@ def main() -> int:
         if info["per_doc_top"]:
             print("  冗余最严重的 document_id：")
             for doc_id, d in info["per_doc_top"]:
-                name = conn.execute(
-                    "SELECT file_name FROM documents WHERE id=?", (doc_id,)
-                ).fetchone()
-                nm = (name[0][:44] if name else "(文档已不存在)")
+                name = conn.execute("SELECT file_name FROM documents WHERE id=?", (doc_id,)).fetchone()
+                nm = name[0][:44] if name else "(文档已不存在)"
                 print(f"    doc={doc_id:<6} 冗余={d:<5} {nm}")
         print()
         if info["samples"]:

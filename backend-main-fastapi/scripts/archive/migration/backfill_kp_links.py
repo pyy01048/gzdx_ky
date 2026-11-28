@@ -17,6 +17,7 @@
     python scripts/backfill_kp_links.py            # 预览
     python scripts/backfill_kp_links.py --apply    # 写库（先备份）
 """
+
 from __future__ import annotations
 
 import os
@@ -61,8 +62,7 @@ def main() -> int:
             WHERE q.knowledge_point IS NOT NULL AND q.knowledge_point != ''
             """
         ).fetchall()
-        kp_by_name = {n: (kid, subj) for kid, n, subj in cur.execute(
-            "SELECT id, name, subject FROM knowledge_points")}
+        kp_by_name = {n: (kid, subj) for kid, n, subj in cur.execute("SELECT id, name, subject FROM knowledge_points")}
         for qid, kp_name, qsubj in rows:
             if qid in primary_qids or kp_name not in unique_set:
                 continue
@@ -89,8 +89,7 @@ def main() -> int:
     print(f"已备份 → {bak}")
 
     existing = {
-        (r[0], r[1]) for r in cur.execute(
-            "SELECT question_id, knowledge_point_id FROM question_knowledge_links")
+        (r[0], r[1]) for r in cur.execute("SELECT question_id, knowledge_point_id FROM question_knowledge_links")
     }
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ins_primary = [x for x in primary if (x[0], x[1]) not in existing]
@@ -98,10 +97,14 @@ def main() -> int:
 
     cur.executemany(
         "INSERT INTO question_knowledge_links (question_id, knowledge_point_id, role, weight, is_verified, created_at)"
-        " VALUES (?, ?, 'primary', 1.0, 1, ?)", [(q, k, now) for q, k in ins_primary])
+        " VALUES (?, ?, 'primary', 1.0, 1, ?)",
+        [(q, k, now) for q, k in ins_primary],
+    )
     cur.executemany(
         "INSERT INTO question_knowledge_links (question_id, knowledge_point_id, role, weight, is_verified, created_at)"
-        " VALUES (?, ?, 'related', 0.6, 0, ?)", [(q, k, now) for q, k in ins_related])
+        " VALUES (?, ?, 'related', 0.6, 0, ?)",
+        [(q, k, now) for q, k in ins_related],
+    )
 
     # 回填知识点真实题数
     cur.execute(
@@ -115,10 +118,11 @@ def main() -> int:
     con.commit()
 
     total = cur.execute("SELECT COUNT(*) FROM question_knowledge_links").fetchone()[0]
-    kps_with_q = cur.execute(
-        "SELECT COUNT(*) FROM knowledge_points WHERE question_count > 0").fetchone()[0]
-    print(f"新增 primary {len(ins_primary)} + related {len(ins_related)}；"
-          f"links 总数 {total}；有题的知识点 {kps_with_q}/651")
+    kps_with_q = cur.execute("SELECT COUNT(*) FROM knowledge_points WHERE question_count > 0").fetchone()[0]
+    print(
+        f"新增 primary {len(ins_primary)} + related {len(ins_related)}；"
+        f"links 总数 {total}；有题的知识点 {kps_with_q}/651"
+    )
     con.close()
     return 0
 

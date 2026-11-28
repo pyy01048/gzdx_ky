@@ -2,6 +2,7 @@
 全局 HTTP 客户端单例 V3.0
 解决：每次请求新建 httpx.AsyncClient 导致连接池失效、延迟增加 100-300ms
 """
+
 from contextlib import asynccontextmanager
 
 import httpx
@@ -62,6 +63,7 @@ def close_clients():
         _global_client = None
     if _global_async_client is not None:
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():

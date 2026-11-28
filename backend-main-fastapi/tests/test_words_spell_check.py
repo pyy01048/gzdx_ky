@@ -8,6 +8,7 @@
 4. 大小写不敏感、忽略首尾空白；
 5. 不存在的单词 → 404。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -17,9 +18,10 @@ from types import SimpleNamespace
 import pytest
 from database import SessionLocal
 from main import app
-from models import User, Word
 from tests.asgi_client import ASGIClient
 from utils.security import current_user
+
+from models import User, Word
 
 client = ASGIClient(app)
 
@@ -28,8 +30,7 @@ client = ASGIClient(app)
 def _owner_user():
     db = SessionLocal()
     try:
-        u = User(username=f"spell{uuid.uuid4().hex[:8]}", display_name="拼写测试用户",
-                 role="user", is_active=True)
+        u = User(username=f"spell{uuid.uuid4().hex[:8]}", display_name="拼写测试用户", role="user", is_active=True)
         u.password_hash = "test-placeholder-never-used-for-login"
         db.add(u)
         db.commit()
@@ -38,20 +39,20 @@ def _owner_user():
         db.close()
 
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(
-        id=uid, username=f"spell{uuid.uuid4().hex[:8]}", role="user",
+        id=uid,
+        username=f"spell{uuid.uuid4().hex[:8]}",
+        role="user",
     )
     yield uid
     from utils.security import stub_principal
+
     app.dependency_overrides[current_user] = lambda: stub_principal()
 
     db = SessionLocal()
     try:
         # B4：fsrs.schedule 会写 review_schedules（user_id 外键），先清理再删用户
-        db.execute(__import__("sqlalchemy").text(
-            "DELETE FROM review_schedules WHERE user_id = :uid"
-        ), {"uid": uid})
-        db.query(Word).filter(Word.user_id == uid,
-                              Word.word.like("spelltest%")).delete(synchronize_session=False)
+        db.execute(__import__("sqlalchemy").text("DELETE FROM review_schedules WHERE user_id = :uid"), {"uid": uid})
+        db.query(Word).filter(Word.user_id == uid, Word.word.like("spelltest%")).delete(synchronize_session=False)
         db.query(User).filter(User.id == uid).delete(synchronize_session=False)
         db.commit()
     finally:
@@ -62,8 +63,15 @@ def _make_word(owner_id: int, name: str = None) -> Word:
     name = name or f"spelltest{uuid.uuid4().hex[:10]}"
     db = SessionLocal()
     try:
-        w = Word(word=name, meaning="拼写测试词", phonetic="/test/", pos="n.",
-                 status="not_mastered", due_date=datetime.date.today(), user_id=owner_id)
+        w = Word(
+            word=name,
+            meaning="拼写测试词",
+            phonetic="/test/",
+            pos="n.",
+            status="not_mastered",
+            due_date=datetime.date.today(),
+            user_id=owner_id,
+        )
         db.add(w)
         db.commit()
         db.refresh(w)

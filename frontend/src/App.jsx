@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import ErrorBoundary from './components/ErrorBoundary'
 import useStore from './store/useStore'
@@ -28,6 +28,7 @@ const Cards = lazy(() => import('./v3/pages/Cards'))
 const Settings = lazy(() => import('./v3/pages/Settings'))
 const CodeBank = lazy(() => import('./v3/pages/CodeBank'))
 const Quiz = lazy(() => import('./v3/pages/Quiz'))
+const PersonalQuestionBank = lazy(() => import('./v3/pages/PersonalQuestionBank'))
 const QuizBank = lazy(() => import('./v3/pages/QuizBank'))
 const QuizReview = lazy(() => import('./v3/pages/QuizReview'))
 const LearnerProfile = lazy(() => import('./v3/pages/LearnerProfile'))
@@ -41,6 +42,7 @@ const KaoyanSchools = lazy(() => import('./v3/pages/KaoyanSchools'))
 const KaoyanSchoolEval = lazy(() => import('./v3/pages/KaoyanSchoolEval'))
 const NoticeCenter = lazy(() => import('./v3/pages/NoticeCenter'))
 const KaoyanSchoolDetail = lazy(() => import('./v3/pages/KaoyanSchoolDetail'))
+const KaoyanMajorDetail = lazy(() => import('./v3/pages/KaoyanMajorDetail'))
 const KaoyanCompare = lazy(() => import('./v3/pages/KaoyanCompare'))
 const KaoyanAnalysis = lazy(() => import('./v3/pages/KaoyanAnalysis'))
 const KaoyanRecommend = lazy(() => import('./v3/pages/KaoyanRecommend'))
@@ -81,9 +83,19 @@ const Tools = lazy(() => import('./v3/pages/Tools'))
 // 沉浸式全屏二级/三级页：独立全屏壳（无侧边栏），src/immersive 全量新建，不与 v3 页面冲突
 const ImmersiveQuiz = lazy(() => import('./immersive/QuizStudio'))
 const ImmersiveReview = lazy(() => import('./immersive/SubjectReview'))
+// 上岸经验卡（T9/T11）：alumni 角色投稿 + 公开浏览 + 管理员审核
+const Alumni = lazy(() => import('./v3/pages/Alumni'))
+const Contribute = lazy(() => import('./v3/pages/Contribute'))
+const AdminExperiences = lazy(() => import('./v3/pages/AdminExperiences'))
 
 function PageFallback() {
   return <LoadingState text="页面加载中…" />
+}
+
+/* 仅渲染子路由的占位壳：用于把父子路由用嵌套 <Route> 表达，
+   父级无独立 UI 时用此组件透传 Outlet（routeTree 的 parent 关系在 App.jsx 路由嵌套中可视化）。 */
+function OutletOnly() {
+  return <Outlet />
 }
 
 /* P1（F-06）：全站唯一 document.title 出口。ROUTE_META 是唯一事实源，
@@ -120,7 +132,8 @@ const KaoyanModuleLayout = () => {
      匹配不到时不强行高亮「择校中心」，避免当前位置误导。 */
   const currentTab = tabOptions
     .filter((t) => location.pathname === t.value || location.pathname.startsWith(t.value + '/'))
-    .sort((a, b) => b.value.length - a.value.length)[0]?.value || ''
+    .sort((a, b) => b.value.length - a.value.length)[0]?.value
+    || (location.pathname.startsWith('/kaoyan/majors/') ? '/kaoyan/schools' : '')
   return (
     <div>
       {/* dogfood ISSUE-007：Tab 数量随导航源变化（现为 {KAOYAN_TABS.length} 个）；
@@ -140,7 +153,10 @@ function AppShell() {
   useEffect(() => {
     /* 访客（公开壳）不回填个人数据域——那些接口全部需要登录，
        未登录时打过去只会收集一屏 401；登录后 status 变 ready 再拉取。 */
-    if (status === 'ready') hydrate()
+    if (status !== 'ready') return
+    const controller = new AbortController()
+    void hydrate(controller.signal)
+    return () => controller.abort()
   }, [status])
   return (
     <AppShellV3>
@@ -211,8 +227,12 @@ export default function App() {
                 W2 融合：/library 挂「知识库」统一入口（学习文库 + 文档知识库两视图）。 */}
             <Route path="/library" element={<KnowledgeHome />} />
             <Route path="/codebank" element={<CodeBank />} />
-            <Route path="/knowledge" element={<KbMap />} />
-            <Route path="/knowledge/:id" element={<KnowledgeArticle />} />
+            {/* 上岸经验（T9）：公开浏览已审核经验卡 */}
+            <Route path="/alumni" element={<Alumni />} />
+            <Route path="/knowledge" element={<OutletOnly />}>
+              <Route index element={<KbMap />} />
+              <Route path=":id" element={<KnowledgeArticle />} />
+            </Route>
             <Route path="/exam" element={<ExamCenter />} />
             <Route path="/kaoyan" element={<KaoyanModuleLayout />}>
               <Route index element={<KaoyanSchools />} />
@@ -220,6 +240,7 @@ export default function App() {
               <Route path="notices" element={<NoticeCenter />} />
               <Route path="schools" element={<KaoyanSchools />} />
               <Route path="schools/:id" element={<KaoyanSchoolDetail />} />
+              <Route path="majors/:id" element={<KaoyanMajorDetail />} />
               <Route path="compare" element={<KaoyanCompare />} />
               <Route path="analysis" element={<KaoyanAnalysis />} />
               <Route path="map" element={<KaoyanMap />} />
@@ -255,6 +276,7 @@ export default function App() {
           {/* 学习统计：科目正确率 / 近7天趋势 / 错题标签 / 学习时长（聚合自 /api/stats/overview） */}
           <Route path="/insights" element={<Insights />} />
           <Route path="/quiz" element={<Quiz />} />
+          <Route path="/personal-question-bank" element={<PersonalQuestionBank />} />
           {/* 模考中心：独立于 /exam 真题索引，个人模考数据放在登录壳内 */}
           <Route path="/exam-mock" element={<ExamMock />} />
           {/* 真题练习深链：做题会写个人答题记录，仍在登录壳内；索引页 /exam 已迁公开壳 */}
@@ -274,8 +296,10 @@ export default function App() {
               且只有「备考科目勾选」，没有 SubjectManager 的章节/题型 CRUD。 */}
           <Route path="/profile" element={<LearnerProfile />} />
           {/* 错题复盘：错因分布 / 薄弱知识点 / 单题 AI 归因与知识点挂接（5+1 的第 5 个模块主页） */}
-          <Route path="/error-review" element={<ErrorReview />} />
-          <Route path="/error-review/:id" element={<ErrorDetail />} />
+          <Route path="/error-review" element={<OutletOnly />}>
+            <Route index element={<ErrorReview />} />
+            <Route path=":id" element={<ErrorDetail />} />
+          </Route>
           {/* 旧入口兼容：/errors 与 /cuoti 早期用过，重定向到新页，避免历史链接失效 */}
           <Route path="/errors" element={<Navigate to="/error-review" replace />} />
           <Route path="/cuoti" element={<Navigate to="/error-review" replace />} />
@@ -284,8 +308,10 @@ export default function App() {
           <Route path="/documents" element={<Navigate to="/library?view=documents" replace />} />
           <Route path="/notebook" element={<Notebook />} />
           <Route path="/planner" element={<Planner />} />
-          <Route path="/assistant" element={<Assistant />} />
-          <Route path="/assistant/answers/:id" element={<AssistantAnswer />} />
+          <Route path="/assistant" element={<OutletOnly />}>
+            <Route index element={<Assistant />} />
+            <Route path="answers/:id" element={<AssistantAnswer />} />
+          </Route>
           <Route path="/pan" element={<Pan />} />
           <Route path="/words" element={<Words />} />
           <Route path="/cards" element={<Cards />} />
@@ -293,6 +319,8 @@ export default function App() {
           {/* S7：收藏夹与学习轨迹 */}
           <Route path="/favorites" element={<Favorites />} />
           <Route path="/timeline" element={<LearningTimeline />} />
+          {/* 经验投稿（T9）：alumni 角色投递结构化经验卡 */}
+          <Route path="/contribute" element={<Contribute />} />
           {/* 择校模块（/kaoyan）路由已整体迁至公开壳：访客可浏览院校库/通知/分析/规划，
               growth/assistant 两个个人页在公开壳内单独包 RequireAuth */}
           {/* 管理后台：一切 CRUD / 采集 / 训练 / 体检归口 /admin，非管理员手输 URL 落 403 页 */}
@@ -314,6 +342,8 @@ export default function App() {
             <Route path="model" element={<ModelTraining />} />
             {/* 今日中枢的口径对账 + 接口体检（P0-1：调试信息不进首页） */}
             <Route path="caliber" element={<Caliber />} />
+            {/* 经验卡审核（T9）：管理员审核 alumni 提交 */}
+            <Route path="experiences" element={<AdminExperiences />} />
             <Route path="*" element={<Navigate to="overview" replace />} />
           </Route>
           {ADMIN_LEGACY_REDIRECTS.map(([from, to]) => (

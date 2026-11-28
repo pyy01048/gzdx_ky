@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+import logging
 from typing import Optional
 
 from database import get_db
@@ -16,9 +17,12 @@ from utils.scope import owner_id, scoped  # B4 行级隔离
 from utils.security import current_user
 from utils.timeutil import local_today, utcnow  # 统一 naive UTC 时间规范（P0-4）
 
-from models import ErrorKnowledgeLink, ErrorRecord, User
+from models import ErrorKnowledgeLink, ErrorRecord, ReviewSchedule, User
 
 router = APIRouter(prefix="/api/errors", tags=["errors"])
+
+#: OCR 上传图片大小上限（20MB），与 ocr_recognize 端点共用
+MAX_OCR_IMAGE_SIZE = 20 * 1024 * 1024
 
 
 def _error_row(e: ErrorRecord) -> dict:
@@ -160,7 +164,7 @@ async def add_error(error: ErrorRecordCreate, db: Session = Depends(get_db), use
     try:
         linked = await asyncio.to_thread(error_linker.auto_link_error, db, new_error, top_k=3)
     except Exception as e:  # 联动失败不影响错题本身入库
-        print(f"[error_linker] 错题 {new_error.id} 自动关联失败: {e}")
+        logging.getLogger(__name__).warning("错题 %s 自动关联失败: %s", new_error.id, e)
 
     return {
         "id": new_error.id,
@@ -177,7 +181,10 @@ async def error_knowledge_points(error_id: int, db: Session = Depends(get_db), u
     db_error = db.query(ErrorRecord).filter(ErrorRecord.id == error_id, scoped(ErrorRecord, user)).first()
     if not db_error:
         raise HTTPException(status_code=404, detail="错题不存在")
-    return {"error_id": error_id, "items": error_linker.knowledge_points_of_error(db, error_id)}
+    return {
+        "error_id": error_id,
+        "items": error_linker.knowledge_points_of_error(db, error_id, user_id=owner_id(user)),
+    }
 
 
 @router.post("/{error_id}/link-knowledge")
@@ -249,9 +256,11 @@ async def update_error(
 @router.delete("/{error_id}")
 async def delete_error(error_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """删除错题（连带清理它与知识点的关联，避免外键约束失败）。"""
-    from models import ErrorKnowledgeLink
 
-    db_error = db.query(ErrorRecord).filter(ErrorRecord.id == error_id, scoped(ErrorRecord, user)).first()
+    uid = owner_id(user)
+    db_error = (
+        db.query(ErrorRecord).filter(ErrorRecord.id == error_id, ErrorRecord.user_id == uid).with_for_update().first()
+    )
     if not db_error:
         raise HTTPException(status_code=404, detail="错题不存在")
 
@@ -260,6 +269,11 @@ async def delete_error(error_id: int, db: Session = Depends(get_db), user: User 
     removed_links = (
         db.query(ErrorKnowledgeLink).filter(ErrorKnowledgeLink.error_id == error_id).delete(synchronize_session=False)
     )
+    db.query(ReviewSchedule).filter(
+        ReviewSchedule.user_id == uid,
+        ReviewSchedule.item_type == "error_record",
+        ReviewSchedule.item_id == error_id,
+    ).delete(synchronize_session=False)
 
     db.delete(db_error)
     db.commit()
@@ -269,11 +283,19 @@ async def delete_error(error_id: int, db: Session = Depends(get_db), user: User 
 @router.post("/{error_id}/graduate")
 async def graduate_error(error_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """标记毕业移出。"""
-    db_error = db.query(ErrorRecord).filter(ErrorRecord.id == error_id, scoped(ErrorRecord, user)).first()
+    uid = owner_id(user)
+    db_error = (
+        db.query(ErrorRecord).filter(ErrorRecord.id == error_id, ErrorRecord.user_id == uid).with_for_update().first()
+    )
     if not db_error:
         raise HTTPException(status_code=404, detail="错题不存在")
 
     db_error.status = "graduated"
+    db.query(ReviewSchedule).filter(
+        ReviewSchedule.user_id == uid,
+        ReviewSchedule.item_type == "error_record",
+        ReviewSchedule.item_id == error_id,
+    ).delete(synchronize_session=False)
     db.commit()
     return {"id": db_error.id, "status": "graduated", "message": "错题已毕业移出"}
 
@@ -286,11 +308,10 @@ async def ocr_recognize(
     import os
     import tempfile
 
-    # 限制文件大小 20MB（图片）
-    MAX_IMG_SIZE = 20 * 1024 * 1024
+    # 限制文件大小（复用模块常量 MAX_OCR_IMAGE_SIZE）
     content = await file.read()
-    if len(content) > MAX_IMG_SIZE:
-        raise HTTPException(status_code=413, detail=f"图片过大，最大支持 {MAX_IMG_SIZE // (1024 * 1024)}MB")
+    if len(content) > MAX_OCR_IMAGE_SIZE:
+        raise HTTPException(status_code=413, detail=f"图片过大，最大支持 {MAX_OCR_IMAGE_SIZE // (1024 * 1024)}MB")
 
     suffix = os.path.splitext(file.filename or "upload.png")[1] or ".png"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -412,7 +433,7 @@ async def ai_analyze_error(error_id: int, db: Session = Depends(get_db), user: U
     try:
         from services.error_analyzer import analyze_error
 
-        result = analyze_error(db, error_id, use_llm=True)
+        result = analyze_error(db, error_id, use_llm=True, user=user)
         if result.get("error"):
             raise RuntimeError(result["message"])
         db_error.analysis = result["analysis"]

@@ -11,7 +11,6 @@ from typing import Literal, Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, Query
-from models import StudySession, User
 from pydantic import BaseModel, Field
 from services.dashboard_service import DashboardService
 from services.study_calendar import (
@@ -26,6 +25,8 @@ from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id  # B4 行级隔离：驾驶舱个人数据只看本人
 from utils.security import current_user
 from utils.timeutil import local_today
+
+from models import StudySession, User
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 

@@ -1,0 +1,12 @@
+{
+  "retrieval": {
+    "n": 129,
+    "hit@5": 0.1395,
+    "mrr@10": 0.0965
+  },
+  "qa": {
+    "n": 110,
+    "answered": 0,
+    "missing_answers": 110
+  }
+}

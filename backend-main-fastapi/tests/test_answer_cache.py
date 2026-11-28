@@ -8,6 +8,7 @@
 * 多线程并发写入不炸
 * 库文件损坏/不可写时 get/set 静默降级
 """
+
 from __future__ import annotations
 
 import importlib
@@ -25,6 +26,7 @@ def ac(tmp_path, monkeypatch):
     monkeypatch.setenv("ANSWER_CACHE_DB_PATH", str(db_path))
 
     import services.answer_cache as module_under_test
+
     importlib.reload(module_under_test)
     yield module_under_test
 

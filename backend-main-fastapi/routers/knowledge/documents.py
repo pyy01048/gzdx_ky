@@ -1,18 +1,19 @@
 """文档路由。"""
 
+import json
 import logging
 import mimetypes
 import os
 import re
 from pathlib import Path
+from typing import Optional
 from urllib.parse import quote
 
 from database import BASE_DIR, get_db
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from models import Document, KnowledgeChunk, KnowledgePoint
+from services import kp_mastery, subject_vocab
 from services import quiz_dedupe as _quiz_dedupe
-from services import subject_vocab
 from services.delete_guard import require_physical_delete_enabled
 from services.doc_naming import apply_display_name
 from services.document_governance import (
@@ -22,10 +23,16 @@ from services.document_governance import (
 )
 from services.quiz_content_gate import admit as gate_admit
 from services.quiz_content_gate import gate_log_summary
+from services.quiz_query import question_owner_expr
 from services.smart_ingest import gate_for_write
 from sqlalchemy.orm import Session
 from utils.exceptions import http_error_response
-from utils.security import require_admin, require_verified_email
+from utils.scope import owner_id
+from utils.security import optional_user, require_admin, require_verified_email
+
+from models import Document, KnowledgeChunk, KnowledgePoint, QuizQuestion, User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -182,7 +189,9 @@ def _file_response(doc: Document, request: Request, disposition: str):
 
 @router.post("/upload", dependencies=[Depends(require_verified_email)])
 async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """上传文档。"""
+    """上传文档并经单一入库入口归一化入库（C-INGEST@1）。"""
+    from services.ingest_service import ingest_document
+
     file_name = _safe_filename(file.filename or "unknown")
     file_ext = os.path.splitext(file_name)[1].lower()
     file_type = {
@@ -213,7 +222,29 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     db.add(doc)
     db.commit()
     db.refresh(doc)
-    return {"id": doc.id, "file_name": doc.file_name, "size": doc.size, "message": "上传成功"}
+
+    # 单一入库入口：classify → parse → normalize → gate → 写 content → 旁路 → 分块
+    result = await ingest_document(doc.id, save_path, content, file_type)
+    # ingest_document 用独立 session 写入，外部 session 刷新以看到结果
+    db.expire_all()
+    doc = db.query(Document).filter(Document.id == doc.id).first()
+    if not result.ok:
+        return {
+            "id": doc.id,
+            "file_name": doc.file_name,
+            "size": doc.size,
+            "index_status": doc.index_status,
+            "message": "上传成功但入库被拒：" + "；".join(result.warnings),
+        }
+    return {
+        "id": doc.id,
+        "file_name": doc.file_name,
+        "size": doc.size,
+        "index_status": doc.index_status,
+        "content_kind": result.content_kind.value,
+        "normalized": result.normalized,
+        "message": "上传成功并已入库",
+    }
 
 
 @router.get("")
@@ -441,9 +472,10 @@ async def classify_queue(status: str = "pending", db: Session = Depends(get_db))
 @router.post("/classify-queue/{doc_id}/resolve", dependencies=[Depends(require_admin)])
 async def classify_resolve(doc_id: int, payload: dict, db: Session = Depends(get_db)):
     """人工裁定科目：必须在 subject_config 字典内，否则 400。"""
-    from models import DocumentClassifyQueue, SubjectConfig
     from services.document_governance import SUBJECT_PLACEHOLDERS
     from utils.timeutil import utcnow
+
+    from models import DocumentClassifyQueue, SubjectConfig
 
     subject = (payload or {}).get("subject") or ""
     pool = {r.subject for r in db.query(SubjectConfig.subject).all()} - SUBJECT_PLACEHOLDERS
@@ -464,7 +496,10 @@ async def classify_resolve(doc_id: int, payload: dict, db: Session = Depends(get
 
 
 @router.get("/subjects")
-async def list_subjects(db: Session = Depends(get_db)):
+async def list_subjects(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(optional_user),
+):
     """学科分类统计（文档数 + 分块数）。
 
     M0-4 学科统一收口：数据源改为 `services.subject_registry` 唯一聚合器，
@@ -477,7 +512,8 @@ async def list_subjects(db: Session = Depends(get_db)):
     """
     from services import subject_registry, subject_vocab
 
-    data = subject_registry.list_subjects(db)["subjects"]
+    owner_filter = question_owner_expr(user) if user is not None else QuizQuestion.owner_user_id.is_(None)
+    data = subject_registry.list_subjects(db, question_filter=owner_filter)["subjects"]
     # 文档侧原值分组计数：组内各原值互斥（一篇文档只有一个 subject 写法），
     # 所以「折叠后的合并文档数」就是逐原值求和，不会重复计数。
     from sqlalchemy import func
@@ -515,9 +551,15 @@ async def list_subjects(db: Session = Depends(get_db)):
 
 @router.post("/{doc_id}/parse", dependencies=[Depends(require_admin)])
 async def parse_document(doc_id: int, db: Session = Depends(get_db)):
-    """解析文档（本地 DocumentParser：PDF/DOCX/PPTX/TXT，扫描版 PDF 走 OCR）。"""
+    """解析文档并经单一入库入口归一化入库（C-INGEST@1）。
+
+    核心入库流程（classify → parse → normalize → gate → 写 content → 旁路 → 分块）
+    委托给 ``services.ingest_service.ingest_document``；本端点保留 AI 知识点提取
+    与元信息判定等入库后增强步骤。
+    """
     from services.ai_service import AIService
-    from services.document_parser import DocumentParser
+    from services.ingest_service import ingest_document
+    from services.kb_service import detect_doc_meta, has_searchable_chunks
 
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
@@ -527,73 +569,37 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
     doc.parse_progress = 0.1
     db.commit()
 
-    # 使用本地 DocumentParser 提取全文
-    # P0-2：parser.parse() 走 PDF 解析 / 扫描件 OCR，秒级到分钟级且完全同步，
-    # 在 async 端点里直调会按住事件循环 → 挪线程池（纯文件读，不涉及 db 会话）。
-    from starlette.concurrency import run_in_threadpool
-
-    parser = DocumentParser()
+    # 读取原文字节（ingest_document 内部会按需重新解析）
+    raw_content = b""
     if doc.file_path and os.path.exists(doc.file_path):
         try:
-            content_text = await run_in_threadpool(parser.parse, doc.file_path)
-        except Exception as e:
-            doc.index_status = "failed"
-            db.commit()
-            raise HTTPException(status_code=500, detail=f"文档解析失败：{str(e)}") from e
-        if not content_text or not content_text.strip():
-            content_text = f"[{doc.file_type} 文件，未能提取到文本内容] 文件名：{doc.file_name}"
-    else:
-        content_text = f"[文件缺失或未落盘] 文件名：{doc.file_name}"
+            with open(doc.file_path, "rb") as f:
+                raw_content = f.read()
+        except OSError:
+            raw_content = b""
 
-    # 导入时预清洗行内水印（东坡哥微信/haodongpo、公众号/QQ群/淘宝店等）：
-    # 与存量清洗脚本 scripts/clean_document_watermarks.py 同源（services.extraction_noise），
-    # 在**质量闸门之前**做，避免水印文本干扰空正文/乱码判定。
-    from services.kb_service import preclean_watermarks
+    # 单一入库入口：classify → parse → normalize → gate → 写 content → 旁路 → 分块
+    ingest_result = await ingest_document(doc_id, doc.file_path or "", raw_content, doc.file_type or "")
+    if not ingest_result.ok:
+        db.expire_all()
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        raise HTTPException(
+            status_code=422,
+            detail="入库失败：" + "；".join(ingest_result.warnings),
+        )
 
-    content_text, _wm_dropped, _wm_mixed = preclean_watermarks(content_text)
-
-    # 质量闸门：空正文/占位提示/乱码/二进制残留/同文重复一律拒绝。
-    # 拒绝时**不覆盖** doc.content（老正文可能仍有用），状态置 failed 并把原因
-    # 透给前端 —— 静默写进库才是这一轮审计里最难发现的那种损坏。
-    # 性能波（2026-11-23）：gate_for_write 内含 BGE 向量查重（同步 ONNX 推理，
-    # 数百 ms 起），本端点有 await 必须保持 async，重活丢线程池（下方同款两处）。
-    # 闸门必须写在目标函数体内、doc.content 赋值的同一道收口里就地生效
-    # （tests/test_ingest_gate.py 的 AST 守卫认「函数内有 gate_for_write(...) 直调」，
-    # 把函数名当参数丢给 run_in_threadpool 会被判成未接闸入口）。
-    def _run_ingest_gate():
-        return gate_for_write(db, content_text, path=doc.file_path or "", doc_id=doc.id)
-
-    verdict = await run_in_threadpool(_run_ingest_gate)
-    if not verdict["ok"]:
-        doc.index_status = "failed"
-        db.commit()
-        raise HTTPException(status_code=422, detail="质量闸门拒绝入库：" + "；".join(verdict["reasons"]))
-
-    doc.content = content_text
-    doc.parse_progress = 0.5
-    # #27 按内容定显示名：必须在分块入库前改，chunk.doc_name 才会带新名
-    apply_display_name(db, doc, content_text)
-    db.commit()
-
-    # —— 知识库闭环（P0-1）：文本 -> 分块 -> knowledge_chunks + FTS —— #
-    # 这一步让上传的文档真正进入 RAG 知识库，可被 AI 检索引用。
-    from services.kb_service import detect_doc_meta, has_searchable_chunks, ingest_document
-
-    chunk_count = 0
-    try:
-        chunk_count = ingest_document(db, doc, replace=True)
-        doc.chunk_count = chunk_count
-        doc.parse_progress = 0.8
-    except Exception as e:
-        # 分块失败不影响文档内容，记录但不致命
-        print(f"[kb] 文档 {doc.id} 分块入库失败: {e}")
+    # ingest_document 用独立 session 写入，外部 session 刷新以看到 content/chunks
+    db.expire_all()
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    content_text = doc.content or ""
+    chunk_count = doc.chunk_count or 0
 
     # 标记资料层级 / 结构化程度 / 是否扫描件 OCR
     meta = {}
     try:
         meta = detect_doc_meta(db, doc)
     except Exception as e:
-        print(f"[kb] 文档 {doc.id} 元信息判定失败: {e}")
+        logger.warning("文档 %s 元信息判定失败: %s", doc.id, e)
 
     # AI 提取知识点（best-effort，失败不再让整个解析失败）
     knowledge_point_count = 0
@@ -612,7 +618,6 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
         doc.parse_progress = 0.9
 
         # 尝试解析知识点
-        import json
 
         try:
             # 尝试从 AI 回复中提取 JSON
@@ -637,11 +642,9 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
             pass
     except Exception as e:
         # AI 抽取失败不影响"已入库可检索"的结果
-        print(f"[ai] 文档 {doc.id} 知识点提取失败（不影响入库）: {e}")
+        logger.warning("文档 %s 知识点提取失败（不影响入库）: %s", doc.id, e)
 
     # 状态口径：indexed 必须等于「库里真有可检索的分块」。
-    # 以前这里无条件写 indexed，分块失败只 print 一句就吞掉，
-    # 库里于是攒出「UI 显示已入库、检索永远搜不到」的文档（实测存量 89 篇）。
     doc.index_status = "indexed" if has_searchable_chunks(db, doc.id) else "failed"
     doc.parse_progress = 1.0
     db.commit()
@@ -652,6 +655,8 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
         "chunk_count": chunk_count,
         "content_length": len(content_text),
         "preview": content_text[:500],
+        "content_kind": ingest_result.content_kind.value,
+        "normalized": ingest_result.normalized,
         "doc_type": meta.get("doc_type"),
         "structure_level": meta.get("structure_level"),
         "ocr_used": meta.get("ocr_used", False),
@@ -666,20 +671,25 @@ async def parse_document(doc_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{doc_id}/knowledge-points")
-async def get_knowledge_points(doc_id: int, db: Session = Depends(get_db)):
+async def get_knowledge_points(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(optional_user),
+):
     """提取的知识点（按文档过滤）。"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="文档不存在")
 
     kps = db.query(KnowledgePoint).filter(KnowledgePoint.document_id == doc_id).all()
+    personal_mastery = kp_mastery.user_mastery(db, owner_id(user)) if user is not None else None
     return [
         {
             "id": kp.id,
             "name": kp.name,
             "subject": kp.subject,
             "chapter": kp.chapter,
-            "mastery": kp.mastery,
+            "mastery": personal_mastery.get(kp.id, 0) if personal_mastery is not None else kp.mastery,
             "exam_frequency": kp.exam_frequency,
             "description": kp.description,
         }
@@ -718,8 +728,9 @@ async def get_document_chunks(doc_id: int, db: Session = Depends(get_db)):
 @router.post("/{doc_id}/generate-quiz", dependencies=[Depends(require_admin)])
 async def generate_quiz(doc_id: int, db: Session = Depends(get_db)):
     """从文档生成题目。"""
-    from models import QuizQuestion
     from services.ai_service import AIService
+
+    from models import QuizQuestion
 
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
@@ -742,8 +753,6 @@ async def generate_quiz(doc_id: int, db: Session = Depends(get_db)):
                 {"role": "user", "content": f"请根据以下内容生成题目：\n\n{content[:5000]}"},
             ]
         )
-
-        import json
 
         # ===== 入库前内容闸门（docx/16 §1.5-H）=====
         # 原先这条路径把模型返回的 JSON 直接 db.add，不过 quiz_content_gate，
@@ -1017,7 +1026,7 @@ async def parse_all_documents(db: Session = Depends(get_db)):
                 chunk_count = ingest_document(db, doc, replace=True)
                 doc.chunk_count = chunk_count
             except Exception as e:
-                print(f"[kb] 文档 {doc.id} 分块失败: {e}")
+                logger.warning("文档 %s 分块失败: %s", doc.id, e)
 
             # indexed 的口径 = 库里真有分块；本轮返回 0 但旧块还在，仍算已入库
             indexed = has_searchable_chunks(db, doc.id)
@@ -1201,8 +1210,6 @@ async def preview_questions(doc_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="文档不存在")
     if not doc.content:
         raise HTTPException(status_code=400, detail="文档尚未解析")
-
-    import json
 
     from services.ai_service import AIService
     from services.document_analyzer import QUESTION_EXTRACT_PROMPT, smart_chunk_text
@@ -1538,8 +1545,9 @@ async def classify_summary(doc_id: int, db: Session = Depends(get_db)):
 @router.post("/chunks/{chunk_id}/label", dependencies=[Depends(require_admin)])
 async def fix_chunk_label(chunk_id: int, payload: dict, db: Session = Depends(get_db)):
     """人工修正 chunk 标签；修正样本自动回流 annotation_samples（docx/14 评估闭环）。"""
-    from models import AnnotationSample
     from services.chunk_classifier import L3_TYPES, _normalize_subject
+
+    from models import AnnotationSample
 
     chunk = db.get(KnowledgeChunk, chunk_id)
     if chunk is None:

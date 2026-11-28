@@ -18,6 +18,7 @@
 - **留证**：每次命中都记录 ``(规则 id, 原文片段, 行号)``，供用户抽查准确率。
 - **快速预筛**：行内不含任何 fast marker 时跳过全部正则，避免全库扫描退化。
 """
+
 from __future__ import annotations
 
 import json
@@ -52,7 +53,7 @@ class Rule:
 
     rule_id: str
     desc: str
-    kind: str            # span 或 line
+    kind: str  # span 或 line
     pattern: str
     compiled: re.Pattern[str]
 
@@ -102,9 +103,7 @@ class CleanResult:
             "text": self.text,
             "dropped_lines": self.dropped_lines,
             "hits": [
-                {"rule_id": h.rule_id, "kind": h.kind,
-                 "matched": h.matched, "line_no": h.line_no}
-                for h in self.hits
+                {"rule_id": h.rule_id, "kind": h.kind, "matched": h.matched, "line_no": h.line_no} for h in self.hits
             ],
         }
 
@@ -136,9 +135,7 @@ def load_rules(path: str | Path | None = None) -> RulesBundle:
             try:
                 compiled = re.compile(pattern)
             except re.error as exc:
-                raise ValueError(
-                    f"规则 {item.get('id', '<匿名>')} 的正则无法编译：{pattern!r} -> {exc}"
-                ) from exc
+                raise ValueError(f"规则 {item.get('id', '<匿名>')} 的正则无法编译：{pattern!r} -> {exc}") from exc
             out.append(
                 Rule(
                     rule_id=item.get("id", "<匿名>"),
@@ -316,9 +313,7 @@ def strip_watermark(
     return out, [h.__dict__ for h in all_hits]
 
 
-def find_residue(
-    text: str | None, bundle: RulesBundle | None = None
-) -> list[dict]:
+def find_residue(text: str | None, bundle: RulesBundle | None = None) -> list[dict]:
     """**只检测不改文本**：返回文本中仍存在的水印/噪声命中。
 
     用于 :mod:`verify` 的「水印残留检测」——与 :func:`strip_watermark`
@@ -336,15 +331,9 @@ def find_residue(
         for rule in rules.span_rules:
             m = rule.compiled.search(line)
             if m:
-                hits.append(
-                    {"rule_id": rule.rule_id, "kind": "span",
-                     "matched": m.group(0)[:120], "line_no": idx}
-                )
+                hits.append({"rule_id": rule.rule_id, "kind": "span", "matched": m.group(0)[:120], "line_no": idx})
         for rule in rules.line_rules:
             m = rule.compiled.search(line)
             if m:
-                hits.append(
-                    {"rule_id": rule.rule_id, "kind": "line",
-                     "matched": m.group(0)[:120], "line_no": idx}
-                )
+                hits.append({"rule_id": rule.rule_id, "kind": "line", "matched": m.group(0)[:120], "line_no": idx})
     return hits

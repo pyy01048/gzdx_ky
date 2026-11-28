@@ -25,6 +25,7 @@ D. 跨层一致性：同一业务实体在 DB / API / 前端资源三处口径�
     python -m pipeline.verify_e2e               # 全量检查
     python -m pipeline.verify_e2e --base http://127.0.0.1:8000
 """
+
 from __future__ import annotations
 
 import argparse
@@ -81,14 +82,22 @@ def check_database(c: Checker) -> dict:
     stat: dict = {}
     try:
         import psycopg
+
         # 空库是当前的合法状态（数据尚未导入），所以门槛取「有即可」而不是写死
         # 满库量级；否则清库后这条检查会一路报 FAIL，看不出是真故障还是没数据。
         with psycopg.connect(pg_database_url()) as pg, pg.cursor() as cur:
             for tbl, min_rows in [
-                ("documents", 1), ("knowledge_chunks", 1), ("chunk_vectors", 1),
-                ("knowledge_points", 1), ("quiz_questions", 1), ("textbooks", 1),
-                ("subject_chapters", 1), ("kaoyan_schools", 1), ("kaoyan_majors", 1),
-                ("words", 1), ("sft_examples", 1),
+                ("documents", 1),
+                ("knowledge_chunks", 1),
+                ("chunk_vectors", 1),
+                ("knowledge_points", 1),
+                ("quiz_questions", 1),
+                ("textbooks", 1),
+                ("subject_chapters", 1),
+                ("kaoyan_schools", 1),
+                ("kaoyan_majors", 1),
+                ("words", 1),
+                ("sft_examples", 1),
             ]:
                 cur.execute(f"SELECT COUNT(*) FROM {tbl}")
                 n = cur.fetchone()[0]
@@ -112,8 +121,7 @@ def check_database(c: Checker) -> dict:
             cur.execute("SELECT unnest(exam_stages) s, COUNT(*) FROM textbooks GROUP BY 1")
             stages = dict(cur.fetchall())
             stat["textbook_stages"] = stages
-            c.add("DB", "教材含初试与复试分类",
-                  "初试" in stages and "复试" in stages, str(stages))
+            c.add("DB", "教材含初试与复试分类", "初试" in stages and "复试" in stages, str(stages))
 
             # 科目与章节
             cur.execute("SELECT COUNT(*) FROM subjects WHERE is_active")
@@ -132,38 +140,34 @@ def check_backend(c: Checker, base: str) -> dict:
     #: (路径, 描述, 结构断言函数)
     endpoints = [
         ("/api/health", "健康检查", lambda d: isinstance(d, dict)),
-        ("/api/textbooks/stats/overview", "教材概览",
-         lambda d: d.get("total", 0) > 0 and "by_stage" in d),
-        ("/api/textbooks/by-subject", "教材分组",
-         lambda d: isinstance(d.get("groups"), list) and d.get("total_books", 0) > 0),
-        ("/api/textbooks/1", "教材详情",
-         lambda d: d.get("title") and "schools" in d and "documents" in d),
-        ("/api/textbooks/school/33", "院校教材（东南大学）",
-         lambda d: d.get("school", {}).get("name") and d.get("total", -1) >= 0),
-        ("/api/taxonomy/subjects", "科目清单",
-         lambda d: isinstance(d.get("subjects"), list) and len(d["subjects"]) > 0),
-        ("/api/taxonomy/tree", "知识结构树",
-         lambda d: isinstance(d.get("tree"), list) and len(d["tree"]) > 0),
-        ("/api/taxonomy/coverage", "语料覆盖体检",
-         lambda d: isinstance(d.get("subjects"), list)),
-        ("/api/review/progress", "复习进度",
-         lambda d: "total_knowledge_points" in d),
-        ("/api/quiz/questions?limit=5", "刷题列表",
-         lambda d: isinstance(d.get("questions"), list)),
-        ("/api/quiz/subjects", "题库科目",
-         lambda d: isinstance(d, (list, dict))),
-        ("/api/documents?limit=5", "文档列表",
-         lambda d: isinstance(d, (list, dict))),
-        ("/api/quality/tree-overlay", "语料质量层",
-         lambda d: isinstance(d, dict)),
-        ("/api/words/decks", "单词词库",
-         lambda d: isinstance(d, (list, dict))),
-        ("/api/kaoyan/stats", "择校统计",
-         lambda d: isinstance(d, dict)),
-        ("/api/dashboard", "仪表盘",
-         lambda d: isinstance(d, dict)),
-        ("/api/tasks", "任务列表",
-         lambda d: isinstance(d, (list, dict))),
+        ("/api/textbooks/stats/overview", "教材概览", lambda d: d.get("total", 0) > 0 and "by_stage" in d),
+        (
+            "/api/textbooks/by-subject",
+            "教材分组",
+            lambda d: isinstance(d.get("groups"), list) and d.get("total_books", 0) > 0,
+        ),
+        ("/api/textbooks/1", "教材详情", lambda d: d.get("title") and "schools" in d and "documents" in d),
+        (
+            "/api/textbooks/school/33",
+            "院校教材（东南大学）",
+            lambda d: d.get("school", {}).get("name") and d.get("total", -1) >= 0,
+        ),
+        (
+            "/api/taxonomy/subjects",
+            "科目清单",
+            lambda d: isinstance(d.get("subjects"), list) and len(d["subjects"]) > 0,
+        ),
+        ("/api/taxonomy/tree", "知识结构树", lambda d: isinstance(d.get("tree"), list) and len(d["tree"]) > 0),
+        ("/api/taxonomy/coverage", "语料覆盖体检", lambda d: isinstance(d.get("subjects"), list)),
+        ("/api/review/progress", "复习进度", lambda d: "total_knowledge_points" in d),
+        ("/api/quiz/questions?limit=5", "刷题列表", lambda d: isinstance(d.get("questions"), list)),
+        ("/api/quiz/subjects", "题库科目", lambda d: isinstance(d, list | dict)),
+        ("/api/documents?limit=5", "文档列表", lambda d: isinstance(d, list | dict)),
+        ("/api/quality/tree-overlay", "语料质量层", lambda d: isinstance(d, dict)),
+        ("/api/words/decks", "单词词库", lambda d: isinstance(d, list | dict)),
+        ("/api/kaoyan/stats", "择校统计", lambda d: isinstance(d, dict)),
+        ("/api/dashboard", "仪表盘", lambda d: isinstance(d, dict)),
+        ("/api/tasks", "任务列表", lambda d: isinstance(d, list | dict)),
     ]
 
     for path, desc, assertion in endpoints:
@@ -197,6 +201,7 @@ def check_frontend(c: Checker, base: str) -> dict:
     html = idx.read_text(encoding="utf-8", errors="replace")
     # 提取首页引用的 js/css
     import re
+
     assets = re.findall(r'(?:src|href)="\.?/?(assets/[^"]+)"', html)
     stat["index_assets"] = assets
     c.add("FE", "index.html 引用资源 ≥ 2", len(assets) >= 2, f"{len(assets)} 个")
@@ -206,12 +211,10 @@ def check_frontend(c: Checker, base: str) -> dict:
         s, _, _ = get_json(base, "/" + a)
         if s == 200:
             ok_assets += 1
-    c.add("FE", "引用的资源可访问", ok_assets == len(assets[:6]),
-          f"{ok_assets}/{len(assets[:6])}")
+    c.add("FE", "引用的资源可访问", ok_assets == len(assets[:6]), f"{ok_assets}/{len(assets[:6])}")
 
     # 教材页 chunk 是否已构建（前端新页面的关键证据）
-    tps = list((STATIC_DIR / "assets" / "js").glob("Textbooks-*.js")) \
-        if (STATIC_DIR / "assets" / "js").exists() else []
+    tps = list((STATIC_DIR / "assets" / "js").glob("Textbooks-*.js")) if (STATIC_DIR / "assets" / "js").exists() else []
     stat["textbooks_chunk"] = [p.name for p in tps]
     c.add("FE", "教材页代码块已构建", len(tps) > 0, ", ".join(p.name for p in tps))
 
@@ -229,11 +232,13 @@ def check_frontend(c: Checker, base: str) -> dict:
         except Exception as e:  # noqa: BLE001
             status, body = 0, str(e)
         # 判定：HTTP 200 且返回的是 SPA 外壳（含挂载点或 assets 引用）
-        is_shell = ("id=\"root\"" in body or "id='root'" in body
-                    or "assets/js/" in body)
-        c.add("FE", f"深链 {p} 返回 SPA 外壳",
-              status == 200 and is_shell,
-              f"HTTP {status}, 外壳={is_shell}, 长度={len(body)}")
+        is_shell = 'id="root"' in body or "id='root'" in body or "assets/js/" in body
+        c.add(
+            "FE",
+            f"深链 {p} 返回 SPA 外壳",
+            status == 200 and is_shell,
+            f"HTTP {status}, 外壳={is_shell}, 长度={len(body)}",
+        )
     return stat
 
 
@@ -244,20 +249,20 @@ def check_cross_layer(c: Checker, db: dict, api: dict, fe: dict) -> None:
     # 教材总数：DB vs API
     if db.get("textbooks") is not None and api.get("api_textbook_total") is not None:
         same = db["textbooks"] == api["api_textbook_total"]
-        c.add("X", "教材总数 DB == API", same,
-              f"DB {db['textbooks']} vs API {api['api_textbook_total']}")
+        c.add("X", "教材总数 DB == API", same, f"DB {db['textbooks']} vs API {api['api_textbook_total']}")
 
     # 知识点总数：DB vs API
     if db.get("knowledge_points") is not None and api.get("api_kp_total") is not None:
         same = db["knowledge_points"] == api["api_kp_total"]
-        c.add("X", "知识点总数 DB == API", same,
-              f"DB {db['knowledge_points']} vs API {api['api_kp_total']}")
+        c.add("X", "知识点总数 DB == API", same, f"DB {db['knowledge_points']} vs API {api['api_kp_total']}")
 
     # 教材页代码块已部署（前端能渲染教材页）
-    c.add("X", "教材页端到端可用（DB+API+FE）",
-          bool(db.get("textbooks")) and bool(api.get("api_textbook_total"))
-          and bool(fe.get("textbooks_chunk")),
-          "教材表 + 教材接口 + 教材页代码块三者齐备")
+    c.add(
+        "X",
+        "教材页端到端可用（DB+API+FE）",
+        bool(db.get("textbooks")) and bool(api.get("api_textbook_total")) and bool(fe.get("textbooks_chunk")),
+        "教材表 + 教材接口 + 教材页代码块三者齐备",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -289,10 +294,22 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 74)
 
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps({
-        "verdict": verdict, "total": total, "failed": failed,
-        "results": c.results, "db": db, "api": api, "fe": fe,
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    REPORT.write_text(
+        json.dumps(
+            {
+                "verdict": verdict,
+                "total": total,
+                "failed": failed,
+                "results": c.results,
+                "db": db,
+                "api": api,
+                "fe": fe,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     print(f"报告：{REPORT}")
     return 0 if failed == 0 else 1
 

@@ -20,6 +20,7 @@ A 类真题的 source 指向的是「无答案版」真题卷（如 `贵州大�
     python scripts/probe_crossdoc_alignment.py --limit 20    # 快速试跑
 只读。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,11 +49,11 @@ MIN_DOC_LEN = 3000
 
 def build_corpus(con):
     """构建归一化检索语料：documents.content + knowledge_chunks.text（按 doc_name 合并）。"""
-    corpus = []          # [(label, 归一化正文)]
+    corpus = []  # [(label, 归一化正文)]
     t0 = time.time()
-    for did, fn, body in con.execute(
-        "SELECT id, file_name, content FROM documents "
-        "WHERE content IS NOT NULL AND length(content) >= ?", (MIN_DOC_LEN,)
+    for _did, fn, body in con.execute(
+        "SELECT id, file_name, content FROM documents WHERE content IS NOT NULL AND length(content) >= ?",
+        (MIN_DOC_LEN,),
     ):
         corpus.append((f"doc:{fn}", norm(body)))
     # chunks 按 doc_name 聚合拼接（chunks 是文档正文的另一种切分，通常带更多答案信号）
@@ -63,7 +64,7 @@ def build_corpus(con):
         per_doc[dn].append(tx)
     for dn, parts in per_doc.items():
         corpus.append((f"chunk:{dn}", norm("".join(parts))))
-    print(f"语料条目: {len(corpus)}（docs+chunks 合并），构建耗时 {time.time()-t0:.1f}s")
+    print(f"语料条目: {len(corpus)}（docs+chunks 合并），构建耗时 {time.time() - t0:.1f}s")
     return corpus
 
 
@@ -77,15 +78,13 @@ def cross_search(qnorm: str, corpus, narrow: int, max_docs: int):
         if not body:
             continue
         checked += 1
-        hit = False
         for p in probes:
             idx = body.find(p)
             if idx >= 0:
                 hit_len = len(p)
-                res = probe_align(qnorm[:hit_len], body[idx: idx + hit_len + narrow + 400], narrow)
+                res = probe_align(qnorm[:hit_len], body[idx : idx + hit_len + narrow + 400], narrow)
                 if res.get("why") == "strict-ok":
                     return label, res["answer"]
-                hit = True
                 break
         if checked >= max_docs:
             break
@@ -118,8 +117,7 @@ def main() -> int:
                 opts = json.loads(opts)
             except Exception:
                 opts = []
-        cls, why, comp, cw = classify(
-            (r["id"], r["content"], opts, r["answer"], r["source"], r["question_type"]))
+        cls, why, comp, cw = classify((r["id"], r["content"], opts, r["answer"], r["source"], r["question_type"]))
         if cls in ab:
             ab[cls].append((dict(r), comp, cw))
     for k in ab:
@@ -161,8 +159,7 @@ def main() -> int:
         print(f"  {k}: {v}")
 
     total_hit = sum(v for k, v in stat.items() if "未找到" not in k)
-    print(f"\n  合计可自动对齐补答案: {total_hit} / "
-          f"{len(ab['A-真题缺答案']) + len(ab['B-习题缺答案'])}")
+    print(f"\n  合计可自动对齐补答案: {total_hit} / {len(ab['A-真题缺答案']) + len(ab['B-习题缺答案'])}")
 
     print("\n命中来源分布:")
     src_stat = Counter(d["hit"] for d in detail)
@@ -177,17 +174,23 @@ def main() -> int:
         for r, lab, ans in arr[:6]:
             print(f"\n[id={r['id']}] {r['subject']}/{r['question_type']} src={r['source']}")
             print(f"  命中: {lab}")
-            print(f"  题干: {(r['content'] or '').replace(chr(10),' ')[:140]}")
+            print(f"  题干: {(r['content'] or '').replace(chr(10), ' ')[:140]}")
             print(f"  ▶答案: {ans[:200]}")
 
     if args.json_out:
         out = os.path.join(BASE_DIR, args.json_out)
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as f:
-            json.dump({"stat": dict(stat), "src_stat": dict(src_stat),
-                       "detail": [{k: (str(v)[:600] if isinstance(v, str) else v)
-                                   for k, v in d.items()} for d in detail]},
-                      f, ensure_ascii=False, indent=2)
+            json.dump(
+                {
+                    "stat": dict(stat),
+                    "src_stat": dict(src_stat),
+                    "detail": [{k: (str(v)[:600] if isinstance(v, str) else v) for k, v in d.items()} for d in detail],
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
         print(f"\n[JSON] {out}")
     con.close()
     return 0

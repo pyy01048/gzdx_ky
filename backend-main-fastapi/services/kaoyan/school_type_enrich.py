@@ -9,6 +9,7 @@
 
 复试用 `syllabus_spider`（见同目录）：工科/理科复试大纲爬取骨架。
 """
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,20 @@ from sqlalchemy.orm import Session
 
 from services.dbapi_compat import wrap_conn
 
-SCHOOL_TYPES = ["综合类", "理工类", "农林类", "医药类", "师范类", "语言类",
-                "财经类", "政法类", "体育类", "艺术类", "民族类", "军事类"]
+SCHOOL_TYPES = [
+    "综合类",
+    "理工类",
+    "农林类",
+    "医药类",
+    "师范类",
+    "语言类",
+    "财经类",
+    "政法类",
+    "体育类",
+    "艺术类",
+    "民族类",
+    "军事类",
+]
 _TYPE_RE = re.compile("(" + "|".join(SCHOOL_TYPES) + ")")
 
 _DDLS = [
@@ -50,6 +63,7 @@ def enrich_from_seed(db: Session) -> Dict:
     """
     ensure_school_type_schema(db)
     from pathlib import Path
+
     seed_path = Path(__file__).parent / "school_type_seed.json"
     if not seed_path.exists():
         return {"matched": 0, "unmatched": [], "error": "seed 文件缺失"}
@@ -57,12 +71,12 @@ def enrich_from_seed(db: Session) -> Dict:
     conn = wrap_conn(db.connection().connection)
     matched, unmatched = 0, []
     for s in seed:
-        row = conn.execute(
-            "SELECT id FROM kaoyan_schools WHERE name=?", (s["name"],)).fetchone()
+        row = conn.execute("SELECT id FROM kaoyan_schools WHERE name=?", (s["name"],)).fetchone()
         if row:
             conn.execute(
-                "UPDATE kaoyan_schools SET school_type=?, school_type_source='kaoyan.cn' "
-                "WHERE id=?", (s["school_type"], row[0]))
+                "UPDATE kaoyan_schools SET school_type=?, school_type_source='kaoyan.cn' WHERE id=?",
+                (s["school_type"], row[0]),
+            )
             matched += 1
         else:
             unmatched.append(s["name"])
@@ -74,9 +88,7 @@ def enrich_from_tags(db: Session, dry_run: bool = True) -> Dict:
     """从 tags JSON / intro 中提取院校类型（命中唯一类型才写，多个/零个留空）。"""
     ensure_school_type_schema(db)
     conn = wrap_conn(db.connection().connection)
-    rows = conn.execute(
-        "SELECT id, name, tags, intro FROM kaoyan_schools WHERE school_type IS NULL"
-    ).fetchall()
+    rows = conn.execute("SELECT id, name, tags, intro FROM kaoyan_schools WHERE school_type IS NULL").fetchall()
     updated, pending = 0, []
     for sid, name, tags_json, intro in rows:
         hits: List[str] = []
@@ -84,8 +96,11 @@ def enrich_from_tags(db: Session, dry_run: bool = True) -> Dict:
             if not blob:
                 continue
             try:
-                text = blob if isinstance(blob, str) and blob.strip().startswith("[") \
+                text = (
+                    blob
+                    if isinstance(blob, str) and blob.strip().startswith("[")
                     else json.dumps(blob, ensure_ascii=False)
+                )
                 blob_text = " ".join(json.loads(text)) if text.startswith("[") else str(blob)
             except Exception:
                 blob_text = str(blob)
@@ -93,8 +108,7 @@ def enrich_from_tags(db: Session, dry_run: bool = True) -> Dict:
         if len(hits) == 1:
             pending.append({"id": sid, "name": name, "school_type": hits[0]})
             if not dry_run:
-                conn.execute("UPDATE kaoyan_schools SET school_type=? WHERE id=?",
-                             (hits[0], sid))
+                conn.execute("UPDATE kaoyan_schools SET school_type=? WHERE id=?", (hits[0], sid))
                 updated += 1
         elif len(hits) > 1:
             pending.append({"id": sid, "name": name, "ambiguous": hits})

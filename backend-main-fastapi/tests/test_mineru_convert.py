@@ -3,6 +3,7 @@
 不需要装 MinerU：转换逻辑是纯函数（``content_list_to_pages``），
 喂一份假的 content_list 即可。
 """
+
 from __future__ import annotations
 
 import json
@@ -142,9 +143,7 @@ def test_image_is_copied_and_path_is_relative(fake_content_list, mineru_out):
 
 
 def test_missing_image_is_flagged(mineru_out):
-    content_list = [
-        {"type": "image", "page_idx": 0, "bbox": [1, 2, 30, 40], "img_path": "images/nope.png"}
-    ]
+    content_list = [{"type": "image", "page_idx": 0, "bbox": [1, 2, 30, 40], "img_path": "images/nope.png"}]
     pages = content_list_to_pages(content_list, str(mineru_out))
     assert pages[0].blocks
     assert pages[0].blocks[0].extra.get("image_missing") is True

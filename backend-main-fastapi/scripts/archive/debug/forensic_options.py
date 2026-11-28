@@ -44,7 +44,7 @@ def locate(doc_text: str, content: str, window: int = 400):
             continue
         i = doc_text.find(key)
         if i >= 0:
-            return i, doc_text[i: i + window]
+            return i, doc_text[i : i + window]
     return None, ""
 
 
@@ -59,8 +59,7 @@ def main() -> int:
 
     for qid in SAMPLES:
         r = db.execute(
-            "SELECT id, content, options, answer, source FROM quiz_questions"
-            " WHERE id=?",
+            "SELECT id, content, options, answer, source FROM quiz_questions WHERE id=?",
             (qid,),
         ).fetchone()
         src_name = (r["source"] or "").split(":", 1)[-1]
@@ -82,13 +81,15 @@ def main() -> int:
             continue
         doc_text = d["content"] or ""
         pos, seg = locate(doc_text, r["content"])
-        print(f"  源文档: doc{d['id']}  定位={'成功 @'+str(pos) if pos is not None else '失败'}")
+        print(f"  源文档: doc{d['id']}  定位={'成功 @' + str(pos) if pos is not None else '失败'}")
         if pos is None:
             print("  [源文档未匹配到该题，无法取证]")
             continue
 
         n_opt_src = option_label_count(seg)
-        print(f"\n  【Q1】原始文档里选项文字在不在？ -> {'在' if n_opt_src >= 2 else '不在'}（片段内选项标签 {n_opt_src} 个）")
+        print(
+            f"\n  【Q1】原始文档里选项文字在不在？ -> {'在' if n_opt_src >= 2 else '不在'}（片段内选项标签 {n_opt_src} 个）"
+        )
         print(f"  源片段: {seg[:230]!r}")
 
         # —— 模拟 extract_questions 的三个阶段 ——
@@ -105,9 +106,11 @@ def main() -> int:
 
         # 阶段 B：抽选项（旧逻辑 vs 新逻辑）
         om = list(qb._OPTION_RE.finditer(seg))
-        print(f"    阶段B 旧逻辑 _OPTION_RE 命中 {len(om)} 个标签；"
-              f"旧条件 `sec_type in (选择,多选,判断)` = {sec in ('选择', '多选', '判断')}"
-              f" → {'拆分' if om and sec in ('选择', '多选', '判断') else '不拆分（选项并入题干）'}")
+        print(
+            f"    阶段B 旧逻辑 _OPTION_RE 命中 {len(om)} 个标签；"
+            f"旧条件 `sec_type in (选择,多选,判断)` = {sec in ('选择', '多选', '判断')}"
+            f" → {'拆分' if om and sec in ('选择', '多选', '判断') else '不拆分（选项并入题干）'}"
+        )
 
         stem_new, opts_new = E.split_stem_and_options(seg, sec)
         print(f"    阶段B 新逻辑 split_stem_and_options -> 选项 {len(opts_new)} 个")
@@ -120,8 +123,7 @@ def main() -> int:
         if opts_new:
             from services.quiz_content_gate import admit
 
-            ok, why = admit(stem_new, options=opts_new, answer=r["answer"],
-                            source=src_name, section_type=sec)
+            ok, why = admit(stem_new, options=opts_new, answer=r["answer"], source=src_name, section_type=sec)
             print(f"    阶段C 闸门 admit -> {ok} ({why})")
 
         print("\n  【Q2】结论：", end="")

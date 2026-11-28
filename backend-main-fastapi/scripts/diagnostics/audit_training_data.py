@@ -5,6 +5,7 @@
 最可能的原因是样本把大段原文塞进 user 消息，模型只学会"续写原文"。
 本脚本量化确认这一点，并给出清洗依据。
 """
+
 import json
 import os
 import re
@@ -34,7 +35,7 @@ def copy_ratio(answer, question, n=12):
     q = re.sub(r"\s+", "", question or "")
     if len(a) < n or not q:
         return 0.0
-    grams = [a[i:i + n] for i in range(len(a) - n + 1)]
+    grams = [a[i : i + n] for i in range(len(a) - n + 1)]
     return sum(1 for g in grams if g in q) / len(grams) if grams else 0.0
 
 
@@ -74,19 +75,21 @@ def main():
                 print(f"  {name}: 无数据")
                 return
             n = len(xs)
-            print(f"  {name:<22} 均值 {sum(xs)/n:>8.0f}  中位 {xs[n//2]:>8.0f}  "
-                  f"p90 {xs[int(n*0.9)]:>8.0f}  最大 {xs[-1]:>8.0f}")
+            print(
+                f"  {name:<22} 均值 {sum(xs) / n:>8.0f}  中位 {xs[n // 2]:>8.0f}  "
+                f"p90 {xs[int(n * 0.9)]:>8.0f}  最大 {xs[-1]:>8.0f}"
+            )
 
         stat("user 消息长度", q_lens)
         stat("assistant 长度", a_lens)
-        print(f"  {'答案照抄题干比例':<22} 均值 {sum(ratios)/max(len(ratios),1):.3f}")
+        print(f"  {'答案照抄题干比例':<22} 均值 {sum(ratios) / max(len(ratios), 1):.3f}")
         print()
-        print(f"  ⚠️ 题干塞大段原文(>800字)的样本: {with_exam_dump}  "
-              f"({with_exam_dump/max(len(data),1)*100:.1f}%)")
-        print(f"  ⚠️ 纯英文题干样本:            {pure_english}  "
-              f"({pure_english/max(len(data),1)*100:.1f}%)")
-        print(f"  ⚠️ assistant 短于 30 字样本:  {assistant_too_short}  "
-              f"({assistant_too_short/max(len(data),1)*100:.1f}%)")
+        print(f"  ⚠️ 题干塞大段原文(>800字)的样本: {with_exam_dump}  ({with_exam_dump / max(len(data), 1) * 100:.1f}%)")
+        print(f"  ⚠️ 纯英文题干样本:            {pure_english}  ({pure_english / max(len(data), 1) * 100:.1f}%)")
+        print(
+            f"  ⚠️ assistant 短于 30 字样本:  {assistant_too_short}  "
+            f"({assistant_too_short / max(len(data), 1) * 100:.1f}%)"
+        )
 
         # 照抄率分布
         buckets = Counter()
@@ -102,10 +105,10 @@ def main():
         print("\n  答案与题干重合度分布:")
         for k in (">0.8 纯抄", "0.5-0.8 高度雷同", "0.2-0.5 部分重合", "<0.2 正常"):
             if buckets[k]:
-                print(f"     {k:<18} {buckets[k]:>5}  ({buckets[k]/max(len(data),1)*100:.1f}%)")
+                print(f"     {k:<18} {buckets[k]:>5}  ({buckets[k] / max(len(data), 1) * 100:.1f}%)")
 
         # 样例
-        worst = sorted(zip(ratios, data), key=lambda x: -x[0])[:2]
+        worst = sorted(zip(ratios, data, strict=False), key=lambda x: -x[0])[:2]
         print("\n  照抄最严重的样本（user 截断 150 字）:")
         for r, obj in worst:
             msgs = obj.get("messages") or []

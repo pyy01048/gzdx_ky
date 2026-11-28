@@ -22,6 +22,7 @@
     python scripts/diagnose_junk_questions.py            # 出报告
     python scripts/diagnose_junk_questions.py --sample 40
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,9 +51,7 @@ _VALID_FILL = re.compile(r"[（(]\s*[0-9A-Fa-f．.\s]+[）)]\s*\d{1,2}\s*[=＝]\
 #: 明显是题干的有效标点
 _QUESTION_MARK = ("？", "?", "（ ）", "()", "＿＿", "____")
 #: 书页小节标题 / 答案页片段（"3 习题类型与解题方法…"、"4 习题解答23"、"3例题精解15…"）
-_SECTION_HEADER = re.compile(
-    r"^\d{1,3}\s*(习题类型|习题解答|例题精解|习题|例题|本节小结|小结|思考题|本章小结)"
-)
+_SECTION_HEADER = re.compile(r"^\d{1,3}\s*(习题类型|习题解答|例题精解|习题|例题|本节小结|小结|思考题|本章小结)")
 
 
 def _has_cjk(s: str) -> bool:
@@ -61,11 +60,7 @@ def _has_cjk(s: str) -> bool:
 
 def _unbalanced(s: str) -> bool:
     s = s or ""
-    return (
-        s.count("（") != s.count("）")
-        or s.count("(") != s.count(")")
-        or s.count("【") != s.count("】")
-    )
+    return s.count("（") != s.count("）") or s.count("(") != s.count(")") or s.count("【") != s.count("】")
 
 
 def classify_candidate(row: dict) -> tuple[str, str] | None:
@@ -119,12 +114,9 @@ def is_control_char_case(row: dict) -> bool:
 
 
 def _load_rows(cur: sqlite3.Cursor) -> list[dict]:
-    rows = cur.execute(
-        "SELECT id, subject, content, answer, question_type, chapter FROM quiz_questions"
-    ).fetchall()
+    rows = cur.execute("SELECT id, subject, content, answer, question_type, chapter FROM quiz_questions").fetchall()
     return [
-        {"id": r[0], "subject": r[1], "content": r[2] or "", "answer": r[3] or "",
-         "qtype": r[4], "chapter": r[5]}
+        {"id": r[0], "subject": r[1], "content": r[2] or "", "answer": r[3] or "", "qtype": r[4], "chapter": r[5]}
         for r in rows
     ]
 
@@ -188,28 +180,47 @@ def main() -> int:
 
 
 def _write_outputs(rows, high, medium, ctrl_rows, total, no_ch_all, no_ch_high, sample) -> None:
-    out_json = os.path.join(REPO_ROOT, "tools", "datasource",
-                            "junk_questions_candidates.json")
+    out_json = os.path.join(REPO_ROOT, "tools", "datasource", "junk_questions_candidates.json")
     os.makedirs(os.path.dirname(out_json), exist_ok=True)
     with open(out_json, "w", encoding="utf-8") as f:
-        json.dump({
-            "total_questions": total,
-            "high_count": len(high),
-            "medium_count": len(medium),
-            "control_char_count": len(ctrl_rows),
-            "high_by_subject": dict(Counter(r["subject"] for r, _ in high)),
-            "medium_by_subject": dict(Counter(r["subject"] for r, _ in medium)),
-            "high_by_code": dict(Counter(c for _, c in high)),
-            "medium_by_code": dict(Counter(c for _, c in medium)),
-            "high": [{"id": r["id"], "subject": r["subject"], "code": c,
-                      "content": r["content"], "answer": r["answer"],
-                      "chapter": r["chapter"]} for r, c in high],
-            "medium": [{"id": r["id"], "subject": r["subject"], "code": c,
-                        "content": r["content"], "answer": r["answer"],
-                        "chapter": r["chapter"]} for r, c in medium],
-            "control_char": [{"id": r["id"], "subject": r["subject"],
-                              "content": r["content"]} for r in ctrl_rows],
-        }, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "total_questions": total,
+                "high_count": len(high),
+                "medium_count": len(medium),
+                "control_char_count": len(ctrl_rows),
+                "high_by_subject": dict(Counter(r["subject"] for r, _ in high)),
+                "medium_by_subject": dict(Counter(r["subject"] for r, _ in medium)),
+                "high_by_code": dict(Counter(c for _, c in high)),
+                "medium_by_code": dict(Counter(c for _, c in medium)),
+                "high": [
+                    {
+                        "id": r["id"],
+                        "subject": r["subject"],
+                        "code": c,
+                        "content": r["content"],
+                        "answer": r["answer"],
+                        "chapter": r["chapter"],
+                    }
+                    for r, c in high
+                ],
+                "medium": [
+                    {
+                        "id": r["id"],
+                        "subject": r["subject"],
+                        "code": c,
+                        "content": r["content"],
+                        "answer": r["answer"],
+                        "chapter": r["chapter"],
+                    }
+                    for r, c in medium
+                ],
+                "control_char": [{"id": r["id"], "subject": r["subject"], "content": r["content"]} for r in ctrl_rows],
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     L: list[str] = []
     a = L.append
@@ -298,14 +309,12 @@ def _write_outputs(rows, high, medium, ctrl_rows, total, no_ch_all, no_ch_high, 
     a("## 8. 执行情况（M1-1f，已落实）")
     a("")
     a("- 脚本 `scripts/mark_junk_questions.py` 已把 **high 档 319 条**标记 `is_junk=1`")
-    a("  （幂等新增列 + sqlite backup + dry-run + 审计 "
-      "`tools/datasource/junk_mark_audit.json`）。")
+    a("  （幂等新增列 + sqlite backup + dry-run + 审计 `tools/datasource/junk_mark_audit.json`）。")
     a("- medium 190 条与控制字符 63 条**均未标记**（按建议）。")
     a("- 刷题端点 `GET /api/quiz/questions` 默认排除 `is_junk=1`，新增 `include_junk=true` 可查看。")
     a("- 实测 total 对比：全库 9171 → **8852**（排除 319）；模电 5008 → 4863；数电 3608 → 3479。")
     a("")
-    with open(os.path.join(REPO_ROOT, "docx", "_analysis",
-                           "junk-questions-report.md"), "w", encoding="utf-8") as f:
+    with open(os.path.join(REPO_ROOT, "docx", "_analysis", "junk-questions-report.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L))
 
 

@@ -46,14 +46,10 @@ def snapshot(conn: sqlite3.Connection) -> Dict[str, Any]:
     total = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
     sum_read = conn.execute(f"SELECT COALESCE(SUM(is_read),0) FROM {TABLE}").fetchone()[0]
     sum_star = conn.execute(f"SELECT COALESCE(SUM(is_starred),0) FROM {TABLE}").fetchone()[0]
-    unread = conn.execute(
-        f"SELECT COUNT(*) FROM {TABLE} WHERE COALESCE(is_read,0)=0"
-    ).fetchone()[0]
+    unread = conn.execute(f"SELECT COUNT(*) FROM {TABLE} WHERE COALESCE(is_read,0)=0").fetchone()[0]
     by_school = {
         r[0]: r[1]
-        for r in conn.execute(
-            f"SELECT school_name, COUNT(*) FROM {TABLE} GROUP BY 1 ORDER BY 2 DESC"
-        ).fetchall()
+        for r in conn.execute(f"SELECT school_name, COUNT(*) FROM {TABLE} GROUP BY 1 ORDER BY 2 DESC").fetchall()
     }
     # 剩余重复组数（严格键）
     dup_groups = conn.execute(
@@ -97,9 +93,7 @@ def print_snapshot(label: str, snap: Dict[str, Any]) -> None:
     print()
 
 
-def migrate_user_state(
-    conn: sqlite3.Connection, keep_id: int, drop_rows: List[sqlite3.Row]
-) -> int:
+def migrate_user_state(conn: sqlite3.Connection, keep_id: int, drop_rows: List[sqlite3.Row]) -> int:
     """把被删记录的用户交互状态迁移到保留记录.
 
     只有当保留记录尚未标记时, 才把被删记录的已读/星标状态搬过来, 避免用
@@ -164,26 +158,25 @@ def main() -> int:
     # ---- 预演：找出标题相同但 URL 不同的组（这些要保留）----
     title_groups: Dict[tuple, List[sqlite3.Row]] = defaultdict(list)
     for r in conn.execute(
-        f"SELECT id, school_id, school_name, title, url, publish_date, fetched_at "
-        f"FROM {TABLE} ORDER BY id"
+        f"SELECT id, school_id, school_name, title, url, publish_date, fetched_at FROM {TABLE} ORDER BY id"
     ).fetchall():
         title_groups[(r["school_id"], normalize_notice_title(r["title"]))].append(r)
 
-    keep_multi_url = {
-        k: v for k, v in title_groups.items() if len({normalize_notice_url(x["url"]) for x in v}) > 1
-    }
+    keep_multi_url = {k: v for k, v in title_groups.items() if len({normalize_notice_url(x["url"]) for x in v}) > 1}
     print("=" * 96)
     print("保留策略说明：以下标题相同但 URL 不同的组，按 URL 拆分后各自保留 1 条")
     print("（不同栏目/不同时间的真通知，绝不合并）")
     print("=" * 96)
-    for key, members in sorted(keep_multi_url.items(), key=lambda kv: len(kv[1]), reverse=True):
+    for _key, members in sorted(keep_multi_url.items(), key=lambda kv: len(kv[1]), reverse=True):
         by_url: Dict[str, List[sqlite3.Row]] = defaultdict(list)
         for m in members:
             by_url[normalize_notice_url(m["url"])].append(m)
         print(f"\n  {members[0]['school_name']} | {members[0]['title']}")
         for u, ms in by_url.items():
-            print(f"      URL {u[:78]:<78} x{len(ms):<3} keep_id={ms[0]['id']} "
-                  f"dates={sorted({str(x['publish_date'])[:10] for x in ms})}")
+            print(
+                f"      URL {u[:78]:<78} x{len(ms):<3} keep_id={ms[0]['id']} "
+                f"dates={sorted({str(x['publish_date'])[:10] for x in ms})}"
+            )
     print()
 
     plan = dedupe_table(conn)
@@ -196,7 +189,7 @@ def main() -> int:
             f"SELECT school_name, title, url, publish_date FROM {TABLE} WHERE id=?",
             (g["keep_id"],),
         ).fetchone()
-        print(f"  [{len(g['drop_ids'])+1}条] {row['school_name']} | {row['title'][:52]}")
+        print(f"  [{len(g['drop_ids']) + 1}条] {row['school_name']} | {row['title'][:52]}")
         print(f"      url={str(row['url'])[:76]}")
         print(f"      keep_id={g['keep_id']}  drop_ids={g['drop_ids']}")
     if args.show and len(groups) > args.show:
@@ -207,13 +200,9 @@ def main() -> int:
     drop_all = [i for g in groups for i in g["drop_ids"]]
     same_url_title_diff = 0
     for g in groups:
-        keep = conn.execute(
-            f"SELECT title FROM {TABLE} WHERE id=?", (g["keep_id"],)
-        ).fetchone()
+        keep = conn.execute(f"SELECT title FROM {TABLE} WHERE id=?", (g["keep_id"],)).fetchone()
         for did in g["drop_ids"]:
-            d = conn.execute(
-                f"SELECT title FROM {TABLE} WHERE id=?", (did,)
-            ).fetchone()
+            d = conn.execute(f"SELECT title FROM {TABLE} WHERE id=?", (did,)).fetchone()
             if normalize_notice_title(keep["title"]) != normalize_notice_title(d["title"]):
                 same_url_title_diff += 1
     print(f"  冗余记录中归一化标题与保留记录不同的: {same_url_title_diff} 条")
@@ -235,14 +224,11 @@ def main() -> int:
         for g in groups:
             placeholders = ",".join("?" * len(g["drop_ids"]))
             drop_rows = conn.execute(
-                f"SELECT id, is_read, is_starred, read_at, starred_at "
-                f"FROM {TABLE} WHERE id IN ({placeholders})",
+                f"SELECT id, is_read, is_starred, read_at, starred_at FROM {TABLE} WHERE id IN ({placeholders})",
                 g["drop_ids"],
             ).fetchall()
             migrated_total += migrate_user_state(conn, g["keep_id"], drop_rows)
-            conn.execute(
-                f"DELETE FROM {TABLE} WHERE id IN ({placeholders})", g["drop_ids"]
-            )
+            conn.execute(f"DELETE FROM {TABLE} WHERE id IN ({placeholders})", g["drop_ids"])
         conn.commit()
     except Exception as exc:  # noqa: BLE001
         conn.rollback()
@@ -258,7 +244,7 @@ def main() -> int:
     print("=" * 96)
     print("验收对比")
     print("=" * 96)
-    print(f"  总数      : {before['total']} -> {after['total']}  (删除 {before['total']-after['total']})")
+    print(f"  总数      : {before['total']} -> {after['total']}  (删除 {before['total'] - after['total']})")
     print(f"  未读数    : {before['unread']} -> {after['unread']}")
     print(f"  sum(is_read)    : {before['sum_read']} -> {after['sum_read']}")
     print(f"  sum(is_starred) : {before['sum_star']} -> {after['sum_star']}")

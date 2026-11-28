@@ -17,6 +17,7 @@
     python scripts/backfill_quiz_meta.py           # 预览（dry-run，不写库）
     python scripts/backfill_quiz_meta.py --apply    # 实际写库（先备份）
 """
+
 from __future__ import annotations
 
 import os
@@ -127,7 +128,7 @@ def main() -> int:
     for name, cnt in top:
         yr = ""
         # 找该套卷一个可解析年份做展示
-        for p, y, q, i in final:
+        for p, y, q, _i in final:
             if p == name and y:
                 yr = f" [{y}]"
                 break

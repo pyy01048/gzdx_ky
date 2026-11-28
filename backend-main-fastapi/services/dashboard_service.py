@@ -9,7 +9,17 @@ Dashboard 业务逻辑服务层
 import datetime
 import re
 from collections import Counter
-from typing import Optional
+from typing import Any, Optional
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+from utils.timeutil import (
+    KAOYAN_TZ_NAME,
+    day_bucket_expr,
+    iso_utc_z,
+    local_today,
+    utcnow,
+)
 
 from models import (
     ErrorRecord,
@@ -21,16 +31,6 @@ from models import (
     Task,
     Word,
 )
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-from utils.timeutil import (
-    KAOYAN_TZ_NAME,
-    day_bucket_expr,
-    iso_utc_z,
-    local_today,
-    utcnow,
-)
-
 from services import daily_load, error_linker, study_calendar, study_limits
 
 #: 趋势折线回看天数（D-09 固定 14 天）
@@ -119,7 +119,7 @@ class DashboardService:
         user_id: Optional[int] = None,
         *,
         subjects: Optional[list] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """某一北京自然日的**累计到期量**（含此前欠下的复习债），切点为该日 24:00。
 
         实现已下沉到 :func:`services.daily_load.due_counts`（W1）—— 因为
@@ -137,7 +137,7 @@ class DashboardService:
         db: Session,
         exam_date: Optional[datetime.date] = None,
         user_id: Optional[int] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """获取考研倒计时。
 
         初试日期与届数**一律走 services.exam_calendar**（唯一权威出口），
@@ -191,7 +191,7 @@ class DashboardService:
     @staticmethod
     def _today_task_rollup(
         day: study_calendar.DayActivity, due: Optional[dict], planned: Optional[dict] = None
-    ) -> list:
+    ) -> list[dict[str, Any]]:
         """今日任务清单（D-03）：按模块给出「现在到期多少 / 今日排多少 / 今天已做多少」。
 
         刻意**不给 percent**：``due`` 是此刻仍在队列里的到期量（做过即出队），
@@ -246,7 +246,7 @@ class DashboardService:
         user_id: Optional[int] = None,
         subjects: Optional[list] = None,
         plan: Optional[dict] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """今日任务：Task 行明细 + 按模块的到期汇总（D-03）。
 
         ``day`` / ``due`` 是"调用方已有这两份数据时别再查一遍"的复用入口
@@ -315,7 +315,7 @@ class DashboardService:
         }
 
     @staticmethod
-    def get_stats(db: Session, user_id: Optional[int] = None) -> dict:
+    def get_stats(db: Session, user_id: Optional[int] = None) -> dict[str, Any]:
         """学习统计（使用 SQL 聚合优化，避免 N+1）。B4：传入 ``user_id`` 时只看本人。"""
         today = local_today()
         week_ago = today - datetime.timedelta(days=6)
@@ -399,7 +399,7 @@ class DashboardService:
         }
 
     @staticmethod
-    def get_weakness(db: Session, user_id: Optional[int] = None) -> dict:
+    def get_weakness(db: Session, user_id: Optional[int] = None) -> dict[str, Any]:
         """分析错题数据，生成薄弱项预警。
 
         性能优化（2026-10）：原实现 ``query(ErrorRecord).filter(...).all()``
@@ -472,7 +472,7 @@ class DashboardService:
         }
 
     @staticmethod
-    def get_overview(db: Session, user_id: Optional[int] = None) -> dict:
+    def get_overview(db: Session, user_id: Optional[int] = None) -> dict[str, Any]:
         """库存总览（**内容规模**，不是任务量）。
 
         W1 整改：这里原本全是 ``db.query(Task).count()`` 式的无归属计数 ——
@@ -514,7 +514,7 @@ class DashboardService:
         *,
         plan: Optional[dict] = None,
         subjects: Optional[list] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """今日到期复习队列（卡片 / 任务 / 错题 / 单词），口径完全沿用 review_scheduler。
 
         P1（2026-11-22 学生视角实测）：此前队列漏掉单词 —— 中枢「现在可做 N 项」
@@ -529,12 +529,13 @@ class DashboardService:
         """
         from services.review_scheduler import ReviewScheduler
 
+        today = local_today()
         cards = ReviewScheduler.get_due_flashcards(db, limit, user_id=user_id)
         tasks = ReviewScheduler.get_due_tasks(db, limit, user_id=user_id)
         errors = ReviewScheduler.get_due_errors(db, limit, user_id=user_id)
         word_q = db.query(Word).filter(
             Word.due_date != None,  # noqa: E711
-            Word.due_date <= local_today(),
+            Word.due_date <= today,
             Word.status.in_(["learning", "reviewing"]),
         )
         if user_id is not None:
@@ -594,7 +595,7 @@ class DashboardService:
     # 首屏聚合（D-01…D-11）
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _goal_block(db: Session, goal: Optional[Goal]) -> dict:
+    def _goal_block(db: Session, goal: Optional[Goal]) -> dict[str, Any]:
         """目标卡（D-02）：目标只描述"要考什么、每天要学多少"，一个字段都不编。
 
         ``daily_*`` 四列可空，NULL = 未设目标；这里**不回填默认值**，
@@ -636,7 +637,7 @@ class DashboardService:
     @staticmethod
     def _recent_score_lines(
         db: Session, university: Optional[str], major: Optional[str] = None, limit: int = 3
-    ) -> list:
+    ) -> list[dict[str, Any]]:
         """目标院校近年复试线：一年一根柱。查不到就返回空数组，不编数字。
 
         同一院校同一年会命中多个专业/方向的分数线，直接按年份排序取行会让
@@ -687,7 +688,7 @@ class DashboardService:
         goal: Optional[Goal],
         day: study_calendar.DayActivity,
         plan: Optional[dict] = None,
-    ) -> tuple:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """4~6 个学习模块进度环（D-06）+ 被剔出的工具模块说明。
 
         - ``percent`` 在**未设目标时为 None**（不是 0）：0% 意味着"今天一点没学"，
@@ -749,7 +750,7 @@ class DashboardService:
         today: Optional[datetime.date] = None,
         user_id: Optional[int] = None,
         subjects: Optional[list] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """未来负荷（D-11，Anki Future Due 口径）：**累计**到期量，含今天之前欠下的。
 
         到期口径的唯一实现是 :meth:`_due_counts`，这里只负责把切点推成三档。
@@ -771,7 +772,7 @@ class DashboardService:
         return out
 
     @staticmethod
-    def get_summary(db: Session, user_id: Optional[int] = None, heatmap_mode: str = "compact") -> dict:
+    def get_summary(db: Session, user_id: Optional[int] = None, heatmap_mode: str = "compact") -> dict[str, Any]:
         """仪表盘首屏**唯一**聚合出口（01-仪表盘 §2.6）。
 
         契约（snake_case，与 #19 接口规范一致；标准文档里的 camelCase 骨架只做语义参考）：
@@ -803,7 +804,7 @@ class DashboardService:
         t = ledger.get(today.isoformat()) or study_calendar.DayActivity(date=today)
         y = ledger.get(yesterday.isoformat()) or study_calendar.DayActivity(date=yesterday)
 
-        def _kpi(d: study_calendar.DayActivity) -> dict:
+        def _kpi(d: study_calendar.DayActivity) -> dict[str, Any]:
             return {
                 "date": d.date.isoformat(),
                 "focus_minutes": d.focus_minutes,

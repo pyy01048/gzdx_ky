@@ -26,6 +26,7 @@
     # 同步封装（内部 asyncio.run）
     fields = ex.extract_notice("清华大学2027年硕士研究生招生考试报名公告", "正文……")
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -96,7 +97,7 @@ def _parse_json_loose(text: str) -> Optional[Dict[str, Any]]:
         e = text.rfind("}")
         if s == -1 or e == -1 or e <= s:
             return None
-        text = text[s:e + 1]
+        text = text[s : e + 1]
     try:
         obj = json.loads(text)
         return obj if isinstance(obj, dict) else None
@@ -116,7 +117,9 @@ def _regex_fallback(title: str, content: str) -> Dict[str, Any]:
             pub = f"{y:04d}-{mo:02d}-{d:02d}"
     # 截止日：后缀型截止词
     deadline = None
-    dm2 = re.search(r"(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})\s*日?\s*(?:前|截止|之前|以内)", (title or "") + (content or ""))
+    dm2 = re.search(
+        r"(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})\s*日?\s*(?:前|截止|之前|以内)", (title or "") + (content or "")
+    )
     if dm2:
         y, mo, d = int(dm2.group(1)), int(dm2.group(2)), int(dm2.group(3))
         if 1 <= mo <= 12 and 1 <= d <= 31:
@@ -134,8 +137,13 @@ def _regex_fallback(title: str, content: str) -> Dict[str, Any]:
 
 def _kind_from_type(nt: str) -> str:
     m = {
-        "简章": "目录", "复试": "复试", "调剂": "调剂", "录取": "录取",
-        "目录": "目录", "大纲": "大纲", "分数线": "分数线",
+        "简章": "目录",
+        "复试": "复试",
+        "调剂": "调剂",
+        "录取": "录取",
+        "目录": "目录",
+        "大纲": "大纲",
+        "分数线": "分数线",
     }
     return m.get(nt, "其他")
 
@@ -162,7 +170,6 @@ class LLMNoticeExtractor:
 
     async def _extract_async(self, title: str, content: str) -> Dict[str, Any]:
         from models import AIProvider
-
         from services.ai_service import AIService
 
         # 1. 优先在线强模型（doubao/deepseek），仅当配置了真实密钥才走 LLM 完整抽取。
@@ -170,7 +177,7 @@ class LLMNoticeExtractor:
             self.db.query(AIProvider)
             .filter(
                 AIProvider.provider_type.in_(["doubao", "deepseek"]),
-                AIProvider.is_enabled == True,
+                AIProvider.is_enabled,
                 AIProvider.api_key.isnot(None),
                 AIProvider.api_key != "",
             )
@@ -184,9 +191,14 @@ class LLMNoticeExtractor:
         if online is not None:
             try:
                 result = await svc.chat(
-                    [{"role": "user", "content": _EXTRACT_PROMPT.format(
-                        title=self._truncate(title), content=self._truncate(content)
-                    )}],
+                    [
+                        {
+                            "role": "user",
+                            "content": _EXTRACT_PROMPT.format(
+                                title=self._truncate(title), content=self._truncate(content)
+                            ),
+                        }
+                    ],
                     provider_id=online.id,
                     use_routing=False,
                 )
@@ -202,9 +214,14 @@ class LLMNoticeExtractor:
             local = self._pick_local_provider(svc)
             if local is not None:
                 result = await svc.chat(
-                    [{"role": "user", "content": _LOCAL_CLASSIFY_PROMPT.format(
-                        title=self._truncate(title), content=self._truncate(content)
-                    )}],
+                    [
+                        {
+                            "role": "user",
+                            "content": _LOCAL_CLASSIFY_PROMPT.format(
+                                title=self._truncate(title), content=self._truncate(content)
+                            ),
+                        }
+                    ],
                     provider_id=local.id if getattr(local, "id", None) else None,
                     use_routing=False,
                 )
@@ -221,9 +238,7 @@ class LLMNoticeExtractor:
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
 
         # 3) 最终兜底：纯正则
         return _regex_fallback(title, content)
@@ -239,9 +254,10 @@ class LLMNoticeExtractor:
 
         providers = (
             svc.db.query(AIProvider)
-            .filter(AIProvider.provider_type.in_(["ollama", "local"]), AIProvider.is_enabled == True)
+            .filter(AIProvider.provider_type.in_(["ollama", "local"]), AIProvider.is_enabled)
             .all()
         )
+
         # 优先级：名字含 8b > 7b > 4b > 其他 > kaoyan
         def rank(p):
             m = (p.model_name or "").lower()
@@ -254,6 +270,7 @@ class LLMNoticeExtractor:
             if "kaoyan" in m or "1.5b" in m:
                 return 4
             return 3
+
         if not providers:
             return svc._get_local_provider()
         return sorted(providers, key=rank)[0]
@@ -287,7 +304,7 @@ class LLMNoticeExtractor:
         # 噪声：剩余部分含「是」且不含「否」
         tail = raw
         if m:
-            tail = raw[m.end():]
+            tail = raw[m.end() :]
         if ("是" in tail or "是" in " ".join(parts[1:])) and "否" not in tail and "否" not in raw:
             is_noise = True
         return nt, is_noise

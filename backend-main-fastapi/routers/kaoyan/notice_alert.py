@@ -7,6 +7,7 @@
 本模块所有写操作都 **不触碰** 已读字段；查询提醒时若发现库里已有 ``is_read``
 列会做「已读则降级为不阻塞」的软过滤（只读，不写）。
 """
+
 from __future__ import annotations
 
 import json
@@ -39,15 +40,16 @@ from services.kaoyan.notice_alert import (
     table_columns,
 )
 from sqlalchemy.orm import Session
-
-logger = logging.getLogger(__name__)
 from utils.response import MAX_PAGE_SIZE
 from utils.timeutil import naive_utc_iso
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/notice-alert", tags=["通知提醒"])
 
 
 def get_db():
+    """会话依赖（yield 生成器）。"""
     db = SessionLocal()
     try:
         yield db
@@ -60,6 +62,7 @@ def get_db():
 # --------------------------------------------------------------------------- #
 class SubscriptionCreate(BaseModel):
     """新增订阅请求体。``scope`` 决定其余字段的语义。"""
+
     scope: str = Field(..., description="关注类型：school | major | notice_type | keyword")
     school_id: Optional[int] = Field(None, description="scope=school 时必填：院校 ID")
     school_name: Optional[str] = Field(None, description="scope=school 时可用院校名替代 ID")
@@ -72,6 +75,7 @@ class SubscriptionCreate(BaseModel):
 
 class ClassifyRequest(BaseModel):
     """分级预览请求（不落库，供前端实时预览 / 手工导入时打分）。"""
+
     title: str = Field(..., min_length=1, description="通知标题")
     notice_type: Optional[str] = Field(None, description="通知类型")
     body: Optional[str] = Field(None, description="正文（可选，提高日期抽取召回）")
@@ -81,6 +85,7 @@ class ClassifyRequest(BaseModel):
 
 class ImportNotice(BaseModel):
     """手动导入一条通知（数据来源：用户本地解析 PDF / 手工粘贴，非爬虫）。"""
+
     title: str = Field(..., min_length=1)
     school_id: Optional[int] = None
     school_name: Optional[str] = None
@@ -89,15 +94,14 @@ class ImportNotice(BaseModel):
     url: Optional[str] = None
     source: str = Field("manual", description="manual / pdf_import / csv_import…")
     body: Optional[str] = Field(None, description="正文（用于日期抽取，可选）")
-    importance_level: Optional[str] = Field(
-        None, description="手工指定等级；留空则自动分级（允许用户纠正误判）")
+    importance_level: Optional[str] = Field(None, description="手工指定等级；留空则自动分级（允许用户纠正误判）")
 
 
 # --------------------------------------------------------------------------- #
 # 0. 规则自省（前端可据此渲染「分级说明」）
 # --------------------------------------------------------------------------- #
 @router.get("/rules")
-def get_rules(db: Session = Depends(get_db)):
+def get_rules(db: Session = Depends(get_db)) -> dict:
     """返回当前生效的分级规则 + 规则文件路径。
 
     用户想加关键词时，前端可展示本接口内容并引导编辑 YAML。
@@ -119,7 +123,7 @@ def get_rules(db: Session = Depends(get_db)):
 # 1. 分级 / 日期抽取
 # --------------------------------------------------------------------------- #
 @router.post("/classify")
-def classify(req: ClassifyRequest, db: Session = Depends(get_db)):
+def classify(req: ClassifyRequest, db: Session = Depends(get_db)) -> dict:
     """分级预览（默认不落库）。``save=true`` 时把结果写回已存在的同标题通知。"""
     ensure_alert_schema(db)
     rules = load_rules()
@@ -149,7 +153,7 @@ def classify(req: ClassifyRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/notices/{notice_id}")
-def notice_detail(notice_id: int, db: Session = Depends(get_db)):
+def notice_detail(notice_id: int, db: Session = Depends(get_db)) -> dict:
     """单条通知的分级 + 抽取出的全部事件日期（供「为什么提醒我」解释）。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
@@ -163,12 +167,20 @@ def notice_detail(notice_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, f"通知不存在: {notice_id}")
     dates = json.loads(row[12]) if row[12] else []
     return {
-        "id": row[0], "school_id": row[1], "school_name": row[2], "title": row[3],
-        "notice_type": row[4], "publish_date": row[5], "url": row[6], "source": row[7],
+        "id": row[0],
+        "school_id": row[1],
+        "school_name": row[2],
+        "title": row[3],
+        "notice_type": row[4],
+        "publish_date": row[5],
+        "url": row[6],
+        "source": row[7],
         "importance_level": row[8] or LEVEL_NORMAL,
         "importance_level_label": LEVEL_LABEL_CN.get(row[8] or LEVEL_NORMAL, "普通"),
-        "importance_score": row[9], "importance_reason": row[10],
-        "deadline_date": row[11], "events": dates,
+        "importance_score": row[9],
+        "importance_reason": row[10],
+        "deadline_date": row[11],
+        "events": dates,
     }
 
 
@@ -176,7 +188,7 @@ def notice_detail(notice_id: int, db: Session = Depends(get_db)):
 def backfill(
     limit: int = Query(0, ge=0, le=100000, description="0 = 全量；调试时可限 100"),
     db: Session = Depends(get_db),
-):
+) -> dict:
     """全量回填所有通知的等级与关键日期（幂等，可重复执行）。"""
     return backfill_all(db, limit=limit)
 
@@ -201,7 +213,7 @@ def _validate_sub(payload: SubscriptionCreate) -> None:
 
 
 @router.post("/subscriptions", status_code=201)
-def create_subscription(payload: SubscriptionCreate, db: Session = Depends(get_db)):
+def create_subscription(payload: SubscriptionCreate, db: Session = Depends(get_db)) -> dict:
     """新增订阅。重复订阅自动幂等（返回已有记录而非报错）。"""
     ensure_alert_schema(db)
     _validate_sub(payload)
@@ -224,15 +236,24 @@ def create_subscription(payload: SubscriptionCreate, db: Session = Depends(get_d
         "INSERT INTO kaoyan_subscriptions (scope, school_id, school_name, major_name, "
         "notice_type, keyword, level_min, enabled, remark, created_at) "
         "VALUES (?,?,?,?,?,?,?,1,?,?)",
-        (payload.scope.strip().lower(), sid, sname, major, ntype, kw,
-         payload.level_min or "normal", payload.remark, now_iso),
+        (
+            payload.scope.strip().lower(),
+            sid,
+            sname,
+            major,
+            ntype,
+            kw,
+            payload.level_min or "normal",
+            payload.remark,
+            now_iso,
+        ),
     )
     db.commit()
     return {"id": cur.lastrowid, "created": True, "message": "订阅创建成功"}
 
 
 @router.get("/subscriptions")
-def list_subscriptions(db: Session = Depends(get_db)):
+def list_subscriptions(db: Session = Depends(get_db)) -> dict:
     """我的订阅列表（含每个订阅当前会命中多少条通知，便于用户自查是否设太宽）。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
@@ -243,17 +264,26 @@ def list_subscriptions(db: Session = Depends(get_db)):
     ).fetchall()
     items = []
     for r in rows:
-        items.append({
-            "id": r[0], "scope": r[1], "school_id": r[2], "school_name": r[3],
-            "major_name": r[4], "notice_type": r[5], "keyword": r[6],
-            "level_min": r[7], "enabled": bool(r[8]), "remark": r[9],
-            "created_at": r[10],
-        })
+        items.append(
+            {
+                "id": r[0],
+                "scope": r[1],
+                "school_id": r[2],
+                "school_name": r[3],
+                "major_name": r[4],
+                "notice_type": r[5],
+                "keyword": r[6],
+                "level_min": r[7],
+                "enabled": bool(r[8]),
+                "remark": r[9],
+                "created_at": r[10],
+            }
+        )
     return {"total": len(items), "items": items}
 
 
 @router.delete("/subscriptions/{sub_id}")
-def delete_subscription(sub_id: int, db: Session = Depends(get_db)):
+def delete_subscription(sub_id: int, db: Session = Depends(get_db)) -> dict:
     """删除订阅。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
@@ -269,7 +299,7 @@ def toggle_subscription(
     sub_id: int,
     enabled: bool = Query(..., description="true=启用 false=停用"),
     db: Session = Depends(get_db),
-):
+) -> dict:
     """启用/停用订阅（停用保留配置，不必删掉重建）。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
@@ -289,7 +319,7 @@ def subscription_feed(
     min_level: str = Query("normal", description="最低等级：normal | important | urgent"),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
-):
+) -> dict:
     """我的关注最近有什么新通知。
 
     只读：不依赖定时任务，用户随时打开就有结果（即使定时任务没跑过）。
@@ -299,17 +329,26 @@ def subscription_feed(
     if min_level not in LEVEL_ORDER:
         raise HTTPException(400, "min_level 必须是 normal | important | urgent")
     conn = raw_conn(db)
-    subs = [dict(zip(
-        ("id", "scope", "school_id", "school_name", "major_name", "notice_type",
-         "keyword", "level_min"),
-        r,
-    )) for r in conn.execute(
-        "SELECT id, scope, school_id, school_name, major_name, notice_type, keyword, level_min "
-        "FROM kaoyan_subscriptions WHERE enabled = TRUE"
-    ).fetchall()]
+    subs = [
+        dict(
+            zip(
+                ("id", "scope", "school_id", "school_name", "major_name", "notice_type", "keyword", "level_min"),
+                r,
+                strict=False,
+            )
+        )
+        for r in conn.execute(
+            "SELECT id, scope, school_id, school_name, major_name, notice_type, keyword, level_min "
+            "FROM kaoyan_subscriptions WHERE enabled = TRUE"
+        ).fetchall()
+    ]
     if not subs:
-        return {"total": 0, "days": days, "items": [],
-                "hint": "尚未创建订阅，请先 POST /api/notice-alert/subscriptions"}
+        return {
+            "total": 0,
+            "days": days,
+            "items": [],
+            "hint": "尚未创建订阅，请先 POST /api/notice-alert/subscriptions",
+        }
 
     since = (cn_today() - timedelta(days=days)).isoformat()
     rows = conn.execute(
@@ -322,20 +361,30 @@ def subscription_feed(
     floor = LEVEL_ORDER[min_level]
     items: List[Dict[str, Any]] = []
     for r in rows:
-        n = {"id": r[0], "school_id": r[1], "school_name": r[2], "title": r[3],
-             "notice_type": r[4], "publish_date": r[5], "url": r[6],
-             "importance_level": r[7] or LEVEL_NORMAL,
-             "importance_score": r[8], "deadline_date": r[9],
-             "events": json.loads(r[10]) if r[10] else []}
+        n = {
+            "id": r[0],
+            "school_id": r[1],
+            "school_name": r[2],
+            "title": r[3],
+            "notice_type": r[4],
+            "publish_date": r[5],
+            "url": r[6],
+            "importance_level": r[7] or LEVEL_NORMAL,
+            "importance_score": r[8],
+            "deadline_date": r[9],
+            "events": json.loads(r[10]) if r[10] else [],
+        }
         if LEVEL_ORDER.get(n["importance_level"], 1) < floor:
             continue
         hit = [s for s in subs if notice_matches_subscription(n, s)]
         if not hit:
             continue
         n["matched_subscriptions"] = [
-            {"id": s["id"], "scope": s["scope"],
-             "label": s.get("school_name") or s.get("major_name") or
-                      s.get("notice_type") or s.get("keyword")}
+            {
+                "id": s["id"],
+                "scope": s["scope"],
+                "label": s.get("school_name") or s.get("major_name") or s.get("notice_type") or s.get("keyword"),
+            }
             for s in hit
         ]
         n["importance_level_label"] = LEVEL_LABEL_CN.get(n["importance_level"], "普通")
@@ -351,11 +400,13 @@ def subscription_feed(
 @router.get("/alerts")
 def pending_alerts(
     include_acked: bool = Query(False, description="是否包含已确认过的提醒"),
-    kind: Optional[str] = Query(None, description="提醒类型过滤：deadline_soon | new_urgent | subscribed_new | new_important"),
+    kind: Optional[str] = Query(
+        None, description="提醒类型过滤：deadline_soon | new_urgent | subscribed_new | new_important"
+    ),
     days: int = Query(7, ge=0, le=90, description="只看最近 N 天生成的提醒，0=不限"),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
-):
+) -> dict:
     """待处理提醒（默认只返回未 ack 的），按紧急程度 + 截止天数排序。
 
     排序规则：``deadline_soon`` 优先（days_left 小的在前）→ 紧急 → 重要 → 其他。
@@ -384,19 +435,29 @@ def pending_alerts(
     ).fetchall()
     items = []
     for r in rows:
-        items.append({
-            "id": r[0], "notice_id": r[1], "alert_kind": r[2], "alert_date": r[3],
-            "title": r[4], "school_name": r[5], "notice_type": r[6],
-            "importance_level": r[7],
-            "importance_level_label": LEVEL_LABEL_CN.get(r[7] or LEVEL_NORMAL, "普通"),
-            "deadline_date": r[8], "days_left": r[9], "message": r[10],
-            "acked": bool(r[11]), "acked_at": r[12],
-        })
+        items.append(
+            {
+                "id": r[0],
+                "notice_id": r[1],
+                "alert_kind": r[2],
+                "alert_date": r[3],
+                "title": r[4],
+                "school_name": r[5],
+                "notice_type": r[6],
+                "importance_level": r[7],
+                "importance_level_label": LEVEL_LABEL_CN.get(r[7] or LEVEL_NORMAL, "普通"),
+                "deadline_date": r[8],
+                "days_left": r[9],
+                "message": r[10],
+                "acked": bool(r[11]),
+                "acked_at": r[12],
+            }
+        )
     return {"total": len(items), "unacked": sum(1 for i in items if not i["acked"]), "items": items}
 
 
 @router.post("/alerts/{alert_id}/ack")
-def ack_alert(alert_id: int, db: Session = Depends(get_db)):
+def ack_alert(alert_id: int, db: Session = Depends(get_db)) -> dict:
     """标记「这条提醒我知道了」，之后不再出现在待处理列表。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
@@ -414,7 +475,7 @@ def ack_alert(alert_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/alerts/ack-all")
-def ack_all_alerts(db: Session = Depends(get_db)):
+def ack_all_alerts(db: Session = Depends(get_db)) -> dict:
     """一键全部确认（今日提醒清零）。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
@@ -427,30 +488,43 @@ def ack_all_alerts(db: Session = Depends(get_db)):
 
 
 @router.get("/alerts/stats")
-def alert_stats(db: Session = Depends(get_db)):
+def alert_stats(db: Session = Depends(get_db)) -> dict:
     """提醒概览：未确认数、临期数、各等级分布。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
     unacked = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = FALSE")
-    soon = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = FALSE "
-                        "AND alert_kind = 'deadline_soon'")
-    overdue = scalar(conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = FALSE "
-                           "AND alert_kind = 'deadline_soon' AND IFNULL(days_left, 0) < 0")
-    by_level = dict(conn.execute(
-        "SELECT IFNULL(importance_level, 'normal'), COUNT(*) FROM kaoyan_alert_records "
-        "WHERE acked = FALSE GROUP BY 1").fetchall())
+    soon = scalar(
+        conn, "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = FALSE AND alert_kind = 'deadline_soon'"
+    )
+    overdue = scalar(
+        conn,
+        "SELECT COUNT(*) FROM kaoyan_alert_records WHERE acked = FALSE "
+        "AND alert_kind = 'deadline_soon' AND IFNULL(days_left, 0) < 0",
+    )
+    by_level = dict(
+        conn.execute(
+            "SELECT IFNULL(importance_level, 'normal'), COUNT(*) FROM kaoyan_alert_records "
+            "WHERE acked = FALSE GROUP BY 1"
+        ).fetchall()
+    )
     last_run = conn.execute(
         f"SELECT ran_at, {runs_trigger_column(conn)}, scanned, created_alerts, "
         "elapsed_ms FROM kaoyan_alert_runs "
-        "ORDER BY id DESC LIMIT 1").fetchone()
+        "ORDER BY id DESC LIMIT 1"
+    ).fetchone()
     return {
         "unacked": unacked,
         "deadline_soon": soon,
         "overdue": overdue,
         "by_level": by_level,
-        "last_run": None if not last_run else {
-            "ran_at": last_run[0], "trigger": last_run[1], "scanned": last_run[2],
-            "created_alerts": last_run[3], "elapsed_ms": last_run[4],
+        "last_run": None
+        if not last_run
+        else {
+            "ran_at": last_run[0],
+            "trigger": last_run[1],
+            "scanned": last_run[2],
+            "created_alerts": last_run[3],
+            "elapsed_ms": last_run[4],
         },
         "timezone": "Asia/Shanghai (UTC+8, 固定偏移，不依赖 tzdata)",
         "server_time": cn_now().isoformat(),
@@ -458,13 +532,13 @@ def alert_stats(db: Session = Depends(get_db)):
 
 
 @router.post("/scan")
-def trigger_scan(trigger: str = Query("manual", description="manual | api"), db: Session = Depends(get_db)):
+def trigger_scan(trigger: str = Query("manual", description="manual | api"), db: Session = Depends(get_db)) -> dict:
     """手动触发一次提醒扫描（与定时任务同一份逻辑，供前端「立即检查」按钮）。"""
     return scan_alerts(db, trigger=trigger)
 
 
 @router.get("/runs")
-def list_runs(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db)):
+def list_runs(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db)) -> dict:
     """扫描运行日志——用来验证定时任务是否真的在跑（防止 Windows 时区静默失败）。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
@@ -473,19 +547,29 @@ def list_runs(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db
         "skipped_dup, elapsed_ms, detail "
         f"FROM kaoyan_alert_runs ORDER BY id DESC LIMIT {int(limit)}"
     ).fetchall()
-    return {"total": len(rows), "items": [
-        {"id": r[0], "ran_at": r[1], "trigger": r[2], "scanned": r[3],
-         "created_alerts": r[4], "skipped_dup": r[5], "elapsed_ms": r[6],
-         "detail": json.loads(r[7]) if r[7] else None}
-        for r in rows
-    ]}
+    return {
+        "total": len(rows),
+        "items": [
+            {
+                "id": r[0],
+                "ran_at": r[1],
+                "trigger": r[2],
+                "scanned": r[3],
+                "created_alerts": r[4],
+                "skipped_dup": r[5],
+                "elapsed_ms": r[6],
+                "detail": json.loads(r[7]) if r[7] else None,
+            }
+            for r in rows
+        ],
+    }
 
 
 # --------------------------------------------------------------------------- #
 # 4. 手动导入（数据源：用户本地 PDF 解析 / 手工粘贴，非爬虫）
 # --------------------------------------------------------------------------- #
 @router.post("/import")
-def import_notice(payload: ImportNotice, db: Session = Depends(get_db)):
+def import_notice(payload: ImportNotice, db: Session = Depends(get_db)) -> dict:
     """手动导入一条通知并自动分级/抽日期。
 
     数据来源限制：仅接受 **用户主动提交的公开信息**（本地 PDF 解析结果、
@@ -514,34 +598,67 @@ def import_notice(payload: ImportNotice, db: Session = Depends(get_db)):
     # 迁移后写入正文快照，供 dry-run 脚本按「标题+正文」口径重跑覆盖率。
     cols = table_columns(conn, "kaoyan_notices")
     if "content" in cols:
-        sql = ("INSERT INTO kaoyan_notices (school_id, school_name, title, notice_type, "
-               "publish_date, url, source, fetched_at, importance_level, importance_score, "
-               "importance_reason, deadline_date, events_json, classified_at, content) "
-               "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        vals = (payload.school_id, payload.school_name, title, payload.notice_type,
-                pub.isoformat(), payload.url, payload.source, now_iso,
-                level, cls["score"], "；".join(cls["reasons"])[:500], deadline,
-                json.dumps(dates, ensure_ascii=False), now_iso, payload.body)
+        sql = (
+            "INSERT INTO kaoyan_notices (school_id, school_name, title, notice_type, "
+            "publish_date, url, source, fetched_at, importance_level, importance_score, "
+            "importance_reason, deadline_date, events_json, classified_at, content) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        )
+        vals = (
+            payload.school_id,
+            payload.school_name,
+            title,
+            payload.notice_type,
+            pub.isoformat(),
+            payload.url,
+            payload.source,
+            now_iso,
+            level,
+            cls["score"],
+            "；".join(cls["reasons"])[:500],
+            deadline,
+            json.dumps(dates, ensure_ascii=False),
+            now_iso,
+            payload.body,
+        )
     else:
-        sql = ("INSERT INTO kaoyan_notices (school_id, school_name, title, notice_type, "
-               "publish_date, url, source, fetched_at, importance_level, importance_score, "
-               "importance_reason, deadline_date, events_json, classified_at) "
-               "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        vals = (payload.school_id, payload.school_name, title, payload.notice_type,
-                pub.isoformat(), payload.url, payload.source, now_iso,
-                level, cls["score"], "；".join(cls["reasons"])[:500], deadline,
-                json.dumps(dates, ensure_ascii=False), now_iso)
+        sql = (
+            "INSERT INTO kaoyan_notices (school_id, school_name, title, notice_type, "
+            "publish_date, url, source, fetched_at, importance_level, importance_score, "
+            "importance_reason, deadline_date, events_json, classified_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        )
+        vals = (
+            payload.school_id,
+            payload.school_name,
+            title,
+            payload.notice_type,
+            pub.isoformat(),
+            payload.url,
+            payload.source,
+            now_iso,
+            level,
+            cls["score"],
+            "；".join(cls["reasons"])[:500],
+            deadline,
+            json.dumps(dates, ensure_ascii=False),
+            now_iso,
+        )
 
     cur = conn.execute(sql, vals)
     db.commit()
     # 明确告知导入者「这条到底有没有截止日」——抽不到就如实说，不猜不填
-    deadline_msg = (f"已识别截止日 {deadline}" if deadline
-                    else "未识别到截止日，请人工确认（正文含多个日期时取最早的截止日）")
+    deadline_msg = (
+        f"已识别截止日 {deadline}" if deadline else "未识别到截止日，请人工确认（正文含多个日期时取最早的截止日）"
+    )
     return {
-        "id": cur.lastrowid, "importance_level": level,
+        "id": cur.lastrowid,
+        "importance_level": level,
         "importance_level_label": LEVEL_LABEL_CN.get(level, "普通"),
-        "score": cls["score"], "reasons": cls["reasons"],
-        "dates": dates, "deadline_date": deadline,
+        "score": cls["score"],
+        "reasons": cls["reasons"],
+        "dates": dates,
+        "deadline_date": deadline,
         "deadline_message": deadline_msg,
         "content_saved": "content" in cols,
         "body_chars": len(payload.body or ""),
@@ -552,7 +669,7 @@ def import_notice(payload: ImportNotice, db: Session = Depends(get_db)):
 def import_notices_batch(
     payload: List[ImportNotice],
     db: Session = Depends(get_db),
-):
+) -> dict:
     """批量导入（CSV 解析结果 / 连续粘贴）。逐条独立处理，单条失败不影响其他。"""
     ensure_alert_schema(db)
     conn = raw_conn(db)
@@ -561,15 +678,19 @@ def import_notices_batch(
     cols = table_columns(conn, "kaoyan_notices")
     has_content = "content" in cols
     if has_content:
-        sql = ("INSERT INTO kaoyan_notices (school_id, school_name, title, notice_type, "
-               "publish_date, url, source, fetched_at, importance_level, importance_score, "
-               "importance_reason, deadline_date, events_json, classified_at, content) "
-               "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        sql = (
+            "INSERT INTO kaoyan_notices (school_id, school_name, title, notice_type, "
+            "publish_date, url, source, fetched_at, importance_level, importance_score, "
+            "importance_reason, deadline_date, events_json, classified_at, content) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        )
     else:
-        sql = ("INSERT INTO kaoyan_notices (school_id, school_name, title, notice_type, "
-               "publish_date, url, source, fetched_at, importance_level, importance_score, "
-               "importance_reason, deadline_date, events_json, classified_at) "
-               "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        sql = (
+            "INSERT INTO kaoyan_notices (school_id, school_name, title, notice_type, "
+            "publish_date, url, source, fetched_at, importance_level, importance_score, "
+            "importance_reason, deadline_date, events_json, classified_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        )
     ok, failed = 0, []
     for i, p in enumerate(payload):
         try:
@@ -585,15 +706,26 @@ def import_notices_batch(
             dates = extract_dates(f"{title}\n{p.body or ''}", ref_date=pub)
             deadline = next((d["date"] for d in dates if d["is_deadline"]), None)
             level = p.importance_level if p.importance_level in LEVEL_ORDER else cls["level"]
-            base = (p.school_id, p.school_name, title, p.notice_type, pub.isoformat(),
-                    p.url, p.source, now_iso, level, cls["score"],
-                    "；".join(cls["reasons"])[:500], deadline,
-                    json.dumps(dates, ensure_ascii=False), now_iso)
+            base = (
+                p.school_id,
+                p.school_name,
+                title,
+                p.notice_type,
+                pub.isoformat(),
+                p.url,
+                p.source,
+                now_iso,
+                level,
+                cls["score"],
+                "；".join(cls["reasons"])[:500],
+                deadline,
+                json.dumps(dates, ensure_ascii=False),
+                now_iso,
+            )
             vals = base + (p.body,) if has_content else base
             conn.execute(sql, vals)
             ok += 1
         except Exception as e:  # noqa: BLE001
             failed.append({"index": i, "title": getattr(p, "title", ""), "reason": str(e)})
     db.commit()
-    return {"imported": ok, "failed": len(failed), "failures": failed,
-            "content_saved": has_content}
+    return {"imported": ok, "failed": len(failed), "failures": failed, "content_saved": has_content}

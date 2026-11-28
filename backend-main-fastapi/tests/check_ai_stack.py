@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """AI 接入层现状核查：本地模型 / 云端 API / 嵌入 / 路由 是否齐备可用。"""
+
 import json
 import sys
 import urllib.error
@@ -40,10 +41,12 @@ if st == 200:
     items = d if isinstance(d, list) else (d.get("items") or [])
     print(f"  共 {len(items)} 个")
     for p in items:
-        key = (p.get("api_key") or "")
+        key = p.get("api_key") or ""
         masked = (key[:6] + "****" + key[-4:]) if len(key) > 12 else ("已配置" if key else "未配置")
-        print(f"    · {p.get('name') or p.get('provider')} | model={p.get('model')} "
-              f"| {masked} | 默认={p.get('is_default') or p.get('is_active')}")
+        print(
+            f"    · {p.get('name') or p.get('provider')} | model={p.get('model')} "
+            f"| {masked} | 默认={p.get('is_default') or p.get('is_active')}"
+        )
 else:
     print(f"  [{st}] {d}")
 

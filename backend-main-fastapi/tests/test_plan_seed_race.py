@@ -5,11 +5,13 @@
 后提交的一方撞 ``uq_milestone_year_name`` 唯一约束。这里用确定性的方式复现：
 让另一个会话在本会话 commit 之前抢先把同一届种子写进去。
 """
+
 from __future__ import annotations
 
 import pytest
-from models import Milestone
 from routers.study.plan import MILESTONE_SPECS, _seed_milestones
+
+from models import Milestone
 
 RACE_YEAR = 2099
 

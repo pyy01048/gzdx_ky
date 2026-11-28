@@ -6,10 +6,10 @@ POST /rerank  {query: str, documents: [{id: str, text: str}]}
 
 启动: uvicorn app:app --host 127.0.0.1 --port 8140
 """
-import os
-import sys
-import time
+
 import logging
+import os
+import time
 from typing import List, Optional
 
 # ---------------------------------------------------------------------------
@@ -44,10 +44,13 @@ _SERVICE_TOKEN = os.getenv("COMPUTE_SERVICE_TOKEN", "").strip()
 async def _require_service_token(request, call_next):
     if _SERVICE_TOKEN and request.url.path != "/health":
         import hmac
+
         from fastapi.responses import JSONResponse
+
         if not hmac.compare_digest(request.headers.get("x-service-token", ""), _SERVICE_TOKEN):
             return JSONResponse({"detail": "invalid service token"}, status_code=401)
     return await call_next(request)
+
 
 # 全局模型实例（懒加载）
 _reranker = None
@@ -63,11 +66,12 @@ def get_reranker():
         return None
     try:
         from FlagEmbedding import FlagReranker
+
         logger.info(f"Loading reranker model from: {MODEL_DIR}")
         t0 = time.time()
         _reranker = FlagReranker(
             MODEL_DIR if os.path.isdir(MODEL_DIR) else "BAAI/bge-reranker-v2-m3",
-            use_fp16=False,   # CPU 不支持 fp16
+            use_fp16=False,  # CPU 不支持 fp16
         )
         logger.info(f"Model loaded in {time.time() - t0:.1f}s")
         return _reranker
@@ -141,10 +145,7 @@ def rerank(req: RerankRequest):
         scores = [scores]
 
     # 组装并按 score 降序
-    results = [
-        RerankResult(id=d.id, score=float(s))
-        for d, s in zip(req.documents, scores)
-    ]
+    results = [RerankResult(id=d.id, score=float(s)) for d, s in zip(req.documents, scores, strict=False)]
     results.sort(key=lambda x: x.score, reverse=True)
 
     took_ms = (time.time() - t0) * 1000
@@ -158,6 +159,7 @@ def rerank(req: RerankRequest):
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
+
     # 启动时预热模型
     get_reranker()
     uvicorn.run(

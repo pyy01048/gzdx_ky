@@ -51,6 +51,7 @@
 ``ParsedBlock.extra['math_corrupted']`` / ``['math_suspect']``，
 下游质检（``services/ingest_pipeline.py``）据此把题降级并留痕。
 """
+
 from __future__ import annotations
 
 import re
@@ -120,10 +121,7 @@ class MathGuardResult:
 
 def _unbalanced(text: str) -> bool:
     """括号不配对（半角与全角分别计数）。"""
-    return (
-        text.count("(") != text.count(")")
-        or text.count("（") != text.count("）")
-    )
+    return text.count("(") != text.count(")") or text.count("（") != text.count("）")
 
 
 def detect_math_corruption(text: str) -> MathGuardResult:

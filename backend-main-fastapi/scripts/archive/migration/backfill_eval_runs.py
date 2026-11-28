@@ -2,6 +2,7 @@
 
 幂等：同一 report_path 已入库就跳过。用法：python scripts/backfill_eval_runs.py
 """
+
 import glob
 import json
 import os
@@ -24,15 +25,15 @@ PATTERNS = (
 
 def main() -> int:
     from database import SessionLocal
-    from models import EvalRun
     from services.eval_store import file_fingerprint, record_eval_run
+
+    from models import EvalRun
 
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     db = SessionLocal()
     try:
         known = {r.report_path for r in db.query(EvalRun.report_path).all() if r.report_path}
-        files = sorted({os.path.join(base, p) for pat in PATTERNS
-                        for p in glob.glob(os.path.join(base, pat))})
+        files = sorted({os.path.join(base, p) for pat in PATTERNS for p in glob.glob(os.path.join(base, pat))})
         added = 0
         for path in files:
             if path in known:
@@ -56,15 +57,19 @@ def main() -> int:
             overall = [float(v.get("accuracy", 0)) for v in models.values() if v]
             primary = max(unseen) if unseen else (max(overall) if overall else None)
             run_id = record_eval_run(
-                "qa", arm=",".join(sorted(set(arms))), metrics=report,
-                primary_metric=primary, n_samples=report.get("cases"),
-                fingerprint=file_fingerprint(path), report_path=path,
-                notes=("历史报告回填；主指标=" +
-                       ("未见题 accuracy" if unseen else "全量 accuracy（当时未做 holdout）")),
+                "qa",
+                arm=",".join(sorted(set(arms))),
+                metrics=report,
+                primary_metric=primary,
+                n_samples=report.get("cases"),
+                fingerprint=file_fingerprint(path),
+                report_path=path,
+                notes=(
+                    "历史报告回填；主指标=" + ("未见题 accuracy" if unseen else "全量 accuracy（当时未做 holdout）")
+                ),
                 db=db,
             )
-            print(f"入库 eval_runs #{run_id} ← {os.path.basename(path)}"
-                  f"（primary={primary}）")
+            print(f"入库 eval_runs #{run_id} ← {os.path.basename(path)}（primary={primary}）")
             added += 1
         print(f"新增 {added} 条，历史 {len(known)} 条已在库")
         return 0

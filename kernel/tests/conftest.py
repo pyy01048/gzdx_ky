@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """kernel 测试公共夹具：不依赖数据库/网络/原服务即可运行。"""
+
 import sys
 from pathlib import Path
 

@@ -56,6 +56,7 @@ python scripts/repair_quiz_analysis_boundary.py --report out.json
 python scripts/repair_quiz_analysis_boundary.py --apply        # 真写库
 ```
 """
+
 from __future__ import annotations
 
 import argparse
@@ -132,7 +133,7 @@ def classify(text: str, content: str) -> dict:
     n_ana = text.count(ANALYSIS_TAG)
     if n_ana == 1 and n_ans == 0:
         p = text.index(ANALYSIS_TAG)
-        head, tail = text[:p], text[p + len(ANALYSIS_TAG):]
+        head, tail = text[:p], text[p + len(ANALYSIS_TAG) :]
         if len(head.strip()) >= 20 and len(tail.strip()) >= 20:
             new_text = (head.rstrip() + "\n" + tail.lstrip()).strip()
             return {
@@ -150,7 +151,7 @@ def classify(text: str, content: str) -> dict:
     # 电路」题干高度相似，只靠题干探针必然误判）。
     last = text.rfind(ANALYSIS_TAG)
     if last > 0 and not _QNUM_RE.search(text[:last]):
-        head, tail = text[:last], text[last + len(ANALYSIS_TAG):]
+        head, tail = text[:last], text[last + len(ANALYSIS_TAG) :]
         head_len = len(head.strip())
         opt_n = count_option_lines(head)
         stripped_head = head_len < 20
@@ -161,7 +162,6 @@ def classify(text: str, content: str) -> dict:
                 "new_text": tail.strip(),
                 "removed": head,
                 "boundary": "最后一个【解析】",
-
                 "note": (
                     f"【解析】前只有 {head_len} 字，像被切碎的题干"
                     if stripped_head
@@ -181,8 +181,7 @@ def classify(text: str, content: str) -> dict:
             "note": "砍掉下一题整块内容",
         }
 
-    return {"category": "none", "new_text": text, "removed": "",
-            "boundary": "", "note": "未命中任何错位特征，保持原样"}
+    return {"category": "none", "new_text": text, "removed": "", "boundary": "", "note": "未命中任何错位特征，保持原样"}
 
 
 def _find_cut(text: str):
@@ -235,24 +234,21 @@ def repair_one(qid: int, text: str, content: str) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="修复题库解析的跨题边界错位")
-    ap.add_argument("--quiz-id", type=int, action="append", default=[],
-                    help="只处理指定题（可多次；默认处理已确认的 12 道）")
+    ap.add_argument(
+        "--quiz-id", type=int, action="append", default=[], help="只处理指定题（可多次；默认处理已确认的 12 道）"
+    )
     ap.add_argument("--apply", action="store_true", help="真写库（默认干跑）")
     ap.add_argument("--report", help="导出 JSON 报告")
     args = ap.parse_args()
 
     from database import SessionLocal
+
     from models import QuizQuestion
 
     qids = args.quiz_id or KNOWN_BAD_IDS
     db = SessionLocal()
     try:
-        rows = (
-            db.query(QuizQuestion)
-            .filter(QuizQuestion.id.in_(qids))
-            .order_by(QuizQuestion.id)
-            .all()
-        )
+        rows = db.query(QuizQuestion).filter(QuizQuestion.id.in_(qids)).order_by(QuizQuestion.id).all()
         found = {q.id for q in rows}
         missing = [i for i in qids if i not in found]
         if missing:

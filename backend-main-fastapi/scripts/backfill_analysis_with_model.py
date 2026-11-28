@@ -9,6 +9,7 @@
     python scripts/backfill_analysis_with_model.py --apply         # 写库
     python scripts/backfill_analysis_with_model.py --model qwen3:8b  # 换模型
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,16 +54,22 @@ LETTERS_RE = re.compile(r"[A-H]")
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
-def chat(model: str, system: str, user: str, *, temperature: float = 0.1,
-         timeout: float = 300.0, num_ctx: int = 2048, num_predict: int = 400) -> str:
+def chat(
+    model: str,
+    system: str,
+    user: str,
+    *,
+    temperature: float = 0.1,
+    timeout: float = 300.0,
+    num_ctx: int = 2048,
+    num_predict: int = 400,
+) -> str:
     payload = {
         "model": model,
-        "messages": [{"role": "system", "content": system},
-                     {"role": "user", "content": user}],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "stream": False,
         "keep_alive": "5m",
-        "options": {"temperature": temperature, "num_ctx": num_ctx,
-                    "num_predict": num_predict},
+        "options": {"temperature": temperature, "num_ctx": num_ctx, "num_predict": num_predict},
     }
     req = urllib.request.Request(
         f"{OLLAMA_HOST}/api/chat",
@@ -133,6 +140,7 @@ def parse_output(text: str) -> tuple[set, str, bool]:
 
 def fetch_missing() -> list[dict]:
     from scripts._conn import pg_connect
+
     conn = pg_connect()
     cur = conn.cursor()
     cur.execute(
@@ -147,7 +155,7 @@ def fetch_missing() -> list[dict]:
     cols = [d[0] for d in cur.description]
     rows = []
     for r in cur.fetchall():
-        d = dict(zip(cols, r))
+        d = dict(zip(cols, r, strict=False))
         opts = d.get("options")
         if isinstance(opts, str):
             try:
@@ -176,8 +184,11 @@ def unload(model: str) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="批量生成缺解析题目的解析")
     ap.add_argument("--model", default="kaoyan-analysis-v1:latest")
-    ap.add_argument("--anchor-answer", action="store_true",
-                    help="以数据库标准答案为锚，让模型解释该答案（推荐，保证解析与答案一致）")
+    ap.add_argument(
+        "--anchor-answer",
+        action="store_true",
+        help="以数据库标准答案为锚，让模型解释该答案（推荐，保证解析与答案一致）",
+    )
     ap.add_argument("--apply", action="store_true", help="写库（默认 dry-run）")
     ap.add_argument("--timeout", type=float, default=300.0)
     args = ap.parse_args()
@@ -185,9 +196,11 @@ def main() -> int:
     cases = fetch_missing()
     anchor = args.anchor_answer
     system = get_system_prompt(anchor)
-    print(f"缺解析题目：{len(cases)} 道；模型：{args.model}；"
-          f"模式：{'写库' if args.apply else 'dry-run'}；"
-          f"锚定答案：{'是' if anchor else '否'}")
+    print(
+        f"缺解析题目：{len(cases)} 道；模型：{args.model}；"
+        f"模式：{'写库' if args.apply else 'dry-run'}；"
+        f"锚定答案：{'是' if anchor else '否'}"
+    )
 
     records = []
     correct = formatted = refused = 0
@@ -195,8 +208,7 @@ def main() -> int:
     t0 = time.time()
     for i, case in enumerate(cases, 1):
         try:
-            out = chat(args.model, system, render_question(case, anchor),
-                       timeout=args.timeout)
+            out = chat(args.model, system, render_question(case, anchor), timeout=args.timeout)
         except Exception as e:  # noqa: BLE001
             out = ""
             print(f"  [!] #{case['id']} 调用失败: {str(e)[:100]}", flush=True)
@@ -208,19 +220,20 @@ def main() -> int:
         refused += int(not pred)
         per_subject[case.get("subject") or "其他"][0] += int(ok)
         per_subject[case.get("subject") or "其他"][1] += 1
-        records.append({
-            "id": case.get("id"),
-            "subject": case.get("subject"),
-            "gold": "".join(sorted(gold)),
-            "pred": "".join(sorted(pred)),
-            "correct": ok,
-            "formatted": is_fmt,
-            "analysis": expl,
-            "raw_output": out,
-        })
+        records.append(
+            {
+                "id": case.get("id"),
+                "subject": case.get("subject"),
+                "gold": "".join(sorted(gold)),
+                "pred": "".join(sorted(pred)),
+                "correct": ok,
+                "formatted": is_fmt,
+                "analysis": expl,
+                "raw_output": out,
+            }
+        )
         if i % 10 == 0 or i == len(cases):
-            print(f"  {i}/{len(cases)} acc={correct / i:.3f} "
-                  f"format={formatted / i:.3f}", flush=True)
+            print(f"  {i}/{len(cases)} acc={correct / i:.3f} format={formatted / i:.3f}", flush=True)
 
     elapsed = round(time.time() - t0, 1)
     unload(args.model)
@@ -232,8 +245,7 @@ def main() -> int:
         "format_rate": round(formatted / max(1, len(records)), 4),
         "refusal_rate": round(refused / max(1, len(records)), 4),
         "elapsed_secs": elapsed,
-        "per_subject": {s: {"acc": round(v[0] / v[1], 4), "n": v[1]}
-                        for s, v in sorted(per_subject.items())},
+        "per_subject": {s: {"acc": round(v[0] / v[1], 4), "n": v[1]} for s, v in sorted(per_subject.items())},
         "records": records,
     }
 
@@ -257,9 +269,11 @@ def main() -> int:
         f.write("| --: | --- | :--: | :--: | :--: | :--: | --- |\n")
         for r in records:
             ana = (r["analysis"] or "")[:60].replace("|", "/").replace("\n", " ")
-            f.write(f"| {r['id']} | {r['subject']} | {r['gold']} | {r['pred']} "
-                    f"| {'✓' if r['correct'] else '✗'} "
-                    f"| {'✓' if r['formatted'] else '✗'} | {ana} |\n")
+            f.write(
+                f"| {r['id']} | {r['subject']} | {r['gold']} | {r['pred']} "
+                f"| {'✓' if r['correct'] else '✗'} "
+                f"| {'✓' if r['formatted'] else '✗'} | {ana} |\n"
+            )
 
     print("\n===== 汇总 =====")
     print(f"答案准确率: {report['accuracy']:.3f}  ({correct}/{len(records)})")
@@ -269,6 +283,7 @@ def main() -> int:
 
     if args.apply:
         from scripts._conn import pg_connect
+
         conn = pg_connect()
         cur = conn.cursor()
         updated = 0

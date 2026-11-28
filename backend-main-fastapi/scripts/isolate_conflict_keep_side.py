@@ -17,6 +17,7 @@
     python scripts/isolate_conflict_keep_side.py apply
     python scripts/isolate_conflict_keep_side.py verify
 """
+
 from __future__ import annotations
 
 import datetime
@@ -42,7 +43,7 @@ def build_plan() -> tuple[list[int], list[int], list[int], list[tuple[str, int, 
     """返回 (待改错误侧 id, 正确侧 id, 已无需动作 id, [(组, 保留, 隔离)])。"""
     keep_ids, bad_ids, skip_ids, pairs = [], [], [], []
     for gid, a, b, keep, _note in TABLE:
-        if keep is None:                     # 两侧都错，上一轮已隔离
+        if keep is None:  # 两侧都错，上一轮已隔离
             continue
         wrong = b if keep == a else a
         keep_ids.append(keep)
@@ -66,7 +67,7 @@ def make_backup() -> str:
     finally:
         src.close()
     print(f"[backup] path={dst_path}")
-    print(f"[backup] size={round(os.path.getsize(dst_path)/1024/1024,1)} MB")
+    print(f"[backup] size={round(os.path.getsize(dst_path) / 1024 / 1024, 1)} MB")
     print(f"[backup] integrity_check={check}")
     return dst_path
 
@@ -74,8 +75,7 @@ def make_backup() -> str:
 def latest_backup() -> str | None:
     if not os.path.isdir(BACKUP_DIR):
         return None
-    names = [n for n in os.listdir(BACKUP_DIR)
-             if n.startswith(PREFIX) and n.endswith(".db")]
+    names = [n for n in os.listdir(BACKUP_DIR) if n.startswith(PREFIX) and n.endswith(".db")]
     return os.path.join(BACKUP_DIR, sorted(names)[-1]) if names else None
 
 
@@ -87,7 +87,8 @@ def dryrun() -> int:
     bad, keep, skip, pairs = build_plan()
     backup = latest_backup()
     if not backup:
-        print("[diff] 无基线备份，请先 backup"); return 1
+        print("[diff] 无基线备份，请先 backup")
+        return 1
     conn = sqlite3.connect(DB_PATH, timeout=60)
     try:
         conn.execute("ATTACH DATABASE ? AS bak", (backup,))
@@ -101,12 +102,18 @@ def dryrun() -> int:
                 continue
             r = conn.execute(
                 "SELECT b.is_junk, c.is_junk FROM bak.quiz_questions b "
-                "JOIN main.quiz_questions c ON c.id=b.id WHERE b.id=?", (w,)).fetchone()
+                "JOIN main.quiz_questions c ON c.id=b.id WHERE b.id=?",
+                (w,),
+            ).fetchone()
             rk = conn.execute("SELECT is_junk FROM main.quiz_questions WHERE id=?", (k,)).fetchone()
             print(f"{gid:<5}{w:<8}{r[0]:<6}{r[1]:<6}{1:<6}{k:<8}{rk[0]}")
-        outside = [x[0] for x in conn.execute(
-            "SELECT b.id FROM bak.quiz_questions b JOIN main.quiz_questions c "
-            "ON c.id=b.id WHERE IFNULL(b.is_junk,-1)<>IFNULL(c.is_junk,-2)")]
+        outside = [
+            x[0]
+            for x in conn.execute(
+                "SELECT b.id FROM bak.quiz_questions b JOIN main.quiz_questions c "
+                "ON c.id=b.id WHERE IFNULL(b.is_junk,-1)<>IFNULL(c.is_junk,-2)"
+            )
+        ]
         conn.execute("DETACH DATABASE bak")
     finally:
         conn.close()
@@ -121,9 +128,7 @@ def apply() -> None:
         conn.execute("BEGIN IMMEDIATE")
         before0 = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0").fetchone()[0]
         before1 = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=1").fetchone()[0]
-        cur = conn.execute(
-            f"UPDATE quiz_questions SET is_junk=1 "
-            f"WHERE id IN ({_marks(len(bad))}) AND is_junk=0", bad)
+        cur = conn.execute(f"UPDATE quiz_questions SET is_junk=1 WHERE id IN ({_marks(len(bad))}) AND is_junk=0", bad)
         conn.commit()
         after0 = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0").fetchone()[0]
         after1 = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=1").fetchone()[0]
@@ -132,8 +137,8 @@ def apply() -> None:
     finally:
         conn.close()
     print(f"[apply] UPDATE 影响行数={cur.rowcount}")
-    print(f"[apply] is_junk=0 {before0} -> {after0}（Δ{after0-before0}）")
-    print(f"[apply] is_junk=1 {before1} -> {after1}（Δ{after1-before1}）")
+    print(f"[apply] is_junk=0 {before0} -> {after0}（Δ{after0 - before0}）")
+    print(f"[apply] is_junk=1 {before1} -> {after1}（Δ{after1 - before1}）")
     print(f"[apply] 总行数={total}  integrity_check={chk}")
 
 
@@ -143,8 +148,10 @@ def verify() -> None:
     try:
         conn.execute("ATTACH DATABASE ? AS bak", (latest_backup(),))
         print("=== 错误侧 40 条（必须全为 1）===")
-        wrong_now = {r[0]: r[1] for r in conn.execute(
-            f"SELECT id, is_junk FROM quiz_questions WHERE id IN ({_marks(len(bad))})", bad)}
+        wrong_now = {
+            r[0]: r[1]
+            for r in conn.execute(f"SELECT id, is_junk FROM quiz_questions WHERE id IN ({_marks(len(bad))})", bad)
+        }
         for gid, k, w in pairs:
             if w in skip:
                 continue
@@ -153,8 +160,10 @@ def verify() -> None:
 
         print("\n=== 正确侧 41 条（O24 的 8390 除外，必须全为 0）===")
         keep0 = [k for k in keep if k != 8390]
-        keep_now = {r[0]: r[1] for r in conn.execute(
-            f"SELECT id, is_junk FROM quiz_questions WHERE id IN ({_marks(len(keep0))})", keep0)}
+        keep_now = {
+            r[0]: r[1]
+            for r in conn.execute(f"SELECT id, is_junk FROM quiz_questions WHERE id IN ({_marks(len(keep0))})", keep0)
+        }
         for gid, k, w in pairs:
             if k == 8390:
                 continue
@@ -165,30 +174,38 @@ def verify() -> None:
         for i in (6886, 8390):
             v = conn.execute("SELECT is_junk FROM quiz_questions WHERE id=?", (i,)).fetchone()[0]
             print(f"  #{i} is_junk={v}")
-        o24 = conn.execute(
-            "SELECT id,is_junk FROM quiz_questions WHERE id IN (6886,8390)").fetchall()
+        o24 = conn.execute("SELECT id,is_junk FROM quiz_questions WHERE id IN (6886,8390)").fetchall()
         o24v = [i for i, v in o24 if v != 1]
 
         # 越界定义：**目标 40 条之外**的任何 is_junk 变化才算越界。
         # （写库后 diff 对比写库前基线，必然出现这 40 条，那是预期内的动作本身。）
-        q = ("SELECT b.id FROM bak.quiz_questions b JOIN main.quiz_questions c "
-             "ON c.id=b.id WHERE IFNULL(b.is_junk,-1)<>IFNULL(c.is_junk,-2)")
+        q = (
+            "SELECT b.id FROM bak.quiz_questions b JOIN main.quiz_questions c "
+            "ON c.id=b.id WHERE IFNULL(b.is_junk,-1)<>IFNULL(c.is_junk,-2)"
+        )
         params: list = []
         if bad:
             q += f" AND b.id NOT IN ({_marks(len(bad))})"
             params = list(bad)
         outside = [x[0] for x in conn.execute(q, params)]
         # 同时记录"目标内实际发生变化的条数"，用于证明动作完整落地
-        hit = [x[0] for x in conn.execute(
-            "SELECT b.id FROM bak.quiz_questions b JOIN main.quiz_questions c "
-            f"ON c.id=b.id WHERE IFNULL(b.is_junk,-1)<>IFNULL(c.is_junk,-2) "
-            f"AND b.id IN ({_marks(len(bad))})", bad)]
+        hit = [
+            x[0]
+            for x in conn.execute(
+                "SELECT b.id FROM bak.quiz_questions b JOIN main.quiz_questions c "
+                f"ON c.id=b.id WHERE IFNULL(b.is_junk,-1)<>IFNULL(c.is_junk,-2) "
+                f"AND b.id IN ({_marks(len(bad))})",
+                bad,
+            )
+        ]
         total = conn.execute("SELECT COUNT(*) FROM main.quiz_questions").fetchone()[0]
         j0 = conn.execute("SELECT COUNT(*) FROM main.quiz_questions WHERE is_junk=0").fetchone()[0]
         j1 = conn.execute("SELECT COUNT(*) FROM main.quiz_questions WHERE is_junk=1").fetchone()[0]
         vis = conn.execute(
             f"SELECT COUNT(*) FROM main.quiz_questions WHERE id IN ({_marks(len(bad))}) "
-            "AND is_junk=0 AND answer IS NOT NULL AND TRIM(answer)<>''", bad).fetchone()[0]
+            "AND is_junk=0 AND answer IS NOT NULL AND TRIM(answer)<>''",
+            bad,
+        ).fetchone()[0]
         chk = conn.execute("PRAGMA integrity_check").fetchone()[0]
         conn.execute("DETACH DATABASE bak")
     finally:

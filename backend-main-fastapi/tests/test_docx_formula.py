@@ -6,6 +6,7 @@
 3. 去占位符后的文本与旧管线 ``p.text.strip()`` 逐字一致；
 4. plain ↔ marked 双向位置映射自洽。
 """
+
 from __future__ import annotations
 
 import os
@@ -32,9 +33,8 @@ def _make_png(path: str) -> str:
 
 def _build_sample_docx(tmp_path, with_table: bool = False) -> str:
     """造一个含「文字 + 内嵌公式图」的 docx。"""
-    from docx.shared import Inches
-
     import docx as _docx
+    from docx.shared import Inches
 
     png = _make_png(str(tmp_path / "eq.png"))
     d = _docx.Document()
@@ -121,14 +121,13 @@ def test_aligned_mapping_roundtrip(tmp_path):
     probe = aligned.plain.find("连续")
     if probe >= 0:
         mpos = aligned.plain_to_marked(probe)
-        assert marked[mpos:mpos + 2] == "连续"
+        assert marked[mpos : mpos + 2] == "连续"
 
 
 def test_table_cells_without_text_are_dropped(tmp_path):
     """只含公式图的表格单元格要像旧管线那样被丢弃，保证对齐。"""
-    from docx.shared import Inches
-
     import docx as _docx
+    from docx.shared import Inches
 
     png = _make_png(str(tmp_path / "eq2.png"))
     d = _docx.Document()

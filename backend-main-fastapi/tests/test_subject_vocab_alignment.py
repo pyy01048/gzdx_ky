@@ -28,6 +28,7 @@ from sqlalchemy import text
 def vocab_docs(db_schema):  # noqa: ARG001 - 只需要建好表
     """三种写法各一篇：规范名 / 别名 / 合并口径，外加一个未登记写法。"""
     from database import SessionLocal
+
     from models import Document
 
     db = SessionLocal()
@@ -155,8 +156,9 @@ def test_merged_count_does_not_double_count(client, vocab_docs):
 # --------------------------------------------------------------------------- #
 def test_alignment_rows_classify_each_case(db_schema, vocab_docs):  # noqa: ARG001
     from database import SessionLocal
-    from models import Document, KnowledgeChunk
     from services import subject_vocab as sv
+
+    from models import Document, KnowledgeChunk
 
     db = SessionLocal()
     try:

@@ -18,6 +18,7 @@
     python scripts/calibrate_quiz_difficulty.py --dry-run
     python scripts/calibrate_quiz_difficulty.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -88,7 +89,7 @@ def calc_difficulty(qtype: str | None, content: str, options, analysis: str | No
         score += 1
 
     # 短题干 + 四选项 = 课本典型单选，偏基础；但最多只降一级，避免全员触底
-    n_opts = len(options) if isinstance(options, (list, tuple)) else 0
+    n_opts = len(options) if isinstance(options, list | tuple) else 0
     if n_opts >= 4 and len(text) < 60:
         score -= 1
 

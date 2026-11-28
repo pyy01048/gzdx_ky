@@ -943,49 +943,58 @@ export default function KbMap() {
     })
   }, [])
 
-  const masteryPatchFrom = (r) => ({
-    mastery: r?.mastery_after,
-    state: (Number(r?.mastery_after) || 0) >= 70 ? 'mastered' : 'weak',
-  })
+  const masteryPatchFrom = useCallback(
+    (r) => ({
+      mastery: r?.mastery_after,
+      state: (Number(r?.mastery_after) || 0) >= 70 ? 'mastered' : 'weak',
+    }),
+    [],
+  )
 
-  const submitReview = async (kpId, result) => {
-    if (!user) {
-      toastErr('登录后才能记录复习结果')
-      return
-    }
-    setReviewing(kpId)
-    try {
-      const r = await reviewApi.submit({ item_type: 'knowledge', item_id: kpId, result })
-      toastOk(`已记录：掌握度 ${r.mastery_before} → ${r.mastery_after}，${r.interval} 天后复习`)
-      patchKpInTree(kpId, masteryPatchFrom(r))
-      loadAux()
-    } catch (e) {
-      toastErr('记录失败：' + (e?.message || ''))
-    } finally {
-      setReviewing(null)
-    }
-  }
+  const submitReview = useCallback(
+    async (kpId, result) => {
+      if (!user) {
+        toastErr('登录后才能记录复习结果')
+        return
+      }
+      setReviewing(kpId)
+      try {
+        const r = await reviewApi.submit({ item_type: 'knowledge', item_id: kpId, result })
+        toastOk(`已记录：掌握度 ${r.mastery_before} → ${r.mastery_after}，${r.interval} 天后复习`)
+        patchKpInTree(kpId, masteryPatchFrom(r))
+        loadAux()
+      } catch (e) {
+        toastErr('记录失败：' + (e?.message || ''))
+      } finally {
+        setReviewing(null)
+      }
+    },
+    [user, patchKpInTree, masteryPatchFrom, loadAux],
+  )
 
-  const submitDetailReview = async (result) => {
-    const id = detail.data?.id ?? selectedKpId
-    if (id == null) return
-    if (!user) {
-      toastErr('登录后才能记录复习结果')
-      return
-    }
-    setDetailReviewing(true)
-    try {
-      const r = await reviewApi.submit({ item_type: 'knowledge', item_id: id, result })
-      toastOk(`已记录：掌握度 ${r.mastery_before} → ${r.mastery_after}，${r.interval} 天后复习`)
-      patchKpInTree(id, masteryPatchFrom(r))
-      await openDetail({ id })
-      loadAux()
-    } catch (e) {
-      toastErr('记录失败：' + (e?.message || ''))
-    } finally {
-      setDetailReviewing(false)
-    }
-  }
+  const submitDetailReview = useCallback(
+    async (result) => {
+      const id = detail.data?.id ?? selectedKpId
+      if (id == null) return
+      if (!user) {
+        toastErr('登录后才能记录复习结果')
+        return
+      }
+      setDetailReviewing(true)
+      try {
+        const r = await reviewApi.submit({ item_type: 'knowledge', item_id: id, result })
+        toastOk(`已记录：掌握度 ${r.mastery_before} → ${r.mastery_after}，${r.interval} 天后复习`)
+        patchKpInTree(id, masteryPatchFrom(r))
+        await openDetail({ id })
+        loadAux()
+      } catch (e) {
+        toastErr('记录失败：' + (e?.message || ''))
+      } finally {
+        setDetailReviewing(false)
+      }
+    },
+    [detail.data, selectedKpId, user, patchKpInTree, masteryPatchFrom, openDetail, loadAux],
+  )
 
   const goQuiz = useCallback(
     (subject, chapter, kp) => {
@@ -999,28 +1008,31 @@ export default function KbMap() {
     [navigate],
   )
 
-  const runAiExplain = async () => {
-    const d = detail.data
-    if (!d || aiExplain.loading) return
-    const seq = ++aiSeq.current
-    setAiExplain({ open: true, loading: true, text: '', error: '' })
-    const tone = stateTone(kpState(d))
-    const prompt = [
-      `请为考研知识点「${d.name}」（科目：${d.subject || '未分类'}${d.chapter ? ' · ' + d.chapter : ''}）做一次精讲。`,
-      `该知识点当前掌握度 ${d.mastery ?? 0}%（状态：${tone.label}），考频 ${d.exam_frequency ?? '未知'}，难度 ${d.difficulty ?? '未知'}。`,
-      '请给出：1）核心概念与直觉解释；2）常用方法/公式；3）易错点；4）结合当前掌握状态给出 1-2 条针对性复习建议。用 markdown 列表，简洁。',
-    ].join('\n')
-    const provider = defaultProvider()
-    try {
-      const r = await chatCompletion(provider, [{ role: 'user', content: prompt }])
-      if (seq !== aiSeq.current) return
-      recordUsage(r.usage, provider?.id)
-      setAiExplain((s) => ({ ...s, loading: false, text: r.text || '（AI 未返回内容）' }))
-    } catch (e) {
-      if (seq !== aiSeq.current) return
-      setAiExplain((s) => ({ ...s, loading: false, error: `AI 精讲失败：${e?.message || '未知错误'}` }))
-    }
-  }
+  const runAiExplain = useCallback(
+    async () => {
+      const d = detail.data
+      if (!d || aiExplain.loading) return
+      const seq = ++aiSeq.current
+      setAiExplain({ open: true, loading: true, text: '', error: '' })
+      const tone = stateTone(kpState(d))
+      const prompt = [
+        `请为考研知识点「${d.name}」（科目：${d.subject || '未分类'}${d.chapter ? ' · ' + d.chapter : ''}）做一次精讲。`,
+        `该知识点当前掌握度 ${d.mastery ?? 0}%（状态：${tone.label}），考频 ${d.exam_frequency ?? '未知'}，难度 ${d.difficulty ?? '未知'}。`,
+        '请给出：1）核心概念与直觉解释；2）常用方法/公式；3）易错点；4）结合当前掌握状态给出 1-2 条针对性复习建议。用 markdown 列表，简洁。',
+      ].join('\n')
+      const provider = defaultProvider()
+      try {
+        const r = await chatCompletion(provider, [{ role: 'user', content: prompt }])
+        if (seq !== aiSeq.current) return
+        recordUsage(r.usage, provider?.id)
+        setAiExplain((s) => ({ ...s, loading: false, text: r.text || '（AI 未返回内容）' }))
+      } catch (e) {
+        if (seq !== aiSeq.current) return
+        setAiExplain((s) => ({ ...s, loading: false, error: `AI 精讲失败：${e?.message || '未知错误'}` }))
+      }
+    },
+    [detail.data, aiExplain.loading],
+  )
 
   /* 科目维度汇总（掌握度三态） */
   const dist = useMemo(() => {
@@ -1188,12 +1200,15 @@ export default function KbMap() {
     Math.max(0, Number(progress ? (progress.learned_avg_mastery ?? progress.avg_mastery) : 0) || 0),
   )
 
-  const scrollToDue = () => {
+  const scrollToDue = useCallback(() => {
     document.getElementById('kb-due')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  }, [])
 
-  const goTextbooks = () =>
-    navigate(activeSubject ? `/textbooks?subject=${encodeURIComponent(activeSubject)}` : '/textbooks')
+  const goTextbooks = useCallback(
+    () =>
+      navigate(activeSubject ? `/textbooks?subject=${encodeURIComponent(activeSubject)}` : '/textbooks'),
+    [navigate, activeSubject],
+  )
 
   const pageActions = (
     <>

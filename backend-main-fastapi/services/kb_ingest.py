@@ -20,10 +20,11 @@ import json
 import os
 import shutil
 import time
-from typing import Any, Dict, List
+from typing import Any
+
+from sqlalchemy.orm import Session
 
 from models import Document
-from sqlalchemy.orm import Session
 
 # --------------------------------------------------------------------------- #
 # 路径常量（一律经 services.kb_service.resolve_kb_root 推导）
@@ -33,59 +34,95 @@ from sqlalchemy.orm import Session
 # 其中一个是本机绝对路径，换机器即失效、测试也无法注入临时目录。
 from services.kb_service import resolve_kb_root
 
-KB_ROOT = resolve_kb_root()
-INBOX_DIR = os.path.join(KB_ROOT, "inbox")
-DOCUMENTS_DIR = os.path.join(KB_ROOT, "documents")
-CHUNKS_DIR = os.path.join(KB_ROOT, "chunks")
-META_DIR = os.path.join(KB_ROOT, "meta")
-MANIFEST_PATH = os.path.join(META_DIR, "manifest.jsonl")
+KB_ROOT: str = resolve_kb_root()
+INBOX_DIR: str = os.path.join(KB_ROOT, "inbox")
+DOCUMENTS_DIR: str = os.path.join(KB_ROOT, "documents")
+CHUNKS_DIR: str = os.path.join(KB_ROOT, "chunks")
+META_DIR: str = os.path.join(KB_ROOT, "meta")
+MANIFEST_PATH: str = os.path.join(META_DIR, "manifest.jsonl")
 
 #: 图片类扩展名（直接走 OCR 路由）
-IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif", ".tif", ".tiff"}
+IMAGE_EXTS: set[str] = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif", ".tif", ".tiff"}
 
 # 文件格式 → doc_format 枚举归一（与 services.smart_ingest._norm_doc_format 同口径）。
 # 历史代码写 `file_type=`，但 PG documents 表与 ORM 均无该列（正确列是 source_format，
 # doc_format ENUM）。jpeg/bmp/webp/tif/tiff 等扩展名不在枚举内，必须兜底 'other'。
-_DOC_FORMAT_VALUES = {
-    "pdf", "txt", "doc", "docx", "md", "image", "pptx", "ppt",
-    "xlsx", "html", "json", "jpg", "png", "other",
-}
+_DOC_FORMAT_VALUES: frozenset[str] = frozenset(
+    {
+        "pdf",
+        "txt",
+        "doc",
+        "docx",
+        "md",
+        "image",
+        "pptx",
+        "ppt",
+        "xlsx",
+        "html",
+        "json",
+        "jpg",
+        "png",
+        "other",
+    }
+)
 
 
 def _norm_doc_format(ext: str) -> str:
+    """扩展名 → 合法 doc_format 枚举值；非法值兜底 'other'。"""
     val = (ext or "").lstrip(".").lower()
     return val if val in _DOC_FORMAT_VALUES else "other"
 
 
 # structure_level 枚举合法值：structured / flat / ocr。"document" 是 PG 迁移前的旧值，
 # 语义等价于 flat（整篇文档、尚未章节解析），统一归一避免违反枚举约束。
-_STRUCTURE_LEVEL_VALUES = {"structured", "flat", "ocr"}
+_STRUCTURE_LEVEL_VALUES: frozenset[str] = frozenset({"structured", "flat", "ocr"})
 
 
 def _norm_structure_level(val: str) -> str:
+    """归一 structure_level；旧值 "document" 等价于 flat。"""
     val = (val or "").strip().lower()
     if val == "document":
         return "flat"
     return val if val in _STRUCTURE_LEVEL_VALUES else "flat"
 
+
 #: 文本类扩展名（DocumentParser 直接解析）
-TEXT_EXTS = {".txt", ".md", ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".csv", ".xlsx", ".xls", ".xlsm"}
+TEXT_EXTS: set[str] = {
+    ".txt",
+    ".md",
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".pptx",
+    ".ppt",
+    ".csv",
+    ".xlsx",
+    ".xls",
+    ".xlsm",
+}
 #: 允许入库的扩展名全集
-ALLOWED_EXTS = IMAGE_EXTS | TEXT_EXTS
+ALLOWED_EXTS: set[str] = IMAGE_EXTS | TEXT_EXTS
 
 #: 归档子目录：documents/<年份>/<科目>
-SUBJECT_DIR_MAP = {
-    "数学": "数学", "英语": "英语", "政治": "政治",
-    "数字电子技术": "数电", "模拟电子技术": "模电", "专业课": "专业课", "真题综合": "真题",
+SUBJECT_DIR_MAP: dict[str, str] = {
+    "数学": "数学",
+    "英语": "英语",
+    "政治": "政治",
+    "数字电子技术": "数电",
+    "模拟电子技术": "模电",
+    "专业课": "专业课",
+    "真题综合": "真题",
 }
 
 
 def ensure_dirs() -> None:
+    """确保 inbox/documents/chunks/meta 四个目录存在。"""
     for d in (INBOX_DIR, DOCUMENTS_DIR, CHUNKS_DIR, META_DIR):
         os.makedirs(d, exist_ok=True)
 
 
 def file_md5(file_path: str) -> str:
+    """计算文件 MD5（流式读取，避免大文件一次性入内存）。"""
     h = hashlib.md5()
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -93,9 +130,9 @@ def file_md5(file_path: str) -> str:
     return h.hexdigest()
 
 
-def _load_manifest_hashes() -> Dict[str, str]:
+def _load_manifest_hashes() -> dict[str, str]:
     """读取 manifest.jsonl，返回 {md5: 原始文件名}。"""
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     if not os.path.exists(MANIFEST_PATH):
         return out
     try:
@@ -116,6 +153,7 @@ def _load_manifest_hashes() -> Dict[str, str]:
 
 
 def _append_manifest(record: dict) -> None:
+    """追加一条 manifest 记录（jsonl）。"""
     ensure_dirs()
     with open(MANIFEST_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -124,8 +162,8 @@ def _append_manifest(record: dict) -> None:
 # --------------------------------------------------------------------------- #
 # 解析
 # --------------------------------------------------------------------------- #
-def _parse_content(file_path: str, ocr_backend: str = "auto") -> Dict[str, Any]:
-    """解析文件正文。返回 {text, engine, ocr_used}。
+def _parse_content(file_path: str, ocr_backend: str = "auto") -> dict[str, Any]:
+    """解析文件正文。返回 {text, engine, ocr_used, ocr_error}。
 
     - 图片 → OCRRouter.recognize_file（三层路由）
     - 其他 → DocumentParser.parse（PDF 无文本层时自带 RapidOCR 回退；保留既有解析逻辑）
@@ -156,13 +194,11 @@ def _parse_content(file_path: str, ocr_backend: str = "auto") -> Dict[str, Any]:
     # 造成"解析失败的内容"污染 documents（实测 .ppt/.doc 老格式全部中招）。
     # 这里显式识别该标记并按失败处理，避免脏数据入库。
     if isinstance(text, str) and text.lstrip().startswith("[解析失败"):
-        return {"text": "", "engine": "parser", "ocr_used": "",
-                "ocr_error": text.strip()[:200]}
+        return {"text": "", "engine": "parser", "ocr_used": "", "ocr_error": text.strip()[:200]}
 
     # 解析结果过短且形如错误堆栈/占位，同样拒收
     if isinstance(text, str) and len(text.strip()) < 8:
-        return {"text": "", "engine": "parser", "ocr_used": "",
-                "ocr_error": "解析结果为空或过短"}
+        return {"text": "", "engine": "parser", "ocr_used": "", "ocr_error": "解析结果为空或过短"}
     ocr_used = ""
     if ext == ".pdf" and not text:
         # 无文本层的扫描件 PDF：尝试用三层 OCR 路由逐页识别（走兜底；DocumentParser 已内置 RapidOCR，
@@ -174,6 +210,22 @@ def _parse_content(file_path: str, ocr_backend: str = "auto") -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # 单文件入库
 # --------------------------------------------------------------------------- #
+def _archive_source(file_path: str, file_name: str, subject: str) -> str:
+    """原件归档到 documents/<年份>/<科目>，返回目标路径（重名自动加序号）。"""
+    year = time.strftime("%Y")
+    sub = SUBJECT_DIR_MAP.get(subject, "未分类")
+    dest_dir = os.path.join(DOCUMENTS_DIR, year, sub)
+    os.makedirs(dest_dir, exist_ok=True)
+    target_path = os.path.join(dest_dir, file_name)
+    # 重名保护：目标已存在则加序号
+    base, dot = os.path.splitext(file_name)
+    n = 1
+    while os.path.exists(target_path):
+        target_path = os.path.join(dest_dir, f"{base}_{n}{dot}")
+        n += 1
+    return target_path
+
+
 def ingest_file(
     db: Session,
     file_path: str,
@@ -182,11 +234,11 @@ def ingest_file(
     do_embeddings: bool = True,
     move_to_documents: bool = True,
     dry_run: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """快速入库单个文件。
 
     Returns:
-        {file, status, subject, chunks, engine, ocr_used, md5, target_path, detail}
+        ``{file, status, subject, chunks, engine, ocr_used, md5, target_path, detail}``。
     """
     file_path = os.path.abspath(file_path)
     if not os.path.isfile(file_path):
@@ -199,27 +251,44 @@ def ingest_file(
     pre = precheck_file(file_path)
     if not pre["valid"]:
         return {
-            "file": file_path, "status": "invalid",
+            "file": file_path,
+            "status": "invalid",
             "detail": "前置校验未通过: " + "；".join(pre["reasons"]),
-            "reasons": pre["reasons"], "warnings": pre["warnings"],
-            "size": pre["size"], "dpi": pre["dpi"], "ext": pre["ext"],
+            "reasons": pre["reasons"],
+            "warnings": pre["warnings"],
+            "size": pre["size"],
+            "dpi": pre["dpi"],
+            "ext": pre["ext"],
         }
 
     if ext not in ALLOWED_EXTS:
-        return {"file": file_path, "status": "skipped", "detail": f"不支持的扩展名 {ext}（支持: {sorted(ALLOWED_EXTS)}）"}
+        return {
+            "file": file_path,
+            "status": "skipped",
+            "detail": f"不支持的扩展名 {ext}（支持: {sorted(ALLOWED_EXTS)}）",
+        }
 
     md5 = file_md5(file_path)
     known = _load_manifest_hashes()
     if md5 in known:
-        return {"file": file_path, "status": "skipped", "detail": f"已入库（manifest 命中: {known[md5]}）", "md5": md5}
+        return {
+            "file": file_path,
+            "status": "skipped",
+            "detail": f"已入库（manifest 命中: {known[md5]}）",
+            "md5": md5,
+        }
 
     # 解析
     parsed = _parse_content(file_path, ocr_backend=ocr_backend)
     text = (parsed.get("text") or "").strip()
     if not text:
         return {
-            "file": file_path, "status": "failed", "detail": f"解析/OCR 未得到正文（{parsed.get('ocr_error') or '内容为空'}）",
-            "engine": parsed.get("engine"), "ocr_used": parsed.get("ocr_used"), "md5": md5,
+            "file": file_path,
+            "status": "failed",
+            "detail": f"解析/OCR 未得到正文（{parsed.get('ocr_error') or '内容为空'}）",
+            "engine": parsed.get("engine"),
+            "ocr_used": parsed.get("ocr_used"),
+            "md5": md5,
         }
 
     file_name = os.path.basename(file_path)
@@ -227,6 +296,7 @@ def ingest_file(
     doc_type = ""
     doc_id = None
     chunks = 0
+    embedding_note: Any = "跳过向量化"
 
     if not dry_run:
         from services import kb_service
@@ -239,9 +309,12 @@ def ingest_file(
         verdict = gate_for_write(db, text, path=file_path)
         if not verdict["ok"]:
             return {
-                "file": file_path, "status": "failed",
+                "file": file_path,
+                "status": "failed",
                 "detail": "质量闸门拒绝入库：" + "；".join(verdict["reasons"]),
-                "engine": parsed.get("engine"), "ocr_used": parsed.get("ocr_used"), "md5": md5,
+                "engine": parsed.get("engine"),
+                "ocr_used": parsed.get("ocr_used"),
+                "md5": md5,
             }
 
         # 传完整路径：路径里的学科目录（`.../政治/xxx.pdf`）优先于文件名/正文猜科
@@ -268,8 +341,7 @@ def ingest_file(
         # 2) 分块入库（knowledge_chunks + FTS）
         chunks = kb_service.ingest_document(db, doc, replace=True)
         # 没长出分块就不算入库，别让 UI 报「已入库」而 RAG 搜不到
-        doc.index_status = "indexed" if kb_service.has_searchable_chunks(
-            db, doc.id) else "failed"
+        doc.index_status = "indexed" if kb_service.has_searchable_chunks(db, doc.id) else "failed"
         db.commit()
 
         # 3) 增量向量化（只补缺向量的分块）
@@ -281,30 +353,24 @@ def ingest_file(
                 embedding_note = result.get("built", 0)
             except Exception as e:
                 embedding_note = f"向量化失败: {e}"
-        else:
-            embedding_note = "跳过向量化"
 
     # 4) 原件归档到 documents/<年份>/<科目>
     target_path = file_path
     if move_to_documents and not dry_run:
-        year = time.strftime("%Y")
-        sub = SUBJECT_DIR_MAP.get(subject, "未分类")
-        dest_dir = os.path.join(DOCUMENTS_DIR, year, sub)
-        os.makedirs(dest_dir, exist_ok=True)
-        target_path = os.path.join(dest_dir, file_name)
-        # 重名保护：目标已存在则加序号
-        n = 1
-        base, dot = os.path.splitext(file_name)
-        while os.path.exists(target_path):
-            target_path = os.path.join(dest_dir, f"{base}_{n}{dot}")
-            n += 1
+        target_path = _archive_source(file_path, file_name, subject)
         try:
             shutil.move(file_path, target_path)
         except Exception as e:
             return {
-                "file": file_path, "status": "partial", "detail": f"已入库但归档失败: {e}",
-                "subject": subject, "chunks": chunks, "engine": parsed.get("engine"),
-                "ocr_used": parsed.get("ocr_used"), "md5": md5, "target_path": file_path,
+                "file": file_path,
+                "status": "partial",
+                "detail": f"已入库但归档失败: {e}",
+                "subject": subject,
+                "chunks": chunks,
+                "engine": parsed.get("engine"),
+                "ocr_used": parsed.get("ocr_used"),
+                "md5": md5,
+                "target_path": file_path,
             }
 
     # 5) 元数据记录
@@ -326,10 +392,15 @@ def ingest_file(
         _append_manifest(record)
 
     return {
-        "file": file_name, "status": "ok" if not dry_run else "dry-run-ok",
-        "subject": subject, "chunks": chunks,
-        "engine": parsed.get("engine"), "ocr_used": parsed.get("ocr_used"),
-        "md5": md5, "target_path": target_path, "detail": "入库成功" if not dry_run else "预演（未落库）",
+        "file": file_name,
+        "status": "ok" if not dry_run else "dry-run-ok",
+        "subject": subject,
+        "chunks": chunks,
+        "engine": parsed.get("engine"),
+        "ocr_used": parsed.get("ocr_used"),
+        "md5": md5,
+        "target_path": target_path,
+        "detail": "入库成功" if not dry_run else "预演（未落库）",
     }
 
 
@@ -344,14 +415,21 @@ def scan_inbox(
     move_to_documents: bool = True,
     dry_run: bool = False,
     recursive: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """扫描 knowledge_base/inbox，批量快速入库。"""
     ensure_dirs()
     if not os.path.isdir(INBOX_DIR):
-        return {"total": 0, "ok": 0, "failed": 0, "skipped": 0, "items": [], "detail": f"inbox 不存在: {INBOX_DIR}"}
+        return {
+            "total": 0,
+            "ok": 0,
+            "failed": 0,
+            "skipped": 0,
+            "items": [],
+            "detail": f"inbox 不存在: {INBOX_DIR}",
+        }
 
-    items: List[Dict[str, Any]] = []
-    invalid_records: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
+    invalid_records: list[dict[str, Any]] = []
     for root, dirs, files in os.walk(INBOX_DIR):
         # 非递归模式：只处理 inbox 顶层文件
         if not recursive and root != INBOX_DIR:
@@ -360,20 +438,25 @@ def scan_inbox(
         for fn in sorted(files):
             fp = os.path.join(root, fn)
             res = ingest_file(
-                db, fp,
-                ocr_backend=ocr_backend, do_embeddings=do_embeddings,
-                move_to_documents=move_to_documents, dry_run=dry_run,
+                db,
+                fp,
+                ocr_backend=ocr_backend,
+                do_embeddings=do_embeddings,
+                move_to_documents=move_to_documents,
+                dry_run=dry_run,
             )
             items.append(res)
             if res.get("status") == "invalid":
-                invalid_records.append({
-                    "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "file": fp,
-                    "reasons": res.get("reasons") or [res.get("detail", "")],
-                    "size": res.get("size"),
-                    "dpi": res.get("dpi"),
-                    "ext": res.get("ext"),
-                })
+                invalid_records.append(
+                    {
+                        "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "file": fp,
+                        "reasons": res.get("reasons") or [res.get("detail", "")],
+                        "size": res.get("size"),
+                        "dpi": res.get("dpi"),
+                        "ext": res.get("ext"),
+                    }
+                )
 
     # E6：不合格清单落盘 knowledge_base/meta/invalid_inbox.jsonl
     if invalid_records:
@@ -383,17 +466,22 @@ def scan_inbox(
             for rec in invalid_records:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    ok = [i for i in items if i.get("status") in ("ok", "dry-run-ok")]
-    failed = [i for i in items if i.get("status") == "failed"]
-    skipped = [i for i in items if i.get("status") == "skipped"]
-    invalid = [i for i in items if i.get("status") == "invalid"]
+    # 按状态分桶统计（一次遍历，避免多次 list comprehension）
+    counters: dict[str, int] = {}
+    for i in items:
+        status = i.get("status", "")
+        if status in ("ok", "dry-run-ok"):
+            counters["ok"] = counters.get("ok", 0) + 1
+        else:
+            counters[status] = counters.get(status, 0) + 1
+
     return {
         "total": len(items),
-        "ok": len(ok),
-        "failed": len(failed),
-        "skipped": len(skipped),
-        "invalid": len(invalid),
-        "invalid_list": invalid,
+        "ok": counters.get("ok", 0),
+        "failed": counters.get("failed", 0),
+        "skipped": counters.get("skipped", 0),
+        "invalid": counters.get("invalid", 0),
+        "invalid_list": [i for i in items if i.get("status") == "invalid"],
         "items": items,
         "detail": "dry-run（未落库）" if dry_run else "入库完成",
     }

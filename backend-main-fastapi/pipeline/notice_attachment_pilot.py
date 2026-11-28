@@ -5,6 +5,7 @@
 openpyxl 解析名单（拟录取：人数/均分/最低分；复试：人数）→ 单校单事务入库。
 合规：仅公开页面，1.5-2.5s 限速，附件 ≤8MB，data_source 溯源到通知 URL。
 """
+
 import io
 import random
 import re
@@ -20,10 +21,13 @@ import urllib.request  # noqa: E402
 
 import openpyxl  # noqa: E402
 from database import SessionLocal  # noqa: E402
-from models import KaoyanAdmission  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 PersonalStudyTool/1.0 (kaoyan personal use)"}
+from models import KaoyanAdmission  # noqa: E402
+
+UA = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 PersonalStudyTool/1.0 (kaoyan personal use)"
+}
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 20
 
 
@@ -90,7 +94,7 @@ def _extract_from_rows_iter(sheets_iter):
             continue
         students, totals = 0, []
         majors = {}
-        for row in rows[header_idx + 1:]:
+        for row in rows[header_idx + 1 :]:
             nm = row[name_col] if name_col < len(row) else None
             if not nm or not str(nm).strip():
                 continue
@@ -173,14 +177,25 @@ def parse_roster_html(html: str):
 
 def main():
     db = SessionLocal()
-    report = {"checked": 0, "with_attach": 0, "downloaded": 0, "parsed": 0,
-              "inserted": 0, "pdf_only": 0, "errors": 0, "details": []}
+    report = {
+        "checked": 0,
+        "with_attach": 0,
+        "downloaded": 0,
+        "parsed": 0,
+        "inserted": 0,
+        "pdf_only": 0,
+        "errors": 0,
+        "details": [],
+    }
     try:
-        rows = db.execute(text(
-            "SELECT n.id, n.school_id, n.school_name, n.notice_type, n.title, n.url, n.publish_date "
-            "FROM kaoyan_notices n WHERE n.url IS NOT NULL AND n.url <> '' "
-            "AND n.notice_type IN ('复试','录取') ORDER BY n.publish_date DESC NULLS LAST LIMIT :lim"
-        ), {"lim": LIMIT}).fetchall()
+        rows = db.execute(
+            text(
+                "SELECT n.id, n.school_id, n.school_name, n.notice_type, n.title, n.url, n.publish_date "
+                "FROM kaoyan_notices n WHERE n.url IS NOT NULL AND n.url <> '' "
+                "AND n.notice_type IN ('复试','录取') ORDER BY n.publish_date DESC NULLS LAST LIMIT :lim"
+            ),
+            {"lim": LIMIT},
+        ).fetchall()
         print(f"候选通知 {len(rows)} 条")
         for nid, sid, sname, ntype, title, url, pdate in rows:
             report["checked"] += 1
@@ -201,22 +216,38 @@ def main():
                         st = embedded["stat"]
                         year2 = int((pdate or "")[:4]) if pdate else 2026
                         src2 = f"notice:{nid}"
-                        ex2 = db.query(KaoyanAdmission.id).filter(
-                            KaoyanAdmission.school_id == sid, KaoyanAdmission.year == year2,
-                            KaoyanAdmission.data_source == src2).first()
+                        ex2 = (
+                            db.query(KaoyanAdmission.id)
+                            .filter(
+                                KaoyanAdmission.school_id == sid,
+                                KaoyanAdmission.year == year2,
+                                KaoyanAdmission.data_source == src2,
+                            )
+                            .first()
+                        )
                         if not ex2:
-                            db.add(KaoyanAdmission(
-                                school_id=sid, year=year2,
-                                retest_count=st["students"] if ntype == "复试" else None,
-                                admit_count=st["students"] if ntype == "录取" else None,
-                                admit_avg_score=st.get("avg"),
-                                data_source=src2,
-                            ))
+                            db.add(
+                                KaoyanAdmission(
+                                    school_id=sid,
+                                    year=year2,
+                                    retest_count=st["students"] if ntype == "复试" else None,
+                                    admit_count=st["students"] if ntype == "录取" else None,
+                                    admit_avg_score=st.get("avg"),
+                                    data_source=src2,
+                                )
+                            )
                             db.commit()
                             report["inserted"] += 1
                             report["parsed"] += 1
-                        report["details"].append({"id": nid, "school": sname, "status": "embedded_ok",
-                                                  "students": st["students"], "avg": st.get("avg")})
+                        report["details"].append(
+                            {
+                                "id": nid,
+                                "school": sname,
+                                "status": "embedded_ok",
+                                "students": st["students"],
+                                "avg": st.get("avg"),
+                            }
+                        )
                         print(f"[EMB] {sname} {ntype} {year2}: {st['students']}人 avg={st.get('avg')} ← {title[:24]}")
                     else:
                         report["details"].append({"id": nid, "school": sname, "status": "no_table_attach"})
@@ -244,24 +275,40 @@ def main():
                 st = parsed["stat"]
                 # 幂等：同校同年同来源只写一行（按 data_source 判重）
                 src = f"notice:{nid}"
-                exists = db.query(KaoyanAdmission.id).filter(
-                    KaoyanAdmission.school_id == sid, KaoyanAdmission.year == year,
-                    KaoyanAdmission.data_source == src).first()
+                exists = (
+                    db.query(KaoyanAdmission.id)
+                    .filter(
+                        KaoyanAdmission.school_id == sid,
+                        KaoyanAdmission.year == year,
+                        KaoyanAdmission.data_source == src,
+                    )
+                    .first()
+                )
                 if not exists:
-                    db.add(KaoyanAdmission(
-                        school_id=sid, year=year,
-                        retest_count=st["students"] if ntype == "复试" else None,
-                        admit_count=st["students"] if ntype == "录取" else None,
-                        admit_avg_score=st.get("avg"),
-                        data_source=src,
-                    ))
+                    db.add(
+                        KaoyanAdmission(
+                            school_id=sid,
+                            year=year,
+                            retest_count=st["students"] if ntype == "复试" else None,
+                            admit_count=st["students"] if ntype == "录取" else None,
+                            admit_avg_score=st.get("avg"),
+                            data_source=src,
+                        )
+                    )
                     db.commit()
                     report["inserted"] += 1
-                report["details"].append({
-                    "id": nid, "school": sname, "type": ntype, "year": year,
-                    "students": st["students"], "avg": st.get("avg"), "min": st.get("min"),
-                    "majors_top": sorted(parsed["majors"].items(), key=lambda x: -x[1])[:2],
-                })
+                report["details"].append(
+                    {
+                        "id": nid,
+                        "school": sname,
+                        "type": ntype,
+                        "year": year,
+                        "students": st["students"],
+                        "avg": st.get("avg"),
+                        "min": st.get("min"),
+                        "majors_top": sorted(parsed["majors"].items(), key=lambda x: -x[1])[:2],
+                    }
+                )
                 print(f"[OK] {sname} {ntype} {year}: {st['students']}人 avg={st.get('avg')} ← {title[:24]}")
                 polite()
             except Exception as e:  # noqa: BLE001

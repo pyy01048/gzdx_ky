@@ -9,6 +9,7 @@
 3. fingerprint 用数据集内容哈希，不用文件 mtime：同一份数据重跑
    必须能对上同一条指纹，否则趋势图会随文件复制而漂移。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -25,7 +26,7 @@ def _jsonable(v: Any) -> Any:
     """numpy 标量/NaN/无穷转成可落库的纯 Python 值。"""
     if isinstance(v, dict):
         return {str(k): _jsonable(x) for k, x in v.items()}
-    if isinstance(v, (list, tuple)):
+    if isinstance(v, list | tuple):
         return [_jsonable(x) for x in v]
     if isinstance(v, bool) or v is None or isinstance(v, str):
         return v
@@ -33,7 +34,7 @@ def _jsonable(v: Any) -> Any:
         return int(v)
     if isinstance(v, float):
         return None if (math.isnan(v) or math.isinf(v)) else float(v)
-    item = getattr(v, "item", None)          # numpy 标量
+    item = getattr(v, "item", None)  # numpy 标量
     if callable(item):
         try:
             return _jsonable(item())
@@ -66,12 +67,21 @@ def text_fingerprint(parts) -> str:
     return h.hexdigest()[:16]
 
 
-def record_eval_run(kind: str, *, arm: str = "", metrics: Optional[Dict] = None,
-                    primary_metric: Optional[float] = None, n_samples: Optional[int] = None,
-                    fingerprint: str = "", report_path: str = "", notes: str = "",
-                    db=None) -> Optional[int]:
+def record_eval_run(
+    kind: str,
+    *,
+    arm: str = "",
+    metrics: Optional[Dict] = None,
+    primary_metric: Optional[float] = None,
+    n_samples: Optional[int] = None,
+    fingerprint: str = "",
+    report_path: str = "",
+    notes: str = "",
+    db=None,
+) -> Optional[int]:
     """落一条运行记录，返回 id；失败返回 None（不抛）。"""
     from database import Base, engine
+
     from models import EvalRun
 
     # 脚本侧常在服务器启动前跑，表可能还没被 create_all 建过（同 build_subject_prototypes）
@@ -80,20 +90,23 @@ def record_eval_run(kind: str, *, arm: str = "", metrics: Optional[Dict] = None,
     own = db is None
     if own:
         from database import SessionLocal
+
         db = SessionLocal()
     try:
         row = EvalRun(
-            kind=kind, arm=arm or None, dataset_fingerprint=fingerprint or None,
+            kind=kind,
+            arm=arm or None,
+            dataset_fingerprint=fingerprint or None,
             n_samples=n_samples,
             primary_metric=None if primary_metric is None else float(primary_metric),
-            metrics=_jsonable(metrics or {}), report_path=report_path or None,
+            metrics=_jsonable(metrics or {}),
+            report_path=report_path or None,
             notes=notes or None,
         )
         db.add(row)
         db.commit()
         db.refresh(row)
-        logger.info("eval_runs 落库 #%s kind=%s arm=%s primary=%s",
-                    row.id, kind, arm, primary_metric)
+        logger.info("eval_runs 落库 #%s kind=%s arm=%s primary=%s", row.id, kind, arm, primary_metric)
         return row.id
     except Exception as e:  # noqa: BLE001
         try:

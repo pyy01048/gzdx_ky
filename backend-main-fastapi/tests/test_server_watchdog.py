@@ -8,6 +8,7 @@
 这里不真的起 uvicorn（太贵），而是用假 Server 对象验证决策逻辑，
 外加对真实 TCP/HTTP 探针的行为验证。
 """
+
 from __future__ import annotations
 
 import os
@@ -41,7 +42,9 @@ def _free_port() -> int:
 def _run_watchdog(server, host, port, **kw) -> ServerWatchdog:
     """起一个宽限期/周期都压到毫秒级的看门狗，同步等它 fire 一次。"""
     wd = ServerWatchdog(
-        server, host, port,
+        server,
+        host,
+        port,
         grace_s=kw.pop("grace_s", 0.0),
         interval_s=kw.pop("interval_s", 0.02),
         tcp_fail_limit=kw.pop("tcp_fail_limit", 2),

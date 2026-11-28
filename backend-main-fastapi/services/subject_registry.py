@@ -35,10 +35,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from models import Document, ErrorRecord, KnowledgeChunk, QuizQuestion, SubjectConfig
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from models import Document, ErrorRecord, KnowledgeChunk, QuizQuestion, SubjectConfig
 from services import taxonomy
 
 # --------------------------------------------------------------------------- #
@@ -51,16 +51,16 @@ from services import taxonomy
 # 绝不覆盖、也不复活用户手动删过的其它内置科目。
 # --------------------------------------------------------------------------- #
 ENGINEERING_SUBJECTS: list[str] = [
-    "电子信息",              # 0854 电子信息（专硕）—— 工科最常考的专业学位
-    "信息与通信工程",        # 0810
-    "计算机科学与技术",      # 0812
-    "光学工程",              # 0803
+    "电子信息",  # 0854 电子信息（专硕）—— 工科最常考的专业学位
+    "信息与通信工程",  # 0810
+    "计算机科学与技术",  # 0812
+    "光学工程",  # 0803
     # 0808 电气工程 / 0809 电子科学与技术 / 0811 控制科学与工程 / 0835 软件工程
     # 已在 taxonomy.EXT_SUBJECTS / 真库 subject_config 中存在，无需补种。
 ]
 
 
-def _count_by_subject(db: Session, column, exclude_junk: bool = True) -> dict[str, int]:
+def _count_by_subject(db: Session, column, exclude_junk: bool = True, question_filter: Any = None) -> dict[str, int]:
     """按科目列 group by 计数，过滤 NULL，返回 ``{subject: count}``。
 
     Args:
@@ -69,6 +69,8 @@ def _count_by_subject(db: Session, column, exclude_junk: bool = True) -> dict[st
         exclude_junk: 当列为 ``QuizQuestion.subject`` 时，是否排除 OCR 碎片题
             （``is_junk = TRUE``）。默认 True——"各科目题数"与刷题列表口径一致。
             对非 QuizQuestion 列（Document/KnowledgeChunk）该参数无影响。
+        question_filter: 可选的题目归属 SQL 表达式；仅用于 QuizQuestion 计数，
+            调用方必须显式传入，匿名/个人域查询不能依赖默认全库口径。
 
     Returns:
         科目名 → 记录数 的映射；NULL 科目不计入。
@@ -79,6 +81,8 @@ def _count_by_subject(db: Session, column, exclude_junk: bool = True) -> dict[st
         from services.quiz_query import visible_quiz_filter
 
         query = visible_quiz_filter(query, include_junk=False)
+    if question_filter is not None and getattr(column, "table", None) is QuizQuestion.__table__:
+        query = query.filter(question_filter)
     rows = query.group_by(column).all()
     return {name: int(cnt or 0) for name, cnt in rows}
 
@@ -145,12 +149,14 @@ def _seed_missing_engineering_subjects(db: Session) -> int:
     for name in ENGINEERING_SUBJECTS:
         if name in existing or name in removed:
             continue
-        db.add(SubjectConfig(
-            subject=name,
-            chapters=taxonomy.CHAPTERS.get(name, []),
-            question_types=taxonomy.QUESTION_TYPES.get(name, taxonomy.DEFAULT_QUESTION_TYPES),
-            is_custom=False,
-        ))
+        db.add(
+            SubjectConfig(
+                subject=name,
+                chapters=taxonomy.CHAPTERS.get(name, []),
+                question_types=taxonomy.QUESTION_TYPES.get(name, taxonomy.DEFAULT_QUESTION_TYPES),
+                is_custom=False,
+            )
+        )
         added += 1
     if added:
         db.commit()
@@ -158,13 +164,20 @@ def _seed_missing_engineering_subjects(db: Session) -> int:
     return added
 
 
-def list_subjects(db: Session, *, include_unregistered: bool = True) -> dict[str, Any]:
+def list_subjects(
+    db: Session,
+    *,
+    include_unregistered: bool = True,
+    question_filter: Any = None,
+) -> dict[str, Any]:
     """**唯一科目聚合器**：合并字典权威 + 业务表实际计数。
 
     Args:
         db: SQLAlchemy 会话。
         include_unregistered: 是否把"业务表里出现过但字典里没有"的科目
             以 ``unregistered=True`` 形式带出（默认 True，避免漏数据）。
+        question_filter: 可选的题目归属过滤表达式；用于阻止个人私有题
+            进入公共科目导航的计数与未登记科目集合。
 
     Returns:
         形如::
@@ -192,16 +205,12 @@ def list_subjects(db: Session, *, include_unregistered: bool = True) -> dict[str
     ensure_subject_registry_seeds(db)
 
     # 2) 读字典全量行
-    rows = (
-        db.query(SubjectConfig)
-        .order_by(SubjectConfig.is_custom.asc(), SubjectConfig.subject.asc())
-        .all()
-    )
+    rows = db.query(SubjectConfig).order_by(SubjectConfig.is_custom.asc(), SubjectConfig.subject.asc()).all()
     # 3) 刷新 normalize_subject 的"已配置科目"缓存
     taxonomy.load_configured_subjects(db)
 
     # 4) 业务表实际计数
-    q_counts = _count_by_subject(db, QuizQuestion.subject)
+    q_counts = _count_by_subject(db, QuizQuestion.subject, question_filter=question_filter)
     e_counts = _active_error_counts(db)
     d_counts = _count_by_subject(db, Document.subject)
     chunk_counts = _count_by_subject(db, KnowledgeChunk.subject)
@@ -214,17 +223,19 @@ def list_subjects(db: Session, *, include_unregistered: bool = True) -> dict[str
         if not name:
             continue
         known.add(name)
-        subjects.append({
-            "subject": name,
-            "chapters": r.chapters or [],
-            "question_types": r.question_types or [],
-            "is_custom": bool(r.is_custom),
-            "unregistered": False,
-            "question_count": q_counts.get(name, 0),
-            "error_count": e_counts.get(name, 0),
-            "document_count": d_counts.get(name, 0),
-            "chunk_count": chunk_counts.get(name, 0),
-        })
+        subjects.append(
+            {
+                "subject": name,
+                "chapters": r.chapters or [],
+                "question_types": r.question_types or [],
+                "is_custom": bool(r.is_custom),
+                "unregistered": False,
+                "question_count": q_counts.get(name, 0),
+                "error_count": e_counts.get(name, 0),
+                "document_count": d_counts.get(name, 0),
+                "chunk_count": chunk_counts.get(name, 0),
+            }
+        )
 
     # 5) 带出"业务表出现过但字典没有"的科目（不漏数据）
     if include_unregistered:
@@ -235,17 +246,19 @@ def list_subjects(db: Session, *, include_unregistered: bool = True) -> dict[str
         extra.update(chunk_counts.keys())
         extra -= known
         for name in sorted(extra):
-            subjects.append({
-                "subject": name,
-                "chapters": taxonomy.chapters_of(name),
-                "question_types": taxonomy.question_types_of(name),
-                "is_custom": False,
-                "unregistered": True,
-                "question_count": q_counts.get(name, 0),
-                "error_count": e_counts.get(name, 0),
-                "document_count": d_counts.get(name, 0),
-                "chunk_count": chunk_counts.get(name, 0),
-            })
+            subjects.append(
+                {
+                    "subject": name,
+                    "chapters": taxonomy.chapters_of(name),
+                    "question_types": taxonomy.question_types_of(name),
+                    "is_custom": False,
+                    "unregistered": True,
+                    "question_count": q_counts.get(name, 0),
+                    "error_count": e_counts.get(name, 0),
+                    "document_count": d_counts.get(name, 0),
+                    "chunk_count": chunk_counts.get(name, 0),
+                }
+            )
 
     return {"subjects": subjects}
 

@@ -12,6 +12,7 @@ abstain/拒答结果沉淀为 pending_questions 记录，形成"资料缺口看�
 
 gap_type 枚举：no_material | ocr_failed | no_answer | ambiguous | out_of_scope
 """
+
 from __future__ import annotations
 
 import json
@@ -106,6 +107,7 @@ def record_abstain(
     db.commit()
     # PG 迁移修正：psycopg 无 lastrowid，且旧 SQL 未带 RETURNING → 回查主键
     from services.dbapi_compat import is_sqlite
+
     conn2 = wrap_conn(db.connection().connection)
     if is_sqlite(conn2):
         return int(cur.lastrowid)
@@ -165,13 +167,25 @@ def get_gaps(
     params.append(int(limit))
     rows = conn.execute(sql, params).fetchall()
     cols = [
-        "id", "question", "subject", "have_basis", "have_basis_ids", "gap", "gap_type",
-        "suggestion", "suggested_action", "status", "resolved_by", "resolved_at",
-        "occurrence_count", "last_occurred_at", "created_at",
+        "id",
+        "question",
+        "subject",
+        "have_basis",
+        "have_basis_ids",
+        "gap",
+        "gap_type",
+        "suggestion",
+        "suggested_action",
+        "status",
+        "resolved_by",
+        "resolved_at",
+        "occurrence_count",
+        "last_occurred_at",
+        "created_at",
     ]
     out = []
     for r in rows:
-        d = dict(zip(cols, r))
+        d = dict(zip(cols, r, strict=False))
         try:
             d["have_basis_ids"] = json.loads(d["have_basis_ids"] or "[]")
         except Exception:
@@ -232,10 +246,7 @@ def get_weakest_subjects(db, limit: int = 10, user_id: Optional[int] = None) -> 
         """,
         ((int(user_id), int(limit)) if user_id is not None else (int(limit),)),
     ).fetchall()
-    return [
-        {"subject": r[0], "open_count": int(r[1]), "total_occurrences": int(r[2] or 0)}
-        for r in rows
-    ]
+    return [{"subject": r[0], "open_count": int(r[1]), "total_occurrences": int(r[2] or 0)} for r in rows]
 
 
 def get_weakest_kps(db, limit: int = 20, user_id: Optional[int] = None) -> List[Dict[str, Any]]:

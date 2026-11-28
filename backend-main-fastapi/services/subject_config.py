@@ -25,10 +25,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, Optional
 
-from models import Goal
 from sqlalchemy.orm import Session
 from utils.scope import scoped
 
+from models import Goal
 from services import taxonomy
 
 
@@ -40,12 +40,7 @@ def _scoped_uid(model, user_id: Optional[int]):
 
 def _goal(db: Session, user_id: Optional[int] = None) -> Optional[Goal]:
     """当前用户的目标行；user_id 为 None 时不过滤（旧脚本兼容）。"""
-    return (
-        db.query(Goal)
-        .filter(_scoped_uid(Goal, user_id))
-        .order_by(Goal.id.asc())
-        .first()
-    )
+    return db.query(Goal).filter(_scoped_uid(Goal, user_id)).order_by(Goal.id.asc()).first()
 
 
 def get_config(db: Session, *, user_id: Optional[int] = None) -> dict[str, Any]:

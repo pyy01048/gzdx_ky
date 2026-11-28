@@ -102,7 +102,7 @@ const EMPTY_WORD_FORM = {
   tag: '',
 }
 
-/* 将后端 WordOut 映射为前端词条结构（列表与评分刷新共用，避免字段漂移） */
+/** 将后端 WordOut 映射为前端词条结构（列表与评分刷新共用，避免字段漂移）。 */
 function formatWord(w) {
   return {
     id: w.id,
@@ -131,8 +131,10 @@ function formatWord(w) {
   }
 }
 
-/* 把例句里的目标词打码，用于「先沉浸例句、后揭晓词义」的答题体验（对标扇贝/不背单词）。
-   仅按整词边界替换，避免把词根嵌在别的词里也误打码。 */
+/**
+ * 把例句里的目标词打码，用于「先沉浸例句、后揭晓词义」的答题体验。
+ * 仅按整词边界替换，避免把词根嵌在别的词里也误打码。
+ */
 function maskWordInExample(example, word) {
   if (!example || !word) return example || ''
   try {
@@ -149,11 +151,10 @@ function maskWordInExample(example, word) {
 /* 单页并发上限：贴近 HTTP/1.1 每源 6 连接，超过只会排队，不会更快。 */
 const FETCH_CONCURRENCY = 6
 
-/* 分页拉全量：GET /api/words 返回 {items,total,page,page_size,total_pages}。
-   先取第 1 页拿到 total_pages，其余页并发拉取（按页号回填，顺序与后端 order_by(id) 一致）。
-   词库越大收益越明显：5952 词从 30 次串行往返压成约 5 波并发。
-   include_extra=false：extra（近义词/短语）占列表载荷约八成，而它只在「行展开 / 当前学习词」
-   时展示，改为按需调 GET /api/words/{id} 补齐，批量拉取不再为它付费。 */
+/**
+ * 分页拉全量词库：先取第 1 页拿到 total_pages，其余页并发拉取（6 并发上限）。
+ * include_extra=false：extra 占列表载荷约八成，改为按需调 GET /api/words/{id} 补齐。
+ */
 async function fetchAllWords() {
   const fetchPage = (page) => wordsApi.list({ page, page_size: PAGE_SIZE, include_extra: false })
   const first = await fetchPage(1)
@@ -191,6 +192,7 @@ async function fetchAllWords() {
   return pageItems.flatMap((items) => items || []).map(formatWord)
 }
 
+/** 掌握度环形指示器（0–7 次复习对应 0–100%）。 */
 function MasteryRing({ level = 0, size = 34 }) {
   const reps = Math.max(0, Math.min(7, Number(level) || 0))
   return (
@@ -206,6 +208,10 @@ function MasteryRing({ level = 0, size = 34 }) {
   )
 }
 
+/**
+ * 单词学习页：词库管理 / 艾宾浩斯复习 / 沉浸式例句答题 / 导入导出。
+ * 支持状态筛选、手动评分、生词导入、核心词表内置入口。
+ */
 export default function Words() {
   /* 字段级选择器：store 其他字段变化不触发整页重渲染 */
   const words = useStore((s) => s.words)
@@ -445,7 +451,7 @@ export default function Words() {
   /* 今日计划主数字：后端 daily_load 供数优先；没有才退回本机队列口径并明确标注 */
   const todayPlanTotal = planSource ? (planNew ?? 0) + (planReview ?? 0) : queue.length
 
-  const pronounce = (text) => {
+  const pronounce = useCallback((text) => {
     if (!text) return
     if (!('speechSynthesis' in window)) return toastWarn('当前浏览器不支持语音发音')
     try {
@@ -457,7 +463,7 @@ export default function Words() {
     } catch {
       toastErr('发音失败')
     }
-  }
+  }, [])
 
   const startSession = useCallback(() => {
     setSessionStats({ again: 0, hard: 0, good: 0, easy: 0, startTime: Date.now(), words: [] })
@@ -600,12 +606,12 @@ export default function Words() {
       return next
     })
   }
-  const nextWord = () => {
+  const nextWord = useCallback(() => {
     if (curIdx + 1 < remainingQueue.length) {
       setCurIdx(curIdx + 1)
       setShowAns(false)
     }
-  }
+  }, [curIdx, remainingQueue.length])
 
   /* 快捷键：显示释义后按 1-4 评分（与页面提示一致；拼写模式走输入框，不触发） */
   useEffect(() => {
@@ -635,7 +641,7 @@ export default function Words() {
     return () => window.removeEventListener('keydown', onKey)
   }, [immersive])
 
-  const gradeWord = async (id, g) => {
+  const gradeWord = useCallback(async (id, g) => {
     try {
       const updated = await wordsApi.review(id, g)
       if (updated) {
@@ -646,7 +652,7 @@ export default function Words() {
     } catch (err) {
       toastErr(`评分保存失败：${err?.message || '未知错误'}`)
     }
-  }
+  }, [refreshStats])
 
   const wordBadge = (w) => {
     if (w.tag) return <Badge tone="primary">{w.tag}</Badge>

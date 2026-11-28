@@ -33,6 +33,7 @@
     python scripts/backfill_kp_links_v2.py --apply               # 写库（先自动备份）
     python scripts/backfill_kp_links_v2.py --sample 100          # 抽 100 条可读核对
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,17 +64,17 @@ DB_PATH = os.environ.get("DATABASE_PATH", "").strip() or os.path.join(
 )
 
 #: 第 2 层阈值（默认值，CLI 可覆盖）
-LEXICAL_MIN = 0.30          # 章名模糊匹配时要求的最低字面重合度
-CH_UNIQUE_MIN_LEN = 4       # 参与「章名包含于题干」匹配的最短章名长度
-CROSS_NAME_MIN_LEN = 6      # 跨科兜底时要求的知识点整名最短长度（防误挂）
+LEXICAL_MIN = 0.30  # 章名模糊匹配时要求的最低字面重合度
+CH_UNIQUE_MIN_LEN = 4  # 参与「章名包含于题干」匹配的最短章名长度
+CROSS_NAME_MIN_LEN = 6  # 跨科兜底时要求的知识点整名最短长度（防误挂）
 #: 是否启用跨科兜底。默认 **关闭**：M1-1 精度要求「只在同科内匹配，避免跨科误挂」，
 #: 跨科仅在显式传 --cross-subject 时开启（用于排查科目字段写错的题）。
 ENABLE_CROSS_SUBJECT = False
-RELATED_MAX_PER_Q = 3       # 每题最多保留的中置信相关链
+RELATED_MAX_PER_Q = 3  # 每题最多保留的中置信相关链
 
 #: 第 3 层 LLM 兜底
-LLM_MAX_KP = 3              # LLM 每题最多判定的知识点数
-LLM_CAND_LIMIT = 60         # 送给 LLM 的候选知识点上限（控制 prompt 长度）
+LLM_MAX_KP = 3  # LLM 每题最多判定的知识点数
+LLM_CAND_LIMIT = 60  # 送给 LLM 的候选知识点上限（控制 prompt 长度）
 LLM_MODEL_OVERRIDE = os.environ.get("KP_BACKFILL_LLM_MODEL", "").strip() or None
 
 
@@ -106,15 +107,83 @@ _NAME_SPLIT_RE = None  # 惰性编译
 #: 泛词/结构词停用表（**不参与匹配**）。命中这些词不能证明题考查该 KP，
 #  是第 2 层误挂的主要来源（如"电路/放大/逻辑/方法"在几乎每道题里都出现）。
 _SEGMENT_STOPWORDS = {
-    "的", "与", "和", "及", "或", "等", "之", "对", "为",
-    "基本", "主要", "重要", "一般", "各种", "一些", "有关", "以下", "下列",
-    "概念", "特点", "性质", "原理", "方法", "方式", "过程", "步骤", "条件",
-    "分析", "计算", "求解", "应用", "作用", "影响", "意义", "关系", "区别",
-    "电路", "系统", "结构", "组成", "工作", "状态", "模型", "特性", "性能",
-    "电路图", "放大电路", "滤波器", "信号", "输入", "输出", "电压", "电流",
-    "逻辑", "门电路", "触发器", "计数器", "寄存器", "编码器", "译码器",
-    "判断", "选择", "设计", "实现", "分类", "类型", "种类", "情况", "问题",
-    "定义", "含义", "说明", "简述", "举例", "关于", "什么是", "如何",
+    "的",
+    "与",
+    "和",
+    "及",
+    "或",
+    "等",
+    "之",
+    "对",
+    "为",
+    "基本",
+    "主要",
+    "重要",
+    "一般",
+    "各种",
+    "一些",
+    "有关",
+    "以下",
+    "下列",
+    "概念",
+    "特点",
+    "性质",
+    "原理",
+    "方法",
+    "方式",
+    "过程",
+    "步骤",
+    "条件",
+    "分析",
+    "计算",
+    "求解",
+    "应用",
+    "作用",
+    "影响",
+    "意义",
+    "关系",
+    "区别",
+    "电路",
+    "系统",
+    "结构",
+    "组成",
+    "工作",
+    "状态",
+    "模型",
+    "特性",
+    "性能",
+    "电路图",
+    "放大电路",
+    "滤波器",
+    "信号",
+    "输入",
+    "输出",
+    "电压",
+    "电流",
+    "逻辑",
+    "门电路",
+    "触发器",
+    "计数器",
+    "寄存器",
+    "编码器",
+    "译码器",
+    "判断",
+    "选择",
+    "设计",
+    "实现",
+    "分类",
+    "类型",
+    "种类",
+    "情况",
+    "问题",
+    "定义",
+    "含义",
+    "说明",
+    "简述",
+    "举例",
+    "关于",
+    "什么是",
+    "如何",
 }
 
 #: 参与匹配的「实词片段」最短长度：太短的片段噪声大，要求 >= 3 字
@@ -128,10 +197,30 @@ NO_CHAP_HITS_MIN = 3
 #: 过于宽泛、单独出现不足以定位考点的 KP 名（常见于"每道题都提"的概念）。
 #: 当题目**没有章信息**时，仅凭这些 KP 名不得成链（需更多强片段佐证）。
 _GENERIC_KP_NAMES = {
-    "放大倍数", "输入电阻", "输出电阻", "功率放大", "电压放大", "电流放大",
-    "放大电路", "运算电路", "逻辑函数", "逻辑表达式", "半导体器件",
-    "信号转换", "整流电路", "滤波电路", "静态工作点", "频率响应",
-    "反馈", "振荡", "电压", "电流", "电阻", "电容", "电感", "逻辑",
+    "放大倍数",
+    "输入电阻",
+    "输出电阻",
+    "功率放大",
+    "电压放大",
+    "电流放大",
+    "放大电路",
+    "运算电路",
+    "逻辑函数",
+    "逻辑表达式",
+    "半导体器件",
+    "信号转换",
+    "整流电路",
+    "滤波电路",
+    "静态工作点",
+    "频率响应",
+    "反馈",
+    "振荡",
+    "电压",
+    "电流",
+    "电阻",
+    "电容",
+    "电感",
+    "逻辑",
 }
 
 
@@ -188,23 +277,24 @@ def _load_points(cur: sqlite3.Cursor) -> list[dict]:
         chapter = r[3]
         # 强片段仅来自**知识点名本身**（章名片段不并入，否则"题里出现章名"就滥挂该章所有 KP）
         segs = _split_name_segments(name)
-        out.append({
-            "id": r[0],
-            "name": name,
-            "compact": _compact(name),
-            "subject": r[2],
-            "chapter": chapter,
-            "segments": [s for s in segs if len(s) >= 2],
-            "strong": _strong_segments(segs),
-        })
+        out.append(
+            {
+                "id": r[0],
+                "name": name,
+                "compact": _compact(name),
+                "subject": r[2],
+                "chapter": chapter,
+                "segments": [s for s in segs if len(s) >= 2],
+                "strong": _strong_segments(segs),
+            }
+        )
     return out
 
 
 def _load_questions(cur: sqlite3.Cursor) -> list[dict]:
     """加载全部题目（含 content/knowledge_point/subject/chapter/question_type）。"""
     rows = cur.execute(
-        "SELECT id, content, knowledge_point, subject, chapter, question_type "
-        "FROM quiz_questions"
+        "SELECT id, content, knowledge_point, subject, chapter, question_type FROM quiz_questions"
     ).fetchall()
     return [
         {
@@ -224,9 +314,7 @@ def _load_questions(cur: sqlite3.Cursor) -> list[dict]:
 # --------------------------------------------------------------------------- #
 def layer_rule_exact(questions: list[dict], points: list[dict]) -> list[tuple]:
     """同科目 + 知识点名精确同名 → [(qid, kp_id)]。"""
-    name_subj: dict[tuple, int] = {
-        (p["name"], p["subject"]): p["id"] for p in points
-    }
+    name_subj: dict[tuple, int] = {(p["name"], p["subject"]): p["id"] for p in points}
     out: list[tuple] = []
     for q in questions:
         if not q["kp_text"]:
@@ -318,9 +406,7 @@ def match_question_rule(
         if name_ok and no_chapter and p["name"] in _GENERIC_KP_NAMES:
             name_ok = False
         if name_ok:
-            scores[p["id"]] = 1.00 + min(len(p["name"]), 30) * 0.01 + (
-                0.10 if same_chapter else 0.0
-            )
+            scores[p["id"]] = 1.00 + min(len(p["name"]), 30) * 0.01 + (0.10 if same_chapter else 0.0)
             continue
 
         # ---- 信号 2：>=2 个不同实词强片段命中 ----
@@ -329,9 +415,7 @@ def match_question_rule(
         need = STRONG_HITS_MIN if not no_chapter else NO_CHAP_HITS_MIN
         if len(uniq) >= need:
             base = 0.45 + min(len(uniq[0]), 20) * 0.01 + 0.02 * len(uniq)
-            scores[p["id"]] = round(min(base, 0.95), 4) + (
-                0.10 if same_chapter else 0.0
-            )
+            scores[p["id"]] = round(min(base, 0.95), 4) + (0.10 if same_chapter else 0.0)
 
     return scores
 
@@ -414,7 +498,7 @@ def layer_rule_text(
 #: 实测：qwen2.5:1.5b 快但易乱；kaoyan-assistant（本库微调）JSON 规范但偏保守；
 #: qwen3:4b 质量较好但慢（思考模型）。默认用 kaoyan-assistant。
 FAST_LLM_MODEL = os.environ.get("KP_BACKFILL_LLM_MODEL", "").strip() or "kaoyan-assistant"
-LLM_BATCH = 8               # 每次调用包含的题目数（批量降低往返开销）
+LLM_BATCH = 8  # 每次调用包含的题目数（批量降低往返开销）
 #: 是否接受「LLM 判定但题干无字面佐证」的链。默认 False（保精度）：
 #: 实测本机小模型无佐证时误判率高，宁可少挂也不挂错。加 --llm-uncorroborated 打开。
 LLM_REQUIRE_CORROBORATION = True
@@ -422,15 +506,19 @@ LLM_REQUIRE_CORROBORATION = True
 
 def _llm_cfg() -> dict:
     """构造本地 Ollama 的调用配置（复用 model_gateway._chat_openai_compat）。"""
-    base = os.environ.get("OLLAMA_BASE") or os.environ.get("OLLAMA_HOST") \
-        or "http://127.0.0.1:11434"
+    base = os.environ.get("OLLAMA_BASE") or os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434"
     from utils.ollama_host import resolve_ollama_host
 
     base = resolve_ollama_host(base)
     return {
-        "kind": "local", "provider": "ollama", "name": "KP兜底快模型",
-        "base_url": base.rstrip("/"), "api_key": "ollama",
-        "model": FAST_LLM_MODEL, "temperature": 0.0, "priority": 0,
+        "kind": "local",
+        "provider": "ollama",
+        "name": "KP兜底快模型",
+        "base_url": base.rstrip("/"),
+        "api_key": "ollama",
+        "model": FAST_LLM_MODEL,
+        "temperature": 0.0,
+        "priority": 0,
     }
 
 
@@ -479,8 +567,7 @@ def _batch_prompt(batch: list[tuple[int, dict]], cand_names: list[str], max_kp: 
         lines.append(f"[{idx}] （{q['subject']}｜{q['chapter'] or '未知章'}）{snippet}")
     lines += [
         "",
-        "只输出 JSON 数组，每项形如 {\"i\": 题号, \"points\": [\"知识点名\", ...]}，"
-        "按题号顺序给出，不要解释、不要多余文字。",
+        '只输出 JSON 数组，每项形如 {"i": 题号, "points": ["知识点名", ...]}，按题号顺序给出，不要解释、不要多余文字。',
     ]
     return "\n".join(lines)
 
@@ -507,7 +594,7 @@ def _extract_json_objects(text: str) -> list[dict]:
             elif cleaned[j] == "}":
                 depth -= 1
                 if depth == 0:
-                    frag = cleaned[start:j + 1]
+                    frag = cleaned[start : j + 1]
                     try:
                         obj = json.loads(frag)
                         if isinstance(obj, dict):
@@ -572,7 +659,7 @@ def llm_classify_batch(
 
     out: list[tuple[int, int, float]] = []
     for b0 in range(0, len(questions), batch_size):
-        chunk = questions[b0:b0 + batch_size]
+        chunk = questions[b0 : b0 + batch_size]
         numbered = list(enumerate(chunk, start=1))
         prompt = _batch_prompt(numbered, cand_names, max_kp)
         msgs = [
@@ -618,25 +705,16 @@ def llm_classify_batch(
 def _coverage(cur: sqlite3.Cursor) -> tuple[int, int, int]:
     """返回 (links 总数, 覆盖题目数, 题目总数)。"""
     links = cur.execute("SELECT COUNT(*) FROM question_knowledge_links").fetchone()[0]
-    linked_q = cur.execute(
-        "SELECT COUNT(DISTINCT question_id) FROM question_knowledge_links"
-    ).fetchone()[0]
+    linked_q = cur.execute("SELECT COUNT(DISTINCT question_id) FROM question_knowledge_links").fetchone()[0]
     total_q = cur.execute("SELECT COUNT(*) FROM quiz_questions").fetchone()[0]
     return links, linked_q, total_q
 
 
 def _existing_pairs(cur: sqlite3.Cursor) -> set[tuple[int, int]]:
-    return {
-        (r[0], r[1])
-        for r in cur.execute(
-            "SELECT question_id, knowledge_point_id FROM question_knowledge_links"
-        )
-    }
+    return {(r[0], r[1]) for r in cur.execute("SELECT question_id, knowledge_point_id FROM question_knowledge_links")}
 
 
-def _print_samples(
-    links: list[tuple], q_by_id: dict[int, dict], kp_by_id: dict[int, dict], n: int
-) -> None:
+def _print_samples(links: list[tuple], q_by_id: dict[int, dict], kp_by_id: dict[int, dict], n: int) -> None:
     """打印 n 条「题目摘要 → 知识点」可读样例。"""
     if not links:
         print("（无样例）")
@@ -672,11 +750,13 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--max-related", type=int, default=RELATED_MAX_PER_Q, help="每题最多相关链数")
     ap.add_argument("--llm-model", default=None, help="第3层使用的本地模型名（默认 kaoyan-assistant）")
     ap.add_argument(
-        "--cross-subject", action="store_true",
+        "--cross-subject",
+        action="store_true",
         help="启用跨科兜底（默认关闭；仅用于排查科目字段写错的题）",
     )
     ap.add_argument(
-        "--llm-uncorroborated", action="store_true",
+        "--llm-uncorroborated",
+        action="store_true",
         help="关闭第3层字面佐证闸门（不推荐：本机小模型会大幅误挂）",
     )
     return ap.parse_args()
@@ -688,7 +768,7 @@ def main() -> int:
     if args.llm_model:
         FAST_LLM_MODEL = args.llm_model
     require_corr = not args.llm_uncorroborated
-    do_rule = args.layer in ("rule", "all", "llm")   # llm 层也先跑规则层缩小范围
+    do_rule = args.layer in ("rule", "all", "llm")  # llm 层也先跑规则层缩小范围
     do_llm = args.layer in ("llm", "all")
 
     con = sqlite3.connect(DB_PATH, timeout=60)
@@ -702,12 +782,13 @@ def main() -> int:
 
     links0, linked0, total0 = _coverage(cur)
     print(f"数据库: {DB_PATH}")
-    print(f"题目 {total0} 题 / 知识点 {len(points)} 个 / 现有 links {links0} 条 "
-          f"（覆盖 {linked0}/{total0} = {linked0 / total0 * 100:.1f}%）")
+    print(
+        f"题目 {total0} 题 / 知识点 {len(points)} 个 / 现有 links {links0} 条 "
+        f"（覆盖 {linked0}/{total0} = {linked0 / total0 * 100:.1f}%）"
+    )
 
     existing = _existing_pairs(cur)
-    linked_now = {r[0] for r in cur.execute(
-        "SELECT DISTINCT question_id FROM question_knowledge_links")}
+    linked_now = {r[0] for r in cur.execute("SELECT DISTINCT question_id FROM question_knowledge_links")}
 
     # ---- 第 1 层 ----（全量精确匹配，--limit 不裁剪它，保证幂等口径一致）
     l1 = layer_rule_exact(questions, points)
@@ -728,15 +809,15 @@ def main() -> int:
     l2_raw: list[tuple[int, int, float]] = []
     if do_rule:
         l2_raw = layer_rule_text(
-            todo, points, lexical_min=args.lexical_min, max_per_q=args.max_related,
+            todo,
+            points,
+            lexical_min=args.lexical_min,
+            max_per_q=args.max_related,
             enable_cross_subject=args.cross_subject,
         )
         # 去掉与第 1 层同题的重复挂靠 + 已存在的 pair
         new_l1_pairs = set(new_l1)
-        l2_cand = [
-            (q, k, w) for (q, k, w) in l2_raw
-            if (q, k) not in existing and (q, k) not in new_l1_pairs
-        ]
+        l2_cand = [(q, k, w) for (q, k, w) in l2_raw if (q, k) not in existing and (q, k) not in new_l1_pairs]
         print(f"[第2层·中置信 题干文本] 命中 {len(l2_raw)} 条，其中新增 {len(l2_cand)} 条")
     else:
         l2_cand = []
@@ -745,11 +826,10 @@ def main() -> int:
     # ---- 第 3 层：LLM 兜底（仅对前两层后仍未链上的题）----
     l3_cand: list[tuple[int, int, float]] = []
     llm_ok, llm_info = False, "未尝试"
-    llm_skipped = 0
     if do_llm:
         covered = set(linked_now) | {q for q, _ in l1} | {q for q, _, _ in l2_cand}
         remain = [q for q in todo if q["id"] not in covered]
-        llm_skipped = len(remain)
+        len(remain)
         print(f"[第3层·LLM 兜底] 待判题目 {len(remain)} 题")
         llm_ok, llm_info = _llm_available()
         print(f"[第3层·LLM 可用性] {'可用' if llm_ok else '不可用'} —— {llm_info}")
@@ -768,7 +848,10 @@ def main() -> int:
                 if not pts:
                     continue
                 got = llm_classify_batch(
-                    qs2, pts, model=model, max_kp=LLM_MAX_KP,
+                    qs2,
+                    pts,
+                    model=model,
+                    max_kp=LLM_MAX_KP,
                     require_corroboration=require_corr,
                 )
                 for qid, kid, w in got:
@@ -781,25 +864,23 @@ def main() -> int:
         print("[第3层·LLM 兜底] 已跳过（未选 llm/all 层）")
 
     # ---- 汇总预览 ----
-    proj_pairs = set(existing) | set(new_l1) | {(q, k) for q, k, _ in l2_cand} | {
-        (q, k) for q, k, _ in l3_cand
-    }
+    proj_pairs = set(existing) | set(new_l1) | {(q, k) for q, k, _ in l2_cand} | {(q, k) for q, k, _ in l3_cand}
     proj_links = len(proj_pairs)
     proj_linked = len({q for q, _ in proj_pairs})
     print("\n===== 预览汇总 =====")
-    print(f"新增：第1层 {len(new_l1)} + 第2层 {len(l2_cand)} + 第3层 {len(l3_cand)}"
-          f" = {len(new_l1) + len(l2_cand) + len(l3_cand)} 条")
-    print(f"覆盖率：{linked0}/{total0} = {linked0 / total0 * 100:.1f}%  →  "
-          f"{proj_linked}/{total0} = {proj_linked / total0 * 100:.1f}%")
+    print(
+        f"新增：第1层 {len(new_l1)} + 第2层 {len(l2_cand)} + 第3层 {len(l3_cand)}"
+        f" = {len(new_l1) + len(l2_cand) + len(l3_cand)} 条"
+    )
+    print(
+        f"覆盖率：{linked0}/{total0} = {linked0 / total0 * 100:.1f}%  →  "
+        f"{proj_linked}/{total0} = {proj_linked / total0 * 100:.1f}%"
+    )
     print(f"links 总数：{links0} → {proj_links}")
 
     if args.sample > 0:
         print(f"\n----- 新增样例（随机 {args.sample} 条）-----")
-        all_new = (
-            [(q, k) for q, k in new_l1]
-            + [(q, k, w) for q, k, w in l2_cand]
-            + [(q, k, w) for q, k, w in l3_cand]
-        )
+        all_new = [(q, k) for q, k in new_l1] + [(q, k, w) for q, k, w in l2_cand] + [(q, k, w) for q, k, w in l3_cand]
         _print_samples(all_new, q_by_id, kp_by_id, args.sample)
 
     if not args.apply:
@@ -810,9 +891,7 @@ def main() -> int:
     # ---- 备份 ----
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_kplink_v2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+    bak = os.path.join(bak_dir, f"kaoyan_pre_kplink_v2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     print(f"\n已备份 → {bak}")
@@ -852,13 +931,12 @@ def main() -> int:
     con.commit()
 
     links1, linked1, total1 = _coverage(cur)
-    kps_with_q = cur.execute(
-        "SELECT COUNT(*) FROM knowledge_points WHERE question_count > 0"
-    ).fetchone()[0]
+    kps_with_q = cur.execute("SELECT COUNT(*) FROM knowledge_points WHERE question_count > 0").fetchone()[0]
     print("\n===== 写库完成 =====")
     print(f"links 总数：{links0} → {links1}")
-    print(f"覆盖题目：{linked0} → {linked1} / {total1}"
-          f"（{linked0 / total0 * 100:.1f}% → {linked1 / total1 * 100:.1f}%）")
+    print(
+        f"覆盖题目：{linked0} → {linked1} / {total1}（{linked0 / total0 * 100:.1f}% → {linked1 / total1 * 100:.1f}%）"
+    )
     print(f"有题的知识点：{kps_with_q}/{len(points)}")
     if not llm_ok:
         print(f"⚠️ 第3层 LLM 未执行（{llm_info}）—— 如需提升覆盖率请启动 Ollama 或配置云端 Key 后重跑。")

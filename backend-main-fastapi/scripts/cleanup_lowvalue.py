@@ -16,6 +16,7 @@
   python scripts/cleanup_lowvalue.py --apply --only-db
   python scripts/cleanup_lowvalue.py --apply --only-fs
 """
+
 import argparse
 import json
 import os
@@ -40,20 +41,46 @@ TRASH_ROOT = os.path.join(KB, "_trash")
 # ---------------------------------------------------------------- 排除规则
 # 精确垃圾词。**不要加"打印"/"打印版"** —— 会误杀真题。
 EXCLUDE_WORDS = [
-    "答题卡", "答题纸", "答题版", "机读卡", "填涂卡",
-    "打卡", "签到表", "进度表", "计划表", "倒计时",
-    "课程表", "课表",
-    "打印店", "彩印", "打印店太香", "在线打印",
-    "封面及目录", "封面.ppt", "封面.pptx",
+    "答题卡",
+    "答题纸",
+    "答题版",
+    "机读卡",
+    "填涂卡",
+    "打卡",
+    "签到表",
+    "进度表",
+    "计划表",
+    "倒计时",
+    "课程表",
+    "课表",
+    "打印店",
+    "彩印",
+    "打印店太香",
+    "在线打印",
+    "封面及目录",
+    "封面.ppt",
+    "封面.pptx",
 ]
 # 明确的"目录/封面"文件名（无实质内容）
-EXCLUDE_EXACT = {"封面及目录.txt", "封面及目录.pptx", "目录.TXT", "目录.txt",
-                 "华成英主讲目录.txt"}
+EXCLUDE_EXACT = {"封面及目录.txt", "封面及目录.pptx", "目录.TXT", "目录.txt", "华成英主讲目录.txt"}
 
 # 白名单：即使命中关键词也**必须保留**（真题/题本/教材）
 WHITELIST_HINT = [
-    "真题", "试题", "题库", "习题", "答案", "解析", "刷题", "教材",
-    "全书", "指南", "大纲", "讲义", "笔记", "考点", "复习",
+    "真题",
+    "试题",
+    "题库",
+    "习题",
+    "答案",
+    "解析",
+    "刷题",
+    "教材",
+    "全书",
+    "指南",
+    "大纲",
+    "讲义",
+    "笔记",
+    "考点",
+    "复习",
 ]
 
 # 高价值硬保护：这些文件名里带"打卡"但本体是核心单词书，**绝不能删**。
@@ -95,7 +122,7 @@ def backup_db(tag: str) -> str:
     src = sqlite3.connect(DB)
     out = sqlite3.connect(dst)
     try:
-        src.backup(out)          # 必须用 backup API，cp 在 WAL 模式下会丢数据
+        src.backup(out)  # 必须用 backup API，cp 在 WAL 模式下会丢数据
     finally:
         out.close()
         src.close()
@@ -105,7 +132,7 @@ def backup_db(tag: str) -> str:
 def scan_fs():
     """扫描磁盘上应删除/隔离的文件"""
     hit, keep = [], []
-    for root, dirs, files in os.walk(KB):
+    for root, _dirs, files in os.walk(KB):
         # 不进入已隔离区
         if "_trash" in root:
             continue
@@ -117,8 +144,7 @@ def scan_fs():
                 sz = os.path.getsize(p)
             except OSError:
                 sz = 0
-            (hit if dele else keep).append(
-                {"path": rel, "abs": p, "size": sz, "reason": reason})
+            (hit if dele else keep).append({"path": rel, "abs": p, "size": sz, "reason": reason})
     return hit, keep
 
 
@@ -153,9 +179,7 @@ def delete_db(conn, ids):
     # 先统计关联块
     n_chunk = 0
     try:
-        n_chunk = cur.execute(
-            f"SELECT COUNT(*) FROM knowledge_chunks WHERE document_id IN ({ph})",
-            ids).fetchone()[0]
+        n_chunk = cur.execute(f"SELECT COUNT(*) FROM knowledge_chunks WHERE document_id IN ({ph})", ids).fetchone()[0]
     except sqlite3.OperationalError:
         n_chunk = 0
     try:
@@ -188,16 +212,13 @@ def main():
     report["db_delete"] = db_hit
     report["db_delete_count"] = len(db_hit)
     # 白名单保护样本（让人能看到我们没误杀什么）
-    report["db_protected_samples"] = [
-        k for k in db_keep if classify(k["file_name"] or "")[1]
-    ][:15]
+    report["db_protected_samples"] = [k for k in db_keep if classify(k["file_name"] or "")[1]][:15]
 
     if run_fs:
         fs_hit, _ = scan_fs()
         report["fs_delete"] = fs_hit
         report["fs_delete_count"] = len(fs_hit)
-        report["fs_total_mb"] = round(
-            sum(f["size"] for f in fs_hit) / 1048576, 1)
+        report["fs_total_mb"] = round(sum(f["size"] for f in fs_hit) / 1048576, 1)
 
     print("=" * 68)
     print(f"模式: {report['mode']}")
@@ -208,9 +229,9 @@ def main():
     if run_fs:
         print(f"磁盘待隔离文件: {len(fs_hit)} 个, 共 {report['fs_total_mb']} MB")
         for f in fs_hit[:40]:
-            print(f"   {f['path']}  ({f['size']//1024} KB) <- {f['reason']}")
+            print(f"   {f['path']}  ({f['size'] // 1024} KB) <- {f['reason']}")
         if len(fs_hit) > 40:
-            print(f"   ... 另有 {len(fs_hit)-40} 个")
+            print(f"   ... 另有 {len(fs_hit) - 40} 个")
     print("=" * 68)
 
     if not args.apply:
@@ -233,8 +254,7 @@ def main():
     if run_db and db_hit:
         res = delete_db(conn, [r["id"] for r in db_hit])
         report["db_result"] = res
-        print(f"数据库已删除: documents {res['documents']} 条, "
-              f"knowledge_chunks {res['chunks']} 条")
+        print(f"数据库已删除: documents {res['documents']} 条, knowledge_chunks {res['chunks']} 条")
 
     conn.close()
 
@@ -251,8 +271,7 @@ def main():
                 moved += 1
             except Exception as e:
                 failed.append({"path": f["path"], "err": str(e)})
-        report["fs_result"] = {"moved": moved, "failed": failed,
-                               "trash": os.path.join(TRASH_ROOT, stamp)}
+        report["fs_result"] = {"moved": moved, "failed": failed, "trash": os.path.join(TRASH_ROOT, stamp)}
         print(f"磁盘已隔离: {moved} 个 -> {os.path.join(TRASH_ROOT, stamp)}")
         if failed:
             print(f"  失败 {len(failed)} 个: {failed[:5]}")

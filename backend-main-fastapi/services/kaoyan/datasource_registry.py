@@ -15,10 +15,13 @@
 2. register_datasource() 新增注册（持久化到 datasource_registry.json，不覆盖内置清单）
 3. resolve_source_type() 将库内 source 标记归一化为 官方/聚合/未验证 三档
 """
+
 import json
 import logging
 from pathlib import Path
+from urllib.parse import urlsplit
 
+from sqlalchemy import and_, or_
 from utils.timeutil import naive_utc_iso
 
 REGISTRY_FILE = Path(__file__).parent / "datasource_registry.json"
@@ -37,58 +40,517 @@ OFFICIAL_SOURCES = [
         "remark": "教育部全国硕士招生目录官方平台，spider_yz.py 采集院校/专业目录，含断点续爬",
     },
     # ---- 各省教育考试院官网（官方） ----
-    {"key": "ee_bj", "name": "北京教育考试院", "base_url": "https://www.bjeea.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "北京", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_tj", "name": "天津市招考资讯网", "base_url": "https://www.zhaokao.net/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "天津", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_he", "name": "河北省教育考试院", "base_url": "https://www.hebeea.edu.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "河北", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_sx", "name": "山西招生考试网", "base_url": "https://www.sxkszx.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "山西", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_nmg", "name": "内蒙古招生考试信息网", "base_url": "https://www.nm.zsks.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "内蒙古", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_ln", "name": "辽宁招生考试之窗", "base_url": "https://www.lnzsks.com/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "辽宁", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_jl", "name": "吉林省教育考试院", "base_url": "https://www.jleea.com.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "吉林", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_hlj", "name": "黑龙江省招生考试信息港", "base_url": "https://www.lzk.hl.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "黑龙江", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_sh", "name": "上海市教育考试院", "base_url": "https://www.shmeea.edu.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "上海", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_js", "name": "江苏省教育考试院", "base_url": "https://www.jseea.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "江苏", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_zj", "name": "浙江省教育考试院", "base_url": "https://www.zjzs.net/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "浙江", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_ah", "name": "安徽省教育招生考试院", "base_url": "https://www.ahzsks.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "安徽", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_fj", "name": "福建省教育考试院", "base_url": "https://www.eeafj.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "福建", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_jx", "name": "江西省教育考试院", "base_url": "https://www.jxeea.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "江西", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_sd", "name": "山东省教育招生考试院", "base_url": "https://www.sdzk.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "山东", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_ha", "name": "河南省教育考试院", "base_url": "https://www.haeea.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "河南", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_hb", "name": "湖北省教育考试院", "base_url": "https://www.hbea.edu.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "湖北", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_hn", "name": "湖南省教育考试院", "base_url": "https://www.hneeb.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "湖南", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_gd", "name": "广东省教育考试院", "base_url": "https://eea.gd.gov.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "广东", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_gx", "name": "广西招生考试院", "base_url": "https://www.gxeea.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "广西", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_hi", "name": "海南省考试局", "base_url": "https://ea.hainan.gov.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "海南", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_cq", "name": "重庆市教育考试院", "base_url": "https://www.cqksy.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "重庆", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_sc", "name": "四川省教育考试院", "base_url": "https://www.sceea.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "四川", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_gz", "name": "贵州省招生考试院", "base_url": "https://zsksy.guizhou.gov.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "贵州", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_yn", "name": "云南省招生考试院", "base_url": "https://www.ynzs.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "云南", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_xz", "name": "西藏教育考试院", "base_url": "https://zsks.edu.xizang.gov.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "西藏", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_sx61", "name": "陕西省教育考试院", "base_url": "https://www.sneea.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "陕西", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_gs", "name": "甘肃省教育考试院", "base_url": "https://www.ganseea.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "甘肃", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_qh", "name": "青海省教育考试网", "base_url": "https://www.qhjyks.com/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "青海", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_nx", "name": "宁夏教育考试院", "base_url": "https://www.nxjyks.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "宁夏", "remark": "官方招考公告/分数线发布渠道"},
-    {"key": "ee_xj", "name": "新疆招生网", "base_url": "https://www.xjzk.gov.cn/", "source_type": "exam_authority", "parser": "spider_school", "status": "active", "province": "新疆", "remark": "官方招考公告/分数线发布渠道"},
+    {
+        "key": "ee_bj",
+        "name": "北京教育考试院",
+        "base_url": "https://www.bjeea.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "北京",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_tj",
+        "name": "天津市招考资讯网",
+        "base_url": "https://www.zhaokao.net/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "天津",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_he",
+        "name": "河北省教育考试院",
+        "base_url": "https://www.hebeea.edu.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "河北",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_sx",
+        "name": "山西招生考试网",
+        "base_url": "https://www.sxkszx.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "山西",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_nmg",
+        "name": "内蒙古招生考试信息网",
+        "base_url": "https://www.nm.zsks.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "内蒙古",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_ln",
+        "name": "辽宁招生考试之窗",
+        "base_url": "https://www.lnzsks.com/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "辽宁",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_jl",
+        "name": "吉林省教育考试院",
+        "base_url": "https://www.jleea.com.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "吉林",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_hlj",
+        "name": "黑龙江省招生考试信息港",
+        "base_url": "https://www.lzk.hl.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "黑龙江",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_sh",
+        "name": "上海市教育考试院",
+        "base_url": "https://www.shmeea.edu.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "上海",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_js",
+        "name": "江苏省教育考试院",
+        "base_url": "https://www.jseea.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "江苏",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_zj",
+        "name": "浙江省教育考试院",
+        "base_url": "https://www.zjzs.net/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "浙江",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_ah",
+        "name": "安徽省教育招生考试院",
+        "base_url": "https://www.ahzsks.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "安徽",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_fj",
+        "name": "福建省教育考试院",
+        "base_url": "https://www.eeafj.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "福建",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_jx",
+        "name": "江西省教育考试院",
+        "base_url": "https://www.jxeea.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "江西",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_sd",
+        "name": "山东省教育招生考试院",
+        "base_url": "https://www.sdzk.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "山东",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_ha",
+        "name": "河南省教育考试院",
+        "base_url": "https://www.haeea.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "河南",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_hb",
+        "name": "湖北省教育考试院",
+        "base_url": "https://www.hbea.edu.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "湖北",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_hn",
+        "name": "湖南省教育考试院",
+        "base_url": "https://www.hneeb.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "湖南",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_gd",
+        "name": "广东省教育考试院",
+        "base_url": "https://eea.gd.gov.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "广东",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_gx",
+        "name": "广西招生考试院",
+        "base_url": "https://www.gxeea.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "广西",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_hi",
+        "name": "海南省考试局",
+        "base_url": "https://ea.hainan.gov.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "海南",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_cq",
+        "name": "重庆市教育考试院",
+        "base_url": "https://www.cqksy.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "重庆",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_sc",
+        "name": "四川省教育考试院",
+        "base_url": "https://www.sceea.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "四川",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_gz",
+        "name": "贵州省招生考试院",
+        "base_url": "https://zsksy.guizhou.gov.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "贵州",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_yn",
+        "name": "云南省招生考试院",
+        "base_url": "https://www.ynzs.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "云南",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_xz",
+        "name": "西藏教育考试院",
+        "base_url": "https://zsks.edu.xizang.gov.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "西藏",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_sx61",
+        "name": "陕西省教育考试院",
+        "base_url": "https://www.sneea.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "陕西",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_gs",
+        "name": "甘肃省教育考试院",
+        "base_url": "https://www.ganseea.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "甘肃",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_qh",
+        "name": "青海省教育考试网",
+        "base_url": "https://www.qhjyks.com/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "青海",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_nx",
+        "name": "宁夏教育考试院",
+        "base_url": "https://www.nxjyks.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "宁夏",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
+    {
+        "key": "ee_xj",
+        "name": "新疆招生网",
+        "base_url": "https://www.xjzk.gov.cn/",
+        "source_type": "exam_authority",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "新疆",
+        "remark": "官方招考公告/分数线发布渠道",
+    },
     # ---- 重点院校研究生院官网（官方） ----
-    {"key": "sch_tsinghua", "name": "清华大学研究生院", "base_url": "https://yz.tsinghua.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "北京", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_pku", "name": "北京大学研究生院", "base_url": "https://admission.pku.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "北京", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_zju", "name": "浙江大学研究生院", "base_url": "http://www.grs.zju.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "浙江", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_sjtu", "name": "上海交通大学研究生院", "base_url": "https://yzb.sjtu.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "上海", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_fudan", "name": "复旦大学研究生院", "base_url": "https://gsao.fudan.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "上海", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_nju", "name": "南京大学研究生院", "base_url": "https://grawww.nju.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "江苏", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_ustc", "name": "中国科学技术大学研究生院", "base_url": "https://yz.ustc.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "安徽", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_hit", "name": "哈尔滨工业大学研究生院", "base_url": "http://yzb.hit.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "黑龙江", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_xjtu", "name": "西安交通大学研究生院", "base_url": "http://yz.xjtu.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "陕西", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_hust", "name": "华中科技大学研究生院", "base_url": "http://gs.hust.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "湖北", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_ruc", "name": "中国人民大学研究生院", "base_url": "https://grs.ruc.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "北京", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_buaa", "name": "北京航空航天大学研究生院", "base_url": "https://yzb.buaa.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "北京", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_bit", "name": "北京理工大学研究生院", "base_url": "https://grad.bit.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "北京", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_tju", "name": "天津大学研究生院", "base_url": "https://yzb.tju.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "天津", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_nankai", "name": "南开大学研究生院", "base_url": "https://yzb.nankai.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "天津", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_tongji", "name": "同济大学研究生院", "base_url": "https://yz.tongji.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "上海", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_seu", "name": "东南大学研究生院", "base_url": "https://yzb.seu.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "江苏", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_whu", "name": "武汉大学研究生院", "base_url": "https://gs.whu.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "湖北", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_sysu", "name": "中山大学研究生院", "base_url": "https://graduate.sysu.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "广东", "remark": "院校官方复试线/拟录取公告"},
-    {"key": "sch_scu", "name": "四川大学研究生院", "base_url": "https://gs.scu.edu.cn/", "source_type": "school_official", "parser": "spider_school", "status": "active", "province": "四川", "remark": "院校官方复试线/拟录取公告"},
+    {
+        "key": "sch_tsinghua",
+        "name": "清华大学研究生院",
+        "base_url": "https://yz.tsinghua.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "北京",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_pku",
+        "name": "北京大学研究生院",
+        "base_url": "https://admission.pku.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "北京",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_zju",
+        "name": "浙江大学研究生院",
+        "base_url": "http://www.grs.zju.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "浙江",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_sjtu",
+        "name": "上海交通大学研究生院",
+        "base_url": "https://yzb.sjtu.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "上海",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_fudan",
+        "name": "复旦大学研究生院",
+        "base_url": "https://gsao.fudan.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "上海",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_nju",
+        "name": "南京大学研究生院",
+        "base_url": "https://grawww.nju.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "江苏",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_ustc",
+        "name": "中国科学技术大学研究生院",
+        "base_url": "https://yz.ustc.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "安徽",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_hit",
+        "name": "哈尔滨工业大学研究生院",
+        "base_url": "http://yzb.hit.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "黑龙江",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_xjtu",
+        "name": "西安交通大学研究生院",
+        "base_url": "http://yz.xjtu.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "陕西",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_hust",
+        "name": "华中科技大学研究生院",
+        "base_url": "http://gs.hust.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "湖北",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_ruc",
+        "name": "中国人民大学研究生院",
+        "base_url": "https://grs.ruc.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "北京",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_buaa",
+        "name": "北京航空航天大学研究生院",
+        "base_url": "https://yzb.buaa.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "北京",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_bit",
+        "name": "北京理工大学研究生院",
+        "base_url": "https://grad.bit.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "北京",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_tju",
+        "name": "天津大学研究生院",
+        "base_url": "https://yzb.tju.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "天津",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_nankai",
+        "name": "南开大学研究生院",
+        "base_url": "https://yzb.nankai.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "天津",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_tongji",
+        "name": "同济大学研究生院",
+        "base_url": "https://yz.tongji.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "上海",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_seu",
+        "name": "东南大学研究生院",
+        "base_url": "https://yzb.seu.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "江苏",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_whu",
+        "name": "武汉大学研究生院",
+        "base_url": "https://gs.whu.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "湖北",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_sysu",
+        "name": "中山大学研究生院",
+        "base_url": "https://graduate.sysu.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "广东",
+        "remark": "院校官方复试线/拟录取公告",
+    },
+    {
+        "key": "sch_scu",
+        "name": "四川大学研究生院",
+        "base_url": "https://gs.scu.edu.cn/",
+        "source_type": "school_official",
+        "parser": "spider_school",
+        "status": "active",
+        "province": "四川",
+        "remark": "院校官方复试线/拟录取公告",
+    },
 ]
 
 
@@ -108,9 +570,7 @@ def load_registry():
         except Exception as _exc:  # noqa: BLE001
             # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
             # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
     return data
 
 
@@ -120,9 +580,7 @@ def save_registry(data):
         "custom": data.get("custom", []),
         "updated_at": naive_utc_iso(),
     }
-    REGISTRY_FILE.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    REGISTRY_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def list_datasources(source_type=None, province=None, status=None):
@@ -146,8 +604,9 @@ def get_datasource(key):
     return None
 
 
-def register_datasource(name, base_url, source_type="aggregator", parser="manual",
-                        status="active", province=None, remark=""):
+def register_datasource(
+    name, base_url, source_type="aggregator", parser="manual", status="active", province=None, remark=""
+):
     """新增注册数据源（持久化到 datasource_registry.json）。
 
     默认 source_type=aggregator：第三方聚合站需显式标注，官方源请使用
@@ -190,15 +649,84 @@ SOURCE_TYPE_MAP = {
 }
 
 
+def _is_official_url(value: str) -> bool:
+    candidate = value if "://" in value else f"//{value}"
+    try:
+        parsed = urlsplit(candidate)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    if parsed.scheme and parsed.scheme not in {"http", "https"}:
+        return False
+    return (
+        hostname == "edu.cn"
+        or hostname.endswith(".edu.cn")
+        or hostname == "yz.chsi.com.cn"
+        or hostname.endswith(".yz.chsi.com.cn")
+    )
+
+
+def resolve_evidence(source):
+    """把来源标记归一化为记录类型、来源类型与核验状态。"""
+    value = str(source or "").strip()
+    lowered = value.lower()
+    if lowered.startswith(
+        (
+            "zexiaobao",
+            "txkyer",
+            "seed_txkyer",
+            "kaoyan.cn",
+            "csv",
+            "csv_sample",
+        )
+    ):
+        return {
+            "record_kind": "score_sample",
+            "source_type": "aggregator",
+            "verification_status": "reference",
+        }
+    if (
+        lowered.startswith("notice:")
+        or lowered in {"school_official", "yz_chsi", "exam_authority", "yz.chsi.com.cn"}
+        or _is_official_url(lowered)
+    ):
+        return {
+            "record_kind": "official_list",
+            "source_type": "school_official",
+            "verification_status": "official",
+        }
+    return {
+        "record_kind": "unverified",
+        "source_type": "unverified",
+        "verification_status": "unverified",
+    }
+
+
+def official_source_condition(column):
+    """仅允许明确官方来源进入录取风险计算。"""
+    official_host = (
+        r"(?i)^\s*(?:https?://)?(?:[a-z0-9-]+\.)*"
+        r"(?:edu\.cn|yz\.chsi\.com\.cn)(?:[/:?#]|$)"
+    )
+    official = or_(
+        column.like("notice:%"),
+        column.in_(("school_official", "yz_chsi", "exam_authority", "yz.chsi.com.cn")),
+        column.regexp_match(official_host),
+    )
+    third_party = or_(
+        column.like("zexiaobao%"),
+        column.like("txkyer%"),
+        column.like("seed_txkyer%"),
+        column.like("kaoyan.cn%"),
+        column.like("csv%"),
+    )
+    return and_(official, ~third_party)
+
+
 def resolve_source_type(source):
     """将库内 source/data_source 标记归一化为 官方/聚合/未验证 展示类型。"""
-    if not source:
-        return "未验证"
-    if source in SOURCE_TYPE_MAP:
-        return SOURCE_TYPE_MAP[source]
-    # 域名启发式：官方 edu.cn / 教育考试院 / 研招网
-    if "yz.chsi.com.cn" in source or ".edu.cn" in source or "exam" in source.lower():
-        return "官方"
-    if "txkyer" in source or "csv" in source.lower():
-        return "聚合"
-    return "未验证"
+    return {
+        "school_official": "官方",
+        "aggregator": "聚合",
+        "unverified": "未验证",
+    }[resolve_evidence(source)["source_type"]]

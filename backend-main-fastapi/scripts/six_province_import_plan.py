@@ -32,6 +32,7 @@
 
 本脚本**只读**，不写库、不抓取。
 """
+
 from __future__ import annotations
 
 import re
@@ -61,8 +62,18 @@ CORE_TYPES = ("简章", "目录", "大纲", "调剂", "录取", "复试")
 #: 北理工「硕士学位论文盲评系统」命中「硕士学位」（实为系统导航链接）。
 #: 学费/学制/奖助/成绩/查分/培养方案 是入学后事务，对**硕士考生**不是招生信息。
 POST_ENROLLMENT_WORDS = {
-    "培养方案", "学费", "学制", "奖助", "成绩", "查分",
-    "专业学位", "学术学位", "硕士学位", "博士学位", "研究生院", "研招办",
+    "培养方案",
+    "学费",
+    "学制",
+    "奖助",
+    "成绩",
+    "查分",
+    "专业学位",
+    "学术学位",
+    "硕士学位",
+    "博士学位",
+    "研究生院",
+    "研招办",
 }
 
 #: 导航项：整条标题就是「XX招生网 / 硕士研究生报名」这类**裸栏目标签**
@@ -94,6 +105,7 @@ COMPETITION_RE = re.compile(r"竞赛|大赛|挑战赛|锦标赛|联赛")
 def _core_title_words() -> list[str]:
     """招生核心词表（运行时从 ADMISSION_WORDS 派生，保持单一事实来源）。"""
     from detect_notice_noise import ADMISSION_WORDS
+
     return [w for w in ADMISSION_WORDS if w not in POST_ENROLLMENT_WORDS]
 
 
@@ -126,6 +138,7 @@ def is_core_notice(title: str | None, notice_type: str | None) -> bool:
         return False
     return any(w in t for w in _core_title_words())
 
+
 #: 行业属性校名后缀/词（电子/邮电/信息/理工/科技类行业校的校名特征）。
 NAME_INDUSTRY_WORDS = ["电子", "邮电", "信息", "理工", "科技", "航空", "交通"]
 
@@ -136,7 +149,11 @@ NAME_INDUSTRY_WORDS = ["电子", "邮电", "信息", "理工", "科技", "航空
 #: 实例：重庆理工 intro 是校长简历（含「电气/电子」措辞）、重庆邮电/遵义医科/西南科大/
 #: 西南政法 同理（详见 screen_electronic_schools_6provinces.NOISE_CTX 注释）。
 DIRTY_INTRO_SCHOOLS = {
-    "重庆理工大学", "重庆邮电大学", "遵义医科大学", "西南科技大学", "西南政法大学",
+    "重庆理工大学",
+    "重庆邮电大学",
+    "遵义医科大学",
+    "西南科技大学",
+    "西南政法大学",
 }
 
 #: official_url 指向判定模式（与 screen 脚本保持一致）。
@@ -164,8 +181,7 @@ def classify_url(url: str | None) -> str:
 def load_notice_stats(conn: sqlite3.Connection) -> dict[int, dict]:
     """按 school_id 聚合通知统计：总数、核心数（并集口径）、噪声数。"""
     rows = conn.execute(
-        "SELECT school_id, title, notice_type, importance_reason "
-        "FROM kaoyan_notices WHERE school_id IS NOT NULL"
+        "SELECT school_id, title, notice_type, importance_reason FROM kaoyan_notices WHERE school_id IS NOT NULL"
     ).fetchall()
     stats: dict[int, dict] = {}
     for sid, title, ntype, reason in rows:
@@ -175,6 +191,7 @@ def load_notice_stats(conn: sqlite3.Connection) -> dict[int, dict]:
             s["core"] += 1
         # 噪声口径与 detect_notice_noise.py 对齐：现有规则降级 + 新增判据
         from detect_notice_noise import EXISTING_NOISE_REASONS, classify_noise
+
         r = reason or ""
         if any(k in r for k in EXISTING_NOISE_REASONS):
             s["noise"] += 1
@@ -246,11 +263,16 @@ def build_pool(conn: sqlite3.Connection) -> list[dict]:
             continue
         st = stats.get(s["id"], {"total": 0, "core": 0, "noise": 0})
         s = dict(s)
-        s.update({
-            "reasons": reasons, "kw_strong": strong, "tier": tier,
-            "core_cnt": st["core"], "noise_cnt": st["noise"],
-            "url_kind": classify_url(s["official_url"]),
-        })
+        s.update(
+            {
+                "reasons": reasons,
+                "kw_strong": strong,
+                "tier": tier,
+                "core_cnt": st["core"],
+                "noise_cnt": st["noise"],
+                "url_kind": classify_url(s["official_url"]),
+            }
+        )
         pool.append(s)
     return pool
 
@@ -268,22 +290,25 @@ def main() -> int:
     print("六省电子电气强校补导清单（触发条件：招生核心类 = 0）")
     print("=" * 96)
     a_pool = [s for s in pool if s["tier"] == "A"]
-    print(f"  6 省共 {len(all6)} 所 → A 类候选 {len(a_pool)} 所"
-          f"（W {len([s for s in pool if s['tier']=='W'])} / "
-          f"B {len([s for s in pool if s['tier']=='B'])}）")
+    print(
+        f"  6 省共 {len(all6)} 所 → A 类候选 {len(a_pool)} 所"
+        f"（W {len([s for s in pool if s['tier'] == 'W'])} / "
+        f"B {len([s for s in pool if s['tier'] == 'B'])}）"
+    )
 
     # ---- 补导触发复算 ----
     need = [s for s in a_pool if s["core_cnt"] == 0]
     fake = [s for s in a_pool if s["core_cnt"] == 0 and s["notice_cnt"] > 0]
-    print(f"  A 类中「招生核心类 = 0」需补导: {len(need)} 所"
-          f"（其中「有通知但全是噪声」的假覆盖 {len(fake)} 所）")
+    print(f"  A 类中「招生核心类 = 0」需补导: {len(need)} 所（其中「有通知但全是噪声」的假覆盖 {len(fake)} 所）")
     for s in sorted(fake, key=lambda x: -x["notice_cnt"]):
-        print(f"    ⚠ 假覆盖: {s['province']} {s['name']} 通知={s['notice_cnt']} "
-              f"噪声={s['noise_cnt']} 核心=0")
+        print(f"    ⚠ 假覆盖: {s['province']} {s['name']} 通知={s['notice_cnt']} 噪声={s['noise_cnt']} 核心=0")
 
     # ---- 分三档 ----
-    t1 = [s for s in need if s["url_kind"] in ("研究生院/招生网", "研招网", "其它")
-          and (s["official_url"] or "").startswith("http")]
+    t1 = [
+        s
+        for s in need
+        if s["url_kind"] in ("研究生院/招生网", "研招网", "其它") and (s["official_url"] or "").startswith("http")
+    ]
     t1b = [s for s in need if s["url_kind"] == "数字schid"]
     t2 = [s for s in need if s["url_kind"] == "无"]
     t3 = [s for s in a_pool if s["core_cnt"] > 0]
@@ -293,37 +318,42 @@ def main() -> int:
     print(f"T1  可立即补导（核心=0 + official_url 可直接定位通知列表页）—— {len(t1)} 所")
     print("=" * 96)
     for s in t1:
-        print(f"  {s['province']:3s} | {s['name'][:18]:20s} | {str(s['level'] or 'NULL'):5s} "
-              f"| 通知={s['notice_cnt']:<3d} | {s['url_kind']}")
+        print(
+            f"  {s['province']:3s} | {s['name'][:18]:20s} | {str(s['level'] or 'NULL'):5s} "
+            f"| 通知={s['notice_cnt']:<3d} | {s['url_kind']}"
+        )
         print(f"        URL: {s['official_url']}")
         print(f"        入选理由: {'; '.join(s['reasons'])}")
 
     print()
     print("=" * 96)
-    print(f"T1b schid 修正后可补导（核心=0 + official_url 是数字 schid，"
-          f"fix_official_url_schid.py 修完即可）—— {len(t1b)} 所")
+    print(
+        f"T1b schid 修正后可补导（核心=0 + official_url 是数字 schid，"
+        f"fix_official_url_schid.py 修完即可）—— {len(t1b)} 所"
+    )
     print("=" * 96)
     for s in t1b:
-        print(f"  {s['province']:3s} | {s['name'][:18]:20s} | {str(s['level'] or 'NULL'):5s} "
-              f"| 通知={s['notice_cnt']:<3d} | schid={s['official_url']}"
-              f" → https://yz.chsi.com.cn/sch/{s['official_url']}.jhtml")
+        print(
+            f"  {s['province']:3s} | {s['name'][:18]:20s} | {str(s['level'] or 'NULL'):5s} "
+            f"| 通知={s['notice_cnt']:<3d} | schid={s['official_url']}"
+            f" → https://yz.chsi.com.cn/sch/{s['official_url']}.jhtml"
+        )
 
     print()
     print("=" * 96)
-    print(f"T2  需先补「院校→研究生院URL」映射（核心=0 + 无 official_url）"
-          f"—— {len(t2)} 所，按电子信息强度排序")
+    print(f"T2  需先补「院校→研究生院URL」映射（核心=0 + 无 official_url）—— {len(t2)} 所，按电子信息强度排序")
     print("=" * 96)
     scored = []
     for s in t2:
         sc, why = ict_score(s)
         scored.append((sc, s, why))
-    scored.sort(key=lambda x: (-x[0],
-                               {"985": 0, "211": 1, "双一流": 2, "双非": 3}.get(x[1]["level"], 4),
-                               x[1]["name"]))
+    scored.sort(key=lambda x: (-x[0], {"985": 0, "211": 1, "双一流": 2, "双非": 3}.get(x[1]["level"], 4), x[1]["name"]))
     for rank, (sc, s, why) in enumerate(scored, 1):
-        print(f"  {rank:2d}. [{sc}分] {s['province']:3s} | {s['name'][:18]:20s} "
-              f"| {str(s['level'] or 'NULL'):5s} | 通知={s['notice_cnt']:<3d} "
-              f"| {'/'.join(why)}")
+        print(
+            f"  {rank:2d}. [{sc}分] {s['province']:3s} | {s['name'][:18]:20s} "
+            f"| {str(s['level'] or 'NULL'):5s} | 通知={s['notice_cnt']:<3d} "
+            f"| {'/'.join(why)}"
+        )
         print(f"        入选理由: {'; '.join(s['reasons'])}")
 
     print()
@@ -331,8 +361,10 @@ def main() -> int:
     print(f"T3  已有招生核心通知（无需补导）—— {len(t3)} 所")
     print("=" * 96)
     for s in sorted(t3, key=lambda x: -x["core_cnt"]):
-        print(f"  {s['province']:3s} | {s['name'][:18]:20s} | {str(s['level'] or 'NULL'):5s} "
-              f"| 通知={s['notice_cnt']:<3d} 核心={s['core_cnt']:<3d} 噪声={s['noise_cnt']}")
+        print(
+            f"  {s['province']:3s} | {s['name'][:18]:20s} | {str(s['level'] or 'NULL'):5s} "
+            f"| 通知={s['notice_cnt']:<3d} 核心={s['core_cnt']:<3d} 噪声={s['noise_cnt']}"
+        )
 
     # ---- 3a 修正前后可补导数 ----
     print()
@@ -342,14 +374,12 @@ def main() -> int:
     # 全库口径：修正后可立即补导 = 核心=0 且 official_url 修正后可点开
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     try:
-        sch_rows = conn.execute(
-            "SELECT s.id, s.name, s.level, s.official_url FROM kaoyan_schools s"
-        ).fetchall()
+        sch_rows = conn.execute("SELECT s.id, s.name, s.level, s.official_url FROM kaoyan_schools s").fetchall()
     finally:
         conn.close()
     before = after = 0
     after_new = []
-    for sid, name, level, url in sch_rows:
+    for sid, name, _level, url in sch_rows:
         st = stats.get(sid, {"total": 0, "core": 0, "noise": 0})
         if st["core"] > 0:
             continue
@@ -361,8 +391,7 @@ def main() -> int:
             after += 1
             after_new.append((name, u))
     print(f"  修正前可立即补导（核心=0 + http URL）        : {before} 所")
-    print(f"  修正后可立即补导（+ 数字 schid 拼成 chsi URL）: {after} 所"
-          f"（新增 {len(after_new)} 所）")
+    print(f"  修正后可立即补导（+ 数字 schid 拼成 chsi URL）: {after} 所（新增 {len(after_new)} 所）")
     print(f"  其中六省 A 类: 修正前 {len(t1)} 所 → 修正后 {len(t1) + len(t1b)} 所")
 
     print()

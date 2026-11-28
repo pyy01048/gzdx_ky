@@ -207,9 +207,7 @@ def test_postgres_day_bucket_matches_python_with_grace():
 def test_postgres_and_sqlite_agree():
     """跨后端一致性：同一批瞬间，两种方言必须给出同一张「日」表。"""
     for grace in (0, 120):
-        assert _buckets(driver="postgresql", grace_minutes=grace) == _buckets(
-            driver="sqlite", grace_minutes=grace
-        )
+        assert _buckets(driver="postgresql", grace_minutes=grace) == _buckets(driver="sqlite", grace_minutes=grace)
 
 
 @pytest.mark.skipif(not IS_POSTGRES, reason="测试库不是 PostgreSQL")
@@ -283,9 +281,7 @@ def test_day_bucket_expr_shift_is_inlined_not_bound():
     assert not pg.params, f"PG 分桶表达式仍在绑定参数：{pg.params}"
     assert "make_interval(0, 0, 0, 0, 0, 480, 0)" in str(pg), str(pg)
 
-    lite = tu.day_bucket_expr(column("ts"), create_engine("sqlite://")).compile(
-        dialect=sqlite.dialect()
-    )
+    lite = tu.day_bucket_expr(column("ts"), create_engine("sqlite://")).compile(dialect=sqlite.dialect())
     assert not lite.params, f"SQLite 分桶表达式仍在绑定参数：{lite.params}"
     assert str(lite) == "date(ts, '+480 minutes')", str(lite)
 

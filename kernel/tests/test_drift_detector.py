@@ -1,20 +1,27 @@
 # -*- coding: utf-8 -*-
 """drift_detector：分带端点、等号归属、冷启动保护、边界值必测（规范 §2.2-1/2）。"""
+
 import datetime
 
 import pytest
 
 from kernel.drift_detector import (
-    STATUS_INSUFFICIENT, STATUS_MICRO_ADJUST, STATUS_NO_PLAN, STATUS_ON_TRACK,
-    STATUS_RECOVERY, DayLedger, compute_drift,
+    STATUS_INSUFFICIENT,
+    STATUS_MICRO_ADJUST,
+    STATUS_NO_PLAN,
+    STATUS_ON_TRACK,
+    STATUS_RECOVERY,
+    DayLedger,
+    compute_drift,
 )
 
 
 def _ledger(pairs, start="2026-11-01"):
     d0 = datetime.date.fromisoformat(start)
-    return [DayLedger(date=(d0 + datetime.timedelta(days=i)).isoformat(),
-                      planned_min=p, completed_min=c)
-            for i, (p, c) in enumerate(pairs)]
+    return [
+        DayLedger(date=(d0 + datetime.timedelta(days=i)).isoformat(), planned_min=p, completed_min=c)
+        for i, (p, c) in enumerate(pairs)
+    ]
 
 
 class TestBandEndpoints:

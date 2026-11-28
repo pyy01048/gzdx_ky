@@ -41,6 +41,7 @@ schId 链接，不可直接当作官网来源。
     python scripts/backfill_school_intro.py --apply         # 写库（先备份）
     python scripts/backfill_school_intro.py --apply --with-template  # 含模板兜底
 """
+
 from __future__ import annotations
 
 import argparse
@@ -572,28 +573,76 @@ _SCRIPT_RE = re.compile(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>")
 # 简介页正文常见容器 class/id（不同 CMS 命名不同，命中即优先取该块）
 _MAIN_RE = re.compile(
     r'(?is)<(?:div|article|section)[^>]+(?:id|class)="[^"]*'
-    r'(?:content|article|detail|intro|con|main|txt|article-content|wp_articlecontent)'
+    r"(?:content|article|detail|intro|con|main|txt|article-content|wp_articlecontent)"
     r'[^"]*"[^>]*>(.*?)</(?:div|article|section)>'
 )
 # 简介链接锚文本关键词
-_INTRO_LINK_KW = ("学校简介", "学校概况", "院校简介", "大学简介", "学校介绍",
-                  "学校章程", "学校概况", "学院简介", "本校概况", "学校概述",
-                  "学校介绍", "学院概况", "中心简介")
+_INTRO_LINK_KW = (
+    "学校简介",
+    "学校概况",
+    "院校简介",
+    "大学简介",
+    "学校介绍",
+    "学校章程",
+    "学校概况",
+    "学院简介",
+    "本校概况",
+    "学校概述",
+    "学校介绍",
+    "学院概况",
+    "中心简介",
+)
 # 常见简介页相对路径（按命中概率排序）
 _COMMON_PATHS = (
-    "/xxgk/xxjj.htm", "/xxgk/xxjj/", "/xxjj.htm", "/xxgk/xxjj.html",
-    "/xxgk/xxjj", "/学校概况/学校简介.htm", "/xxgk/xxjj1.htm",
-    "/xxgk/xxjj.htm", "/xxgk/xxjs.htm", "/xxgk/xxgk.htm",
-    "/xygk/xxjj.htm", "/xxjj/xxjj.htm", "/xxgk/index.htm",
-    "/xxgk/xxjj2020.htm", "/about/intro.htm", "/xxgk/xxjj001.htm",
-    "/xxgk/xxjj/list.htm", "/xxgk/xxjj1/list.htm",
+    "/xxgk/xxjj.htm",
+    "/xxgk/xxjj/",
+    "/xxjj.htm",
+    "/xxgk/xxjj.html",
+    "/xxgk/xxjj",
+    "/学校概况/学校简介.htm",
+    "/xxgk/xxjj1.htm",
+    "/xxgk/xxjj.htm",
+    "/xxgk/xxjs.htm",
+    "/xxgk/xxgk.htm",
+    "/xygk/xxjj.htm",
+    "/xxjj/xxjj.htm",
+    "/xxgk/index.htm",
+    "/xxgk/xxjj2020.htm",
+    "/about/intro.htm",
+    "/xxgk/xxjj001.htm",
+    "/xxgk/xxjj/list.htm",
+    "/xxgk/xxjj1/list.htm",
 )
 # 噪声行特征（导航菜单/版权/联系等）——行级过滤
 _NOISE_KW = (
-    "版权", "版权所有", "Copyright", "ICP备", "京公网安备", "地址：", "邮编",
-    "电话：", "传真", "邮箱", "新闻网", "English", "无障碍", "登录", "注册",
-    "首页", "学院部门", "师资队伍", "人才培养", "招生就业", "科学研究",
-    "服务指南", "招聘", "校友", "更多", "展开", "导航", "版权所有©",
+    "版权",
+    "版权所有",
+    "Copyright",
+    "ICP备",
+    "京公网安备",
+    "地址：",
+    "邮编",
+    "电话：",
+    "传真",
+    "邮箱",
+    "新闻网",
+    "English",
+    "无障碍",
+    "登录",
+    "注册",
+    "首页",
+    "学院部门",
+    "师资队伍",
+    "人才培养",
+    "招生就业",
+    "科学研究",
+    "服务指南",
+    "招聘",
+    "校友",
+    "更多",
+    "展开",
+    "导航",
+    "版权所有©",
 )
 
 
@@ -603,8 +652,13 @@ def _clean_text(html: str) -> str:
         return ""
     text = _SCRIPT_RE.sub(" ", html)
     text = _TAG_RE.sub(" ", text)
-    text = (text.replace("&nbsp;", " ").replace("&amp;", "&")
-                .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"'))
+    text = (
+        text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", '"')
+    )
     text = re.sub(r"[ \t\u3000]+", " ", text)
     text = re.sub(r"\s*\n\s*", "\n", text)
     return text.strip()
@@ -813,8 +867,8 @@ def fetch_intro_from_chsi(name: str, sch_id: str) -> Tuple[str, str]:
     # 找「院校简介」标签页 link（categoryId-*）
     m = re.search(
         r'href="(/sch/schoolInfo--schId-%s[^"]*categoryId-\d+\.dhtml)"[^>]*>'
-        r'\s*<div[^>]*>\s*<img[^>]*sch-yxgk-1[^>]*>\s*</div>\s*'
-        r'<div[^>]*>\s*院校简介' % re.escape(sch_id),
+        r"\s*<div[^>]*>\s*<img[^>]*sch-yxgk-1[^>]*>\s*</div>\s*"
+        r"<div[^>]*>\s*院校简介" % re.escape(sch_id),
         html,
     )
     intro_url = "https://yz.chsi.com.cn" + m.group(1) if m else ""
@@ -828,15 +882,14 @@ def fetch_intro_from_chsi(name: str, sch_id: str) -> Tuple[str, str]:
     # 研招网简介页正文常以「院校简介」标签后开始，去掉前面导航
     idx = body.find("院校简介")
     if idx > 0:
-        body = body[idx + 4:]
+        body = body[idx + 4 :]
     intro = _trim_intro(body, name)
     if intro and _looks_like_intro(name, intro):
         return intro, intro_url
     return "", ""
 
 
-def _chsi_id_for(official_url: Optional[str], tags: Optional[str],
-                 name: str = "") -> str:
+def _chsi_id_for(official_url: Optional[str], tags: Optional[str], name: str = "") -> str:
     """解析研招网 schId：优先 official_url/tags，其次内置 schools_data.json。
 
     研招网 schId 是稳定标识；``services/kaoyan/schools_data.json`` 保存了
@@ -884,8 +937,7 @@ _SCHID_BY_NAME: Dict[str, str] = _load_schid_map()
 # --------------------------------------------------------------------------- #
 # 第 3 层：模板兜底（明确可识别，默认不写库）
 # --------------------------------------------------------------------------- #
-def build_template_intro(name: str, level: Optional[str], province: Optional[str],
-                         type_: Optional[str]) -> str:
+def build_template_intro(name: str, level: Optional[str], province: Optional[str], type_: Optional[str]) -> str:
     """用库内既有事实字段拼一句可识别为模板的说明（不编造）。"""
     bits = []
     if level:
@@ -905,16 +957,15 @@ def build_template_intro(name: str, level: Optional[str], province: Optional[str
 def _backup(con: sqlite3.Connection) -> str:
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_intro_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+    bak = os.path.join(bak_dir, f"kaoyan_pre_intro_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)  # WAL 安全备份
     return bak
 
 
-def run(dry_run: bool, limit: Optional[int], with_template: bool,
-        overwrite: bool, only: Optional[List[str]] = None) -> Dict:
+def run(
+    dry_run: bool, limit: Optional[int], with_template: bool, overwrite: bool, only: Optional[List[str]] = None
+) -> Dict:
     """执行回填。返回统计 dict（供报告生成）。"""
     con = sqlite3.connect(DB_PATH, timeout=60)
     con.execute("PRAGMA busy_timeout=60000")
@@ -922,8 +973,7 @@ def run(dry_run: bool, limit: Optional[int], with_template: bool,
 
     where = "" if overwrite else "WHERE intro IS NULL OR intro = ''"
     rows = cur.execute(
-        f"SELECT id, name, level, province, type, intro, official_url, tags "
-        f"FROM kaoyan_schools {where} ORDER BY id"
+        f"SELECT id, name, level, province, type, intro, official_url, tags FROM kaoyan_schools {where} ORDER BY id"
     ).fetchall()
     if only:
         rows = [r for r in rows if r[1] in only]
@@ -931,12 +981,11 @@ def run(dry_run: bool, limit: Optional[int], with_template: bool,
         rows = rows[:limit]
 
     print(f"数据库: {DB_PATH}")
-    print(f"待处理: {len(rows)} 所（dry_run={dry_run}, with_template={with_template}, "
-          f"overwrite={overwrite}）\n")
+    print(f"待处理: {len(rows)} 所（dry_run={dry_run}, with_template={with_template}, overwrite={overwrite}）\n")
 
-    official_hits: List[Dict] = []   # 官网/研招网真实简介
-    template_hits: List[Dict] = []   # 模板兜底
-    failures: List[Dict] = []        # 未拿到
+    official_hits: List[Dict] = []  # 官网/研招网真实简介
+    template_hits: List[Dict] = []  # 模板兜底
+    failures: List[Dict] = []  # 未拿到
 
     def _one(row) -> Dict:
         sid, name, level, province, type_, _intro, ourl, tags = row
@@ -962,13 +1011,20 @@ def run(dry_run: bool, limit: Optional[int], with_template: bool,
             source = "template"
             got_url = ""
         if got_intro:
-            return {"id": sid, "name": name, "source": source,
-                    "chars": len(got_intro), "url": got_url, "intro": got_intro}
+            return {
+                "id": sid,
+                "name": name,
+                "source": source,
+                "chars": len(got_intro),
+                "url": got_url,
+                "intro": got_intro,
+            }
         no_src = (name not in SCHOOL_DOMAINS) and not _is_real_url(ourl)
         reason = "无可用官网/研招网映射" if no_src else "官网/研招网均未取到"
         return {"id": sid, "name": name, "reason": reason}
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     results: List[Dict] = []
     done = 0
     with ThreadPoolExecutor(max_workers=_WORKERS) as pool:
@@ -978,8 +1034,7 @@ def run(dry_run: bool, limit: Optional[int], with_template: bool,
             results.append(rec)
             done += 1
             if "intro" in rec:
-                print(f"[{done}/{len(rows)}] ✓ [{rec['source']}] {rec['name']} "
-                      f"{rec['chars']}字")
+                print(f"[{done}/{len(rows)}] ✓ [{rec['source']}] {rec['name']} {rec['chars']}字")
             else:
                 print(f"[{done}/{len(rows)}] ✗ {rec['name']}：{rec['reason']}")
 
@@ -1006,20 +1061,17 @@ def run(dry_run: bool, limit: Optional[int], with_template: bool,
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for rec in official_hits:
             cur.execute(
-                "UPDATE kaoyan_schools SET intro = ?, updated_at = ? "
-                "WHERE id = ?",
+                "UPDATE kaoyan_schools SET intro = ?, updated_at = ? WHERE id = ?",
                 (rec["intro"], now, rec["id"]),
             )
         for rec in template_hits:
             cur.execute(
-                "UPDATE kaoyan_schools SET intro = ?, updated_at = ? "
-                "WHERE id = ?",
+                "UPDATE kaoyan_schools SET intro = ?, updated_at = ? WHERE id = ?",
                 (rec["intro"], now, rec["id"]),
             )
         con.commit()
         stats["backup"] = bak
-        print(f"已写入 {len(official_hits)} 条真实简介 + "
-              f"{len(template_hits)} 条模板说明")
+        print(f"已写入 {len(official_hits)} 条真实简介 + {len(template_hits)} 条模板说明")
 
     con.close()
     return stats
@@ -1048,10 +1100,7 @@ def write_report(stats: Dict, path: str) -> None:
     lines.append("| 院校 | 来源 | 简介字数 | 状态 |")
     lines.append("|---|---|---|---|")
     for r in all_hits:
-        lines.append(
-            f"| {r['name']} | {src_label.get(r['source'], r['source'])} "
-            f"| {r['chars']} | 成功 |"
-        )
+        lines.append(f"| {r['name']} | {src_label.get(r['source'], r['source'])} | {r['chars']} | 成功 |")
     for r in stats["failures"]:
         lines.append(f"| {r['name']} | - | 0 | 失败：{r['reason']} |")
     lines.append("")
@@ -1069,6 +1118,7 @@ def write_report(stats: Dict, path: str) -> None:
 
     lines.append("## 失败原因分类\n")
     from collections import Counter
+
     reasons = Counter(r["reason"] for r in stats["failures"])
     for reason, cnt in reasons.most_common():
         lines.append(f"- {reason}：{cnt}")
@@ -1082,10 +1132,8 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="写库（自动先备份）")
     ap.add_argument("--limit", type=int, default=None, help="只处理前 N 所")
     ap.add_argument("--schools", nargs="*", default=None, help="只处理指定院校名")
-    ap.add_argument("--with-template", action="store_true",
-                    help="对抓不到官网简介的院校写入模板说明（需显式开启）")
-    ap.add_argument("--overwrite", action="store_true",
-                    help="覆盖已有 intro（默认只填空值）")
+    ap.add_argument("--with-template", action="store_true", help="对抓不到官网简介的院校写入模板说明（需显式开启）")
+    ap.add_argument("--overwrite", action="store_true", help="覆盖已有 intro（默认只填空值）")
     args = ap.parse_args()
 
     dry_run = not args.apply
@@ -1101,8 +1149,11 @@ def main() -> int:
     report = os.path.join(REPORT_DIR, "school-intro-backfill-2026-10-12.md")
     write_report(stats, report)
     print(f"\n报告 → {report}")
-    print("\n汇总: 官网/研招网真实={official} 模板={template} 失败={failed}".format(
-        official=stats["official"], template=stats["template"], failed=stats["failed"]))
+    print(
+        "\n汇总: 官网/研招网真实={official} 模板={template} 失败={failed}".format(
+            official=stats["official"], template=stats["template"], failed=stats["failed"]
+        )
+    )
     if dry_run:
         print("\n[DRY-RUN] 未写库。确认后加 --apply 执行。")
     return 0

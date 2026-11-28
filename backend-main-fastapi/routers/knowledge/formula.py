@@ -1,4 +1,5 @@
 """公式识别路由（A2）：前缀 /api/formula。"""
+
 from __future__ import annotations
 
 from typing import List, Optional
@@ -39,8 +40,11 @@ def recognize_formula(req: FormulaRecognizeRequest, db: Session = Depends(get_db
 def batch_recognize(req: FormulaBatchRequest, db: Session = Depends(get_db)):
     """批量公式识别。"""
     results = formula_service.batch_recognize(req.image_paths, prefer=req.prefer, db=db)
-    return {"results": results, "total": len(results),
-            "compile_ok_count": sum(1 for r in results if r.get("compile_ok"))}
+    return {
+        "results": results,
+        "total": len(results),
+        "compile_ok_count": sum(1 for r in results if r.get("compile_ok")),
+    }
 
 
 @router.post("/detect")

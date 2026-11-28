@@ -246,15 +246,15 @@ function SchoolsView({ schools, onOpen }) {
   const cur = Math.min(page, pages)
   const items = filtered.slice((cur - 1) * pageSize, cur * pageSize)
 
-  const toggle = (k) => setFlags((p) => ({ ...p, [k]: !p[k] }))
+  const toggle = useCallback((k) => setFlags((p) => ({ ...p, [k]: !p[k] })), [])
   const hasFilter = Boolean(q.trim() || province || unitType || Object.values(flags).some(Boolean))
-  const resetFilters = () => {
+  const resetFilters = useCallback(() => {
     setQ('')
     setProvince('')
     setUnitType('')
     setFlags({ is_985: false, is_211: false, is_double_first: false, is_self_marked: false })
     setSort('eval_cnt')
-  }
+  }, [])
 
   return (
     <div className="v3-stack" style={{ gap: 14 }}>

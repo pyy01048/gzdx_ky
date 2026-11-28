@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """临时诊断：向量路是否真的生效（英语/政治为何全空）。"""
+
 import os
 import sys
 
@@ -35,6 +36,7 @@ def main():
             if embed_func is not None and centroids:
                 from services.chunk_classifier import vector_scores
                 from services.quiz_classifier_v2 import _vector_decision_from_embedding
+
                 embs = embed_func([txt])
                 print("  embed None?", embs is None)
                 if embs is not None:

@@ -29,6 +29,7 @@
     python scripts/startup_manager.py ensure-db     # 保证库活着（必要时拉起）
     python scripts/startup_manager.py ensure-db --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -86,9 +87,7 @@ def pid_alive(pid: int | None) -> bool:
         import ctypes
 
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        handle = ctypes.windll.kernel32.OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid)
-        )
+        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
         if handle:
             ctypes.windll.kernel32.CloseHandle(handle)
             return True
@@ -137,7 +136,7 @@ def parse_env_kv(text: str) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
-            line = line[len("export "):]
+            line = line[len("export ") :]
         if "=" not in line:
             continue
         key, _, value = line.partition("=")
@@ -225,8 +224,12 @@ def start_postgres(
     cmd = [pg_ctl, "-D", pgdata, "-l", logfile, "-o", f"-p {port}", "start"]
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=wait_seconds,
-            encoding="utf-8", errors="replace",
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=wait_seconds,
+            encoding="utf-8",
+            errors="replace",
         )
     except subprocess.TimeoutExpired:
         rep.add("启动 PostgreSQL", False, f"pg_ctl 超过 {wait_seconds}s 未返回")
@@ -239,13 +242,14 @@ def start_postgres(
     detail = tail[-1] if tail else ""
     # pg_ctl 的常见良性提示不算失败（例如 "another server might be running"
     # 但端口随后确实起来了）
-    rep.add("启动 PostgreSQL", proc.returncode == 0 or port_open("127.0.0.1", port),
-            detail or f"returncode={proc.returncode}")
+    rep.add(
+        "启动 PostgreSQL",
+        proc.returncode == 0 or port_open("127.0.0.1", port),
+        detail or f"returncode={proc.returncode}",
+    )
 
     # 3) 等待就绪：端口 → pg_isready → 真实 SQL
-    return wait_ready(
-        host="127.0.0.1", port=port, timeout=wait_seconds, report=rep
-    )
+    return wait_ready(host="127.0.0.1", port=port, timeout=wait_seconds, report=rep)
 
 
 def wait_ready(
@@ -280,8 +284,11 @@ def wait_ready(
             try:
                 proc = subprocess.run(
                     [pg_isready, "-h", host, "-p", str(port)],
-                    capture_output=True, text=True, timeout=5,
-                    encoding="utf-8", errors="replace",
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    encoding="utf-8",
+                    errors="replace",
                 )
                 last = ((proc.stdout or "") + (proc.stderr or "")).strip()
                 if proc.returncode == 0:
@@ -314,8 +321,11 @@ def stop_postgres(
     try:
         proc = subprocess.run(
             [pg_ctl, "-D", pgdata, "-m", mode, "stop"],
-            capture_output=True, text=True, timeout=timeout,
-            encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         rep.add("停止 PostgreSQL", False, str(exc)[:200])
@@ -328,9 +338,7 @@ def stop_postgres(
     return stopped
 
 
-def probe_database(
-    host: str, port: int, user: str, password: str, dbname: str
-) -> tuple[bool, str]:
+def probe_database(host: str, port: int, user: str, password: str, dbname: str) -> tuple[bool, str]:
     """真实 SQL 探活 —— 最硬的一级判据。缺 psycopg 时不算失败。"""
     try:
         import psycopg  # noqa: WPS433 - 延迟import，管家要能在缺依赖时也能跑
@@ -338,8 +346,12 @@ def probe_database(
         return True, f"未安装 psycopg，跳过 SQL 探活（{exc}）"
     try:
         with psycopg.connect(
-            host=host, port=port, user=user, password=password,
-            dbname=dbname, connect_timeout=5,
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            dbname=dbname,
+            connect_timeout=5,
         ) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT version()")
@@ -377,9 +389,7 @@ def read_pg_env(backend_dir: str) -> dict[str, str]:
 FALLBACK_USERS = ("kaoyan", "postgres")
 
 
-def probe_database_with_fallback(
-    host: str, port: int, user: str, password: str, dbname: str
-) -> tuple[bool, str, str]:
+def probe_database_with_fallback(host: str, port: int, user: str, password: str, dbname: str) -> tuple[bool, str, str]:
     """探活；若报 role 不存在则换候选用户重试。
 
     返回 (ok, detail, used_user)。.env 被并发改写或缺失时仍能连上，
@@ -437,9 +447,7 @@ def main(argv: list[str] | None = None) -> int:
         listening = port_open(pg["host"], port)
         rep.add("端口已监听", listening, f"{pg['host']}:{port}")
         if listening:
-            ok, detail, _used = probe_database_with_fallback(
-                pg["host"], port, pg["user"], pg["password"], pg["dbname"]
-            )
+            ok, detail, _used = probe_database_with_fallback(pg["host"], port, pg["user"], pg["password"], pg["dbname"])
             rep.add("数据库可连接", ok, detail)
         pidfile = os.path.join(pgdata, "postmaster.pid")
         if is_stale_pid_file(pidfile):
@@ -456,8 +464,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.action == "stop-db":
         stopped = stop_postgres(
-            pgbin=pgbin, pgdata=pgdata, port=port,
-            timeout=max(10, args.timeout), report=rep,
+            pgbin=pgbin,
+            pgdata=pgdata,
+            port=port,
+            timeout=max(10, args.timeout),
+            report=rep,
         )
         if args.json:
             print(json.dumps(rep.to_dict(), ensure_ascii=False, indent=2))
@@ -471,13 +482,15 @@ def main(argv: list[str] | None = None) -> int:
 
     # ensure-db
     started = start_postgres(
-        pgbin=pgbin, pgdata=pgdata, logfile=args.pglog,
-        port=port, wait_seconds=args.timeout, report=rep,
+        pgbin=pgbin,
+        pgdata=pgdata,
+        logfile=args.pglog,
+        port=port,
+        wait_seconds=args.timeout,
+        report=rep,
     )
     if started:
-        ok, detail, _used = probe_database_with_fallback(
-            pg["host"], port, pg["user"], pg["password"], pg["dbname"]
-        )
+        ok, detail, _used = probe_database_with_fallback(pg["host"], port, pg["user"], pg["password"], pg["dbname"])
         rep.add("数据库可连接", ok, detail)
 
     if args.json:

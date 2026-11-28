@@ -8,6 +8,7 @@
   避免因环境问题导致 CI 红；一旦 qwen2.5vl 视觉恢复，这些用例会自动转为通过。
 - OCR 降级路径（RapidOCR 本地）是 live 的，因为 pyy 环境装了 rapidocr_onnxruntime。
 """
+
 from __future__ import annotations
 
 import os
@@ -21,8 +22,7 @@ from services.circuit_vision import (  # noqa: E402
     CircuitVisionService,
 )
 
-FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "fixtures", "circuits")
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "circuits")
 DIVIDER = os.path.join(FIXTURES, "01_voltage_divider.png")
 EMITTER = os.path.join(FIXTURES, "02_common_emitter.png")
 BRIDGE = os.path.join(FIXTURES, "03_bridge_rectifier.png")
@@ -32,7 +32,6 @@ BRIDGE = os.path.join(FIXTURES, "03_bridge_rectifier.png")
 # 1. JSON 解析（纯逻辑）
 # ---------------------------------------------------------------------------
 class TestParseVLMJson:
-
     def test_plain_json(self):
         raw = '{"circuit_type":"divider","components":[],"nodes":["Vcc"]}'
         obj = CircuitVisionService._parse_vlm_json(raw)
@@ -67,7 +66,6 @@ class TestParseVLMJson:
 # 2. 乱码检测
 # ---------------------------------------------------------------------------
 class TestGarbageDetection:
-
     def test_normal_chinese_not_garbage(self):
         text = "这是一个共射极放大电路，包含 Q1、Rc、Re、C1、C2。"
         assert not CircuitVisionService._looks_like_garbage(text)
@@ -92,10 +90,10 @@ class TestGarbageDetection:
 # 3. OCR 交叉校正
 # ---------------------------------------------------------------------------
 class TestCrossCheck:
-
     def test_ocr_designator_added_when_vlm_misses(self):
-        components = [{"designator": "R1", "type": "resistor", "value": "10k",
-                       "net_nodes": ["Vcc", "Node"], "confidence": "high"}]
+        components = [
+            {"designator": "R1", "type": "resistor", "value": "10k", "net_nodes": ["Vcc", "Node"], "confidence": "high"}
+        ]
         ocr_labels = ["R1=10kΩ", "R2=20kΩ", "Vout"]
         out = CircuitVisionService._cross_check(components, ocr_labels)
         # R1 已存在，不重复加
@@ -127,7 +125,6 @@ class TestCrossCheck:
 # 4. 健康检查
 # ---------------------------------------------------------------------------
 class TestHealthCheck:
-
     def test_health_check_returns_dict(self):
         svc = CircuitVisionService(use_ocr=False)
         hc = svc.health_check()
@@ -154,7 +151,6 @@ class TestHealthCheck:
 # 5. 文件不存在 / 输入错误路径
 # ---------------------------------------------------------------------------
 class TestErrorPaths:
-
     def test_missing_file_returns_ok_false(self, tmp_path):
         svc = CircuitVisionService(use_ocr=False)
         res = svc.analyze(str(tmp_path / "no_such_circuit.png"))
@@ -172,7 +168,6 @@ class TestErrorPaths:
 # 6. OCR 本地降级路径（RapidOCR 可用）
 # ---------------------------------------------------------------------------
 class TestLocalOCR:
-
     def test_rapidocr_finds_labels_on_divider(self):
         """本地 RapidOCR 应能在分压电路上识别出 R1/R2/Vcc/Vout。"""
         if not os.path.exists(DIVIDER):
@@ -193,12 +188,10 @@ class TestLocalOCR:
 # 7. 真实 VLM 推理（环境视觉塔失效时 xfail）
 # ---------------------------------------------------------------------------
 @pytest.mark.xfail(
-    reason="本机 qwen2.5vl:7b 视觉塔输出乱码（环境问题，非代码问题）；"
-           "视觉恢复后此用例自动转通过",
+    reason="本机 qwen2.5vl:7b 视觉塔输出乱码（环境问题，非代码问题）；视觉恢复后此用例自动转通过",
     strict=False,
 )
 class TestLiveVLM:
-
     def test_vlm_describes_divider(self):
         if not os.path.exists(DIVIDER):
             pytest.skip("fixture 不存在")

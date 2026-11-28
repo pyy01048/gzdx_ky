@@ -3,7 +3,7 @@
  * ToolShell：统一的工具外壳（卡片 + 关闭按钮）；Tex：KaTeX 行内/独立渲染；
  * Steps：可折叠步骤块（details/summary）；Row/NumInput：紧凑表单行。
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { Card, CardHead, IconButton } from '../../ui'
@@ -44,9 +44,10 @@ export function Tex({ tex, display = false, className = '' }) {
 /** 可折叠步骤块：默认收起，标题带数量提示 */
 export function Steps({ title = '推导步骤', count, defaultOpen = false, children }) {
   const [open, setOpen] = useState(defaultOpen)
+  const toggle = useCallback(() => setOpen((v) => !v), [])
   return (
     <div className={`v3-tsteps${open ? ' is-open' : ''}`}>
-      <button type="button" className="v3-tsteps__head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button type="button" className="v3-tsteps__head" onClick={toggle} aria-expanded={open}>
         <span className="v3-tsteps__caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
         <span>{title}</span>
         {count != null ? <span className="v3-tsteps__count">{count} 项</span> : null}

@@ -9,6 +9,7 @@ import { ukey, migrateKey } from '../../utils/userKeys'
 import {
   MODULES, NAV_OTHER, NAV_ADMIN, MOBILE_TABS, GUEST_TAB_LANDING, crumbName, routeMeta,
   visibleModules, visibleModulesFor, visibleOther,
+  crumbs, routeTree,
 } from '../../nav/navConfig'
 import { useUiLayout } from '../../hooks/useUiLayout'
 import { useSyncStatus } from '../../hooks/useSyncStatus'
@@ -65,9 +66,22 @@ const ICON_BY_PATH = {
 
 const navIcon = (to) => ICON_BY_PATH[to] || BookOpen
 
+/**
+ * 判断目标路由 `to` 是否匹配当前 `pathname`。
+ * `/` 与 `/hub` 共享今日中枢入口（W2 融合），任一命中都算高亮。
+ * @param {string} to 目标路由
+ * @param {string} pathname 当前路径
+ * @returns {boolean}
+ */
+const isActivePath = (to, pathname) => {
+  if (to === '/') return pathname === '/' || pathname === '/hub'
+  return pathname === to || pathname.startsWith(`${to}/`)
+}
+
 /* -------------------------------------------------------------------------- */
 /* Logo                                                                       */
 /* -------------------------------------------------------------------------- */
+/** 品牌标识（带 SVG 星形图标）。 */
 export function BrandMark({ size = 38 }) {
   return (
     <span className="v3-brand__mark" style={{ width: size, height: size }}>
@@ -107,6 +121,10 @@ function NavItem({ item, active, onNavigate, collapsed }) {
   )
 }
 
+/**
+ * 侧栏导航：分组可折叠，移动端为抽屉对话框。
+ * 焦点陷阱、Esc 关闭、跳转后归还焦点；768–1023 断点强制导轨模式。
+ */
 function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen, isMobile, returnFocusRef }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -162,9 +180,7 @@ function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen, isMobile,
   }, [layout, isGuest, isAdmin])
 
   /* W2 融合：/ 与 /hub 是同一个首页（今日中枢），任一命中都高亮「今日中枢」入口 */
-  const isActive = (to) => (to === '/'
-    ? location.pathname === '/' || location.pathname === '/hub'
-    : location.pathname === to || location.pathname.startsWith(`${to}/`))
+  const isActive = useCallback((to) => isActivePath(to, location.pathname), [location.pathname])
 
   /* P1-1：分组可折叠，默认只展开当前所在分组；分组标题始终渲染（可点击展开）。
      收起为 76px 导轨时不折叠分组 —— 图标 + 短标签必须全部可见（R1）。
@@ -187,17 +203,22 @@ function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen, isMobile,
     const key = groupOfPath(location.pathname)
     if (key) setOpenKeys((prev) => (prev.has(key) ? prev : new Set([...prev, key])))
   }, [location.pathname, groupOfPath])
-  const toggleGroup = (key) => setOpenKeys((prev) => {
+  const toggleGroup = useCallback((key) => setOpenKeys((prev) => {
     const next = new Set(prev)
     if (next.has(key)) next.delete(key)
     else next.add(key)
     return next
-  })
+  }), [])
 
-  const onLogout = async () => {
-    await logout()
+  const onLogout = useCallback(async () => {
+    try {
+      await logout()
+    } catch (e) {
+      toastErr(e?.message || '退出失败，请稍后再试')
+      return
+    }
     navigate('/login', { replace: true })
-  }
+  }, [logout, navigate])
 
   const displayName = user?.display_name || user?.username || '同学'
   const role = isAdmin ? 'ADMIN' : '学习者'
@@ -313,7 +334,7 @@ function GlobalSubjectSwitcher() {
   }, [])
 
   /* 切换学科：记录全局选择，并跳转到当前板块对应页面的 ?subject= 深链 */
-  const applySubject = (sub) => {
+  const applySubject = useCallback((sub) => {
     setGlobalSubject(sub)
     const path = location.pathname
     const q = sub ? `?subject=${encodeURIComponent(sub)}` : ''
@@ -322,7 +343,7 @@ function GlobalSubjectSwitcher() {
     else if (path.startsWith('/library')) navigate('/library' + q)
     else if (path.startsWith('/knowledge')) navigate('/knowledge' + q)
     else if (path.startsWith('/words')) navigate('/words' + q)
-  }
+  }, [setGlobalSubject, location.pathname, navigate])
 
   return (
     <div className="v3-subject-switcher" title="切换学科（联动刷题/真题/文库/知识图谱）">
@@ -343,6 +364,10 @@ function GlobalSubjectSwitcher() {
 /* P1-8 事实唯一：考研倒计时只在「今日中枢」出现一次，顶栏不再重复展示。
    P2-3 顶栏 ≤5 个控件：学科选择 / 搜索 / 通知 / 主题 / 账号；
    板块切换与侧栏分组重复，移除（命令面板 ⌘K 仍可直达任何页面）。 */
+/**
+ * 顶栏：面包屑 + 学科切换 + 搜索 + 通知 + 主题 + 账号菜单。
+ * 考研倒计时仅在「今日中枢」出现一次，顶栏不重复（P1-8）。
+ */
 function TopBar({ collapsed, onOpenMobile, onOpenCommand, mobileTriggerRef }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -354,7 +379,10 @@ function TopBar({ collapsed, onOpenMobile, onOpenCommand, mobileTriggerRef }) {
   const avatarRef = useRef(null)
   const displayName = user?.display_name || user?.username || '同学'
 
-  const toggleTheme = () => updateSettings({ theme: resolved === 'dark' ? 'light' : 'dark' })
+  const toggleTheme = useCallback(() => updateSettings({ theme: resolved === 'dark' ? 'light' : 'dark' }), [updateSettings, resolved])
+
+  /* C-ROUTETREE@1：面包屑由 crumbs() 派生为多级链（L1 分组 > L2 列表 > L3 详情） */
+  const crumbItems = useMemo(() => crumbs(location.pathname), [location.pathname])
 
   return (
     <header className="v3-topbar" data-collapsed={collapsed}>
@@ -363,9 +391,15 @@ function TopBar({ collapsed, onOpenMobile, onOpenCommand, mobileTriggerRef }) {
       </span>
 
       <div className="v3-topbar__crumbs">
-        <Link to="/" aria-label="硕途首页">硕途</Link>
-        <ChevronRight size={13} className="v3-topbar__sep" />
-        <strong>{crumbName(location.pathname)}</strong>
+        {crumbItems.map((c, i) => {
+          const last = i === crumbItems.length - 1
+          return (
+            <React.Fragment key={c.to + '#' + i}>
+              {i > 0 ? <ChevronRight size={13} className="v3-topbar__sep" /> : null}
+              {last ? <strong>{c.label}</strong> : <Link to={c.to}>{c.label}</Link>}
+            </React.Fragment>
+          )
+        })}
       </div>
 
       {/* 全局学科选择器（P2-1：独立于面包屑，不混在 crumbs 里） */}
@@ -414,6 +448,7 @@ function TopBar({ collapsed, onOpenMobile, onOpenCommand, mobileTriggerRef }) {
 /* -------------------------------------------------------------------------- */
 /* Command palette                                                            */
 /* -------------------------------------------------------------------------- */
+/** 命令面板（⌘K）：从 routeTree 单一源派生，支持键盘导航与模糊搜索。 */
 function CommandPalette({ open, onClose }) {
   const navigate = useNavigate()
   const { isAdmin } = useAuth()
@@ -422,20 +457,34 @@ function CommandPalette({ open, onClose }) {
   const inputRef = useRef(null)
 
   const entries = useMemo(() => {
-    const base = [
-      ...MODULES.flatMap((m) => m.items.map((it) => ({ ...it, group: m.title }))),
-      ...NAV_OTHER.map((it) => ({ ...it, group: '通用' })),
-      /* C3：择校 AI 助手是 RequireAuth 内的独立路由，不在侧栏导航集合里，
-         但命令面板必须能检索到（与 /assistant 一起命中「AI」共 2 条）。 */
-      { to: '/kaoyan/assistant', label: '择校 AI 助手', desc: '结合院校库数据的择校问答', group: '通用', kw: ['ai', 'assistant', '择校助手', 'zexiao'] },
-      ...(isAdmin ? NAV_ADMIN.map((it) => ({ ...it, group: '管理' })) : []),
-    ]
-    const seen = new Set()
-    return base.filter((e) => {
-      if (seen.has(e.to)) return false
-      seen.add(e.to)
-      return true
+    /* C-ROUTETREE@1：命令面板从 routeTree 单一源派生，不再硬编码任何路由。
+       group 沿 parent 链回溯到 L1 顶层分组（parent === null）的 label。 */
+    const out = []
+    Object.entries(routeTree).forEach(([to, node]) => {
+      if (!node || !node.label) return
+      if (node.roles && node.roles.includes('admin') && !isAdmin) return
+      let group = '其他'
+      if (node.parent == null) {
+        group = node.label
+      } else {
+        let p = node.parent
+        let guard = 0
+        while (p && guard < 16) {
+          const parent = routeTree[p]
+          if (parent && parent.parent == null) { group = parent.label; break }
+          p = parent?.parent
+          guard += 1
+        }
+      }
+      out.push({
+        to,
+        label: node.label,
+        desc: node.title || node.h1 || '',
+        group,
+        kw: [],
+      })
     })
+    return out
   }, [isAdmin])
 
   const filtered = useMemo(() => {
@@ -457,13 +506,13 @@ function CommandPalette({ open, onClose }) {
 
   useEffect(() => { setSelected(0) }, [q])
 
-  const go = (entry) => {
+  const go = useCallback((entry) => {
     if (!entry) return
     onClose()
     navigate(entry.to)
-  }
+  }, [onClose, navigate])
 
-  const onKey = (e) => {
+  const onKey = useCallback((e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setSelected((s) => Math.min(filtered.length - 1, s + 1))
@@ -476,7 +525,7 @@ function CommandPalette({ open, onClose }) {
     } else if (e.key === 'Escape') {
       onClose()
     }
-  }
+  }, [filtered, selected, go, onClose])
 
   if (!open) return null
   let lastGroup = ''
@@ -537,6 +586,7 @@ const QUICK_PROMPTS = [
   { icon: <BookOpen size={15} />, text: '解释当前页面能做什么' },
 ]
 
+/** AI 浮窗：轻量对话面板，复用 chatCompletion，未配置时给出引导提示。 */
 function AiOrb() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -561,7 +611,7 @@ function AiOrb() {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
   }, [messages, busy])
 
-  const send = async (text) => {
+  const send = useCallback(async (text) => {
     const content = String(text || '').trim()
     if (!content || busy) return
     const next = [...messages, { role: 'user', content }]
@@ -593,7 +643,7 @@ function AiOrb() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [busy, messages, configured, pageName])
 
   return (
     <>
@@ -681,6 +731,7 @@ function AiOrb() {
 /* -------------------------------------------------------------------------- */
 /* P1-1：底部 Tab 与桌面侧栏分组同一套词（今日/学习/练习/复盘/择校），
    清单来自 navConfig.MOBILE_TABS 单一导航源；完整导航走顶栏抽屉。 */
+/** 移动端底部 Tab 导航，清单来自 navConfig.MOBILE_TABS 单一源。 */
 function MobileNav() {
   const location = useLocation()
   const { user } = useAuth()
@@ -703,9 +754,7 @@ function MobileNav() {
     <nav className="v3-mobile-nav" aria-label="移动端导航">
       <div className="v3-mobile-nav__inner">
         {tabs.map((t) => {
-          const active = t.to === '/'
-            ? location.pathname === '/' || location.pathname === '/hub'
-            : location.pathname === t.to || location.pathname.startsWith(`${t.to}/`)
+          const active = isActivePath(t.to, location.pathname)
           const Icon = navIcon(t.to)
           return (
             <Link key={t.to} to={t.to} className={cx('v3-mobile-nav__item', active && 'is-active')} aria-current={active ? 'page' : undefined}>
@@ -804,6 +853,10 @@ function SyncFailedBanner() {
   )
 }
 
+/**
+ * 应用外壳：侧栏 + 顶栏 + 主内容区 + 移动导航 + AI 浮窗 + 命令面板。
+ * routeId 取最近登记祖先，保持动态详情页挂载点稳定（R9）。
+ */
 export default function AppShell({ children }) {
   const location = useLocation()
   const { user } = useAuth()
@@ -812,6 +865,18 @@ export default function AppShell({ children }) {
   const [commandOpen, setCommandOpen] = useState(false)
   const isMobile = useMedia('(max-width: 767px)')
   const mobileTriggerRef = useRef(null)
+
+  /* C-ROUTETREE@1 + R9：routeId 取当前路径在 routeTree 中的最近登记祖先，
+     使同一父级下的动态详情页（如 /quiz/:id）共享挂载点，跨级往返时筛选/滚动/答题进度得以保持。 */
+  const routeId = useMemo(() => {
+    if (routeTree[location.pathname]) return location.pathname
+    const segs = location.pathname.split('/').filter(Boolean)
+    for (let i = segs.length; i >= 1; i--) {
+      const candidate = '/' + segs.slice(0, i).join('/')
+      if (routeTree[candidate]) return candidate
+    }
+    return location.pathname
+  }, [location.pathname])
 
   /* 跨断点后不保留抽屉状态，桌面仍始终渲染侧栏。 */
   useEffect(() => { setMobileOpen(false) }, [isMobile])
@@ -855,13 +920,13 @@ export default function AppShell({ children }) {
 
   /* 跳转链接（P0-5）：hash 路由下原生 #anchor 会改路由，
      必须 preventDefault 后手动 focus 主内容区。 */
-  const skipToMain = (e) => {
+  const skipToMain = useCallback((e) => {
     e.preventDefault()
     const el = document.getElementById('hub-main')
     if (!el) return
     el.focus({ preventScroll: true })
     el.scrollIntoView({ block: 'start' })
-  }
+  }, [])
 
   return (
     <ShellCtx.Provider value={{ openCommand }}>
@@ -889,7 +954,7 @@ export default function AppShell({ children }) {
             <VerifyEmailBanner key={user?.id ?? 'anon'} user={user} />
             <SyncFailedBanner />
             <main id="hub-main" className="v3-main__inner" tabIndex={-1}>
-              <div className="v3-page" key={location.pathname}>{children}</div>
+              <div className="v3-page" key={routeId}>{children}</div>
             </main>
           </div>
           <MobileNav />
@@ -906,6 +971,7 @@ export default function AppShell({ children }) {
 /* -------------------------------------------------------------------------- */
 /* Admin layout                                                               */
 /* -------------------------------------------------------------------------- */
+/** 管理后台布局：标题 + 管理导航 + 子路由内容。 */
 export function AdminLayout({ children }) {
   const location = useLocation()
   return (
@@ -917,7 +983,7 @@ export function AdminLayout({ children }) {
       <nav className="v3-admin-nav" aria-label="管理导航">
         {NAV_ADMIN.map((item) => {
           const Icon = navIcon(item.to)
-          const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+          const active = isActivePath(item.to, location.pathname)
           return (
             <Link key={item.to} to={item.to} className={cx('v3-admin-nav__item', active && 'is-active')}>
               <Icon size={15} />

@@ -5,6 +5,11 @@ import datetime
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
+from schemas import GoalUpdate
+from sqlalchemy.orm import Session
+from utils.scope import owner_id, scoped  # B4 行级隔离
+from utils.security import current_user
+from utils.timeutil import local_today
 
 # P0（2026-11-22 公网实测）：本路由曾从 core.models 引 Goal —— 那是另一套
 # DeclarativeBase 的元数据，其中没有 users 表；首次 PUT /goals 插入时
@@ -12,11 +17,6 @@ from fastapi import APIRouter, Depends, HTTPException
 # NoReferencedTableError → 500，新用户第一步「设置目标」即被挡死。
 # 统一改用 models.py（与 User/Task/Word 同一 Base），FK 可解析，行为不变。
 from models import Goal, KaoyanSchool, KaoyanScoreLine, User
-from schemas import GoalUpdate
-from sqlalchemy.orm import Session
-from utils.scope import owner_id, scoped  # B4 行级隔离
-from utils.security import current_user
-from utils.timeutil import local_today
 
 #: /strategy 等待 AI 的上限（秒）；须小于 utils/timeout_guard 对该路径的 90s 阈值。
 STRATEGY_AI_TIMEOUT = 80.0

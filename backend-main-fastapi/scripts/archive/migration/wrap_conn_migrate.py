@@ -31,6 +31,7 @@ SQL 文本、业务逻辑一律不动 —— 正因为兼容层在 execute 时�
 **不改** scripts/ 下的一次性脚本：它们是历史运维脚本，
 执行环境多为当时的 SQLite，改动收益低而验证成本高。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,10 +79,7 @@ def migrate(text: str) -> tuple[str, int]:
 
         m = ASSIGN_RE.match(ln)
         if m:
-            lines[i] = (
-                f"{m.group('indent')}{m.group('lhs')} = "
-                f"wrap_conn({m.group('recv')}.connection().connection)"
-            )
+            lines[i] = f"{m.group('indent')}{m.group('lhs')} = wrap_conn({m.group('recv')}.connection().connection)"
             n += 1
             continue
 
@@ -104,24 +102,23 @@ def ensure_import(text: str) -> str:
             if "wrap_conn" in names:
                 return m.group(0)
             return f"{m.group(1)}{names.rstrip()}, wrap_conn"
-        return re.sub(
-            r"(^\s*from\s+[\w.]*dbapi_compat\s+import\s+)([^\n]+)", add, text, count=1, flags=re.M
-        )
 
-    depth = text.count("\n")
+        return re.sub(r"(^\s*from\s+[\w.]*dbapi_compat\s+import\s+)([^\n]+)", add, text, count=1, flags=re.M)
+
+    text.count("\n")
     # 按文件所在层级决定相对路径
     if "Path(__file__)" in text:
         pass
     rel = "from services.dbapi_compat import wrap_conn"
     # services/ 内部子包（如 services/kaoyan/x.py）需要上跳一级
-    anchor = re.search(r"^from\s+\.\.?[\w.]*\s+import|^from\s+services", text, re.M)
+    re.search(r"^from\s+\.\.?[\w.]*\s+import|^from\s+services", text, re.M)
 
     # 插到最后一个 import 之后
     imports = list(re.finditer(r"^(?:from|import)\s+[^\n]+$", text, re.M))
     if not imports:
         return text
     last = imports[-1]
-    return text[: last.end()] + f"\n{rel}" + text[last.end():]
+    return text[: last.end()] + f"\n{rel}" + text[last.end() :]
 
 
 def detect_prefix(path: Path) -> str:
@@ -156,7 +153,9 @@ def main() -> int:
                     # 用正确的导入路径重写
                     new = re.sub(
                         r"^from services\.dbapi_compat import wrap_conn$",
-                        detect_prefix(p), new, flags=re.M,
+                        detect_prefix(p),
+                        new,
+                        flags=re.M,
                     )
                     plan.append((p, n, new))
 
@@ -186,7 +185,7 @@ def main() -> int:
             py_compile.compile(str(p), doraise=True, cfile=tempfile.mktemp())
             done += 1
         except py_compile.PyCompileError as e:
-            shutil.copy2(dest, p)          # 回滚该文件
+            shutil.copy2(dest, p)  # 回滚该文件
             failed.append((rel, str(e)[:120]))
 
     print(f"\n备份：{bak}")

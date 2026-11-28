@@ -18,8 +18,9 @@ import json
 import pytest
 from database import SessionLocal
 from main import app
-from models import KnowledgePoint, QuizQuestion
 from tests.asgi_client import ASGIClient
+
+from models import KnowledgePoint, QuizQuestion
 
 client = ASGIClient(app)
 
@@ -93,8 +94,9 @@ def test_identify_weak_points_empty():
 
 def test_identify_weak_points_fusion():
     """错题密度 + 记忆事实两个信号融合：error_count / memory_fact_count / sources 正确。"""
-    from models import ErrorKnowledgeLink, ErrorRecord, MemoryFact
     from services.recommend_loop import identify_weak_points
+
+    from models import ErrorKnowledgeLink, ErrorRecord, MemoryFact
 
     db = SessionLocal()
     try:

@@ -17,6 +17,7 @@
     python scripts/backfill_document_counts.py --dry-run
     python scripts/backfill_document_counts.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -80,8 +81,7 @@ def main() -> int:
             return 0
 
         cur.executemany(
-            "UPDATE documents SET chunk_count=%s, knowledge_point_count=%s, updated_at=now()"
-            " WHERE id=%s",
+            "UPDATE documents SET chunk_count=%s, knowledge_point_count=%s, updated_at=now() WHERE id=%s",
             [(r[3], r[5], r[0]) for r in rows],
         )
         pg.commit()

@@ -19,6 +19,7 @@ kaoyan_scorelines / kaoyan_notices 六张表里的院校信息，聚合为一张
     card = s.summarize_school(school_id=1, notices_limit=5)
     cards = s.summarize_all(target_provinces=["云南","贵州","广西","广东","四川","重庆"])
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -37,6 +38,8 @@ class SchoolSummarizer:
     # 单校汇总
     # ------------------------------------------------------------------ #
     def summarize_school(self, school_id: int, notices_limit: int = 5) -> Optional[Dict[str, Any]]:
+        from sqlalchemy import text
+
         from models import (
             KaoyanAdmission,
             KaoyanCollege,
@@ -44,7 +47,6 @@ class SchoolSummarizer:
             KaoyanSchool,
             KaoyanScoreLine,
         )
-        from sqlalchemy import text
 
         school = self.db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
         if not school:
@@ -115,8 +117,9 @@ class SchoolSummarizer:
 
         # 通知（最新 N 条）—— kaoyan_notices 由 spider_notices 原生 DDL 建，
         # 无 ORM 模型，故走原生 SQL（列名以 spider_notices/_DDL 为准）。
-        notice_rows = self.db.execute(text(
-            """
+        notice_rows = self.db.execute(
+            text(
+                """
             SELECT id, title, notice_type, publish_date, deadline_date,
                    importance_level, is_read, is_noise, url
             FROM kaoyan_notices
@@ -124,7 +127,9 @@ class SchoolSummarizer:
             ORDER BY publish_date DESC, id DESC
             LIMIT :lim
             """
-        ), {"sid": school_id, "lim": notices_limit}).fetchall()
+            ),
+            {"sid": school_id, "lim": notices_limit},
+        ).fetchall()
         notice_list = [
             {
                 "id": r.id,

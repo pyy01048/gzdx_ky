@@ -11,6 +11,7 @@
     cd backend-main-fastapi
     python -c "from services.kaoyan.spider_school import crawl_school; crawl_school('清华大学')"
 """
+
 import random
 import re
 import ssl
@@ -19,7 +20,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
+UA = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+}
 SSL_CTX = ssl.create_default_context()
 SSL_CTX.check_hostname = False
 SSL_CTX.verify_mode = ssl.CERT_NONE
@@ -64,6 +67,7 @@ def check_robots(domain, force=False):
     print(f"  [ROBOTS] {domain} robots.txt 允许采集: {allowed}")
     return allowed
 
+
 # 常见研究生院官网域名映射（重点院校）
 SCHOOL_URLS = {
     "清华大学": "https://yz.tsinghua.edu.cn/",
@@ -86,7 +90,7 @@ def fetch(url, retries=3):
             with urllib.request.urlopen(req, timeout=30) as r:
                 return r.read().decode("utf-8", "ignore")
         except Exception as e:
-            print(f"  [retry {i+1}] {url[:60]}: {e}")
+            print(f"  [retry {i + 1}] {url[:60]}: {e}")
             time.sleep(random.uniform(2, 5))
     return ""
 
@@ -118,7 +122,7 @@ def search_announcements(school_name, keyword="复试线"):
         return []
 
     # 查找含有"复试线"或"拟录取"的链接
-    pattern = f'<a[^>]*href=["\']([^"\']+)["\'][^>]*>([^<]*{keyword}[^<]*)</a>'
+    pattern = f"<a[^>]*href=[\"']([^\"']+)[\"'][^>]*>([^<]*{keyword}[^<]*)</a>"
     matches = re.findall(pattern, html, re.I)
     return [(url + m[0] if m[0].startswith("/") else m[0], m[1].strip()) for m in matches]
 
@@ -137,7 +141,7 @@ def download_pdf(url, save_dir="downloads/pdfs"):
         with urllib.request.urlopen(req, timeout=60) as r:
             data = r.read()
         filepath.write_bytes(data)
-        print(f"  下载: {filename} ({len(data)//1024}KB)")
+        print(f"  下载: {filename} ({len(data) // 1024}KB)")
         return str(filepath)
     except Exception as e:
         print(f"  下载失败: {e}")
@@ -200,6 +204,7 @@ def crawl_school(school_name, year=2026):
 
         # C3/C2 合规：robots.txt 检查
         from urllib.parse import urlparse
+
         parsed = urlparse(SCHOOL_URLS.get(school_name, ""))
         if parsed.hostname and not check_robots(parsed.hostname):
             print(f"  [ROBOTS] {parsed.hostname} 禁止采集，跳过 {school_name}")
@@ -211,7 +216,7 @@ def crawl_school(school_name, year=2026):
 
         # 2. 抓取公告页面，找PDF
         pdf_links = []
-        for url, title in announcements[:5]:  # 只看前5条
+        for url, _title in announcements[:5]:  # 只看前5条
             time.sleep(random.uniform(2, 5))
             html = fetch(url)
             pdfs = find_pdf_links(html, url)
@@ -222,6 +227,7 @@ def crawl_school(school_name, year=2026):
         # 3. 下载并解析（PDF 落到会话中间产物目录）
         import os
         import tempfile
+
         pdf_dir = os.path.join(tempfile.gettempdir(), "kaoyan_school_pdfs", school_name)
         for pdf_url in pdf_links[:3]:
             time.sleep(random.uniform(2, 5))
@@ -230,19 +236,25 @@ def crawl_school(school_name, year=2026):
                 scores = parse_scoreline_pdf(pdf_path)
                 print(f"  解析出 {len(scores)} 条分数线")
                 for s in scores:
-                    existing = db.query(KaoyanScoreline).filter(
-                        KaoyanScoreline.school_id == school.id,
-                        KaoyanScoreline.year == year,
-                        KaoyanScoreline.line_type == "校线",
-                        KaoyanScoreline.total_line == s.get("score"),
-                    ).first()
+                    existing = (
+                        db.query(KaoyanScoreline)
+                        .filter(
+                            KaoyanScoreline.school_id == school.id,
+                            KaoyanScoreline.year == year,
+                            KaoyanScoreline.line_type == "校线",
+                            KaoyanScoreline.total_line == s.get("score"),
+                        )
+                        .first()
+                    )
                     if not existing:
-                        db.add(KaoyanScoreline(
-                            school_id=school.id,
-                            year=year,
-                            total_line=s.get("score"),
-                            line_type="校线",
-                        ))
+                        db.add(
+                            KaoyanScoreline(
+                                school_id=school.id,
+                                year=year,
+                                total_line=s.get("score"),
+                                line_type="校线",
+                            )
+                        )
         db.commit()
         print(f"{school_name} 爬取完成")
     finally:
@@ -251,5 +263,6 @@ def crawl_school(school_name, year=2026):
 
 if __name__ == "__main__":
     import sys
+
     name = sys.argv[1] if len(sys.argv) > 1 else "清华大学"
     crawl_school(name)

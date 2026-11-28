@@ -21,6 +21,7 @@
     PG_PASSWORD（必填——缺失直接 KeyError，绝不静默回退默认口令）
     PG_DATABASE_TEST（fix_all_tests.py 等测试库场景；默认 kaoyan_test）
 """
+
 from __future__ import annotations
 
 import os
@@ -28,6 +29,7 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except Exception:  # pragma: no cover - dotenv 缺失时退回进程环境变量
     pass

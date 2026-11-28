@@ -34,6 +34,7 @@ bge 产物**：全部分量非负、未做 L2 归一化（norm≈7.2），与真
     python scripts/backfill_question_images.py --apply --limit 200
     python scripts/backfill_question_images.py --apply --limit 200 --only-subject 模拟电子技术
 """
+
 from __future__ import annotations
 
 import argparse
@@ -107,8 +108,9 @@ def is_toc_like(text: str) -> bool:
         return True
     return False
 
+
 HIST_EDGES = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.90, 1.01]
-HIST_LABELS = [f"{lo:.2f}-{hi:.2f}" for lo, hi in zip(HIST_EDGES, HIST_EDGES[1:])]
+HIST_LABELS = [f"{lo:.2f}-{hi:.2f}" for lo, hi in zip(HIST_EDGES, HIST_EDGES[1:], strict=False)]
 
 
 def log(msg: str = "") -> None:
@@ -133,7 +135,7 @@ def clean_chunk_text(text: str) -> str:
 
 
 def bucket(v: float) -> str:
-    for lo, hi, label in zip(HIST_EDGES, HIST_EDGES[1:], HIST_LABELS):
+    for lo, hi, label in zip(HIST_EDGES, HIST_EDGES[1:], HIST_LABELS, strict=False):
         if lo <= v < hi:
             return label
     return "<0.20"
@@ -182,7 +184,7 @@ def embed_all(texts: list[str]) -> np.ndarray:
     BATCH = 32
     t0 = time.time()
     for i in range(0, len(texts), BATCH):
-        out.extend(generate_local_embeddings(texts[i:i + BATCH]))
+        out.extend(generate_local_embeddings(texts[i : i + BATCH]))
         if (i // BATCH) % 10 == 9 or i + BATCH >= len(texts):
             log(f"    {min(i + BATCH, len(texts))}/{len(texts)}  {time.time() - t0:.0f}s")
     mat = np.vstack([np.asarray(v, dtype=np.float32) for v in out])
@@ -200,8 +202,7 @@ def load_documents(cur, doc_ids: set[int]) -> dict[int, dict]:
     )
     out = {}
     for did, fp, fn, subj in cur.fetchall():
-        out[did] = {"file_path": fp, "file_name": fn, "subject": subj,
-                    "exists": bool(fp) and os.path.exists(fp)}
+        out[did] = {"file_path": fp, "file_name": fn, "subject": subj, "exists": bool(fp) and os.path.exists(fp)}
     return out
 
 
@@ -209,6 +210,7 @@ def probe_pdf_pages(path: str) -> int | None:
     """只开不渲染，取页数用于 dry-run 预估。"""
     try:
         import pypdfium2 as pdfium
+
         pdf = pdfium.PdfDocument(path)
         try:
             return len(pdf)
@@ -294,7 +296,7 @@ def main() -> int:
         best_sims: list[float] = []
         hist = Counter()
         hint_cnt = 0
-        for qi, (q, text) in enumerate(zip(questions, qtexts)):
+        for qi, (q, text) in enumerate(zip(questions, qtexts, strict=False)):
             qid, content, subject = q[0], q[1], q[2]
             has_hint = bool(RE_FIG.search(content or ""))
             hint_cnt += int(has_hint)
@@ -317,13 +319,22 @@ def main() -> int:
             if chosen:
                 idx, sim = chosen
                 c = chunks[idx]
-                plans.append({
-                    "qid": qid, "chunk_id": c[0], "document_id": c[1],
-                    "subject": norm_subject(subject), "chunk_subject": norm_subject(c[2]),
-                    "page": int(c[3]), "doc_name": c[4], "chunk_text": c[5] or "",
-                    "sim": sim, "cross": norm_subject(c[2]) != norm_subject(subject),
-                    "has_hint": has_hint, "text_preview": text[:60],
-                })
+                plans.append(
+                    {
+                        "qid": qid,
+                        "chunk_id": c[0],
+                        "document_id": c[1],
+                        "subject": norm_subject(subject),
+                        "chunk_subject": norm_subject(c[2]),
+                        "page": int(c[3]),
+                        "doc_name": c[4],
+                        "chunk_text": c[5] or "",
+                        "sim": sim,
+                        "cross": norm_subject(c[2]) != norm_subject(subject),
+                        "has_hint": has_hint,
+                        "text_preview": text[:60],
+                    }
+                )
 
         log("")
         log("=== 同科目最佳相似度分布（bge）===")
@@ -359,21 +370,27 @@ def main() -> int:
                 renderable.append(p)
 
         log("")
-        log(f"命中 chunk（阈值 {args.threshold} / 跨科目 {args.cross_threshold}）："
-            f"{len(plans)}/{total}（{len(plans) / total:.1%}）")
+        log(
+            f"命中 chunk（阈值 {args.threshold} / 跨科目 {args.cross_threshold}）："
+            f"{len(plans)}/{total}（{len(plans) / total:.1%}）"
+        )
         log(f"  其中跨科目：{sum(1 for p in plans if p['cross'])}")
         log(f"  文档存在且页码在范围内、可渲染：{len(renderable)}")
         log(f"  预计本次生成（limit={args.limit}）：{min(len(renderable), args.limit)} 张")
-        log(f"  题干含图关键词：{hint_cnt} 道；其中已命中可出图："
-            f"{sum(1 for p in plans if p['has_hint'] and p['renderable'])}")
+        log(
+            f"  题干含图关键词：{hint_cnt} 道；其中已命中可出图："
+            f"{sum(1 for p in plans if p['has_hint'] and p['renderable'])}"
+        )
 
         log("")
         log(f"=== 前 {min(args.sample, len(plans))} 条样例（题 id → doc / 页 / 相似度）===")
         for p in plans[: args.sample]:
             flag = "跨" if p["cross"] else "同"
-            log(f"  q{p['qid']:<5} {p['sim']:.3f} [{flag}] {p['subject']} ← "
+            log(
+                f"  q{p['qid']:<5} {p['sim']:.3f} [{flag}] {p['subject']} ← "
                 f"{(p['doc_name'] or '')[:30]} p{p['page']} "
-                f"| 题:{p['text_preview'][:24]} | 块:{clean_chunk_text(p['chunk_text'])[:34]}")
+                f"| 题:{p['text_preview'][:24]} | 块:{clean_chunk_text(p['chunk_text'])[:34]}"
+            )
 
         if args.dry_run:
             log("")
@@ -416,7 +433,7 @@ def main() -> int:
         total_bytes = 0
         new_count = 0
         blank = 0
-        for did, items in by_doc.items():
+        for _did, items in by_doc.items():
             path = items[0]["file_path"]
             try:
                 pdf = pdfium.PdfDocument(path)
@@ -433,8 +450,7 @@ def main() -> int:
                     dest = OUT_DIR / f"{qid}_p{page:04d}.png"
                     if dest.exists() and dest.stat().st_size > 1024:
                         reused += 1
-                        p.update({"file": f"{OUT_SUBDIR}/{dest.name}",
-                                  "bytes": dest.stat().st_size, "scale": 0.0})
+                        p.update({"file": f"{OUT_SUBDIR}/{dest.name}", "bytes": dest.stat().st_size, "scale": 0.0})
                         rendered.append(p)
                         ok_n += 1
                         continue
@@ -453,8 +469,7 @@ def main() -> int:
                     if 0 <= stddev < 1.0:
                         blank += 1
                         log(f"  [WARN] q{qid} p{page} 近乎空白（stddev={stddev:.2f}）")
-                    p.update({"file": f"{OUT_SUBDIR}/{dest.name}", "bytes": size,
-                              "scale": scale, "stddev": stddev})
+                    p.update({"file": f"{OUT_SUBDIR}/{dest.name}", "bytes": size, "scale": scale, "stddev": stddev})
                     total_bytes += size
                     new_count += 1
                     rendered.append(p)
@@ -464,8 +479,7 @@ def main() -> int:
                 pdf.close()
 
         log("")
-        log(f"渲染完成：新增 {new_count} 张，复用 {reused} 张，失败 {len(failed)} 条，"
-            f"疑似空白 {blank} 张")
+        log(f"渲染完成：新增 {new_count} 张，复用 {reused} 张，失败 {len(failed)} 条，疑似空白 {blank} 张")
         if new_count:
             log(f"  平均大小：{total_bytes / new_count / 1024:.1f} KB")
         for qid, why in failed[:10]:
@@ -474,20 +488,26 @@ def main() -> int:
         # ---- 写库 ----
         upd = [
             (
-                p["document_id"], p["page"],
-                json.dumps([{
-                    "path": p["file"],
-                    "page": p["page"],
-                    "kind": "page_thumb",
-                    "source": "matched_chunk",
-                }], ensure_ascii=False),
-                0, p["qid"],
+                p["document_id"],
+                p["page"],
+                json.dumps(
+                    [
+                        {
+                            "path": p["file"],
+                            "page": p["page"],
+                            "kind": "page_thumb",
+                            "source": "matched_chunk",
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                0,
+                p["qid"],
             )
             for p in rendered
         ]
         got_img = {p["qid"] for p in rendered}
-        miss = [q[0] for q in questions
-                if RE_FIG.search(q[1] or "") and q[0] not in got_img]
+        miss = [q[0] for q in questions if RE_FIG.search(q[1] or "") and q[0] not in got_img]
         with pg.transaction():
             if upd:
                 cur.executemany(

@@ -6,18 +6,85 @@ from typing import List, Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from models import User
 from pydantic import BaseModel
 from services import exam_builder
 from services.dbapi_compat import wrap_conn
 from services.exam_report import session_report
 from services.module_a_schema import ensure_module_a_schema
-from sqlalchemy import text
+from sqlalchemy import and_, or_, text
 from sqlalchemy.orm import Session
 from utils.scope import owner_id  # B4 行级隔离：模考场次是个人数据
 from utils.security import current_user
 
+from models import QuizQuestion, User
+
 router = APIRouter(prefix="/api/exam", tags=["组卷模考"])
+
+# 客观题题型：options 为空时不进入练习/模考
+_OBJECTIVE_TYPES = ("single", "multiple", "judge")
+
+
+def _gate_question_ids(db: Session, question_ids: list[int]) -> set[int]:
+    """内容可用性门禁（T2）：从给定题目 ID 中筛出通过门禁的子集。
+
+    门禁条件：validation_status='pass' AND is_available=true；
+    客观题（single/multiple/judge）额外要求 options 非空（NOT NULL 且文本形态非 '[]'/'null'/'{}'）。
+    用于对 service 返回的题目做后置过滤，确保练习/模考不出现无答案、无选项的题。
+    """
+    if not question_ids:
+        return set()
+    objective_has_options = or_(
+        QuizQuestion.question_type.notin_(_OBJECTIVE_TYPES),
+        and_(
+            QuizQuestion.options.isnot(None),
+            text("quiz_questions.options::text NOT IN ('[]','null','{}')"),
+        ),
+    )
+    rows = (
+        db.query(QuizQuestion.id)
+        .filter(
+            QuizQuestion.id.in_(question_ids),
+            QuizQuestion.validation_status == "pass",
+            QuizQuestion.is_available.is_(True),
+            objective_has_options,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def _collect_question_ids(obj) -> list[int]:
+    """从 service 返回结果中递归收集 question_id（兼容 dict/list 嵌套）。"""
+    ids: list[int] = []
+    if isinstance(obj, dict):
+        qid = obj.get("question_id") or obj.get("id")
+        if isinstance(qid, int):
+            ids.append(qid)
+        for v in obj.values():
+            ids.extend(_collect_question_ids(v))
+    elif isinstance(obj, list | tuple):
+        for item in obj:
+            ids.extend(_collect_question_ids(item))
+    return ids
+
+
+def _filter_gate_recursive(obj, gate_ids: set[int]):
+    """递归过滤 result 中的题目列表：保留 question_id 在 gate_ids 中的条目。
+
+    对 list 原地过滤；对 dict 递归处理其值。返回过滤后的同结构对象。
+    """
+    if isinstance(obj, list):
+        kept = []
+        for item in obj:
+            if isinstance(item, dict):
+                qid = item.get("question_id") or item.get("id")
+                if isinstance(qid, int) and qid not in gate_ids:
+                    continue
+            kept.append(_filter_gate_recursive(item, gate_ids))
+        return kept
+    if isinstance(obj, dict):
+        return {k: _filter_gate_recursive(v, gate_ids) for k, v in obj.items()}
+    return obj
 
 
 class ExamBuildRequest(BaseModel):
@@ -61,6 +128,11 @@ def build_exam(req: ExamBuildRequest, db: Session = Depends(get_db), user: User 
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    # T2 内容可用性门禁：组卷结果后置过滤，只保留 validation_status='pass' AND is_available=true 的题
+    qids = _collect_question_ids(session)
+    if qids:
+        gate_ids = _gate_question_ids(db, qids)
+        session = _filter_gate_recursive(session, gate_ids)
     return session
 
 
@@ -100,6 +172,11 @@ def exam_session_detail(session_id: int, db: Session = Depends(get_db), user: Us
     result = exam_builder.session_detail(db, session_id, user_id=owner_id(user))
     if result is None:
         raise HTTPException(status_code=404, detail="会话不存在")
+    # T2 内容可用性门禁：会话详情后置过滤，只保留通过门禁的题
+    qids = _collect_question_ids(result)
+    if qids:
+        gate_ids = _gate_question_ids(db, qids)
+        result = _filter_gate_recursive(result, gate_ids)
     return result
 
 
@@ -170,6 +247,11 @@ def exam_search(req: ExamSearchRequest, db: Session = Depends(get_db)):
     from services.search_service import hybrid_search_with_exam
 
     results = hybrid_search_with_exam(db, req.query, query_vec=None, limit=req.limit, subject=req.subject)
+    # T2 内容可用性门禁：检索结果后置过滤，只保留通过门禁的题
+    qids = _collect_question_ids(results)
+    if qids:
+        gate_ids = _gate_question_ids(db, qids)
+        results = _filter_gate_recursive(results, gate_ids)
     return {
         "query": req.query,
         "count": len(results),

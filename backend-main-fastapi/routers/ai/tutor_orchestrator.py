@@ -5,18 +5,21 @@
 retrieve→solve→verify→remedy 四阶段轨迹，供前端展示
 「AI 是如何一步步得出答案的」。
 """
+
 from __future__ import annotations
 
 from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from models import QuizQuestion, User
 from pydantic import BaseModel, Field
 from services import tutor_orchestrator
+from services.quiz_query import question_owner_expr
 from sqlalchemy.orm import Session
 from utils.scope import owner_id
 from utils.security import current_user
+
+from models import QuizQuestion, User
 
 router = APIRouter(prefix="/api/ai/tutoring", tags=["AI 讲题"])
 
@@ -34,7 +37,14 @@ async def orchestrated(
     user: User = Depends(current_user),
 ):
     """多 Agent 协作答疑：返回四阶段完整轨迹。"""
-    q = db.query(QuizQuestion).filter(QuizQuestion.id == req.question_id).first()
+    q = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.id == req.question_id,
+            question_owner_expr(user),
+        )
+        .first()
+    )
     if not q:
         raise HTTPException(status_code=404, detail="题目不存在")
 

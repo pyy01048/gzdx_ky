@@ -8,6 +8,7 @@
 
 运行：pytest tests/test_model_registry.py -v
 """
+
 import os
 import sys
 
@@ -20,8 +21,8 @@ from services import model_registry as mr
 # 显存估算
 # --------------------------------------------------------------------------- #
 
-class TestMemoryEstimate:
 
+class TestMemoryEstimate:
     def test_weights_scale_with_params(self):
         """参数量越大，权重显存越大。"""
         small = mr.ModelProfile(key="a", name="A", family="x", params_b=3)
@@ -56,8 +57,8 @@ class TestMemoryEstimate:
 # 适配判定
 # --------------------------------------------------------------------------- #
 
-class TestFitVerdict:
 
+class TestFitVerdict:
     def _hw(self, vram):
         return mr.HardwareProfile(gpu_name="test", vram_gb=vram, ram_gb=16, cuda_available=True)
 
@@ -98,8 +99,8 @@ class TestFitVerdict:
 # 分科路由 —— 这是"更智能更自主"的核心
 # --------------------------------------------------------------------------- #
 
-class TestSubjectRouting:
 
+class TestSubjectRouting:
     def test_subject_to_task_mapping(self):
         assert mr.route_for_subject("数学") == "reasoning"
         assert mr.route_for_subject("数字电子技术") == "reasoning"
@@ -128,8 +129,7 @@ class TestSubjectRouting:
             task = mr.route_for_subject(subj)
             recs = mr.recommend_for_task(task, subject=subj)
             if recs:
-                assert recs[0]["subject_score"] > 0, \
-                    f"{subj} 首位推荐「{recs[0]['name']}」未声明该科强项"
+                assert recs[0]["subject_score"] > 0, f"{subj} 首位推荐「{recs[0]['name']}」未声明该科强项"
 
     def test_unfit_model_not_recommended_first(self):
         """跑不动的模型不能排在能跑的模型前面。"""
@@ -141,6 +141,7 @@ class TestSubjectRouting:
     def test_all_core_subjects_have_recommendation(self):
         """每个主线科目都要有推荐，不能有空档。"""
         from services import taxonomy
+
         for subj in taxonomy.CORE_SUBJECTS:
             task = mr.route_for_subject(subj)
             recs = mr.recommend_for_task(task, subject=subj)
@@ -151,8 +152,8 @@ class TestSubjectRouting:
 # 档案完整性
 # --------------------------------------------------------------------------- #
 
-class TestCatalogIntegrity:
 
+class TestCatalogIntegrity:
     def test_keys_unique(self):
         keys = [m.key for m in mr.MODEL_CATALOG]
         assert len(keys) == len(set(keys)), "模型 key 有重复"
@@ -173,6 +174,7 @@ class TestCatalogIntegrity:
     def test_strength_keys_are_real_subjects(self):
         """strengths 的键必须是真实科目名，否则路由永远匹配不上。"""
         from services import taxonomy
+
         valid = set(taxonomy.ALL_SUBJECTS)
         for m in mr.MODEL_CATALOG:
             for subj in m.strengths:
@@ -202,8 +204,8 @@ class TestCatalogIntegrity:
 # 硬件探测（真实环境，容错）
 # --------------------------------------------------------------------------- #
 
-class TestHardwareDetect:
 
+class TestHardwareDetect:
     def test_detect_returns_profile(self):
         hw = mr.detect_hardware()
         assert isinstance(hw, mr.HardwareProfile)
@@ -221,6 +223,7 @@ class TestHardwareDetect:
 # --------------------------------------------------------------------------- #
 # 已安装模型优先（"现在能用哪个" vs "理想该用哪个"）
 # --------------------------------------------------------------------------- #
+
 
 class TestPickBestAvailable:
     """用户可能只装了一个模型。这时**不该因为理想模型没装就退回云端** ——
@@ -254,6 +257,5 @@ class TestPickBestAvailable:
     def test_ignores_unfit_model(self):
         """装了跑不动的模型时不能推荐它。"""
         hw = mr.HardwareProfile(gpu_name="t", vram_gb=4, ram_gb=16, cuda_available=True)
-        best = mr.pick_best_available("reasoning", subject="数学",
-                                      installed={"qwen3:14b"}, hw=hw)
+        best = mr.pick_best_available("reasoning", subject="数学", installed={"qwen3:14b"}, hw=hw)
         assert best is None or best["fit"]["level"] in ("perfect", "ok")

@@ -61,13 +61,12 @@ def _prepare_sandbox():
     # 瘦身：只保留两张受保护的表，避免测试副本过大
     conn = sqlite3.connect(sandbox)
     try:
-        tables = [r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         keep = {"quiz_questions", "knowledge_chunks"}
         for t in tables:
             if t not in keep and not t.startswith("sqlite_"):
                 try:
-                    conn.execute(f"DROP TABLE IF EXISTS \"{t}\"")
+                    conn.execute(f'DROP TABLE IF EXISTS "{t}"')
                 except sqlite3.Error:
                     pass
         conn.commit()
@@ -95,8 +94,7 @@ def case_a_blocked(sandbox: str, n_q: int) -> bool:
 
     os.environ.pop(dg.ENV_FLAG, None)
     print(f"  环境变量 {dg.ENV_FLAG}: 未设置")
-    print(f"  physical_delete_allowed('quiz_questions') = "
-          f"{dg.physical_delete_allowed('quiz_questions')}")
+    print(f"  physical_delete_allowed('quiz_questions') = {dg.physical_delete_allowed('quiz_questions')}")
 
     # 尝试走真实的删除路径（模拟插入闸门后的代码）
     blocked = False
@@ -132,8 +130,7 @@ def case_b_allowed(sandbox: str, n_q: int) -> bool:
     _hr("(b) 环境变量=1 → 应允许物理删除")
 
     # 严格等于 "1" 的边界值验证
-    for val, expect in [("1", True), ("true", False), ("yes", False),
-                        ("0", False), ("", False)]:
+    for val, expect in [("1", True), ("true", False), ("yes", False), ("0", False), ("", False)]:
         os.environ[dg.ENV_FLAG] = val
         got = dg.physical_delete_allowed("quiz_questions")
         flag = "OK" if got == expect else "MISMATCH"
@@ -187,8 +184,7 @@ def case_c_backup_rollback(sandbox: str, n_q: int) -> bool:
 
     # 1) 备份
     backup_path = dg.backup_before_delete(sandbox)
-    print(f"  备份: {backup_path} "
-          f"({os.path.getsize(backup_path) / 1024 / 1024:.2f} MB)")
+    print(f"  备份: {backup_path} ({os.path.getsize(backup_path) / 1024 / 1024:.2f} MB)")
 
     # 2) 物理删除全部题目
     os.environ[dg.ENV_FLAG] = "1"
@@ -222,7 +218,7 @@ def case_c_backup_rollback(sandbox: str, n_q: int) -> bool:
     stale = dg.rollback_window("quiz_questions", sandbox, minutes=0)
     print(f"  minutes=0 查询结果: {stale}（期望 None）")
 
-    ok = (after_rollback == baseline and stale is None)
+    ok = after_rollback == baseline and stale is None
     print(f"\n  往返一致: {baseline} == {after_rollback} → {after_rollback == baseline}")
     print(f"  结果: {'PASS' if ok else 'FAIL'}")
     return ok
@@ -264,10 +260,12 @@ def main() -> int:
         os.environ.pop(dg.ENV_FLAG, None)
 
     _hr("汇总")
-    for k, label in [("a", "(a) 未设置时拦截+行数不变"),
-                     ("b", "(b) =1 时允许删除"),
-                     ("c", "(c) 备份回滚往返一致"),
-                     ("d", "(附加) 空壳库被体积校验拦住")]:
+    for k, label in [
+        ("a", "(a) 未设置时拦截+行数不变"),
+        ("b", "(b) =1 时允许删除"),
+        ("c", "(c) 备份回滚往返一致"),
+        ("d", "(附加) 空壳库被体积校验拦住"),
+    ]:
         print(f"  {label:38} {'PASS' if results.get(k) else 'FAIL'}")
 
     all_ok = all(results.values())

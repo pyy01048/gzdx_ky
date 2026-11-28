@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { readAiAnswer } from '../../utils/aiAnswerArchive'
 import MathText from '../../components/MathText'
@@ -7,24 +7,33 @@ import { Badge, Button, Card, CardHead, Empty, PageHeader, toastErr, toastOk } f
 import { AlertCircle, ArrowRight, BookOpen, Copy, Database, Sparkles } from '../icons'
 import '../styles/detail-pages.css'
 
+/**
+ * AI 助手回答详情页：展示一次提问的完整问题、回答、引用证据与生成元信息，
+ * 支持复制问题与回答、基于该回答发起追问。
+ */
 export default function AssistantAnswer() {
   const { id } = useParams()
   const [copied, setCopied] = useState(false)
   const record = useMemo(() => readAiAnswer(id), [id])
+  const {
+    question = '', answer = '', createdAt, engine, model, rag, elapsedMs, degraded,
+  } = record || {}
+  const citations = record?.citations || []
   const followUp = record
-    ? `请结合这条回答继续讲清楚：\n问题：${record.question}\n回答：${record.answer}\n请补充考试中的应用、易错点和验证方法。`
+    ? `请结合这条回答继续讲清楚：\n问题：${question}\n回答：${answer}\n请补充考试中的应用、易错点和验证方法。`
     : ''
 
-  const copy = async () => {
+  /** 复制问题与回答到剪贴板 */
+  const copy = useCallback(async () => {
     if (!record) return
     try {
-      await navigator.clipboard.writeText(`问题：${record.question}\n\n回答：${record.answer}`)
+      await navigator.clipboard.writeText(`问题：${question}\n\n回答：${answer}`)
       setCopied(true)
       toastOk('问题与回答已复制')
     } catch {
       toastErr('复制失败，浏览器未允许剪贴板访问')
     }
-  }
+  }, [record, question, answer])
 
   if (!record) {
     return (
@@ -51,32 +60,32 @@ export default function AssistantAnswer() {
           <h1>回答与引用详情</h1>
           <p>固定保存这次提问、完整回答和 AI 服务实际返回的引用，不随下一轮对话改变。</p>
         </div>
-        <Badge tone="outline">{new Date(record.createdAt).toLocaleString('zh-CN')}</Badge>
+        <Badge tone="outline">{new Date(createdAt).toLocaleString('zh-CN')}</Badge>
       </header>
 
       <Card>
         <CardHead icon={<BookOpen size={17} />} title="我的问题" />
-        <div className="v3-answer-detail__question v3-rp-prose">{record.question || '（问题为空）'}</div>
+        <div className="v3-answer-detail__question v3-rp-prose">{question || '（问题为空）'}</div>
         <CardHead icon={<Sparkles size={17} />} title="AI 回答" />
         <div className="v3-answer-detail__answer">
-          {record.degraded ? <Badge tone="warning">离线资料 · 非模型生成</Badge> : null}
-          <MathText className="v3-rp-prose" text={record.answer} />
+          {degraded ? <Badge tone="warning">离线资料 · 非模型生成</Badge> : null}
+          <MathText className="v3-rp-prose" text={answer} />
           <AiEvidenceCard
             title="本次生成信息"
-            engine={record.engine || '未提供'}
-            model={record.model || '不提供'}
-            rag={record.rag}
-            hits={record.citations.length}
-            elapsedMs={record.elapsedMs}
-            degradeReason={record.degraded ? '在线与本地模型均不可用，已降级为知识片段展示' : ''}
+            engine={engine || '未提供'}
+            model={model || '不提供'}
+            rag={rag}
+            hits={citations.length}
+            elapsedMs={elapsedMs}
+            degradeReason={degraded ? '在线与本地模型均不可用，已降级为知识片段展示' : ''}
           />
         </div>
       </Card>
 
       <Card className="v3-detail-card">
-        <CardHead icon={<Database size={17} />} title={`权威引用（${record.citations.length}）`} sub="来自 AI 服务 meta（元数据）事件" />
+        <CardHead icon={<Database size={17} />} title={`权威引用（${citations.length}）`} sub="来自 AI 服务 meta（元数据）事件" />
         <div className="v3-detail-card__body v3-answer-detail__citations">
-          {record.citations.length ? record.citations.map((citation, index) => (
+          {citations.length ? citations.map((citation, index) => (
             <AiEvidenceCard
               key={`${citation.chunkId || citation.docId || 'citation'}-${index}`}
               index={index + 1}

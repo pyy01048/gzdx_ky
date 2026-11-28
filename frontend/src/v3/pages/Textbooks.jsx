@@ -13,13 +13,16 @@ import '../styles/pages.css'
 const STAGE_ALL = '全部'
 const STAGES = [STAGE_ALL, '初试', '复试']
 
+/** 阶段徽标：复试用 retest 色，其余用 initial 色。 */
 function StageBadge({ stage }) {
   return <span className={`v3-tb-stage is-${stage === '复试' ? 'retest' : 'initial'}`}>{stage}</span>
 }
 
+/** 教材卡片：点击触发 onOpen(book) 打开详情。 */
 function BookCard({ book, onOpen }) {
+  const handleOpen = useCallback(() => onOpen(book), [book, onOpen])
   return (
-    <button type="button" className="v3-tb-card" onClick={() => onOpen(book)}>
+    <button type="button" className="v3-tb-card" onClick={handleOpen}>
       <div className="v3-tb-card__top">
         <div className="v3-tb-card__title">
           {book.title}
@@ -47,6 +50,7 @@ function BookCard({ book, onOpen }) {
   )
 }
 
+/** 教材详情弹窗：拉取关联院校与文档，alive 标志防竞态。 */
 function BookDetail({ book, onClose }) {
   const [detail, setDetail] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -190,7 +194,13 @@ export default function Textbooks() {
   }, [groups, subject, keyword])
 
 
-  const stageCount = (name) => (stats?.by_stage || []).find((s) => s.stage === name)?.n || 0
+  const stageCount = useCallback(
+    (name) => (stats?.by_stage || []).find((s) => s.stage === name)?.n || 0,
+    [stats],
+  )
+
+  const clearFilter = useCallback(() => { setKeyword(''); setSubject('') }, [])
+  const pickStage = useCallback((v) => { setStage(v); setSubject('') }, [])
 
   return (
     <div className="v3-stack" style={{ gap: 20 }}>
@@ -221,7 +231,7 @@ export default function Textbooks() {
       ) : null}
 
       <div className="v3-tb-toolbar">
-        <Segmented ariaLabel="教材阶段" value={stage} onChange={(v) => { setStage(v); setSubject('') }} options={STAGES} />
+        <Segmented ariaLabel="教材阶段" value={stage} onChange={pickStage} options={STAGES} />
         <Input
           icon={<Search size={16} />}
           placeholder="搜索书名 / 作者 / 出版社…"
@@ -259,7 +269,7 @@ export default function Textbooks() {
             icon={<BookOpen size={26} />}
             title={groups.length ? '没有匹配的教材' : '教材目录还没有数据'}
             text={groups.length ? '换个阶段、科目或关键词试试。' : '目录全部来自后端人工整理数据；导入教材资料后会自动按科目归组。'}
-            action={keyword ? <Button variant="tonal" onClick={() => { setKeyword(''); setSubject('') }}>清空筛选</Button> : null}
+            action={keyword ? <Button variant="tonal" onClick={clearFilter}>清空筛选</Button> : null}
           />
         </div>
       ) : (

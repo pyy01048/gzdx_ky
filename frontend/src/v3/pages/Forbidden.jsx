@@ -1,9 +1,12 @@
-import React from 'react'
 import { Link } from 'react-router-dom'
 import { Card } from '../ui'
 import { AlertCircle, ArrowRight, Lock, Shield } from '../icons'
 import '../styles/aux-v3.css'
 
+/**
+ * 403 权限不足页：仅管理员可访问的路由失败时渲染。
+ * 静态展示，无外部 props；返回首页是唯一 CTA。
+ */
 export default function Forbidden() {
   return (
     <div className="v3-aux-standalone v3-forbidden">

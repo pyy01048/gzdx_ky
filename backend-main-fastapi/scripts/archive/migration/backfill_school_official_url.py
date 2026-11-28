@@ -16,6 +16,7 @@
   python scripts/backfill_school_official_url.py            # dry-run（默认，不写库）
   python scripts/backfill_school_official_url.py --apply    # 先备份真库再写
 """
+
 from __future__ import annotations
 
 import re
@@ -33,8 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.kaoyan.spider_notices import ENGINEERING_NOTICE_URLS  # noqa: E402
 
 # 视为「非真实官网、可覆盖」的占位值特征
-_YT_SCH_RE = re.compile(r"^https?://yz\.chsi\.com\.cn/", re.I)   # 研招网 sch 页
-_PURE_NUM_RE = re.compile(r"^\d+$")                               # 纯数字 schId
+_YT_SCH_RE = re.compile(r"^https?://yz\.chsi\.com\.cn/", re.I)  # 研招网 sch 页
+_PURE_NUM_RE = re.compile(r"^\d+$")  # 纯数字 schId
 
 
 def is_placeholder(value) -> bool:
@@ -55,7 +56,7 @@ def normalize(url: str) -> str:
     """统一为 https 绝对 URL，去尾部冗余。"""
     u = (url or "").strip()
     if u.startswith("http://"):
-        u = "https://" + u[len("http://"):]
+        u = "https://" + u[len("http://") :]
     return u
 
 
@@ -65,13 +66,11 @@ def main() -> None:
     con.execute("PRAGMA busy_timeout=60000")
     cur = con.cursor()
 
-    rows = cur.execute(
-        "SELECT id, name, official_url FROM kaoyan_schools"
-    ).fetchall()
+    rows = cur.execute("SELECT id, name, official_url FROM kaoyan_schools").fetchall()
     by_name = {r[1]: r for r in rows}
 
-    plan = []          # (sid, name, old, new)
-    missing = []       # 在映射表但库中无此院校名
+    plan = []  # (sid, name, old, new)
+    missing = []  # 在映射表但库中无此院校名
     skipped_kept = []  # 已有真实官网，保留不动
     for name, url in ENGINEERING_NOTICE_URLS.items():
         target = normalize(url)
@@ -115,16 +114,12 @@ def main() -> None:
     con.commit()
 
     # 复核
-    n_http = cur.execute(
-        "SELECT COUNT(*) FROM kaoyan_schools WHERE official_url LIKE 'http%'"
-    ).fetchone()[0]
+    n_http = cur.execute("SELECT COUNT(*) FROM kaoyan_schools WHERE official_url LIKE 'http%'").fetchone()[0]
     n_num = cur.execute(
-        "SELECT COUNT(*) FROM kaoyan_schools "
-        "WHERE official_url GLOB '[0-9]*' AND official_url NOT LIKE '%http%'"
+        "SELECT COUNT(*) FROM kaoyan_schools WHERE official_url GLOB '[0-9]*' AND official_url NOT LIKE '%http%'"
     ).fetchone()[0]
     n_null = cur.execute(
-        "SELECT COUNT(*) FROM kaoyan_schools "
-        "WHERE official_url IS NULL OR official_url=''"
+        "SELECT COUNT(*) FROM kaoyan_schools WHERE official_url IS NULL OR official_url=''"
     ).fetchone()[0]
     print(f"完成。official_url 分布: http*={n_http}, 纯数字={n_num}, 空={n_null}")
     con.close()

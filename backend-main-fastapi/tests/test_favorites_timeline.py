@@ -8,6 +8,7 @@
 
 隔离说明：走 conftest 的 kaoyan_test 测试库；收藏数据自造自清。
 """
+
 from __future__ import annotations
 
 import pytest

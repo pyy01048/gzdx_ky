@@ -9,7 +9,9 @@ V3.0 AI 智能路由网关
 
 import asyncio
 import logging
+import os
 import re
+import time
 from functools import partial
 from typing import Any, Dict, List, Optional
 
@@ -501,7 +503,6 @@ class AIRouter:
 
     async def check_local_available(self) -> bool:
         """检查本地模型是否可用（带缓存）。"""
-        import time
 
         now = time.time()
         if self.local_check_time and (now - self.local_check_time) < self.local_check_cache:
@@ -619,7 +620,7 @@ class AIRouter:
     async def chat_with_router(
         self,
         question: str,
-        ai_service,
+        ai_service: Any,
         context: Optional[List[Dict]] = None,
         force_engine: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -635,7 +636,6 @@ class AIRouter:
             "latency_ms": int,
         }
         """
-        import time
 
         start_time = time.time()
 
@@ -700,7 +700,6 @@ class AIRouter:
         只装了 qwen3:4b 时，数电题也应该用它本地作答，
         而不是因为"理想模型 deepseek-r1:7b 没装"就退回云端。
         """
-        import os
 
         default = os.getenv("OLLAMA_MODEL", "qwen3:8b")
         try:
@@ -734,6 +733,19 @@ class AIRouter:
             logger.debug(f"本地模型选型失败，用默认值: {e}")
         return default
 
+    @staticmethod
+    def _build_messages(
+        question: str,
+        context: Optional[List[Dict]] = None,
+        max_context: int = 5,
+    ) -> List[Dict[str, str]]:
+        """构建对话消息列表：保留最近 ``max_context`` 条上下文 + 当前问题。"""
+        messages: List[Dict[str, str]] = []
+        if context:
+            messages.extend(context[-max_context:])
+        messages.append({"role": "user", "content": question})
+        return messages
+
     async def _chat_local(
         self,
         question: str,
@@ -751,10 +763,7 @@ class AIRouter:
 
         from services.llm_output import extract_answer
 
-        messages = []
-        if context:
-            messages.extend(context[-5:])  # 只保留最近5条上下文
-        messages.append({"role": "user", "content": question})
+        messages = self._build_messages(question, context)
 
         model = await self._pick_local_model(subject)
         from utils.ollama_host import resolve_ollama_host
@@ -779,12 +788,9 @@ class AIRouter:
             return {"content": answer, "model": model}
         raise Exception(f"本地模型 {model} 返回错误: {resp.status_code}")
 
-    async def _chat_api(self, question: str, ai_service, context: Optional[List[Dict]] = None) -> Dict[str, Any]:
+    async def _chat_api(self, question: str, ai_service: Any, context: Optional[List[Dict]] = None) -> Dict[str, Any]:
         """使用在线API对话。"""
-        messages = []
-        if context:
-            messages.extend(context[-5:])
-        messages.append({"role": "user", "content": question})
+        messages = self._build_messages(question, context)
 
         result = await ai_service.chat(messages)
         return {"content": result.get("content", "")}
@@ -992,7 +998,7 @@ class AIRouter:
                 return mimg.group(1)
         return None
 
-    async def _retrieve_one(self, query: str, ai_service, subject: Optional[str]) -> List[Dict[str, Any]]:
+    async def _retrieve_one(self, query: str, ai_service: Any, subject: Optional[str]) -> List[Dict[str, Any]]:
         """单路检索：异步 hybrid 优先，失败回退同步 FTS，再失败返回 []。"""
         if not query or not str(query).strip():
             return []
@@ -1014,7 +1020,7 @@ class AIRouter:
     async def _chat_rag(
         self,
         question: str,
-        ai_service,
+        ai_service: Any,
         context: Optional[List[Dict]] = None,
         **_legacy: Any,
     ) -> Dict[str, Any]:
@@ -1259,6 +1265,63 @@ class AIRouter:
             "cache_hit": False,
             "from_cache": False,
         }
+
+
+# --------------------------------------------------------------------------- #
+# C-ENGINE-ENUM@1：统一引擎枚举与置信度解析
+#
+# AI 回答的 meta 事件/JSON 新增 engine_enum（local-ollama/lora/cloud-api/
+# local-rules）与 confidence（high/medium/low/null）字段，让前端元信息条能按
+# 统一枚举渲染引擎标识，而不是各自猜 engine 字符串。
+# --------------------------------------------------------------------------- #
+def _resolve_engine_enum(
+    engine: Optional[str],
+    provider_type: Optional[str] = None,
+    routing_mode: Optional[str] = None,
+    local_available: bool = False,
+) -> str:
+    """把内部 engine/provider_type/routing_mode 收敛成统一引擎枚举。
+
+    映射规则（design.md §2.2 C-ENGINE-ENUM@1，按优先级递减）：
+      1. engine == "local" → "local-rules"        （本地规则引擎：题库命中/离线兜底/安全拦截）
+      2. provider_type 匹配 /ollama|local/i → "local-ollama"  （本地 Ollama 服务商）
+      3. routing_mode == "local" 且 local_available → "lora"   （本地 LoRA 微调）
+      4. 其余 → "cloud-api"                       （云端 API）
+    """
+    if engine == "local":
+        return "local-rules"
+    if provider_type and re.search(r"ollama|local", provider_type, re.IGNORECASE):
+        return "local-ollama"
+    if routing_mode == "local" and local_available:
+        return "lora"
+    return "cloud-api"
+
+
+def _resolve_confidence(gate_metrics: Optional[dict]) -> Optional[str]:
+    """从 retrieval_gate 的 metrics 中提取置信度枚举。
+
+    映射规则（design.md §2.2 C-ENGINE-ENUM@1）：
+      - top1_score ≥ 0.5 → "high"
+      - top1_score ≥ 0.2 → "medium"
+      - top1_score > 0   → "low"
+      - 缺失/无法解析    → None  （不得伪造）
+    """
+    if not gate_metrics:
+        return None
+    top1 = gate_metrics.get("top1_score")
+    if top1 is None:
+        return None
+    try:
+        score = float(top1)
+    except (TypeError, ValueError):
+        return None
+    if score >= 0.5:
+        return "high"
+    if score >= 0.2:
+        return "medium"
+    if score > 0:
+        return "low"
+    return None
 
 
 # 单例

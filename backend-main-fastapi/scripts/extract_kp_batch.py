@@ -8,6 +8,7 @@
     python scripts/extract_kp_batch.py --ids 2094,2085
     python scripts/extract_kp_batch.py --all
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,6 +65,7 @@ def extract(doc_id: int, timeout: int = 1800) -> dict:
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         import json
+
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -72,8 +74,7 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=10)
     ap.add_argument("--ids", type=str, default=None, help="逗号分隔 doc_id")
     ap.add_argument("--all", action="store_true")
-    ap.add_argument("--skip-has", action="store_true",
-                    help="跳过已有知识点的文档")
+    ap.add_argument("--skip-has", action="store_true", help="跳过已有知识点的文档")
     args = ap.parse_args()
 
     con = sqlite3.connect(DB_PATH, timeout=120)
@@ -83,20 +84,20 @@ def main() -> int:
         ids = [int(x) for x in args.ids.split(",") if x.strip()]
         rows = [(i,) for i in ids]
         qmarks = ",".join("?" * len(ids))
-        meta = dict(con.execute(
-            f"SELECT id, file_name FROM documents WHERE id IN ({qmarks})",
-            ids).fetchall())
+        dict(con.execute(f"SELECT id, file_name FROM documents WHERE id IN ({qmarks})", ids).fetchall())
     else:
-        cond = ("subject_source='ima' AND file_type IN ('pdf','word') "
-                "AND content IS NOT NULL AND length(content)>=?")
+        cond = "subject_source='ima' AND file_type IN ('pdf','word') AND content IS NOT NULL AND length(content)>=?"
         rows = con.execute(
             f"SELECT id, file_name, length(content) FROM documents "
             f"WHERE {cond} ORDER BY (content_type='知识') DESC, id",
-            (MIN_CHARS,)).fetchall()
+            (MIN_CHARS,),
+        ).fetchall()
         if args.skip_has:
-            rows = [r for r in rows if not con.execute(
-                "SELECT 1 FROM knowledge_points WHERE document_id=? LIMIT 1",
-                (r[0],)).fetchone()]
+            rows = [
+                r
+                for r in rows
+                if not con.execute("SELECT 1 FROM knowledge_points WHERE document_id=? LIMIT 1", (r[0],)).fetchone()
+            ]
         if not args.all:
             rows = rows[: args.limit]
 
@@ -122,31 +123,25 @@ def main() -> int:
         noise_ids = [k["id"] for k in kps if is_noise(k.get("name", ""))]
 
         if noise_ids:
-            con.execute(
-                f"DELETE FROM knowledge_points WHERE id IN "
-                f"({','.join('?' * len(noise_ids))})", noise_ids)
+            con.execute(f"DELETE FROM knowledge_points WHERE id IN ({','.join('?' * len(noise_ids))})", noise_ids)
         for k in kps:
             if k["id"] in noise_ids:
                 continue
             new_sub = _SUBJECT_MAP.get((k.get("subject") or "").strip())
             if new_sub:
-                con.execute("UPDATE knowledge_points SET subject=? WHERE id=?",
-                            (new_sub, k["id"]))
+                con.execute("UPDATE knowledge_points SET subject=? WHERE id=?", (new_sub, k["id"]))
         con.commit()
 
         ok_cnt += 1
         total_new += len(ids)
         total_noise += len(noise_ids)
-        print(f"✓ {doc_id} {fname[:30]} 抽{res.get('extracted')} "
-              f"留{len(ids)} 删噪{len(noise_ids)}")
+        print(f"✓ {doc_id} {fname[:30]} 抽{res.get('extracted')} 留{len(ids)} 删噪{len(noise_ids)}")
         time.sleep(1)
 
-    print(f"\n完成: 成功{ok_cnt} 新增知识点{total_new} 清理噪声{total_noise} "
-          f"失败{len(fail)}")
+    print(f"\n完成: 成功{ok_cnt} 新增知识点{total_new} 清理噪声{total_noise} 失败{len(fail)}")
     for f in fail[:10]:
         print("  ", f)
-    print("库中知识点总数:",
-          con.execute("SELECT COUNT(*) FROM knowledge_points").fetchone()[0])
+    print("库中知识点总数:", con.execute("SELECT COUNT(*) FROM knowledge_points").fetchone()[0])
     return 0
 
 

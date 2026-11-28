@@ -16,6 +16,7 @@
     python scripts/clean_flashcards.py
     python scripts/clean_flashcards.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,9 +51,7 @@ def is_garbage(front: str, back: str) -> bool:
 def backup(con: sqlite3.Connection) -> str:
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_cardclean_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+    bak = os.path.join(bak_dir, f"kaoyan_pre_cardclean_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     return bak
@@ -76,8 +75,7 @@ def main() -> int:
         print(f"\n备份 → {bak}")
         ids = [i for i, _, _ in bad]
         con.execute("BEGIN")
-        con.execute(
-            f"DELETE FROM flashcards WHERE id IN ({','.join('?' * len(ids))})", ids)
+        con.execute(f"DELETE FROM flashcards WHERE id IN ({','.join('?' * len(ids))})", ids)
         con.commit()
         print(f"已删除 {len(ids)} 张")
 

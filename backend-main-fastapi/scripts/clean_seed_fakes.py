@@ -13,6 +13,7 @@
     python scripts/clean_seed_fakes.py
     python scripts/clean_seed_fakes.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,9 +34,7 @@ from services.delete_guard import require_physical_delete_enabled  # noqa: E402
 def backup(con: sqlite3.Connection) -> str:
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_seedclean_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+    bak = os.path.join(bak_dir, f"kaoyan_pre_seedclean_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     return bak
@@ -52,35 +51,34 @@ def main() -> int:
 
     print("=== 将要清理的假数据 ===")
     qs = con.execute(
-        f"SELECT id, subject, substr(content,1,50) FROM quiz_questions WHERE id IN ({ph})",
-        SEED_IDS).fetchall()
+        f"SELECT id, subject, substr(content,1,50) FROM quiz_questions WHERE id IN ({ph})", SEED_IDS
+    ).fetchall()
     print(f"[quiz_questions] {len(qs)} 条")
     for q in qs:
         print(f"   #{q[0]} [{q[1]}] {q[2]}")
 
     er = con.execute(
-        f"SELECT id, question_id, subject FROM error_records WHERE question_id IN ({ph})",
-        SEED_IDS).fetchall()
+        f"SELECT id, question_id, subject FROM error_records WHERE question_id IN ({ph})", SEED_IDS
+    ).fetchall()
     print(f"[error_records] {len(er)} 条（错题复盘页的假错题）")
     for e in er:
         print(f"   #{e[0]} ← question#{e[1]} [{e[2]}]")
 
-    ar = con.execute(
-        f"SELECT id, question_id FROM answer_records WHERE question_id IN ({ph})",
-        SEED_IDS).fetchall()
+    ar = con.execute(f"SELECT id, question_id FROM answer_records WHERE question_id IN ({ph})", SEED_IDS).fetchall()
     print(f"[answer_records] {len(ar)} 条")
 
     qkl = con.execute(
-        f"SELECT id, question_id FROM question_knowledge_links WHERE question_id IN ({ph})",
-        SEED_IDS).fetchall()
+        f"SELECT id, question_id FROM question_knowledge_links WHERE question_id IN ({ph})", SEED_IDS
+    ).fetchall()
     print(f"[question_knowledge_links] {len(qkl)} 条")
 
     ekl_ids = [e[0] for e in er]
     ekl = []
     if ekl_ids:
         ekl = con.execute(
-            f"SELECT id, error_id FROM error_knowledge_links WHERE error_id IN "
-            f"({','.join('?' * len(ekl_ids))})", ekl_ids).fetchall()
+            f"SELECT id, error_id FROM error_knowledge_links WHERE error_id IN ({','.join('?' * len(ekl_ids))})",
+            ekl_ids,
+        ).fetchall()
     print(f"[error_knowledge_links] {len(ekl)} 条（挂在这些假错题上的关联）")
 
     if not args.apply:
@@ -92,9 +90,7 @@ def main() -> int:
 
     con.execute("BEGIN")
     if ekl_ids:
-        con.execute(
-            f"DELETE FROM error_knowledge_links WHERE error_id IN "
-            f"({','.join('?' * len(ekl_ids))})", ekl_ids)
+        con.execute(f"DELETE FROM error_knowledge_links WHERE error_id IN ({','.join('?' * len(ekl_ids))})", ekl_ids)
     con.execute(f"DELETE FROM error_records WHERE question_id IN ({ph})", SEED_IDS)
     con.execute(f"DELETE FROM answer_records WHERE question_id IN ({ph})", SEED_IDS)
     con.execute(f"DELETE FROM question_knowledge_links WHERE question_id IN ({ph})", SEED_IDS)

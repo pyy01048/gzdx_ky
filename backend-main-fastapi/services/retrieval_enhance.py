@@ -92,10 +92,29 @@ def _strip_think_tags(text: str) -> str:
 #: 第一人称自述式开头（模型自我复述任务）。剥掉 <think> 后，只剩这种开头
 #  才视为"思考泄漏"；正常教材式论述里的"首先/其次/最后"不算。
 _SELF_TALK_OPENERS = (
-    "首先，", "首先用户", "用户要求", "用户问", "用户想要", "用户需要",
-    "我需要", "我得", "我要", "让我", "我来", "我们来", "让我想想",
-    "好的，我", "这个问题的", "分析一下", "让我分析",
-    "the user", "i need", "i should", "let me", "first,", "okay,",
+    "首先，",
+    "首先用户",
+    "用户要求",
+    "用户问",
+    "用户想要",
+    "用户需要",
+    "我需要",
+    "我得",
+    "我要",
+    "让我",
+    "我来",
+    "我们来",
+    "让我想想",
+    "好的，我",
+    "这个问题的",
+    "分析一下",
+    "让我分析",
+    "the user",
+    "i need",
+    "i should",
+    "let me",
+    "first,",
+    "okay,",
 )
 
 
@@ -208,11 +227,16 @@ async def _call_llm(
         from services.llm_output import build_payload, extract_answer
 
         payload = build_payload(
-            model, prompt, temperature=temperature, num_predict=num_predict,
+            model,
+            prompt,
+            temperature=temperature,
+            num_predict=num_predict,
         )
         client = get_async_client()
         resp = await client.post(
-            f"{_OLLAMA_HOST}/api/chat", json=payload, timeout=_CHAT_TIMEOUT,
+            f"{_OLLAMA_HOST}/api/chat",
+            json=payload,
+            timeout=_CHAT_TIMEOUT,
         )
         if resp.status_code != 200:
             logger.warning(f"[检索增强] Ollama 返回 {resp.status_code}，按失败降级")
@@ -306,7 +330,7 @@ async def hyde_document(query: str, subject: Optional[str] = None) -> Optional[s
             f"假设你是一本「{subj_hint}」教材。针对下面这个检索问题，"
             "写一段 100~200 字的假想参考资料片段，"
             "就像知识库中恰好命中这段文字一样：直接陈述知识点、定义或结论。\n"
-            "要求：不要说\"假设\"、不要解释你在做什么、不要分点、不要附加说明。\n\n"
+            '要求：不要说"假设"、不要解释你在做什么、不要分点、不要附加说明。\n\n'
             f"检索问题：{query}"
         )
         text = await _call_llm(prompt, subject, num_predict=768, temperature=0.3)
@@ -336,7 +360,8 @@ _SCORE_LINE_RE = re.compile(r"(\d+)[\s\]\)\:：\.\、\=\-]*(\d{1,2})")
 
 
 async def _llm_scores(
-    candidates: List[Dict[str, Any]], query: str,
+    candidates: List[Dict[str, Any]],
+    query: str,
 ) -> Dict[int, int]:
     """让 LLM 给候选打 1-10 分，返回 {下标: 分数}。解析失败返回空 dict。"""
     # 候选太多时只送前 20 条（向量召回通常 10~20 条，足够重排）
@@ -347,7 +372,7 @@ async def _llm_scores(
     prompt = (
         "你是检索结果排序裁判。根据用户问题，给下面每条候选资料打相关性分数："
         "1~10 的整数，10=完全切题、1=完全无关。\n"
-        "要求：只输出\"编号 分数\"，每行一条，不要解释、不要多余文字。\n\n"
+        '要求：只输出"编号 分数"，每行一条，不要解释、不要多余文字。\n\n'
         f"用户问题：{query}\n\n候选资料：\n" + "\n".join(lines)
     )
     text = await _call_llm(prompt, None, num_predict=512, temperature=0.0)
@@ -365,7 +390,8 @@ async def _llm_scores(
 
 
 async def _bge_rerank_scores(
-    candidates: List[Dict[str, Any]], query: str,
+    candidates: List[Dict[str, Any]],
+    query: str,
 ) -> Optional[Dict[int, float]]:
     """探测并调用 8140 bge-reranker 微服务，返回 {候选下标: 分数}；不可用/失败返回 None。
 
@@ -373,13 +399,14 @@ async def _bge_rerank_scores(
     返回 {results:[{id,score}]}。任何异常都返回 None，绝不抛。
     """
     import time
+
     try:
         client = get_async_client()
         now = time.time()
         if _BGE_PROBE["ok"] is None or (now - _BGE_PROBE["at"]) > 300:
             try:
                 r = await client.get(f"{_BGE_RERANK_URL}/health", headers=service_headers(), timeout=2.0)
-                _BGE_PROBE["ok"] = (r.status_code == 200)
+                _BGE_PROBE["ok"] = r.status_code == 200
             except Exception:
                 _BGE_PROBE["ok"] = False
             _BGE_PROBE["at"] = now
@@ -387,8 +414,7 @@ async def _bge_rerank_scores(
             return None
 
         docs = [
-            {"id": str(i), "text": (c.get("content") or c.get("text") or "")[:1000]}
-            for i, c in enumerate(candidates)
+            {"id": str(i), "text": (c.get("content") or c.get("text") or "")[:1000]} for i, c in enumerate(candidates)
         ]
         r = await client.post(
             f"{_BGE_RERANK_URL}/rerank",
@@ -413,7 +439,9 @@ async def _bge_rerank_scores(
 
 
 async def rerank(
-    candidates: List[Dict[str, Any]], query: str, top_k: int = 5,
+    candidates: List[Dict[str, Any]],
+    query: str,
+    top_k: int = 5,
 ) -> List[Dict[str, Any]]:
     """对候选按相关性重排，返回前 top_k。
 
@@ -421,6 +449,7 @@ async def rerank(
     打分失败/开关关闭时**保持原序截断 top_k**，绝不抛异常。
     返回的 dict 为浅拷贝（成功路径附带 ``rerank_score``），不污染调用方原对象。
     """
+
     def _take_original(order: int) -> List[Dict[str, Any]]:
         """原序截断 top_k（返回浅拷贝）。"""
         if order <= 0:
@@ -447,7 +476,6 @@ async def rerank(
             logger.info("[检索增强] 重排打分无有效结果，保持原序截断")
             return _take_original(top_k)
 
-
         # 已打分的按下分降序（同分保持原序），未打分的按原序补在后面
         indexed = list(range(len(candidates)))
         scored = [i for i in indexed if i in scores]
@@ -461,8 +489,9 @@ async def rerank(
             if i in scores:
                 item["rerank_score"] = scores[i]
             result.append(item)
-        logger.info(f"[检索增强] rerank[{backend}]: {len(candidates)} 条候选 -> {len(result)} 条"
-                    f"（{len(scored)} 条已打分）")
+        logger.info(
+            f"[检索增强] rerank[{backend}]: {len(candidates)} 条候选 -> {len(result)} 条（{len(scored)} 条已打分）"
+        )
         return result
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[检索增强] rerank 异常，降级为原序截断: {e}")

@@ -18,9 +18,7 @@ import unicodedata
 from typing import Any, Dict, Optional, Tuple
 
 # 括号内"代码:NNNN"后缀, 如「(代码:10614)」「（代码：10614）」「[代码 10614]」
-_CODE_SUFFIX_RE = re.compile(
-    r"[（(\[【]?\s*代\s*码\s*[:：]?\s*[0-9A-Za-z]{4,8}\s*[)）\]】]?"
-)
+_CODE_SUFFIX_RE = re.compile(r"[（(\[【]?\s*代\s*码\s*[:：]?\s*[0-9A-Za-z]{4,8}\s*[)）\]】]?")
 # 内部所有空白（NBSP / 全角空格 / 制表符等统一先转半角再删）
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -132,8 +130,7 @@ def upsert_notice(
             (
                 r
                 for r in conn.execute(
-                    "SELECT id, url FROM kaoyan_notices "
-                    "WHERE school_id IS ? AND url IS NOT NULL AND url <> ''",
+                    "SELECT id, url FROM kaoyan_notices WHERE school_id IS ? AND url IS NOT NULL AND url <> ''",
                     (school_id,),
                 )
                 if normalize_notice_url(r[1]) == norm_url
@@ -185,9 +182,7 @@ def upsert_notice(
         # 跨方言：原实现只捕 sqlite3.Error。PG 底层的 psycopg.Error 直接穿透，
         # 一条冲突/约束异常会让整轮抓取中断。此处统一兜住并**留痕**
         # （项目血泪教训 #1：静默吞异常是最贵的 bug）。
-        logging.getLogger(__name__).warning(
-            "upsert_notice 写入失败，跳过该条：%s", str(exc)[:200]
-        )
+        logging.getLogger(__name__).warning("upsert_notice 写入失败，跳过该条：%s", str(exc)[:200])
         return "skipped"
 
 
@@ -221,9 +216,9 @@ def dedupe_table(
         if row[8]:  # is_starred
             interacted += 1
         return (
-            0 if interacted else 1,          # 有交互的排最前
-            str(row[6] or "9999"),            # fetched_at 最早优先
-            row[0],                           # id 最小优先
+            0 if interacted else 1,  # 有交互的排最前
+            str(row[6] or "9999"),  # fetched_at 最早优先
+            row[0],  # id 最小优先
         )
 
     plan = []

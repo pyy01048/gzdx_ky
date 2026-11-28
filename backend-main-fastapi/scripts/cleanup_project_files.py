@@ -19,6 +19,7 @@
 
 纪律：先造安全网备份，再删；打印回收空间与删除清单（落 manifest）。
 """
+
 from __future__ import annotations
 
 import os
@@ -38,7 +39,7 @@ KEEP_DB = {"kaoyan.db", os.path.basename(SAFE), os.path.basename(BASELINE)}
 
 
 def gb(b: float) -> str:
-    return f"{b/1e9:.2f} GB"
+    return f"{b / 1e9:.2f} GB"
 
 
 def make_safe_backup() -> None:
@@ -89,7 +90,7 @@ def collect_deletions() -> list[str]:
         if f.startswith("_") and f.endswith((".log", ".json", ".jsonl", ".txt", ".out")):
             dels.append(os.path.join(sdir, f))
     # __pycache__
-    for dp, dn, fn in os.walk(BACKEND):
+    for dp, _dn, fn in os.walk(BACKEND):
         if os.path.basename(dp) == "__pycache__":
             for f in fn:
                 dels.append(os.path.join(dp, f))
@@ -124,7 +125,9 @@ def main() -> int:
     # 验证保留
     print("\n保留核对:")
     for p in (DB, SAFE, BASELINE):
-        print(f"   {'EXISTS' if os.path.exists(p) else 'MISSING!!'}  {os.path.relpath(p, r'D:\平台')} ({gb(os.path.getsize(p)) if os.path.exists(p) else 0})")
+        print(
+            f"   {'EXISTS' if os.path.exists(p) else 'MISSING!!'}  {os.path.relpath(p, r'D:\平台')} ({gb(os.path.getsize(p)) if os.path.exists(p) else 0})"
+        )
     return 0
 
 

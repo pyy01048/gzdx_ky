@@ -33,6 +33,7 @@
     python scripts/backfill_quiz_kp_semantic.py --dry-run --threshold 0.62
     python scripts/backfill_quiz_kp_semantic.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -71,12 +72,54 @@ NAME_HIT_WEIGHT = 0.15
 #: 过于宽泛的知识点名：任何题干都可能「命中」，挂上去就是假关联（与
 #: scripts/backfill_quiz_kp_text.py 的 STOP_NAMES 同源，只在完全同名时剔除）。
 GENERIC_NAMES = {
-    "函数", "连续", "极限", "概率", "矩阵", "向量", "导数", "积分", "级数",
-    "电路", "电压", "电流", "电阻", "功率", "逻辑", "系统", "信号",
-    "分析", "计算", "方法", "定理", "定义", "概念", "原理", "性质",
-    "条件", "问题", "应用", "作用", "意义", "关系", "结构", "分类",
-    "步骤", "内容", "特征", "基础", "理论", "模型", "公式", "方程",
-    "运算", "求解", "结论", "总结", "概述", "引言", "小结",
+    "函数",
+    "连续",
+    "极限",
+    "概率",
+    "矩阵",
+    "向量",
+    "导数",
+    "积分",
+    "级数",
+    "电路",
+    "电压",
+    "电流",
+    "电阻",
+    "功率",
+    "逻辑",
+    "系统",
+    "信号",
+    "分析",
+    "计算",
+    "方法",
+    "定理",
+    "定义",
+    "概念",
+    "原理",
+    "性质",
+    "条件",
+    "问题",
+    "应用",
+    "作用",
+    "意义",
+    "关系",
+    "结构",
+    "分类",
+    "步骤",
+    "内容",
+    "特征",
+    "基础",
+    "理论",
+    "模型",
+    "公式",
+    "方程",
+    "运算",
+    "求解",
+    "结论",
+    "总结",
+    "概述",
+    "引言",
+    "小结",
 }
 
 
@@ -110,7 +153,7 @@ def embed(texts: list[str]) -> np.ndarray:
     """批量编码并 L2 归一化（余弦 = 内积）。"""
     out: list[np.ndarray] = []
     for i in range(0, len(texts), BATCH):
-        out.extend(generate_local_embeddings(texts[i:i + BATCH]))
+        out.extend(generate_local_embeddings(texts[i : i + BATCH]))
     arr = np.asarray(out, dtype=np.float32)
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
@@ -128,13 +171,15 @@ def load_data(cur):
         # 只用 name + description：把 chapter 拼进来会把「线性代数」「第一章」这类
         # 章节名变成通用语义锚点，实测会让同科目内所有题都被同一批宽泛知识点吸走。
         text = f"{name.strip()}。{(desc or '').strip()[:KP_DESC_CHARS]}"
-        kps.append({
-            "id": kid,
-            "name": name.strip(),
-            "subject": (subject or "").strip(),
-            "chapter": chapter,
-            "text": text,
-        })
+        kps.append(
+            {
+                "id": kid,
+                "name": name.strip(),
+                "subject": (subject or "").strip(),
+                "chapter": chapter,
+                "text": text,
+            }
+        )
 
     cur.execute("""
         SELECT id, subject, content, options
@@ -147,13 +192,15 @@ def load_data(cur):
         body = (content or "").strip()
         opts = option_text(options)
         text = (body + " " + opts).strip()[:MAX_QUESTION_CHARS]
-        questions.append({
-            "id": qid,
-            "subject": (subject or "").strip(),
-            "content": body,
-            "text": text,
-            "cjk": cjk_len(body) + cjk_len(opts),
-        })
+        questions.append(
+            {
+                "id": qid,
+                "subject": (subject or "").strip(),
+                "content": body,
+                "text": text,
+                "cjk": cjk_len(body) + cjk_len(opts),
+            }
+        )
     return kps, questions
 
 
@@ -161,11 +208,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="题目知识点语义回填（bge-small-zh）")
     ap.add_argument("--dry-run", action="store_true", help="只打印样例，不写库（默认）")
     ap.add_argument("--apply", action="store_true", help="备份后写库")
-    ap.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
-                    help=f"余弦相似度阈值，默认 {DEFAULT_THRESHOLD}")
-    ap.add_argument("--min-pool", type=int, default=MIN_POOL_SIZE,
-                    help="同科目知识点少于该数量则整科跳过（默认 %d，模拟电子技术仅 14 条）"
-                         % MIN_POOL_SIZE)
+    ap.add_argument(
+        "--threshold", type=float, default=DEFAULT_THRESHOLD, help=f"余弦相似度阈值，默认 {DEFAULT_THRESHOLD}"
+    )
+    ap.add_argument(
+        "--min-pool",
+        type=int,
+        default=MIN_POOL_SIZE,
+        help="同科目知识点少于该数量则整科跳过（默认 %d，模拟电子技术仅 14 条）" % MIN_POOL_SIZE,
+    )
     ap.add_argument("--no-backup", action="store_true", help="跳过备份（不建议）")
     ap.add_argument("--limit", type=int, default=0, help="只处理前 N 道（调试用）")
     args = ap.parse_args()
@@ -183,7 +234,7 @@ def main() -> int:
         with conn.cursor() as cur:
             kps, questions = load_data(cur)
         if args.limit:
-            questions = questions[:args.limit]
+            questions = questions[: args.limit]
 
         print(f"[data] 知识点 {len(kps)} 条；空知识点题目 {len(questions)} 道")
 
@@ -197,8 +248,10 @@ def main() -> int:
         print(f"[pool] 剔除过泛知识点 {skipped_generic} 条（函数/电路/系统…）")
         thin = {s: len(v) for s, v in kp_idx_by_subject.items() if len(v) < args.min_pool}
         if thin:
-            print("[pool] 知识点池过小、整科跳过（待补知识点数据）："
-                  + "，".join(f"{s}({n}条)" for s, n in sorted(thin.items())))
+            print(
+                "[pool] 知识点池过小、整科跳过（待补知识点数据）："
+                + "，".join(f"{s}({n}条)" for s, n in sorted(thin.items()))
+            )
 
         print("[encode] 知识点…")
         kp_vecs = embed([k["text"] for k in kps])
@@ -215,9 +268,13 @@ def main() -> int:
                 pending.append({**q, "reason": f"科目「{q['subject']}」无知识点候选"})
                 continue
             if len(idxs) < args.min_pool:
-                pending.append({**q, "reason":
-                                f"科目「{q['subject']}」知识点池仅 {len(idxs)} 条（< {args.min_pool}），"
-                                "语义匹配不可靠，需先补知识点"})
+                pending.append(
+                    {
+                        **q,
+                        "reason": f"科目「{q['subject']}」知识点池仅 {len(idxs)} 条（< {args.min_pool}），"
+                        "语义匹配不可靠，需先补知识点",
+                    }
+                )
                 continue
             if q["cjk"] < MIN_CJK_CHARS:
                 pending.append({**q, "reason": f"有效中文字符仅 {q['cjk']} 个，语义不足"})
@@ -234,8 +291,14 @@ def main() -> int:
             if score >= args.threshold:
                 planned.append({"q": q, "kp": kp, "score": score, "hit": bool(hits[best])})
             else:
-                pending.append({**q, "reason": f"最高相似度 {score:.3f} < {args.threshold}",
-                                "best_kp": kp["name"], "best_score": score})
+                pending.append(
+                    {
+                        **q,
+                        "reason": f"最高相似度 {score:.3f} < {args.threshold}",
+                        "best_kp": kp["name"],
+                        "best_score": score,
+                    }
+                )
 
         # ---- 统计 ----
         scores_all = np.array([p["score"] for p in planned]) if planned else np.array([])
@@ -247,9 +310,11 @@ def main() -> int:
             ("< 0.55", int((scores_all < 0.55).sum())),
         ]
 
-        print(f"\n[result] 可写库 {len(planned)}/{len(questions)}"
-              f"（{len(planned) / max(1, len(questions)):.1%}）；"
-              f"待人工 {len(pending)}；无候选科目 {no_pool}")
+        print(
+            f"\n[result] 可写库 {len(planned)}/{len(questions)}"
+            f"（{len(planned) / max(1, len(questions)):.1%}）；"
+            f"待人工 {len(pending)}；无候选科目 {no_pool}"
+        )
         print("[dist] 命中余弦分布：" + "，".join(f"{k}: {v}" for k, v in bins))
         print(f"[dist] 其中知识点名在题干/选项里原样出现 {sum(1 for p in planned if p['hit'])} 道")
 
@@ -259,14 +324,16 @@ def main() -> int:
             by_subject_planned[p["q"]["subject"]] += 1
         for p in pending:
             by_subject_pending[p["subject"]] += 1
-        print("[by-subject] " + "；".join(
-            f"{s}: 命中 {by_subject_planned.get(s, 0)}/待人工 {by_subject_pending.get(s, 0)}"
-            for s in sorted(set(by_subject_planned) | set(by_subject_pending))
-        ))
+        print(
+            "[by-subject] "
+            + "；".join(
+                f"{s}: 命中 {by_subject_planned.get(s, 0)}/待人工 {by_subject_pending.get(s, 0)}"
+                for s in sorted(set(by_subject_planned) | set(by_subject_pending))
+            )
+        )
 
         # ---- 样例 ----
-        sample = sorted(planned, key=lambda p: -p["score"])[:15] + \
-                 sorted(planned, key=lambda p: p["score"])[:15]
+        sample = sorted(planned, key=lambda p: -p["score"])[:15] + sorted(planned, key=lambda p: p["score"])[:15]
         seen = set()
         print("\n[sample] 前 30 条（高分 15 + 贴阈值 15）：")
         for p in sample:
@@ -302,8 +369,7 @@ def main() -> int:
             for p in planned:
                 qid, kp = p["q"]["id"], p["kp"]
                 cur.execute(
-                    "DELETE FROM question_knowledge_links"
-                    " WHERE question_id = %s AND knowledge_point_id = %s",
+                    "DELETE FROM question_knowledge_links WHERE question_id = %s AND knowledge_point_id = %s",
                     (qid, kp["id"]),
                 )
                 cur.execute(

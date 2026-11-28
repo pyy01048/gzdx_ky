@@ -8,6 +8,7 @@
     python scripts/migrate_kaoyan_cn_scorelines.py          # dry-run
     python scripts/migrate_kaoyan_cn_scorelines.py --apply  # 写库
 """
+
 import argparse
 import sys
 from pathlib import Path

@@ -5,6 +5,7 @@
 - 解析单词并分类导入到数据库
 - 支持断点续传
 """
+
 import json
 import os
 import re
@@ -15,6 +16,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import SessionLocal
+
 from models import Word, WordDeck
 
 # PDF 目录
@@ -71,10 +73,10 @@ def parse_words_from_text(text):
     # 单词模式：英文单词 + 可选音标 + 词性 + 中文释义
     # 例如：abandon /əˈbændən/ v. 放弃，抛弃
     word_pattern = re.compile(
-        r'^([a-zA-Z][a-zA-Z\-\s]{1,30})\s*'  # 单词
-        r'(/[^/]+/)?\s*'  # 音标（可选）
-        r'([a-z]+\.)?\s*'  # 词性（可选）
-        r'(.+)$'  # 释义
+        r"^([a-zA-Z][a-zA-Z\-\s]{1,30})\s*"  # 单词
+        r"(/[^/]+/)?\s*"  # 音标（可选）
+        r"([a-z]+\.)?\s*"  # 词性（可选）
+        r"(.+)$"  # 释义
     )
 
     for line in lines:
@@ -92,12 +94,14 @@ def parse_words_from_text(text):
 
             # 验证单词是否合理
             if len(word) >= 2 and len(word) <= 30 and meaning:
-                words.append({
-                    "word": word.lower(),
-                    "phonetic": phonetic.strip("/ "),
-                    "pos": pos.strip("."),
-                    "meaning": meaning,
-                })
+                words.append(
+                    {
+                        "word": word.lower(),
+                        "phonetic": phonetic.strip("/ "),
+                        "pos": pos.strip("."),
+                        "meaning": meaning,
+                    }
+                )
 
     return words
 
@@ -126,6 +130,7 @@ def ocr_pdf_pages(pdf_path, start_page=0, max_pages=None):
 
             # 转换为numpy数组
             import numpy as np
+
             img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
 
             # OCR识别
@@ -152,10 +157,7 @@ def import_words_to_db(db, words, deck_id):
 
     for w in words:
         # 检查单词是否已存在
-        existing = db.query(Word).filter(
-            Word.word == w["word"],
-            Word.deck_id == deck_id
-        ).first()
+        existing = db.query(Word).filter(Word.word == w["word"], Word.deck_id == deck_id).first()
 
         if existing:
             skipped += 1
@@ -190,10 +192,10 @@ def import_words_to_db(db, words, deck_id):
 def process_pdf(pdf_path, deck_name, db, progress):
     """处理单个PDF文件"""
     filename = os.path.basename(pdf_path)
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"处理文件: {filename}")
     print(f"词库: {deck_name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 检查是否已处理完成
     if progress["files"].get(filename, {}).get("completed"):
@@ -210,6 +212,7 @@ def process_pdf(pdf_path, deck_name, db, progress):
         # OCR识别（每次处理10页，分批处理）
         batch_size = 10
         import pymupdf
+
         doc = pymupdf.open(pdf_path)
         total_pages = len(doc)
         doc.close()
@@ -218,7 +221,7 @@ def process_pdf(pdf_path, deck_name, db, progress):
         total_skipped = 0
 
         for start_page in range(processed_pages, total_pages, batch_size):
-            print(f"\n处理第 {start_page+1}-{min(start_page+batch_size, total_pages)} 页...")
+            print(f"\n处理第 {start_page + 1}-{min(start_page + batch_size, total_pages)} 页...")
 
             # OCR识别
             text = ocr_pdf_pages(pdf_path, start_page, batch_size)
@@ -251,15 +254,16 @@ def process_pdf(pdf_path, deck_name, db, progress):
     except Exception as e:
         print(f"文件处理失败: {e}")
         import traceback
+
         traceback.print_exc()
         return 0
 
 
 def main():
     """主函数"""
-    print("="*60)
+    print("=" * 60)
     print("《词汇闪过》PDF OCR 单词导入工具")
-    print("="*60)
+    print("=" * 60)
 
     # 加载进度
     progress = load_progress()
@@ -293,11 +297,11 @@ def main():
             imported = process_pdf(pdf_path, deck_name, db, progress)
             total_imported += imported
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("全部处理完成!")
         print(f"本次导入: {total_imported} 个单词")
         print(f"累计导入: {progress.get('total_words', 0)} 个单词")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
     finally:
         db.close()

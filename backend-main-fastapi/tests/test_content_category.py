@@ -7,6 +7,7 @@
 - chunk_size_for_category 差异化切分映射与默认回退
 - DB 侧：ingest_text 按 content_category 实际使用差异化 chunk_size（临时库）
 """
+
 from __future__ import annotations
 
 from services.kb_service import (
@@ -83,8 +84,9 @@ def test_chunk_size_fallback():
 # ---------- DB 侧：ingest 按类别差异化（临时库） ----------
 def test_ingest_uses_category_chunk_size(db_schema):
     from database import SessionLocal
-    from models import Document
     from services.kb_service import ingest_text
+
+    from models import Document
 
     # 构造一段约 5000 字、多段落的重复文本
     para = "组合逻辑电路由门电路构成，其输出仅取决于当前输入。"
@@ -93,16 +95,12 @@ def test_ingest_uses_category_chunk_size(db_schema):
     db = SessionLocal()
     try:
         # textbook: chunk_size 512 → 块数多；exam: 2048 → 块数少
-        d_tb = Document(file_name="教材讲义.txt", file_type="txt",
-                        content=long_text, content_category="textbook")
-        d_ex = Document(file_name="2004年真题卷.txt", file_type="txt",
-                        content=long_text, content_category="exam")
+        d_tb = Document(file_name="教材讲义.txt", file_type="txt", content=long_text, content_category="textbook")
+        d_ex = Document(file_name="2004年真题卷.txt", file_type="txt", content=long_text, content_category="exam")
         db.add_all([d_tb, d_ex])
         db.flush()
-        n_tb = ingest_text(db, d_tb.id, d_tb.file_name, long_text,
-                           content_category="textbook")
-        n_ex = ingest_text(db, d_ex.id, d_ex.file_name, long_text,
-                           content_category="exam")
+        n_tb = ingest_text(db, d_tb.id, d_tb.file_name, long_text, content_category="textbook")
+        n_ex = ingest_text(db, d_ex.id, d_ex.file_name, long_text, content_category="exam")
         db.commit()
         # 同样文本，exam 大块 → 明显少于 textbook 小块
         assert n_ex < n_tb

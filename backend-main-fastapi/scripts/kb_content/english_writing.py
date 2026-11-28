@@ -415,7 +415,7 @@ In view of this trend, it is advisable for us to make rational use of mobile rea
 **错误**：My English level has improved.
 **改进**：My English has improved. 或 My English proficiency has improved.
 
-**错误**：There are many people think ... 
+**错误**：There are many people think ...
 **改进**：Many people think ...（一个句子只能有一个谓语）
 
 ## 三、用词不当

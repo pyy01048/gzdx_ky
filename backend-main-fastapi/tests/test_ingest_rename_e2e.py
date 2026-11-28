@@ -10,6 +10,7 @@ AI 知识点抽取那一步是 best-effort，这里打桩掉：既不让测试�
 
 只用 conftest 的临时库（红线：绝不碰 D:\\平台\\database\\kaoyan.db）。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,6 +30,7 @@ def _no_llm(monkeypatch):
 
 def _seed(client, tmp_path, file_name):
     from database import SessionLocal
+
     from models import Document
 
     src = tmp_path / "src.txt"
@@ -39,14 +41,19 @@ def _seed(client, tmp_path, file_name):
         # 前置清理：历史运行残留的同正文文档会触发质量闸门「完全相同（重复导入）」
         from sqlalchemy import text
 
-        stale = db.execute(text(
-            "SELECT id FROM documents WHERE content = :c"), {"c": BODY}).fetchall()
+        stale = db.execute(text("SELECT id FROM documents WHERE content = :c"), {"c": BODY}).fetchall()
         for (sid,) in stale:
             db.execute(text("DELETE FROM knowledge_chunks WHERE document_id=:d"), {"d": sid})
             db.execute(text("DELETE FROM documents WHERE id=:d"), {"d": sid})
         db.commit()
-        doc = Document(file_name=file_name, subject="", file_path=str(src),
-                       file_type="txt", index_status="pending", parse_progress=0)
+        doc = Document(
+            file_name=file_name,
+            subject="",
+            file_path=str(src),
+            file_type="txt",
+            index_status="pending",
+            parse_progress=0,
+        )
         db.add(doc)
         db.commit()
         return doc.id, str(src)
@@ -56,6 +63,7 @@ def _seed(client, tmp_path, file_name):
 
 def test_parse_endpoint_renames_before_chunking(client, _no_llm, tmp_path):
     from database import SessionLocal
+
     from models import KnowledgeChunk
 
     doc_id, src = _seed(client, tmp_path, "第1章.pdf")
@@ -73,8 +81,9 @@ def test_parse_endpoint_renames_before_chunking(client, _no_llm, tmp_path):
 
         chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).all()
         assert chunks, "解析后应产出分块"
-        assert {c.doc_name for c in chunks} == {doc.file_name}, \
+        assert {c.doc_name for c in chunks} == {doc.file_name}, (
             f"分块 doc_name 没带上新名：{sorted({c.doc_name for c in chunks})}"
+        )
 
         # 再点一次解析：幂等，不能改出「第 1 章 第 1 章 …」这类叠字
         r2 = client.post(f"/api/documents/{doc_id}/parse")
@@ -82,8 +91,7 @@ def test_parse_endpoint_renames_before_chunking(client, _no_llm, tmp_path):
         db.expire_all()
         again = db.query(Document).filter(Document.id == doc_id).first()
         assert again.file_name == "第 1 章 逻辑代数基础.pdf", again.file_name
-        assert db.query(KnowledgeChunk).filter(
-            KnowledgeChunk.document_id == doc_id).count() == len(chunks)
+        assert db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).count() == len(chunks)
     finally:
         from sqlalchemy import text
 
@@ -97,6 +105,7 @@ def test_parse_endpoint_renames_before_chunking(client, _no_llm, tmp_path):
 def test_parse_endpoint_leaves_informative_name_alone(client, _no_llm, tmp_path):
     """已经看得懂的名字不许被解析动作改掉（只降低信息名）。"""
     from database import SessionLocal
+
     from models import Document
 
     doc_id, _src = _seed(client, tmp_path, "1998-2012年.pdf")
@@ -122,8 +131,9 @@ def test_parse_endpoint_leaves_informative_name_alone(client, _no_llm, tmp_path)
 def test_parse_without_any_chunk_is_not_marked_indexed(client, _no_llm, tmp_path, monkeypatch):
     """分块 0 条却标 indexed，就是「UI 说已入库、RAG 搜不到」的源头（存量实测 89 篇）。"""
     from database import SessionLocal
-    from models import Document
     from services import kb_service
+
+    from models import Document
 
     monkeypatch.delenv("KAOYAN_ALLOW_PHYSICAL_DELETE", raising=False)
     monkeypatch.setattr(kb_service, "ingest_document", lambda db, doc, replace=False: 0)
@@ -145,13 +155,13 @@ def test_parse_without_any_chunk_is_not_marked_indexed(client, _no_llm, tmp_path
         db.close()
 
 
-def test_blocked_reparse_keeps_existing_chunks_and_stays_indexed(client, _no_llm, tmp_path,
-                                                                 monkeypatch):
+def test_blocked_reparse_keeps_existing_chunks_and_stays_indexed(client, _no_llm, tmp_path, monkeypatch):
     """闸门拦住重建时旧分块和检索镜像都还在，照样能被 RAG 搜到 —— 标 failed 是另一句谎话。"""
     from database import SessionLocal
-    from models import Document, KnowledgeChunk
     from services import kb_service
     from sqlalchemy import text
+
+    from models import Document, KnowledgeChunk
 
     monkeypatch.delenv("KAOYAN_ALLOW_PHYSICAL_DELETE", raising=False)
 
@@ -166,12 +176,16 @@ def test_blocked_reparse_keeps_existing_chunks_and_stays_indexed(client, _no_llm
     doc_id, _src = _seed(client, tmp_path, "第1章.pdf")
     db = SessionLocal()
     try:
-        db.execute(text("INSERT INTO knowledge_chunks (document_id, doc_name, chunk_index,"
-                        " subject, text) VALUES (:d, '第1章.pdf', 0, '数字电子技术',"
-                        " '逻辑代数的基本运算与公式')"), {"d": doc_id})
+        db.execute(
+            text(
+                "INSERT INTO knowledge_chunks (document_id, doc_name, chunk_index,"
+                " subject, text) VALUES (:d, '第1章.pdf', 0, '数字电子技术',"
+                " '逻辑代数的基本运算与公式')"
+            ),
+            {"d": doc_id},
+        )
         db.commit()
-        assert db.query(KnowledgeChunk).filter(
-            KnowledgeChunk.document_id == doc_id).count() == 1
+        assert db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).count() == 1
 
         r = client.post(f"/api/documents/{doc_id}/parse")
         assert r.status_code == 200, r.text
@@ -179,8 +193,9 @@ def test_blocked_reparse_keeps_existing_chunks_and_stays_indexed(client, _no_llm
         db.expire_all()
         doc = db.query(Document).filter(Document.id == doc_id).first()
         assert doc.index_status == "indexed", doc.index_status
-        assert db.query(KnowledgeChunk).filter(
-            KnowledgeChunk.document_id == doc_id).count() == 1, "被拦住了还不该删旧块"
+        assert db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).count() == 1, (
+            "被拦住了还不该删旧块"
+        )
 
         db.execute(text("DELETE FROM knowledge_chunks WHERE document_id=:d"), {"d": doc_id})
         db.execute(text("DELETE FROM documents WHERE id=:d"), {"d": doc_id})

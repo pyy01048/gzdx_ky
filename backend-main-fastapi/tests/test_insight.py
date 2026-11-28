@@ -14,9 +14,10 @@ import datetime
 import pytest
 from database import Base, SessionLocal, engine
 from main import app
-from models import Goal, QuizQuestion, StudyEvent
 from tests.asgi_client import ASGIClient
 from utils.timeutil import local_today, utcnow
+
+from models import Goal, QuizQuestion, StudyEvent
 
 client = ASGIClient(app)
 

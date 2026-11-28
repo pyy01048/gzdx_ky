@@ -741,6 +741,7 @@ def crawl_school_notices(
     school_names 指定时只采指定院校。robots 允许才采，2-5s 延迟。
     """
     from database import SessionLocal
+
     from models import KaoyanCrawlTarget, KaoyanSchool
 
     close = False

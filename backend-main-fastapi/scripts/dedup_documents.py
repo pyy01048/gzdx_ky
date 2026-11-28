@@ -34,6 +34,7 @@
     python scripts/dedup_documents.py --show 20       # dry-run，看最严重的20组
     python scripts/dedup_documents.py --apply         # 真删（自动先备份）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -94,10 +95,14 @@ def stats(conn: sqlite3.Connection) -> dict[str, int]:
         "vec": one("SELECT COUNT(*) FROM knowledge_chunks_vec"),
         "fts": one("SELECT COUNT(*) FROM knowledge_chunks_fts"),
         "ekl": one("SELECT COUNT(*) FROM error_knowledge_links"),
-        "dup_groups": one("SELECT COUNT(*) FROM (SELECT file_name FROM documents "
-                          "WHERE file_name IS NOT NULL GROUP BY file_name HAVING COUNT(*)>1)"),
-        "orphan_chunks": one("SELECT COUNT(*) FROM knowledge_chunks k WHERE NOT EXISTS "
-                             "(SELECT 1 FROM documents d WHERE d.id = k.document_id)"),
+        "dup_groups": one(
+            "SELECT COUNT(*) FROM (SELECT file_name FROM documents "
+            "WHERE file_name IS NOT NULL GROUP BY file_name HAVING COUNT(*)>1)"
+        ),
+        "orphan_chunks": one(
+            "SELECT COUNT(*) FROM knowledge_chunks k WHERE NOT EXISTS "
+            "(SELECT 1 FROM documents d WHERE d.id = k.document_id)"
+        ),
     }
 
 
@@ -109,15 +114,14 @@ def analyze(conn: sqlite3.Connection, show: int) -> dict:
     details = []
     for fname, n in groups:
         keep_id = conn.execute(SQL_PICK_KEEP, (fname,)).fetchone()[0]
-        del_ids = [r[0] for r in conn.execute(
-            "SELECT id FROM documents WHERE file_name=? AND id<>?", (fname, keep_id)
-        ).fetchall()]
+        del_ids = [
+            r[0]
+            for r in conn.execute("SELECT id FROM documents WHERE file_name=? AND id<>?", (fname, keep_id)).fetchall()
+        ]
         if not del_ids:
             continue
         ph = ",".join("?" * len(del_ids))
-        nc = conn.execute(
-            f"SELECT COUNT(*) FROM knowledge_chunks WHERE document_id IN ({ph})", del_ids
-        ).fetchone()[0]
+        nc = conn.execute(f"SELECT COUNT(*) FROM knowledge_chunks WHERE document_id IN ({ph})", del_ids).fetchone()[0]
         chunks_to_delete += nc
         info = conn.execute(
             "SELECT LENGTH(content), index_status, knowledge_point_count FROM documents WHERE id=?",
@@ -142,9 +146,8 @@ def apply_dedup(conn: sqlite3.Connection) -> dict:
     for fname, _n in groups:
         keep_id = conn.execute(SQL_PICK_KEEP, (fname,)).fetchone()[0]
         all_del_doc_ids.extend(
-            r[0] for r in conn.execute(
-                "SELECT id FROM documents WHERE file_name=? AND id<>?", (fname, keep_id)
-            ).fetchall()
+            r[0]
+            for r in conn.execute("SELECT id FROM documents WHERE file_name=? AND id<>?", (fname, keep_id)).fetchall()
         )
 
     if not all_del_doc_ids:
@@ -152,18 +155,19 @@ def apply_dedup(conn: sqlite3.Connection) -> dict:
 
     # 1) 先收集要删的 chunk ids
     ph = ",".join("?" * len(all_del_doc_ids))
-    chunk_ids = [r[0] for r in conn.execute(
-        f"SELECT id FROM knowledge_chunks WHERE document_id IN ({ph})", all_del_doc_ids
-    ).fetchall()]
+    chunk_ids = [
+        r[0]
+        for r in conn.execute(
+            f"SELECT id FROM knowledge_chunks WHERE document_id IN ({ph})", all_del_doc_ids
+        ).fetchall()
+    ]
 
     dep_done: dict[str, int] = {}
     if chunk_ids:
         cph = ",".join("?" * len(chunk_ids))
         for t in DEP_TABLES:
             try:
-                dep_done[t] = conn.execute(
-                    f"DELETE FROM {t} WHERE chunk_id IN ({cph})", chunk_ids
-                ).rowcount
+                dep_done[t] = conn.execute(f"DELETE FROM {t} WHERE chunk_id IN ({cph})", chunk_ids).rowcount
             except sqlite3.Error as e:
                 dep_done[t] = f"SKIP({e})"
 
@@ -174,14 +178,10 @@ def apply_dedup(conn: sqlite3.Connection) -> dict:
         # 误删 158 条真题的根因所在，这个脚本必须显式放行才允许跑。
         require_physical_delete_enabled("knowledge_chunks")
         cph = ",".join("?" * len(chunk_ids))
-        chunks_deleted = conn.execute(
-            f"DELETE FROM knowledge_chunks WHERE id IN ({cph})", chunk_ids
-        ).rowcount
+        chunks_deleted = conn.execute(f"DELETE FROM knowledge_chunks WHERE id IN ({cph})", chunk_ids).rowcount
 
     # 3) 最后删 documents
-    docs_deleted = conn.execute(
-        f"DELETE FROM documents WHERE id IN ({ph})", all_del_doc_ids
-    ).rowcount
+    docs_deleted = conn.execute(f"DELETE FROM documents WHERE id IN ({ph})", all_del_doc_ids).rowcount
     conn.commit()
     return {"docs": docs_deleted, "chunks": chunks_deleted, "dep": dep_done}
 
@@ -251,8 +251,10 @@ def main() -> int:
             b, a = before[k], after[k]
             print(f"    {k:<20} {b:>7} → {a:>7}  (减少 {b - a})")
         print()
-        print(f"  孤儿块复查：{before['orphan_chunks']} → {after['orphan_chunks']}"
-              f"  {'✓' if after['orphan_chunks'] == 0 else '✗ 出现孤儿'}")
+        print(
+            f"  孤儿块复查：{before['orphan_chunks']} → {after['orphan_chunks']}"
+            f"  {'✓' if after['orphan_chunks'] == 0 else '✗ 出现孤儿'}"
+        )
         return 0
     finally:
         conn.close()

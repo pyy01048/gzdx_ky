@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """临时：查 kaoyan_notices 状态列的真实类型。"""
+
 from __future__ import annotations
 
 import sys
@@ -20,19 +21,23 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        rows = db.execute(text("""
+        rows = db.execute(
+            text("""
             select column_name, data_type from information_schema.columns
             where table_name='kaoyan_notices'
               and column_name in ('is_read','is_starred','read_at','starred_at',
                                   'publish_date','fetched_at')
             order by ordinal_position
-        """)).all()
+        """)
+        ).all()
         for name, dtype in rows:
             print(f"{name:14} {dtype}")
-        sample = db.execute(text(
-            "select read_at, starred_at, is_read, is_starred, fetched_at "
-            "from kaoyan_notices where read_at is not null limit 3"
-        )).all()
+        sample = db.execute(
+            text(
+                "select read_at, starred_at, is_read, is_starred, fetched_at "
+                "from kaoyan_notices where read_at is not null limit 3"
+            )
+        ).all()
         print("read_at 样本:", sample)
     finally:
         db.close()

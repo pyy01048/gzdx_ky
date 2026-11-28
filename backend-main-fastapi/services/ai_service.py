@@ -12,10 +12,11 @@ import time
 from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
-from models import AIProvider, KnowledgeChunk, KnowledgePoint
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from utils.http_client import get_async_client
 
+from models import AIProvider, KnowledgeChunk, KnowledgePoint
 from services import search_service
 from services.embedding_service import EmbeddingService
 
@@ -320,7 +321,6 @@ class AIService:
             时才重新探测。用于"用户点了检测按钮"这类既要新鲜、
             又不能每次都付一次超时的场景。
         """
-        import time
 
         now = time.time()
         # 模块级缓存：见函数 docstring「历史缺陷」
@@ -550,7 +550,7 @@ class AIService:
 
         # 本地知识库离线兜底（无模型、无在线）
         if route == "offline":
-            kb_hits = await asyncio.to_thread(partial(self.search_knowledge_base, last_user, limit=4))
+            kb_hits = await self._search_kb_async(last_user)
             answer = self.answer_offline(last_user, kb_hits)
             return {
                 "content": answer,
@@ -573,7 +573,7 @@ class AIService:
             except Exception as e:
                 if force_local:
                     # 本地调用失败也不回退在线，走离线知识库兜底
-                    kb_hits = await asyncio.to_thread(partial(self.search_knowledge_base, last_user, limit=4))
+                    kb_hits = await self._search_kb_async(last_user)
                     return {
                         "content": self.answer_offline(last_user, kb_hits),
                         "provider": "offline-kb",
@@ -599,7 +599,7 @@ class AIService:
                 return result
             except Exception as e:
                 if force_local:
-                    kb_hits = await asyncio.to_thread(partial(self.search_knowledge_base, last_user, limit=4))
+                    kb_hits = await self._search_kb_async(last_user)
                     return {
                         "content": self.answer_offline(last_user, kb_hits),
                         "provider": "offline-kb",
@@ -644,6 +644,10 @@ class AIService:
         if offline_fallback:
             return await asyncio.to_thread(self._offline_fallback_result, last_user, errors, route_reason)
         raise RuntimeError(f"所有 AI 服务商调用失败：{'; '.join(errors) or last_error}")
+
+    async def _search_kb_async(self, query: str, limit: int = 4) -> List[Dict[str, Any]]:
+        """异步包装同步知识库检索（丢工作线程，避免阻塞事件循环）。"""
+        return await asyncio.to_thread(partial(self.search_knowledge_base, query, limit=limit))
 
     def _offline_fallback_result(self, query: str, errors: List[str], route_reason: str = "") -> Dict[str, Any]:
         """全服务商失败后的离线知识库兜底（数据不出网，不抛异常）。
@@ -980,9 +984,6 @@ class AIService:
             # FTS 不可用时回退到原 TF 检索
             chunk_results = self._tf_search_chunks(query, subject)
 
-        # 2) 知识点：TF 检索（数据量小，TF 足够）
-        kp_results = []
-        kp_q = self.db.query(KnowledgePoint).filter(KnowledgePoint.description.isnot(None))
         # 2) 知识点：SQL 侧精确过滤（2026-10-14 重构）
         #
         # 原实现把知识点整表拉进 Python 逐行分词算 Jaccard（`limit(3000)`），
@@ -1003,9 +1004,7 @@ class AIService:
         # 取查询里最长的 3 个词做 SQL LIKE 预筛（长词区分度高，漏召回少）
         probe_terms = sorted({t for t in q_tokens if len(t) >= 2}, key=len, reverse=True)[:3]
         if probe_terms:
-            from sqlalchemy import or_ as _or
-
-            cond = _or(
+            cond = or_(
                 *[KnowledgePoint.name.ilike(f"%{t}%") for t in probe_terms]
                 + [KnowledgePoint.description.ilike(f"%{t}%") for t in probe_terms]
             )

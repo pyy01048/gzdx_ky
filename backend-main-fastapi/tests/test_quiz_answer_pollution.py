@@ -20,11 +20,13 @@
 用 SQLite 的 LIKE / GLOB / json_each 写成，复刻一份必然与实现漂移）。
 改为用**真实 ORM 模型 + 内存 SQLite**跑同一个表达式 —— 口径与生产完全一致。
 """
+
 from __future__ import annotations
 
 import pytest
-from models import QuizQuestion
 from services import quiz_query as qq
+
+from models import QuizQuestion
 
 
 @pytest.fixture()
@@ -56,16 +58,27 @@ def _judge(db, answer: str) -> bool:
     非破坏性：只删/建哨兵行 ``_SENTINEL_ID``，不动其它数据。
     """
     db.query(QuizQuestion).filter(QuizQuestion.id == _SENTINEL_ID).delete()
-    db.add(QuizQuestion(
-        id=_SENTINEL_ID, content="题干", answer=answer, options=None,
-        is_available=True, figure_missing=0,
-    ))
+    db.add(
+        QuizQuestion(
+            id=_SENTINEL_ID,
+            content="题干",
+            answer=answer,
+            options=None,
+            is_available=True,
+            figure_missing=0,
+        )
+    )
     db.commit()
     try:
-        return db.query(QuizQuestion).filter(
-            QuizQuestion.id == _SENTINEL_ID,
-            qq.practiceable_expr(),
-        ).first() is not None
+        return (
+            db.query(QuizQuestion)
+            .filter(
+                QuizQuestion.id == _SENTINEL_ID,
+                qq.practiceable_expr(),
+            )
+            .first()
+            is not None
+        )
     finally:
         db.query(QuizQuestion).filter(QuizQuestion.id == _SENTINEL_ID).delete()
         db.commit()
@@ -143,7 +156,7 @@ def test_placeholder_prefixes_cover_observed_values():
 # 与 ``database.engine`` 共用 SQLAlchemy 元数据/事件，进程内复用会把引擎指向内存库。
 # 子进程天然隔离，也顺带验证了「从零启动就能拿到真库」。
 # --------------------------------------------------------------------------- #
-_REAL_CHECK = r'''
+_REAL_CHECK = r"""
 import sys, re, os
 sys.path.insert(0, os.getcwd())
 from database import SessionLocal
@@ -174,7 +187,7 @@ try:
     print("OFFENDERS", len(offenders), offenders[:5])
 finally:
     db.close()
-'''
+"""
 
 
 def _run_real_check():
@@ -186,11 +199,15 @@ def _run_real_check():
     import os
     import subprocess
     import sys as _sys
+
     backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
         r = subprocess.run(
             [_sys.executable, "-c", _REAL_CHECK],
-            capture_output=True, text=True, timeout=300, cwd=backend_root,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=backend_root,
         )
     except Exception:
         return None
@@ -221,12 +238,8 @@ def test_real_library_caliber_and_cleanliness():
     真库数据不依赖单测进程。
     """
     if _RC is None:
-        pytest.skip(
-            "pytest 沙箱内无法启动真库子进程；"
-            "请独立运行 python scripts/verify_quiz_practiceable.py 做同等校验"
-        )
+        pytest.skip("pytest 沙箱内无法启动真库子进程；请独立运行 python scripts/verify_quiz_practiceable.py 做同等校验")
     counts, offenders, out = _RC
     assert offenders == 0, f"可练习集合仍含污染答案：\n{out}"
-    assert counts["raw"] >= counts["vis"] >= counts["ans"] >= counts["prac"], \
-        f"口径倒挂：{counts}"
+    assert counts["raw"] >= counts["vis"] >= counts["ans"] >= counts["prac"], f"口径倒挂：{counts}"
     assert counts["prac"] > 0, "可练习题量不应为 0"

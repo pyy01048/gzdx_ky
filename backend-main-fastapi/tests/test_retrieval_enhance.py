@@ -12,6 +12,7 @@
 不依赖外部网络：离线用例完全不触网；在线用例只允许访问 127.0.0.1:11434，
 且连不通就 skip。
 """
+
 import asyncio
 import os
 import sys
@@ -33,7 +34,6 @@ def run(coro):
 # 内联 <think> 剥离（qwen3 系把思考链塞进 content 的真实场景）
 # --------------------------------------------------------------------------- #
 class TestThinkStripping:
-
     def test_strips_closed_think_block(self):
         raw = "<think>\n我先想想用户要什么…\n</think>\n卡诺图化简分三步。"
         assert enh._strip_think_tags(raw).strip() == "卡诺图化简分三步。"
@@ -50,13 +50,14 @@ class TestThinkStripping:
         assert enh._is_self_talk("首先，用户要求我改写这个问题。")
         assert enh._is_self_talk("让我想想这个问题。")
         # 正常教材论述不算自述
-        assert not enh._is_self_talk(
-            "卡诺图化简的基本步骤为：首先画卡诺图，其次圈相邻项，最后求和。")
+        assert not enh._is_self_talk("卡诺图化简的基本步骤为：首先画卡诺图，其次圈相邻项，最后求和。")
 
     def test_extract_answer_false_positive_not_degrade(self, monkeypatch):
         """回归锁死：教材式'首先/其次/最后'不能再被误判为思维链而降级。"""
+
         async def fake_call(*a, **kw):
-            return ("卡诺图化简的基本步骤为：首先画卡诺图，其次圈相邻项，最后求和。")
+            return "卡诺图化简的基本步骤为：首先画卡诺图，其次圈相邻项，最后求和。"
+
         monkeypatch.setattr(enh, "_call_llm", fake_call)
         out = run(enh.hyde_document("卡诺图", subject="数字电子技术"))
         assert out is not None and "卡诺图" in out
@@ -83,7 +84,6 @@ class _FakeTagsClient:
 
 
 class TestModelSelection:
-
     def test_env_override_wins(self, monkeypatch):
         monkeypatch.setenv("RETRIEVAL_ENHANCE_MODEL", "my-custom:model")
         out = run(enh._select_model("数字电子技术"))
@@ -91,23 +91,22 @@ class TestModelSelection:
 
     def test_prefers_qwen3_8b_when_installed(self, monkeypatch):
         monkeypatch.delenv("RETRIEVAL_ENHANCE_MODEL", raising=False)
-        monkeypatch.setattr(enh, "get_async_client",
-                            lambda: _FakeTagsClient(["qwen3:8b", "qwen2.5:1.5b"]))
+        monkeypatch.setattr(enh, "get_async_client", lambda: _FakeTagsClient(["qwen3:8b", "qwen2.5:1.5b"]))
         out = run(enh._select_model("数字电子技术"))
         assert out == "qwen3:8b"
 
     def test_falls_back_to_qwen25_15b_when_qwen3_absent(self, monkeypatch):
         monkeypatch.delenv("RETRIEVAL_ENHANCE_MODEL", raising=False)
-        monkeypatch.setattr(enh, "get_async_client",
-                            lambda: _FakeTagsClient(["qwen2.5:1.5b", "kaoyan-assistant:latest"]))
+        monkeypatch.setattr(
+            enh, "get_async_client", lambda: _FakeTagsClient(["qwen2.5:1.5b", "kaoyan-assistant:latest"])
+        )
         out = run(enh._select_model("数字电子技术"))
         assert out == "qwen2.5:1.5b"
 
     def test_excludes_deepseek_r1_default(self, monkeypatch):
         """只有 reasoning 专才时，不能把 deepseek-r1 当默认。"""
         monkeypatch.delenv("RETRIEVAL_ENHANCE_MODEL", raising=False)
-        monkeypatch.setattr(enh, "get_async_client",
-                            lambda: _FakeTagsClient(["deepseek-r1:7b", "deepseek-r1:1.5b"]))
+        monkeypatch.setattr(enh, "get_async_client", lambda: _FakeTagsClient(["deepseek-r1:7b", "deepseek-r1:1.5b"]))
         out = run(enh._select_model("数字电子技术"))
         # 没有偏好模型、又排除 r1 → 回退默认 env/ qwen3:8b
         assert not out.startswith("deepseek-r1")
@@ -117,11 +116,12 @@ class TestModelSelection:
 # 模块 1：Query Rewriting
 # --------------------------------------------------------------------------- #
 class TestRewriteQuery:
-
     def test_returns_original_on_empty_llm_output(self, monkeypatch):
         """LLM 返回空（网络挂/超时/只给思考链）→ 冻结降级 [question]。"""
+
         async def fake_call(*a, **kw):
             return ""
+
         monkeypatch.setattr(enh, "_call_llm", fake_call)
 
         out = run(enh.rewrite_query("卡诺图怎么化简？"))
@@ -129,8 +129,10 @@ class TestRewriteQuery:
 
     def test_never_raises_when_call_llm_throws(self, monkeypatch):
         """_call_llm 抛异常也必须被吞掉，返回原查询。"""
+
         async def boom(*a, **kw):
             raise RuntimeError("connection refused")
+
         monkeypatch.setattr(enh, "_call_llm", boom)
 
         out = run(enh.rewrite_query("什么是傅里叶变换？"))
@@ -138,11 +140,10 @@ class TestRewriteQuery:
 
     def test_parses_numbered_and_bulleted_lines(self, monkeypatch):
         """成功路径：把模型输出的编号/项目符号行拆成查询列表、去重、最多 3 条。"""
+
         async def fake_call(*a, **kw):
-            return ("1. 卡诺图化简规则\n"
-                    "2、最小项合并方法\n"
-                    "- 相邻最小项合并几何意义\n"
-                    "卡诺图化简规则\n")
+            return "1. 卡诺图化简规则\n2、最小项合并方法\n- 相邻最小项合并几何意义\n卡诺图化简规则\n"
+
         monkeypatch.setattr(enh, "_call_llm", fake_call)
 
         out = run(enh.rewrite_query("卡诺图怎么化简？", subject="数字电子技术"))
@@ -161,6 +162,7 @@ class TestRewriteQuery:
         async def fake_call(*a, **kw):
             called["n"] += 1
             return "不该被用到的查询"
+
         monkeypatch.setattr(enh, "_call_llm", fake_call)
 
         out = run(enh.rewrite_query("随便一个问题"))
@@ -176,22 +178,24 @@ class TestRewriteQuery:
 # 模块 2：HyDE
 # --------------------------------------------------------------------------- #
 class TestHyDE:
-
     def test_returns_none_on_empty_output(self, monkeypatch):
         async def fake_call(*a, **kw):
             return ""
+
         monkeypatch.setattr(enh, "_call_llm", fake_call)
         assert run(enh.hyde_document("触发器有哪些类型？")) is None
 
     def test_never_raises(self, monkeypatch):
         async def boom(*a, **kw):
             raise OSError("ollama down")
+
         monkeypatch.setattr(enh, "_call_llm", boom)
         assert run(enh.hyde_document("运放虚短虚断")) is None
 
     def test_returns_text_on_success(self, monkeypatch):
         async def fake_call(*a, **kw):
             return "触发器是具有记忆功能的时序逻辑单元，常见类型有RS、JK、D、T。"
+
         monkeypatch.setattr(enh, "_call_llm", fake_call)
         out = run(enh.hyde_document("触发器", subject="数字电子技术"))
         assert out is not None
@@ -199,8 +203,10 @@ class TestHyDE:
 
     def test_disabled_returns_none(self, monkeypatch):
         monkeypatch.setenv("RETRIEVAL_ENHANCE_ENABLED", "0")
+
         async def fake_call(*a, **kw):
             return "不该被用到"
+
         monkeypatch.setattr(enh, "_call_llm", fake_call)
         assert run(enh.hyde_document("任何问题")) is None
 
@@ -218,18 +224,21 @@ def _cands():
 
 
 class TestRerank:
-
     @pytest.fixture(autouse=True)
     def _no_bge_service(self, monkeypatch):
         """隔离 8140 bge-reranker：单测只验证打分排序协议，不能依赖外部服务在不在。"""
+
         async def unavailable(*_a, **_kw):
             return None
+
         monkeypatch.setattr(enh, "_bge_rerank_scores", unavailable)
 
     def test_sorts_by_score_and_truncates(self, monkeypatch):
         """成功路径：按 LLM 打分降序，取 top_k，并附带 rerank_score。"""
+
         async def fake_scores(*a, **kw):
             return {0: 9, 1: 2, 2: 7, 3: 4}
+
         monkeypatch.setattr(enh, "_llm_scores", fake_scores)
 
         out = run(enh.rerank(_cands(), "欧姆定律是什么？", top_k=3))
@@ -241,6 +250,7 @@ class TestRerank:
 
     def test_prefers_bge_scores_when_available(self, monkeypatch):
         """8140 可用时优先用 bge 分数，且不再调用 LLM 打分。"""
+
         async def fake_bge(*a, **kw):
             return {0: 0.2, 1: 0.9, 2: 0.5, 3: 0.1}
 
@@ -256,8 +266,10 @@ class TestRerank:
 
     def test_original_order_on_score_failure(self, monkeypatch):
         """打分失败（解析不出分数）→ 保持原序截断 top_k。"""
+
         async def fake_scores(*a, **kw):
             return {}
+
         monkeypatch.setattr(enh, "_llm_scores", fake_scores)
 
         out = run(enh.rerank(_cands(), "任何问题", top_k=2))
@@ -267,6 +279,7 @@ class TestRerank:
     def test_never_raises(self, monkeypatch):
         async def boom(*a, **kw):
             raise RuntimeError("boom")
+
         monkeypatch.setattr(enh, "_llm_scores", boom)
         out = run(enh.rerank(_cands(), "q", top_k=2))
         assert [c["id"] for c in out] == [0, 1]
@@ -278,6 +291,7 @@ class TestRerank:
     def test_top_k_larger_than_candidates(self, monkeypatch):
         async def fake_scores(*a, **kw):
             return {0: 9, 1: 8}
+
         monkeypatch.setattr(enh, "_llm_scores", fake_scores)
         out = run(enh.rerank(_cands(), "q", top_k=10))
         assert len(out) == 4
@@ -289,6 +303,7 @@ class TestRerank:
         async def fake_scores(*a, **kw):
             called["n"] += 1
             return {0: 1}
+
         monkeypatch.setattr(enh, "_llm_scores", fake_scores)
 
         out = run(enh.rerank(_cands(), "q", top_k=2))
@@ -297,8 +312,10 @@ class TestRerank:
 
     def test_score_line_parsing_real_llm_output(self, monkeypatch):
         """经 _llm_scores 解析真实模型可能给出的各种行格式。"""
+
         async def fake_call(*a, **kw):
-            return ("[0] 9\n1:2\n2、7\n3 = 4\n垃圾行\n")
+            return "[0] 9\n1:2\n2、7\n3 = 4\n垃圾行\n"
+
         monkeypatch.setattr(enh, "_call_llm", fake_call)
 
         scores = run(enh._llm_scores(_cands(), "电路定律"))

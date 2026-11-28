@@ -10,6 +10,7 @@ PDF 版文本层换行错乱、抽取率极低，一律跳过并在报告中列�
   3. 只插入，不修改、不删除任何已有题目。
   4. 入库前逐题完整性自检（题干/选项/答案均须合规）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,9 +69,7 @@ def content_fingerprint(stem: str, options: list[dict]) -> str:
 def load_existing_fingerprints(conn: sqlite3.Connection) -> set[str]:
     """已入库题目的指纹集合（题干+选项）。"""
     got: set[str] = set()
-    for content, options in conn.execute(
-        "SELECT content, options FROM quiz_questions"
-    ):
+    for content, options in conn.execute("SELECT content, options FROM quiz_questions"):
         try:
             opts = json.loads(options) if options else []
         except (TypeError, ValueError):
@@ -111,39 +110,42 @@ def main() -> int:
             # PDF 文本层（碎片换行）需先重建；TXT 文本层走轻量合并。
             # 判据是文件名后缀而非内容，因为两类文本层形态完全不同（实测）。
             is_pdf = (d["file_name"] or "").lower().endswith(".pdf")
-            stats = extract_from_text(
-                d["content"] or "", chapter_hint="", is_pdf_layer=is_pdf
-            )
+            stats = extract_from_text(d["content"] or "", chapter_hint="", is_pdf_layer=is_pdf)
             d = dict(d)
 
             # ---- 门禁 1：抽取率过低 → 文本层结构不可用 ----
             rate = stats.extracted / max(stats.blocks_seen, 1)
             if stats.extracted < MIN_EXTRACTED or rate < MIN_EXTRACT_RATE:
-                skipped_docs.append({
-                    "file_name": d["file_name"],
-                    "extracted": stats.extracted,
-                    "blocks_seen": stats.blocks_seen,
-                    "rate": round(rate, 4),
-                    "reason": "抽取率过低（文本层换行不可靠）",
-                })
+                skipped_docs.append(
+                    {
+                        "file_name": d["file_name"],
+                        "extracted": stats.extracted,
+                        "blocks_seen": stats.blocks_seen,
+                        "rate": round(rate, 4),
+                        "reason": "抽取率过低（文本层换行不可靠）",
+                    }
+                )
                 continue
 
             # ---- 门禁 2：准确率自检（用户红线 99%）----
             # 题干与选项错配、答案不在选项内 → 说明块切分错误，直接拒绝整篇
-            bad = [q for q in stats.questions
-                   if not q.answer
-                   or not set(q.answer) <= {o["key"] for o in q.options}
-                   or len(q.stem) > 400]
+            bad = [
+                q
+                for q in stats.questions
+                if not q.answer or not set(q.answer) <= {o["key"] for o in q.options} or len(q.stem) > 400
+            ]
             mismatch_rate = len(bad) / max(len(stats.questions), 1)
             if mismatch_rate > MAX_ANSWER_MISMATCH:
-                skipped_docs.append({
-                    "file_name": d["file_name"],
-                    "extracted": stats.extracted,
-                    "blocks_seen": stats.blocks_seen,
-                    "rate": round(rate, 4),
-                    "mismatch_rate": round(mismatch_rate, 4),
-                    "reason": f"准确率不达标（错配 {mismatch_rate:.1%} > {MAX_ANSWER_MISMATCH:.0%}）",
-                })
+                skipped_docs.append(
+                    {
+                        "file_name": d["file_name"],
+                        "extracted": stats.extracted,
+                        "blocks_seen": stats.blocks_seen,
+                        "rate": round(rate, 4),
+                        "mismatch_rate": round(mismatch_rate, 4),
+                        "reason": f"准确率不达标（错配 {mismatch_rate:.1%} > {MAX_ANSWER_MISMATCH:.0%}）",
+                    }
+                )
                 continue
 
             new_cnt = 0
@@ -153,17 +155,19 @@ def main() -> int:
                     continue
                 existing.add(fp)
                 new_cnt += 1
-                to_insert.append({
-                    "stem": q.stem,
-                    "options": q.options,
-                    "answer": q.answer,
-                    "analysis": q.analysis,
-                    "question_type": q.question_type,
-                    "source": f"真题:{d['file_name']}",
-                    "source_paper": q.source_paper or "",
-                    "year": q.year,
-                    "chapter": q.chapter or "",
-                })
+                to_insert.append(
+                    {
+                        "stem": q.stem,
+                        "options": q.options,
+                        "answer": q.answer,
+                        "analysis": q.analysis,
+                        "question_type": q.question_type,
+                        "source": f"真题:{d['file_name']}",
+                        "source_paper": q.source_paper or "",
+                        "year": q.year,
+                        "chapter": q.chapter or "",
+                    }
+                )
             print(f"  {stats.extracted:>4} 题 / 新增 {new_cnt:>4}（错配 {mismatch_rate:.1%}）  {d['file_name'][:40]}")
 
         print()
@@ -173,9 +177,17 @@ def main() -> int:
             print(f"    × {s['file_name'][:44]}（抽 {s['extracted']}/{s['blocks_seen']}，{s['reason']}）")
 
         if args.report:
-            Path(args.report).write_text(json.dumps({
-                "to_insert": to_insert, "skipped_docs": skipped_docs,
-            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            Path(args.report).write_text(
+                json.dumps(
+                    {
+                        "to_insert": to_insert,
+                        "skipped_docs": skipped_docs,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
             print(f"\n  报告：{args.report}")
 
         if not args.apply:

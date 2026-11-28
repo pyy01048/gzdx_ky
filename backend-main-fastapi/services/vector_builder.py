@@ -160,14 +160,13 @@ def build_pg_vectors(
     rows = fetch_pending(conn, rebuild=rebuild, subject=subject, limit=limit)
     total = len(rows)
     if not total:
-        return {"total": 0, "inserted": 0, "skipped": 0, "failed": 0,
-                "rate": 0.0, "elapsed": 0.0}
+        return {"total": 0, "inserted": 0, "skipped": 0, "failed": 0, "rate": 0.0, "elapsed": 0.0}
 
     bs = max(1, int(batch))
     inserted = skipped = failed = 0
 
     for i in range(0, total, bs):
-        chunk = rows[i:i + bs]
+        chunk = rows[i : i + bs]
         # 过短文本（纯符号/页码残留）不值得占用向量空间，直接跳过
         keep = [(r[0], r[1], r[2], clean_text(r[3] or "")) for r in chunk]
         keep = [k for k in keep if len(k[3]) >= 5]
@@ -184,9 +183,7 @@ def build_pg_vectors(
             # 不静默：单批推理失败会静默少灌一批，覆盖率对不上却查不到原因
             import logging
 
-            logging.getLogger(__name__).warning(
-                "向量推理失败 batch=%s: %s", i // bs, str(exc)[:200]
-            )
+            logging.getLogger(__name__).warning("向量推理失败 batch=%s: %s", i // bs, str(exc)[:200])
             failed += len(keep)
             continue
 
@@ -195,16 +192,17 @@ def build_pg_vectors(
 
             logging.getLogger(__name__).warning(
                 "向量数量不匹配 batch=%s: 期望 %s 实得 %s",
-                i // bs, len(keep), len(vecs),
+                i // bs,
+                len(keep),
+                len(vecs),
             )
             failed += len(keep)
             continue
 
         payload = []
-        for (cid, did, sid, _t), v in zip(keep, vecs):
+        for (cid, did, sid, _t), v in zip(keep, vecs, strict=False):
             v = argmin_normalize(np.asarray(v, dtype=np.float32))
-            payload.append((cid, did, sid, DIM, v.tobytes(), vec_literal(v),
-                            MODEL_VERSION))
+            payload.append((cid, did, sid, DIM, v.tobytes(), vec_literal(v), MODEL_VERSION))
 
         try:
             with conn.cursor() as cur:
@@ -218,9 +216,7 @@ def build_pg_vectors(
             failed += len(payload)
             import logging
 
-            logging.getLogger(__name__).warning(
-                "向量写库失败 batch=%s: %s", i // bs, str(exc)[:200]
-            )
+            logging.getLogger(__name__).warning("向量写库失败 batch=%s: %s", i // bs, str(exc)[:200])
 
         if on_progress:
             on_progress(min(i + bs, total), total)

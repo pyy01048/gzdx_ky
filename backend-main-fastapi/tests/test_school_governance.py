@@ -11,6 +11,7 @@ SCHOOL_PREFIX = "测试治理大学B3"
 @pytest.fixture()
 def seed(db_schema):
     from database import SessionLocal
+
     from models import KaoyanSchool
 
     db = SessionLocal()
@@ -48,8 +49,9 @@ class TestUnits:
 
     def test_govern_idempotent(self, seed):
         from database import SessionLocal
-        from models import KaoyanSchool
         from services.kaoyan.school_governance import govern_schools
+
+        from models import KaoyanSchool
 
         db = SessionLocal()
         try:

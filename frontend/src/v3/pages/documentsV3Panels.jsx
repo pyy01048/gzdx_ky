@@ -12,6 +12,7 @@ import {
 } from '../icons'
 import { kpItems } from './documentsV3Shared'
 import { useAuth } from '../../auth/AuthContext'
+import MdViewer from '../ui/MdViewer'
 
 /* ==========================================================================
    文档知识库 · Aurora v3 扩展面板
@@ -1539,8 +1540,41 @@ const canInlinePreview = (doc) => {
   const ext = String(doc?.filename || doc?.file_name || '').toLowerCase().split('.').pop()
   return INLINE_EXT.includes(ext) || INLINE_EXT.includes(String(doc?.file_type || '').toLowerCase())
 }
+const isMarkdownFile = (doc) => {
+  const ext = String(doc?.filename || doc?.file_name || '').toLowerCase().split('.').pop()
+  return ext === 'md' || ext === 'markdown'
+}
 
 export function RawFilePreviewDialog({ doc, onClose }) {
+  const [mdText, setMdText] = useState('')
+  const [mdState, setMdState] = useState('idle')
+
+  useEffect(() => {
+    if (!doc || !isMarkdownFile(doc)) {
+      setMdText('')
+      setMdState('idle')
+      return undefined
+    }
+    let cancelled = false
+    setMdState('loading')
+    setMdText('')
+    fetch(documentsApi.rawUrl(doc.id))
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.text()
+      })
+      .then((text) => {
+        if (cancelled) return
+        setMdText(text)
+        setMdState('ready')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setMdState('error')
+      })
+    return () => { cancelled = true }
+  }, [doc])
+
   const download = () => {
     if (!doc) return
     const a = document.createElement('a')
@@ -1555,6 +1589,8 @@ export function RawFilePreviewDialog({ doc, onClose }) {
     if (!doc) return
     window.open(documentsApi.rawUrl(doc.id), '_blank', 'noopener,noreferrer')
   }
+
+  const isMd = doc && isMarkdownFile(doc)
 
   return (
     <Dialog
@@ -1573,7 +1609,22 @@ export function RawFilePreviewDialog({ doc, onClose }) {
         </>
       )}
     >
-      {doc && canInlinePreview(doc) ? (
+      {isMd ? (
+        <div className="dv3-raw dv3-raw--md">
+          {mdState === 'loading' ? (
+            <div className="dv3-raw__loading">加载中…</div>
+          ) : mdState === 'error' ? (
+            <div className="dv3-raw__note">
+              <FileText size={28} />
+              <b>Markdown 原文加载失败</b>
+              <p>可尝试下载原文件或新窗口打开。</p>
+              <Button variant="tonal" size="sm" icon={<FolderOpen size={14} />} onClick={download}>下载原文件</Button>
+            </div>
+          ) : (
+            <MdViewer className="dv3-raw__md" source={mdText} />
+          )}
+        </div>
+      ) : doc && canInlinePreview(doc) ? (
         <div className="dv3-raw">
           <iframe className="dv3-raw__frame" title="原文件预览" src={documentsApi.rawUrl(doc.id)} />
         </div>

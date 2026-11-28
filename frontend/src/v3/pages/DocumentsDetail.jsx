@@ -9,6 +9,7 @@ import {
 } from '../icons'
 import { docStateOf, governanceApi, isEmptyBody, kpItems } from './documentsV3Shared'
 import { useAuth } from '../../auth/AuthContext'
+import MdViewer from '../ui/MdViewer'
 
 /* ==========================================================================
    文档知识库 · 文档详情抽屉（Aurora v3）
@@ -307,8 +308,10 @@ export default function DocumentsDetail({
                   重新生成
                 </Button>
               </div>
+            ) : snapshot.md ? (
+              <MdViewer className="dv3-pre" source={snapshot.md} />
             ) : (
-              <pre className="dv3-pre">{snapshot.md || '（该文档暂无正文，快照为空）'}</pre>
+              <div className="dv3-pre">（该文档暂无正文，快照为空）</div>
             )}
           </>
         ) : null}

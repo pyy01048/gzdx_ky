@@ -11,6 +11,7 @@
 设计约定：本编排器**不做**业务，只做意图识别与路由决策；所有模型调用
 继续走 model_gateway（不在编排器内直连 Ollama/API）。
 """
+
 from __future__ import annotations
 
 import re
@@ -48,8 +49,7 @@ def classify_intent(question: str) -> Dict:
         if hits:
             scores[agent] = len(hits)
     if not scores:
-        return {"agent": "tutor", "confidence": 0.3, "matched": [],
-                "candidates": ["tutor"], "fallback": True}
+        return {"agent": "tutor", "confidence": 0.3, "matched": [], "candidates": ["tutor"], "fallback": True}
     ranked = sorted(scores.items(), key=lambda x: -x[1])
     total = sum(scores.values())
     return {

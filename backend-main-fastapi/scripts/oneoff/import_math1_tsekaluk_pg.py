@@ -27,6 +27,7 @@
 运行:
   python scripts/import_math1_tsekaluk_pg.py [--dry-run]
 """
+
 # [STATUS] 一次性数据脚本（迁入 oneoff/，docs/完善方案/04 §3.4）。执行前确认数据源与备份。
 import glob
 import json
@@ -46,7 +47,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
+from scripts._conn import dsn as DB_DSN_F
+
+DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 
 EXT_PREFIX = "math1_tsekaluk"
 SUBJECT_ID = 8
@@ -61,6 +64,7 @@ stats = Counter()
 # 文本清洗
 # =========================================================
 PUA_RE = re.compile(r"[\ue000-\uf8ff]")  # OCR 私有区乱码
+
 
 def clean_content(s):
     """清理文本但保留 LaTeX $...$ 标记（用于 content/options/analysis 入库）"""
@@ -319,8 +323,7 @@ def find_file(directory, year, recursive=False):
 
 def make_record(year, qno, content, options, answer, analysis, qtype):
     canonical_options = make_options(options) if options else None
-    has_img = bool(re.search(r"!\[.*?\]\(.*?\)", content or "")) or bool(
-        re.search(r"!\[.*?\]\(.*?\)", analysis or ""))
+    has_img = bool(re.search(r"!\[.*?\]\(.*?\)", content or "")) or bool(re.search(r"!\[.*?\]\(.*?\)", analysis or ""))
     rec = {
         "subject": SUBJECT,
         "subject_id": SUBJECT_ID,
@@ -366,7 +369,7 @@ def parse_2025_paper(fp):
     records = []
     for idx, (start, qno, rest) in enumerate(qstarts):
         end = qstarts[idx + 1][0] if idx + 1 < len(qstarts) else len(lines)
-        block = [l.strip() for l in lines[start + 1:end] if l.strip()]
+        block = [l.strip() for l in lines[start + 1 : end] if l.strip()]
         block_lines = ([rest] if rest else []) + block
 
         # 找答案行
@@ -374,7 +377,7 @@ def parse_2025_paper(fp):
         ans_idx = None
         for bi, l in enumerate(block_lines):
             if l.startswith("【答案】"):
-                answer = extract_answer_from_raw(l[len("【答案】"):])
+                answer = extract_answer_from_raw(l[len("【答案】") :])
                 ans_idx = bi
                 break
         if not answer and qno in HARDCODED_ANSWERS:
@@ -442,18 +445,18 @@ def parse_2025_paper(fp):
             ana_parts = []
             marker = block_lines[ana_idx]
             if marker.startswith("【解析】"):
-                tail = marker[len("【解析】"):].strip()
+                tail = marker[len("【解析】") :].strip()
                 if tail:
                     ana_parts.append(tail)
             elif marker.startswith("【解】"):
-                tail = marker[len("【解】"):].strip()
+                tail = marker[len("【解】") :].strip()
                 if tail:
                     ana_parts.append(tail)
             else:
                 m = re.match(r"^\d*\s*[.．、]?\s*解[:：]\s*(.*)$", marker)
                 if m and m.group(1):
                     ana_parts.append(m.group(1))
-            ana_parts.extend(block_lines[ana_idx + 1:])
+            ana_parts.extend(block_lines[ana_idx + 1 :])
             analysis = join_clean(ana_parts)
 
         if not content:
@@ -520,7 +523,7 @@ def parse_embedded_lines(fp, year, qno_re, use_search=False):
                 ana_idx = bi
                 break
         if ans_idx is not None and cur_answer is None:
-            cur_answer = extract_answer_from_raw(cur_lines[ans_idx][len("【答案】"):])
+            cur_answer = extract_answer_from_raw(cur_lines[ans_idx][len("【答案】") :])
 
         # 题干区 = 解析标记之前的所有行，并去掉答案行
         if ana_idx is not None:
@@ -537,14 +540,14 @@ def parse_embedded_lines(fp, year, qno_re, use_search=False):
             ana_parts = []
             marker = cur_lines[ana_idx]
             if marker.startswith("【解析】"):
-                tail = marker[len("【解析】"):].strip()
+                tail = marker[len("【解析】") :].strip()
                 if tail:
                     ana_parts.append(tail)
             elif marker.startswith("【解】"):
-                tail = marker[len("【解】"):].strip()
+                tail = marker[len("【解】") :].strip()
                 if tail:
                     ana_parts.append(tail)
-            ana_parts.extend(cur_lines[ana_idx + 1:])
+            ana_parts.extend(cur_lines[ana_idx + 1 :])
             analysis = join_clean(ana_parts)
 
         qtype = type_by_qno(cur_qno, year)
@@ -692,7 +695,7 @@ def parse_2022_solution(fp, year):
         analysis = None
         if ans_idx is not None:
             # 分析 = 答案行之后（去掉"分析/解"标记本身由 join_clean 保留）
-            ana_lines = block_lines[ans_idx + 1:]
+            ana_lines = block_lines[ans_idx + 1 :]
             if ana_lines:
                 # 去掉开头的 "分析" / "解" 标记行内容里的标记词，保留正文
                 cleaned_ana = []
@@ -701,7 +704,7 @@ def parse_2022_solution(fp, year):
                     cleaned_ana.append(l2)
                 analysis = join_clean(cleaned_ana)
         elif ana_idx is not None:
-            ana_lines = block_lines[ana_idx + 1:]
+            ana_lines = block_lines[ana_idx + 1 :]
             cleaned_ana = []
             marker = block_lines[ana_idx]
             marker_tail = re.sub(r"^(分析|解|【解】|【解析】)\s*", "", marker)
@@ -740,12 +743,14 @@ def parse_paper_questions(year):
             text = "\n".join(cur_lines)
             content, options = extract_options_from_text(text)
             content = clean_content(content)
-            questions.append({
-                "section": cur_section,
-                "qno": cur_qno,
-                "content": content,
-                "options": options,
-            })
+            questions.append(
+                {
+                    "section": cur_section,
+                    "qno": cur_qno,
+                    "content": content,
+                    "options": options,
+                }
+            )
         cur_qno = None
         cur_lines = []
 
@@ -798,8 +803,7 @@ def parse_solution_items(year):
                 return "fill"
             return "calc"
 
-    marker_re = re.compile(
-        r"[（(]\s*(\d+)\s*[）)]\s*(?:[（(]?\s*[IⅠⅡⅢⅣ]+\s*[）)]?\s*)?(【答案】|【解】|【证明】)")
+    marker_re = re.compile(r"[（(]\s*(\d+)\s*[）)]\s*(?:[（(]?\s*[IⅠⅡⅢⅣ]+\s*[）)]?\s*)?(【答案】|【解】|【证明】)")
     markers = list(marker_re.finditer(text))
     items = []
     for idx, m in enumerate(markers):
@@ -823,28 +827,35 @@ def parse_solution_items(year):
                 rest = ""
             else:
                 ans_raw = segment[:nl]
-                rest = segment[nl + 1:]
+                rest = segment[nl + 1 :]
             answer = extract_answer_from_raw(ans_raw)
             jie = rest.find("【解】")
             if jie != -1:
-                analysis = rest[jie + len("【解】"):]
+                analysis = rest[jie + len("【解】") :]
             else:
                 analysis = rest
         else:
             analysis = segment
-        items.append({
-            "section": section_by_qno(qno),
-            "qno": qno,
-            "answer": answer,
-            "analysis": clean_content(analysis) if analysis else None,
-        })
+        items.append(
+            {
+                "section": section_by_qno(qno),
+                "qno": qno,
+                "answer": answer,
+                "analysis": clean_content(analysis) if analysis else None,
+            }
+        )
     return items
 
 
 # 某些题目源文件 OCR 丢失了选项前缀，但选项文本仍在文件中。
 # 这里按 (year, qno) 手动补齐缺失选项（内容来自源文件本身，未改动）。
 HARDCODED_EXTRA_OPTIONS = {
-    (2014, 3): [("D", r"$\int_0^{\frac{\pi}{2}}\mathrm{d}\theta \int_0^{\frac{1}{\cos\theta + \sin\theta}}f(r\cos \theta ,r\sin \theta)r\mathrm{d}r + \int_{\frac{\pi}{2}}^{\pi}\mathrm{d}\theta \int_0^1 f(r\cos \theta ,r\sin \theta)r\mathrm{d}r.$")],
+    (2014, 3): [
+        (
+            "D",
+            r"$\int_0^{\frac{\pi}{2}}\mathrm{d}\theta \int_0^{\frac{1}{\cos\theta + \sin\theta}}f(r\cos \theta ,r\sin \theta)r\mathrm{d}r + \int_{\frac{\pi}{2}}^{\pi}\mathrm{d}\theta \int_0^1 f(r\cos \theta ,r\sin \theta)r\mathrm{d}r.$",
+        )
+    ],
 }
 
 
@@ -882,9 +893,9 @@ def parse_paired(year):
                             pq = {**pq, "options": pq["options"] + [(k, t)]}
             # 以解析文件中的题号为准（2021 填空题干题号 OCR 破损）
             qno = sa.get("qno") or pq["qno"]
-            records.append(make_record(
-                year, qno, pq["content"], pq.get("options"),
-                sa.get("answer"), sa.get("analysis"), qtype))
+            records.append(
+                make_record(year, qno, pq["content"], pq.get("options"), sa.get("answer"), sa.get("analysis"), qtype)
+            )
     return records
 
 
@@ -895,10 +906,13 @@ def load_existing_content(conn):
     """加载 subject_id=8 且 year>=2013 的已有题目内容（用于去重）"""
     existing = defaultdict(set)  # year -> set(normalized content)
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT year, content FROM quiz_questions
             WHERE subject_id = %s AND year IS NOT NULL AND year >= 2013
-        """, (SUBJECT_ID,))
+        """,
+            (SUBJECT_ID,),
+        )
         for year, content in cur.fetchall():
             norm = normalize_for_dedup(content)
             if norm:
@@ -913,8 +927,13 @@ def write_records(conn, records, existing_content):
             ok, reason = quality_gate(rec)
             if not ok:
                 stats[f"skipped_{reason}"] += 1
-                log.warning("质量门禁跳过 external_id=%s year=%s qno=%s reason=%s",
-                            rec.get("external_id"), rec.get("year"), rec.get("question_no"), reason)
+                log.warning(
+                    "质量门禁跳过 external_id=%s year=%s qno=%s reason=%s",
+                    rec.get("external_id"),
+                    rec.get("year"),
+                    rec.get("question_no"),
+                    reason,
+                )
                 continue
             # 内容去重
             year = rec["year"]
@@ -1021,6 +1040,7 @@ def print_stats():
 
 def main():
     import sys
+
     dry_run = "--dry-run" in sys.argv
     all_records = build_all_records()
 
@@ -1037,8 +1057,7 @@ def main():
     conn = psycopg.connect(DB_DSN)
     try:
         existing = load_existing_content(conn)
-        log.info("库中已有 subject_id=8 且 year>=2013 的题目数: %d",
-                 sum(len(v) for v in existing.values()))
+        log.info("库中已有 subject_id=8 且 year>=2013 的题目数: %d", sum(len(v) for v in existing.values()))
         inserted = write_records(conn, all_records, existing)
         log.info("成功插入 %d 题", inserted)
     finally:

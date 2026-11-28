@@ -44,6 +44,7 @@ Ollama 必须已启动并监听 127.0.0.1:11434（见 `scripts/start_ollama.ps1`
 本脚本**不会**自己拉起 Ollama；长时间批量建议另开一个终端跑
 `python scripts/_ollama_watchdog.py`。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,7 +57,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
-PG_URL = os.environ.get("KP_BACKFILL_DB_URL", "postgresql+psycopg://kaoyan:" + os.environ['"PG_PASSWORD'] + "@127.0.0.1:5432/kaoyan")
+PG_URL = os.environ.get(
+    "KP_BACKFILL_DB_URL", "postgresql+psycopg://kaoyan:" + os.environ['"PG_PASSWORD'] + "@127.0.0.1:5432/kaoyan"
+)
 
 #: 优先级排序：目标科目靠前，其次按正文长度（长的通常内容更实）
 _ORDER_BY = """
@@ -72,8 +75,7 @@ ORDER BY
 """
 
 
-def pick_documents(db, subject: str | None, limit: int, ids: list[int],
-                   min_chars: int):
+def pick_documents(db, subject: str | None, limit: int, ids: list[int], min_chars: int):
     """选出待回填文档：已有知识点的跳过（幂等，可重复跑）。"""
     where = [
         "coalesce(is_junk,false) = false",
@@ -88,9 +90,10 @@ def pick_documents(db, subject: str | None, limit: int, ids: list[int],
     elif subject:
         where.append("subject = :subject")
         params["subject"] = subject
-    sql = ("SELECT id, file_name, subject, length(coalesce(content,'')) "
-           "FROM documents WHERE " + " AND ".join(where) + _ORDER_BY
-           + " LIMIT :limit")
+    sql = (
+        "SELECT id, file_name, subject, length(coalesce(content,'')) "
+        "FROM documents WHERE " + " AND ".join(where) + _ORDER_BY + " LIMIT :limit"
+    )
     params["limit"] = limit
     return db.execute(text(sql), params).fetchall()
 
@@ -100,8 +103,9 @@ def main() -> int:
     ap.add_argument("--subject", default=None, help="按学科过滤，如 政治 / 数学")
     ap.add_argument("--ids", default=None, help="逗号分隔的 doc_id，优先于 --subject")
     ap.add_argument("--limit", type=int, default=20)
-    ap.add_argument("--max-chunks", type=int, default=8,
-                    help="单篇最多抽多少块；赶时间用 5（实测省 30% 且产出只少约 2 个）")
+    ap.add_argument(
+        "--max-chunks", type=int, default=8, help="单篇最多抽多少块；赶时间用 5（实测省 30% 且产出只少约 2 个）"
+    )
     ap.add_argument("--concurrency", type=int, default=2)
     ap.add_argument("--min-chars", type=int, default=800)
     ap.add_argument("--dry-run", action="store_true", help="只列出将处理的文档，不调模型")
@@ -118,8 +122,10 @@ def main() -> int:
         return 0
 
     est = len(rows) * (49 if args.max_chunks <= 5 else 65)
-    print(f"待处理 {len(rows)} 篇，预计 {est/60:.0f}–{est*1.3/60:.0f} 分钟"
-          f"（按 {'49' if args.max_chunks <= 5 else '65'}s/篇 估）")
+    print(
+        f"待处理 {len(rows)} 篇，预计 {est / 60:.0f}–{est * 1.3 / 60:.0f} 分钟"
+        f"（按 {'49' if args.max_chunks <= 5 else '65'}s/篇 估）"
+    )
     for r in rows:
         print(f"  #{r[0]:<5} {r[3]:>7}字 [{r[2]}] {str(r[1])[:52]}")
     if args.dry_run:
@@ -133,15 +139,19 @@ def main() -> int:
     total_kept = 0
     for i, r in enumerate(rows, 1):
         doc_id, file_name, subject = r[0], r[1], r[2]
-        row = db.execute(
-            text("SELECT content, chapter FROM documents WHERE id=:d"),
-            {"d": doc_id}).fetchone()
+        row = db.execute(text("SELECT content, chapter FROM documents WHERE id=:d"), {"d": doc_id}).fetchone()
         t0 = time.time()
         try:
             out = kp.extract_kps_for_document(
-                db, doc_id=doc_id, text=row[0] or "", file_name=file_name,
-                doc_subject=subject or "", chapter=row[1] or "",
-                concurrency=args.concurrency, max_chunks=args.max_chunks)
+                db,
+                doc_id=doc_id,
+                text=row[0] or "",
+                file_name=file_name,
+                doc_subject=subject or "",
+                chapter=row[1] or "",
+                concurrency=args.concurrency,
+                max_chunks=args.max_chunks,
+            )
         except Exception as e:  # noqa: BLE001
             print(f"[{i}/{len(rows)}] #{doc_id} ✗ {type(e).__name__}: {e}"[:200])
             db.rollback()
@@ -149,15 +159,16 @@ def main() -> int:
         secs = round(time.time() - t0, 1)
         total_kept += int(out.get("kept") or 0)
         flag = "✓" if out.get("kept") else ("skip" if out.get("skipped") else "✗")
-        print(f"[{i}/{len(rows)}] #{doc_id} {flag} {secs:>6.1f}s "
-              f"kept={out.get('kept')} dropped={out.get('dropped')} "
-              f"failed={out.get('failed')} {out.get('subject_mix')} "
-              f"| {str(file_name)[:36]}")
+        print(
+            f"[{i}/{len(rows)}] #{doc_id} {flag} {secs:>6.1f}s "
+            f"kept={out.get('kept')} dropped={out.get('dropped')} "
+            f"failed={out.get('failed')} {out.get('subject_mix')} "
+            f"| {str(file_name)[:36]}"
+        )
         if out.get("errors"):
             print("      errors:", out["errors"][:2])
 
-    print(f"\n完成 {len(rows)} 篇，新增知识点 {total_kept} 个，"
-          f"总耗时 {round(time.time()-t_start)/60:.1f} 分钟")
+    print(f"\n完成 {len(rows)} 篇，新增知识点 {total_kept} 个，总耗时 {round(time.time() - t_start) / 60:.1f} 分钟")
     db.close()
     return 0
 

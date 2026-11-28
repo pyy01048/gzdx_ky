@@ -3,6 +3,7 @@
 147 人工样本只能定方向，规模口径必须看全库（纯 CPU 正则，不碰 GPU）。
 用法：python scripts/junk_corpus_scan.py
 """
+
 import collections
 import os
 import sys
@@ -17,18 +18,18 @@ for _s in (sys.stdout, sys.stderr):
 
 def main() -> int:
     from database import SessionLocal
-    from models import KnowledgeChunk
     from services.chunk_classifier import JUNK_ABSTAIN_REASONS, junk_reason
+
+    from models import KnowledgeChunk
 
     db = SessionLocal()
     try:
-        rows = db.query(KnowledgeChunk.id, KnowledgeChunk.subject,
-                        KnowledgeChunk.text).yield_per(2000)
+        rows = db.query(KnowledgeChunk.id, KnowledgeChunk.subject, KnowledgeChunk.text).yield_per(2000)
         total = 0
         by_reason = collections.Counter()
         by_reason_subject = collections.defaultdict(collections.Counter)
         lens = collections.defaultdict(list)
-        for rid, subj, text in rows:
+        for _rid, subj, text in rows:
             total += 1
             r = junk_reason(text or "")
             if not r:
@@ -41,9 +42,8 @@ def main() -> int:
         for r, n in by_reason.most_common():
             top = ", ".join(f"{s}:{c}" for s, c in by_reason_subject[r].most_common(4))
             avg = sum(lens[r]) / len(lens[r])
-            print(f"{r:<16}{n:>7}{n/total:>8.2%}{avg:>8.0f}   {top}")
-        print(f"\n合计命中 {sum(by_reason.values())} 条 "
-              f"({sum(by_reason.values())/total:.2%})")
+            print(f"{r:<16}{n:>7}{n / total:>8.2%}{avg:>8.0f}   {top}")
+        print(f"\n合计命中 {sum(by_reason.values())} 条 ({sum(by_reason.values()) / total:.2%})")
 
         from services.eval_store import record_eval_run, text_fingerprint
 
@@ -51,14 +51,13 @@ def main() -> int:
             "total_chunks": total,
             "by_reason": {r: n for r, n in by_reason.most_common()},
             "abstain_reasons": list(JUNK_ABSTAIN_REASONS),
-            "abstain_hits": sum(n for r, n in by_reason.items()
-                                if r in JUNK_ABSTAIN_REASONS),
-            "top_subjects_by_reason": {
-                r: dict(by_reason_subject[r].most_common(6)) for r in by_reason
-            },
+            "abstain_hits": sum(n for r, n in by_reason.items() if r in JUNK_ABSTAIN_REASONS),
+            "top_subjects_by_reason": {r: dict(by_reason_subject[r].most_common(6)) for r in by_reason},
         }
         run_id = record_eval_run(
-            "corpus_probe", arm="junk_rules", metrics=metrics,
+            "corpus_probe",
+            arm="junk_rules",
+            metrics=metrics,
             primary_metric=round(metrics["abstain_hits"] / max(total, 1), 6),
             n_samples=total,
             fingerprint=text_fingerprint([f"{r}:{n}" for r, n in by_reason.most_common()]),

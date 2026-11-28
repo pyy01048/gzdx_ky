@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """检查两个'打卡'命中的高价值文件是否已入库，决定是否从删除清单剔除。"""
+
 import sqlite3
 import sys
 from pathlib import Path
@@ -15,8 +16,8 @@ c = sqlite3.connect(DB).cursor()
 
 for t in TARGETS:
     rows = c.execute(
-        "SELECT id, file_name, length(content), subject FROM documents "
-        "WHERE file_name LIKE ?", (f"%{t}%",)).fetchall()
+        "SELECT id, file_name, length(content), subject FROM documents WHERE file_name LIKE ?", (f"%{t}%",)
+    ).fetchall()
     print(f"=== {t} ===")
     if not rows:
         print("  未入库")
@@ -34,6 +35,7 @@ except Exception as e:
 # 反查：有没有 chunk 来自这些文件
 for t in ["红宝书", "艾宾浩斯", "词汇闪过"]:
     n = c.execute(
-        "SELECT COUNT(*) FROM knowledge_chunks WHERE document_id IN "
-        "(SELECT id FROM documents WHERE file_name LIKE ?)", (f"%{t}%",)).fetchone()[0]
+        "SELECT COUNT(*) FROM knowledge_chunks WHERE document_id IN (SELECT id FROM documents WHERE file_name LIKE ?)",
+        (f"%{t}%",),
+    ).fetchone()[0]
     print(f"chunk 来自 {t}: {n}")

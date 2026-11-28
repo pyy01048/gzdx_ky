@@ -6,6 +6,7 @@
 前两个用例是纯函数（不依赖 PyMuPDF）；后两个用 PyMuPDF 现场生成 PDF，
 不依赖 knowledge_base 里的用户数据。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,9 +22,9 @@ from services.parsers.pymupdf_parser import (
 # --------------------------------------------------------------------------- #
 def test_small_vector_blocks_are_dropped():
     rects = [
-        (0, 0, 10, 10),      # 小图标
-        (0, 0, 300, 12),     # 分隔线（高度不足）
-        (0, 0, 12, 300),     # 分隔线（宽度不足）
+        (0, 0, 10, 10),  # 小图标
+        (0, 0, 300, 12),  # 分隔线（高度不足）
+        (0, 0, 12, 300),  # 分隔线（宽度不足）
         (100, 100, 400, 320),  # 真图
     ]
     kept = filter_figure_regions(rects)

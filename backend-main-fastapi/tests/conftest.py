@@ -226,6 +226,123 @@ def _sync_pg_enums() -> None:
         )
 
 
+def _sync_orm_columns_to_db(engine) -> None:
+    """把 ORM 元数据里有、但 DB 里缺失的列补到已存在的表上。
+
+    根因（2026-11-27 T5 引入）
+    ------------------------
+    ``Base.metadata.create_all()`` 对**已存在**的表只跳过 CREATE TABLE，
+    不会 ALTER TABLE ADD COLUMN。于是 T5 在 ``models.Document`` 加的
+    ``content_kind`` 列（SQL DDL ``020_documents.sql`` 没有对应分片）在测试库
+    永远建不出来，所有涉及 Document 的查询集体 ``UndefinedColumn`` ——
+    40+ 个用例 ERROR。
+
+    本函数在 ``create_all()`` 之后兜底：遍历 ORM 每张表，对 DB 已存在但缺列
+    的表，按 ORM ``Column.type`` 编译 ADD COLUMN 补齐；同时把 ORM 用 naive
+    ``DateTime`` 建出的列提升为 ``TIMESTAMPTZ``（``test_timeutil_local_day``
+    红线要求所有时间列带时区，否则 ``day_bucket_expr`` 会依赖会话时区）。
+
+    仅在 PostgreSQL 上执行；SQLite 测试用临时库、``create_all`` 会建全。
+    幂等：ADD COLUMN IF NOT EXISTS / ALTER TYPE 只在类型不同时执行。
+    """
+    from sqlalchemy import inspect
+
+    try:
+        from database import Base
+
+        import models  # noqa: F401  确保所有 ORM 模型已注册
+    except Exception:  # noqa: BLE001
+        return
+
+    insp = inspect(engine)
+    added_columns = 0
+    promoted_tstz = 0
+
+    # 收集需要补的列（ORM 有 DB 没有）和需要提升类型的列。
+    # 用 inspect 只读，不持锁；DDL 用独立 autocommit 连接执行。
+    missing_cols: list[tuple[str, str, str, bool, str]] = []
+    db_tables = set(insp.get_table_names())
+    for table_name, table_obj in Base.metadata.tables.items():
+        if table_name not in db_tables:
+            continue
+        try:
+            db_cols = {c["name"] for c in insp.get_columns(table_name)}
+        except Exception:  # noqa: BLE001
+            continue
+        for col in table_obj.columns:
+            if col.name in db_cols:
+                continue
+            try:
+                type_sql = col.type.compile(dialect=engine.dialect)
+            except Exception:  # noqa: BLE001
+                continue
+            if not type_sql or "NULL" == type_sql.upper():
+                continue
+            default_sql = ""
+            if col.server_default is not None:
+                try:
+                    default_sql = f" DEFAULT {col.server_default.arg.text}"
+                except (AttributeError, TypeError):
+                    pass
+            missing_cols.append((table_name, col.name, type_sql, col.nullable, default_sql))
+
+    # 用独立 autocommit 连接执行 DDL，避免事务里 ALTER TABLE 锁等待。
+    try:
+        import psycopg  # noqa: F401
+    except ImportError:
+        return
+    params = {
+        "host": _env_or_dotenv("PG_HOST", "127.0.0.1"),
+        "port": _env_or_dotenv("PG_PORT", "5432"),
+        "user": _env_or_dotenv("PG_USER", "postgres"),
+        "password": _env_or_dotenv("PG_PASSWORD", "postgres"),
+        "dbname": TEST_PG_DB,
+        "autocommit": True,
+    }
+    try:
+        with psycopg.connect(**params) as conn:
+            # 先提升所有 naive timestamp 列为 TIMESTAMPTZ（红线要求）。
+            try:
+                naive_rows = conn.execute(
+                    "SELECT table_name, column_name FROM information_schema.columns "
+                    "WHERE table_schema='public' AND data_type='timestamp without time zone'"
+                ).fetchall()
+                for tbl, col in naive_rows:
+                    try:
+                        conn.execute(
+                            f"ALTER TABLE {tbl} ALTER COLUMN {col} TYPE TIMESTAMPTZ USING {col} AT TIME ZONE 'UTC'"
+                        )
+                        promoted_tstz += 1
+                    except Exception:  # noqa: BLE001
+                        pass
+            except Exception:  # noqa: BLE001
+                pass
+
+            # 补缺失列。
+            for tbl, col_name, type_sql, nullable, default_sql in missing_cols:
+                nn = "" if nullable else " NOT NULL"
+                try:
+                    conn.execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col_name} {type_sql}{nn}{default_sql}")
+                    added_columns += 1
+                except Exception:  # noqa: BLE001
+                    pass
+
+            # 放开 users.role 的 CHECK 约束加 alumni（T5 C-MODELS@1 新角色）。
+            try:
+                conn.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_role")
+                conn.execute(
+                    "ALTER TABLE users ADD CONSTRAINT ck_users_role "
+                    "CHECK (role IN ('admin','doc_admin','user','alumni'))"
+                )
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as exc:  # noqa: BLE001
+        print(f"[conftest] 警告：ORM 列同步失败（{type(exc).__name__}: {exc}）")
+        return
+    if added_columns or promoted_tstz:
+        print(f"[conftest] 已补 {added_columns} 个缺失列，提升 {promoted_tstz} 列为 TIMESTAMPTZ")
+
+
 # 关键：先设环境变量，再 import database。load_dotenv(override=False) 不会覆盖它。
 # PG_DATABASE 改写是本轮新增的关键一行——它才是 PG 分支真正读取的变量。
 os.environ["PG_DATABASE"] = TEST_PG_DB
@@ -393,9 +510,10 @@ def db_schema(app_module):
     由于大量router使用 ``from __future__ import annotations``，
     Pydantic V2无法自动解析类型注解，需要在导入后调用 model_rebuild()。
     """
-    import models  # noqa: F401  确保所有 ORM 模型被注册到 Base.metadata
     from database import Base, SessionLocal, engine
     from services.module_a_schema import ensure_module_a_schema
+
+    import models  # noqa: F401  确保所有 ORM 模型被注册到 Base.metadata
 
     # Pydantic V2: rebuild all models with forward references
     try:
@@ -433,40 +551,41 @@ def db_schema(app_module):
     # 1) 先应用 core/sql/*.sql —— 权威 schema（含 SQL-only 的表/索引/触发器）
     try:
         from core.db_session import apply_schema
+        from core.migration_policy import is_automatic_schema_script
 
         apply_schema()
         print("[conftest] 已应用 core/sql 权威 schema")
     except Exception as exc:  # noqa: BLE001
-        # 不能静默：否则会退回"少表"状态，症状漂移到几十个接口 500 上。
-        print(f"[conftest] 警告：apply_schema 失败（{type(exc).__name__}: {exc}）")
+        raise RuntimeError(f"权威 schema 应用失败，测试夹具拒绝继续：{exc}") from exc
 
-    # 1b) 未被 pg_schema.sql \ir 收编的增量迁移分片（生产库已逐个执行过）。
-    #     旧实现手写 4 个文件名，漏掉 096_papers_year_type（paper_attempts）/
-    #     097_code_oj（code_problems / code_submissions）/ 102_review_schedules_fsrs，
-    #     测试库因此比生产少表。这里按文件名序自动发现，新增分片无需再改本文件。
-    #     逐个文件独立执行：单个分片坏掉只告警，不连累其余分片。
+    # 手工数据脚本不应在测试库重放；自动结构迁移必须进入 pg_schema.sql。
     import glob
     import re
-
-    from core.db_session import apply_schema as _apply_sql
 
     core_dir = os.path.join(BACKEND_DIR, "core")
     with open(os.path.join(core_dir, "pg_schema.sql"), encoding="utf-8") as fh:
         included = set(re.findall(r"^\\ir\s+sql/(\S+)", fh.read(), re.M))
-    extra = sorted(
-        os.path.basename(p)
-        for p in glob.glob(os.path.join(core_dir, "sql", "*.sql"))
-        if os.path.basename(p) not in included
-    )
-    for name in extra:
-        try:
-            _apply_sql(os.path.join(core_dir, "sql", name))
-            print(f"[conftest] 已执行迁移: {name}")
-        except Exception as exc:  # noqa: BLE001
-            print(f"[conftest] 警告：迁移 {name} 失败（{type(exc).__name__}: {exc}）")
+    missing_schema = []
+    for path in glob.glob(os.path.join(core_dir, "sql", "*.sql")):
+        name = os.path.basename(path)
+        match = re.match(r"^(\d{3})[a-z]?_", name)
+        if not match or name in included or not is_automatic_schema_script(path):
+            continue
+        missing_schema.append(name)
+    if missing_schema:
+        raise RuntimeError(f"结构迁移未接入 pg_schema.sql：{', '.join(sorted(missing_schema))}")
 
     # 2) 再用 ORM 兜底 SQL 未覆盖的历史表
     Base.metadata.create_all(bind=engine)
+
+    # 2b) ORM/SQL 列同步：create_all() 对已存在的表不会 ADD COLUMN，
+    #     导致 ORM 新加的列（如 T5 的 documents.content_kind）在测试库缺失，
+    #     所有涉及该列的查询集体 UndefinedColumn。这里遍历 ORM 元数据，
+    #     对每张已存在的表补上 ORM 有但 DB 没有的列；同时把 ORM 用 naive
+    #     DateTime 建出的列统一提升为 TIMESTAMPTZ（test_timeutil_local_day
+    #     红线要求所有时间列带时区）。仅在 PG 上执行。
+    _sync_orm_columns_to_db(engine)
+
     session = SessionLocal()
     try:
         ensure_module_a_schema(session)
@@ -545,6 +664,8 @@ def sample_data(db_schema):  # noqa: ARG001
     import datetime
 
     from database import SessionLocal
+    from utils.timeutil import local_today
+
     from models import (
         CustomLink,
         Document,
@@ -561,7 +682,6 @@ def sample_data(db_schema):  # noqa: ARG001
         Word,
         WordDeck,
     )
-    from utils.timeutil import local_today
 
     db = SessionLocal()
     try:
@@ -650,7 +770,7 @@ def sample_data(db_schema):  # noqa: ARG001
         # ---- ErrorRecord ----
         # 字段口径见 models.py:143 —— 没有 chapter / knowledge_point / error_type /
         # user_answer，而是 content / my_answer / correct_answer / error_reason。
-        if db.query(ErrorRecord).count() == 0:
+        if db.query(ErrorRecord).filter(ErrorRecord.content == "QA 错题内容").count() == 0:
             q = db.query(QuizQuestion).filter(QuizQuestion.subject == "数学").first()
             db.add(
                 ErrorRecord(
@@ -878,7 +998,10 @@ def sample_data(db_schema):  # noqa: ARG001
         ids = {
             "task_id": _id(Task),
             "question_id": _id(QuizQuestion),
-            "error_id": _id(ErrorRecord),
+            "error_id": db.query(ErrorRecord)
+            .filter(ErrorRecord.content == "QA 错题内容", ErrorRecord.user_id == TEST_USER_ID)
+            .one()
+            .id,
             "doc_id": _id(Document),
             "word_id": _id(Word),
             "paper_id": _id(Paper),
@@ -905,8 +1028,9 @@ def fresh_earlybird(db_schema):  # noqa: ARG001
     import datetime as _dt
 
     from database import SessionLocal
-    from models import EarlyBirdRecord
     from utils.timeutil import local_today
+
+    from models import EarlyBirdRecord
 
     db = SessionLocal()
     try:

@@ -23,6 +23,7 @@
   python scripts/fix_notices_date.py            # dry-run
   python scripts/fix_notices_date.py --apply    # 备份+写库+审计日志
 """
+
 from __future__ import annotations
 
 import csv
@@ -68,8 +69,7 @@ def phase_b_refetch(cur, dry: bool) -> tuple[int, int]:
 
     # 待回填的校与行
     rows = cur.execute(
-        "SELECT id, school_name, title FROM kaoyan_notices "
-        "WHERE publish_date IS NULL OR publish_date=''"
+        "SELECT id, school_name, title FROM kaoyan_notices WHERE publish_date IS NULL OR publish_date=''"
     ).fetchall()
     if not rows:
         return 0, 0
@@ -107,9 +107,11 @@ def phase_b_refetch(cur, dry: bool) -> tuple[int, int]:
                         (d, rid),
                     )
                 n_upd += 1
-    still = cur.execute(
-        "SELECT COUNT(*) FROM kaoyan_notices WHERE publish_date IS NULL OR publish_date=''"
-    ).fetchone()[0] if not dry else None
+    still = (
+        cur.execute("SELECT COUNT(*) FROM kaoyan_notices WHERE publish_date IS NULL OR publish_date=''").fetchone()[0]
+        if not dry
+        else None
+    )
     return n_upd, (still if still is not None else -1)
 
 
@@ -119,11 +121,9 @@ def main() -> None:
     con.execute("PRAGMA busy_timeout=60000")
     cur = con.cursor()
 
-    rows = cur.execute(
-        "SELECT id, title, publish_date FROM kaoyan_notices"
-    ).fetchall()
+    rows = cur.execute("SELECT id, title, publish_date FROM kaoyan_notices").fetchall()
 
-    plan = []      # (id, old_title, new_title, old_date, new_date)
+    plan = []  # (id, old_title, new_title, old_date, new_date)
     for rid, title, pdate in rows:
         new_date, new_title = extract_title_date_prefix(title or "")
         has_date = bool(pdate)
@@ -146,6 +146,7 @@ def main() -> None:
 
     # 格式命中统计
     from collections import Counter
+
     fmt = Counter()
     for _rid, _t, _nt, _od, nd in plan:
         if nd != _od:
@@ -189,8 +190,7 @@ def main() -> None:
         "SELECT COUNT(*) FROM kaoyan_notices WHERE publish_date IS NULL OR publish_date=''"
     ).fetchone()[0]
     print(f"完成。补日期 {n_date} 行；仅剥前缀 {len(plan) - n_date} 行。")
-    print(f"notices 总 {total}，publish_date 非空率 {(total - no_date) / total * 100:.1f}%"
-          f"（空 {no_date}）")
+    print(f"notices 总 {total}，publish_date 非空率 {(total - no_date) / total * 100:.1f}%（空 {no_date}）")
     print(f"审计日志 → {audit}")
     con.close()
 

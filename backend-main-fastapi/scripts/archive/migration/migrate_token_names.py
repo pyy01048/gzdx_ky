@@ -19,6 +19,7 @@ tokens.css 已建立完整新令牌体系（304 个变量，对标 gitgraduate �
   3. 默认 dry-run，--apply 才写；写入前逐个文件备份。
   4. 替换后校验：全项目 var(--旧名) 引用数应为 0（兼容桥定义除外）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -70,8 +71,7 @@ TOKEN_MAP: dict[str, str] = {
     # 间距
     **{f"--sp-{i}": f"--space-{i}" for i in range(1, 17)},
     # 字号
-    **{f"--fs-{n}": f"--text-{n}"
-       for n in ("xs", "sm", "base", "md", "lg", "xl", "2xl", "3xl")},
+    **{f"--fs-{n}": f"--text-{n}" for n in ("xs", "sm", "base", "md", "lg", "xl", "2xl", "3xl")},
     # 阴影（第一轮漏掉，实测复核剩余 77 处引用后补入）
     "--shadow-0": "--shadow-flat",
     "--shadow-1": "--shadow-sm",
@@ -104,9 +104,7 @@ def build_patterns() -> list[tuple[re.Pattern, str, str]]:
     for old in sorted(TOKEN_MAP, key=len, reverse=True):
         new = TOKEN_MAP[old]
         # 匹配 var( --old ) 或 var( --old , fallback )，且 old 后面不是 [a-z0-9-]
-        pat = re.compile(
-            r"var\(\s*" + re.escape(old) + r"(?![a-z0-9-])\s*([,)])"
-        )
+        pat = re.compile(r"var\(\s*" + re.escape(old) + r"(?![a-z0-9-])\s*([,)])")
         out.append((pat, new, old))
     return out
 
@@ -116,9 +114,11 @@ def iter_files() -> list[Path]:
     for root, dirs, names in os.walk(SRC_ROOT):
         # 关键：必须排除迁移备份目录，否则复核会把备份里的旧引用一起数进来，
         # 误报「剩余 N 处」（实测踩坑）。
-        dirs[:] = [d for d in dirs
-                   if d not in ("node_modules", "_removed", "dist", ".vite")
-                   and not d.startswith("_migration_backup")]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in ("node_modules", "_removed", "dist", ".vite") and not d.startswith("_migration_backup")
+        ]
         for name in names:
             if not name.endswith((".jsx", ".js", ".css")):
                 continue

@@ -8,6 +8,7 @@ link_kp_chapters.py 不敢挂；本脚本只在**同科目内唯一命中**时�
     python scripts/link_pure_chapters.py --dry-run
     python scripts/link_pure_chapters.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -59,10 +60,13 @@ def main() -> int:
                 no = chapter_no(ch)
                 if no is None:
                     continue
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT id, title FROM subject_chapters
                      WHERE subject_id = %s AND title LIKE %s
-                """, (sid, f"第{no}章%"))
+                """,
+                    (sid, f"第{no}章%"),
+                )
                 matches = cur.fetchall()
                 if len(matches) == 1:
                     updates.append((kid, matches[0][0], matches[0][1]))
@@ -76,11 +80,14 @@ def main() -> int:
 
         with conn.cursor() as cur:
             for kid, cid, title in updates:
-                cur.execute("""
+                cur.execute(
+                    """
                     UPDATE knowledge_points
                        SET chapter_id = %s, chapter = %s
                      WHERE id = %s AND chapter_id IS NULL
-                """, (cid, title, kid))
+                """,
+                    (cid, title, kid),
+                )
         conn.commit()
         print(f"已挂接 {len(updates)} 条。")
     return 0

@@ -27,6 +27,7 @@
     python scripts/clean_quiz_quality.py              # dry-run
     python scripts/clean_quiz_quality.py --apply      # 写库（自动先备份）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -71,16 +72,17 @@ def plan(conn: sqlite3.Connection) -> dict:
     return {
         # ② 管综残留（未 junk）
         "gz_junk": one(f"SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND {gz_where}"),
-        "gz_ids": [r[0] for r in c.execute(
-            f"SELECT id FROM quiz_questions WHERE is_junk=0 AND {gz_where}")],
+        "gz_ids": [r[0] for r in c.execute(f"SELECT id FROM quiz_questions WHERE is_junk=0 AND {gz_where}")],
         # ③ 无选项 + 有答案 + 未 junk + 仍是 objective
         "subjective": one(
             f"SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND {_NO_OPT} "
-            f"AND NOT {_NO_ANS} AND (answer_type IS NULL OR answer_type<>'subjective')"),
+            f"AND NOT {_NO_ANS} AND (answer_type IS NULL OR answer_type<>'subjective')"
+        ),
         # ④ 无选项 + 无答案 + 未 junk
         "incomplete": one(
             f"SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND {_NO_OPT} "
-            f"AND {_NO_ANS} AND (quality IS NULL OR quality<>'incomplete')"),
+            f"AND {_NO_ANS} AND (quality IS NULL OR quality<>'incomplete')"
+        ),
     }
 
 
@@ -97,8 +99,8 @@ def stats(conn: sqlite3.Connection) -> dict:
         "total": one("SELECT COUNT(*) FROM quiz_questions"),
         "visible_nonjunk": one("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0"),
         "answerable_avail": one(
-            "SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND is_available=1 "
-            f"AND NOT {_NO_ANS}"),
+            f"SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND is_available=1 AND NOT {_NO_ANS}"
+        ),
         "no_opt_answer": one(f"SELECT COUNT(*) FROM quiz_questions WHERE {_NO_OPT} AND NOT {_NO_ANS}"),
         "no_opt_noans": one(f"SELECT COUNT(*) FROM quiz_questions WHERE {_NO_OPT} AND {_NO_ANS}"),
         "subjective_cnt": one("SELECT COUNT(*) FROM quiz_questions WHERE answer_type='subjective'"),
@@ -152,16 +154,17 @@ def main() -> int:
         c = conn.cursor()
         # ②
         gz_where = "(" + " OR ".join(f"content LIKE '%{k}%'" for k in _GUANZONG_KW) + ")"
-        n2 = c.execute(
-            f"UPDATE quiz_questions SET is_junk=1 WHERE is_junk=0 AND {gz_where}").rowcount
+        n2 = c.execute(f"UPDATE quiz_questions SET is_junk=1 WHERE is_junk=0 AND {gz_where}").rowcount
         # ③
         n3 = c.execute(
             f"UPDATE quiz_questions SET answer_type='subjective' WHERE is_junk=0 AND {_NO_OPT} "
-            f"AND NOT {_NO_ANS} AND (answer_type IS NULL OR answer_type<>'subjective')").rowcount
+            f"AND NOT {_NO_ANS} AND (answer_type IS NULL OR answer_type<>'subjective')"
+        ).rowcount
         # ④
         n4 = c.execute(
             f"UPDATE quiz_questions SET quality='incomplete', is_available=0 WHERE is_junk=0 "
-            f"AND {_NO_OPT} AND {_NO_ANS} AND (quality IS NULL OR quality<>'incomplete')").rowcount
+            f"AND {_NO_OPT} AND {_NO_ANS} AND (quality IS NULL OR quality<>'incomplete')"
+        ).rowcount
         conn.commit()
 
         after = stats(conn)

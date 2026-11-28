@@ -1,0 +1,224 @@
+/* 工科08学习空间：独立组件样式，复用 Aurora v3 tokens。 */
+.e08-practice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v3-sp-5);
+  min-width: 0;
+}
+
+.e08-spacebar {
+  position: sticky;
+  top: var(--v3-topbar-h);
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--v3-sp-3) var(--v3-sp-4);
+  align-items: center;
+  padding: var(--v3-sp-4);
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-2xl);
+  background: var(--v3-surface-glass);
+  box-shadow: var(--v3-shadow-2);
+  backdrop-filter: blur(16px);
+}
+
+.e08-spacebar__identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+}
+
+.e08-spacebar__eyebrow {
+  color: var(--v3-primary);
+  font-size: var(--v3-fs-11);
+  font-weight: 700;
+  letter-spacing: var(--v3-tracking-wide);
+}
+
+.e08-spacebar__identity strong {
+  overflow: hidden;
+  color: var(--v3-text);
+  font-size: clamp(var(--v3-fs-15), 2vw, var(--v3-fs-18));
+  line-height: var(--v3-lh-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.e08-spacebar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--v3-sp-2);
+}
+
+.e08-spacebar__selectors,
+.e08-filters__grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--v3-sp-3);
+}
+
+.e08-spacebar__selectors {
+  padding-top: var(--v3-sp-3);
+  border-top: 1px solid var(--v3-outline);
+}
+
+.e08-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v3-sp-4);
+  padding: var(--v3-sp-5);
+}
+
+.e08-filters__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--v3-sp-4);
+}
+
+.e08-filters__head h2 {
+  margin: 0;
+  color: var(--v3-text);
+  font-size: var(--v3-fs-18);
+}
+
+.e08-filters__head p {
+  margin: 4px 0 0;
+  color: var(--v3-text-3);
+  font-size: var(--v3-fs-12);
+  line-height: var(--v3-lh-snug);
+}
+
+.e08-filters__grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.e08-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v3-sp-4);
+  padding: var(--v3-sp-5);
+}
+
+.e08-results__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--v3-sp-4);
+}
+
+.e08-results__head h2 {
+  margin: 0;
+  color: var(--v3-text);
+  font-size: var(--v3-fs-18);
+}
+
+.e08-results__head p {
+  margin: 4px 0 0;
+  color: var(--v3-text-3);
+  font-size: var(--v3-fs-12);
+}
+
+.e08-results__pagination {
+  display: flex;
+  align-items: center;
+  gap: var(--v3-sp-2);
+  color: var(--v3-text-3);
+  font-size: var(--v3-fs-12);
+}
+
+.e08-results__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--v3-sp-3);
+}
+
+.e08-results__error {
+  margin: 0;
+  padding: var(--v3-sp-3);
+  border-radius: var(--v3-r-sm);
+  background: var(--v3-danger-container);
+  color: var(--v3-on-danger-container);
+  font-size: var(--v3-fs-13);
+}
+
+.e08-results__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v3-sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.e08-result-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v3-sp-3);
+  padding: var(--v3-sp-4);
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-lg);
+  background: var(--v3-surface-1);
+}
+
+.e08-result-row__stem {
+  margin: 0;
+  color: var(--v3-text);
+  font-size: var(--v3-fs-15);
+  line-height: var(--v3-lh-normal);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.e08-result-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--v3-sp-2);
+}
+
+.e08-result-row__meta span {
+  padding: 3px 9px;
+  border: 1px solid var(--v3-outline);
+  border-radius: var(--v3-r-full);
+  background: var(--v3-surface);
+  color: var(--v3-text-3);
+  font-size: var(--v3-fs-11);
+  line-height: var(--v3-lh-snug);
+}
+
+@media (max-width: 1100px) {
+  .e08-filters__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .e08-spacebar {
+    top: 0;
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--v3-sp-3);
+    border-radius: var(--v3-r-xl);
+  }
+
+  .e08-spacebar__actions {
+    justify-content: flex-end;
+  }
+
+  .e08-spacebar__selectors,
+  .e08-filters__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .e08-results__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .e08-filters {
+    padding: var(--v3-sp-4);
+  }
+}

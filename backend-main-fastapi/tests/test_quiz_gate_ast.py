@@ -39,6 +39,7 @@ GATED_WRITER_HELPERS = {"_gate_rows"}
 MANUAL_WHITELIST = {
     "routers/study/quiz.py::add_question": "人工单题录入（POST /api/quiz/questions），用户所见即所写",
     "routers/study/quiz.py::import_confirm": "M6-4 人工确认闭环第二步，人已逐条预览过",
+    "routers/study/personal_quiz.py::create_personal_question": "用户人工自建短题，所见即所写；结构由 PersonalQuizQuestionCreate 校验",
     "scripts/rebuild_knowledge_base.py::main": "题目源自 qbank_builder.extract_questions，该函数体内已接闸",
     # 域化重构后新增服务：变体题生成走 AI 生成+入库，接闸属待办（单独迭代补 quiz_content_gate）
     "services/recommend_loop.py::generate_variant_questions": "AI 变体题生成（域化重构新增），接闸待办：2026-11 守卫首跑暴露",

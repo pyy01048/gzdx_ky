@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # 幂等加载 .env（供独立脚本直接导入时使用）
 try:
     from dotenv import load_dotenv
+
     load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 except Exception:
     pass
@@ -31,6 +32,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+
 # 数据库路径配置化：后端类型与连接串统一由 core.db_session 决定。
 # 变更原因（2026-10-14）：本模块此前**只认 DATABASE_PATH、永远建 SQLite URL**，
 # 完全不读 DATABASE_BACKEND，导致"切到 PG"只改 .env 毫无效果（实测后端仍连 SQLite）。
@@ -38,6 +40,7 @@ def _resolve_database_url() -> tuple[str, bool]:
     """解析连接串与后端类型，与 core.db_session 保持单一来源。"""
     try:
         from core.db_session import IS_POSTGRES, build_database_url
+
         return build_database_url(), IS_POSTGRES
     except Exception as exc:  # pragma: no cover - core 不可用时退回 SQLite
         logger.warning("core.db_session 不可用，退回 SQLite：%s", exc)
@@ -77,31 +80,33 @@ else:
         echo=False,
         # 连接池配置
         poolclass=QueuePool,
-        pool_size=10,           # 连接池大小
-        max_overflow=20,         # 最大溢出连接数
-        pool_timeout=30,         # 获取连接超时
-        pool_recycle=3600,       # 连接回收时间（1小时）
-        pool_pre_ping=True,      # 连接前检查（避免断连）
+        pool_size=10,  # 连接池大小
+        max_overflow=20,  # 最大溢出连接数
+        pool_timeout=30,  # 获取连接超时
+        pool_recycle=3600,  # 连接回收时间（1小时）
+        pool_pre_ping=True,  # 连接前检查（避免断连）
     )
 
 # SQLite 性能优化（连接创建时执行）—— 仅 SQLite 后端生效。
 # PG 连接上执行 PRAGMA 会直接报语法错误，故必须按后端分流注册。
 if not IS_POSTGRES:
+
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         try:
-            cursor.execute("PRAGMA journal_mode=WAL")        # WAL模式（并发读写）
-            cursor.execute("PRAGMA synchronous=NORMAL")       # 正常同步
-            cursor.execute("PRAGMA cache_size=-64000")        # 64MB缓存
-            cursor.execute("PRAGMA temp_store=MEMORY")         # 临时表存内存
-            cursor.execute("PRAGMA mmap_size=268435456")      # 256MB内存映射
-            cursor.execute("PRAGMA busy_timeout=5000")         # 忙等待5秒
-            cursor.execute("PRAGMA foreign_keys=ON")            # 启用外键
+            cursor.execute("PRAGMA journal_mode=WAL")  # WAL模式（并发读写）
+            cursor.execute("PRAGMA synchronous=NORMAL")  # 正常同步
+            cursor.execute("PRAGMA cache_size=-64000")  # 64MB缓存
+            cursor.execute("PRAGMA temp_store=MEMORY")  # 临时表存内存
+            cursor.execute("PRAGMA mmap_size=268435456")  # 256MB内存映射
+            cursor.execute("PRAGMA busy_timeout=5000")  # 忙等待5秒
+            cursor.execute("PRAGMA foreign_keys=ON")  # 启用外键
         except Exception as e:
             logger.debug(f"SQLite PRAGMA设置失败: {e}")
         finally:
             cursor.close()
+
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -146,6 +151,7 @@ def _ensure_orm_compat() -> None:
         return
     try:
         import orm_aliases
+
         orm_aliases.install()
     except Exception as exc:  # noqa: BLE001
         logger.warning("ORM 兼容适配安装失败：%s", exc)
@@ -196,10 +202,12 @@ class QueryProfiler:
     def __exit__(self, exc_type, exc_val, exc_tb):
         elapsed = (time.time() - self.start) * 1000
         if elapsed > self.threshold_ms:
-            self.slow_queries.append({
-                "time": time.time(),
-                "elapsed_ms": elapsed,
-            })
+            self.slow_queries.append(
+                {
+                    "time": time.time(),
+                    "elapsed_ms": elapsed,
+                }
+            )
             logger.warning(f"慢查询: {elapsed:.1f}ms")
         return False
 
@@ -211,7 +219,7 @@ def bulk_insert(db, model, objects, chunk_size=100):
     """分块批量插入。"""
     total = len(objects)
     for i in range(0, total, chunk_size):
-        chunk = objects[i:i + chunk_size]
+        chunk = objects[i : i + chunk_size]
         db.bulk_save_objects(chunk)
         db.commit()
         logger.debug(f"批量插入: {i + len(chunk)}/{total}")
@@ -222,7 +230,7 @@ def bulk_update(db, model, updates, chunk_size=50):
     """分块批量更新。"""
     total = len(updates)
     for i in range(0, total, chunk_size):
-        chunk = updates[i:i + chunk_size]
+        chunk = updates[i : i + chunk_size]
         for update in chunk:
             obj_id = update.pop("id", None)
             if obj_id:

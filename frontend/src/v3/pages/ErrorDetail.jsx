@@ -19,10 +19,16 @@ import '../styles/detail-pages.css'
 const FEEDBACK_KEY = 'kaoyan-ai-attribution-feedback-v1'
 const blankAi = { state: 'idle', text: '', error: '', meta: null }
 
+/** 读取本账号 AI 归因反馈记录（按 uid 隔离）。 */
 function readFeedback() {
   try { return JSON.parse(localStorage.getItem(ukey(FEEDBACK_KEY)) || '{}') } catch { return {} }
 }
 
+/**
+ * 错题单题工作台：从错因定位到知识点、AI 讲解与复练，保留在同一条可分享链路里。
+ * 数据源：errorsApi.get / knowledgePoints / aiAnalyze。
+ * @returns {JSX.Element} 错题详情页
+ */
 export default function ErrorDetail() {
   const { id } = useParams()
   const addNote = useStore((s) => s.addNote)
@@ -36,6 +42,7 @@ export default function ErrorDetail() {
   const seq = useRef(0)
   const aiSeq = useRef(0)
 
+  /** 加载错题详情与关联知识点，使用 seq 防止竞态。 */
   const load = useCallback(async () => {
     const current = ++seq.current
     aiSeq.current += 1
@@ -65,7 +72,8 @@ export default function ErrorDetail() {
 
   useEffect(() => { load() }, [load])
 
-  const analyze = async () => {
+  /** 触发 AI 归因分析并刷新本地缓存。 */
+  const analyze = useCallback(async () => {
     if (!record) return
     const current = ++aiSeq.current
     setAi({ ...blankAi, state: 'loading' })
@@ -82,17 +90,19 @@ export default function ErrorDetail() {
     } catch (e) {
       if (current === aiSeq.current) setAi({ ...blankAi, state: 'error', error: e?.message || 'AI 分析失败' })
     }
-  }
+  }, [record, id, feedback])
 
-  const evaluate = (kind) => {
+  /** 记录用户对 AI 归因的三态反馈。 */
+  const evaluate = useCallback((kind) => {
     const next = { ...feedback, [id]: { kind, at: Date.now(), text: ai.text } }
     setFeedback(next)
     if (kind === 'wrong') setRewrite(ai.text)
     try { localStorage.setItem(ukey(FEEDBACK_KEY), JSON.stringify(next)) } catch { /* 隐私模式 */ }
     toast(`已记录：${kind === 'accurate' ? '准确' : kind === 'partial' ? '部分准确' : '错误'}`)
-  }
+  }, [feedback, id, ai.text])
 
-  const saveReason = () => {
+  /** 确认记入错题本：未经用户确认不覆盖人工 reason。 */
+  const saveReason = useCallback(() => {
     if (!record || !feedback[id]?.kind) {
       toast('请先评价 AI 归因，确认前不会覆盖人工错因')
       return
@@ -112,7 +122,7 @@ export default function ErrorDetail() {
       tags: keepAi ? ['AI归因'] : ['人工复核'],
     })
     toast(keepAi ? '已记入错题本' : '人工改写已记入错题本，AI 归因标记已失效')
-  }
+  }, [record, feedback, id, ai.text, rewrite, addNote])
 
   const followUp = useMemo(() => {
     if (!record) return ''

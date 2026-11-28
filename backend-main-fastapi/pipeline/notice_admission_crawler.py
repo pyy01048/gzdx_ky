@@ -12,6 +12,7 @@
   3. 幂等：data_source = notice:<id>，重跑不重复。
   4. 合规：仅公开页，1.5-2.5s 限速，附件 ≤8MB。
 """
+
 import io
 import random
 import re
@@ -28,12 +29,17 @@ import urllib.request  # noqa: E402
 
 import openpyxl  # noqa: E402
 from database import SessionLocal  # noqa: E402
-from models import KaoyanAdmission  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 PersonalStudyTool/1.0 (kaoyan personal use)"}
+from models import KaoyanAdmission  # noqa: E402
+
+UA = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 PersonalStudyTool/1.0 (kaoyan personal use)"
+}
 TITLE_OK = re.compile(r"拟录取|录取名单|复试名单|复试结果|成绩公示|复试成绩")
-TITLE_NO = re.compile(r"博士|硕博|直博|档案|政审|调档|推免|推荐免试|推免生|港澳台|工商管理硕士|EMBA|国优|少干|骨干人才|退役|士兵计划|同等学力")
+TITLE_NO = re.compile(
+    r"博士|硕博|直博|档案|政审|调档|推免|推荐免试|推免生|港澳台|工商管理硕士|EMBA|国优|少干|骨干人才|退役|士兵计划|同等学力"
+)
 SCORE_MIN, SCORE_MAX = 150, 500
 
 
@@ -132,7 +138,7 @@ def parse_pdf(blob: bytes):
 def find_table_attachments(html: str, base: str):
     out = []
     for m in re.finditer(r'<a\b[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.S | re.I):
-        href, label = m.group(1), re.sub(r"<[^>]+>", "", m.group(2)).strip()
+        href, _label = m.group(1), re.sub(r"<[^>]+>", "", m.group(2)).strip()
         if re.search(r"\.(xlsx|xls|pdf)(\?|$)", href, re.I):
             if href.startswith("//"):
                 href = "https:" + href
@@ -161,16 +167,19 @@ def _extract_table(rows, sheet_name):
     major_col = next((cols[k] for k in cols if re.search(r"专业|学科|方向|领域", k)), None)
     exam_col = next((cols.get(k) for k in cols if re.search(r"考生编号|准考证号|考号|学号", k)), None)
     score_retest_col = next((cols.get(k) for k in cols if re.search(r"复试成绩|复试分数", k)), None)
-    score_initial_col = next((cols.get(k) for k in cols
-                              if re.search(r"初试成绩|初试总分|初试分数", k)), None)
+    score_initial_col = next((cols.get(k) for k in cols if re.search(r"初试成绩|初试总分|初试分数", k)), None)
     if name_col is None:
         return None
     students, totals, majors = 0, [], {}
     detail_rows = []
-    for row in rows[header_idx + 1:]:
+    for row in rows[header_idx + 1 :]:
         nm = row[name_col] if name_col < len(row) else None
         # 表头噪音行 + 未录取/放弃/不合规行（如"调剂不录取"）一律不计入名单
-        if not nm or not str(nm).strip() or re.search(r"姓名|准考证号|考号|学号|注：|备注|合计|平均|未录取|放弃|不合格|不予录取|不录取", str(nm)):
+        if (
+            not nm
+            or not str(nm).strip()
+            or re.search(r"姓名|准考证号|考号|学号|注：|备注|合计|平均|未录取|放弃|不合格|不予录取|不录取", str(nm))
+        ):
             continue
         students += 1
         rec = {"name": str(nm).strip()[:60]}
@@ -181,8 +190,7 @@ def _extract_table(rows, sheet_name):
             rec["major"] = m
             majors.setdefault(m[:60], 0)
             majors[m[:60]] += 1
-        for key, col in (("total", total_col), ("retest", score_retest_col),
-                         ("initial", score_initial_col)):
+        for key, col in (("total", total_col), ("retest", score_retest_col), ("initial", score_initial_col)):
             if col is not None and col < len(row) and row[col] is not None:
                 try:
                     rec[key] = float(row[col])
@@ -264,21 +272,30 @@ def main(limit=80):
     db = SessionLocal()
     rep = {"cand": 0, "fetched": 0, "got_data": 0, "inserted": 0, "err": 0, "per_school": {}}
     try:
-        rows = db.execute(text(
-            "SELECT id, school_id, school_name, notice_type, title, url, publish_date "
-            "FROM kaoyan_notices WHERE url IS NOT NULL AND url <> '' "
-            "AND title ~ :pat AND title !~ :patno "
-            "ORDER BY publish_date DESC NULLS LAST LIMIT :lim"
-        ), {"pat": TITLE_OK.pattern, "patno": TITLE_NO.pattern, "lim": limit}).fetchall()
+        rows = db.execute(
+            text(
+                "SELECT id, school_id, school_name, notice_type, title, url, publish_date "
+                "FROM kaoyan_notices WHERE url IS NOT NULL AND url <> '' "
+                "AND title ~ :pat AND title !~ :patno "
+                "ORDER BY publish_date DESC NULLS LAST LIMIT :lim"
+            ),
+            {"pat": TITLE_OK.pattern, "patno": TITLE_NO.pattern, "lim": limit},
+        ).fetchall()
         print(f"候选（强过滤后）{len(rows)} 条")
         for nid, sid, sname, ntype, title, url, pdate in rows:
             rep["cand"] += 1
             try:
                 year = int((pdate or "")[:4]) if pdate else 2026
                 src = f"notice:{nid}"
-                if db.query(KaoyanAdmission.id).filter(
-                        KaoyanAdmission.school_id == sid, KaoyanAdmission.year == year,
-                        KaoyanAdmission.data_source == src).first():
+                if (
+                    db.query(KaoyanAdmission.id)
+                    .filter(
+                        KaoyanAdmission.school_id == sid,
+                        KaoyanAdmission.year == year,
+                        KaoyanAdmission.data_source == src,
+                    )
+                    .first()
+                ):
                     continue
                 raw = fetch(url)
                 html = _decode_html(raw)
@@ -304,13 +321,16 @@ def main(limit=80):
                 rep["got_data"] += 1
                 st = data["totals"]
                 is_admit = ntype in ("录取", "调剂")  # 调剂公示多为"校内/院系调剂拟录取名单"
-                db.add(KaoyanAdmission(
-                    school_id=sid, year=year,
-                    retest_count=data["students"] if ntype == "复试" else None,
-                    admit_count=data["students"] if is_admit else None,
-                    admit_avg_score=round(statistics.mean(st), 1) if st else None,
-                    data_source=src,
-                ))
+                db.add(
+                    KaoyanAdmission(
+                        school_id=sid,
+                        year=year,
+                        retest_count=data["students"] if ntype == "复试" else None,
+                        admit_count=data["students"] if is_admit else None,
+                        admit_avg_score=round(statistics.mean(st), 1) if st else None,
+                        data_source=src,
+                    )
+                )
                 db.commit()
                 rep["inserted"] += 1
                 ps = rep["per_school"].setdefault(sname, {"admit": 0, "retest": 0})
@@ -318,8 +338,10 @@ def main(limit=80):
                     ps["admit"] += 1
                 else:
                     ps["retest"] += 1
-                print(f"[OK] {sname} {ntype} {year} {data['students']}人 "
-                      f"avg={round(statistics.mean(st),1) if st else '-'} ← {title[:30]}")
+                print(
+                    f"[OK] {sname} {ntype} {year} {data['students']}人 "
+                    f"avg={round(statistics.mean(st), 1) if st else '-'} ← {title[:30]}"
+                )
                 polite()
             except Exception as e:  # noqa: BLE001
                 db.rollback()

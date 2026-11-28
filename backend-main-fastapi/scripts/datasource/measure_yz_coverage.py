@@ -9,6 +9,7 @@ r"""研招网采集覆盖率实测脚本（关键词穷举版）。
 
 不写数据库。网络失败如实记录。
 """
+
 import json
 import sqlite3
 import sys
@@ -54,8 +55,8 @@ def main():
     db_norm = {normalize(n) for n in db_names}
     print(f"真库 kaoyan_schools 名称数: {len(db_names)}")
 
-    all_units = {}       # dwdm -> unit
-    per_province = []    # [{code, name, got, matched, new}]
+    all_units = {}  # dwdm -> unit
+    per_province = []  # [{code, name, got, matched, new}]
     province_names = {}  # 记录每所有效条目归属省份
 
     for code, pname in PROVINCES.items():
@@ -64,8 +65,7 @@ def main():
             units = fetch_schools(code, "08")
         except Exception as e:  # noqa: BLE001
             print(f"  [ERROR] {code} {pname}: {e}")
-            per_province.append({"code": code, "name": pname, "got": 0,
-                                 "matched": 0, "new": 0, "error": str(e)})
+            per_province.append({"code": code, "name": pname, "got": 0, "matched": 0, "new": 0, "error": str(e)})
             continue
 
         got = 0
@@ -99,8 +99,7 @@ def main():
                 matched += 1
             else:
                 new += 1
-        per_province.append({"code": code, "name": pname, "got": got,
-                             "matched": matched, "new": new})
+        per_province.append({"code": code, "name": pname, "got": got, "matched": matched, "new": new})
         print(f"  [{code} {pname}] got={got} matched={matched} new={new}", flush=True)
 
     # 全局统计（按 dwdm 去重后的单位集合）
@@ -156,7 +155,7 @@ def main():
     lines.append("")
     lines.append(
         f"- 研招网可采单位 {total_units} 所 vs 真库 583 所："
-        f"匹配 {global_matched} 所（{global_matched/max(total_units,1)*100:.1f}%），"
+        f"匹配 {global_matched} 所（{global_matched / max(total_units, 1) * 100:.1f}%），"
         f"余 {global_new} 所为研招网有、库中暂无。"
     )
     lines.append("- 说明：真库 583 所并非纯研招网来源，含 seed/官网/公开数据等多源合并，")
@@ -181,8 +180,7 @@ def main():
         f"31 省合计去重后 {total_units} 所。"
     )
     lines.append(
-        f"2. 与真库 583 所匹配 {global_matched} 所，另有 {global_new} 所（含科研院所）库中缺失，"
-        f"具备补录价值。"
+        f"2. 与真库 583 所匹配 {global_matched} 所，另有 {global_new} 所（含科研院所）库中缺失，具备补录价值。"
     )
     lines.append("3. 数据已落盘 `tools/datasource/yz_units_v2.json`，是否入库由主理人决策。")
     lines.append("")

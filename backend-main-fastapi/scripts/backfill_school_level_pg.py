@@ -10,6 +10,7 @@
 - 只更新 level 为空或与权威名单不一致的行；已有值不盲目覆盖。
 - 名单外的院校统一写「双非」，避免筛选“双非”时又空。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,6 +24,7 @@ if str(BASE) not in sys.path:
 
 import psycopg  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
+
 from scripts.school_level_truth import truth_level  # noqa: E402
 
 

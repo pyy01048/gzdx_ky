@@ -7,7 +7,8 @@ import {
   Brain, CheckCircle2, ChevronDown, ChevronRight, Clock, FileText, Play, RefreshCw,
   Search, Target,
 } from '../icons'
-import { errorsApi, quizSectionApi, fetchAllPages } from '../../api/client'
+import { errorsApi, quizApi, quizSectionApi, fetchAllPages } from '../../api/client'
+import { normQ } from './quizShared'
 import { normalizeOptions } from '../../utils/optionText'
 import '../styles/quiz-v3.css'
 
@@ -23,6 +24,25 @@ import '../styles/quiz-v3.css'
 const MASTERY_LABEL = { unlearned: '未学', weak: '薄弱', mastered: '已掌握' }
 const ALL = ''
 
+/** 掌握度 → 徽标色调 */
+const masteryTone = (state) => (
+  state === 'mastered' ? 'success' : state === 'weak' ? 'warning' : undefined
+)
+
+/**
+ * 刷题中心 · 错题库与收藏（v3）
+ *
+ * 1. 进入 Tab 同时加载错题列表 + 闭环数据，失败分别给错误态与重试；
+ * 2. 错题按学科 / 掌握度 / 关键词筛选，展开即可看答案解析，并直达复盘页；
+ * 3. 右侧收藏仍是本地快照，但会明确标注「为什么不能判分」；
+ * 4. 所有空态都带下一步动作，不留空白区域。
+ * @param {Object} props
+ * @param {boolean} props.visible
+ * @param {string} props.tab - 当前首页 Tab（仅 review 时本组件可见）
+ * @param {Object} props.favs - 收藏快照
+ * @param {string} props.mode - practice | memorize
+ * @param {Function} props.onBeginSession
+ */
 export default function QuizWrongReview({ visible, tab, favs, mode, onBeginSession }) {
   /* ---------- 错题库 ---------- */
   const [errorItems, setErrorItems] = useState([])
@@ -32,6 +52,8 @@ export default function QuizWrongReview({ visible, tab, favs, mode, onBeginSessi
   const [subject, setSubject] = useState(ALL)
   const [mastery, setMastery] = useState(ALL)
   const [expandedId, setExpandedId] = useState(null)
+  const [practiceLoading, setPracticeLoading] = useState(false)
+  const [practiceError, setPracticeError] = useState('')
 
   /* ---------- 错题闭环面板（薄弱点 / 错因 / 待复习队列） ---------- */
   const [weak, setWeak] = useState([])
@@ -79,18 +101,51 @@ export default function QuizWrongReview({ visible, tab, favs, mode, onBeginSessi
 
   const reloadAll = useCallback(() => { loadErrors(); loadPanel() }, [loadErrors, loadPanel])
 
-  /* 待复习队列：提交复习结果（忘了 / 模糊 / 掌握） */
-  const reviewItem = async (item, result) => {
+  /** 启动错题重练：从后端拉原题 → 装入会话
+   *  @param {Array} errors - 错题列表
+   *  @param {string} title - 会话标题 */
+  const startErrorPractice = useCallback(async (errors, title) => {
+    if (!errors.length || practiceLoading) return
+    setPracticeLoading(true)
+    setPracticeError('')
+    try {
+      const loaded = await Promise.all(errors.map(async (error) => {
+        if (!Number(error.question_id)) throw new Error('这条错题没有关联原题，请先前往错题本补录题目')
+        const detail = await quizApi.questionDetail(error.question_id)
+        const question = { ...normQ(detail), id: String(detail.id), error_id: Number(error.id) }
+        if (!question.content) throw new Error('原题内容为空，无法重练')
+        return question
+      }))
+      await onBeginSession(title, loaded, mode, 0, false, {
+        kind: 'error_review',
+        title,
+        error_ids: errors.map((error) => Number(error.id)),
+        question_error_ids: Object.fromEntries(loaded.map((question) => [question.id, question.error_id])),
+        loaded: loaded.length,
+        answerableCount: loaded.length,
+        totalCount: loaded.length,
+      })
+    } catch (e) {
+      setPracticeError(`重练失败：${e?.message || '无法读取原题'}`)
+    } finally {
+      setPracticeLoading(false)
+    }
+  }, [practiceLoading, onBeginSession, mode])
+
+  /** 待复习队列：提交复习结果（忘了 / 模糊 / 掌握）
+   *  @param {Object} item - 复习项
+   *  @param {string} result - forgotten | fuzzy | mastered */
+  const reviewItem = useCallback(async (item, result) => {
     try {
       await quizSectionApi.submitReview({
         item_type: item.item_type || 'error',
-        item_id: item.item_id,
+        item_id: item.item_id ?? item.id,
         result,
       })
       toast('复习已记录')
       loadPanel()
-    } catch (e) { toast(e.message || '复习提交失败') }
-  }
+    } catch (e) { toast(e?.message || '复习提交失败') }
+  }, [loadPanel])
 
   /* 进入 Tab 时同时加载两块数据；之前的实现漏了 loadPanel，整块面板恒为空。 */
   useEffect(() => {
@@ -123,16 +178,6 @@ export default function QuizWrongReview({ visible, tab, favs, mode, onBeginSessi
 
   if (!visible) return null
 
-  /* options 走同一条归一化（对象数组 [{key,text}] 与字符串数组都吃），
-     且 /api/errors 当前不返回选项 —— 归一化后为空是预期结果，
-     此时做题页会落到「本题无选项」只读态，而不是把对象渲染成 [object Object]。 */
-  const errQuestions = filtered.map((e) => ({
-    id: String(e.question_id || e.id),
-    content: e.content || '',
-    options: normalizeOptions(e.options),
-    answer: e.correct_answer || '', analysis: e.analysis || '',
-    subject: e.subject || '', chapter: '错题', difficulty: 1, question_type: '',
-  }))
   const favEntries = Object.entries(favs)
   /* 收藏快照本地只存题干/科目/章节，**没有 options**（历史设计）。
      这里同样过一遍归一化：空就空，但绝不让原始对象流到渲染层。 */
@@ -142,9 +187,6 @@ export default function QuizWrongReview({ visible, tab, favs, mode, onBeginSessi
     subject: f.subject || '', chapter: f.chapter || '', difficulty: 1, question_type: f.type || '',
   }))
 
-  const masteryTone = (state) => (
-    state === 'mastered' ? 'success' : state === 'weak' ? 'warning' : undefined
-  )
 
   /* ---------- 错题库主视图 ---------- */
   const renderErrorBank = () => (
@@ -167,8 +209,8 @@ export default function QuizWrongReview({ visible, tab, favs, mode, onBeginSessi
               size="sm"
               variant="filled"
               icon={<Play size={13} />}
-              disabled={!errQuestions.length}
-              onClick={() => onBeginSession(`错题重练（${errQuestions.length} 题）`, errQuestions, mode)}
+              disabled={!filtered.length || practiceLoading}
+              onClick={() => startErrorPractice(filtered, `错题重练（${filtered.length} 题）`)}
             >
               全部重练
             </Button>
@@ -204,6 +246,7 @@ export default function QuizWrongReview({ visible, tab, favs, mode, onBeginSessi
         </div>
       </div>
 
+      {practiceError && <Alert tone="danger">{practiceError}</Alert>}
       {errLoading && <LoadingState text="正在加载错题…" />}
       {!errLoading && errError && (
         <Alert tone="danger">
@@ -280,12 +323,8 @@ export default function QuizWrongReview({ visible, tab, favs, mode, onBeginSessi
                         <Button
                           size="sm"
                           variant="filled"
-                          onClick={() => onBeginSession(`错题 · ${e.subject || '未分类'}`, [{
-                            id: String(e.question_id || e.id), content: e.content || '',
-                            options: normalizeOptions(e.options),
-                            answer: e.correct_answer || '', analysis: e.analysis || '',
-                            subject: e.subject || '', chapter: '错题', difficulty: 1, question_type: '',
-                          }], mode, 0, true)}
+                          disabled={!e.question_id || practiceLoading}
+                          onClick={() => startErrorPractice([e], `错题 · ${e.subject || '未分类'}`)}
                         >
                           重练本题
                         </Button>

@@ -14,6 +14,7 @@
   python dedupe_schools.py            # 预览
   python dedupe_schools.py --apply    # 写库（自动备份）
 """
+
 from __future__ import annotations
 
 import shutil
@@ -23,8 +24,7 @@ from datetime import datetime
 
 DB = r"D:\平台\database\kaoyan.db"
 # 关联表（含 school_id 外键）
-REL_TABLES = ["kaoyan_majors", "kaoyan_admissions", "kaoyan_scorelines",
-              "kaoyan_notices", "kaoyan_colleges"]
+REL_TABLES = ["kaoyan_majors", "kaoyan_admissions", "kaoyan_scorelines", "kaoyan_notices", "kaoyan_colleges"]
 
 
 def main():
@@ -37,15 +37,13 @@ def main():
     con = sqlite3.connect(DB, timeout=60)
     con.execute("PRAGMA busy_timeout=60000")
     cur = con.cursor()
-    dup_names = [r[0] for r in cur.execute(
-        "SELECT name FROM kaoyan_schools GROUP BY name HAVING COUNT(*)>1")]
+    dup_names = [r[0] for r in cur.execute("SELECT name FROM kaoyan_schools GROUP BY name HAVING COUNT(*)>1")]
     print(f"重名组数: {len(dup_names)}")
 
     total_del = 0
     plan = []
     for nm in dup_names:
-        ids = [r[0] for r in cur.execute(
-            "SELECT id FROM kaoyan_schools WHERE name=? ORDER BY id", (nm,))]
+        ids = [r[0] for r in cur.execute("SELECT id FROM kaoyan_schools WHERE name=? ORDER BY id", (nm,))]
         keep, drops = ids[0], ids[1:]
         plan.append((nm, keep, drops))
         total_del += len(drops)

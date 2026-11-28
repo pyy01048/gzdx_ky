@@ -92,8 +92,8 @@ def _ensure_font():
 # --------------------------------------------------------------------------- #
 # 样式
 # --------------------------------------------------------------------------- #
-_PRIMARY = colors.HexColor("#4F46E5")   # 靛蓝
-_ACCENT = colors.HexColor("#F59E0B")    # 琥珀
+_PRIMARY = colors.HexColor("#4F46E5")  # 靛蓝
+_ACCENT = colors.HexColor("#F59E0B")  # 琥珀
 _SUCCESS = colors.HexColor("#10B981")
 _DANGER = colors.HexColor("#EF4444")
 _TEXT = colors.HexColor("#1F2937")
@@ -105,7 +105,7 @@ _BORDER = colors.HexColor("#E5E7EB")
 def _make_styles():
     _ensure_font()
     f = _font_name
-    styles = getSampleStyleSheet()
+    getSampleStyleSheet()
 
     def _s(name, **kw):
         base = dict(fontName=f, fontSize=10, leading=15, textColor=_TEXT)
@@ -113,7 +113,9 @@ def _make_styles():
         return ParagraphStyle(name, **base)
 
     return {
-        "cover_title": _s("cover_title", fontName=f, fontSize=30, leading=38, textColor=_PRIMARY, alignment=TA_CENTER, spaceAfter=6),
+        "cover_title": _s(
+            "cover_title", fontName=f, fontSize=30, leading=38, textColor=_PRIMARY, alignment=TA_CENTER, spaceAfter=6
+        ),
         "cover_sub": _s("cover_sub", fontSize=14, leading=20, textColor=_MUTED, alignment=TA_CENTER),
         "cover_stat": _s("cover_stat", fontSize=11, leading=18, textColor=_TEXT, alignment=TA_CENTER),
         "h1": _s("h1", fontSize=18, leading=24, textColor=_PRIMARY, spaceBefore=6, spaceAfter=10),
@@ -220,10 +222,12 @@ def build_errors_pdf(
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph(subtitle, styles["cover_sub"]))
     story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph(
-        f"共 {len(errors)} 道错题 · 生成于 {local_today().strftime('%Y-%m-%d')}",
-        styles["cover_stat"],
-    ))
+    story.append(
+        Paragraph(
+            f"共 {len(errors)} 道错题 · 生成于 {local_today().strftime('%Y-%m-%d')}",
+            styles["cover_stat"],
+        )
+    )
     story.append(Spacer(1, 6 * mm))
     story.append(HRFlowable(width="60%", thickness=1, color=_PRIMARY, hAlign="CENTER"))
     story.append(PageBreak())
@@ -236,46 +240,74 @@ def build_errors_pdf(
         tags = _tag_text(e.get("tags"))
 
         head_style = ParagraphStyle(
-            "err_head", fontName=_font_name, fontSize=12, leading=16,
-            textColor=_PRIMARY, spaceAfter=2,
+            "err_head",
+            fontName=_font_name,
+            fontSize=12,
+            leading=16,
+            textColor=_PRIMARY,
+            spaceAfter=2,
         )
-        story.append(Paragraph(
-            f"第 {i} 题 · {subject}",
-            head_style,
-        ))
-        story.append(Paragraph(
-            f"状态：{status} · 掌握度：{mastery} · 复习 {e.get('review_count', 0)} 次"
-            + (f" · 标签：{tags}" if tags else ""),
-            styles["label"],
-        ))
+        story.append(
+            Paragraph(
+                f"第 {i} 题 · {subject}",
+                head_style,
+            )
+        )
+        story.append(
+            Paragraph(
+                f"状态：{status} · 掌握度：{mastery} · 复习 {e.get('review_count', 0)} 次"
+                + (f" · 标签：{tags}" if tags else ""),
+                styles["label"],
+            )
+        )
         story.append(Spacer(1, 3 * mm))
 
         rows = []
         if e.get("content"):
-            rows.append([Paragraph("<b>题干</b>", styles["label"]), Paragraph(_safe_text(e["content"], 3000), styles["body"])])
+            rows.append(
+                [Paragraph("<b>题干</b>", styles["label"]), Paragraph(_safe_text(e["content"], 3000), styles["body"])]
+            )
         if e.get("my_answer"):
-            rows.append([Paragraph("<b>我的答案</b>", styles["label"]), Paragraph(_safe_text(e["my_answer"], 2000), styles["body"])])
+            rows.append(
+                [
+                    Paragraph("<b>我的答案</b>", styles["label"]),
+                    Paragraph(_safe_text(e["my_answer"], 2000), styles["body"]),
+                ]
+            )
         if e.get("correct_answer"):
-            rows.append([Paragraph("<b>正确答案</b>", styles["label"]), Paragraph(_safe_text(e["correct_answer"], 2000), styles["body"])])
+            rows.append(
+                [
+                    Paragraph("<b>正确答案</b>", styles["label"]),
+                    Paragraph(_safe_text(e["correct_answer"], 2000), styles["body"]),
+                ]
+            )
         if e.get("error_reason") or e.get("error_category"):
-            reason = " / ".join(filter(None, [_safe_text(e.get("error_category"), 50), _safe_text(e.get("error_reason"), 100)]))
+            reason = " / ".join(
+                filter(None, [_safe_text(e.get("error_category"), 50), _safe_text(e.get("error_reason"), 100)])
+            )
             if reason:
                 rows.append([Paragraph("<b>错因</b>", styles["label"]), Paragraph(reason, styles["body"])])
         if e.get("analysis"):
-            rows.append([Paragraph("<b>解析</b>", styles["label"]), Paragraph(_safe_text(e["analysis"], 3000), styles["body"])])
+            rows.append(
+                [Paragraph("<b>解析</b>", styles["label"]), Paragraph(_safe_text(e["analysis"], 3000), styles["body"])]
+            )
 
         if rows:
             table = Table(rows, colWidths=[28 * mm, 124 * mm])
-            table.setStyle(TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BACKGROUND", (0, 0), (0, -1), _LIGHT),
-                ("BOX", (0, 0), (-1, -1), 0.75, _BORDER),
-                ("INNERGRID", (0, 0), (-1, -1), 0.5, _BORDER),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]))
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("BACKGROUND", (0, 0), (0, -1), _LIGHT),
+                        ("BOX", (0, 0), (-1, -1), 0.75, _BORDER),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.5, _BORDER),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ]
+                )
+            )
             story.append(table)
         else:
             story.append(Paragraph(_safe_text(e.get("content"), 3000) or "（无内容）", styles["body"]))
@@ -330,11 +362,13 @@ def build_words_pdf(
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph(subtitle, styles["cover_sub"]))
     story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph(
-        f"共 {len(words)} 词 · 生成于 {local_today().strftime('%Y-%m-%d')}"
-        + (" · 已按 5000 词上限截断，可加筛选后再导出" if truncated else ""),
-        styles["cover_stat"],
-    ))
+    story.append(
+        Paragraph(
+            f"共 {len(words)} 词 · 生成于 {local_today().strftime('%Y-%m-%d')}"
+            + (" · 已按 5000 词上限截断，可加筛选后再导出" if truncated else ""),
+            styles["cover_stat"],
+        )
+    )
     story.append(Spacer(1, 6 * mm))
     story.append(HRFlowable(width="60%", thickness=1, color=_PRIMARY, hAlign="CENTER"))
     story.append(PageBreak())
@@ -358,15 +392,21 @@ def build_words_pdf(
 
         # 单词行：序号 + 单词 + 音标 + 状态徽标
         head = ParagraphStyle(
-            "w_head", fontName=_font_name, fontSize=14, leading=20, textColor=_TEXT,
+            "w_head",
+            fontName=_font_name,
+            fontSize=14,
+            leading=20,
+            textColor=_TEXT,
         )
-        story.append(Paragraph(
-            f"{i}. {word}"
-            + (f"  <font color='#6B7280' size=10>{phonetic}</font>" if phonetic else "")
-            + (f"  <font color='#4F46E5' size=9>[{tag}]</font>" if tag else "")
-            + f"  <font color='#9CA3AF' size=8>（{status}）</font>",
-            head,
-        ))
+        story.append(
+            Paragraph(
+                f"{i}. {word}"
+                + (f"  <font color='#6B7280' size=10>{phonetic}</font>" if phonetic else "")
+                + (f"  <font color='#4F46E5' size=9>[{tag}]</font>" if tag else "")
+                + f"  <font color='#9CA3AF' size=8>（{status}）</font>",
+                head,
+            )
+        )
         story.append(Spacer(1, 1.5 * mm))
 
         # 释义行
@@ -383,25 +423,31 @@ def build_words_pdf(
             for s in synos[:6]:
                 words_list = s.get("words") or []
                 if words_list:
-                    syno_texts.append(f"{s.get('pos','')} {' / '.join(words_list)}")
+                    syno_texts.append(f"{s.get('pos', '')} {' / '.join(words_list)}")
             if syno_texts:
-                story.append(Paragraph(
-                    f"同近义：{'；'.join(syno_texts)}",
-                    styles["example"],
-                ))
+                story.append(
+                    Paragraph(
+                        f"同近义：{'；'.join(syno_texts)}",
+                        styles["example"],
+                    )
+                )
             phrases = extra.get("phrases") or []
             if phrases:
-                ph_texts = [f"{p.get('phrase','')}（{p.get('cn','')}）" for p in phrases[:4] if p.get("phrase")]
+                ph_texts = [f"{p.get('phrase', '')}（{p.get('cn', '')}）" for p in phrases[:4] if p.get("phrase")]
                 if ph_texts:
-                    story.append(Paragraph(
-                        f"短语：{'；'.join(ph_texts)}",
-                        styles["example"],
-                    ))
+                    story.append(
+                        Paragraph(
+                            f"短语：{'；'.join(ph_texts)}",
+                            styles["example"],
+                        )
+                    )
         if example:
-            story.append(Paragraph(
-                f"例：{example}" + (f"　{example_cn}" if example_cn else ""),
-                styles["example"],
-            ))
+            story.append(
+                Paragraph(
+                    f"例：{example}" + (f"　{example_cn}" if example_cn else ""),
+                    styles["example"],
+                )
+            )
 
         if i < len(words):
             story.append(Spacer(1, 3.5 * mm))
@@ -413,3 +459,77 @@ def build_words_pdf(
 
     doc.build(story, onFirstPage=_decorate, onLaterPages=_decorate)
     return buf.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+# 文档导出 PDF（共享基座）
+# --------------------------------------------------------------------------- #
+def render_document_pdf(text: str, title: str) -> tuple[bytes | None, bool, str]:
+    """把文档正文渲染为单栏中文 PDF。
+
+    共享基座：供 ``kb_service.export_document(fmt='pdf')`` 调用，与错题本/单词本
+    PDF 同模块，统一字体注册与降级口径。
+
+    Returns:
+        ``(pdf_bytes, degraded, note)``。
+
+        - 正常：``(bytes, False, "")``；
+        - CID 字体注册失败：``(None, True, "CID字体注册失败，已降级")`` ——
+          **禁止静默退 Helvetica**（中文会变方框且不可观测，调用方必须能据
+          ``degraded=True`` 在响应头/UI 明确告知用户）；
+        - reportlab 缺失或渲染异常：``(None, True, <原因>)``。
+    """
+    try:
+        from io import BytesIO
+
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        from reportlab.pdfgen import canvas
+    except Exception:  # noqa: BLE001 —— reportlab 不可用属可观测降级，不冒泡
+        return None, True, "PDF 渲染依赖不可用（reportlab 缺失），已降级"
+
+    # CID 字体注册（中文）。失败时禁止静默退 Helvetica：返回 degraded=True
+    # 让调用方在响应头/UI 明确告知，而非产出中文方框的"看似成功"PDF。
+    try:
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+        font_name = "STSong-Light"
+    except Exception:  # noqa: BLE001
+        return None, True, "CID字体注册失败，已降级"
+
+    try:
+        buf = BytesIO()
+        c = canvas.Canvas(buf, pagesize=A4)
+        width, height = A4
+        x, top = 18 * mm, height - 20 * mm
+        bottom = 18 * mm
+        line_h = 6.5 * mm
+        chars_per_line = max(20, int((width - 36 * mm) / 5.2))
+
+        ctx = c.beginText(x, top)
+        ctx.setFont(font_name, 10.5)
+        y = top
+
+        def _new_page():
+            nonlocal ctx, y
+            c.drawText(ctx)
+            c.showPage()
+            ctx = c.beginText(x, top)
+            ctx.setFont(font_name, 10.5)
+            y = top
+
+        for raw_line in (text or "").split("\n"):
+            line = raw_line.rstrip()
+            # 依字符宽度硬折行（中文字符等宽近似），保证不溢出页宽
+            pieces = [line[i : i + chars_per_line] for i in range(0, len(line), chars_per_line)] or [""]
+            for piece in pieces:
+                ctx.textLine(piece)
+                y -= line_h
+                if y < bottom:
+                    _new_page()
+        c.drawText(ctx)
+        c.save()
+        return buf.getvalue(), False, ""
+    except Exception as e:  # noqa: BLE001 —— 渲染异常降级，不冒泡打断导出
+        return None, True, f"PDF 渲染异常：{e}"

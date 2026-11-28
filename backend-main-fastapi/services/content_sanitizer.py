@@ -50,48 +50,60 @@ __all__ = [
 #: 联系方式与引流模式（行级命中即剔除）
 #: 注意「公众号」必须带冒号或出现在引流动词后 —— 否则会误伤"公众号召力"
 #: （"公众/号召力"）这类正常词（实测踩坑）。
-_CONTACT_LINE_PATTERNS: Tuple[re.Pattern, ...] = tuple(re.compile(p) for p in (
-    r"微\s*信\s*(公众号|号)?\s*[：:]",
-    r"公众号\s*[：:]",
-    r"公众号\s*$",
-    r"扫码关注|扫一扫|扫码领取|扫码添加",
-    r"QQ\s*[：:]\s*\d{5,}",
-    r"[1][3-9]\d{9}",                      # 手机号
-    r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",  # 邮箱
-    r"https?://|www\.",
-    r"免费分享|免费领取|免费获取",
-    r"更多.{0,6}资料|资料.{0,4}分享",
-    r"关注.{0,8}(公众号|即可|获取)",
-))
+_CONTACT_LINE_PATTERNS: Tuple[re.Pattern, ...] = tuple(
+    re.compile(p)
+    for p in (
+        r"微\s*信\s*(公众号|号)?\s*[：:]",
+        r"公众号\s*[：:]",
+        r"公众号\s*$",
+        r"扫码关注|扫一扫|扫码领取|扫码添加",
+        r"QQ\s*[：:]\s*\d{5,}",
+        r"[1][3-9]\d{9}",  # 手机号
+        r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",  # 邮箱
+        r"https?://|www\.",
+        r"免费分享|免费领取|免费获取",
+        r"更多.{0,6}资料|资料.{0,4}分享",
+        r"关注.{0,8}(公众号|即可|获取)",
+    )
+)
 
 #: 分页/试卷标记
-_PAGINATION_PATTERNS: Tuple[re.Pattern, ...] = tuple(re.compile(p) for p in (
-    r"^[-—–=*_]{2,}\s*第?\s*\d{1,3}\s*页?\s*\(?OCR\)?\s*[-—–=*_]{2,}$",
-    r"^\s*第?\s*\d{1,3}\s*页\s*[（(]?\s*(共\s*\d{1,3}\s*页)?\s*[)）]?\s*(\(OCR\))?\s*$",
-    r"^\s*[（(]\s*OCR\s*[)）]\s*$",
-    r"^\s*第?\s*\d{1,3}\s*/\s*\d{1,3}\s*$",
-))
+_PAGINATION_PATTERNS: Tuple[re.Pattern, ...] = tuple(
+    re.compile(p)
+    for p in (
+        r"^[-—–=*_]{2,}\s*第?\s*\d{1,3}\s*页?\s*\(?OCR\)?\s*[-—–=*_]{2,}$",
+        r"^\s*第?\s*\d{1,3}\s*页\s*[（(]?\s*(共\s*\d{1,3}\s*页)?\s*[)）]?\s*(\(OCR\))?\s*$",
+        r"^\s*[（(]\s*OCR\s*[)）]\s*$",
+        r"^\s*第?\s*\d{1,3}\s*/\s*\d{1,3}\s*$",
+    )
+)
 
 #: 绝密/启用前等试卷头（通用试卷格式，非机构名）
-_EXAM_HEADER_PATTERNS: Tuple[re.Pattern, ...] = tuple(re.compile(p) for p in (
-    r"^\s*绝密[★☆●]?\s*启用前\s*$",
-    r"^\s*启封前\s*$",
-    r"^\s*密封线\s*$",
-    r"^\s*考生?\s*不得\s*填涂\s*$",
-))
+_EXAM_HEADER_PATTERNS: Tuple[re.Pattern, ...] = tuple(
+    re.compile(p)
+    for p in (
+        r"^\s*绝密[★☆●]?\s*启用前\s*$",
+        r"^\s*启封前\s*$",
+        r"^\s*密封线\s*$",
+        r"^\s*考生?\s*不得\s*填涂\s*$",
+    )
+)
 
 #: 纯数字短行（页码残留）
 _PAGE_NUM_ONLY = re.compile(r"^\s*\d{1,3}\s*$")
 
 #: 行内挖除模式（水印与正文同行时挖 fragment，不删整行）
-_CONTACT_INLINE_PATTERNS: Tuple[re.Pattern, ...] = tuple(re.compile(p) for p in (
-    r"微\s*信\s*(公众号|号)?\s*[：:]?\s*[A-Za-z0-9_\-—－]{3,}",
-    r"公众号\s*[：:]\s*\S{2,}",
-    r"扫码\S{0,12}",
-    r"[1][3-9]\d{9}",
-    r"免费(分享|领取|获取)\S{0,10}",
-    r"更多.{0,6}资料",
-))
+_CONTACT_INLINE_PATTERNS: Tuple[re.Pattern, ...] = tuple(
+    re.compile(p)
+    for p in (
+        r"微\s*信\s*(公众号|号)?\s*[：:]?\s*[A-Za-z0-9_\-—－]{3,}",
+        r"公众号\s*[：:]\s*\S{2,}",
+        r"扫码\S{0,12}",
+        r"[1][3-9]\d{9}",
+        r"免费(分享|领取|获取)\S{0,10}",
+        r"更多.{0,6}资料",
+    )
+)
 
 # --------------------------------------------------------------------------- #
 # 二、乱码 / 控制字符（通用特征）
@@ -101,8 +113,7 @@ _CONTACT_INLINE_PATTERNS: Tuple[re.Pattern, ...] = tuple(re.compile(p) for p in 
 #: 不排除会把公式行整行误判为乱码删掉（实测：
 #: "= 0.7 X(51 + 47×2)×103 ×910 X10-9" 因 3 个 × 被判乱码）。
 _MATH_SAFE_CHARS = set("×÷±°²³¹¼½¾µ‰·–—‘’“”…−")
-_MOJIBAKE_CHARS = re.compile(
-    "[\ufffd\u00ff\u0160\u0161\u017d\u017e\u0178\u0152\u0153\u00c0-\u00ff]")
+_MOJIBAKE_CHARS = re.compile("[\ufffd\u00ff\u0160\u0161\u017d\u017e\u0178\u0152\u0153\u00c0-\u00ff]")
 _ENGLISH_WORD = re.compile(r"[a-z]{4}")
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u202a-\u202e\ufeff\u2060]")
@@ -110,7 +121,7 @@ _INLINE_SPACE = re.compile(r"[ \t]{2,}")
 _CJK_SPACE = re.compile(r"([\u4e00-\u9fff])\s+([\u4e00-\u9fff])")
 
 
-def _mojibake_chars_in(line: str) -> list:
+def _mojibake_chars_in(line: str) -> List[str]:
     """行内乱码字符（已剔除数学/单位符号）。"""
     return [c for c in _MOJIBAKE_CHARS.findall(line) if c not in _MATH_SAFE_CHARS]
 
@@ -173,11 +184,10 @@ def get_learned_patterns() -> Tuple[List[re.Pattern], List[str]]:
     try:
         from database import SessionLocal
         from sqlalchemy import text
+
         db = SessionLocal()
         try:
-            rows = db.execute(text(
-                "SELECT phrase FROM watermark_lexicon WHERE enabled = TRUE"
-            )).fetchall()
+            rows = db.execute(text("SELECT phrase FROM watermark_lexicon WHERE enabled = TRUE")).fetchall()
         finally:
             db.close()
         pats: List[re.Pattern] = []
@@ -188,8 +198,7 @@ def get_learned_patterns() -> Tuple[List[re.Pattern], List[str]]:
                 continue
             frags.append(p)
             # 含正则元字符的按原样编译，普通文本转义
-            pats.append(re.compile(p if any(c in p for c in r"\[]()*+?{}|^$")
-                                   else re.escape(p)))
+            pats.append(re.compile(p if any(c in p for c in r"\[]()*+?{}|^$") else re.escape(p)))
         _LEARNED_PATTERNS = pats
         _LEARNED_FRAGMENTS = frags
         _LEARNED_STATE, _LEARNED_TS = 1, time.time()
@@ -200,7 +209,8 @@ def get_learned_patterns() -> Tuple[List[re.Pattern], List[str]]:
         if _LEARNED_STATE != 2:
             logger.warning(
                 "自学习水印词库加载失败，降级为内置规则（%ss 后重试）：%s",
-                int(_LEARNED_FAIL_TTL), str(exc)[:200],
+                int(_LEARNED_FAIL_TTL),
+                str(exc)[:200],
             )
         _LEARNED_STATE, _LEARNED_TS = 2, time.time()
         return _LEARNED_PATTERNS, _LEARNED_FRAGMENTS
@@ -216,13 +226,14 @@ def invalidate_learned_cache() -> None:
 # 四、核心清洗
 # --------------------------------------------------------------------------- #
 
+
 class WatermarkHit:
     """一次水印命中记录（可审计）。"""
 
     __slots__ = ("kind", "pattern", "line")
 
     def __init__(self, kind: str, pattern: str, line: str) -> None:
-        self.kind = kind        # line / inline / learned
+        self.kind = kind  # line / inline / learned
         self.pattern = pattern
         self.line = line[:80]
 
@@ -244,8 +255,7 @@ def _strip_contact_inline(s: str) -> str:
     return s.strip(" \t，,;；、-—|·　")
 
 
-def _hit_line(s: str, hits: Optional[List[WatermarkHit]],
-              drop_standalone_numbers: bool = True) -> bool:
+def _hit_line(s: str, hits: Optional[List[WatermarkHit]], drop_standalone_numbers: bool = True) -> bool:
     """整行命中"确定性剔除"规则 -> True。
 
     ``drop_standalone_numbers``：是否剔除"纯 1~3 位数字"行（页码残留）。
@@ -301,9 +311,13 @@ def document_has_page_markers(text: Optional[str]) -> bool:
     return len(_PAGE_MARKER_RE.findall(text)) >= 2
 
 
-def sanitize_text(raw: Optional[str], *, hits: Optional[List[WatermarkHit]] = None,
-                  collapse_blank: bool = True,
-                  drop_standalone_numbers: bool = True) -> str:
+def sanitize_text(
+    raw: Optional[str],
+    *,
+    hits: Optional[List[WatermarkHit]] = None,
+    collapse_blank: bool = True,
+    drop_standalone_numbers: bool = True,
+) -> str:
     """清洗任意文本（题干/解析/文档正文/错题内容）。
 
     控制字符 -> 零宽 -> 行级剔除（结构规律+乱码+自学习词库）
@@ -369,12 +383,12 @@ _OPT_KEY_RE = re.compile(r"^\s*[\[（(]?\s*([A-H])\s*[\]）)]?\s*[.、．:：]?\
 #: 键可起始于行首/换行/空白之后（OCR 常把 ABCD 压在一行）。
 _OPT_KEY_AT = re.compile(
     r"(?:^|\n|(?<=\s)|(?<=[。？！；：）】」》\])]))"
-    r"[\[（(]?\s*([A-H])\s*[\]）)]?\s*[.、．:：]\s*")
+    r"[\[（(]?\s*([A-H])\s*[\]）)]?\s*[.、．:：]\s*"
+)
 #: 宽松键定位（无分隔符：OCR 写成"A斯密特 B单稳态"）。
 #: 证据要求严格：必须凑齐从 A 起连续 >=3 个键才采用（见 _extract_loose_options），
 #: 避免把 "A4纸"/"D55" 之类误当选项。
-_OPT_KEY_LOOSE = re.compile(
-    r"(?:^|\s|[（(])([A-H])\s*(?=[\u4e00-\u9fff]|\d{1,3}\s*[\u4e00-\u9fff])")
+_OPT_KEY_LOOSE = re.compile(r"(?:^|\s|[（(])([A-H])\s*(?=[\u4e00-\u9fff]|\d{1,3}\s*[\u4e00-\u9fff])")
 
 
 def _extract_loose_options(content: str) -> Tuple[str, List[Dict[str, str]]]:
@@ -389,15 +403,15 @@ def _extract_loose_options(content: str) -> Tuple[str, List[Dict[str, str]]]:
     except ValueError:
         return content, []
     run = ["A"]
-    for ch in letters[start + 1:]:
+    for ch in letters[start + 1 :]:
         if ord(ch) == ord(run[-1]) + 1:
             run.append(ch)
         else:
             break
     if len(run) < 3:
         return content, []
-    seq = keys[start:start + len(run)]
-    stem = content[:seq[0].start()].strip()
+    seq = keys[start : start + len(run)]
+    stem = content[: seq[0].start()].strip()
     if len(stem) > _MAX_EXTRACT_STEM:
         return content, []
     opts: List[str] = []
@@ -442,7 +456,7 @@ def normalize_options(options: Any) -> Tuple[List[Dict[str, str]], List[str]]:
     if isinstance(options, str):
         parts = re.split(r"[\n;；]+", options)
         items = [p for p in (x.strip() for x in parts) if p]
-    elif isinstance(options, (list, tuple)):
+    elif isinstance(options, list | tuple):
         for o in options:
             if isinstance(o, str):
                 t = o.strip()
@@ -466,7 +480,7 @@ def normalize_options(options: Any) -> Tuple[List[Dict[str, str]], List[str]]:
             continue
         m = _OPT_KEY_RE.match(s)
         if m:
-            s = s[m.end():].strip()
+            s = s[m.end() :].strip()
         if s:
             cleaned.append(s)
     if len(cleaned) < 2:
@@ -508,7 +522,7 @@ def extract_inline_options(content: str) -> Tuple[str, List[Dict[str, str]]]:
     keys = list(_OPT_KEY_AT.finditer(content))
     if len(keys) < 2:
         return content, []
-    stem = content[:keys[0].start()].strip()
+    stem = content[: keys[0].start()].strip()
     if len(stem) > 400:
         return content, []  # 题干超长 = 大题块/多题粘连，放弃抽取
     opts: List[str] = []
@@ -533,6 +547,7 @@ def extract_inline_options(content: str) -> Tuple[str, List[Dict[str, str]]]:
 # --------------------------------------------------------------------------- #
 # 六、题目级清洗 + 校验门
 # --------------------------------------------------------------------------- #
+
 
 def sanitize_question_fields(fields: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     """清洗一道题（content/options/answer/analysis/rubric）。返回 (副本, issues)。"""
@@ -630,7 +645,9 @@ _STRUCTURAL_LABEL_RE = re.compile(
 )
 
 
-_PAGE_MARK_RE = re.compile(r"^\s*-{2,}\s*第?\s*\d{1,3}\s*页?\s*\(?OCR\)?\s*-{2,}\s*$|^\s*第?\s*\d{1,3}\s*页\s*[（(]?\s*(共\s*\d{1,3}\s*页)?\s*[)）]?\s*(\(OCR\))?\s*$")
+_PAGE_MARK_RE = re.compile(
+    r"^\s*-{2,}\s*第?\s*\d{1,3}\s*页?\s*\(?OCR\)?\s*-{2,}\s*$|^\s*第?\s*\d{1,3}\s*页\s*[（(]?\s*(共\s*\d{1,3}\s*页)?\s*[)）]?\s*(\(OCR\))?\s*$"
+)
 
 
 def _boundary_ratio(db, phrase: str, max_len: int, sample: int = 400) -> Tuple[int, int]:
@@ -642,11 +659,15 @@ def _boundary_ratio(db, phrase: str, max_len: int, sample: int = 400) -> Tuple[i
     页边界率是区分"水印"与"正文结构"的有效信号。
     """
     from sqlalchemy import text
-    rows = db.execute(text("""
+
+    rows = db.execute(
+        text("""
         SELECT content FROM documents
         WHERE content LIKE '%(OCR)%' AND length(content) > 500
         LIMIT :lim
-    """), {"lim": sample}).fetchall()
+    """),
+        {"lim": sample},
+    ).fetchall()
     boundary = middle = 0
     for (content,) in rows:
         lines = str(content).split("\n")
@@ -662,9 +683,15 @@ def _boundary_ratio(db, phrase: str, max_len: int, sample: int = 400) -> Tuple[i
     return boundary, middle
 
 
-def learn_watermark_lexicon(db, *, min_docs: int = 3, min_per_doc: float = 3.0,
-                            max_len: int = 40, apply_ddl: bool = True,
-                            min_boundary_ratio: float = 0.6) -> Dict[str, Any]:
+def learn_watermark_lexicon(
+    db,
+    *,
+    min_docs: int = 3,
+    min_per_doc: float = 3.0,
+    max_len: int = 40,
+    apply_ddl: bool = True,
+    min_boundary_ratio: float = 0.6,
+) -> Dict[str, Any]:
     """从 documents 语料自学习水印词库（保守自动启用 + 候选队列）。
 
     智能判据（无需任何 vendor 名单，三条证据链）：
@@ -678,11 +705,13 @@ def learn_watermark_lexicon(db, *, min_docs: int = 3, min_per_doc: float = 3.0,
     **零代码改动**。返回统计 {learned, candidates, scanned}。
     """
     from sqlalchemy import text
+
     if apply_ddl:
         db.execute(text(LEXICON_DDL))
         db.commit()
 
-    rows = db.execute(text("""
+    rows = db.execute(
+        text("""
         SELECT line, count(DISTINCT document_id) AS nd, avg(cnt) AS avg_per_doc
         FROM (
             SELECT id AS document_id,
@@ -696,7 +725,9 @@ def learn_watermark_lexicon(db, *, min_docs: int = 3, min_per_doc: float = 3.0,
         HAVING count(DISTINCT document_id) >= :min_docs
         ORDER BY nd DESC
         LIMIT 1000
-    """), {"max_len": max_len, "min_docs": min_docs}).fetchall()
+    """),
+        {"max_len": max_len, "min_docs": min_docs},
+    ).fetchall()
 
     learned = 0
     candidates = 0
@@ -714,14 +745,14 @@ def learn_watermark_lexicon(db, *, min_docs: int = 3, min_per_doc: float = 3.0,
             b, m = _boundary_ratio(db, line, max_len)
             b_ratio = b / (b + m) if (b + m) else 0.0
         # 已被内置规则覆盖的（分页标记等）不必进队列减噪
-        covered = (any(p.search(line) for p in _PAGINATION_PATTERNS)
-                   or _PAGE_NUM_ONLY.match(line) is not None)
+        covered = any(p.search(line) for p in _PAGINATION_PATTERNS) or _PAGE_NUM_ONLY.match(line) is not None
         if covered:
             continue
         auto = strong or (high_freq and b_ratio >= min_boundary_ratio)
         if auto:
             conf = 0.95 if strong else min(0.9, 0.5 + 0.05 * nd + 0.2 * b_ratio)
-            db.execute(text("""
+            db.execute(
+                text("""
                 INSERT INTO watermark_lexicon (phrase, doc_count, hit_count, confidence, enabled, auto_learned)
                 VALUES (:p, :nd, 0, :conf, TRUE, TRUE)
                 ON CONFLICT (phrase) DO UPDATE SET
@@ -729,16 +760,21 @@ def learn_watermark_lexicon(db, *, min_docs: int = 3, min_per_doc: float = 3.0,
                     confidence = GREATEST(watermark_lexicon.confidence, EXCLUDED.confidence),
                     enabled = TRUE,
                     updated_at = now()
-            """), {"p": line, "nd": int(nd), "conf": round(conf, 3)})
+            """),
+                {"p": line, "nd": int(nd), "conf": round(conf, 3)},
+            )
             learned += 1
         else:
-            db.execute(text("""
+            db.execute(
+                text("""
                 INSERT INTO watermark_lexicon (phrase, doc_count, hit_count, confidence, enabled, auto_learned)
                 VALUES (:p, :nd, 0, 0.3, FALSE, TRUE)
                 ON CONFLICT (phrase) DO UPDATE SET
                     doc_count = EXCLUDED.doc_count,
                     updated_at = now()
-            """), {"p": line, "nd": int(nd)})
+            """),
+                {"p": line, "nd": int(nd)},
+            )
             candidates += 1
     db.commit()
     invalidate_learned_cache()

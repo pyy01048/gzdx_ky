@@ -1,4 +1,5 @@
 """RAG 检索门控路由（A3）：前缀 /api/gate。"""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -62,13 +63,9 @@ def gate_stats(db: Session = Depends(get_db)):
     """门控打点统计：决策分布 / would_abstain 率 / 平均延迟。"""
     ensure_module_a_schema(db)
     conn = wrap_conn(db.connection().connection)
-    rows = conn.execute(
-        "SELECT decision, COUNT(*) AS n FROM retrieval_gate_logs GROUP BY decision"
-    ).fetchall()
+    rows = conn.execute("SELECT decision, COUNT(*) AS n FROM retrieval_gate_logs GROUP BY decision").fetchall()
     total = conn.execute("SELECT COUNT(*) FROM retrieval_gate_logs").fetchone()[0]
-    abstain_n = conn.execute(
-        "SELECT COUNT(*) FROM retrieval_gate_logs WHERE would_abstain = TRUE"
-    ).fetchone()[0]
+    abstain_n = conn.execute("SELECT COUNT(*) FROM retrieval_gate_logs WHERE would_abstain = TRUE").fetchone()[0]
     avg_ms = conn.execute("SELECT AVG(latency_ms) FROM retrieval_gate_logs").fetchone()[0]
     return {
         "total": int(total),

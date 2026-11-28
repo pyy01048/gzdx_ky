@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """网盘模块接口验收（不依赖已授权：未授权时应给出明确指引而非 500）。"""
+
 import json
 import sys
 import urllib.error
@@ -39,15 +40,16 @@ print("=" * 74)
 print("1) OAuth 授权入口")
 print("=" * 74)
 st, d = call("GET", "/api/netdisk/auth-url")
-check(st == 200 and d.get("auth_url", "").startswith("https://openapi.baidu.com/oauth/2.0/authorize"),
-      "授权 URL 生成", st)
+check(
+    st == 200 and d.get("auth_url", "").startswith("https://openapi.baidu.com/oauth/2.0/authorize"), "授权 URL 生成", st
+)
 if st == 200:
     url = d["auth_url"]
     # 百度要求 device_id 为 32 位十六进制
     import re
+
     m = re.search(r"device_id=([0-9a-fA-F]+)", url)
-    check(bool(m) and len(m.group(1)) == 32, "device_id 为 32 位十六进制",
-          m.group(1)[:12] + "..." if m else "缺失")
+    check(bool(m) and len(m.group(1)) == 32, "device_id 为 32 位十六进制", m.group(1)[:12] + "..." if m else "缺失")
     check("scope=basic" in url or "scope=basic%2Cnetdisk" in url, "含 netdisk scope")
     check("client_id=" in url, "含 client_id")
 
@@ -58,16 +60,21 @@ print("=" * 74)
 st, d = call("GET", "/api/netdisk/token-status")
 check(st == 200, "token-status 可读", st)
 if st == 200:
-    check("authorized" in d and "expires_in_seconds" in d and "expired" in d,
-          "返回授权状态/剩余有效期/是否过期", json.dumps(d, ensure_ascii=False)[:120])
+    check(
+        "authorized" in d and "expires_in_seconds" in d and "expired" in d,
+        "返回授权状态/剩余有效期/是否过期",
+        json.dumps(d, ensure_ascii=False)[:120],
+    )
 
 print()
 print("=" * 74)
 print("3) 新增查询接口——未授权时应 401 且给人话提示，不能 500")
 print("=" * 74)
-for path in ("/api/netdisk/search?keyword=" + urllib.parse.quote("数电") + "&page=1",
-             "/api/netdisk/recursive-files?path=/&max_depth=1&max_items=20&deadline=15",
-             "/api/netdisk/quota"):
+for path in (
+    "/api/netdisk/search?keyword=" + urllib.parse.quote("数电") + "&page=1",
+    "/api/netdisk/recursive-files?path=/&max_depth=1&max_items=20&deadline=15",
+    "/api/netdisk/quota",
+):
     st, d = call("GET", path)
     # 百度 API 本身较慢（单请求 6-7s），允许 200/401/502/504
     ok = st in (200, 401, 502, 504)
@@ -103,10 +110,7 @@ print("=" * 74)
 st, d = call("GET", "/api/netdisk/files?path=/")
 # 授权失效时 files 必须明确 401（带 reauthorize 指引），而不是静默返回
 # 本地同步缓存目录——那正是"没连接网盘却显示目录"的 bug 根因。
-ok = st == 200 or (
-    st == 401 and isinstance(d, dict)
-    and (d.get("detail") or {}).get("action") == "reauthorize"
-)
+ok = st == 200 or (st == 401 and isinstance(d, dict) and (d.get("detail") or {}).get("action") == "reauthorize")
 check(ok, "/api/netdisk/files?path=/", f"HTTP {st}")
 st, _ = call("GET", "/api/netdisk/platform-configs")
 check(st == 200, "/api/netdisk/platform-configs", f"HTTP {st}")

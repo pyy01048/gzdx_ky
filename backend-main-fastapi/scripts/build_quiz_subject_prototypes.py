@@ -12,6 +12,7 @@
     python scripts/build_quiz_subject_prototypes.py --per-subject 120
     python scripts/build_quiz_subject_prototypes.py --force
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,9 +41,10 @@ def collect_seeds(db, per_subject: int) -> dict:
     仅剔除 junk（真垃圾）与长度不足；is_available=False 仅表示"尚未处理"而非劣质，
     故不排除，以让小科目攒够样本。
     """
-    from models import QuizQuestion
     from services.quiz_autoclassify import _SUBJECT_RULES
     from sqlalchemy import func
+
+    from models import QuizQuestion
 
     seeds: dict = {}
     for subject, _kws in _SUBJECT_RULES:
@@ -69,27 +71,34 @@ def collect_seeds(db, per_subject: int) -> dict:
 
 def ensure_table(db) -> None:
     from sqlalchemy import text
-    db.execute(text(
-        "CREATE TABLE IF NOT EXISTS quiz_subject_centroids ("
-        "  subject VARCHAR(50) PRIMARY KEY,"
-        "  engine VARCHAR(20) NOT NULL DEFAULT 'bge',"
-        "  dim INTEGER NOT NULL,"
-        "  vector BYTEA NOT NULL,"
-        "  n_samples INTEGER NOT NULL DEFAULT 0,"
-        "  built_at TIMESTAMPTZ NOT NULL DEFAULT now())"))
+
+    db.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS quiz_subject_centroids ("
+            "  subject VARCHAR(50) PRIMARY KEY,"
+            "  engine VARCHAR(20) NOT NULL DEFAULT 'bge',"
+            "  dim INTEGER NOT NULL,"
+            "  vector BYTEA NOT NULL,"
+            "  n_samples INTEGER NOT NULL DEFAULT 0,"
+            "  built_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+        )
+    )
     db.commit()
 
 
 def upsert(db, subject: str, centroid: np.ndarray, n: int) -> None:
     from sqlalchemy import text
-    db.execute(text(
-        "INSERT INTO quiz_subject_centroids (subject, engine, dim, vector, n_samples, built_at) "
-        "VALUES (:s, 'bge', :d, :v, :n, now()) "
-        "ON CONFLICT (subject) DO UPDATE SET "
-        "engine=EXCLUDED.engine, dim=EXCLUDED.dim, vector=EXCLUDED.vector, "
-        "n_samples=EXCLUDED.n_samples, built_at=now()"),
-        {"s": subject, "d": int(centroid.size),
-         "v": centroid.astype(np.float32).tobytes(), "n": n})
+
+    db.execute(
+        text(
+            "INSERT INTO quiz_subject_centroids (subject, engine, dim, vector, n_samples, built_at) "
+            "VALUES (:s, 'bge', :d, :v, :n, now()) "
+            "ON CONFLICT (subject) DO UPDATE SET "
+            "engine=EXCLUDED.engine, dim=EXCLUDED.dim, vector=EXCLUDED.vector, "
+            "n_samples=EXCLUDED.n_samples, built_at=now()"
+        ),
+        {"s": subject, "d": int(centroid.size), "v": centroid.astype(np.float32).tobytes(), "n": n},
+    )
     db.commit()
 
 
@@ -100,6 +109,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from services.chunk_classifier import encode_texts
+
     if encode_texts(["健康检查"]) is None:
         print("❌ bge 不可用，拒绝构建。先缓存 bge 模型。")
         return 1
@@ -120,9 +130,8 @@ def main() -> int:
         for subj, texts in sorted(seeds.items()):
             if not args.force:
                 existing = db.execute(
-                    __import__("sqlalchemy").text(
-                        "SELECT 1 FROM quiz_subject_centroids WHERE subject=:s"),
-                    {"s": subj}).fetchone()
+                    __import__("sqlalchemy").text("SELECT 1 FROM quiz_subject_centroids WHERE subject=:s"), {"s": subj}
+                ).fetchone()
                 if existing:
                     continue
             vecs = encode_texts(texts)

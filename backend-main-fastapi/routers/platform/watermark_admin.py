@@ -23,7 +23,9 @@ from sqlalchemy import text
 from utils.response import MAX_PAGE_SIZE
 from utils.security import require_admin
 
-router = APIRouter(prefix="/api/admin/watermark-lexicon", tags=["admin-watermark"], dependencies=[Depends(require_admin)])
+router = APIRouter(
+    prefix="/api/admin/watermark-lexicon", tags=["admin-watermark"], dependencies=[Depends(require_admin)]
+)
 
 
 class LexiconToggle(BaseModel):
@@ -36,13 +38,16 @@ async def list_lexicon(
     only_candidates: bool = Query(True, description="只看待审核候选（enabled=False）"),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
 ):
-    rows = db.execute(text("""
+    rows = db.execute(
+        text("""
         SELECT phrase, doc_count, confidence, enabled, auto_learned, created_at
         FROM watermark_lexicon
         WHERE (:only = FALSE OR enabled = FALSE)
         ORDER BY doc_count DESC
         LIMIT :lim
-    """), {"only": only_candidates, "lim": limit}).fetchall()
+    """),
+        {"only": only_candidates, "lim": limit},
+    ).fetchall()
     return {
         "total": len(rows),
         "items": [
@@ -74,15 +79,21 @@ async def toggle_lexicon(phrase: str, body: LexiconToggle, db=Depends(get_db)):
     from services.content_sanitizer import invalidate_learned_cache
 
     phrase = urllib.parse.unquote(phrase)
-    res = db.execute(text("""
+    res = db.execute(
+        text("""
         UPDATE watermark_lexicon SET enabled = :en, updated_at = now()
         WHERE phrase = :p
-    """), {"en": body.enabled, "p": phrase})
+    """),
+        {"en": body.enabled, "p": phrase},
+    )
     if res.rowcount == 0:
-        db.execute(text("""
+        db.execute(
+            text("""
             INSERT INTO watermark_lexicon (phrase, doc_count, confidence, enabled, auto_learned)
             VALUES (:p, 0, 0.9, :en, FALSE)
-        """), {"p": phrase, "en": body.enabled})
+        """),
+            {"p": phrase, "en": body.enabled},
+        )
     db.commit()
     invalidate_learned_cache()
     return {"ok": True, "phrase": phrase, "enabled": body.enabled}

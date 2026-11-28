@@ -15,6 +15,7 @@
     python scripts/isolate_conflict_quiz.py apply     # 写库（UPDATE is_junk）
     python scripts/isolate_conflict_quiz.py stats     # 三项数字回报
 """
+
 from __future__ import annotations
 
 import datetime
@@ -51,7 +52,6 @@ def latest_backup() -> str | None:
         return None
     names.sort()
     return os.path.join(BACKUP_DIR, names[-1])
-
 
 
 def make_backup() -> str:
@@ -127,9 +127,12 @@ def dryrun_diff() -> int:
               AND b.id NOT IN ({marks})
         """
         outside = [r[0] for r in conn.execute(q, TARGET_IDS)]
-        only_target = [r[0] for r in conn.execute(
-            f"SELECT c.id FROM main.quiz_questions c "
-            f"WHERE c.id IN ({marks}) AND c.is_junk <> 1", TARGET_IDS)]
+        only_target = [
+            r[0]
+            for r in conn.execute(
+                f"SELECT c.id FROM main.quiz_questions c WHERE c.id IN ({marks}) AND c.is_junk <> 1", TARGET_IDS
+            )
+        ]
         total = conn.execute("SELECT COUNT(*) FROM main.quiz_questions").fetchone()[0]
         bak_total = conn.execute("SELECT COUNT(*) FROM bak.quiz_questions").fetchone()[0]
         conn.execute("DETACH DATABASE bak")
@@ -150,9 +153,7 @@ def apply_isolate() -> None:
         conn.execute("BEGIN IMMEDIATE")
         before = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0").fetchone()[0]
         marks = ",".join("?" * len(TARGET_IDS))
-        rows = conn.execute(
-            f"SELECT id, is_junk FROM quiz_questions WHERE id IN ({marks})", TARGET_IDS
-        ).fetchall()
+        rows = conn.execute(f"SELECT id, is_junk FROM quiz_questions WHERE id IN ({marks})", TARGET_IDS).fetchall()
         missing = sorted(set(TARGET_IDS) - {r[0] for r in rows})
         if missing:
             raise SystemExit(f"[apply] 目标 id 不存在，中止：{missing}")
@@ -183,12 +184,13 @@ def report_stats() -> None:
         j0 = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0").fetchone()[0]
         j1 = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=1").fetchone()[0]
         ans = conn.execute(
-            "SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND answer IS NOT NULL "
-            "AND TRIM(answer)<>''").fetchone()[0]
+            "SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND answer IS NOT NULL AND TRIM(answer)<>''"
+        ).fetchone()[0]
         chk = conn.execute("PRAGMA integrity_check").fetchone()[0]
         left = conn.execute(
-            "SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND id IN (%s)"
-            % ",".join("?" * len(TARGET_IDS)), TARGET_IDS).fetchone()[0]
+            "SELECT COUNT(*) FROM quiz_questions WHERE is_junk=0 AND id IN (%s)" % ",".join("?" * len(TARGET_IDS)),
+            TARGET_IDS,
+        ).fetchone()[0]
     finally:
         conn.close()
     print(f"[stats] 总行数={total}  is_junk=0={j0}  is_junk=1={j1}")

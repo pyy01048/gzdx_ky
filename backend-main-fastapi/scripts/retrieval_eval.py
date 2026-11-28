@@ -7,6 +7,7 @@ search_service.hybrid_search（FTS+RRF+术语加权精排），按"相关文档�
 gold 判定：该 query 的 subject 下，documents.content 命中任一 rel_keyword 的文档。
 输出 JSON 报告到 TEMP_DIR/retrieval_eval_result.json。
 """
+
 from __future__ import annotations
 
 import io
@@ -34,9 +35,9 @@ def main() -> None:
         db = SessionLocal()
         try:
             # 预加载全部文档（id, subject, file_name, content）避免逐条查询
-            docs = db.connection().connection.execute(
-                "SELECT id, subject, file_name, content FROM documents"
-            ).fetchall()
+            docs = (
+                db.connection().connection.execute("SELECT id, subject, file_name, content FROM documents").fetchall()
+            )
             doc_by_id = {r[0]: r for r in docs}
             # gold 文档集：每个 case 的 (subject, rel_keywords) -> set[doc_id]
             gold_cache = {}
@@ -77,13 +78,19 @@ def main() -> None:
                     if d in gold:
                         mrr = 1.0 / rank
                         break
-                per_case.append({
-                    "id": c["id"], "query": c["query"], "subject": c["subject"],
-                    "gold_count": len(gold), "recall@1": round(rec1, 4),
-                    "recall@5": round(rec5, 4), "recall@10": round(rec10, 4),
-                    "mrr@10": round(mrr, 4),
-                    "top_docs": [doc_by_id.get(d, ("", "", "", ""))[2] or "" for d in seen_docs[:5]],
-                })
+                per_case.append(
+                    {
+                        "id": c["id"],
+                        "query": c["query"],
+                        "subject": c["subject"],
+                        "gold_count": len(gold),
+                        "recall@1": round(rec1, 4),
+                        "recall@5": round(rec5, 4),
+                        "recall@10": round(rec10, 4),
+                        "mrr@10": round(mrr, 4),
+                        "top_docs": [doc_by_id.get(d, ("", "", "", ""))[2] or "" for d in seen_docs[:5]],
+                    }
+                )
 
             # 汇总
             total = len(per_case)
@@ -119,6 +126,7 @@ def main() -> None:
         print("RESULT_WRITTEN " + OUT_PATH)
     except Exception:
         import traceback
+
         with open(OUT_PATH, "w", encoding="utf-8") as f:
             traceback.print_exc(file=f)
         print("ERROR_WRITTEN " + OUT_PATH)

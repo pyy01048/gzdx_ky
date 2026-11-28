@@ -52,21 +52,67 @@ REAL_SRC = re.compile(r"真题|试题|试卷|联考|题库|月考|期末|期中"
 
 #: 题干像题的特征词
 Q_MARK: Tuple[str, ...] = (
-    "？", "?", "____", "（ ）", "（）", "( )", "()", "（  ", "求：", "试：", "简述", "设计",
-    "计算", "画出", "写出", "说明", "选择", "判断", "填空", "已知",
-    "分析", "证明", "列举", "论述", "为什么", "如何", "哪些",
+    "？",
+    "?",
+    "____",
+    "（ ）",
+    "（）",
+    "( )",
+    "()",
+    "（  ",
+    "求：",
+    "试：",
+    "简述",
+    "设计",
+    "计算",
+    "画出",
+    "写出",
+    "说明",
+    "选择",
+    "判断",
+    "填空",
+    "已知",
+    "分析",
+    "证明",
+    "列举",
+    "论述",
+    "为什么",
+    "如何",
+    "哪些",
 )
 #: 答案体特征（题干位置却是答案）
 ANS_START: Tuple[str, ...] = (
-    "解：", "答：", "答案", "解析", "解:", "答:", "参考答", "【解】",
+    "解：",
+    "答：",
+    "答案",
+    "解析",
+    "解:",
+    "答:",
+    "参考答",
+    "【解】",
 )
 ANS_MID: Tuple[str, ...] = (
-    "故选", "故答案", "因此答案", "所以答案", "答案为", "答案：", "故选择",
+    "故选",
+    "故答案",
+    "因此答案",
+    "所以答案",
+    "答案为",
+    "答案：",
+    "故选择",
 )
 #: PPT / 讲义结构残留
 PPT_RESIDUE: Tuple[str, ...] = (
-    "返回", "下页", "上页", "内容盛要", "内容提要", "放映", "幻灯片",
-    "点击", "页 共", "第 页", "共页",
+    "返回",
+    "下页",
+    "上页",
+    "内容盛要",
+    "内容提要",
+    "放映",
+    "幻灯片",
+    "点击",
+    "页 共",
+    "第 页",
+    "共页",
 )
 #: 乱码（U+FFFD REPLACEMENT CHARACTER）
 MOJIBAKE = "\ufffd"
@@ -78,20 +124,32 @@ _CJK_RE = re.compile(r"[\u4e00-\u9fa5]")
 # 二、阈值
 # --------------------------------------------------------------------------- #
 #: 考试题型（section_type 命中这些值时允许"陈述式"题目，见 admit 第 3.5 步）
-EXAM_SECTIONS = frozenset({
-    "选择", "多选", "判断", "填空", "简答", "计算", "分析",
-    "设计", "证明", "画图", "论述", "综合",
-})
+EXAM_SECTIONS = frozenset(
+    {
+        "选择",
+        "多选",
+        "判断",
+        "填空",
+        "简答",
+        "计算",
+        "分析",
+        "设计",
+        "证明",
+        "画图",
+        "论述",
+        "综合",
+    }
+)
 #: 陈述式题目（判断题）的长度上限
 MAX_LEN_DECLARATIVE = 150
 #: 讲义/课件来源的无选项题干长度上限
 LECTURE_MAX_LEN = 300
 
-MIN_LEN = 15                # 题干最小长度
-MIN_LEN_ANSWERED = 10      # 有答案时的最小长度
-MAX_LEN_NO_ANSWER = 400    # 无答案题干长度上限（超过即视为讲义长段落）
-MAX_LEN_ANSWERED = 1200    # 有答案题干长度上限
-MIN_OPTIONS = 2            # 选项数下限（有选项本身就是强"像题"信号）
+MIN_LEN = 15  # 题干最小长度
+MIN_LEN_ANSWERED = 10  # 有答案时的最小长度
+MAX_LEN_NO_ANSWER = 400  # 无答案题干长度上限（超过即视为讲义长段落）
+MAX_LEN_ANSWERED = 1200  # 有答案题干长度上限
+MIN_OPTIONS = 2  # 选项数下限（有选项本身就是强"像题"信号）
 
 #: 选项切出后允许「题干+选项」合计长度参与过短判定的最小选项数。
 #:
@@ -309,17 +367,16 @@ def detect_stem_similarity_alert(
     lo, hi = int(len(stem) * 0.6), int(len(stem) / 0.6) + 1
     best, best_other = 0.0, ""
     for other in stems:
-        if other == stem:            # 精确同题干归 L1，不在 L2 告警
+        if other == stem:  # 精确同题干归 L1，不在 L2 告警
             continue
         if not (lo <= len(other) <= hi):
-            continue                  # 长度差过大必不相似，粗筛
+            continue  # 长度差过大必不相似，粗筛
         r = _qb.similarity_ratio(stem, other)
         if r > best:
             best, best_other = r, other
     if best < threshold:
         return False, ""
-    return True, (f"相似题干告警(非精确冲突, 不拒收)：库中有一条相似度 "
-                  f"{best:.3f} 的题干「{best_other[:40]}」")
+    return True, (f"相似题干告警(非精确冲突, 不拒收)：库中有一条相似度 {best:.3f} 的题干「{best_other[:40]}」")
 
 
 # --------------------------------------------------------------------------- #
@@ -364,7 +421,9 @@ def gate_log_summary(logger_: Optional[logging.Logger] = None) -> Dict[str, int]
     rejected = sum(v for k, v in snap.items() if k.startswith("reject:"))
     lg.info(
         "[quiz_content_gate] 候选=%d 通过=%d 拦截=%d 明细=%s",
-        admitted + rejected, admitted, rejected,
+        admitted + rejected,
+        admitted,
+        rejected,
         {k[7:]: v for k, v in sorted(snap.items()) if k.startswith("reject:")},
     )
     return snap
@@ -435,9 +494,26 @@ def mostly_symbol(c: str) -> bool:
 def _looks_like_prose(c: str) -> bool:
     """讲义/教材叙述体特征：出现"…是…"的定义句、包含/因此/所谓等叙述连接词。"""
     markers = (
-        "所谓", "因此", "从而", "综上", "也就是说", "换言之", "需要注意",
-        "设计步骤", "设计关键", "比较：", "特点：", "优点：", "缺点：",
-        "小结：", "重点：", "难点：", "结论：", "引出", "下面看", "接下来",
+        "所谓",
+        "因此",
+        "从而",
+        "综上",
+        "也就是说",
+        "换言之",
+        "需要注意",
+        "设计步骤",
+        "设计关键",
+        "比较：",
+        "特点：",
+        "优点：",
+        "缺点：",
+        "小结：",
+        "重点：",
+        "难点：",
+        "结论：",
+        "引出",
+        "下面看",
+        "接下来",
     )
     hits = sum(1 for m in markers if m in c)
     # 句号/分号密集也是叙述体
@@ -480,7 +556,7 @@ def admit(
 
     c = (content or "").strip()
     src = source or ""
-    opts = options if isinstance(options, (list, tuple)) else []
+    opts = options if isinstance(options, list | tuple) else []
     opts = [str(o).strip() for o in opts if str(o).strip()]
     ans_ok = has_answer(answer)
 
@@ -575,7 +651,8 @@ def admit(
     if conflicted:
         logger.warning(
             "[quiz_content_gate] 拒绝入库：同题干答案冲突。题干=%r 详情=%s",
-            c[:60], detail,
+            c[:60],
+            detail,
         )
         return _reject("同题干答案冲突")
 
@@ -587,7 +664,9 @@ def admit(
         alerted, alert_detail = detect_stem_similarity_alert(c, answer, stem_text_list)
         if alerted:
             logger.warning(
-                "[quiz_content_gate] %s。题干=%r", alert_detail, c[:60],
+                "[quiz_content_gate] %s。题干=%r",
+                alert_detail,
+                c[:60],
             )
             _bump("alert:stem_similarity")
 

@@ -4,6 +4,7 @@
     cd backend-main-fastapi
     python -c "from services.kaoyan.seed_txkyer import run; run()"
 """
+
 import json
 import re
 import urllib.request
@@ -93,11 +94,13 @@ def run():
         added_schools = 0
         for sc in schools:
             if sc["name"] not in existing_schools:
-                db.add(KaoyanSchool(
-                    name=sc["name"],
-                    level=sc.get("level"),
-                    province=sc.get("province"),
-                ))
+                db.add(
+                    KaoyanSchool(
+                        name=sc["name"],
+                        level=sc.get("level"),
+                        province=sc.get("province"),
+                    )
+                )
                 added_schools += 1
         if added_schools:
             db.commit()

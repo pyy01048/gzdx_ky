@@ -20,11 +20,12 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import User
 from pydantic import BaseModel
 from sqlalchemy import bindparam, text
 from utils.scope import owner_id  # B4 行级隔离：原生 SQL 按 user_id 过滤
 from utils.security import current_user
+
+from models import User
 
 router = APIRouter(prefix="/api/favorites", tags=["favorites"])
 
@@ -91,15 +92,16 @@ async def list_favorites(
         params["kw"] = f"%{q}%"
     where = " AND ".join(conds)
 
-    total = db.execute(
-        text(f"SELECT count(*) FROM favorites WHERE {where}"), params
-    ).scalar_one()
-    rows = db.execute(text(f"""
+    total = db.execute(text(f"SELECT count(*) FROM favorites WHERE {where}"), params).scalar_one()
+    rows = db.execute(
+        text(f"""
         SELECT id, item_type, item_id, title, snippet, meta, created_at
         FROM favorites WHERE {where}
         ORDER BY created_at DESC, id DESC
         LIMIT :lim OFFSET :off
-    """), params).fetchall()
+    """),
+        params,
+    ).fetchall()
     return {
         "total": total,
         "items": [
@@ -124,23 +126,31 @@ async def add_favorite(body: FavoriteIn, db=Depends(get_db), user: User = Depend
     B4：唯一键 (user_id, item_type, item_id)，幂等判断跟随当前用户。
     """
     _validate_type(body.item_type)
-    db.execute(text("""
+    db.execute(
+        text("""
         INSERT INTO favorites (user_id, item_type, item_id, title, snippet, meta)
         VALUES (:uid, :t, :i, :title, :sn, CAST(:meta AS JSONB))
         ON CONFLICT (user_id, item_type, item_id)
         DO UPDATE SET title = EXCLUDED.title, snippet = EXCLUDED.snippet,
                       meta = EXCLUDED.meta
-    """), {
-        "uid": owner_id(user),
-        "t": body.item_type, "i": body.item_id,
-        "title": (body.title or "")[:500], "sn": body.snippet,
-        "meta": __import__("json").dumps(body.meta, ensure_ascii=False) if body.meta else None,
-    })
+    """),
+        {
+            "uid": owner_id(user),
+            "t": body.item_type,
+            "i": body.item_id,
+            "title": (body.title or "")[:500],
+            "sn": body.snippet,
+            "meta": __import__("json").dumps(body.meta, ensure_ascii=False) if body.meta else None,
+        },
+    )
     db.commit()
-    row = db.execute(text("""
+    row = db.execute(
+        text("""
         SELECT id, created_at FROM favorites
         WHERE user_id = :uid AND item_type = :t AND item_id = :i
-    """), {"uid": owner_id(user), "t": body.item_type, "i": body.item_id}).first()
+    """),
+        {"uid": owner_id(user), "t": body.item_type, "i": body.item_id},
+    ).first()
     return {"ok": True, "id": row[0], "created_at": row[1].isoformat() if row[1] else None}
 
 
@@ -148,8 +158,7 @@ async def add_favorite(body: FavoriteIn, db=Depends(get_db), user: User = Depend
 async def check_favorite(
     item_type: str,
     item_id: Optional[int] = None,
-    ids: Optional[str] = Query(
-        None, description="批量查询：逗号分隔的 item_id，如 1,2,3；与 item_id 二选一"),
+    ids: Optional[str] = Query(None, description="批量查询：逗号分隔的 item_id，如 1,2,3；与 item_id 二选一"),
     db=Depends(get_db),
     user: User = Depends(current_user),
 ):
@@ -171,8 +180,7 @@ async def check_favorite(
     if ids is not None:
         id_list = _parse_ids(ids)
         stmt = text(
-            "SELECT item_id FROM favorites "
-            "WHERE user_id = :uid AND item_type = :t AND item_id IN :ids"
+            "SELECT item_id FROM favorites WHERE user_id = :uid AND item_type = :t AND item_id IN :ids"
         ).bindparams(bindparam("ids", expanding=True))
         hit = {r[0] for r in db.execute(stmt, {"uid": uid, "t": item_type, "ids": id_list})}
         return {
@@ -184,9 +192,10 @@ async def check_favorite(
 
     if item_id is None:
         raise HTTPException(422, "item_id 与 ids 至少提供一个")
-    fid = db.execute(text(
-        "SELECT id FROM favorites WHERE user_id = :uid AND item_type = :t AND item_id = :i"
-    ), {"uid": uid, "t": item_type, "i": item_id}).scalar()
+    fid = db.execute(
+        text("SELECT id FROM favorites WHERE user_id = :uid AND item_type = :t AND item_id = :i"),
+        {"uid": uid, "t": item_type, "i": item_id},
+    ).scalar()
     return {"favorited": fid is not None, "id": fid}
 
 
@@ -204,15 +213,13 @@ async def list_favorite_ids(
     uid = owner_id(user)
     if item_type:
         _validate_type(item_type)
-        rows = db.execute(text(
-            "SELECT item_id FROM favorites WHERE user_id = :uid AND item_type = :t"
-        ), {"uid": uid, "t": item_type}).fetchall()
+        rows = db.execute(
+            text("SELECT item_id FROM favorites WHERE user_id = :uid AND item_type = :t"), {"uid": uid, "t": item_type}
+        ).fetchall()
         ids = [r[0] for r in rows]
         return {"item_type": item_type, "ids": ids, "total": len(ids)}
 
-    rows = db.execute(text(
-        "SELECT item_type, item_id FROM favorites WHERE user_id = :uid"
-    ), {"uid": uid}).fetchall()
+    rows = db.execute(text("SELECT item_type, item_id FROM favorites WHERE user_id = :uid"), {"uid": uid}).fetchall()
     grouped: dict[str, list[int]] = {}
     for t, i in rows:
         grouped.setdefault(t, []).append(i)
@@ -223,9 +230,10 @@ async def list_favorite_ids(
 async def toggle_favorite(body: FavoriteIn, db=Depends(get_db), user: User = Depends(current_user)):
     """切换收藏状态：已收藏则取消，未收藏则新增。"""
     _validate_type(body.item_type)
-    existing = db.execute(text(
-        "SELECT id FROM favorites WHERE user_id = :uid AND item_type = :t AND item_id = :i"
-    ), {"uid": owner_id(user), "t": body.item_type, "i": body.item_id}).scalar()
+    existing = db.execute(
+        text("SELECT id FROM favorites WHERE user_id = :uid AND item_type = :t AND item_id = :i"),
+        {"uid": owner_id(user), "t": body.item_type, "i": body.item_id},
+    ).scalar()
     if existing:
         db.execute(text("DELETE FROM favorites WHERE id = :id"), {"id": existing})
         db.commit()
@@ -243,9 +251,10 @@ async def remove_favorite(
 ):
     """取消收藏。不存在返回 404。"""
     _validate_type(item_type)
-    res = db.execute(text(
-        "DELETE FROM favorites WHERE user_id = :uid AND item_type = :t AND item_id = :i"
-    ), {"uid": owner_id(user), "t": item_type, "i": item_id})
+    res = db.execute(
+        text("DELETE FROM favorites WHERE user_id = :uid AND item_type = :t AND item_id = :i"),
+        {"uid": owner_id(user), "t": item_type, "i": item_id},
+    )
     db.commit()
     if res.rowcount == 0:
         raise HTTPException(404, "收藏不存在")

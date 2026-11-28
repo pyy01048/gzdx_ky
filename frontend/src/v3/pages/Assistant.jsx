@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import useStore from '../../store/useStore'
 import { uid } from '../../utils/date'
@@ -17,7 +17,8 @@ import {
   AlertTriangle, Bot, Brain, Check, ChevronDown, Copy, Edit, Image, Lightbulb, Loader,
   MessageSquare, Pause, Plus, RefreshCw, Send, Sparkles, Trash, User, Wand, X,
 } from '../icons'
-import AiEvidenceCard, { resolveEngineLabel } from '../ai/AiEvidenceCard'
+import AiEvidenceCard, { AiCitations, resolveEngineLabel } from '../ai/AiEvidenceCard'
+import AnswerFeedbackBar from '../ui/AnswerFeedbackBar'
 import '../styles/assistant-v3.css'
 
 /* ============================================================
@@ -68,6 +69,7 @@ const DEFAULT_REPLY = (ctx) => `收到。这个问题先帮你拆解一下：\n1
 
 const QUICK = ['怎么安排每天的复习？', '英语真题怎么刷最有效？', '专业课重点是什么？', '数学极限总出错怎么办？', '最近有点焦虑怎么办？']
 
+/** 根据已配置科目替换「专业课重点是什么？」快捷提示中的科目名。 */
 function quickPrompts(subjects) {
   const first = (subjects || []).filter(Boolean)[0]
   if (!first) return QUICK
@@ -87,6 +89,7 @@ function topKeywords(text, n = 5) {
   return stat.slice(0, n).map((x) => `${x.w}×${x.c}`)
 }
 
+/** 生成本地摘要：截取最近 6 轮提问 + 高频关键词统计。 */
 function localSummary(messages) {
   const users = messages.filter((m) => m.role === 'user').map((m) => (m.content || '').trim()).filter(Boolean)
   const bots = messages.filter((m) => m.role === 'bot')
@@ -96,6 +99,7 @@ function localSummary(messages) {
   return `本地摘要（${users.length} 轮提问 / ${bots.length} 条回复）\n近期话题：\n${topics.join('\n')}${kw.length ? `\n高频关键词：${kw.join('、')}` : ''}`
 }
 
+/** 根据 AI 错误码生成失败气泡文案（含可操作建议）。 */
 function aiFailBubble(e) {
   const code = e?.code || ''
   const msg = e?.message || '未知错误'
@@ -111,6 +115,7 @@ function aiFailBubble(e) {
   return `注意 AI 调用失败：${msg}\n\n可点下方「重试」，或切换到「本地」引擎查看离线规则建议。`
 }
 
+/** 根据 AI 错误码生成失败 toast 文案。 */
 function aiFailToast(e) {
   const code = e?.code || ''
   if (code === 'network') return `AI 连接失败：${e?.message || '网络异常'}`
@@ -119,6 +124,12 @@ function aiFailToast(e) {
   return `AI 调用失败：${e?.message || '未知错误'}`
 }
 
+/**
+ * AI 助手主组件（Aurora v3）。
+ * 支持双引擎：自定义 AI API（SSE 流式 + RAG）与本地规则引擎（离线兜底）。
+ * 功能：会话快照 / 多轮上下文摘要 / 本地知识库引用 / 电路读图 /
+ * SSE 流式生成与停止 / 失败气泡与重试 / DeepTools 学习工具。
+ */
 export default function Assistant() {
   const ai = useStore((s) => s.ai)
   const sendAi = useStore((s) => s.sendAi)
@@ -166,23 +177,35 @@ export default function Assistant() {
   const { active: configuredSubjects } = useSubjectConfig()
   const effectiveDate = settings.examDate || countdown?.exam_date
   const days = examDaysLeft(resolveExamDate(effectiveDate, null))
-  const ctx = {
+  const ctx = useMemo(() => ({
     days,
     when: days == null ? '未设置初试日期' : `距考试 ${days} 天`,
     subjects: configuredSubjects,
-  }
+  }), [days, configuredSubjects])
 
   const bodyRef = useRef(null)
 
-  const persistSessions = (list, activeId) => {
-    useStore.setState({ ai: { ...useStore.getState().ai, localSessions: list, activeSessionId: activeId } })
-  }
+  /* C1：provider_override 指向本地 Ollama 时标「本地模型」，不再统称自定义 AI API。
+     提前计算并 memoize，供 send() 及渲染共用，避免每轮 render 重复调用 defaultProvider。 */
+  const activeProvider = useMemo(() => defaultProvider(), [])
+  const engineLabel = useMemo(() => resolveEngineLabel({
+    engine,
+    localAvailable: engineInfo.localAvailable,
+    routingMode: engineInfo.routingMode,
+    providerType: activeProvider?.key || '',
+    providerModel: activeProvider?.model || '',
+  }), [engine, engineInfo, activeProvider])
+  const prompts = useMemo(() => quickPrompts(ctx.subjects), [ctx])
 
-  const titleFromMessages = (msgs) => {
+  const persistSessions = useCallback((list, activeId) => {
+    useStore.setState({ ai: { ...useStore.getState().ai, localSessions: list, activeSessionId: activeId } })
+  }, [])
+
+  const titleFromMessages = useCallback((msgs) => {
     const u = (msgs || []).find((m) => m.role === 'user')
     const t = (u?.content || '').trim()
     return t ? (t.length > 18 ? t.slice(0, 18) + '…' : t) : '新会话'
-  }
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -215,7 +238,7 @@ export default function Assistant() {
     if (abortRef.current) abortRef.current.abort()
   }, [])
 
-  const think = (q) => {
+  const think = useCallback((q) => {
     const lower = q.toLowerCase()
     const hit = KB.find((k) => (k.keysOf ? k.keysOf(ctx) : k.keys).some((key) => lower.includes(key)))
     if (hit) return hit.reply(ctx)
@@ -227,9 +250,9 @@ export default function Assistant() {
       return `【${ctx.days} 天冲刺规划 · 生成中】\n${schoolLine ? `基于你当前数据：${schoolLine}${settings.targetScore ? `，目标 ${settings.targetScore} 分` : ''}。\n` : ''}· 阶段一（${Math.max(1, Math.round(ctx.days * 0.5))} 天）：基础强化，主攻数学与专业课，英语真题精读；\n· 阶段二（${Math.max(1, Math.round(ctx.days * 0.3))} 天）：真题模考 + 错题集中攻克；\n· 阶段三（${Math.max(1, Math.round(ctx.days * 0.2))} 天）：政治大题背诵 + 全真模拟。\n建议：错题坚持七刷，定期看知识地图的薄弱考点。需要我细化某阶段吗？`
     }
     return DEFAULT_REPLY(ctx)
-  }
+  }, [ctx, mode, settings.school, settings.major, settings.targetScore])
 
-  const makeSummary = async () => {
+  const makeSummary = useCallback(async () => {
     const msgs = useStore.getState().ai.messages
     if (msgs.length < 2) { toast('对话还太短，暂时不需要摘要'); return }
     setSummarizing(true)
@@ -257,30 +280,25 @@ export default function Assistant() {
       toastErr(`AI 摘要失败，已改用本地摘要：${e.message}`)
     }
     setSummarizing(false)
-  }
+  }, [])
 
-  const pushError = (text, retryText) => {
+  const pushError = useCallback((text, retryText) => {
     const st = useStore.getState()
     useStore.setState({
       ai: { ...st.ai, messages: [...st.ai.messages, { role: 'bot', content: text, error: true, retry: retryText || '' }] }
     })
-  }
+  }, [])
 
-  const finalizeStreaming = (meta = {}) => {
+  const finalizeStreaming = useCallback((meta = {}) => {
     const st = useStore.getState()
     if (!st.ai.messages.some((m) => m.streaming)) return
     useStore.setState({
       ai: { ...st.ai, messages: st.ai.messages.map((m) => (m.streaming ? { ...m, ...meta, streaming: false } : m)) }
     })
-  }
+  }, [])
 
-  const retrySend = (text) => {
-    const st = useStore.getState()
-    useStore.setState({ ai: { ...st.ai, messages: st.ai.messages.filter((m) => !m.error) } })
-    send(text)
-  }
 
-  const onPickImage = async (e) => {
+  const onPickImage = useCallback(async (e) => {
     const f = e.target.files?.[0]
     e.target.value = ''
     if (!f) return
@@ -293,9 +311,9 @@ export default function Assistant() {
       toastErr(`图片上传失败：${err.message}`)
     }
     setImgUploading(false)
-  }
+  }, [])
 
-  const archiveAnswer = (questionId, answerId, question) => {
+  const archiveAnswer = useCallback((questionId, answerId, question) => {
     const answer = useStore.getState().ai.messages.find((m) => m.id === answerId && m.questionId === questionId)
     if (!answer || !answer.content) return false
     const savedId = saveAiAnswer({
@@ -320,9 +338,9 @@ export default function Assistant() {
       },
     })
     return true
-  }
+  }, [])
 
-  const send = async (text) => {
+  const send = useCallback(async (text) => {
     const q = (text ?? input).trim()
     if ((!q && !image) || typing) return
     const question = q || '请分析这张电路图'
@@ -434,6 +452,9 @@ export default function Assistant() {
                   rag: ev.rag,
                   hits: ev.rag_hits,
                   citations: Array.isArray(ev.citations) ? ev.citations : [],
+                  // C-ENGINE-ENUM@1：捕获后端统一引擎枚举与置信度，缺失时保留既有值
+                  engine_enum: ev.engine_enum ?? answerMeta.engine_enum,
+                  confidence: ev.confidence ?? answerMeta.confidence,
                 }
                 setThinkingText(ev.rag ? '正在检索知识库…' : '模型思考中…')
                 return
@@ -494,43 +515,56 @@ export default function Assistant() {
       abortRef.current = null
       setCanStop(false)
     }
-  }
+  }, [input, image, typing, sendAi, archiveAnswer, engine, useSummary, summary, settings, ctx, ai, mode, useRag, engineLabel, think, replyAi, pushError, finalizeStreaming])
 
-  const stopGenerating = () => {
+  const retrySend = useCallback((text) => {
+    const st = useStore.getState()
+    useStore.setState({ ai: { ...st.ai, messages: st.ai.messages.filter((m) => !m.error) } })
+    send(text)
+  }, [send])
+
+  const stopGenerating = useCallback(() => {
     if (!abortRef.current) return
     abortRef.current.abort()
     abortRef.current = null
     setCanStop(false)
     setTyping(false)
     toast('已停止生成')
-  }
+  }, [])
 
-  const onKey = (e) => {
+  const onKey = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
       e.preventDefault()
       send()
     }
-  }
+  }, [send])
 
-  const switchMode = (m) => {
+  const switchMode = useCallback((m) => {
     setMode(m)
     setAiPersona(m)
     toast(m === '规划' ? '已切换为规划模式，为你生成阶段计划' : '已切换为答疑模式，专注解答问题')
-  }
+  }, [setAiPersona])
 
-  const switchEngine = (key) => {
+  const switchEngine = useCallback((key) => {
     setEngine(key)
     toast(`${ENGINES.find((e) => e.key === key)?.full} 引擎已启用`)
-  }
+  }, [])
 
-  const newChat = () => {
+  /* 将当前对话保存到 activeSession（或新建一条），返回更新后的会话列表。
+     newChat 与 selectSession 共用此逻辑，避免重复维护。 */
+  const saveActiveSession = useCallback(() => {
     const cur = useStore.getState().ai.messages
-    let next = sessions
     if (activeSession) {
-      next = sessions.map((s) => (s.id === activeSession ? { ...s, messages: cur, title: s.title || titleFromMessages(cur), updatedAt: Date.now() } : s))
-    } else if (cur.length) {
-      next = [{ id: uid(), title: titleFromMessages(cur), messages: cur, updatedAt: Date.now() }, ...next]
+      return sessions.map((s) => (s.id === activeSession ? { ...s, messages: cur, title: s.title || titleFromMessages(cur), updatedAt: Date.now() } : s))
     }
+    if (cur.length) {
+      return [{ id: uid(), title: titleFromMessages(cur), messages: cur, updatedAt: Date.now() }, ...sessions]
+    }
+    return sessions
+  }, [sessions, activeSession, titleFromMessages])
+
+  const newChat = useCallback(() => {
+    const next = saveActiveSession()
     const s = { id: uid(), title: '', messages: [], updatedAt: Date.now() }
     const list = [s, ...next]
     setSessions(list)
@@ -539,15 +573,11 @@ export default function Assistant() {
     setSummary('')
     setUseSummary(false)
     persistSessions(list, s.id)
-  }
+  }, [saveActiveSession, clearAi, persistSessions])
 
-  const selectSession = (id) => {
+  const selectSession = useCallback((id) => {
     if (id === activeSession) return
-    const cur = useStore.getState().ai.messages
-    let next = sessions
-    if (activeSession) {
-      next = sessions.map((s) => (s.id === activeSession ? { ...s, messages: cur, title: s.title || titleFromMessages(cur), updatedAt: Date.now() } : s))
-    }
+    const next = saveActiveSession()
     const target = next.find((s) => s.id === id)
     const history = (target?.messages || []).map((m) => ({ ...m, role: m.role === 'assistant' ? 'bot' : 'user' }))
     setSessions(next)
@@ -556,14 +586,14 @@ export default function Assistant() {
     setSummary('')
     setUseSummary(false)
     persistSessions(next, id)
-  }
+  }, [activeSession, saveActiveSession, persistSessions])
 
-  const openRename = (s) => {
+  const openRename = useCallback((s) => {
     setRenameTarget(s)
     setRenameValue(s.title || '')
-  }
+  }, [])
 
-  const submitRename = () => {
+  const submitRename = useCallback(() => {
     if (!renameTarget) return
     const t = renameValue.trim()
     if (!t) return
@@ -572,9 +602,9 @@ export default function Assistant() {
     persistSessions(list, activeSession)
     setRenameTarget(null)
     toastOk('已重命名')
-  }
+  }, [renameTarget, renameValue, sessions, activeSession, persistSessions])
 
-  const removeSession = (id) => {
+  const removeSession = useCallback((id) => {
     const rest = sessions.filter((s) => s.id !== id)
     if (activeSession === id) {
       if (rest.length) {
@@ -596,18 +626,8 @@ export default function Assistant() {
       persistSessions(rest, activeSession)
     }
     toast('已删除会话')
-  }
+  }, [sessions, activeSession, clearAi, persistSessions])
 
-  /* C1：provider_override 指向本地 Ollama 时标「本地模型」，不再统称自定义 AI API */
-  const activeProvider = defaultProvider()
-  const engineLabel = resolveEngineLabel({
-    engine,
-    localAvailable: engineInfo.localAvailable,
-    routingMode: engineInfo.routingMode,
-    providerType: activeProvider?.key || '',
-    providerModel: activeProvider?.model || '',
-  })
-  const prompts = quickPrompts(ctx.subjects)
 
   return (
     <div className="v3-asst">
@@ -729,27 +749,19 @@ export default function Assistant() {
                       <>
                         <AiEvidenceCard
                           engine={m.engine || '历史回答 · 引擎未记录'}
+                          engineEnum={m.engine_enum}
                           model={m.model || '不提供'}
                           rag={m.rag}
                           hits={m.hits ?? m.citations?.length}
                           elapsedMs={m.elapsedMs}
-                          confidence={null}
+                          confidence={m.confidence ?? null}
                           degradeReason={m.degraded ? '在线与本地模型均不可用，已降级为知识片段展示' : ''}
                         />
                         {m.citations?.length ? (
-                          <details className="v3-asst-msg-citations">
-                            <summary>本轮权威引用（{m.citations.length}）</summary>
-                            <div className="v3-asst-refs__list">
-                              {m.citations.map((h, index) => (
-                                <span key={`${h.chunk_id || h.doc_id || 'h'}-${index}`} title={(h.content || '').slice(0, 100)}>
-                                  [{index + 1}] {(h.title || h.source || '知识片段').slice(0, 24)}
-                                </span>
-                              ))}
-                            </div>
-                            <p className="v3-asst-refs__hint">来自 AI 服务返回的 meta（元数据）事件，与这条回答一一对应。</p>
-                          </details>
+                          <AiCitations citations={m.citations} />
                         ) : null}
                         {m.archived ? <Link className="v3-asst-answer-link" to={`/assistant/answers/${m.id}`}>查看回答与引用详情</Link> : null}
+                        <AnswerFeedbackBar answerId={m.id} />
                       </>
                     ) : null}
                     {m.streaming && <span className="v3-asst-caret" />}

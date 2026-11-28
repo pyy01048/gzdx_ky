@@ -13,6 +13,7 @@
 隔离纪律：words 是本人数据，沿用 test_words_list_status_contract 的做法 ——
 自建契约用户、uuid 命名词、用例自清。
 """
+
 from __future__ import annotations
 
 import uuid
@@ -21,9 +22,10 @@ from types import SimpleNamespace
 import pytest
 from database import SessionLocal
 from main import app
-from models import User, Word
 from tests.asgi_client import ASGIClient
 from utils.security import current_user
+
+from models import User, Word
 
 client = ASGIClient(app)
 
@@ -32,8 +34,7 @@ client = ASGIClient(app)
 def _owner_user():
     db = SessionLocal()
     try:
-        u = User(username=f"rhguard{uuid.uuid4().hex[:8]}", display_name="历史防线",
-                 role="user", is_active=True)
+        u = User(username=f"rhguard{uuid.uuid4().hex[:8]}", display_name="历史防线", role="user", is_active=True)
         u.password_hash = "test-placeholder-never-used-for-login"
         db.add(u)
         db.commit()
@@ -42,17 +43,19 @@ def _owner_user():
         db.close()
 
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(
-        id=uid, username=uname, role="user",
+        id=uid,
+        username=uname,
+        role="user",
     )
     yield uid
     # 恢复 conftest.auth_bypass 的默认桩（不能 pop，否则后续测试文件全部 401）
     from utils.security import stub_principal
+
     app.dependency_overrides[current_user] = lambda: stub_principal()
 
     db = SessionLocal()
     try:
-        db.query(Word).filter(Word.user_id == uid,
-                              Word.word.like("rhguard%")).delete(synchronize_session=False)
+        db.query(Word).filter(Word.user_id == uid, Word.word.like("rhguard%")).delete(synchronize_session=False)
         db.query(User).filter(User.id == uid).delete(synchronize_session=False)
         db.commit()
     finally:

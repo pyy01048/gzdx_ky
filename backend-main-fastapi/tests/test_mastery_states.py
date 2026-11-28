@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import pytest
 from database import SessionLocal
+from services import kp_mastery, review_service
+from sqlalchemy import text
+
 from models import (
     AnswerRecord,
     ErrorRecord,
@@ -24,8 +27,6 @@ from models import (
     QuizQuestion,
     ReviewRecord,
 )
-from services import kp_mastery, review_service
-from sqlalchemy import text
 
 # 与 conftest 示例数据同一主线科目（taxonomy 只收大纲内科目进 tree）
 SUBJECT = "数学"
@@ -40,16 +41,16 @@ def db(db_schema):  # noqa: ARG001  依赖 db_schema 确保临时库已建表
         session.close()
 
 
+@pytest.fixture()
+def logged_in_client(client, app_module, monkeypatch):
+    from utils.security import optional_user, stub_principal
+
+    monkeypatch.setitem(app_module.dependency_overrides, optional_user, lambda: stub_principal())
+    return client
+
+
 def _mk_kp(db, name, *, mastery=0, review_count=0):
-    """建知识点并强制写入 mastery（临时禁用触发器）。
-
-    ⚠️ ``mastery`` 在 PG 下**写不进去**：knowledge_points.mastery 是**派生列**，
-    由 BEFORE INSERT/UPDATE 触发器 ``sync_kp_mastery()`` 用
-    ``v_knowledge_mastery``（30 天指数衰减加权正确率）**无条件覆盖**。
-    这里临时禁用触发器后直接 UPDATE，再重新启用。
-    """
-    from sqlalchemy import text
-
+    """建知识点，并用测试主体的真实复习流水得到目标掌握度。"""
     kp = KnowledgePoint(
         name=name,
         subject=SUBJECT,
@@ -61,23 +62,21 @@ def _mk_kp(db, name, *, mastery=0, review_count=0):
     db.add(kp)
     db.commit()
     db.refresh(kp)
+    good_count = round(review_count * mastery / 100)
+    for index in range(review_count):
+        db.add(
+            ReviewRecord(
+                item_type="knowledge",
+                item_id=kp.id,
+                user_id=0,
+                result="good" if index < good_count else "again",
+                grade=3 if index < good_count else 1,
+            )
+        )
+    db.commit()
     if review_count:
-        # B4 行级隔离：按用户的 learned 口径只认学习流水（review_records 等），
-        # knowledge_points.review_count 是全局派生列、无法归属到某个用户。
-        # 旧用例靠 review_count 捷径造"已学"，这里补测试主体（id=0，与
-        # stub_principal 一致）的流水，使全库口径与按用户口径同时成立。
-        for _ in range(review_count):
-            db.add(ReviewRecord(item_type="knowledge", item_id=kp.id, user_id=0, result="good", grade=3))
+        kp_mastery.touch_mastery(db, [kp.id])
         db.commit()
-    # 强制写入 mastery：临时禁用触发器 → UPDATE → 重新启用
-    if mastery:
-        db.execute(text("ALTER TABLE knowledge_points DISABLE TRIGGER trg_kp_mastery_sync"))
-        db.execute(text("UPDATE knowledge_points SET mastery = :m WHERE id = :id"), {"m": mastery, "id": kp.id})
-        db.execute(text("ALTER TABLE knowledge_points ENABLE TRIGGER trg_kp_mastery_sync"))
-        db.commit()
-        db.refresh(kp)
-    return kp
-    db.refresh(kp)
     return kp
 
 
@@ -111,6 +110,7 @@ def _mk_learned_kp(db, name, *, good=3, bad=0):
                 subject=SUBJECT,
                 result="good" if i < good else "again",
                 grade=5 if i < good else 1,
+                user_id=0,
             )
         )
     db.commit()
@@ -260,13 +260,13 @@ class TestProgressOverviewThreeState:
         assert by_name.get("三态-未学样本") == "unlearned", by_name
 
     def test_by_subject_has_four_states(self, db):
-        _mk_kp(db, "四态-科目薄弱", mastery=50, review_count=1)
-        _mk_kp(db, "四态-科目学习中", mastery=20, review_count=1)
+        _mk_kp(db, "四态-科目薄弱", mastery=50, review_count=10)
+        _mk_kp(db, "四态-科目学习中", mastery=20, review_count=10)
         _mk_kp(db, "四态-科目未学")
         ov = review_service.progress_overview(db)
         row = next(s for s in ov["by_subject"] if s["subject"] == SUBJECT)
         assert row.get("learning", 0) >= 1
-        assert row["weak"] >= 1
+        assert row["weak"] >= 1, row
         assert row["unlearned"] >= 1
         assert row.get("learning", 0) + row["mastered"] + row["weak"] + row["unlearned"] == row["total"]
         assert "learned_avg_mastery" in row
@@ -291,13 +291,13 @@ class TestTaxonomyThreeStateAPI:
                 for kp in ch["knowledge_points"]:
                     assert kp["state"] in ("unlearned", "learning", "weak", "mastered")
 
-    def test_low_mastery_filter_excludes_unlearned(self, client, db):
+    def test_low_mastery_filter_excludes_unlearned(self, logged_in_client, db):
         _mk_kp(db, "四态-筛选薄弱", mastery=50, review_count=1)  # 30 ≤ m < 70 → weak
         _mk_kp(db, "四态-筛选学习中", mastery=20, review_count=1)  # 0 < m < 30 → learning
         _mk_kp(db, "四态-筛选未学")  # mastery=0、无记录 → unlearned
         # 用 chapter 把范围收到本用例自己造的知识点上：全站知识点有几百条，
         # "一页 200 条取全量"不成立（实测 total=366 会被截断，断言只比对了子集）。
-        resp = client.get(
+        resp = logged_in_client.get(
             "/api/taxonomy/knowledge-points",
             params={"low_mastery": "true", "chapter": "三态测试章", "page_size": 200},
         )
@@ -311,9 +311,9 @@ class TestTaxonomyThreeStateAPI:
         assert "四态-筛选未学" not in names, "未学知识点不得进薄弱筛选"
         assert all(i["state"] in ("weak", "learning") for i in items)
 
-    def test_detail_has_state(self, client, db):
+    def test_detail_has_state(self, logged_in_client, db):
         kp = _mk_kp(db, "四态-详情样本", mastery=50, review_count=2)
-        resp = client.get(f"/api/taxonomy/knowledge-points/{kp.id}")
+        resp = logged_in_client.get(f"/api/taxonomy/knowledge-points/{kp.id}")
         assert resp.status_code == 200
         assert resp.json()["state"] == "weak"
 

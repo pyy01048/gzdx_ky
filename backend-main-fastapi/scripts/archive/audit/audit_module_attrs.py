@@ -94,8 +94,7 @@ def scan() -> list[dict]:
             except SyntaxError:
                 continue
             for node in ast.walk(tree):
-                if not (isinstance(node, ast.Attribute)
-                        and isinstance(node.value, ast.Name)):
+                if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)):
                     continue
                 mod, attr = node.value.id, node.attr
                 if not attr.isupper():
@@ -108,12 +107,14 @@ def scan() -> list[dict]:
                 # 任一候选模块有该属性即命中（同名模块场景）
                 if any(k is not None and attr in k for k in known_list):
                     continue
-                findings.append({
-                    "file": str(p.relative_to(BASE_DIR)),
-                    "line": node.lineno,
-                    "ref": f"{mod}.{attr}",
-                    "module": mod,
-                })
+                findings.append(
+                    {
+                        "file": str(p.relative_to(BASE_DIR)),
+                        "line": node.lineno,
+                        "ref": f"{mod}.{attr}",
+                        "module": mod,
+                    }
+                )
     return findings
 
 
@@ -121,8 +122,7 @@ def _suggest(mod: str, attr: str, known: set) -> str:
     """给出最可能的正确名字（同前缀/编辑距离近的）。"""
     import difflib
 
-    cands = difflib.get_close_matches(attr, [a for a in known
-                                             if a.isupper()], n=2, cutoff=0.6)
+    cands = difflib.get_close_matches(attr, [a for a in known if a.isupper()], n=2, cutoff=0.6)
     return "、".join(cands) if cands else ""
 
 
@@ -162,8 +162,7 @@ def main() -> int:
 
     print()
     print("-" * 72)
-    print(f"合计 {len(items)} 处 —— 这些会在执行到该行时抛 AttributeError，"
-          "且常被上层 except 包装成无关的错误信息。")
+    print(f"合计 {len(items)} 处 —— 这些会在执行到该行时抛 AttributeError，且常被上层 except 包装成无关的错误信息。")
     return 1
 
 

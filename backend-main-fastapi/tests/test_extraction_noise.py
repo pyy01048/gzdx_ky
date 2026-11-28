@@ -85,9 +85,7 @@ class TestCleanAnswer:
 class TestCleanContent:
     def test_removes_embedded_noise_lines(self) -> None:
         raw = "14 LM1877N-9为2通道低频功率放大电路\n科目代码：834\n图P8.14所示"
-        assert clean_content(raw) == (
-            "14 LM1877N-9为2通道低频功率放大电路\n图P8.14所示"
-        )
+        assert clean_content(raw) == ("14 LM1877N-9为2通道低频功率放大电路\n图P8.14所示")
 
     def test_keeps_intact_question(self) -> None:
         raw = "TTL与非门多余输入端的处理方法是______。"
@@ -99,10 +97,7 @@ class TestCleanContent:
 # --------------------------------------------------------------------------- #
 class TestSplitStemAndOptions:
     def test_splits_even_without_sec_type(self) -> None:
-        body = (
-            "1. 下列二极管中，常用于高频电路检波的是（）"
-            "A. 整流二极管 B. 稳压二极管 C. 肖特基二极管 D. 发光二极管"
-        )
+        body = "1. 下列二极管中，常用于高频电路检波的是（）A. 整流二极管 B. 稳压二极管 C. 肖特基二极管 D. 发光二极管"
         stem, opts = split_stem_and_options(body, sec_type="")
         assert stem == "1. 下列二极管中，常用于高频电路检波的是（）"
         assert len(opts) == 4
@@ -178,6 +173,7 @@ class TestCrossQuestionLeak:
         assert find_cross_question_leak("") is None
         assert strip_cross_question_leak(None) == ("", False)
 
+
 class TestSplitOptionsSwitch:
     """第 2 处修复的开关：默认关闭，关闭时走修复前路径。"""
 
@@ -206,7 +202,6 @@ class TestSplitOptionsSwitch:
         assert qbank_builder._split_options_enabled() is False
 
         # 修复前路径：sec_type 非选择类 → 选项整体留在题干，options 为空
-        body = "1．下列说法正确的是（　）。\nA．一 B．二 C．三 D．四"
         text = (
             "一、选择题（每题2分，共10分）\n"
             "1．不属于数字电路基本运算的是（　）。\n"

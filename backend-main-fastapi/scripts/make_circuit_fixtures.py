@@ -6,14 +6,14 @@
   02_common_emitter.png    - 共射极放大电路（NPN + Rc/Re/C1/C2/Vin/Vout）
   03_bridge_rectifier.png  - 桥式整流（D1-D4 + 交流源 + C1 + Rload）
 """
+
 from __future__ import annotations
 
 import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "..", "tests", "fixtures", "circuits")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "fixtures", "circuits")
 OUT = os.path.abspath(OUT)
 os.makedirs(OUT, exist_ok=True)
 

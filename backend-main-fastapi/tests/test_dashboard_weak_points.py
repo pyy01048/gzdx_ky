@@ -12,6 +12,7 @@
    （``error_linker.weak_points_view``）—— 四个展示面不给三份答案，
    analytics 那边尤其不能再用正则从题干猜出来的「考点名」。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -30,6 +31,7 @@ def seeded(db_schema):  # noqa: ARG001
     import datetime
 
     from database import SessionLocal
+
     from models import ErrorKnowledgeLink, ErrorRecord, KnowledgePoint
 
     now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
@@ -39,8 +41,11 @@ def seeded(db_schema):  # noqa: ARG001
         plan = [("a", 20, 5, 0), ("b", 10, 1, 0), ("c", 5, 1, 0), ("d", 1, 1, 0)]
         for suffix, n, freq, mastery in plan:
             kp = KnowledgePoint(
-                name=f"{TAG}-kp{suffix}", subject="数学", chapter=f"{TAG}章",
-                mastery=mastery, exam_frequency=freq,
+                name=f"{TAG}-kp{suffix}",
+                subject="数学",
+                chapter=f"{TAG}章",
+                mastery=mastery,
+                exam_frequency=freq,
             )
             db.add(kp)
             db.flush()
@@ -48,22 +53,31 @@ def seeded(db_schema):  # noqa: ARG001
             for i in range(n):
                 err = ErrorRecord(
                     user_id=0,
-                    content=f"{TAG}-e{suffix}-{i}", correct_answer="B", my_answer="A",
-                    subject="数学", status="active", next_review=now,
+                    content=f"{TAG}-e{suffix}-{i}",
+                    correct_answer="B",
+                    my_answer="A",
+                    subject="数学",
+                    status="active",
+                    next_review=now,
                 )
                 db.add(err)
                 db.flush()
                 errs.append(err)
-                db.add(ErrorKnowledgeLink(
-                    error_id=err.id, knowledge_point_id=kp.id, relevance=0.8, source="auto",
-                ))
+                db.add(
+                    ErrorKnowledgeLink(
+                        error_id=err.id,
+                        knowledge_point_id=kp.id,
+                        relevance=0.8,
+                        source="auto",
+                    )
+                )
         db.commit()
         yield {"kps": [k.id for k in kps], "names": [k.name for k in kps]}
     finally:
         ids = [k.id for k in kps]
-        db.query(ErrorKnowledgeLink).filter(
-            ErrorKnowledgeLink.knowledge_point_id.in_(ids)
-        ).delete(synchronize_session=False)
+        db.query(ErrorKnowledgeLink).filter(ErrorKnowledgeLink.knowledge_point_id.in_(ids)).delete(
+            synchronize_session=False
+        )
         db.query(ErrorRecord).filter(ErrorRecord.content.like(f"{TAG}%")).delete(synchronize_session=False)
         db.query(KnowledgePoint).filter(KnowledgePoint.name.like(f"{TAG}%")).delete(synchronize_session=False)
         db.commit()
@@ -109,7 +123,12 @@ def test_internal_score_is_not_exposed(seeded):
     """契约里只留界面要显示的字段；weak_score 是加权和，不是给用户读的数字。"""
     for p in _weak_from_service()["weak_points"]:
         assert set(p) == {
-            "knowledge_point_id", "name", "subject", "chapter", "mastery", "error_count",
+            "knowledge_point_id",
+            "name",
+            "subject",
+            "chapter",
+            "mastery",
+            "error_count",
         }
 
 
@@ -161,6 +180,7 @@ def test_kp_filter_combines_with_subject_and_paging(client, seeded):
 # 「考点名」，于是同一个人同一天能看到三份互不相同的薄弱清单。
 # --------------------------------------------------------------------------- #
 
+
 def test_profile_top10_is_the_same_authority_list(seeded):
     from database import SessionLocal
     from services import error_linker
@@ -179,7 +199,12 @@ def test_profile_top10_is_the_same_authority_list(seeded):
     assert mine[:3] == [f"{TAG}-kpa", f"{TAG}-kpb", f"{TAG}-kpc"], mine
     for p in profile_points:
         assert set(p) == {
-            "knowledge_point_id", "name", "subject", "chapter", "mastery", "error_count",
+            "knowledge_point_id",
+            "name",
+            "subject",
+            "chapter",
+            "mastery",
+            "error_count",
         }, "画像外泄了内部评分字段"
 
 
@@ -197,7 +222,12 @@ def test_insight_today_weak_top_matches_the_authority(client, seeded):
     assert [w["kp"] for w in weak_top] == names, "首屏「薄弱点练习」和 D-10 卡片名单不一致"
     for w in weak_top:
         assert set(w) == {
-            "kp", "knowledge_point_id", "subject", "error_count", "mastery", "level",
+            "kp",
+            "knowledge_point_id",
+            "subject",
+            "error_count",
+            "mastery",
+            "level",
         }
         # level 的中文口径与 kp_mastery.STATE_LABELS 一致，前端沿用旧展示
         assert w["level"] in ("薄弱", "已掌握")
@@ -224,14 +254,20 @@ def test_analytics_weak_points_is_the_same_authority(client, seeded):
     assert [p["knowledge_point_id"] for p in got] == [p["knowledge_point_id"] for p in authority], (
         "analytics 端点又给出了一份不同的「薄弱考点」名单"
     )
-    for p, a in zip(got, authority):
+    for p, a in zip(got, authority, strict=False):
         assert p["knowledge_point"] == a["name"]
         assert p["mastery"] == a["mastery"], "mastery 是编出来的，不是 knowledge_points 里的真值"
         assert p["error_count"] == a["error_count"]
         assert p["level"] in ("学习中", "薄弱", "已掌握")
         assert set(p) <= {
-            "knowledge_point_id", "knowledge_point", "subject", "chapter",
-            "error_count", "mastery", "level", "suggestion",
+            "knowledge_point_id",
+            "knowledge_point",
+            "subject",
+            "chapter",
+            "error_count",
+            "mastery",
+            "level",
+            "suggestion",
         }
 
 
@@ -252,24 +288,28 @@ def test_graduated_error_moves_from_stock_to_resolved(db_schema):  # noqa: ARG00
     其它测试残留的错题。
     """
     from database import SessionLocal
-    from models import ErrorRecord
     from services.learner_profile import build_profile
+
+    from models import ErrorRecord
 
     content = f"{TAG}-graduated"
     db = SessionLocal()
     try:
         before = build_profile(db, days=30)["overview"]
-        db.add(ErrorRecord(
-            content=content, correct_answer="B", my_answer="A",
-            subject="数学", status="graduated",
-        ))
+        db.add(
+            ErrorRecord(
+                content=content,
+                correct_answer="B",
+                my_answer="A",
+                subject="数学",
+                status="graduated",
+            )
+        )
         db.commit()
         after = build_profile(db, days=30)["overview"]
         assert after["error_resolved"] == before["error_resolved"] + 1
         assert after["error_stock"] == before["error_stock"], "已毕业的错题仍算在存量里"
     finally:
-        db.query(ErrorRecord).filter(ErrorRecord.content == content).delete(
-            synchronize_session=False
-        )
+        db.query(ErrorRecord).filter(ErrorRecord.content == content).delete(synchronize_session=False)
         db.commit()
         db.close()

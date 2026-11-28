@@ -12,6 +12,7 @@
 幂等：只处理 error_category IS NULL 或空串的行，重跑无副作用。
 **不覆盖**已有值（用户手填或 AI 归因的结果一律尊重）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,14 +34,16 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        rows = db.execute(text("""
+        rows = db.execute(
+            text("""
             SELECT e.id, e.my_answer, e.correct_answer, e.subject,
                    q.question_type, q.options
               FROM error_records e
               LEFT JOIN quiz_questions q ON q.id = e.question_id
              WHERE e.error_category IS NULL OR btrim(e.error_category) = ''
              ORDER BY e.id
-        """)).fetchall()
+        """)
+        ).fetchall()
 
         print(f"待回填错题：{len(rows)} 条")
         stats = Counter()
@@ -52,14 +55,18 @@ def main() -> int:
                 except Exception:  # noqa: BLE001
                     opt_n = None
             cat = infer_error_category(
-                question_type=qtype, my_answer=my_ans, correct_answer=correct,
-                option_count=opt_n, subject=subject,
+                question_type=qtype,
+                my_answer=my_ans,
+                correct_answer=correct,
+                option_count=opt_n,
+                subject=subject,
             )
             stats[cat] += 1
             if args.apply:
-                db.execute(text(
-                    "UPDATE error_records SET error_category = :c, updated_at = now() WHERE id = :i"),
-                    {"c": cat, "i": rid})
+                db.execute(
+                    text("UPDATE error_records SET error_category = :c, updated_at = now() WHERE id = :i"),
+                    {"c": cat, "i": rid},
+                )
         if args.apply:
             db.commit()
 
@@ -68,8 +75,9 @@ def main() -> int:
             print(f"  {k:<10} {v}")
 
         total = db.execute(text("SELECT count(*) FROM error_records")).scalar()
-        filled = db.execute(text(
-            "SELECT count(*) FROM error_records WHERE error_category IS NOT NULL AND btrim(error_category) <> ''")).scalar()
+        filled = db.execute(
+            text("SELECT count(*) FROM error_records WHERE error_category IS NOT NULL AND btrim(error_category) <> ''")
+        ).scalar()
         print(f"\n错因覆盖率：{filled}/{total} = {filled / max(total, 1) * 100:.1f}%")
         return 0
     finally:

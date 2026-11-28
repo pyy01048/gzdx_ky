@@ -16,6 +16,7 @@
   python scripts/clean_notices_noise.py            # dry-run
   python scripts/clean_notices_noise.py --apply    # 备份+删除
 """
+
 from __future__ import annotations
 
 import csv
@@ -54,6 +55,7 @@ def main() -> None:
     print(f"确认删除: {len(to_del)} 行")
 
     from collections import Counter
+
     by_school = Counter(r[1] for r in to_del)
     print("按校分布:", dict(by_school))
 

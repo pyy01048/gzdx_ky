@@ -13,6 +13,7 @@
 * 模型通过环境变量 `SMART_INGEST_KP_MODEL` 覆盖（kp_extract 第 107 行读取），
   这里直接改模块属性 `kp_extract.KP_MODEL`，避免重复 import。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -108,9 +109,12 @@ def probe(model: str, payload: dict, timeout: float):
         "failed": st.get("failed", 0),
         "error": st.get("error", ""),
         "items": [
-            {"name": it["name"], "subject": it["subject"],
-             "subject_source": it["subject_source"],
-             "desc": it["description"][:120]}
+            {
+                "name": it["name"],
+                "subject": it["subject"],
+                "subject_source": it["subject_source"],
+                "desc": it["description"][:120],
+            }
             for it in items[:6]
         ],
     }
@@ -120,20 +124,30 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--doc-id", type=int, default=11)
     ap.add_argument("--chunk-idx", type=int, default=0)
-    ap.add_argument("--pick", choices=("best", "idx"), default="best",
-                    help="best=正文度最高的块（默认，避开目录页）；idx=按 --chunk-idx 取")
+    ap.add_argument(
+        "--pick",
+        choices=("best", "idx"),
+        default="best",
+        help="best=正文度最高的块（默认，避开目录页）；idx=按 --chunk-idx 取",
+    )
     ap.add_argument("--timeout", type=float, default=420.0)
     ap.add_argument("--models", default="qwen2.5-coder:7b")
     ap.add_argument("--out", default="scripts/_logs/kp_model_probe.json")
     args = ap.parse_args()
 
     payload = load_chunk(args.doc_id, args.chunk_idx, args.pick)
-    print(f"[doc#{payload['doc_id']}] {payload['file_name']} "
-          f"subject={payload['subject']} 正文={payload['body_chars']}字 "
-          f"块数={payload['total_chunks']}", flush=True)
-    print(f"[chunk#{args.chunk_idx}] 字数="
-          f"{len(payload['chunk'].get('text') or '')} "
-          f"heading={payload['chunk'].get('heading')!r}", flush=True)
+    print(
+        f"[doc#{payload['doc_id']}] {payload['file_name']} "
+        f"subject={payload['subject']} 正文={payload['body_chars']}字 "
+        f"块数={payload['total_chunks']}",
+        flush=True,
+    )
+    print(
+        f"[chunk#{args.chunk_idx}] 字数="
+        f"{len(payload['chunk'].get('text') or '')} "
+        f"heading={payload['chunk'].get('heading')!r}",
+        flush=True,
+    )
     print(f"[preview] {(payload['chunk'].get('text') or '')[:200]!r}\n", flush=True)
 
     results = []
@@ -142,15 +156,18 @@ def main() -> int:
         try:
             r = probe(m, payload, args.timeout)
         except Exception as e:  # noqa: BLE001
-            r = {"model": m, "seconds": -1, "kept": 0, "error":
-                 f"{type(e).__name__}: {e}"[:300], "items": []}
+            r = {"model": m, "seconds": -1, "kept": 0, "error": f"{type(e).__name__}: {e}"[:300], "items": []}
         results.append(r)
         print(json.dumps(r, ensure_ascii=False, indent=2), flush=True)
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
-        json.dump({"doc": {k: v for k, v in payload.items() if k != "chunk"},
-                   "results": results}, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {"doc": {k: v for k, v in payload.items() if k != "chunk"}, "results": results},
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
     print(f"\n[saved] {args.out}")
     return 0
 

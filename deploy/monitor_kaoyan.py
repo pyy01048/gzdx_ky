@@ -41,10 +41,10 @@ LOG_FILE = "/opt/kaoyan/logs/monitor.log"
 APP_URL = "http://127.0.0.1:8000/api/health"
 NGINX_URL = "http://127.0.0.1:80/api/health"
 TIMEOUT = 8
-FAIL_THRESHOLD = 2          # 连续失败次数达到即自愈
-ALERT_COOLDOWN = 1800       # 同类告警 30 分钟冷却
-HEAL_COOLDOWN = 300         # 两次自愈重启至少间隔 5 分钟，防持续故障下重启风暴
-RESTART_TIMEOUT = 120       # > systemd 默认 TimeoutStopSec(90s)，避免 restart 被误判超时
+FAIL_THRESHOLD = 2  # 连续失败次数达到即自愈
+ALERT_COOLDOWN = 1800  # 同类告警 30 分钟冷却
+HEAL_COOLDOWN = 300  # 两次自愈重启至少间隔 5 分钟，防持续故障下重启风暴
+RESTART_TIMEOUT = 120  # > systemd 默认 TimeoutStopSec(90s)，避免 restart 被误判超时
 
 
 def log(msg: str) -> None:
@@ -194,7 +194,9 @@ def main() -> int:
             state["last_heal"] = state["last_check"]
             state["last_heal_ts"] = now_ts
             alert_throttled(
-                state, "app_down", env,
+                state,
+                "app_down",
+                env,
                 "后端假死/不可达，已自动重启",
                 f"时间: {state['last_check']}\n连续失败: {app_fails} 次（{TIMEOUT}s 超时口径）\n"
                 f"systemctl restart kaoyan: {'成功' if restarted else '失败，需要人工介入'}\n"
@@ -206,7 +208,9 @@ def main() -> int:
             state["nginx_fails"] = 0
             state["last_heal_ts"] = now_ts
             alert_throttled(
-                state, "nginx_down", env,
+                state,
+                "nginx_down",
+                env,
                 "nginx 入口不可达（后端正常），已自动重启",
                 f"时间: {state['last_check']}\n应用直连正常，nginx 入口连续 {nginx_fails} 次失败。\n已执行 systemctl restart nginx。",
             )

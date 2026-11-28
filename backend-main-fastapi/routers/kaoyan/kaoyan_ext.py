@@ -15,7 +15,6 @@ from typing import List, Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import KaoyanCrawlTarget, KaoyanSchool
 from pydantic import BaseModel, Field
 from services.dbapi_compat import wrap_conn
 from services.kaoyan import reform_detector, score_insight
@@ -23,6 +22,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.security import require_admin
+
+from models import KaoyanCrawlTarget, KaoyanSchool
 
 router = APIRouter(prefix="/api/kaoyan", tags=["考研择校扩展"])
 
@@ -249,10 +250,14 @@ def reforms_scan(
 def score_detail(
     school_id: int,
     major_id: Optional[int] = Query(None),
+    subject_code: Optional[str] = Query(None, description="门类、四位专业或完整方向代码"),
     db: Session = Depends(get_db),
 ):
     """院校（或专业）多年分数全景：单科明细/录取/趋势/国家线差值。"""
-    detail = score_insight.school_score_detail(db, school_id, major_id=major_id)
+    try:
+        detail = score_insight.school_score_detail(db, school_id, major_id=major_id, subject_code=subject_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not detail:
         raise HTTPException(status_code=404, detail="院校不存在")
     return detail

@@ -14,6 +14,7 @@
     python scripts/clean_document_text.py --apply
     python scripts/clean_document_text.py --apply --retry-empty   # 顺带尝试重解析近空文档
 """
+
 from __future__ import annotations
 
 import argparse
@@ -103,13 +104,9 @@ def main() -> int:
         print(f"已清洗 {len(changes)} 篇")
 
     print("\n=== 复核 ===")
-    left_img = con.execute(
-        "SELECT count(*) FROM documents WHERE content LIKE '%![%](%'").fetchone()[0]
-    left_fffd = con.execute(
-        "SELECT count(*) FROM documents WHERE content LIKE '%\ufffd%'").fetchone()[0]
-    empty = con.execute(
-        "SELECT count(*) FROM documents WHERE content IS NULL OR length(content)<50"
-    ).fetchone()[0]
+    left_img = con.execute("SELECT count(*) FROM documents WHERE content LIKE '%![%](%'").fetchone()[0]
+    left_fffd = con.execute("SELECT count(*) FROM documents WHERE content LIKE '%\ufffd%'").fetchone()[0]
+    empty = con.execute("SELECT count(*) FROM documents WHERE content IS NULL OR length(content)<50").fetchone()[0]
     print(f"  残留图片引用: {left_img}")
     print(f"  含替换符: {left_fffd}")
     print(f"  近空文档: {empty}")

@@ -117,8 +117,7 @@ def main() -> None:
 
     # ---------------- 2. 题侧：全部题按归一 source 归组 ----------------
     all_q = cur.execute(
-        "SELECT id, source, content, answer, analysis, is_junk, subject, question_type "
-        "FROM quiz_questions"
+        "SELECT id, source, content, answer, analysis, is_junk, subject, question_type FROM quiz_questions"
     ).fetchall()
 
     q_by_src: dict[str, list[sqlite3.Row]] = defaultdict(list)
@@ -126,8 +125,8 @@ def main() -> None:
         q_by_src[strip_source_prefix(q["source"])].append(q)
 
     # ---------------- 3. 文档 -> 是否抽出过题 ----------------
-    idle_docs = []       # 一篇题都没抽出的答案版文档
-    used_docs = []       # 抽出过题的答案版文档
+    idle_docs = []  # 一篇题都没抽出的答案版文档
+    used_docs = []  # 抽出过题的答案版文档
     for name, d in doc_by_name.items():
         qs = q_by_src.get(name, [])
         rec = {
@@ -154,7 +153,7 @@ def main() -> None:
         ans_stat["has_answer"] += has_ans
         ans_stat["has_analysis"] += has_ana
         if has_ans:
-            ans_stat["answered_not_junk"] += (not q["is_junk"])
+            ans_stat["answered_not_junk"] += not q["is_junk"]
         else:
             r = split_inline_answer(q["content"] or "")
             if r["ok"]:
@@ -205,8 +204,9 @@ def main() -> None:
     L.append("### 1. 答案版真题文档 → 抽题覆盖")
     L.append(f"答案版文档（file_name 含 答案/解析/详解，正文>=500字）: {len(doc_by_name)} 份")
     L.append(f"  已抽出题: {len(used_docs)} 份")
-    L.append(f"  一篇题都没抽出（真闲置资产）: {len(idle_docs)} 份，"
-             f"合计正文 {sum(r['doc_len'] for r in idle_docs):,} 字")
+    L.append(
+        f"  一篇题都没抽出（真闲置资产）: {len(idle_docs)} 份，合计正文 {sum(r['doc_len'] for r in idle_docs):,} 字"
+    )
     L.append("")
     L.append("--- 闲置文档 Top 30（按正文字数） ---")
     L.append(f"{'doc_id':>6} {'字数':>8}  file_name")
@@ -216,13 +216,16 @@ def main() -> None:
     L.append("--- 已抽题文档 Top 20（按题数） ---")
     L.append(f"{'doc_id':>6} {'题数':>5} {'有答案':>6} {'junk':>5} {'字数':>8}  file_name")
     for r in used_docs[:20]:
-        L.append(f"{r['doc_id']:>6} {r['n_questions']:>5} {r['n_answered']:>6} "
-                 f"{r['n_junk']:>5} {r['doc_len']:>8,}  {r['file_name']}")
+        L.append(
+            f"{r['doc_id']:>6} {r['n_questions']:>5} {r['n_answered']:>6} "
+            f"{r['n_junk']:>5} {r['doc_len']:>8,}  {r['file_name']}"
+        )
     L.append("")
     L.append("### 2. 来自答案文档的题：answer 填充率")
     L.append(f"总条数: {ans_stat['total']}")
-    L.append(f"  answer 非空: {ans_stat['has_answer']} "
-             f"({ans_stat['has_answer']*100.0/max(ans_stat['total'],1):.1f}%)")
+    L.append(
+        f"  answer 非空: {ans_stat['has_answer']} ({ans_stat['has_answer'] * 100.0 / max(ans_stat['total'], 1):.1f}%)"
+    )
     L.append(f"  analysis 非空: {ans_stat['has_analysis']}")
     L.append(f"  answer 空 但 content 自带答案段（该拆没拆）: {ans_stat['no_answer_but_inline']}")
     L.append(f"  answer 空 且 content 干净: {ans_stat['no_answer_no_inline']}")

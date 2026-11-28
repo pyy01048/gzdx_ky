@@ -8,6 +8,7 @@
   3. 回填新块的 token_count（项目算法：汉字1、连续字母数字1）。
   4. 调用 pipeline.build_vectors 为文档152的块补向量（增量）。
 """
+
 from __future__ import annotations
 
 import os
@@ -112,7 +113,7 @@ def ocr_pdf_all():
         for i in range(start_page, n_pages):
             page = None
             try:
-                t1 = time.time()
+                time.time()
                 page = doc[i]
                 # 自适应 scale（与大文件管线一致）
                 try:
@@ -141,26 +142,28 @@ def ocr_pdf_all():
                     pass
 
                 if text and text.strip():
-                    parts.append(f"--- 第{i+1}页(OCR) ---")
+                    parts.append(f"--- 第{i + 1}页(OCR) ---")
                     parts.append(text)
                 else:
-                    log(f"  第{i+1}页 无文字（{ocr.last_error or '未识别到文字'}）")
+                    log(f"  第{i + 1}页 无文字（{ocr.last_error or '未识别到文字'}）")
 
                 # 立即追加到 checkpoint（每页落盘）
                 with open(CKPT_PATH, "a", encoding="utf-8") as f:
-                    f.write(f"--- 第{i+1}页(OCR) ---\n")
+                    f.write(f"--- 第{i + 1}页(OCR) ---\n")
                     f.write(text + "\n" if text else "\n")
 
                 if (i + 1) % 20 == 0 or i == n_pages - 1:
                     el = time.time() - t0
                     rate = (i + 1 - start_page) / el if el > 0 else 0
                     eta = (n_pages - i - 1) / rate / 60 if rate > 0 else 0
-                    log(f"  进度 {i+1}/{n_pages} 页，本次 {i+1-start_page} 页耗时 {el:.0f}s，"
-                        f"剩余约 {eta:.1f} 分钟")
+                    log(
+                        f"  进度 {i + 1}/{n_pages} 页，本次 {i + 1 - start_page} 页耗时 {el:.0f}s，"
+                        f"剩余约 {eta:.1f} 分钟"
+                    )
             except Exception as e:
-                log(f"  第{i+1}页异常: {type(e).__name__}: {e}，跳过")
+                log(f"  第{i + 1}页异常: {type(e).__name__}: {e}，跳过")
                 with open(CKPT_PATH, "a", encoding="utf-8") as f:
-                    f.write(f"--- 第{i+1}页(OCR) ---\n\n")
+                    f.write(f"--- 第{i + 1}页(OCR) ---\n\n")
                 if page is not None:
                     try:
                         page.close()
@@ -174,7 +177,7 @@ def ocr_pdf_all():
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     total_chars = sum(len(p) for p in parts)
-    log(f"OCR 全部完成：{n_pages} 页，共 {total_chars} 字，总耗时 {(time.time()-t0)/60:.1f} 分钟")
+    log(f"OCR 全部完成：{n_pages} 页，共 {total_chars} 字，总耗时 {(time.time() - t0) / 60:.1f} 分钟")
     return "\n".join(parts)
 
 
@@ -202,6 +205,7 @@ def write_to_db(text: str):
 
     # 用项目 ORM 路径切块（复用 ingest_text，保证 search_vector 生成列自动填充）
     import orm_aliases
+
     orm_aliases.install()
     from database import SessionLocal
     from services import kb_service
@@ -209,6 +213,7 @@ def write_to_db(text: str):
     db = SessionLocal()
     try:
         from models import Document
+
         doc = db.query(Document).filter(Document.id == DOC_ID).first()
         if doc is None:
             log("[错误] 数据库找不到文档152")
@@ -216,8 +221,12 @@ def write_to_db(text: str):
 
         # 文档152当前无块，replace=True 不会触发物理删除闸门
         n = kb_service.ingest_text(
-            db, DOC_ID, doc.file_name or DOC_NAME, text,
-            subject=SUBJECT, replace=True,
+            db,
+            DOC_ID,
+            doc.file_name or DOC_NAME,
+            text,
+            subject=SUBJECT,
+            replace=True,
         )
         log(f"切块入库完成，新增 {n} 个分块")
 

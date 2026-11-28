@@ -134,7 +134,7 @@ def _load_source_ids(raw: Any) -> list[str]:
             return [str(x) for x in v] if isinstance(v, list) else [raw]
         except (ValueError, TypeError):
             return [raw]
-    if isinstance(raw, (list, tuple)):
+    if isinstance(raw, list | tuple):
         return [str(x) for x in raw]
     return []
 
@@ -176,9 +176,7 @@ def _user_data_refs(con: sqlite3.Connection, qid: int) -> dict[str, int]:
         if kind != "user":
             continue
         try:
-            n = con.execute(
-                f'SELECT COUNT(*) FROM "{table}" WHERE "{col}"=?', (qid,)
-            ).fetchone()[0]
+            n = con.execute(f'SELECT COUNT(*) FROM "{table}" WHERE "{col}"=?', (qid,)).fetchone()[0]
         except sqlite3.Error:
             continue
         if n:
@@ -186,8 +184,7 @@ def _user_data_refs(con: sqlite3.Connection, qid: int) -> dict[str, int]:
     return out
 
 
-def _repoint(con: sqlite3.Connection, table: str, col: str,
-             keep_id: int, drop_id: int) -> int:
+def _repoint(con: sqlite3.Connection, table: str, col: str, keep_id: int, drop_id: int) -> int:
     """把 drop_id 上的引用改指向 keep_id，返回迁移行数。
 
     ``question_knowledge_links`` 上有 ``UNIQUE(question_id, knowledge_point_id)``：
@@ -196,23 +193,19 @@ def _repoint(con: sqlite3.Connection, table: str, col: str,
     不会丢关联。
     """
     try:
-        cur = con.execute(
-            f'UPDATE "{table}" SET "{col}"=? WHERE "{col}"=?', (keep_id, drop_id)
-        )
+        cur = con.execute(f'UPDATE "{table}" SET "{col}"=? WHERE "{col}"=?', (keep_id, drop_id))
         return cur.rowcount or 0
     except sqlite3.IntegrityError:
         pass
 
     # 有唯一约束：取被删条目上的全部行，逐行判断保留条目是否已有等价行
-    rows = con.execute(
-        f'SELECT * FROM "{table}" WHERE "{col}"=?', (drop_id,)
-    ).fetchall()
+    rows = con.execute(f'SELECT * FROM "{table}" WHERE "{col}"=?', (drop_id,)).fetchall()
     cols = [d[0] for d in con.execute(f'SELECT * FROM "{table}" LIMIT 0').description]
     id_col = cols[0]
     other = [c for c in cols if c not in (col, id_col)]
     moved = 0
     for r in rows:
-        d = dict(zip(cols, r))
+        d = dict(zip(cols, r, strict=False))
         where = " AND ".join(f'"{c}" IS ?' for c in other)
         exists = con.execute(
             f'SELECT 1 FROM "{table}" WHERE "{col}"=? AND {where} LIMIT 1',
@@ -232,14 +225,12 @@ def _repoint(con: sqlite3.Connection, table: str, col: str,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="清理 quiz_questions 跨来源重复")
-    ap.add_argument("--apply", action="store_true",
-                    help="真正执行删除（默认 dry-run，只报告不动库）")
-    ap.add_argument("--keep-shared", action="store_true",
-                    help="连跨校公共课重复也一并合并（默认保留它们）")
-    ap.add_argument("--allow-user-merge", action="store_true",
-                    help="允许合并带有做题记录/错题记录的重复条目（默认保守跳过）")
-    ap.add_argument("--limit", type=int, default=0,
-                    help="最多处理多少组（0=不限），用于小步试跑")
+    ap.add_argument("--apply", action="store_true", help="真正执行删除（默认 dry-run，只报告不动库）")
+    ap.add_argument("--keep-shared", action="store_true", help="连跨校公共课重复也一并合并（默认保留它们）")
+    ap.add_argument(
+        "--allow-user-merge", action="store_true", help="允许合并带有做题记录/错题记录的重复条目（默认保守跳过）"
+    )
+    ap.add_argument("--limit", type=int, default=0, help="最多处理多少组（0=不限），用于小步试跑")
     args = ap.parse_args()
 
     db_path = _configured_db
@@ -250,8 +241,7 @@ def main() -> int:
     if added_col:
         print("[schema] 已新增 quiz_questions.source_ids 列")
 
-    total_before = con.execute(
-        "SELECT COUNT(*) FROM quiz_questions").fetchone()[0]
+    total_before = con.execute("SELECT COUNT(*) FROM quiz_questions").fetchone()[0]
     groups = _collect_groups(con)
 
     print("=" * 74)
@@ -262,11 +252,8 @@ def main() -> int:
     print(f"跨校公共课重复: {args.keep_shared and '一并处理' or '默认保留（--keep-shared 可改）'}")
 
     # ---- 用户交互字段基线（清理前） ----
-    baseline = con.execute(
-        "SELECT COUNT(*) FROM quiz_questions WHERE is_junk=1").fetchone()[0]
-    print(f"基线: is_junk=1 {baseline} 条 | "
-          f"用户交互字段( mastery/click/is_read 等): "
-          f"{'不存在于本表' }")
+    baseline = con.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=1").fetchone()[0]
+    print(f"基线: is_junk=1 {baseline} 条 | 用户交互字段( mastery/click/is_read 等): {'不存在于本表'}")
 
     # ---- 分组：计划删 / 保留 ----
     plan: list[dict[str, Any]] = []
@@ -288,11 +275,16 @@ def main() -> int:
                 blocked.append((d, refs))
             else:
                 deletable.append(d)
-        plan.append({
-            "keep": keep, "delete": deletable, "blocked": blocked,
-            "shared": shared, "content": (keep["content"] or "")[:100],
-            "sources": [r["source"] for r in g],
-        })
+        plan.append(
+            {
+                "keep": keep,
+                "delete": deletable,
+                "blocked": blocked,
+                "shared": shared,
+                "content": (keep["content"] or "")[:100],
+                "sources": [r["source"] for r in g],
+            }
+        )
 
     n_delete = sum(len(p["delete"]) for p in plan)
     n_blocked = sum(len(p["blocked"]) for p in plan)
@@ -301,8 +293,7 @@ def main() -> int:
         n_delete = sum(len(p["delete"]) for p in plan)
         n_blocked = sum(len(p["blocked"]) for p in plan)
 
-    print(f"\n计划合并组数: {len(plan)}（其中跨校公共课 "
-          f"{sum(1 for p in plan if p['shared'])} 组）")
+    print(f"\n计划合并组数: {len(plan)}（其中跨校公共课 {sum(1 for p in plan if p['shared'])} 组）")
     print(f"计划删除条数: {n_delete}")
     print(f"因挂有用户数据而跳过删除: {n_blocked} 条")
     print(f"保留不动的跨校公共课重复组: {keep_shared_groups}")
@@ -344,20 +335,17 @@ def main() -> int:
             keep_srcs = _load_source_ids(p["keep"]["source_ids"])
             if not keep_srcs and (p["keep"]["source"] or "").strip():
                 keep_srcs = [(p["keep"]["source"] or "").strip()]
-            for s in _load_source_ids(d["source_ids"]) or (
-                [d["source"]] if (d["source"] or "").strip() else []
-            ):
+            for s in _load_source_ids(d["source_ids"]) or ([d["source"]] if (d["source"] or "").strip() else []):
                 if s not in keep_srcs:
                     keep_srcs.append(s)
             con.execute(
                 "UPDATE quiz_questions SET source_ids=?, source=? WHERE id=?",
-                (json.dumps(keep_srcs, ensure_ascii=False),
-                 " | ".join(keep_srcs)[:200], keep_id),
+                (json.dumps(keep_srcs, ensure_ascii=False), " | ".join(keep_srcs)[:200], keep_id),
             )
             merged_src += 1
 
             # 2) 迁移引用（mapping 表无损改指向；user 表已在计划阶段拦住）
-            for table, col, kind in REFERENCING_TABLES:
+            for table, col, _kind in REFERENCING_TABLES:
                 try:
                     _repoint(con, table, col, keep_id, did)
                 except sqlite3.Error as e:
@@ -383,11 +371,9 @@ def main() -> int:
     con.commit()
 
     # ---- 清理后统计 ----
-    total_after = con.execute(
-        "SELECT COUNT(*) FROM quiz_questions").fetchone()[0]
+    total_after = con.execute("SELECT COUNT(*) FROM quiz_questions").fetchone()[0]
     groups_after = len(_collect_groups(con))
-    shared_after = sum(
-        1 for g in _collect_groups(con) if _is_shared_pubcourse(g))
+    shared_after = sum(1 for g in _collect_groups(con) if _is_shared_pubcourse(g))
 
     print("=" * 74)
     print("清理结果")
@@ -397,15 +383,16 @@ def main() -> int:
     print(f"  其中跨校公共课重复（有意保留）: {shared_after}")
     print(f"合并溯源条目数: {merged_src}")
     print(f"用户数据引用迁移条数: {repointed}")
-    junk_after = con.execute(
-        "SELECT COUNT(*) FROM quiz_questions WHERE is_junk=1").fetchone()[0]
+    junk_after = con.execute("SELECT COUNT(*) FROM quiz_questions WHERE is_junk=1").fetchone()[0]
     print(f"is_junk=1: {baseline} → {junk_after}（未因清理改变）")
-    print("\n用户交互字段说明: quiz_questions 表**不存在** mastery/click/is_read "
-          "等用户交互列（已核实字段清单），\n"
-          "                用户数据挂在 question_knowledge_links / "
-          "answer_records / error_records /\n"
-          "                answer_candidates 表上，本次清理已按上表迁移引用，"
-          "未丢失。")
+    print(
+        "\n用户交互字段说明: quiz_questions 表**不存在** mastery/click/is_read "
+        "等用户交互列（已核实字段清单），\n"
+        "                用户数据挂在 question_knowledge_links / "
+        "answer_records / error_records /\n"
+        "                answer_candidates 表上，本次清理已按上表迁移引用，"
+        "未丢失。"
+    )
 
     con.close()
     return 0

@@ -43,6 +43,7 @@
     # 替代 cur.lastrowid
     new_id = insert_returning_id(conn, "INSERT INTO t (a) VALUES (?)", ("x",))
 """
+
 from __future__ import annotations
 
 import re
@@ -84,42 +85,59 @@ def _split_sql_segments(sql: str) -> list[tuple[str, bool]]:
         # 单引号串
         if ch == "'":
             if buf:
-                segs.append(("".join(buf), False)); buf = []
+                segs.append(("".join(buf), False))
+                buf = []
             j = i + 1
             while j < n:
                 if sql[j] == "'":
                     if j + 1 < n and sql[j + 1] == "'":
-                        j += 2; continue
-                    j += 1; break
+                        j += 2
+                        continue
+                    j += 1
+                    break
                 j += 1
-            segs.append((sql[i:j], True)); i = j; continue
+            segs.append((sql[i:j], True))
+            i = j
+            continue
         # 双引号标识符
         if ch == '"':
             if buf:
-                segs.append(("".join(buf), False)); buf = []
+                segs.append(("".join(buf), False))
+                buf = []
             j = i + 1
             while j < n:
                 if sql[j] == '"':
                     if j + 1 < n and sql[j + 1] == '"':
-                        j += 2; continue
-                    j += 1; break
+                        j += 2
+                        continue
+                    j += 1
+                    break
                 j += 1
-            segs.append((sql[i:j], True)); i = j; continue
+            segs.append((sql[i:j], True))
+            i = j
+            continue
         # 行注释
         if ch == "-" and i + 1 < n and sql[i + 1] == "-":
             if buf:
-                segs.append(("".join(buf), False)); buf = []
+                segs.append(("".join(buf), False))
+                buf = []
             j = sql.find("\n", i)
             j = n if j < 0 else j
-            segs.append((sql[i:j], True)); i = j; continue
+            segs.append((sql[i:j], True))
+            i = j
+            continue
         # 块注释
         if ch == "/" and i + 1 < n and sql[i + 1] == "*":
             if buf:
-                segs.append(("".join(buf), False)); buf = []
+                segs.append(("".join(buf), False))
+                buf = []
             j = sql.find("*/", i + 2)
             j = n if j < 0 else j + 2
-            segs.append((sql[i:j], True)); i = j; continue
-        buf.append(ch); i += 1
+            segs.append((sql[i:j], True))
+            i = j
+            continue
+        buf.append(ch)
+        i += 1
     if buf:
         segs.append(("".join(buf), False))
     return segs
@@ -227,9 +245,7 @@ def adapt_dml(sql: str) -> str:
     return sql
 
 
-_DDL_PREFIX = re.compile(
-    r"^\s*(CREATE|ALTER|DROP|COMMENT|PRAGMA)\b", re.I
-)
+_DDL_PREFIX = re.compile(r"^\s*(CREATE|ALTER|DROP|COMMENT|PRAGMA)\b", re.I)
 # 行注释 / 块注释前缀。DDL 脚本常以注释开头（本项目 notice_alert._DDL 就是），
 # 而 ``split_statements`` 会把注释与紧随其后的 CREATE TABLE 切成同一条语句。
 # 若直接用 ``^`` 判断前缀，这类语句会被误判成"不是 DDL"从而**跳过整个 DDL
@@ -350,8 +366,7 @@ def table_exists(conn, table: str, schema: str = "public") -> bool:
         return bool(cur.fetchone()[0])
     cur = conn.cursor()
     cur.execute(
-        "SELECT COUNT(*) FROM information_schema.tables "
-        "WHERE table_schema=%s AND table_name=%s",
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=%s AND table_name=%s",
         (schema, table),
     )
     return bool(cur.fetchone()[0])
@@ -395,15 +410,13 @@ def count_tables(conn, schema: str = "public") -> int:
         return int(cur.fetchone()[0])
     cur = conn.cursor()
     cur.execute(
-        "SELECT COUNT(*) FROM information_schema.tables "
-        "WHERE table_schema=%s AND table_type='BASE TABLE'",
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=%s AND table_type='BASE TABLE'",
         (schema,),
     )
     return int(cur.fetchone()[0])
 
 
-def add_column_if_missing(conn, table: str, column: str, ddl_type: str,
-                          schema: str = "public") -> bool:
+def add_column_if_missing(conn, table: str, column: str, ddl_type: str, schema: str = "public") -> bool:
     """幂等加列（替代"PRAGMA 探测 + ALTER"，避免 PG 事务 abort）。
 
     Returns:

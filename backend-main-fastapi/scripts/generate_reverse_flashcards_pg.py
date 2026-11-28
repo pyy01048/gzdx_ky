@@ -9,6 +9,7 @@
 - 以 knowledge_point_id 为锚，若该知识点已存在反向卡则跳过。
 - 判定反向卡：front 不等于该知识点的 name（正向卡的 front 是 name）。
 """
+
 from __future__ import annotations
 
 import sys

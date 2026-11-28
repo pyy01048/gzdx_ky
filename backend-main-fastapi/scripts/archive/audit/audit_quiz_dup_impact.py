@@ -24,9 +24,12 @@ def main() -> None:
         if not ids:
             return {}
         qm = ",".join("?" * len(ids))
-        return {r["id"]: r for r in con.execute(
-            f"SELECT id, answer, is_junk, is_available, source, content FROM quiz_questions "
-            f"WHERE id IN ({qm})", ids)}
+        return {
+            r["id"]: r
+            for r in con.execute(
+                f"SELECT id, answer, is_junk, is_available, source, content FROM quiz_questions WHERE id IN ({qm})", ids
+            )
+        }
 
     need = [g for g in groups if 0 in g["is_junk"]]
     noop = [g for g in groups if all(i == 1 for i in g["is_junk"])]
@@ -41,19 +44,17 @@ def main() -> None:
     drop_rows = q(drop_all)
     ans_ok = [i for i in drop_all if (drop_rows[i]["answer"] or "").strip()]
     junk0 = [i for i in drop_all if not int(drop_rows[i]["is_junk"] or 0)]
-    both = [i for i in drop_all
-            if not int(drop_rows[i]["is_junk"] or 0) and (drop_rows[i]["answer"] or "").strip()]
+    both = [i for i in drop_all if not int(drop_rows[i]["is_junk"] or 0) and (drop_rows[i]["answer"] or "").strip()]
     print()
     print("--- 冗余条构成（需动作组内，共 %d 条）---" % len(drop_all))
     print(f"  answer 非空（用户可刷）      : {len(ans_ok)}")
     print(f"  is_junk=0（未被隔离）        : {len(junk0)}")
     print(f"  两者都满足（刷题区重复题）  : {len(both)}")
 
-    base_junk0 = con.execute(
-        "SELECT count(*) FROM quiz_questions WHERE is_junk=0").fetchone()[0]
+    base_junk0 = con.execute("SELECT count(*) FROM quiz_questions WHERE is_junk=0").fetchone()[0]
     base_ans = con.execute(
-        "SELECT count(*) FROM quiz_questions WHERE is_junk=0 AND answer IS NOT NULL "
-        "AND trim(answer)<>''").fetchone()[0]
+        "SELECT count(*) FROM quiz_questions WHERE is_junk=0 AND answer IS NOT NULL AND trim(answer)<>''"
+    ).fetchone()[0]
     print()
     print(f"当前 is_junk=0                : {base_junk0}")
     print(f"当前 is_junk=0 且有答案        : {base_ans}")
@@ -63,12 +64,21 @@ def main() -> None:
     print("   价值不在于减少题数，而在于：同一道题只出现一次，答题正确率统计不失真")
 
     with open(os.path.join(OUT_DIR, "dup_impact.txt"), "w", encoding="utf-8") as f:
-        f.write("\n".join(f"{k}: {v}" for k, v in [
-            ("需动作组", len(need)), ("无需动作组", len(noop)),
-            ("冗余条", len(drop_all)), ("冗余中answer非空", len(ans_ok)),
-            ("冗余中is_junk=0", len(junk0)), ("冗余中两者都满足", len(both)),
-            ("当前is_junk=0", base_junk0), ("当前可刷题", base_ans),
-        ]))
+        f.write(
+            "\n".join(
+                f"{k}: {v}"
+                for k, v in [
+                    ("需动作组", len(need)),
+                    ("无需动作组", len(noop)),
+                    ("冗余条", len(drop_all)),
+                    ("冗余中answer非空", len(ans_ok)),
+                    ("冗余中is_junk=0", len(junk0)),
+                    ("冗余中两者都满足", len(both)),
+                    ("当前is_junk=0", base_junk0),
+                    ("当前可刷题", base_ans),
+                ]
+            )
+        )
     print("\n→ data/diagnostics/dup_impact.txt")
 
 

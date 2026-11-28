@@ -7,6 +7,7 @@
 - 补充 PG 特有的 year/paper_type/is_mock 字段（ORM 模型未同步这些列）
 - 幂等：按 title 查重，已存在则跳过
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,10 +17,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from database import SessionLocal  # noqa: E402
-from models import Paper  # noqa: E402
 from services.paper_builder import build_paper, save_paper  # noqa: E402
 
+from models import Paper  # noqa: E402
+
 SUBJECTS = ["数学", "电路", "数字电子技术", "模拟电子技术", "自动控制原理", "政治"]
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="从题库组装试卷")
@@ -54,11 +57,17 @@ def main() -> int:
                 print("  dry-run 不写库")
                 continue
 
-            paper = save_paper(db, title=title, subject=subject,
-                               description=f"{args.year}年考研{subject}模拟卷（自动组卷）",
-                               rules=rules, items=result["items"])
+            paper = save_paper(
+                db,
+                title=title,
+                subject=subject,
+                description=f"{args.year}年考研{subject}模拟卷（自动组卷）",
+                rules=rules,
+                items=result["items"],
+            )
             # 补充 PG 特有列（ORM 模型未映射）
             from sqlalchemy import text
+
             db.execute(
                 text("UPDATE papers SET year=:y, paper_type=:pt, is_mock=:im WHERE id=:id"),
                 {"y": args.year, "pt": args.paper_type, "im": args.paper_type == "mock", "id": paper.id},
@@ -68,6 +77,7 @@ def main() -> int:
     finally:
         db.close()
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

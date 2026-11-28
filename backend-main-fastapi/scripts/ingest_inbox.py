@@ -37,8 +37,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="知识库快速入库 CLI")
     parser.add_argument("--file", help="入库单个文件（绝对路径）")
     parser.add_argument("--dry-run", action="store_true", help="只扫描/预演，不落库")
-    parser.add_argument("--ocr-backend", default="auto",
-                        help="OCR 后端：auto/local-gpu/paddleocr/rapidocr/chineseocr-lite")
+    parser.add_argument(
+        "--ocr-backend", default="auto", help="OCR 后端：auto/local-gpu/paddleocr/rapidocr/chineseocr-lite"
+    )
     parser.add_argument("--no-embed", action="store_true", help="跳过向量化")
     parser.add_argument("--no-move", action="store_true", help="入库后不移动原件")
     parser.add_argument("--recursive", action="store_true", help="递归扫描 inbox 子目录")
@@ -52,17 +53,24 @@ def main() -> int:
         from services.ocr_router import get_ocr_router
 
         router = get_ocr_router()
-        print(json.dumps({
-            "ocr_router": router.status(),
-            "knowledge_base": {
-                "root": kb_ingest.KB_ROOT,
-                "inbox": kb_ingest.INBOX_DIR,
-                "documents": kb_ingest.DOCUMENTS_DIR,
-                "meta": kb_ingest.MANIFEST_PATH,
-                "exists": all(os.path.isdir(d) for d in
-                              (kb_ingest.INBOX_DIR, kb_ingest.DOCUMENTS_DIR, kb_ingest.META_DIR)),
-            },
-        }, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "ocr_router": router.status(),
+                    "knowledge_base": {
+                        "root": kb_ingest.KB_ROOT,
+                        "inbox": kb_ingest.INBOX_DIR,
+                        "documents": kb_ingest.DOCUMENTS_DIR,
+                        "meta": kb_ingest.MANIFEST_PATH,
+                        "exists": all(
+                            os.path.isdir(d) for d in (kb_ingest.INBOX_DIR, kb_ingest.DOCUMENTS_DIR, kb_ingest.META_DIR)
+                        ),
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
 
     from database import SessionLocal
@@ -72,7 +80,8 @@ def main() -> int:
     try:
         if args.file:
             result = kb_ingest.ingest_file(
-                db, args.file,
+                db,
+                args.file,
                 ocr_backend=args.ocr_backend,
                 do_embeddings=not args.no_embed,
                 move_to_documents=not args.no_move,
@@ -90,8 +99,7 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except Exception as e:
-        print(json.dumps({"status": "error", "error": f"{type(e).__name__}: {e}"},
-                         ensure_ascii=False), file=sys.stderr)
+        print(json.dumps({"status": "error", "error": f"{type(e).__name__}: {e}"}, ensure_ascii=False), file=sys.stderr)
         return 1
     finally:
         db.close()

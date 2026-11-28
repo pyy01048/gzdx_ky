@@ -14,6 +14,7 @@
 Accuracy 0.728→0.707、Macro-F1 0.665→0.639，数电 P 0.77→0.63、408 R 0.92→0.62，
 只有数学小幅受益（F1 0.96→0.98）。整体是负增益，只在单篇排障时手动开。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,43 +41,46 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None, help="本次最多处理多少篇文档")
     ap.add_argument("--all", action="store_true", help="处理所有文档（含已打标，需配 --force）")
     ap.add_argument("--force", action="store_true", help="已打标的块也重打")
-    ap.add_argument("--llm", dest="use_llm", action="store_true", default=False,
-                    help="启用路3（默认关：147 人工样本实测 两路 Acc 0.728/MF1 0.665 "
-                         "→ 三路 0.707/0.639，负增益）")
-    ap.add_argument("--no-llm", dest="use_llm", action="store_false",
-                    help="显式关闭路3（与当前默认一致，保留给旧命令与文档示例）")
+    ap.add_argument(
+        "--llm",
+        dest="use_llm",
+        action="store_true",
+        default=False,
+        help="启用路3（默认关：147 人工样本实测 两路 Acc 0.728/MF1 0.665 → 三路 0.707/0.639，负增益）",
+    )
+    ap.add_argument(
+        "--no-llm", dest="use_llm", action="store_false", help="显式关闭路3（与当前默认一致，保留给旧命令与文档示例）"
+    )
     args = ap.parse_args()
 
     from database import SessionLocal
-    from models import Document, KnowledgeChunk
     from services import chunk_classifier
     from services.chunk_classifier import encode_texts, load_prototypes
     from sqlalchemy import func
+
+    from models import Document, KnowledgeChunk
 
     db = SessionLocal()
     try:
         chunk_classifier.ensure_chunk_label_columns(db)
         protos_ok = bool(load_prototypes(db))
         if not protos_ok:
-            print("⚠️ subject_prototypes 为空 —— 路1 不可用，先跑 "
-                  "scripts/build_subject_prototypes.py；本次仅关键词(+LLM)两路。")
+            print(
+                "⚠️ subject_prototypes 为空 —— 路1 不可用，先跑 "
+                "scripts/build_subject_prototypes.py；本次仅关键词(+LLM)两路。"
+            )
         elif encode_texts(["ping"]) is None:
             # 原来这条检查挂在 `if args.use_llm` 下：关路3 时 bge 掉了也一声不吭，
             # 整轮回填悄悄退化成"仅关键词"，实测就是这么产出大批低置信 vector 标签的。
-            print("⚠️ bge 模型不可用 —— 路1 质心相似度实际不会参与融合，"
-                  "本次只剩关键词一路，结果置信度会大面积偏低。")
+            print("⚠️ bge 模型不可用 —— 路1 质心相似度实际不会参与融合，本次只剩关键词一路，结果置信度会大面积偏低。")
 
         q = db.query(Document.id, Document.file_name).filter(
-            Document.id.in_(
-                db.query(KnowledgeChunk.document_id).distinct()
-            )
+            Document.id.in_(db.query(KnowledgeChunk.document_id).distinct())
         )
         if not args.doc_id and not args.force:
             q = q.filter(
                 Document.id.in_(
-                    db.query(KnowledgeChunk.document_id)
-                    .filter(KnowledgeChunk.l3_content_type.is_(None))
-                    .distinct()
+                    db.query(KnowledgeChunk.document_id).filter(KnowledgeChunk.l3_content_type.is_(None)).distinct()
                 )
             )
         if args.doc_id:
@@ -92,22 +96,22 @@ def main() -> int:
         t0 = time.time()
         done = 0
         for i, (doc_id, name) in enumerate(docs, 1):
-            r = chunk_classifier.classify_document(
-                db, doc_id, use_llm=args.use_llm,
-                only_unlabeled=not args.force)
+            r = chunk_classifier.classify_document(db, doc_id, use_llm=args.use_llm, only_unlabeled=not args.force)
             done += 1
             agg = r.get("aggregate") or {}
             # llm=成功数 llm_fail=失败数 junk=弃权数：只看成功数无法区分
             # "路3 没触发" 与 "路3 全部失败"，实测就是这么把 NameError 藏了整轮回填。
-            print(f"[{i}/{len(docs)}] doc#{doc_id} {str(name)[:36]} → "
-                  f"chunks={r.get('chunks')} llm={r.get('llm_calls', 0)} "
-                  f"llm_fail={r.get('llm_failed', 0)} junk={r.get('junk_skipped', 0)} "
-                  f"main={agg.get('main_subject', '')} mixed={agg.get('mixed')}")
-        labeled = db.query(func.count(KnowledgeChunk.id)).filter(
-            KnowledgeChunk.l3_content_type.isnot(None)).scalar() or 0
+            print(
+                f"[{i}/{len(docs)}] doc#{doc_id} {str(name)[:36]} → "
+                f"chunks={r.get('chunks')} llm={r.get('llm_calls', 0)} "
+                f"llm_fail={r.get('llm_failed', 0)} junk={r.get('junk_skipped', 0)} "
+                f"main={agg.get('main_subject', '')} mixed={agg.get('mixed')}"
+            )
+        labeled = (
+            db.query(func.count(KnowledgeChunk.id)).filter(KnowledgeChunk.l3_content_type.isnot(None)).scalar() or 0
+        )
         total = db.query(func.count(KnowledgeChunk.id)).scalar() or 0
-        print(f"✅ 本次处理 {done} 篇，耗时 {time.time()-t0:.0f}s；"
-              f"库内已打标 {labeled}/{total} 块")
+        print(f"✅ 本次处理 {done} 篇，耗时 {time.time() - t0:.0f}s；库内已打标 {labeled}/{total} 块")
         return 0
     finally:
         db.close()

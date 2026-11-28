@@ -29,6 +29,7 @@
 * 目标集合必须**精确等于** ``EXPECTED_IDS``，否则直接中止——
   这是防止"多删了别的行"的最后一道闸。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -70,8 +71,7 @@ def url_anomaly_scan(conn: sqlite3.Connection) -> list[tuple[str, int]]:
         ("url 空串", "TRIM(IFNULL(url,'')) = ''"),
         ("url = '#'（空锚点）", JUNK_URL_SQL),
         ("url 长度 < 8", "url IS NOT NULL AND LENGTH(TRIM(url)) < 8"),
-        ("url 不以 http 开头且非空",
-         "url IS NOT NULL AND TRIM(url) <> '' AND url NOT LIKE 'http%'"),
+        ("url 不以 http 开头且非空", "url IS NOT NULL AND TRIM(url) <> '' AND url NOT LIKE 'http%'"),
     ]
     out = []
     for label, cond in checks:
@@ -83,8 +83,7 @@ def url_anomaly_scan(conn: sqlite3.Connection) -> list[tuple[str, int]]:
 def referrer_scan(conn: sqlite3.Connection, ids: set[int]) -> list[tuple[str, int]]:
     """扫全库其它表是否通过 notice_id 引用待删行。"""
     hits = []
-    tables = [r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'")]
+    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
     for t in tables:
         if t == "kaoyan_notices":
             continue
@@ -92,9 +91,7 @@ def referrer_scan(conn: sqlite3.Connection, ids: set[int]) -> list[tuple[str, in
         if "notice_id" not in cols:
             continue
         marks = ",".join("?" * len(ids))
-        n = conn.execute(
-            f"SELECT COUNT(*) FROM {t} WHERE notice_id IN ({marks})", tuple(ids)
-        ).fetchone()[0]
+        n = conn.execute(f"SELECT COUNT(*) FROM {t} WHERE notice_id IN ({marks})", tuple(ids)).fetchone()[0]
         if n:
             hits.append((t, n))
     return hits
@@ -175,12 +172,12 @@ def main() -> int:
         else:
             print("  [OK] 无任何其它表通过 notice_id 引用这些行")
         unread = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_notices WHERE id IN (%s) AND is_read = 1"
-            % ",".join("?" * len(ids)), tuple(ids)
+            "SELECT COUNT(*) FROM kaoyan_notices WHERE id IN (%s) AND is_read = 1" % ",".join("?" * len(ids)),
+            tuple(ids),
         ).fetchone()[0]
         starred = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_notices WHERE id IN (%s) AND is_starred = 1"
-            % ",".join("?" * len(ids)), tuple(ids)
+            "SELECT COUNT(*) FROM kaoyan_notices WHERE id IN (%s) AND is_starred = 1" % ",".join("?" * len(ids)),
+            tuple(ids),
         ).fetchone()[0]
         if unread or starred:
             print(f"  [FAIL] 存在用户状态: 已读 {unread} / 已收藏 {starred}，中止")
@@ -216,8 +213,7 @@ def main() -> int:
             physical_delete(conn, ids)
         after = conn.execute("SELECT COUNT(*) FROM kaoyan_notices").fetchone()[0]
         print(f"  kaoyan_notices: {before} -> {after}")
-        left = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_notices WHERE " + JUNK_URL_SQL).fetchone()[0]
+        left = conn.execute("SELECT COUNT(*) FROM kaoyan_notices WHERE " + JUNK_URL_SQL).fetchone()[0]
         print(f"  残留 url='#' 行: {left}")
         return 0
     finally:

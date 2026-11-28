@@ -10,6 +10,7 @@
 第 2 层依赖 ``~/.mineru/models/.../PP-FormulaNet_plus-M.onnx``，
 没有模型时自动 skip —— 不让没装模型的机器红。
 """
+
 from __future__ import annotations
 
 import os
@@ -217,7 +218,7 @@ class TestFailurePaths:
         """
         rec = FormulaRecognizer()
         for ext in (".wmf", ".emf", ".wmz", ".emz"):
-            r = rec.recognize(f"/tmp/whatever{ext}")
+            rec.recognize(f"/tmp/whatever{ext}")
             # 文件不存在时先报 file_not_found；这里造个假文件测格式拦截
         assert UNRENDERABLE_EXTS  # 常量可用
 

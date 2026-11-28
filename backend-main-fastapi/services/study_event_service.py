@@ -37,7 +37,6 @@ import logging
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
-from models import StudyEvent
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from utils.timeutil import (
@@ -46,6 +45,8 @@ from utils.timeutil import (
     local_window_for_day,
     utcnow,
 )
+
+from models import StudyEvent
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +66,13 @@ __all__ = [
 # 的语义边界，方便后续 BI 侧按类型聚合时不被脏数据干扰。
 KNOWN_EVENT_TYPES = frozenset(
     {
-        "answer",        # 答题（刷题提交）
-        "review",        # 复习提交（知识点/错题/单词/卡片）
-        "flashcard",     # 卡片复习
-        "word",          # 单词背诵
-        "focus",         # 专注计时（真实时长）
-        "study",         # 通用学习动作
-        "exam_submit",   # 模拟考提交
+        "answer",  # 答题（刷题提交）
+        "review",  # 复习提交（知识点/错题/单词/卡片）
+        "flashcard",  # 卡片复习
+        "word",  # 单词背诵
+        "focus",  # 专注计时（真实时长）
+        "study",  # 通用学习动作
+        "exam_submit",  # 模拟考提交
     }
 )
 
@@ -124,9 +125,7 @@ def _check_chapter_id(db: Session, chapter_id: Optional[int]) -> Optional[int]:
         return None
 
 
-def _payload_with_key(
-    payload: Optional[Dict[str, Any]], dedupe_key: Optional[str]
-) -> Dict[str, Any]:
+def _payload_with_key(payload: Optional[Dict[str, Any]], dedupe_key: Optional[str]) -> Dict[str, Any]:
     """复制 payload 并写入去重键（不修改调用方传入的字典）。"""
     data: Dict[str, Any] = dict(payload or {})
     if dedupe_key:
@@ -134,9 +133,7 @@ def _payload_with_key(
     return data
 
 
-def _find_by_dedupe_key(
-    db: Session, dedupe_key: str, user_id: Optional[int]
-) -> Optional[int]:
+def _find_by_dedupe_key(db: Session, dedupe_key: str, user_id: Optional[int]) -> Optional[int]:
     """在最近的事件里找相同去重键（命中返回原行 id）。
 
     不依赖 PG 的 ``jsonb ->>`` 运算符，改成取最近 N 行在 Python 侧比对：
@@ -500,9 +497,7 @@ def resolve_knowledge_point_id(
     try:
         from models import QuestionKnowledgeLink
 
-        q = db.query(QuestionKnowledgeLink).filter(
-            QuestionKnowledgeLink.question_id == question_id
-        )
+        q = db.query(QuestionKnowledgeLink).filter(QuestionKnowledgeLink.question_id == question_id)
         if prefer_primary:
             q = q.order_by(
                 # primary 排在前面（'primary' < 'secondary' 字典序成立）
@@ -581,27 +576,13 @@ def learning_summary(
 
     # —— 行为流水 —— #
     events_total = int(_event_q(func.count(StudyEvent.id)).scalar() or 0)
-    answer_events = int(
-        _event_q(func.count(StudyEvent.id))
-        .filter(StudyEvent.event_type == "answer")
-        .scalar()
-        or 0
-    )
+    answer_events = int(_event_q(func.count(StudyEvent.id)).filter(StudyEvent.event_type == "answer").scalar() or 0)
     review_events = int(
-        _event_q(func.count(StudyEvent.id))
-        .filter(StudyEvent.event_type.in_(("review", "flashcard", "word")))
-        .scalar()
+        _event_q(func.count(StudyEvent.id)).filter(StudyEvent.event_type.in_(("review", "flashcard", "word"))).scalar()
         or 0
     )
-    focus_events = int(
-        _event_q(func.count(StudyEvent.id))
-        .filter(StudyEvent.event_type == "focus")
-        .scalar()
-        or 0
-    )
-    study_seconds = int(
-        _event_q(func.coalesce(func.sum(StudyEvent.duration_seconds), 0)).scalar() or 0
-    )
+    focus_events = int(_event_q(func.count(StudyEvent.id)).filter(StudyEvent.event_type == "focus").scalar() or 0)
+    study_seconds = int(_event_q(func.coalesce(func.sum(StudyEvent.duration_seconds), 0)).scalar() or 0)
     today_seconds = int(
         _event_q(func.coalesce(func.sum(StudyEvent.duration_seconds), 0))
         .filter(StudyEvent.occurred_at >= today_start)
@@ -625,37 +606,19 @@ def learning_summary(
     day_expr = day_bucket_expr(StudyEvent.occurred_at, db)
     day_rows = _event_q(day_expr).group_by(day_expr).all()
     active_days = sorted(
-        {
-            d if isinstance(d, date) else date.fromisoformat(str(d)[:10])
-            for (d,) in day_rows
-            if d is not None
-        }
+        {d if isinstance(d, date) else date.fromisoformat(str(d)[:10]) for (d,) in day_rows if d is not None}
     )
 
     # —— 资产存量（业务表） —— #
     tasks_total = int(db.query(func.count(Task.id)).filter(*_u(Task)).scalar() or 0)
-    tasks_pending = int(
-        db.query(func.count(Task.id))
-        .filter(Task.status != "done", *_u(Task))
-        .scalar()
-        or 0
-    )
-    flashcards_total = int(
-        db.query(func.count(Flashcard.id)).filter(*_u(Flashcard)).scalar() or 0
-    )
+    tasks_pending = int(db.query(func.count(Task.id)).filter(Task.status != "done", *_u(Task)).scalar() or 0)
+    flashcards_total = int(db.query(func.count(Flashcard.id)).filter(*_u(Flashcard)).scalar() or 0)
     words_total = int(db.query(func.count(Word.id)).filter(*_u(Word)).scalar() or 0)
-    errors_total = int(
-        db.query(func.count(ErrorRecord.id)).filter(*_u(ErrorRecord)).scalar() or 0
-    )
+    errors_total = int(db.query(func.count(ErrorRecord.id)).filter(*_u(ErrorRecord)).scalar() or 0)
     errors_active = int(
-        db.query(func.count(ErrorRecord.id))
-        .filter(ErrorRecord.status == "active", *_u(ErrorRecord))
-        .scalar()
-        or 0
+        db.query(func.count(ErrorRecord.id)).filter(ErrorRecord.status == "active", *_u(ErrorRecord)).scalar() or 0
     )
-    answer_records_total = int(
-        db.query(func.count(AnswerRecord.id)).filter(*_u(AnswerRecord)).scalar() or 0
-    )
+    answer_records_total = int(db.query(func.count(AnswerRecord.id)).filter(*_u(AnswerRecord)).scalar() or 0)
 
     return {
         "user_id": user_id,
@@ -670,8 +633,8 @@ def learning_summary(
         "review_events_total": review_events,
         "focus_events_total": focus_events,
         "correct_events_total": correct_events,
-        "study_minutes": round(study_seconds / 60),          # 真实累计时长
-        "today_study_minutes": round(today_seconds / 60),    # 今日真实时长
+        "study_minutes": round(study_seconds / 60),  # 真实累计时长
+        "today_study_minutes": round(today_seconds / 60),  # 今日真实时长
         "today_answers": today_answers,
         "active_days": len(active_days),
         "current_streak": _streak_from_days(active_days, today=today),

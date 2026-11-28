@@ -9,6 +9,7 @@
 
 第 3 层用 skipif 守住环境依赖，不让没装模型的机器红。
 """
+
 from __future__ import annotations
 
 import os
@@ -99,7 +100,9 @@ class TestFormulaModels:
         page = PdfPageFormulas(page_no=2)
         page.formulas = [
             PdfFormula(page_no=2, label="inline_formula", bbox=(0, 0, 10, 10), score=0.9, ok=True, latex="x"),
-            PdfFormula(page_no=2, label="inline_formula", bbox=(0, 20, 10, 30), score=0.9, ok=False, reason="too_short"),
+            PdfFormula(
+                page_no=2, label="inline_formula", bbox=(0, 20, 10, 30), score=0.9, ok=False, reason="too_short"
+            ),
         ]
         assert page.ok_count == 1
         d = page.to_dict()
@@ -128,7 +131,9 @@ class TestMarkdownOutput:
         page = PdfPageFormulas(page_no=1)
         page.formulas = [
             PdfFormula(page_no=1, label="inline_formula", bbox=(0, 10, 50, 30), score=0.9, ok=True, latex="x^2"),
-            PdfFormula(page_no=1, label="display_formula", bbox=(0, 100, 200, 160), score=0.9, ok=True, latex="\\int_0^1 x dx"),
+            PdfFormula(
+                page_no=1, label="display_formula", bbox=(0, 100, 200, 160), score=0.9, ok=True, latex="\\int_0^1 x dx"
+            ),
         ]
         md = formulas_to_markdown(page)
         assert "$x^2$" in md
@@ -140,8 +145,9 @@ class TestMarkdownOutput:
         """识别失败必须显式标出来，不能给个空串让人以为没问题。"""
         page = PdfPageFormulas(page_no=1)
         page.formulas = [
-            PdfFormula(page_no=1, label="inline_formula", bbox=(0, 0, 10, 10), score=0.9,
-                       ok=False, reason="unbalanced_brace"),
+            PdfFormula(
+                page_no=1, label="inline_formula", bbox=(0, 0, 10, 10), score=0.9, ok=False, reason="unbalanced_brace"
+            ),
         ]
         md = formulas_to_markdown(page)
         assert "公式未识别" in md

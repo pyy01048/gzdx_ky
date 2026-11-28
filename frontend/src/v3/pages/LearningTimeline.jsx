@@ -102,6 +102,11 @@ function StatTile({ icon, label, value, unit, hint, format, className = '' }) {
   )
 }
 
+/**
+ * 学习轨迹页：每日连续化 + 事件柱 / 正确率折线 + 科目分布环图（原生 SVG，无图表库）。
+ * 数据源：GET /growth/timeline?days=N。
+ * @returns {JSX.Element} 学习轨迹页面
+ */
 export default function LearningTimeline() {
   const navigate = useNavigate()
   const [days, setDays] = useState(30)
@@ -238,11 +243,11 @@ export default function LearningTimeline() {
     return { R, C, segments }
   }, [subjectData])
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const ok = await reload()
     if (ok) toastOk('学习轨迹已刷新')
     else toastErr('刷新失败，请稍后重试')
-  }
+  }, [reload])
 
   const header = (
     <PageHeader

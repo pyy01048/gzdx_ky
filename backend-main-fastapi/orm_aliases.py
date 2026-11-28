@@ -97,8 +97,9 @@ logger = logging.getLogger(__name__)
 
 def install() -> dict[str, list[str]]:
     """给受影响模型补挂旧属性名别名 + 枚举类型适配。幂等，可重复调用。"""
-    import models as M
     from sqlalchemy.orm import synonym
+
+    import models as M
 
     done: dict[str, list[str]] = {}
     for cls_name, pairs in ALIASES.items():

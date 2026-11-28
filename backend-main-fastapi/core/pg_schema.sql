@@ -35,6 +35,7 @@
 
 \echo '== [01/15] 扩展与枚举 =='
 \ir sql/000_extensions_and_enums.sql
+\ir sql/000_schema_migrations.sql
 
 \echo '== [02/15] 科目权威源与章节 =='
 \ir sql/010_system_config.sql
@@ -184,6 +185,20 @@
 \echo '== 追加：users 软删除列（107，依赖 104 已建 users） =='
 \ir sql/107_users_soft_delete.sql
 
+\echo '== 追加：个人域 user_id 隔离列与约束（108） =='
+\ir sql/108_user_scope_columns.sql
+\ir sql/108_user_data_isolation.sql
+
+\echo '== 追加：招生逐人明细、题目图片与 OCR 采集表（109-111） =='
+\ir sql/109_admission_details.sql
+\ir sql/110_question_images.sql
+\ir sql/111_ocr_pipeline_tables.sql
+
+\echo '== 追加：OCR 时间列与国家线表（112-113） =='
+\ir sql/112_ocr_crawl_timestamptz.sql
+\ir sql/112_kaoyan_national_lines.sql
+\ir sql/113_fk_indexes.sql
+
 -- 国家线表收编（2026-10-23 规整归一）：此前只由一次性导入脚本建表，
 -- 不在权威 schema 中，全新库 GET /api/kaoyan/national-lines 直接 500。
 \echo '== 追加：kaoyan_national_lines 国家线表（114） =='
@@ -213,6 +228,41 @@
 -- 教育部第四轮学科评估 + 第二轮双一流，MySQL 交付转写为 PG 权威 schema。
 \echo '== 追加：ky_* 工学学科评估四表（119） =='
 \ir sql/119_school_engineering_eval.sql
+
+\echo '== 追加：认证会话、院校封面与后续结构迁移（120-127） =='
+\ir sql/120_auth_sessions.sql
+\ir sql/120_school_branding.sql
+\ir sql/121_exam_sessions_user_id.sql
+\ir sql/122_document_classify_queue.sql
+\ir sql/123_notice_reform_governance.sql
+\ir sql/124_school_region_tier.sql
+\ir sql/125_gamification_coins.sql
+\ir sql/126_tasks_w3.sql
+\ir sql/127_perf_wave_indexes.sql
+
+\echo '== 追加：个人题库与模考抽题范围（204-205） =='
+\ir sql/204_personal_question_bank.sql
+\ir sql/205_exam_question_source_text.sql
+
+\echo '== 追加：普通刷题持久会话（206） =='
+\ir sql/206_quiz_persistent_sessions.sql
+
+-- 工科08专业—考试科目公共目录：依赖 010 subjects 与 060 kaoyan_majors。
+\echo '== 追加：工科08专业考试科目关联（207） =='
+\ir sql/207_engineering08_major_subject_links.sql
+
+\echo '== 追加：普通刷题 V3 练习模式兼容（208） =='
+\ir sql/208_quiz_practice_modes.sql
+
+\echo '== 追加：存量认证会话时间类型修复（209） =='
+\ir sql/209_auth_sessions_timestamptz.sql
+
+\echo '== 追加：专业—科目—教材/资源显式关联（210） =='
+\ir sql/210_major_subject_resources.sql
+
+\echo '== 追加：题目证据链与精确原卷关联（211） =='
+\ir sql/211_question_evidence_links.sql
+
 
 -- --------------------------------------------------------------------------- #
 -- 建库自检：下列查询应全部有结果，任一项为空说明对应分片未生效

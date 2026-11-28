@@ -30,6 +30,7 @@
 * 只改 ``kaoyan_schools.official_url`` 一列，不碰其它表/列。
 * 幂等：已修正过的行二次运行不会再次命中（改写后不再是纯数字）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -105,8 +106,7 @@ def main() -> int:
         elite = [r for r in targets if r[2] in ("985", "211", "双一流")]
         print(f"  其中名校(985/211/双一流): {len(elite)} 所")
         for r in elite:
-            print(f"    {r[2]:6s} {r[1][:16]:18s} {r[3] or '-':4s} "
-                  f"通知={r[6]:<3d} '{r[4]}' -> {r[5]}")
+            print(f"    {r[2]:6s} {r[1][:16]:18s} {r[3] or '-':4s} 通知={r[6]:<3d} '{r[4]}' -> {r[5]}")
 
         # 零通知 + 修正后可点开 = 用户可立即补导
         newly_usable = [r for r in targets if r[6] == 0]
@@ -115,8 +115,7 @@ def main() -> int:
         print()
         print("  抽样 12 条（含 6 所名校）:")
         for r in (elite + [x for x in targets if x not in elite])[:12]:
-            print(f"    id={r[0]:<5} {str(r[2] or 'NULL'):6s} {r[1][:16]:18s} "
-                  f"'{r[4]}' -> {r[5]}")
+            print(f"    id={r[0]:<5} {str(r[2] or 'NULL'):6s} {r[1][:16]:18s} '{r[4]}' -> {r[5]}")
 
         if not args.apply:
             print()
@@ -129,7 +128,7 @@ def main() -> int:
         print("=" * 74)
         print("已备份:", backup_db("real"))
         n = 0
-        for sid, name, level, prov, old, new, _ncnt in targets:
+        for sid, _name, _level, _prov, old, new, _ncnt in targets:
             cur = conn.execute(
                 "UPDATE kaoyan_schools SET official_url = ? WHERE id = ? AND official_url = ?",
                 (new, sid, old),
@@ -144,8 +143,7 @@ def main() -> int:
         ).fetchone()[0]
         print(f"  残留纯数字 schid: {left}")
         nonempty_after = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_schools "
-            "WHERE official_url IS NOT NULL AND TRIM(official_url) <> ''"
+            "SELECT COUNT(*) FROM kaoyan_schools WHERE official_url IS NOT NULL AND TRIM(official_url) <> ''"
         ).fetchone()[0]
         print(f"  当前 official_url 非空总数: {nonempty_after}（修正前 201，应不变）")
         return 0

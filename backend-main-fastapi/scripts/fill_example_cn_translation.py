@@ -11,6 +11,7 @@
 
 运行: python scripts/fill_example_cn_translation.py
 """
+
 import json
 import logging
 import os
@@ -25,7 +26,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
+from scripts._conn import dsn as DB_DSN_F
+
+DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "qwen2.5:1.5b"
 BATCH_SIZE = 5
@@ -140,10 +143,10 @@ def main():
         # 2. 分批翻译
         updated = 0
         for start in range(0, len(rows), BATCH_SIZE):
-            batch = rows[start:start + BATCH_SIZE]
+            batch = rows[start : start + BATCH_SIZE]
             texts = [r[2] for r in batch]
             translations = ollama_translate(texts)
-            for (rid, word, _en), cn in zip(batch, translations):
+            for (rid, _word, _en), cn in zip(batch, translations, strict=False):
                 if cn and cn.strip():
                     try:
                         cur.execute(

@@ -17,6 +17,7 @@ ima_ingest_done.json are skipped, which makes the script safe to re-run.
 Usage:
     python ima_queue_build.py [--limit N] [--subject 数模电]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -82,23 +83,24 @@ def build(limit: int = 0, subject: str = "") -> List[Dict[str, Any]]:
 
     items: List[Dict[str, Any]] = []
     for doc_id, media_id, file_name, subj, media_type, folder_path, file_size in rows:
-        items.append({
-            "doc_id": doc_id,
-            "media_id": media_id or "",
-            "title": file_name or "",
-            "subject": subj or "",
-            "media_type": media_type,
-            "folder_path": folder_path or "",
-            "file_size": file_size or 0,
-            "subj_rank": SUBJECT_PRIORITY.get(subj or "", DEFAULT_PRIORITY),
-            "media_rank": MEDIA_TYPE_PRIORITY.get(media_type, 9),
-        })
+        items.append(
+            {
+                "doc_id": doc_id,
+                "media_id": media_id or "",
+                "title": file_name or "",
+                "subject": subj or "",
+                "media_type": media_type,
+                "folder_path": folder_path or "",
+                "file_size": file_size or 0,
+                "subj_rank": SUBJECT_PRIORITY.get(subj or "", DEFAULT_PRIORITY),
+                "media_rank": MEDIA_TYPE_PRIORITY.get(media_type, 9),
+            }
+        )
 
     items = [it for it in items if it["doc_id"] not in done]
     if subject:
         items = [it for it in items if it["subject"] == subject]
-    items.sort(key=lambda it: (it["subj_rank"], it["media_rank"],
-                               -it["file_size"], it["title"], it["doc_id"]))
+    items.sort(key=lambda it: (it["subj_rank"], it["media_rank"], -it["file_size"], it["title"], it["doc_id"]))
     if limit:
         items = items[:limit]
     for index, item in enumerate(items):
@@ -107,8 +109,7 @@ def build(limit: int = 0, subject: str = "") -> List[Dict[str, Any]]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--limit", type=int, default=0, help="keep only the first N items")
     parser.add_argument("--subject", default="", help="restrict to one subject")
     args = parser.parse_args()
@@ -125,8 +126,7 @@ def main() -> int:
     for key in sorted(by_subject, key=lambda k: int(k.split("(p")[1].rstrip(")"))):
         print("   %-20s %d" % (key, by_subject[key]))
     for item in items[:15]:
-        print("   #%-3d doc=%-6s %-6s %s" % (item["rank"], item["doc_id"],
-                                             item["subject"], item["title"][:48]))
+        print("   #%-3d doc=%-6s %-6s %s" % (item["rank"], item["doc_id"], item["subject"], item["title"][:48]))
     return 0
 
 

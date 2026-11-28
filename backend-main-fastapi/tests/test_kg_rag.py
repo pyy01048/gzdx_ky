@@ -11,13 +11,15 @@
 数据构造参考 ``tests/test_memory_service.py``：SessionLocal + 测试用户 id=0，
 用例前后清理本次构造的知识点/关系，保证隔离。
 """
+
 from __future__ import annotations
 
 import pytest
 from database import SessionLocal
 from main import app
-from models import KnowledgePoint, KnowledgePointRelation
 from tests.asgi_client import ASGIClient
+
+from models import KnowledgePoint, KnowledgePointRelation
 
 client = ASGIClient(app)
 
@@ -31,22 +33,15 @@ TEST_SUBJECT = "KG-RAG-测试"
 def _cleanup(db) -> None:
     """清空本文件构造的知识点与关系（按科目过滤）。"""
     try:
-        kp_ids = [
-            row[0]
-            for row in db.query(KnowledgePoint.id)
-            .filter(KnowledgePoint.subject == TEST_SUBJECT)
-            .all()
-        ]
+        kp_ids = [row[0] for row in db.query(KnowledgePoint.id).filter(KnowledgePoint.subject == TEST_SUBJECT).all()]
         if kp_ids:
-            db.query(KnowledgePointRelation).filter(
-                KnowledgePointRelation.source_kp_id.in_(kp_ids)
-            ).delete(synchronize_session=False)
-            db.query(KnowledgePointRelation).filter(
-                KnowledgePointRelation.target_kp_id.in_(kp_ids)
-            ).delete(synchronize_session=False)
-            db.query(KnowledgePoint).filter(KnowledgePoint.id.in_(kp_ids)).delete(
+            db.query(KnowledgePointRelation).filter(KnowledgePointRelation.source_kp_id.in_(kp_ids)).delete(
                 synchronize_session=False
             )
+            db.query(KnowledgePointRelation).filter(KnowledgePointRelation.target_kp_id.in_(kp_ids)).delete(
+                synchronize_session=False
+            )
+            db.query(KnowledgePoint).filter(KnowledgePoint.id.in_(kp_ids)).delete(synchronize_session=False)
         db.commit()
     except Exception:  # noqa: BLE001 —— 清理失败不阻断用例
         db.rollback()

@@ -16,6 +16,7 @@
 - 线程安全：FastAPI 同步端点跑在线程池里，字典读写加锁；
 - 条目数上限 + FIFO 淘汰，避免长跑进程无界增长。
 """
+
 from __future__ import annotations
 
 import os

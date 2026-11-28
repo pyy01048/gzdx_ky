@@ -228,9 +228,7 @@ def clean_content(content: str | None) -> str:
 
 #: 选项标签：A、/ A./ A．/ A) / A） —— 与 qbank_builder._OPTION_RE 同口径。
 #: 前缀允许空白或中文标点，因为真实卷面常出现「（ ）A. xxx」这种紧贴写法。
-_OPTION_LABEL_RE = re.compile(
-    r"(?:^|[\s，,。；;：:、（()）\[\]【】])([A-F])(\s*[、.．)）]\s*)"
-)
+_OPTION_LABEL_RE = re.compile(r"(?:^|[\s，,。；;：:、（()）\[\]【】])([A-F])(\s*[、.．)）]\s*)")
 
 #: 触发拆分的最小连续选项数。
 #: 与 quiz_content_gate.MIN_OPTIONS(=2) 对齐：真实卷面里「A、B」两项的判断题
@@ -329,7 +327,7 @@ def split_stem_and_options(
     # ``matches`` 的偏移是相对 "\n"+body 的；用 start(1) 定位标签字母本身，
     # 这样前缀标点（如「（」）仍归属题干，不会被切进第一个选项。
     # 用 start()（前缀起点）而非 start(1)，这样「（）」这类闭合标点仍归属题干
-    stem = ("\n" + body)[1: run[0][1].start(1)].strip()
+    stem = ("\n" + body)[1 : run[0][1].start(1)].strip()
     options: list[str] = []
     for pos, (_rank, m) in enumerate(run):
         # matches 偏移相对 "\n"+body，切片目标是 body，故需减去前缀长度 1
@@ -466,16 +464,34 @@ DOC_WATERMARK_SPAN_PATTERNS: tuple[str, ...] = (
 )
 
 #: 编译后的水印正则（与 :data:`DOC_WATERMARK_SPAN_PATTERNS` 一一对应）。
-DOC_WATERMARK_SPAN_RES: tuple[re.Pattern[str], ...] = tuple(
-    re.compile(p) for p in DOC_WATERMARK_SPAN_PATTERNS
-)
+DOC_WATERMARK_SPAN_RES: tuple[re.Pattern[str], ...] = tuple(re.compile(p) for p in DOC_WATERMARK_SPAN_PATTERNS)
 
 #: 快速预筛标记：行内不含任一标记就直接跳过全部正则（大幅加速）。
 #: 标记集合刻意放宽，只求不漏。
 DOC_WATERMARK_FAST_MARKERS: tuple[str, ...] = (
-    "微信", "公众号", "haidongpo", "QQ", "qq", "Q群", "淘宝", "扫码", "二维码",
-    "MOOC", "慕课", "研池", "蜂考", "观畴", "笃学", "考研班主任", "侵权", "转载",
-    "http", "www.", "资料", "加群", "联系",
+    "微信",
+    "公众号",
+    "haidongpo",
+    "QQ",
+    "qq",
+    "Q群",
+    "淘宝",
+    "扫码",
+    "二维码",
+    "MOOC",
+    "慕课",
+    "研池",
+    "蜂考",
+    "观畴",
+    "笃学",
+    "考研班主任",
+    "侵权",
+    "转载",
+    "http",
+    "www.",
+    "资料",
+    "加群",
+    "联系",
 )
 
 #: 独立 URL —— 考研资料正文里的裸链接几乎全是水印/引流；
@@ -503,7 +519,6 @@ def clean_document_line(line: str) -> tuple[str | None, bool]:
         ``(新行 or None, 是否发生过水印移除)``；``None`` 表示整行都是纯水印，
         调用方可安全丢弃。
     """
-    raw = line
     # 快速预筛：不含任何水印标记的行直接跳过全部正则（大幅加速）
     if not any(m in line for m in DOC_WATERMARK_FAST_MARKERS):
         return line, False

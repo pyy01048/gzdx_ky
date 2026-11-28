@@ -6,11 +6,13 @@
 
 顺序与测试夹具 tests/conftest.py::db_schema 一致：
     1. core/pg_schema.sql（\\ir 收编的权威分片）
-    2. core/sql 下未被收编的增量分片，按文件名序逐个执行
+    2. core/sql 下未被收编的自动结构增量分片，按文件名序逐个执行
+       （128–203、212、213 为手工数据脚本，不在此自动执行）
     3. ORM create_all 兜底 + 原生表补建
     4. 内置科目字典 + 首个管理员（密码取 ADMIN_INITIAL_PASSWORD）
 不写任何学习内容（题目/文档/院校数据走后续导入）。
 """
+
 import argparse
 import glob
 import os
@@ -21,6 +23,8 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE)
 CORE = os.path.join(BASE, "core")
 
+from core.migration_policy import is_automatic_schema_script
+
 
 def extra_shards() -> list[str]:
     with open(os.path.join(CORE, "pg_schema.sql"), encoding="utf-8") as fh:
@@ -28,7 +32,7 @@ def extra_shards() -> list[str]:
     return sorted(
         os.path.basename(p)
         for p in glob.glob(os.path.join(CORE, "sql", "*.sql"))
-        if os.path.basename(p) not in included
+        if os.path.basename(p) not in included and is_automatic_schema_script(p)
     )
 
 
@@ -44,9 +48,10 @@ def main() -> int:
             print(f"core/sql/{name}")
         return 0
 
-    import models  # noqa: F401  注册 ORM 表
     from core.db_session import IS_POSTGRES, apply_schema
     from database import Base, SessionLocal, engine
+
+    import models  # noqa: F401  注册 ORM 表
 
     print(f"目标库: {engine.url.render_as_string(hide_password=True)}")
     if not IS_POSTGRES:
@@ -83,8 +88,7 @@ def main() -> int:
         db.commit()
         admin = ensure_bootstrap_admin(db)
         db.commit()
-        print(f"[4/4] 内置科目新增 {seeded} 个；"
-              + (f"已创建管理员 {admin}" if admin else "已有用户，跳过管理员创建"))
+        print(f"[4/4] 内置科目新增 {seeded} 个；" + (f"已创建管理员 {admin}" if admin else "已有用户，跳过管理员创建"))
     finally:
         db.close()
 

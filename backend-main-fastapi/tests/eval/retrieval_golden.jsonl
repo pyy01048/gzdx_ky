@@ -1,5 +1,129 @@
-{"id":"r001","query":"用卡诺图化简逻辑函数的基本步骤","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"数字电子技术","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
-{"id":"r002","query":"什么是密勒效应","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"模拟电子技术","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
-{"id":"r003","query":"戴维南定理如何求等效电阻","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"电路","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
-{"id":"r004","query":"触发器与锁存器的区别","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"数字电子技术","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
-{"id":"r005","query":"运算放大器虚短虚断的适用条件","gold_chunk_ids":[],"gold_kp_ids":[],"subject":"模拟电子技术","verified":true,"note":"种子样例：gold 待首次入库后按真实 chunk_id 回填"}
+{"id": "r001", "query": "什么是二进制补码法", "gold_chunk_ids": [3303], "gold_kp_ids": [88], "subject": "数字电子技术", "verified": true, "note": "源自知识点 kp=88"}
+{"id": "r002", "query": "什么是BCD码", "gold_chunk_ids": [3303], "gold_kp_ids": [89], "subject": "数字电子技术", "verified": true, "note": "源自知识点 kp=89"}
+{"id": "r003", "query": "什么是十进制数转换", "gold_chunk_ids": [3303], "gold_kp_ids": [90], "subject": "数字电子技术", "verified": true, "note": "源自知识点 kp=90"}
+{"id": "r004", "query": "什么是集成门电路", "gold_chunk_ids": [3303], "gold_kp_ids": [91], "subject": "数字电子技术", "verified": true, "note": "源自知识点 kp=91"}
+{"id": "r005", "query": "什么是TTL与非门", "gold_chunk_ids": [3305], "gold_kp_ids": [92], "subject": "数字电子技术", "verified": true, "note": "源自知识点 kp=92"}
+{"id": "r006", "query": "什么是三极管", "gold_chunk_ids": [3305], "gold_kp_ids": [93], "subject": "数字电子技术", "verified": true, "note": "源自知识点 kp=93"}
+{"id": "r007", "query": "什么是运放", "gold_chunk_ids": [3467], "gold_kp_ids": [157], "subject": "模拟电子技术", "verified": true, "note": "源自知识点 kp=157"}
+{"id": "r008", "query": "什么是触发电压", "gold_chunk_ids": [3467], "gold_kp_ids": [158], "subject": "模拟电子技术", "verified": true, "note": "源自知识点 kp=158"}
+{"id": "r009", "query": "什么是波形分析", "gold_chunk_ids": [3467], "gold_kp_ids": [159], "subject": "模拟电子技术", "verified": true, "note": "源自知识点 kp=159"}
+{"id": "r010", "query": "什么是峰值大小", "gold_chunk_ids": [3467], "gold_kp_ids": [161], "subject": "模拟电子技术", "verified": true, "note": "源自知识点 kp=161"}
+{"id": "r011", "query": "什么是理想运放的虚短特性", "gold_chunk_ids": [3846], "gold_kp_ids": [340], "subject": "模拟电子技术", "verified": true, "note": "源自知识点 kp=340"}
+{"id": "r012", "query": "什么是理想运放输出端节点电压方程", "gold_chunk_ids": [3846], "gold_kp_ids": [341], "subject": "模拟电子技术", "verified": true, "note": "源自知识点 kp=341"}
+{"id": "r013", "query": "什么是实际电路", "gold_chunk_ids": [3726], "gold_kp_ids": [207], "subject": "电路", "verified": true, "note": "源自知识点 kp=207"}
+{"id": "r014", "query": "什么是电路模型", "gold_chunk_ids": [3726], "gold_kp_ids": [208], "subject": "电路", "verified": true, "note": "源自知识点 kp=208"}
+{"id": "r015", "query": "什么是电源", "gold_chunk_ids": [3726], "gold_kp_ids": [209], "subject": "电路", "verified": true, "note": "源自知识点 kp=209"}
+{"id": "r016", "query": "什么是输入输出关系", "gold_chunk_ids": [3726], "gold_kp_ids": [210], "subject": "电路", "verified": true, "note": "源自知识点 kp=210"}
+{"id": "r017", "query": "什么是电压电流功率", "gold_chunk_ids": [3726], "gold_kp_ids": [211], "subject": "电路", "verified": true, "note": "源自知识点 kp=211"}
+{"id": "r018", "query": "什么是集中参数电路模型", "gold_chunk_ids": [3727], "gold_kp_ids": [212], "subject": "电路", "verified": true, "note": "源自知识点 kp=212"}
+{"id": "r019", "query": "什么是冲激信号", "gold_chunk_ids": [1587], "gold_kp_ids": [2498], "subject": "信号与系统", "verified": true, "note": "源自知识点 kp=2498"}
+{"id": "r020", "query": "什么是阶跃与冲激关系", "gold_chunk_ids": [1587], "gold_kp_ids": [2499], "subject": "信号与系统", "verified": true, "note": "源自知识点 kp=2499"}
+{"id": "r021", "query": "什么是信号运算", "gold_chunk_ids": [1587], "gold_kp_ids": [2500], "subject": "信号与系统", "verified": true, "note": "源自知识点 kp=2500"}
+{"id": "r022", "query": "什么是抽样定理", "gold_chunk_ids": [1587], "gold_kp_ids": [2501], "subject": "信号与系统", "verified": true, "note": "源自知识点 kp=2501"}
+{"id": "r023", "query": "什么是LTI系统", "gold_chunk_ids": [1587], "gold_kp_ids": [2502], "subject": "信号与系统", "verified": true, "note": "源自知识点 kp=2502"}
+{"id": "r024", "query": "什么是全响应分解", "gold_chunk_ids": [1587], "gold_kp_ids": [2503], "subject": "信号与系统", "verified": true, "note": "源自知识点 kp=2503"}
+{"id": "r025", "query": "什么是计算机系统简介", "gold_chunk_ids": [], "gold_kp_ids": [10699], "subject": "计算机组成原理", "verified": true, "note": "源自知识点 kp=10699"}
+{"id": "r026", "query": "什么是现代计算机的解题过程，如图1-1所示。", "gold_chunk_ids": [], "gold_kp_ids": [10706], "subject": "计算机组成原理", "verified": true, "note": "源自知识点 kp=10706"}
+{"id": "r027", "query": "什么是计算机体系结构", "gold_chunk_ids": [], "gold_kp_ids": [10710], "subject": "计算机组成原理", "verified": true, "note": "源自知识点 kp=10710"}
+{"id": "r028", "query": "什么是计算机组成", "gold_chunk_ids": [], "gold_kp_ids": [10711], "subject": "计算机组成原理", "verified": true, "note": "源自知识点 kp=10711"}
+{"id": "r029", "query": "什么是计算机的基本组成", "gold_chunk_ids": [], "gold_kp_ids": [10712], "subject": "计算机组成原理", "verified": true, "note": "源自知识点 kp=10712"}
+{"id": "r030", "query": "什么是图中各部件的功能", "gold_chunk_ids": [], "gold_kp_ids": [10713], "subject": "计算机组成原理", "verified": true, "note": "源自知识点 kp=10713"}
+{"id": "r031", "query": "什么是开环控制系统", "gold_chunk_ids": [], "gold_kp_ids": [1789], "subject": "自动控制原理", "verified": true, "note": "源自知识点 kp=1789"}
+{"id": "r032", "query": "什么是闭环控制系统", "gold_chunk_ids": [], "gold_kp_ids": [1790], "subject": "自动控制原理", "verified": true, "note": "源自知识点 kp=1790"}
+{"id": "r033", "query": "什么是反馈控制系统", "gold_chunk_ids": [], "gold_kp_ids": [1791], "subject": "自动控制原理", "verified": true, "note": "源自知识点 kp=1791"}
+{"id": "r034", "query": "什么是负反馈", "gold_chunk_ids": [], "gold_kp_ids": [1792], "subject": "自动控制原理", "verified": true, "note": "源自知识点 kp=1792"}
+{"id": "r035", "query": "什么是自动控制系统组成", "gold_chunk_ids": [], "gold_kp_ids": [1793], "subject": "自动控制原理", "verified": true, "note": "源自知识点 kp=1793"}
+{"id": "r036", "query": "什么是控制系统的分类", "gold_chunk_ids": [], "gold_kp_ids": [1794], "subject": "自动控制原理", "verified": true, "note": "源自知识点 kp=1794"}
+{"id": "r037", "query": "什么是通信系统模型", "gold_chunk_ids": [21008], "gold_kp_ids": [2451], "subject": "通信原理", "verified": true, "note": "源自知识点 kp=2451"}
+{"id": "r038", "query": "什么是信息量", "gold_chunk_ids": [21008], "gold_kp_ids": [2452], "subject": "通信原理", "verified": true, "note": "源自知识点 kp=2452"}
+{"id": "r039", "query": "什么是信息熵", "gold_chunk_ids": [21008], "gold_kp_ids": [2453], "subject": "通信原理", "verified": true, "note": "源自知识点 kp=2453"}
+{"id": "r040", "query": "什么是通信方式", "gold_chunk_ids": [21008], "gold_kp_ids": [2454], "subject": "通信原理", "verified": true, "note": "源自知识点 kp=2454"}
+{"id": "r041", "query": "什么是能量信号与功率信号", "gold_chunk_ids": [21008], "gold_kp_ids": [2455], "subject": "通信原理", "verified": true, "note": "源自知识点 kp=2455"}
+{"id": "r042", "query": "什么是傅里叶变换", "gold_chunk_ids": [21008], "gold_kp_ids": [2456], "subject": "通信原理", "verified": true, "note": "源自知识点 kp=2456"}
+{"id": "r043", "query": "什么是操作系统的四大特征", "gold_chunk_ids": [20905], "gold_kp_ids": [2266], "subject": "操作系统", "verified": true, "note": "源自知识点 kp=2266"}
+{"id": "r044", "query": "什么是系统调用", "gold_chunk_ids": [20905], "gold_kp_ids": [2267], "subject": "操作系统", "verified": true, "note": "源自知识点 kp=2267"}
+{"id": "r045", "query": "什么是内核态与用户态", "gold_chunk_ids": [20905], "gold_kp_ids": [2268], "subject": "操作系统", "verified": true, "note": "源自知识点 kp=2268"}
+{"id": "r046", "query": "什么是进程的组成", "gold_chunk_ids": [20905], "gold_kp_ids": [2269], "subject": "操作系统", "verified": true, "note": "源自知识点 kp=2269"}
+{"id": "r047", "query": "什么是进程五状态", "gold_chunk_ids": [20905], "gold_kp_ids": [2270], "subject": "操作系统", "verified": true, "note": "源自知识点 kp=2270"}
+{"id": "r048", "query": "什么是进程与线程的区别", "gold_chunk_ids": [20905], "gold_kp_ids": [2271], "subject": "操作系统", "verified": true, "note": "源自知识点 kp=2271"}
+{"id": "r049", "query": "什么是数据库系统概述", "gold_chunk_ids": [], "gold_kp_ids": [18511], "subject": "数据库系统概论", "verified": true, "note": "源自知识点 kp=18511"}
+{"id": "r050", "query": "什么是数据、数据库、数据库管理系统、数据库系统", "gold_chunk_ids": [], "gold_kp_ids": [18512], "subject": "数据库系统概论", "verified": true, "note": "源自知识点 kp=18512"}
+{"id": "r051", "query": "什么是数据（Data）", "gold_chunk_ids": [], "gold_kp_ids": [18513], "subject": "数据库系统概论", "verified": true, "note": "源自知识点 kp=18513"}
+{"id": "r052", "query": "什么是数据库（DataBase，简称DB）", "gold_chunk_ids": [], "gold_kp_ids": [18514], "subject": "数据库系统概论", "verified": true, "note": "源自知识点 kp=18514"}
+{"id": "r053", "query": "什么是数据管理技术的产生和发展", "gold_chunk_ids": [], "gold_kp_ids": [18517], "subject": "数据库系统概论", "verified": true, "note": "源自知识点 kp=18517"}
+{"id": "r054", "query": "什么是人工管理阶段", "gold_chunk_ids": [], "gold_kp_ids": [18518], "subject": "数据库系统概论", "verified": true, "note": "源自知识点 kp=18518"}
+{"id": "r055", "query": "什么是顺序表", "gold_chunk_ids": [20879], "gold_kp_ids": [2217], "subject": "数据结构", "verified": true, "note": "源自知识点 kp=2217"}
+{"id": "r056", "query": "什么是单链表", "gold_chunk_ids": [20879], "gold_kp_ids": [2218], "subject": "数据结构", "verified": true, "note": "源自知识点 kp=2218"}
+{"id": "r057", "query": "什么是双链表与循环链表", "gold_chunk_ids": [20879], "gold_kp_ids": [2219], "subject": "数据结构", "verified": true, "note": "源自知识点 kp=2219"}
+{"id": "r058", "query": "什么是栈的特点与应用", "gold_chunk_ids": [20879], "gold_kp_ids": [2220], "subject": "数据结构", "verified": true, "note": "源自知识点 kp=2220"}
+{"id": "r059", "query": "什么是循环队列", "gold_chunk_ids": [20879], "gold_kp_ids": [2221], "subject": "数据结构", "verified": true, "note": "源自知识点 kp=2221"}
+{"id": "r060", "query": "什么是双端队列", "gold_chunk_ids": [20879], "gold_kp_ids": [2222], "subject": "数据结构", "verified": true, "note": "源自知识点 kp=2222"}
+{"id": "r061", "query": "什么是OSI七层模型", "gold_chunk_ids": [20931], "gold_kp_ids": [2313], "subject": "计算机网络", "verified": true, "note": "源自知识点 kp=2313"}
+{"id": "r062", "query": "什么是各层协议与设备", "gold_chunk_ids": [20931], "gold_kp_ids": [2314], "subject": "计算机网络", "verified": true, "note": "源自知识点 kp=2314"}
+{"id": "r063", "query": "什么是TCP/IP四层模型", "gold_chunk_ids": [20931], "gold_kp_ids": [2315], "subject": "计算机网络", "verified": true, "note": "源自知识点 kp=2315"}
+{"id": "r064", "query": "什么是奈奎斯特准则", "gold_chunk_ids": [20931], "gold_kp_ids": [2316], "subject": "计算机网络", "verified": true, "note": "源自知识点 kp=2316"}
+{"id": "r065", "query": "什么是香农定理", "gold_chunk_ids": [20931], "gold_kp_ids": [2317], "subject": "计算机网络", "verified": true, "note": "源自知识点 kp=2317"}
+{"id": "r066", "query": "什么是曼彻斯特编码", "gold_chunk_ids": [20931], "gold_kp_ids": [2318], "subject": "计算机网络", "verified": true, "note": "源自知识点 kp=2318"}
+{"id": "r067", "query": "什么是位移与路程", "gold_chunk_ids": [21039], "gold_kp_ids": [2541], "subject": "普通物理", "verified": true, "note": "源自知识点 kp=2541"}
+{"id": "r068", "query": "什么是切向与法向加速度", "gold_chunk_ids": [21039], "gold_kp_ids": [2542], "subject": "普通物理", "verified": true, "note": "源自知识点 kp=2542"}
+{"id": "r069", "query": "什么是抛体运动", "gold_chunk_ids": [21039], "gold_kp_ids": [2543], "subject": "普通物理", "verified": true, "note": "源自知识点 kp=2543"}
+{"id": "r070", "query": "什么是圆周运动", "gold_chunk_ids": [21039], "gold_kp_ids": [2544], "subject": "普通物理", "verified": true, "note": "源自知识点 kp=2544"}
+{"id": "r071", "query": "什么是牛顿第二定律", "gold_chunk_ids": [21039], "gold_kp_ids": [2545], "subject": "普通物理", "verified": true, "note": "源自知识点 kp=2545"}
+{"id": "r072", "query": "什么是胡克定律", "gold_chunk_ids": [21039], "gold_kp_ids": [2546], "subject": "普通物理", "verified": true, "note": "源自知识点 kp=2546"}
+{"id": "r073", "query": "什么是二极管/三极管电路", "gold_chunk_ids": [], "gold_kp_ids": [2821], "subject": "电子技术基础", "verified": true, "note": "源自知识点 kp=2821"}
+{"id": "r074", "query": "什么是放大电路分析（静态+动态）", "gold_chunk_ids": [], "gold_kp_ids": [2822], "subject": "电子技术基础", "verified": true, "note": "源自知识点 kp=2822"}
+{"id": "r075", "query": "什么是运算放大器应用电路", "gold_chunk_ids": [], "gold_kp_ids": [2823], "subject": "电子技术基础", "verified": true, "note": "源自知识点 kp=2823"}
+{"id": "r076", "query": "什么是组合逻辑电路设计", "gold_chunk_ids": [], "gold_kp_ids": [2824], "subject": "电子技术基础", "verified": true, "note": "源自知识点 kp=2824"}
+{"id": "r077", "query": "什么是时序逻辑电路（触发器/计数器）", "gold_chunk_ids": [], "gold_kp_ids": [2825], "subject": "电子技术基础", "verified": true, "note": "源自知识点 kp=2825"}
+{"id": "r078", "query": "什么是数模/模数转换", "gold_chunk_ids": [], "gold_kp_ids": [2826], "subject": "电子技术基础", "verified": true, "note": "源自知识点 kp=2826"}
+{"id": "r079", "query": "用卡诺图化简逻辑函数的基本步骤", "gold_chunk_ids": [3306, 3306], "gold_kp_ids": [98, 102], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r080", "query": "什么是密勒效应", "gold_chunk_ids": [2], "gold_kp_ids": [], "subject": "模拟电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r081", "query": "戴维南定理如何求等效电阻", "gold_chunk_ids": [3731], "gold_kp_ids": [217], "subject": "电路", "verified": true, "note": "手写经典考点"}
+{"id": "r082", "query": "触发器与锁存器的区别", "gold_chunk_ids": [4], "gold_kp_ids": [], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r083", "query": "运算放大器虚短虚断的适用条件", "gold_chunk_ids": [2], "gold_kp_ids": [], "subject": "模拟电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r084", "query": "诺顿定理与戴维南定理的关系", "gold_chunk_ids": [3731, 3731], "gold_kp_ids": [217, 218], "subject": "电路", "verified": true, "note": "手写经典考点"}
+{"id": "r085", "query": "基尔霍夫定律的内容", "gold_chunk_ids": [1273], "gold_kp_ids": [], "subject": "电路", "verified": true, "note": "手写经典考点"}
+{"id": "r086", "query": "正弦交流电的相量表示", "gold_chunk_ids": [1273], "gold_kp_ids": [], "subject": "电路", "verified": true, "note": "手写经典考点"}
+{"id": "r087", "query": "三极管放大电路的三种组态", "gold_chunk_ids": [2], "gold_kp_ids": [], "subject": "模拟电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r088", "query": "差分放大电路抑制共模信号的原理", "gold_chunk_ids": [2], "gold_kp_ids": [], "subject": "模拟电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r089", "query": "负反馈对放大电路性能的影响", "gold_chunk_ids": [2], "gold_kp_ids": [], "subject": "模拟电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r090", "query": "组合逻辑电路设计步骤", "gold_chunk_ids": [4], "gold_kp_ids": [], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r091", "query": "时序逻辑电路与组合逻辑电路的区别", "gold_chunk_ids": [4], "gold_kp_ids": [], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r092", "query": "D触发器特性方程", "gold_chunk_ids": [4], "gold_kp_ids": [], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r093", "query": "JK触发器状态转换图", "gold_chunk_ids": [3377], "gold_kp_ids": [113], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r094", "query": "同步计数器与异步计数器区别", "gold_chunk_ids": [4], "gold_kp_ids": [], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r095", "query": "数模转换器DAC的分辨率", "gold_chunk_ids": [4], "gold_kp_ids": [], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r096", "query": "模数转换器ADC的转换精度", "gold_chunk_ids": [4], "gold_kp_ids": [], "subject": "数字电子技术", "verified": true, "note": "手写经典考点"}
+{"id": "r097", "query": "抽样定理的内容", "gold_chunk_ids": [1587], "gold_kp_ids": [2501], "subject": "信号与系统", "verified": true, "note": "手写经典考点"}
+{"id": "r098", "query": "拉普拉斯变换的收敛域", "gold_chunk_ids": [1587], "gold_kp_ids": [], "subject": "信号与系统", "verified": true, "note": "手写经典考点"}
+{"id": "r099", "query": "傅里叶变换的对称性", "gold_chunk_ids": [1587], "gold_kp_ids": [2513], "subject": "信号与系统", "verified": true, "note": "手写经典考点"}
+{"id": "r100", "query": "线性时不变系统的卷积积分", "gold_chunk_ids": [1587], "gold_kp_ids": [], "subject": "信号与系统", "verified": true, "note": "手写经典考点"}
+{"id": "r101", "query": "系统函数零极点与稳定性", "gold_chunk_ids": [1587], "gold_kp_ids": [2517, 2520], "subject": "信号与系统", "verified": true, "note": "手写经典考点"}
+{"id": "r102", "query": "PID控制器的作用", "gold_chunk_ids": [], "gold_kp_ids": [], "subject": "自动控制原理", "verified": true, "note": "手写经典考点"}
+{"id": "r103", "query": "劳斯稳定判据", "gold_chunk_ids": [], "gold_kp_ids": [], "subject": "自动控制原理", "verified": true, "note": "手写经典考点"}
+{"id": "r104", "query": "根轨迹绘制规则", "gold_chunk_ids": [], "gold_kp_ids": [1812], "subject": "自动控制原理", "verified": true, "note": "手写经典考点"}
+{"id": "r105", "query": "奈奎斯特稳定判据", "gold_chunk_ids": [], "gold_kp_ids": [], "subject": "自动控制原理", "verified": true, "note": "手写经典考点"}
+{"id": "r106", "query": "开环传递函数与闭环传递函数", "gold_chunk_ids": [], "gold_kp_ids": [1796], "subject": "自动控制原理", "verified": true, "note": "手写经典考点"}
+{"id": "r107", "query": "PCM脉冲编码调制过程", "gold_chunk_ids": [21008], "gold_kp_ids": [], "subject": "通信原理", "verified": true, "note": "手写经典考点"}
+{"id": "r108", "query": "香农定理与信道容量", "gold_chunk_ids": [21008], "gold_kp_ids": [], "subject": "通信原理", "verified": true, "note": "手写经典考点"}
+{"id": "r109", "query": "数字调制ASK FSK PSK", "gold_chunk_ids": [21008], "gold_kp_ids": [], "subject": "通信原理", "verified": true, "note": "手写经典考点"}
+{"id": "r110", "query": "进程与线程的区别", "gold_chunk_ids": [20905], "gold_kp_ids": [2271], "subject": "操作系统", "verified": true, "note": "手写经典考点"}
+{"id": "r111", "query": "死锁的四个必要条件", "gold_chunk_ids": [20905], "gold_kp_ids": [2280], "subject": "操作系统", "verified": true, "note": "手写经典考点"}
+{"id": "r112", "query": "虚拟内存分页机制", "gold_chunk_ids": [20905], "gold_kp_ids": [], "subject": "操作系统", "verified": true, "note": "手写经典考点"}
+{"id": "r113", "query": "银行家算法避免死锁", "gold_chunk_ids": [20905], "gold_kp_ids": [2282], "subject": "操作系统", "verified": true, "note": "手写经典考点"}
+{"id": "r114", "query": "LRU页面置换算法", "gold_chunk_ids": [20905], "gold_kp_ids": [2287], "subject": "操作系统", "verified": true, "note": "手写经典考点"}
+{"id": "r115", "query": "关系数据库三大范式", "gold_chunk_ids": [], "gold_kp_ids": [], "subject": "数据库系统概论", "verified": true, "note": "手写经典考点"}
+{"id": "r116", "query": "SQL连接查询内连接外连接", "gold_chunk_ids": [], "gold_kp_ids": [], "subject": "数据库系统概论", "verified": true, "note": "手写经典考点"}
+{"id": "r117", "query": "事务ACID特性", "gold_chunk_ids": [], "gold_kp_ids": [], "subject": "数据库系统概论", "verified": true, "note": "手写经典考点"}
+{"id": "r118", "query": "B+树索引结构", "gold_chunk_ids": [], "gold_kp_ids": [], "subject": "数据库系统概论", "verified": true, "note": "手写经典考点"}
+{"id": "r119", "query": "TCP三次握手四次挥手", "gold_chunk_ids": [20931], "gold_kp_ids": [2334, 2335], "subject": "计算机网络", "verified": true, "note": "手写经典考点"}
+{"id": "r120", "query": "OSI七层模型各层功能", "gold_chunk_ids": [20931], "gold_kp_ids": [2313], "subject": "计算机网络", "verified": true, "note": "手写经典考点"}
+{"id": "r121", "query": "CSMA/CD协议工作原理", "gold_chunk_ids": [20931], "gold_kp_ids": [2322], "subject": "计算机网络", "verified": true, "note": "手写经典考点"}
+{"id": "r122", "query": "IP地址子网划分", "gold_chunk_ids": [20931], "gold_kp_ids": [2325], "subject": "计算机网络", "verified": true, "note": "手写经典考点"}
+{"id": "r123", "query": "顺序表与链表的优缺点", "gold_chunk_ids": [20879], "gold_kp_ids": [2217], "subject": "数据结构", "verified": true, "note": "手写经典考点"}
+{"id": "r124", "query": "二叉树前中后序遍历", "gold_chunk_ids": [20879], "gold_kp_ids": [], "subject": "数据结构", "verified": true, "note": "手写经典考点"}
+{"id": "r125", "query": "快速排序算法时间复杂度", "gold_chunk_ids": [20879], "gold_kp_ids": [], "subject": "数据结构", "verified": true, "note": "手写经典考点"}
+{"id": "r126", "query": "哈希表冲突解决方法", "gold_chunk_ids": [20879], "gold_kp_ids": [], "subject": "数据结构", "verified": true, "note": "手写经典考点"}
+{"id": "r127", "query": "KMP字符串匹配算法", "gold_chunk_ids": [20879], "gold_kp_ids": [], "subject": "数据结构", "verified": true, "note": "手写经典考点"}
+{"id": "r128", "query": "牛顿第二定律的应用", "gold_chunk_ids": [21039], "gold_kp_ids": [2545], "subject": "普通物理", "verified": true, "note": "手写经典考点"}
+{"id": "r129", "query": "能量守恒定律机械能转化", "gold_chunk_ids": [21039], "gold_kp_ids": [], "subject": "普通物理", "verified": true, "note": "手写经典考点"}

@@ -6,10 +6,11 @@ from typing import Any, Dict, Optional
 
 from database import BASE_DIR, get_db
 from fastapi import APIRouter, Depends, HTTPException
-from models import CustomLink
 from schemas import CustomLinkCreate, CustomLinkUpdate
 from sqlalchemy.orm import Session
 from utils.security import require_admin
+
+from models import CustomLink
 
 router = APIRouter(prefix="/api", tags=["customization"])
 

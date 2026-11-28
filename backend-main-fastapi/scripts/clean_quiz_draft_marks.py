@@ -13,6 +13,7 @@
     python scripts/clean_quiz_draft_marks.py            # dry-run
     python scripts/clean_quiz_draft_marks.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,9 +53,7 @@ def clean_answer(a: str) -> str:
 def backup(con: sqlite3.Connection) -> str:
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_draftclean_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+    bak = os.path.join(bak_dir, f"kaoyan_pre_draftclean_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     return bak
@@ -69,8 +68,7 @@ def main() -> int:
     con.execute("PRAGMA busy_timeout=120000")
 
     rows = con.execute(
-        "SELECT id, answer FROM quiz_questions "
-        "WHERE answer LIKE '%【%' OR answer LIKE '%查看答案%'"
+        "SELECT id, answer FROM quiz_questions WHERE answer LIKE '%【%' OR answer LIKE '%查看答案%'"
     ).fetchall()
 
     changes = []
@@ -95,9 +93,7 @@ def main() -> int:
         con.commit()
         print(f"已清洗 {len(changes)} 条")
 
-    left = con.execute(
-        "SELECT count(*) FROM quiz_questions WHERE answer LIKE '%【草稿%'"
-    ).fetchone()[0]
+    left = con.execute("SELECT count(*) FROM quiz_questions WHERE answer LIKE '%【草稿%'").fetchone()[0]
     print(f"\n残留【草稿】: {left}")
     return 0
 

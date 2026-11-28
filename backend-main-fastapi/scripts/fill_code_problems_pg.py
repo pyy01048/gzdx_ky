@@ -7,20 +7,20 @@
 依赖:
     pip install psycopg[binary]  (已安装 psycopg 3.2.10)
 """
+
 from __future__ import annotations
 
 import html as html_lib
 import json
 import re
-from pathlib import Path
-
-import psycopg
 
 # ---------------------------------------------------------------------------
 # 常量
 # ---------------------------------------------------------------------------
 import sys
 from pathlib import Path
+
+import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts._conn import dsn
@@ -40,16 +40,72 @@ LIMIT = 600
 DIFF_MAP = {"简单": 1, "中等": 3, "困难": 5}
 
 # 数据结构类标签
-DS_TAGS = {"数组", "链表", "树", "二叉树", "图", "哈希表", "哈希", "堆（优先队列）", "堆",
-           "栈", "队列", "字符串", "字符串匹配", "前缀和", "并查集", "字典树", "线段树",
-           "树状数组", "单调栈", "单调队列", "双向链表", "红黑树", "设计", "数据流",
-           "矩阵", "几何", "随机化", "蓄水池抽样", "基数排序", "计数排序"}
+DS_TAGS = {
+    "数组",
+    "链表",
+    "树",
+    "二叉树",
+    "图",
+    "哈希表",
+    "哈希",
+    "堆（优先队列）",
+    "堆",
+    "栈",
+    "队列",
+    "字符串",
+    "字符串匹配",
+    "前缀和",
+    "并查集",
+    "字典树",
+    "线段树",
+    "树状数组",
+    "单调栈",
+    "单调队列",
+    "双向链表",
+    "红黑树",
+    "设计",
+    "数据流",
+    "矩阵",
+    "几何",
+    "随机化",
+    "蓄水池抽样",
+    "基数排序",
+    "计数排序",
+}
 
 # 算法类标签
-ALGO_TAGS = {"排序", "查找", "搜索", "深度优先搜索", "广度优先搜索", "回溯", "动态规划",
-             "贪心", "递归", "二分查找", "数学", "位运算", "滑动窗口", "双指针", "分治",
-             "快速选择", "拓扑排序", "最短路", "最小生成树", "博弈", "状态压缩", "记忆化搜索",
-             "扫描线", "差分", "模拟", "枚举", "数论", "组合数学", "概率统计", "脑筋急转弯"}
+ALGO_TAGS = {
+    "排序",
+    "查找",
+    "搜索",
+    "深度优先搜索",
+    "广度优先搜索",
+    "回溯",
+    "动态规划",
+    "贪心",
+    "递归",
+    "二分查找",
+    "数学",
+    "位运算",
+    "滑动窗口",
+    "双指针",
+    "分治",
+    "快速选择",
+    "拓扑排序",
+    "最短路",
+    "最小生成树",
+    "博弈",
+    "状态压缩",
+    "记忆化搜索",
+    "扫描线",
+    "差分",
+    "模拟",
+    "枚举",
+    "数论",
+    "组合数学",
+    "概率统计",
+    "脑筋急转弯",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -81,8 +137,7 @@ def extract_description(text: str) -> str:
 
     样例块（<pre>）会以文本形式保留在描述末尾，同时由 extract_samples 单独提取。
     """
-    m = re.search(r"<!-- description:start -->(.*?)<!-- description:end -->",
-                  text, re.DOTALL)
+    m = re.search(r"<!-- description:start -->(.*?)<!-- description:end -->", text, re.DOTALL)
     if not m:
         return ""
     block = m.group(1)
@@ -90,9 +145,11 @@ def extract_description(text: str) -> str:
     block = re.sub(r"<strong class=\"example\">[^<]*</strong>", "", block)
     # 先将 <pre> 块整体保存
     pres: list[str] = []
+
     def _hold_pre(mo):
         pres.append(mo.group(1))
-        return f"\n[PRE{len(pres)-1}]\n"
+        return f"\n[PRE{len(pres) - 1}]\n"
+
     block = re.sub(r"<pre>(.*?)</pre>", _hold_pre, block, flags=re.DOTALL)
 
     # 提取提示列表 <ul><li> 转为文本
@@ -100,6 +157,7 @@ def extract_description(text: str) -> str:
     # 去掉其余 HTML 标签
     txt = _clean_html(block)
     txt = re.sub(r"&nbsp;", " ", txt)
+
     # 还原样例占位为可读文本
     def _restore_pre(mo):
         idx = int(mo.group(1))
@@ -110,6 +168,7 @@ def extract_description(text: str) -> str:
         p_clean = re.sub(r"输出[:：]", "\n输出: ", p_clean)
         p_clean = re.sub(r"解释[:：]", "\n解释: ", p_clean)
         return f"\n```text\n{p_clean.strip()}\n```\n"
+
     txt = re.sub(r"\[PRE(\d+)\]", _restore_pre, txt)
     txt = re.sub(r"\n{3,}", "\n\n", txt).strip()
     return txt
@@ -129,8 +188,7 @@ def extract_samples(text: str) -> tuple[str, str]:
 
     返回 (sample_input, sample_output)。
     """
-    m = re.search(r"<!-- description:start -->(.*?)<!-- description:end -->",
-                  text, re.DOTALL)
+    m = re.search(r"<!-- description:start -->(.*?)<!-- description:end -->", text, re.DOTALL)
     block = m.group(1) if m else text
     pres = re.findall(r"<pre>(.*?)</pre>", block, flags=re.DOTALL)
     sample_input, sample_output = "", ""
@@ -151,14 +209,12 @@ def extract_samples(text: str) -> tuple[str, str]:
 
 def extract_hints(text: str) -> str:
     """从 solution 区域截取「方法一」的解法说明作为 hints。"""
-    m = re.search(r"<!-- solution:start -->(.*?)<!-- solution:end -->",
-                  text, re.DOTALL)
+    m = re.search(r"<!-- solution:start -->(.*?)<!-- solution:end -->", text, re.DOTALL)
     if not m:
         return ""
     sol = m.group(1)
     # 从「方法一」标题之后，截取到代码 tabs 之前的所有内容（含 thinking 块和正文）
-    method = re.search(r"###\s*方法一[^\n]*\n(.*?)(?=<!-- tabs:start -->|<!-- solution:end -->|###\s)",
-                       sol, re.DOTALL)
+    method = re.search(r"###\s*方法一[^\n]*\n(.*?)(?=<!-- tabs:start -->|<!-- solution:end -->|###\s)", sol, re.DOTALL)
     if method:
         body = method.group(1)
         # 去掉 thinking 注释标记
@@ -202,13 +258,11 @@ def choose_subject(tags: list[str]) -> str:
 def build_io_formats(title: str, sample_input: str | None, sample_output: str | None) -> tuple[str, str]:
     """根据样例生成输入/输出格式说明（LeetCode 函数式题目没有 stdin 格式，生成通用说明）。"""
     if sample_input:
-        input_format = ("输入为题目描述中给定的参数（LeetCode 风格，函数入参）。\n"
-                        f"示例输入：{sample_input}")
+        input_format = f"输入为题目描述中给定的参数（LeetCode 风格，函数入参）。\n示例输入：{sample_input}"
     else:
         input_format = "输入为题目描述中给定的参数（LeetCode 风格，函数入参）。"
     if sample_output:
-        output_format = ("输出为符合题目要求的结果。\n"
-                         f"示例输出：{sample_output}")
+        output_format = f"输出为符合题目要求的结果。\n示例输出：{sample_output}"
     else:
         output_format = "输出为符合题目要求的结果。"
     return input_format, output_format
@@ -236,19 +290,21 @@ def load_readmes(root: Path) -> list[dict]:
         hints = extract_hints(text)
         subject = choose_subject(tags)
         input_format, output_format = build_io_formats(title, sample_input, sample_output)
-        records.append({
-            "title": title,
-            "subject": subject,
-            "difficulty": difficulty,
-            "description": description,
-            "input_format": input_format,
-            "output_format": output_format,
-            "sample_input": sample_input or None,
-            "sample_output": sample_output or None,
-            "hints": hints or None,
-            "tags": tags,
-            "source": "doocs/leetcode",
-        })
+        records.append(
+            {
+                "title": title,
+                "subject": subject,
+                "difficulty": difficulty,
+                "description": description,
+                "input_format": input_format,
+                "output_format": output_format,
+                "sample_input": sample_input or None,
+                "sample_output": sample_output or None,
+                "hints": hints or None,
+                "tags": tags,
+                "source": "doocs/leetcode",
+            }
+        )
     return records
 
 
@@ -291,21 +347,24 @@ def main() -> None:
     """
     inserted = 0
     for r in records:
-        cur.execute(insert_sql, (
-            r["title"],
-            r["subject"],
-            r["difficulty"],
-            r["description"],
-            r["input_format"],
-            r["output_format"],
-            r["sample_input"],
-            r["sample_output"],
-            r["hints"],
-            1000,
-            256000,
-            json.dumps(r["tags"], ensure_ascii=False),
-            True,
-        ))
+        cur.execute(
+            insert_sql,
+            (
+                r["title"],
+                r["subject"],
+                r["difficulty"],
+                r["description"],
+                r["input_format"],
+                r["output_format"],
+                r["sample_input"],
+                r["sample_output"],
+                r["hints"],
+                1000,
+                256000,
+                json.dumps(r["tags"], ensure_ascii=False),
+                True,
+            ),
+        )
         inserted += 1
 
     conn.commit()
@@ -316,13 +375,20 @@ def main() -> None:
 
     # 保存统计数据供报告使用
     stats_path = Path(r"D:/平台/backend-main-fastapi/temp/fill_stats.json")
-    stats_path.write_text(json.dumps({
-        "inserted": inserted,
-        "total": total,
-        "source": "doocs/leetcode",
-        "ai_generated": 0,
-        "records_parsed": len(records),
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    stats_path.write_text(
+        json.dumps(
+            {
+                "inserted": inserted,
+                "total": total,
+                "source": "doocs/leetcode",
+                "ai_generated": 0,
+                "records_parsed": len(records),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     print(f"统计保存至 {stats_path}")
 
 

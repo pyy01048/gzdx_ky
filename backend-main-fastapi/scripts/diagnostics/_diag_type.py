@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """临时诊断：题型分类 预测 vs 库内标签 混淆 + 库内类型分布。"""
+
 import collections
 import json
 import os
@@ -8,17 +9,19 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
-from models import QuizQuestion
 from services.quiz_classifier_v2 import classify_type_v2
 from sqlalchemy import func
+
+from models import QuizQuestion
 
 
 def main():
     db = SessionLocal()
     try:
         # 库内类型分布
-        rows = db.query(QuizQuestion.question_type, func.count(QuizQuestion.id)) \
-            .group_by(QuizQuestion.question_type).all()
+        rows = (
+            db.query(QuizQuestion.question_type, func.count(QuizQuestion.id)).group_by(QuizQuestion.question_type).all()
+        )
         print("库内 question_type 分布：")
         for t, c in sorted(rows, key=lambda x: -x[1]):
             print(f"  {repr(t):<14} {c}")

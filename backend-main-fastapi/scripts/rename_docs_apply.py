@@ -28,6 +28,7 @@ SQLite 直通、PG 改写 ? → %s；行访问统一用**下标**而非列名
     python scripts/rename_docs_apply.py                      # 看计划
     python scripts/rename_docs_apply.py --apply              # 人批后才执行
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,25 +50,28 @@ AUDIT_DIR = os.path.join(ROOT, "docx", "_audit")
 def load_plan(path: str) -> List[dict]:
     """CSV 里「有拟改名且 reason 为空」的行才是被批的条目；collision 行 reason 非空。"""
     with open(path, "r", encoding="utf-8-sig", newline="") as fh:
-        return [r for r in csv.DictReader(fh)
-                if (r.get("proposed") or "").strip() and not (r.get("reason") or "").strip()]
+        return [
+            r for r in csv.DictReader(fh) if (r.get("proposed") or "").strip() and not (r.get("reason") or "").strip()
+        ]
 
 
 def _wrap(con):
     """跨方言包装：SQLite 直通，PG 适配占位符。"""
     from services.dbapi_compat import wrap_conn
+
     return wrap_conn(con)
 
 
 def stage_plan(con, plan: List[dict]) -> Tuple[List[dict], List[Tuple[str, str]]]:
     """逐条核对库的当前状态，返回 (可执行清单, 跳过原因)。行访问用下标（跨方言）。"""
     con = _wrap(con)
-    chunk_cnt = {r[0]: r[1] for r in con.execute(
-        "SELECT document_id, COUNT(*) FROM knowledge_chunks GROUP BY document_id").fetchall()}
+    chunk_cnt = {
+        r[0]: r[1]
+        for r in con.execute("SELECT document_id, COUNT(*) FROM knowledge_chunks GROUP BY document_id").fetchall()
+    }
     staged, stale = [], []
     for r in plan:
-        doc = con.execute("SELECT id, file_name FROM documents WHERE id=?",
-                          (int(r["id"]),)).fetchone()
+        doc = con.execute("SELECT id, file_name FROM documents WHERE id=?", (int(r["id"]),)).fetchone()
         if doc is None:
             stale.append((r["id"], "文档已不存在"))
             continue
@@ -79,8 +83,7 @@ def stage_plan(con, plan: List[dict]) -> Tuple[List[dict], List[Tuple[str, str]]
         if doc[1] != r["current"]:
             stale.append((r["id"], f"现名已变：{doc[1]}"))
             continue
-        staged.append({"id": doc[0], "old": doc[1], "new": r["proposed"],
-                       "chunks": chunk_cnt.get(doc[0], 0)})
+        staged.append({"id": doc[0], "old": doc[1], "new": r["proposed"], "chunks": chunk_cnt.get(doc[0], 0)})
     return staged, stale
 
 
@@ -106,8 +109,8 @@ def apply_plan(con, staged: List[dict]) -> Tuple[int, int]:
         for s in staged:
             con.execute("UPDATE documents SET file_name=? WHERE id=?", (s["new"], s["id"]))
             rows += con.execute(
-                "UPDATE knowledge_chunks SET doc_name=? WHERE document_id=?",
-                (s["new"], s["id"])).rowcount
+                "UPDATE knowledge_chunks SET doc_name=? WHERE document_id=?", (s["new"], s["id"])
+            ).rowcount
             applied += 1
         con.commit()
     except Exception as e:  # noqa: BLE001
@@ -120,10 +123,12 @@ def apply_plan(con, staged: List[dict]) -> Tuple[int, int]:
 def _connect(apply_mode: bool):
     """连接生产库（跨方言：按项目 DATABASE_BACKEND 选择驱动）。"""
     import database as _db
+
     if getattr(_db, "IS_POSTGRES", False):
         raw = _db.engine.raw_connection()
     else:
         import sqlite3
+
         mode = "rw" if apply_mode else "ro"
         raw = sqlite3.connect(f"file:{LIVE_DB}?mode={mode}", uri=True, timeout=10)
         if apply_mode:
@@ -135,8 +140,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", default=DEFAULT_CSV)
     ap.add_argument("--apply", action="store_true", help="真正回写；不带则只打印计划")
-    ap.add_argument("--rollback-out", default=os.path.join(
-        AUDIT_DIR, f"rename_rollback_{datetime.now():%Y%m%d_%H%M%S}.csv"))
+    ap.add_argument(
+        "--rollback-out", default=os.path.join(AUDIT_DIR, f"rename_rollback_{datetime.now():%Y%m%d_%H%M%S}.csv")
+    )
     args = ap.parse_args()
 
     plan = load_plan(args.csv)

@@ -13,6 +13,7 @@
 
 判分口径：路1+路2 必跑；--llm 时才花模型调用（评估融合全配置）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,8 +32,9 @@ MIN_CHARS = 150
 
 def sample_seed(db, n: int, out_path: str) -> int:
     """按学科分层随机抽 chunk，导出标注模板。"""
-    from models import Document, KnowledgeChunk
     from services.chunk_classifier import keyword_scores, subject_candidates
+
+    from models import Document, KnowledgeChunk
 
     cands = set(subject_candidates())
     by_subject: dict = defaultdict(list)
@@ -63,15 +65,17 @@ def sample_seed(db, n: int, out_path: str) -> int:
         if quota.get(key, 1) <= 0:
             continue
         quota[key] = quota.get(key, 0) - 1
-        chosen.append({
-            "chunk_id": c.id,
-            "doc_name": (doc.file_name or "")[:60],
-            "text": (c.text or "")[:600],
-            "pred_l1": c.subject,
-            "pred_l3": c.l3_content_type,
-            "label_l1": "",   # ← 人工填
-            "label_l3": "",   # ← 人工填
-        })
+        chosen.append(
+            {
+                "chunk_id": c.id,
+                "doc_name": (doc.file_name or "")[:60],
+                "text": (c.text or "")[:600],
+                "pred_l1": c.subject,
+                "pred_l3": c.l3_content_type,
+                "label_l1": "",  # ← 人工填
+                "label_l3": "",  # ← 人工填
+            }
+        )
         if len(chosen) >= n:
             break
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -83,19 +87,22 @@ def sample_seed(db, n: int, out_path: str) -> int:
 
 
 def _prf(golds: list, preds: list, labels: list):
-    tp = defaultdict(int); fp = defaultdict(int); fn = defaultdict(int)
-    for g, p in zip(golds, preds):
+    tp = defaultdict(int)
+    fp = defaultdict(int)
+    fn = defaultdict(int)
+    for g, p in zip(golds, preds, strict=False):
         if p == g:
             tp[g] += 1
         else:
-            fp[p] += 1; fn[g] += 1
+            fp[p] += 1
+            fn[g] += 1
     rows, f1s = [], []
     for lb in labels:
         prec = tp[lb] / (tp[lb] + fp[lb]) if (tp[lb] + fp[lb]) else 0.0
         rec = tp[lb] / (tp[lb] + fn[lb]) if (tp[lb] + fn[lb]) else 0.0
         f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
         rows.append((lb, prec, rec, f1, tp[lb] + fn[lb]))
-        if tp[lb] + fn[lb]:          # macro 只算出现过的科
+        if tp[lb] + fn[lb]:  # macro 只算出现过的科
             f1s.append(f1)
     return rows, (sum(f1s) / len(f1s) if f1s else 0.0)
 
@@ -106,10 +113,12 @@ def grade(db, source: str, use_llm: bool) -> int:
 
     if source == "--db":
         from models import AnnotationSample
+
         items = [
             {"chunk_id": a.chunk_id, "text": a.chunk_text, "label_l1": a.label_l1}
             for a in db.query(AnnotationSample).filter(
-                AnnotationSample.label_l1.isnot(None), AnnotationSample.label_l1 != "")
+                AnnotationSample.label_l1.isnot(None), AnnotationSample.label_l1 != ""
+            )
         ]
     else:
         with open(source, encoding="utf-8") as f:
@@ -150,7 +159,7 @@ def grade(db, source: str, use_llm: bool) -> int:
         x["pred_conf"] = lab.confidence
 
     n_items = len(golds)
-    acc = sum(g == p for g, p in zip(golds, preds)) / n_items
+    acc = sum(g == p for g, p in zip(golds, preds, strict=False)) / n_items
     labels = sorted(set(golds) | set(preds))
     rows, macro_f1 = _prf(golds, preds, labels)
     low = sum(1 for c in confs if c < cc.CONF_THRESHOLD) / n_items
@@ -160,22 +169,21 @@ def grade(db, source: str, use_llm: bool) -> int:
     out_idx = [i for i, x in enumerate(items) if (x["label_l1"] or "").strip() == "其他"]
     out_hit = sum(1 for i in out_idx if preds[i] == "其他")
     core_idx = [i for i in range(n_items) if i not in set(out_idx)]
-    core_acc = (sum(1 for i in core_idx if golds[i] == preds[i]) / core_idx.__len__()
-                if core_idx else 0.0)
+    core_acc = sum(1 for i in core_idx if golds[i] == preds[i]) / core_idx.__len__() if core_idx else 0.0
 
     arm = "三" if use_llm else "二"
     print(f"样本 {n_items}（域内 {len(core_idx)} / 域外其他 {len(out_idx)}）  | 路: {arm}")
     print(f"  Accuracy(全口径)   {acc:.3f}  | Macro-F1 {macro_f1:.3f}")
     print(f"  Accuracy(仅域内科目) {core_acc:.3f}  | 域外正确弃权率 {out_hit}/{len(out_idx)}")
-    print(f"低置信占比(<{cc.CONF_THRESHOLD}) {low:.1%}  | 向量×关键词头名一致率 "
-          f"{(agree_vec_kw / agree_total if agree_total else 0):.1%}")
+    print(
+        f"低置信占比(<{cc.CONF_THRESHOLD}) {low:.1%}  | 向量×关键词头名一致率 "
+        f"{(agree_vec_kw / agree_total if agree_total else 0):.1%}"
+    )
     print(f"{'学科':<14}{'P':>7}{'R':>7}{'F1':>7}{'支撑':>5}")
     for lb, p, r, f1, sup in sorted(rows, key=lambda t: -t[3]):
         if sup:
             print(f"{lb:<14}{p:>7.2f}{r:>7.2f}{f1:>7.2f}{sup:>5}")
-    conf_pairs = Counter(
-        (g, p) for g, p in zip(golds, preds) if g != p and p
-    ).most_common(10)
+    conf_pairs = Counter((g, p) for g, p in zip(golds, preds, strict=False) if g != p and p).most_common(10)
     if conf_pairs:
         print("混淆 Top：")
         for (g, p), n in conf_pairs:
@@ -185,14 +193,21 @@ def grade(db, source: str, use_llm: bool) -> int:
 
     dump = ""
     if source != "--db":
-        dump = os.path.join(os.path.dirname(os.path.abspath(source)),
-                            "chunk_eval_graded.json")
+        dump = os.path.join(os.path.dirname(os.path.abspath(source)), "chunk_eval_graded.json")
         with open(dump, "w", encoding="utf-8") as f:
-            json.dump({"arm": arm, "accuracy": round(acc, 4),
-                       "accuracy_in_taxonomy": round(core_acc, 4),
-                       "macro_f1": round(macro_f1, 4),
-                       "low_conf_rate": round(low, 4), "items": items}, f,
-                      ensure_ascii=False, indent=1)
+            json.dump(
+                {
+                    "arm": arm,
+                    "accuracy": round(acc, 4),
+                    "accuracy_in_taxonomy": round(core_acc, 4),
+                    "macro_f1": round(macro_f1, 4),
+                    "low_conf_rate": round(low, 4),
+                    "items": items,
+                },
+                f,
+                ensure_ascii=False,
+                indent=1,
+            )
         print(f"逐条预测已写入 {dump}")
 
     # 入库 eval_runs：趋势页读这张表，metrics 保持上面打印用的同一口径
@@ -200,20 +215,27 @@ def grade(db, source: str, use_llm: bool) -> int:
         from services.eval_store import record_eval_run, text_fingerprint
 
         report = {
-            "n_items": n_items, "n_in_taxonomy": len(core_idx),
+            "n_items": n_items,
+            "n_in_taxonomy": len(core_idx),
             "n_out_of_domain": len(out_idx),
-            "accuracy_all": round(acc, 4), "accuracy_in_taxonomy": round(core_acc, 4),
-            "macro_f1": round(macro_f1, 4), "low_conf_rate": round(low, 4),
-            "vector_keyword_agreement": (round(agree_vec_kw / agree_total, 4)
-                                         if agree_total else None),
+            "accuracy_all": round(acc, 4),
+            "accuracy_in_taxonomy": round(core_acc, 4),
+            "macro_f1": round(macro_f1, 4),
+            "low_conf_rate": round(low, 4),
+            "vector_keyword_agreement": (round(agree_vec_kw / agree_total, 4) if agree_total else None),
             "out_of_domain_abstain": f"{out_hit}/{len(out_idx)}",
-            "per_subject": {lb: {"precision": round(p, 4), "recall": round(r, 4),
-                                 "f1": round(f1, 4), "support": sup}
-                            for lb, p, r, f1, sup in rows if sup},
+            "per_subject": {
+                lb: {"precision": round(p, 4), "recall": round(r, 4), "f1": round(f1, 4), "support": sup}
+                for lb, p, r, f1, sup in rows
+                if sup
+            },
             "confusion_top": [{"gold": g, "pred": p, "n": n} for (g, p), n in conf_pairs],
         }
         run_id = record_eval_run(
-            "recognition", arm=f"路{arm}", metrics=report, primary_metric=core_acc,
+            "recognition",
+            arm=f"路{arm}",
+            metrics=report,
+            primary_metric=core_acc,
             n_samples=n_items,
             fingerprint=text_fingerprint([str(x["chunk_id"]) for x in items]),
             report_path=dump,
@@ -230,11 +252,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="chunk 分类评估闭环")
     ap.add_argument("--seed", type=int, help="抽 N 条生成标注模板")
     ap.add_argument("--out", default=os.path.join("scripts", "data", "chunk_eval_seed.json"))
-    ap.add_argument("--grade", nargs="?", const="--db", help="判分：标注 JSON 路径，或 --grade 不带值用 annotation_samples 表")
+    ap.add_argument(
+        "--grade", nargs="?", const="--db", help="判分：标注 JSON 路径，或 --grade 不带值用 annotation_samples 表"
+    )
     ap.add_argument("--llm", action="store_true", help="判分时启用路3")
     args = ap.parse_args()
 
     from database import Base, SessionLocal, engine
+
     Base.metadata.create_all(bind=engine)  # annotation_samples 幂等补建
     db = SessionLocal()
     try:

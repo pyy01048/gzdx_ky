@@ -21,20 +21,22 @@
     user_confirmed  用户人工确认，置信 1.0 —— 参与自动判分
 103 条交叉校验冲突走 answer_review_queue 人工确认，不再自动消解。
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from models import ErrorRecord, QuizQuestion, StudyEvent
 from sqlalchemy import func
 from sqlalchemy import text as _text
 from sqlalchemy.orm import Session
 from utils.timeutil import iso_utc_z, local_today, utcnow  # 写库时间统一 naive UTC（P1-C2）
 
+from models import ErrorRecord, QuizQuestion, StudyEvent
 from services.dbapi_compat import insert_returning_id, wrap_conn
+from services.quiz_query import question_owner_expr
 
 logger = logging.getLogger(__name__)
 
@@ -141,13 +143,11 @@ def _norm_options(raw) -> Optional[Dict]:
         parts = re.split(r"[A-D][.、．)]\s*", "\n" + raw)
         labels = re.findall(r"([A-D])[.、．)]", "\n" + raw)
         if len(labels) >= 2:
-            return {lab: parts[i + 1].strip().split("\n")[0]
-                    for i, lab in enumerate(labels) if i + 1 < len(parts)}
+            return {lab: parts[i + 1].strip().split("\n")[0] for i, lab in enumerate(labels) if i + 1 < len(parts)}
     return None
 
 
-def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
-                 dry_run: bool = False) -> Dict:
+def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None, dry_run: bool = False) -> Dict:
     """导入题库包 JSON → quiz_questions + papers + QC 报告。
 
     payload 兼容三种形态：题目列表 / {"questions": [...]} / 分科 {"科目": [...]}。
@@ -167,9 +167,16 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
         return {"total": 0, "imported": 0, "skipped_dup": 0, "qc": {"error": "未识别到题目列表"}}
 
     conn = wrap_conn(db.connection().connection)
-    qc = {"total": len(items), "imported": 0, "would_import": 0, "skipped_dup": 0,
-          "missing_options": 0, "missing_answer": 0, "ocr_noise": 0,
-          "papers_created": 0}
+    qc = {
+        "total": len(items),
+        "imported": 0,
+        "would_import": 0,
+        "skipped_dup": 0,
+        "missing_options": 0,
+        "missing_answer": 0,
+        "ocr_noise": 0,
+        "papers_created": 0,
+    }
     paper_cache: Dict[str, int] = {}
     imported_questions: List[Dict] = []
 
@@ -214,12 +221,22 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
         # question_type 是 DB 枚举（single/multiple/judge/fill/calc/essay/draw/proof/other）；
         # 'objective' 是 answer_type 词表，误填会 500（InvalidTextRepresentation）。
         raw_qt = (_first(it, _TYPE, "") or "").strip().lower()
-        qt = {"": "single", "单选": "single", "多选": "multiple", "判断": "judge",
-              "填空": "fill", "解答": "calc", "计算": "calc", "简答": "essay",
-              "objective": "single", "choice": "single", "multi_choice": "multiple",
-              "blank": "fill", "solve": "calc"}.get(raw_qt, raw_qt)
-        if qt not in {"single", "multiple", "judge", "fill", "calc", "essay",
-                      "draw", "proof", "other"}:
+        qt = {
+            "": "single",
+            "单选": "single",
+            "多选": "multiple",
+            "判断": "judge",
+            "填空": "fill",
+            "解答": "calc",
+            "计算": "calc",
+            "简答": "essay",
+            "objective": "single",
+            "choice": "single",
+            "multi_choice": "multiple",
+            "blank": "fill",
+            "solve": "calc",
+        }.get(raw_qt, raw_qt)
+        if qt not in {"single", "multiple", "judge", "fill", "calc", "essay", "draw", "proof", "other"}:
             qt = "single"
         # options 走裸 DBAPI 写入，不过 ORM 的 NullSafeJSON 规整：dict 形态
         # （{"A": "..."}）必须在这里转成正典数组 [{key,text}]，否则 PG 触发器
@@ -227,8 +244,7 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
         opts_json = options
         if isinstance(opts_json, dict) and opts_json:
             opts_json = [
-                {"key": str(k).strip().upper()[:1], "text": str(v)}
-                for k, v in opts_json.items() if str(v).strip()
+                {"key": str(k).strip().upper()[:1], "text": str(v)} for k, v in opts_json.items() if str(v).strip()
             ]
         # PG 无 lastrowid：统一走 insert_returning_id（PG 注入 RETURNING id）
         qid = insert_returning_id(
@@ -236,9 +252,17 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
             "INSERT INTO quiz_questions (content, options, answer, analysis, subject, "
             "question_type, year, answer_source, answer_confidence, is_available) "
             "VALUES (?,?,?,?,?,?,?,?,?,TRUE)",
-            (content, json.dumps(opts_json, ensure_ascii=False) if opts_json else None,
-             answer, _first(it, _AN), subj,
-             qt, year, src, conf),
+            (
+                content,
+                json.dumps(opts_json, ensure_ascii=False) if opts_json else None,
+                answer,
+                _first(it, _AN),
+                subj,
+                qt,
+                year,
+                src,
+                conf,
+            ),
         )
         qc["imported"] += 1
         imported_questions.append({"id": qid, "subject": subj, "year": year, "content": content})
@@ -254,23 +278,35 @@ def import_qbank(db: Session, payload: Dict, subject: Optional[str] = None,
                     (ptitle, subj, f"来源：题库包导入 · {local_today().isoformat()}", 100),
                 )
                 qc["papers_created"] += 1
-            seq = conn.execute(
-                "SELECT COUNT(*) FROM paper_questions WHERE paper_id=?",
-                (paper_cache[pkey],),
-            ).fetchone()[0] + 1
+            seq = (
+                conn.execute(
+                    "SELECT COUNT(*) FROM paper_questions WHERE paper_id=?",
+                    (paper_cache[pkey],),
+                ).fetchone()[0]
+                + 1
+            )
             conn.execute(
-                "INSERT INTO paper_questions (paper_id, question_id, seq, content, options) "
-                "VALUES (?,?,?,?,?)",
-                (paper_cache[pkey], qid, seq, content,
-                 json.dumps(opts_json, ensure_ascii=False) if opts_json else None),
+                "INSERT INTO paper_questions (paper_id, question_id, seq, content, options) VALUES (?,?,?,?,?)",
+                (
+                    paper_cache[pkey],
+                    qid,
+                    seq,
+                    content,
+                    json.dumps(opts_json, ensure_ascii=False) if opts_json else None,
+                ),
             )
 
         if src == "llm_generated":
             conn.execute(
                 "INSERT OR IGNORE INTO answer_review_queue (question_id, conflict_type, detail, status, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (qid, "low_confidence", json.dumps({"reason": "missing_answer_or_noise"}, ensure_ascii=False),
-                 "pending", utcnow().isoformat()),
+                (
+                    qid,
+                    "low_confidence",
+                    json.dumps({"reason": "missing_answer_or_noise"}, ensure_ascii=False),
+                    "pending",
+                    utcnow().isoformat(),
+                ),
             )
 
     if not dry_run:
@@ -296,11 +332,13 @@ BANK_MAX_CANDS = 5
 def _bank_norm(s: str) -> str:
     """匹配归一化：去所有空白 + 统一常见全角引号。与 SQL 侧 regexp_replace 口径一致。"""
     s = re.sub(r"\s+", "", (s or ""))
-    return s.replace("\u201c", "\"").replace("\u201d", "\"").replace("\u2018", "'").replace("\u2019", "'")
+    return s.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
 
 
-def find_bank_answer(db: Session, query: str) -> Optional[Dict]:
+def find_bank_answer(db: Session, query: str, user: Any = None) -> Optional[Dict]:
     """答疑「先查题库」：用户问题命中题库题干（句级逐字）时返回确定性答案。
+
+    普通用户仅可命中公共题或本人私有题；匿名仅命中公共题，管理员可检索全库。
 
 
     命中标准（宁缺勿滥）：
@@ -325,8 +363,10 @@ def find_bank_answer(db: Session, query: str) -> Optional[Dict]:
     if not cands:
         return None
 
-    is_pg = bool(db.bind is not None and getattr(db.bind, "dialect", None) is not None
-                 and db.bind.dialect.name == "postgresql")
+    owner_filter = question_owner_expr(user) if user is not None else QuizQuestion.owner_user_id.is_(None)
+    is_pg = bool(
+        db.bind is not None and getattr(db.bind, "dialect", None) is not None and db.bind.dialect.name == "postgresql"
+    )
     for pat in cands:
         esc = pat.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         content_expr = (
@@ -337,13 +377,20 @@ def find_bank_answer(db: Session, query: str) -> Optional[Dict]:
         try:
             rows = (
                 db.query(
-                    QuizQuestion.id, QuizQuestion.content, QuizQuestion.options,
-                    QuizQuestion.answer, QuizQuestion.analysis, QuizQuestion.subject,
-                    QuizQuestion.question_type, QuizQuestion.answer_source,
-                    QuizQuestion.answer_confidence, QuizQuestion.year,
+                    QuizQuestion.id,
+                    QuizQuestion.content,
+                    QuizQuestion.options,
+                    QuizQuestion.answer,
+                    QuizQuestion.analysis,
+                    QuizQuestion.subject,
+                    QuizQuestion.question_type,
+                    QuizQuestion.answer_source,
+                    QuizQuestion.answer_confidence,
+                    QuizQuestion.year,
                     QuizQuestion.source_label,
                 )
                 .filter(
+                    owner_filter,
                     QuizQuestion.is_available.is_(True),
                     QuizQuestion.is_junk.is_(False),
                     QuizQuestion.answer.isnot(None),
@@ -368,11 +415,17 @@ def find_bank_answer(db: Session, query: str) -> Optional[Dict]:
             if pat not in _bank_norm(r[1] or ""):
                 continue  # LIKE/转义层的兑底复核
             return {
-                "id": r[0], "content": r[1],
+                "id": r[0],
+                "content": r[1],
                 "options": r[2] if isinstance(r[2], dict) else None,
-                "answer": r[3], "analysis": r[4], "subject": r[5],
-                "question_type": str(r[6] or ""), "answer_source": str(r[7] or ""),
-                "answer_confidence": conf, "year": r[9], "source_label": r[10],
+                "answer": r[3],
+                "analysis": r[4],
+                "subject": r[5],
+                "question_type": str(r[6] or ""),
+                "answer_source": str(r[7] or ""),
+                "answer_confidence": conf,
+                "year": r[9],
+                "source_label": r[10],
                 "matched": pat,
             }
     return None
@@ -423,19 +476,28 @@ def refresh_weak_knowledge(db: Session) -> Dict:
             "ON CONFLICT(knowledge_point, subject) DO UPDATE SET wrong_count=excluded.wrong_count, "
             "total_count=excluded.total_count, accuracy=excluded.accuracy, mastery=excluded.mastery, "
             "last_wrong_at=excluded.last_wrong_at, updated_at=excluded.updated_at",
-            (kp, subj, d["wrong"], d["total"], round(acc, 3), round(mastery, 3),
-             d["last"].isoformat() if d["last"] else None, now),
+            (
+                kp,
+                subj,
+                d["wrong"],
+                d["total"],
+                round(acc, 3),
+                round(mastery, 3),
+                d["last"].isoformat() if d["last"] else None,
+                now,
+            ),
         )
     conn.commit()
     return {"aggregated": len(agg), "updated_at": now}
 
 
-def list_weak_knowledge(db: Session, subject: Optional[str] = None,
-                        limit: int = 50) -> List[Dict]:
+def list_weak_knowledge(db: Session, subject: Optional[str] = None, limit: int = 50) -> List[Dict]:
     ensure_qa_schema(db)
     conn = wrap_conn(db.connection().connection)
-    sql = ("SELECT knowledge_point, subject, wrong_count, total_count, accuracy, mastery, "
-           "last_wrong_at FROM weak_knowledge")
+    sql = (
+        "SELECT knowledge_point, subject, wrong_count, total_count, accuracy, mastery, "
+        "last_wrong_at FROM weak_knowledge"
+    )
     args: list = []
     if subject:
         sql += " WHERE subject = ?"
@@ -443,7 +505,7 @@ def list_weak_knowledge(db: Session, subject: Optional[str] = None,
     sql += " ORDER BY mastery ASC, wrong_count DESC LIMIT ?"
     args.append(limit)
     cols = ["knowledge_point", "subject", "wrong_count", "total_count", "accuracy", "mastery", "last_wrong_at"]
-    return [dict(zip(cols, r)) for r in conn.execute(sql, args).fetchall()]
+    return [dict(zip(cols, r, strict=False)) for r in conn.execute(sql, args).fetchall()]
 
 
 # --------------------------------------------------------------------------- #
@@ -458,23 +520,26 @@ def review_queue(db: Session, status: str = "pending", limit: int = 100) -> List
         (status, limit),
     ).fetchall()
     return [
-        {"id": r[0], "question_id": r[1], "conflict_type": r[2],
-         "detail": json.loads(r[3]) if r[3] else None, "status": r[4],
-         "resolution": r[5], "created_at": r[6]}
+        {
+            "id": r[0],
+            "question_id": r[1],
+            "conflict_type": r[2],
+            "detail": json.loads(r[3]) if r[3] else None,
+            "status": r[4],
+            "resolution": r[5],
+            "created_at": r[6],
+        }
         for r in rows
     ]
 
 
-def resolve_review(db: Session, queue_id: int, action: str,
-                   resolution: Optional[str] = None) -> bool:
+def resolve_review(db: Session, queue_id: int, action: str, resolution: Optional[str] = None) -> bool:
     """action: confirm（采纳当前答案）/ reject（下线该答案，仅保留题干预览）。"""
     if action not in ("confirm", "reject"):
         return False
     ensure_qa_schema(db)
     conn = wrap_conn(db.connection().connection)
-    row = conn.execute(
-        "SELECT question_id FROM answer_review_queue WHERE id=?", (queue_id,)
-    ).fetchone()
+    row = conn.execute("SELECT question_id FROM answer_review_queue WHERE id=?", (queue_id,)).fetchone()
     if not row:
         return False
     conn.execute(
@@ -490,8 +555,7 @@ def resolve_review(db: Session, queue_id: int, action: str,
         )
     else:
         conn.execute(
-            "UPDATE quiz_questions SET answer=NULL, answer_source='llm_generated', "
-            "answer_confidence=0.0 WHERE id=?",
+            "UPDATE quiz_questions SET answer=NULL, answer_source='llm_generated', answer_confidence=0.0 WHERE id=?",
             (row[0],),
         )
     conn.commit()
@@ -508,9 +572,14 @@ def export_snapshot(db: Session) -> Dict:
         "generated_at": iso_utc_z(utcnow()),
         "weak_knowledge": weak,
         "recent_errors": [
-            {"id": e.id, "subject": e.subject, "content": (e.content or "")[:120],
-             "error_reason": e.error_reason, "review_count": e.review_count,
-             "next_review": e.next_review.isoformat() if e.next_review else None}
+            {
+                "id": e.id,
+                "subject": e.subject,
+                "content": (e.content or "")[:120],
+                "error_reason": e.error_reason,
+                "review_count": e.review_count,
+                "next_review": e.next_review.isoformat() if e.next_review else None,
+            }
             for e in errors
         ],
     }

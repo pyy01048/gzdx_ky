@@ -38,8 +38,9 @@ def stub_user(app_module):
 @pytest.fixture()
 def focus_rows(db_schema):
     from database import SessionLocal
-    from models import StudySession, User
     from utils.timeutil import local_today
+
+    from models import StudySession, User
 
     db = SessionLocal()
     today = local_today()

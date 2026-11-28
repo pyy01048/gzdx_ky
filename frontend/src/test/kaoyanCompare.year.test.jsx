@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { StrictMode } from 'react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 
 const mocks = vi.hoisted(() => ({
   schools: vi.fn(),
@@ -57,6 +58,11 @@ const compareResult = {
 const latestRadar = () => mocks.radarOptions[mocks.radarOptions.length - 1]
 const rowCells = (name) => within(screen.getByRole('link', { name }).closest('tr')).getAllByRole('cell')
 
+function LocationProbe() {
+  const location = useLocation()
+  return <output data-testid="location">{location.search}</output>
+}
+
 async function renderCompared() {
   render(<MemoryRouter><KaoyanCompare /></MemoryRouter>)
   fireEvent.click(screen.getByRole('button', { name: '开始对比（已选 2）' }))
@@ -77,6 +83,27 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('KaoyanCompare 同年对比', () => {
+  it('StrictMode 双挂载后仍展示接口返回的院校库', async () => {
+    localStorage.clear()
+    render(<StrictMode><MemoryRouter><KaoyanCompare /></MemoryRouter></StrictMode>)
+
+    await waitFor(() => {
+      const tile = [...document.querySelectorAll('.kyv3-stat-tile')]
+        .find((node) => node.textContent.includes('院校库'))
+      expect(within(tile).getByText('2')).toBeInTheDocument()
+    })
+  })
+
+  it('0854 空态说明使用专业最低线与人数加权均分口径', async () => {
+    localStorage.clear()
+    render(<MemoryRouter><KaoyanCompare /></MemoryRouter>)
+
+    await screen.findByText('支持名称、数字 ID，或「清华 北大」批量添加')
+    expect(screen.getByText('专业最低线')).toBeInTheDocument()
+    expect(screen.getByText('看实际竞争强度，按录取人数加权')).toBeInTheDocument()
+    expect(screen.queryByText('取各专业录取均分均值')).toBeNull()
+  })
+
   it('分数 2025、招生 2024 不串年，默认最新年份并动态扩展雷达上限', async () => {
     await renderCompared()
 
@@ -92,7 +119,42 @@ describe('KaoyanCompare 同年对比', () => {
     expect(cells[4].querySelector('.kyv3-compare-value')).toHaveTextContent('501')
     expect(cells[5]).toHaveTextContent('—')
     expect(cells[6]).toHaveTextContent('—')
-    expect(mocks.compare).toHaveBeenCalledWith('1,2')
+    expect(mocks.compare).toHaveBeenCalledWith('1,2', { subject_code: '0854' })
+  })
+
+  it('深链恢复对比清单、专业与年份，详情链接保留专业范围', async () => {
+    render(
+      <MemoryRouter initialEntries={['/kaoyan/compare?ids=1,2&subject_code=0808&year=2024']}>
+        <KaoyanCompare />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('link', { name: '甲校' })).toHaveAttribute(
+      'href', '/kaoyan/schools/1?subject_code=0808',
+    )
+    expect(screen.getByLabelText('专业代码')).toHaveValue('0808')
+    expect(screen.getByRole('combobox', { name: '对比年份' })).toHaveTextContent('2024 年')
+    expect(mocks.compare).toHaveBeenCalledWith('1,2', { subject_code: '0808' })
+
+    fireEvent.click(screen.getByRole('combobox', { name: '对比年份' }))
+    fireEvent.click(screen.getByRole('option', { name: '2025 年' }))
+    await waitFor(() => {
+      const params = new URLSearchParams(screen.getByTestId('location').textContent)
+      expect(params.get('ids')).toBe('1,2')
+      expect(params.get('subject_code')).toBe('0808')
+      expect(params.get('year')).toBe('2025')
+    })
+  })
+
+  it('修改专业代码后清空旧结果并按新代码重新对比', async () => {
+    await renderCompared()
+    fireEvent.change(screen.getByLabelText('专业代码'), { target: { value: '0808' } })
+
+    expect(screen.queryByRole('link', { name: '甲校' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '开始对比（已选 2）' }))
+    await screen.findByRole('link', { name: '甲校' })
+    expect(mocks.compare).toHaveBeenLastCalledWith('1,2', { subject_code: '0808' })
   })
 
   it('缺失指标在表格显示 —、雷达为 null，不补 0', async () => {

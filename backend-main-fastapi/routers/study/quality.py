@@ -9,9 +9,10 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import Document, EvalRun, KnowledgeChunk
 from sqlalchemy import String, case, cast, func, select
 from sqlalchemy.orm import Session
+
+from models import Document, EvalRun, KnowledgeChunk
 
 router = APIRouter(prefix="/api/quality", tags=["quality"])
 
@@ -21,10 +22,14 @@ _VACUOUS_SUBJECTS = ("其他", "其它", "未知", "未分类", "")
 
 def _run_row(r: EvalRun) -> dict:
     return {
-        "id": r.id, "kind": r.kind, "arm": r.arm or "",
-        "primary_metric": r.primary_metric, "n_samples": r.n_samples,
+        "id": r.id,
+        "kind": r.kind,
+        "arm": r.arm or "",
+        "primary_metric": r.primary_metric,
+        "n_samples": r.n_samples,
         "dataset_fingerprint": r.dataset_fingerprint or "",
-        "report_path": r.report_path or "", "notes": r.notes or "",
+        "report_path": r.report_path or "",
+        "notes": r.notes or "",
         "created_at": r.created_at.isoformat() if r.created_at else "",
     }
 
@@ -55,11 +60,9 @@ async def get_eval_run(run_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/latest")
-async def latest(db: Session = Depends(get_db),
-                 kind: str = Query("recognition", description="运行类型")):
+async def latest(db: Session = Depends(get_db), kind: str = Query("recognition", description="运行类型")):
     """某类评测的最新一次运行（看板首屏用）。"""
-    r = (db.query(EvalRun).filter(EvalRun.kind == kind)
-         .order_by(EvalRun.id.desc()).first())
+    r = db.query(EvalRun).filter(EvalRun.kind == kind).order_by(EvalRun.id.desc()).first()
     if r is None:
         return {"kind": kind, "run": None, "metrics": {}}
     out = _run_row(r)
@@ -89,14 +92,16 @@ def _subject_stats(db: Session) -> list:
     out = []
     for subj, n, avg_conf, low, junk in rows:
         s = (subj or "").strip()
-        out.append({
-            "subject": s or "未标注",
-            "chunks": int(n or 0),
-            "avg_confidence": round(float(avg_conf or 0.0), 4),
-            "low_conf_chunks": int(low or 0),
-            "abstained_chunks": int(junk or 0),
-            "in_subject_pool": s not in _VACUOUS_SUBJECTS,
-        })
+        out.append(
+            {
+                "subject": s or "未标注",
+                "chunks": int(n or 0),
+                "avg_confidence": round(float(avg_conf or 0.0), 4),
+                "low_conf_chunks": int(low or 0),
+                "abstained_chunks": int(junk or 0),
+                "in_subject_pool": s not in _VACUOUS_SUBJECTS,
+            }
+        )
     return sorted(out, key=lambda x: -x["chunks"])
 
 
@@ -107,10 +112,13 @@ def _ghost_index(db: Session) -> dict:
     子查询里必须排掉 `document_id IS NULL` 的孤儿块，否则 SQL 的 `NOT IN` 遇 NULL
     直接返回空集，数字会假成 0。
     """
-    has_chunk = select(KnowledgeChunk.document_id).where(
-        KnowledgeChunk.document_id.isnot(None)).scalar_subquery()
-    ghost = int(db.query(func.count(Document.id)).filter(
-        Document.index_status == "indexed", Document.id.notin_(has_chunk)).scalar() or 0)
+    has_chunk = select(KnowledgeChunk.document_id).where(KnowledgeChunk.document_id.isnot(None)).scalar_subquery()
+    ghost = int(
+        db.query(func.count(Document.id))
+        .filter(Document.index_status == "indexed", Document.id.notin_(has_chunk))
+        .scalar()
+        or 0
+    )
     return {"indexed_without_chunks": ghost}
 
 
@@ -130,8 +138,8 @@ async def corpus_quality(db: Session = Depends(get_db)):
         "subjects": stats,
         "ghost_index": _ghost_index(db),
         "document_subjects": sorted(
-            [{"subject": (s or "未标注"), "documents": int(n)} for s, n in docs],
-            key=lambda x: -x["documents"])[:30],
+            [{"subject": (s or "未标注"), "documents": int(n)} for s, n in docs], key=lambda x: -x["documents"]
+        )[:30],
     }
 
 
@@ -172,17 +180,17 @@ async def tree_overlay(db: Session = Depends(get_db)):
     )
     chapters: dict = {}
     for subj, ch, n, avg_conf, junk in rows:
-        chapters.setdefault((subj or "").strip(), []).append({
-            "chapter": (ch or "").strip()[:200],
-            "chunks": int(n or 0),
-            "avg_confidence": round(float(avg_conf or 0.0), 4),
-            "abstained_chunks": int(junk or 0),
-        })
+        chapters.setdefault((subj or "").strip(), []).append(
+            {
+                "chapter": (ch or "").strip()[:200],
+                "chunks": int(n or 0),
+                "avg_confidence": round(float(avg_conf or 0.0), 4),
+                "abstained_chunks": int(junk or 0),
+            }
+        )
     return {
         "subjects": [
-            {**x, "chapters": sorted(chapters.get(x["subject"], []),
-                                     key=lambda c: -c["chunks"])[:40]}
-            for x in sub
+            {**x, "chapters": sorted(chapters.get(x["subject"], []), key=lambda c: -c["chunks"])[:40]} for x in sub
         ]
     }
 
@@ -200,9 +208,6 @@ async def major_coverage(db: Session = Depends(get_db)):
     supply = mc.subject_supply(db)
     return {
         "summary": mc.coverage_summary(db, supply),
-        "subjects": [
-            {"subject": k, **v}
-            for k, v in sorted(supply.items(), key=lambda kv: -kv[1]["documents"])
-        ],
+        "subjects": [{"subject": k, **v} for k, v in sorted(supply.items(), key=lambda kv: -kv[1]["documents"])],
         "by_school": mc.school_rollup(db, supply),
     }

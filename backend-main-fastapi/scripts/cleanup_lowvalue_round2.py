@@ -14,6 +14,7 @@
 
 判据以**实际内容**为准，不看文件名。
 """
+
 import os
 import re
 import shutil
@@ -36,8 +37,7 @@ TRASH_ROOT = os.path.join(KB, "_trash")
 
 # 已逐条人工核验的残留文档 id
 DELETE_IDS = [1626, 397, 889, 1295, 1897, 2330, 2397, 2398]
-KEEP_IDS_NOTE = {842: "862个真实英文词", 1249: "141个真实英文词",
-                 1931: "475个真实英文词"}
+KEEP_IDS_NOTE = {842: "862个真实英文词", 1249: "141个真实英文词", 1931: "475个真实英文词"}
 
 APPLY = "--apply" in sys.argv
 
@@ -66,9 +66,7 @@ def main():
     # 先取 file_path（删行后就拿不到了）
     path_map = {}
     for did in DELETE_IDS:
-        row = cur.execute(
-            "SELECT file_name, content, file_path FROM documents WHERE id = ?",
-            (did,)).fetchone()
+        row = cur.execute("SELECT file_name, content, file_path FROM documents WHERE id = ?", (did,)).fetchone()
         if row:
             path_map[did] = row[2]
 
@@ -78,9 +76,7 @@ def main():
 
     todo = []
     for did in DELETE_IDS:
-        row = cur.execute(
-            "SELECT file_name, content FROM documents WHERE id = ?",
-            (did,)).fetchone()
+        row = cur.execute("SELECT file_name, content FROM documents WHERE id = ?", (did,)).fetchone()
         if not row:
             print(f"#{did} 已不存在，跳过")
             continue
@@ -94,8 +90,7 @@ def main():
     # 保留确认
     print("\n保留确认（有价值词汇书）：")
     for did, note in KEEP_IDS_NOTE.items():
-        row = cur.execute(
-            "SELECT file_name FROM documents WHERE id=?", (did,)).fetchone()
+        row = cur.execute("SELECT file_name FROM documents WHERE id=?", (did,)).fetchone()
         if row:
             print(f"  #{did:<6} {row[0][:52]:<54} [保留] {note}")
 
@@ -120,9 +115,7 @@ def main():
     ph = ",".join("?" * len(ids))
     n_chunk = 0
     try:
-        n_chunk = cur.execute(
-            f"SELECT COUNT(*) FROM knowledge_chunks WHERE document_id IN ({ph})",
-            ids).fetchone()[0]
+        n_chunk = cur.execute(f"SELECT COUNT(*) FROM knowledge_chunks WHERE document_id IN ({ph})", ids).fetchone()[0]
         # 物理删除闸门：knowledge_chunks 物理删除不可逆，批量删分块
         # 属高危操作，必须显式设置 KAOYAN_ALLOW_PHYSICAL_DELETE=1 才放行。
         require_physical_delete_enabled("knowledge_chunks")

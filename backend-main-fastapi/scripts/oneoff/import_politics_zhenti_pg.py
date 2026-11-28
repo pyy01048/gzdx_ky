@@ -14,6 +14,7 @@
 
 运行: python scripts/import_politics_zhenti_pg.py
 """
+
 # [DONE 2026-10] 政治真题导入。回滚：按前缀删除。
 import json
 import logging
@@ -46,9 +47,7 @@ log = logging.getLogger("import_politics_zhenti")
 
 
 # 行内选项匹配: "A.xxx B.xxx C.xxx D.xxx" 或 "A xxx B xxx"
-INLINE_OPT_RE = re.compile(
-    r"([A-D])[\.、．:：\s]\s*([^\nA-D]*(?:\([^)]*\))?[^\nA-D]*)"
-)
+INLINE_OPT_RE = re.compile(r"([A-D])[\.、．:：\s]\s*([^\nA-D]*(?:\([^)]*\))?[^\nA-D]*)")
 
 
 def split_questions(lines):
@@ -243,6 +242,7 @@ def main():
 
     log.info("共解析 %d 题，开始写入数据库...", len(all_records))
     from scripts._conn import dsn
+
     conn = psycopg.connect(dsn())
     try:
         inserted = write_records(conn, all_records)

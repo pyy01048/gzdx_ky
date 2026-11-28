@@ -7,6 +7,7 @@
 
 不处理的话，每页都会凭空多出"配图"，题目配图绑定必然错位。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -121,7 +122,7 @@ def figure_pdf(tmp_path):
 def test_margin_decoration_is_not_a_figure(figure_pdf, tmp_path):
     result = PyMuPDFParser().parse(figure_pdf, out_dir=str(tmp_path / "out"))
     for fig in result.figure_blocks():
-        y0, y1 = fig.bbox[1], fig.bbox[3]
+        y0, _y1 = fig.bbox[1], fig.bbox[3]
         assert not (y0 >= PAGE_H * 0.92), f"页脚带的装饰图不该当配图: {fig.bbox}"
 
 

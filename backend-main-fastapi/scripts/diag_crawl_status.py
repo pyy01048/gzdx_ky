@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """爬取进度诊断脚本（独立运行，避免 bash SIGTERM）。"""
-import json
-import time
 
+import json
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import psycopg
+
 from scripts._conn import dsn
 
 CONN = dsn()  # 口令来自 .env
@@ -33,11 +34,13 @@ def main():
     )
     cat_cnt = cur.fetchone()[0]
     conn.close()
-    print(f"学校总数={total} 有专业={with_major} 无专业={total-with_major} 专业数={major_cnt} 覆盖门类数={cat_cnt}")
+    print(f"学校总数={total} 有专业={with_major} 无专业={total - with_major} 专业数={major_cnt} 覆盖门类数={cat_cnt}")
 
     # 断点
     try:
-        st = json.load(open(r"D:\平台\backend-main-fastapi\data\spider_state\school_crawler_state.json", encoding="utf-8"))
+        st = json.load(
+            open(r"D:\平台\backend-main-fastapi\data\spider_state\school_crawler_state.json", encoding="utf-8")
+        )
         print(f"断点completed单元数={len(st.get('completed', []))}")
     except Exception as e:
         print(f"断点读取失败: {e}")

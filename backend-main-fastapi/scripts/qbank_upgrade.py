@@ -7,6 +7,7 @@
 
 幂等可重跑；输出 JSON 报告到 TEMP_DIR（PowerShell 吞 stdout 规避）。
 """
+
 from __future__ import annotations
 
 import io
@@ -20,28 +21,39 @@ sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
 from database import SessionLocal  # noqa: E402
-from models import QuizQuestion  # noqa: E402
 from services import qbank_builder  # noqa: E402
 from services.model_gateway import get_gateway  # noqa: E402
 from services.quiz_content_gate import admit as gate_admit  # noqa: E402
 
-DUP_THRESHOLD = 0.86       # 题干编辑距离相似度 ≥ 此值判重复
-VARIANT_THRESHOLD = 0.75   # ≥ 此值聚为变式组
-SAMPLE_ANSWER_N = 8        # 答案解析生成试点题数（缺答案的题里取前 N）
-SAMPLE_VARIANT_N = 5       # 变式题生成试点题数
+from models import QuizQuestion  # noqa: E402
+
+DUP_THRESHOLD = 0.86  # 题干编辑距离相似度 ≥ 此值判重复
+VARIANT_THRESHOLD = 0.75  # ≥ 此值聚为变式组
+SAMPLE_ANSWER_N = 8  # 答案解析生成试点题数（缺答案的题里取前 N）
+SAMPLE_VARIANT_N = 5  # 变式题生成试点题数
 
 
 def scan(db) -> dict:
     """去重扫描 + 变式聚类 + 写 variant_group。"""
     qs = db.query(
-        QuizQuestion.id, QuizQuestion.content, QuizQuestion.answer,
-        QuizQuestion.subject, QuizQuestion.question_type,
-        QuizQuestion.knowledge_point, QuizQuestion.variant_group,
+        QuizQuestion.id,
+        QuizQuestion.content,
+        QuizQuestion.answer,
+        QuizQuestion.subject,
+        QuizQuestion.question_type,
+        QuizQuestion.knowledge_point,
+        QuizQuestion.variant_group,
     ).all()
     rows = [
-        {"id": q.id, "content": q.content or "", "answer": q.answer,
-         "subject": q.subject, "question_type": q.question_type or "single",
-         "knowledge_point": q.knowledge_point or "", "variant_group": q.variant_group}
+        {
+            "id": q.id,
+            "content": q.content or "",
+            "answer": q.answer,
+            "subject": q.subject,
+            "question_type": q.question_type or "single",
+            "knowledge_point": q.knowledge_point or "",
+            "variant_group": q.variant_group,
+        }
         for q in qs
     ]
     total = len(rows)
@@ -57,9 +69,7 @@ def scan(db) -> dict:
     for idx, cl in enumerate(clusters):
         gid = f"VG{idx + 1:04d}"
         for qid in cl:
-            db.query(QuizQuestion).filter(QuizQuestion.id == qid).update(
-                {"variant_group": gid}
-            )
+            db.query(QuizQuestion).filter(QuizQuestion.id == qid).update({"variant_group": gid})
         cluster_count += 1
     db.commit()
 
@@ -93,9 +103,13 @@ def _extract_json(text: str) -> dict:
 
 def generate_answers(db, n: int) -> dict:
     """为缺答案解析的题批量生成（多角色互校提示词），标 ai_generated/verified。"""
-    missing = db.query(QuizQuestion).filter(
-        (QuizQuestion.answer.is_(None)) | (QuizQuestion.answer == "")
-    ).order_by(QuizQuestion.id).limit(n).all()
+    missing = (
+        db.query(QuizQuestion)
+        .filter((QuizQuestion.answer.is_(None)) | (QuizQuestion.answer == ""))
+        .order_by(QuizQuestion.id)
+        .limit(n)
+        .all()
+    )
     if not missing:
         return {"generated": 0, "note": "无缺答案解析题目"}
 
@@ -103,12 +117,14 @@ def generate_answers(db, n: int) -> dict:
     ok = 0
     failed = []
     for q in missing:
-        prompt = qbank_builder.generate_answer_prompt({
-            "content": q.content,
-            "options": q.options,
-            "question_type": q.question_type,
-            "subject": q.subject,
-        })
+        prompt = qbank_builder.generate_answer_prompt(
+            {
+                "content": q.content,
+                "options": q.options,
+                "question_type": q.question_type,
+                "subject": q.subject,
+            }
+        )
         try:
             resp = gw.chat(
                 prompt,
@@ -139,11 +155,17 @@ def generate_answers(db, n: int) -> dict:
 
 def generate_variants(db, n: int) -> dict:
     """变式题生成试点：从有答案的题里取前 n 道，生成同考点变式题入库。"""
-    src = db.query(QuizQuestion).filter(
-        QuizQuestion.answer.isnot(None),
-        QuizQuestion.answer != "",
-        QuizQuestion.source.notlike("%ai:variant%"),
-    ).order_by(QuizQuestion.id).limit(n).all()
+    src = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.answer.isnot(None),
+            QuizQuestion.answer != "",
+            QuizQuestion.source.notlike("%ai:variant%"),
+        )
+        .order_by(QuizQuestion.id)
+        .limit(n)
+        .all()
+    )
     if not src:
         return {"generated": 0, "note": "无可用母题"}
 
@@ -151,13 +173,15 @@ def generate_variants(db, n: int) -> dict:
     created = 0
     failed = []
     for q in src:
-        prompt = qbank_builder.generate_variant_prompt({
-            "content": q.content,
-            "options": q.options,
-            "answer": q.answer,
-            "analysis": q.analysis,
-            "question_type": q.question_type,
-        })
+        prompt = qbank_builder.generate_variant_prompt(
+            {
+                "content": q.content,
+                "options": q.options,
+                "answer": q.answer,
+                "analysis": q.analysis,
+                "question_type": q.question_type,
+            }
+        )
         try:
             resp = gw.chat(
                 prompt,
@@ -180,26 +204,26 @@ def generate_variants(db, n: int) -> dict:
             )
             if not ok:
                 raise ValueError(f"闸门拦截：{reason}")
-            exists = db.query(QuizQuestion).filter(
-                QuizQuestion.content.like(content[:40] + "%")
-            ).first()
+            exists = db.query(QuizQuestion).filter(QuizQuestion.content.like(content[:40] + "%")).first()
             if exists:
                 raise ValueError("变式题与库内重复")
-            db.add(QuizQuestion(
-                content=content[:2000],
-                options=data.get("options") or None,
-                answer=(data.get("answer") or "")[:2000] or None,
-                analysis=(data.get("analysis") or "")[:3000] or None,
-                subject=q.subject,
-                chapter=q.chapter,
-                knowledge_point=data.get("knowledge_point") or q.knowledge_point or "",
-                difficulty=q.difficulty,
-                source=variant_src,
-                question_type=q.question_type or "single",
-                ai_generated=True,
-                verified=False,
-                variant_group=q.variant_group,
-            ))
+            db.add(
+                QuizQuestion(
+                    content=content[:2000],
+                    options=data.get("options") or None,
+                    answer=(data.get("answer") or "")[:2000] or None,
+                    analysis=(data.get("analysis") or "")[:3000] or None,
+                    subject=q.subject,
+                    chapter=q.chapter,
+                    knowledge_point=data.get("knowledge_point") or q.knowledge_point or "",
+                    difficulty=q.difficulty,
+                    source=variant_src,
+                    question_type=q.question_type or "single",
+                    ai_generated=True,
+                    verified=False,
+                    variant_group=q.variant_group,
+                )
+            )
             db.commit()
             created += 1
         except Exception as e:
@@ -229,6 +253,7 @@ def main() -> None:
         print("RESULT_WRITTEN " + out_path)
     except Exception:
         import traceback
+
         with open(out_path, "w", encoding="utf-8") as f:
             traceback.print_exc(file=f)
         print("ERROR_WRITTEN " + out_path)

@@ -10,7 +10,7 @@
  * 访客（未登录）没有个人文档库，也不该被个人端点的 401 刷屏 —— 直接只渲染
  * 共享的学习文库，不出第二个 tab。
  */
-import React from 'react'
+import React, { useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Segmented } from '../ui'
 import { useAuth } from '../../auth/AuthContext'
@@ -22,19 +22,28 @@ const VIEW_OPTIONS = [
   { value: 'documents', label: '文档知识库' },
 ]
 
+/**
+ * 知识库统一入口：访客只渲染学习文库；登录用户通过 Segmented 在
+ * 「学习文库」与「文档知识库」之间切换，视图状态写入 URL ?view= 以支持深链。
+ * @returns {JSX.Element}
+ */
 export default function KnowledgeHome() {
   const [params, setParams] = useSearchParams()
   const { user } = useAuth()
   const view = params.get('view') === 'documents' ? 'documents' : 'library'
 
-  if (!user) return <Library />
+  /** 切换视图并同步到 URL（replace 避免污染历史栈）。 */
+  const setView = useCallback(
+    (v) => {
+      const next = new URLSearchParams(params)
+      if (v === 'documents') next.set('view', 'documents')
+      else next.delete('view')
+      setParams(next, { replace: true })
+    },
+    [params, setParams],
+  )
 
-  const setView = (v) => {
-    const next = new URLSearchParams(params)
-    if (v === 'documents') next.set('view', 'documents')
-    else next.delete('view')
-    setParams(next, { replace: true })
-  }
+  if (!user) return <Library />
 
   return (
     <div className="v3-stack" style={{ gap: 14 }}>

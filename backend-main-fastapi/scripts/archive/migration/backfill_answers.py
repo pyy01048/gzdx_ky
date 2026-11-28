@@ -16,6 +16,7 @@ ModelGateway（本地 Ollama 优先）生成答案与解析，写回 quiz_questi
     python scripts/backfill_answers.py --limit 20         # 补 20 题
     python scripts/backfill_answers.py --limit 200        # 大批量（建议后台跑）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,8 +31,9 @@ sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
 from database import SessionLocal  # noqa: E402
-from models import QuizQuestion  # noqa: E402
 from services import qbank_builder  # noqa: E402
+
+from models import QuizQuestion  # noqa: E402
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.S)
 
@@ -100,7 +102,9 @@ def main() -> int:
         print(f"目标题数: {len(targets)}（优先贵大/贵州大学真题）")
         if args.dry_run:
             for q in targets:
-                print(f"  id={q.id:<6} [{q.question_type or '?':<7}] {q.paper} #{q.question_no}  {(q.content or '')[:40]}")
+                print(
+                    f"  id={q.id:<6} [{q.question_type or '?':<7}] {q.paper} #{q.question_no}  {(q.content or '')[:40]}"
+                )
             return 0
 
         from services.model_gateway import get_gateway
@@ -113,12 +117,14 @@ def main() -> int:
             # 选项只传选择题：填空/简答的 options 常为 OCR 噪声，会误导模型
             qtype = q.question_type or "single"
             opts = q.options if qtype in ("single", "multiple") else None
-            prompt = qbank_builder.generate_answer_prompt({
-                "content": q.content,
-                "options": opts,
-                "question_type": q.question_type,
-                "subject": q.subject,
-            })
+            prompt = qbank_builder.generate_answer_prompt(
+                {
+                    "content": q.content,
+                    "options": opts,
+                    "question_type": q.question_type,
+                    "subject": q.subject,
+                }
+            )
             try:
                 resp = gw.chat(prompt, subject=None, task="json_gen", prefer="local")
                 data = _extract_json(resp.get("answer") or "")
@@ -136,8 +142,10 @@ def main() -> int:
                 q.verified = False
                 ok += 1
                 dt = time.time() - t0
-                print(f"[{i}/{len(targets)}] ok id={q.id} {q.paper}#{q.question_no} "
-                      f"ans={ans[:30]!r} ({dt:.0f}s 累计, 均 {dt/i:.1f}s/题)")
+                print(
+                    f"[{i}/{len(targets)}] ok id={q.id} {q.paper}#{q.question_no} "
+                    f"ans={ans[:30]!r} ({dt:.0f}s 累计, 均 {dt / i:.1f}s/题)"
+                )
             except Exception as e:
                 failed += 1
                 fails.append({"id": q.id, "err": str(e)[:120]})
@@ -145,15 +153,19 @@ def main() -> int:
             db.commit()  # 每题一提交：断点续跑不丢进度
 
         report = {
-            "ok": ok, "failed": failed, "seconds": round(time.time() - t0, 1),
+            "ok": ok,
+            "failed": failed,
+            "seconds": round(time.time() - t0, 1),
             "avg_sec_per_q": round((time.time() - t0) / max(1, len(targets)), 2),
             "fails": fails,
         }
         out = os.path.join(os.environ.get("TEMP_DIR", BASE_DIR), "backfill_answers_result.json")
         with open(out, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
-        print(f"\n完成: 成功 {ok} / 失败 {failed}，用时 {report['seconds']}s "
-              f"(均 {report['avg_sec_per_q']}s/题)。报告: {out}")
+        print(
+            f"\n完成: 成功 {ok} / 失败 {failed}，用时 {report['seconds']}s "
+            f"(均 {report['avg_sec_per_q']}s/题)。报告: {out}"
+        )
         return 0
     finally:
         db.close()

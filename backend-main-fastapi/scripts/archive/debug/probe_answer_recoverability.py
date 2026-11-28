@@ -17,6 +17,7 @@
     python scripts/probe_answer_recoverability.py --json-out data/diagnostics/answer_recoverability.json
 只读：不修改 quiz_questions / documents。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,14 +42,16 @@ LAYER_DEF = [
 # 说明：分「强信号」（明确答案段）与「弱信号」（含"解"字的推导）
 ANS_STRONG = re.compile(
     r"(?:^|\n|。|；|\s)(?:【答案】|【解】|参考答案|答案\s*[:：]|解\s*[:：]|答\s*[:：]|"
-    r"故\s*选|所以答案|因此答案|答案为)")
+    r"故\s*选|所以答案|因此答案|答案为)"
+)
 ANS_WEAK = re.compile(r"(?:^|\n)\s*(?:解|答)\s*[:：]")
 
 # 题干尾部噪声（页眉页脚/公众号广告），出现即认为答案段已结束
 TAIL_NOISE = re.compile(
     r"(第\d+页\s*---|\(OCR\)|微信公众号|公众号|免费分享|考研资料|视频课程|"
     r"QQ|qq\d{6,}|加QQ|东坡哥|水木观畴|研池大叔|笃学考研|名师精品课程|"
-    r"kaoshidian|电话：|客服)")
+    r"kaoshidian|电话：|客服)"
+)
 
 MIN_ANS_LEN = 4
 
@@ -67,7 +70,7 @@ def split_inline_answer(content: str) -> dict:
     best = None
     for m in ANS_STRONG.finditer(c):
         start = m.end()
-        seg = c[start: start + 800]
+        seg = c[start : start + 800]
         # 命中尾部噪声则截断
         nm = TAIL_NOISE.search(seg)
         if nm and nm.start() > 0:
@@ -79,7 +82,7 @@ def split_inline_answer(content: str) -> dict:
     if best is None:
         m = ANS_WEAK.search(c)
         if m:
-            seg = c[m.end(): m.end() + 800]
+            seg = c[m.end() : m.end() + 800]
             nm = TAIL_NOISE.search(seg)
             if nm and nm.start() > 0:
                 seg = seg[: nm.start()]
@@ -134,7 +137,7 @@ def main() -> int:
     print("一、P1 题干内答案可抽取性")
     print("=" * 76)
     for k, v in stat.most_common():
-        print(f"  {k}: {v}  ({v*100//max(1,len(rows))}%)")
+        print(f"  {k}: {v}  ({v * 100 // max(1, len(rows))}%)")
     print("\n按层分布:")
     for lay in ["L1-真题", "L2-习题题库", "L3-讲义正文", "L4-未归类"]:
         c = by_layer[lay]
@@ -171,8 +174,7 @@ def main() -> int:
         print("二、P2 来源文档正文对齐探测（仅 P1 未命中的题）")
         print("=" * 76)
         docs = con.execute(
-            "SELECT id, file_name, content FROM documents "
-            "WHERE content IS NOT NULL AND length(content)>800"
+            "SELECT id, file_name, content FROM documents WHERE content IS NOT NULL AND length(content)>800"
         ).fetchall()
         print(f"候选文档（正文>800字）: {len(docs)}")
         # source 前缀 -> 候选文档索引
@@ -228,18 +230,17 @@ def main() -> int:
                 if idx < 0:
                     p2_stat["P3-知识库未定位"] += 1
                     continue
-                window = body[idx: idx + 1600]
+                window = body[idx : idx + 1600]
                 tail = window[hit_len:]
                 m = ANS_STRONG.search(tail) or ANS_WEAK.search(tail)
                 if m:
-                    seg = tail[m.end():]
+                    seg = tail[m.end() :]
                     nm = TAIL_NOISE.search(seg)
                     if nm and nm.start() > 0:
                         seg = seg[: nm.start()]
                     if len(seg.strip()) >= MIN_ANS_LEN:
                         p2_stat["P2-知识库同窗含答案"] += 1
-                        p2_items.append((layer_of(r["source"], r["paper"]), dict(r),
-                                         doc_name, seg.strip()[:180]))
+                        p2_items.append((layer_of(r["source"], r["paper"]), dict(r), doc_name, seg.strip()[:180]))
                         continue
                     p2_stat["P3-知识库窗口无实质答案"] += 1
                 else:
@@ -273,24 +274,33 @@ def main() -> int:
         out = os.path.join(BASE_DIR, args.json_out)
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as f:
-            json.dump({
-                "total": len(rows),
-                "p1_inline_answer": p1,
-                "p2_kb_alignment": p2,
-                "p3_needs_authoring": p3,
-                "p2_stat": dict(p2_stat),
-                "by_layer": {k: dict(v) for k, v in by_layer.items()},
-                "p1_samples": [
-                    {"id": r["id"], "layer": lay, "source": r["source"],
-                     "stem_tail": res["stem_preview"], "answer": res["answer_preview"]}
-                    for lay, r, res in p1_items[:200]
-                ],
-                "p2_samples": [
-                    {"id": r["id"], "layer": lay, "source": r["source"], "doc": doc,
-                     "answer": seg}
-                    for lay, r, doc, seg in p2_items[:200]
-                ],
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(
+                {
+                    "total": len(rows),
+                    "p1_inline_answer": p1,
+                    "p2_kb_alignment": p2,
+                    "p3_needs_authoring": p3,
+                    "p2_stat": dict(p2_stat),
+                    "by_layer": {k: dict(v) for k, v in by_layer.items()},
+                    "p1_samples": [
+                        {
+                            "id": r["id"],
+                            "layer": lay,
+                            "source": r["source"],
+                            "stem_tail": res["stem_preview"],
+                            "answer": res["answer_preview"],
+                        }
+                        for lay, r, res in p1_items[:200]
+                    ],
+                    "p2_samples": [
+                        {"id": r["id"], "layer": lay, "source": r["source"], "doc": doc, "answer": seg}
+                        for lay, r, doc, seg in p2_items[:200]
+                    ],
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
         print(f"\n[JSON] {out}")
 
     con.close()

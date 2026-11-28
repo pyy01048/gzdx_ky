@@ -31,7 +31,9 @@ logger = logging.getLogger(__name__)
 #: OCR 行内数字清洗：RapidOCR 常把 "87. 52" 识别成带空格数字
 _NUM_CLEAN = re.compile(r"\s+")
 #: 姓名列以外的排他词（表头/脚注/合计行，不算数据行）
-_NAME_NO = re.compile(r"姓名|考生编号|准考证号|序号|注[:：]|备注|合计|平均|小计|全日制|非全日制|报考|院系|专业|方向|学习方式")
+_NAME_NO = re.compile(
+    r"姓名|考生编号|准考证号|序号|注[:：]|备注|合计|平均|小计|全日制|非全日制|报考|院系|专业|方向|学习方式"
+)
 #: 姓名单元格形态：纯中文 2-4 字（名单数据行姓名列；学院/专业列含数字代码，天然排除）
 _NAME_CELL = re.compile(r"^[\u4e00-\u9fff]{2,4}$")
 #: 成绩列表头优先序：初试总分 > 总成绩 > 初试成绩 > 复试成绩 > 成绩
@@ -123,7 +125,6 @@ def ocr_pdf_admission(
     x_name = x_score = score_kind = None
     students = 0
     totals: List[float] = []
-    unknown_rows = 0
     t0 = time.time()
     try:
         for pi in range(n_pages):
@@ -148,8 +149,13 @@ def ocr_pdf_admission(
             if x_name is None:
                 x_name, x_score, score_kind = _detect_columns(blocks, dpi)
                 if x_name is not None:
-                    logger.info("扫描名单列定位: 姓名x=%.0f 成绩x=%.0f(%s)（第 %d 页）",
-                                x_name, x_score or 0, score_kind or "-", pi + 1)
+                    logger.info(
+                        "扫描名单列定位: 姓名x=%.0f 成绩x=%.0f(%s)（第 %d 页）",
+                        x_name,
+                        x_score or 0,
+                        score_kind or "-",
+                        pi + 1,
+                    )
 
             # 行锚点：姓名单元格（纯中文 2-4 字）出现在姓名列附近 → 一个学生
             name_tol = dpi * 0.30
@@ -180,8 +186,9 @@ def ocr_pdf_admission(
                             totals.append(val)
                 break  # 一个块只认一行，避免同一行多块重复计数
             if pi % 10 == 0 and pi:
-                logger.info("扫描 OCR 进度 %d/%d 页, 已识别 %d 人, 耗时 %.0fs",
-                            pi + 1, n_pages, students, time.time() - t0)
+                logger.info(
+                    "扫描 OCR 进度 %d/%d 页, 已识别 %d 人, 耗时 %.0fs", pi + 1, n_pages, students, time.time() - t0
+                )
     finally:
         doc.close()
 
@@ -190,6 +197,7 @@ def ocr_pdf_admission(
     # 与 _extract_table 同构：中位数不在硕士总分区间 → 只记人数不记均分
     if totals and not (150 <= statistics.median(totals) <= 500):
         totals = []
-    logger.info("扫描名单 OCR 完成: %d 页, %d 人, 成绩 %d 条, 耗时 %.0fs",
-                n_pages, students, len(totals), time.time() - t0)
+    logger.info(
+        "扫描名单 OCR 完成: %d 页, %d 人, 成绩 %d 条, 耗时 %.0fs", n_pages, students, len(totals), time.time() - t0
+    )
     return {"students": students, "totals": totals, "majors": {}}

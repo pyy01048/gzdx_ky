@@ -9,7 +9,6 @@ import httpx
 from database import BASE_DIR, get_db
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from models import Document, NetdiskFile, PlatformConfig
 from services.doc_naming import apply_display_name
 from services.netdisk_service import NetdiskAuthError, NetdiskError, NetdiskService
 from services.smart_ingest import gate_for_write
@@ -17,6 +16,8 @@ from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.secret_codec import SecretDecodeError, scrub_extra, seal_extra, unseal_extra
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+from models import Document, NetdiskFile, PlatformConfig
 
 router = APIRouter(prefix="/api/netdisk", tags=["netdisk"])
 
@@ -231,15 +232,9 @@ async def list_files(
     * **授权正常但上游失败** → 200 + ``api_error`` 说明原因，本地缓存照常返回。
     """
     # 先从本地数据库查
-    local_files = (
-        db.query(NetdiskFile)
-        .filter(NetdiskFile.path.like(f"{path}%"))
-        .order_by(NetdiskFile.file_name.asc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-    total = db.query(NetdiskFile).filter(NetdiskFile.path.like(f"{path}%")).count()
+    base_q = db.query(NetdiskFile).filter(NetdiskFile.path.like(f"{path}%"))
+    total = base_q.count()
+    local_files = base_q.order_by(NetdiskFile.file_name.asc()).offset((page - 1) * page_size).limit(page_size).all()
 
     # 尝试从网盘 API 实时获取
     service = NetdiskService(db)
@@ -338,10 +333,17 @@ async def sync_files(
     try:
         result = await service.list_all(path, max_depth=max_depth, max_items=max_items, deadline=deadline)
         files = result.get("list", [])
+        # 批量预查已存在的 fs_id，避免循环内逐条查询（N+1 → 1）
+        incoming_fs_ids = [str(f.get("fs_id", "")) for f in files if f.get("fs_id") is not None]
+        existing_map: dict[str, NetdiskFile] = {}
+        if incoming_fs_ids:
+            existing_map = {
+                row.fs_id: row for row in db.query(NetdiskFile).filter(NetdiskFile.fs_id.in_(incoming_fs_ids)).all()
+            }
         synced = 0
         for f in files:
             fs_id = str(f.get("fs_id", ""))
-            existing = db.query(NetdiskFile).filter(NetdiskFile.fs_id == fs_id).first()
+            existing = existing_map.get(fs_id)
             file_data = {
                 "file_name": f.get("server_filename", f.get("filename", "")),
                 "path": f.get("path", ""),
@@ -456,6 +458,7 @@ async def _proxy_stream(file: NetdiskFile, disposition: str, db: Session, reques
 
 
 def _check_disposition(disposition: str) -> str:
+    """校验 disposition 取值，仅允许 inline / attachment。"""
     if disposition not in ("inline", "attachment"):
         raise HTTPException(status_code=400, detail="disposition 只支持 inline / attachment")
     return disposition
@@ -539,15 +542,16 @@ async def quark_web_view(db: Session = Depends(get_db)):
 
 
 @router.post("/classify")
-async def classify_files(db: Session = Depends(get_db)):
-    """AI 自动分类。"""
+async def classify_files(db: Session = Depends(get_db)) -> dict:
+    """AI 自动分类（只加载未分类或归为「其他」的行，避免全表扫描）。"""
+    from sqlalchemy import or_
+
     service = NetdiskService(db)
-    files = db.query(NetdiskFile).all()
+    files = db.query(NetdiskFile).filter(or_(NetdiskFile.category.is_(None), NetdiskFile.category == "其他")).all()
     classified = 0
     for f in files:
-        if not f.category or f.category == "其他":
-            f.category = service.auto_classify(f.file_name)
-            classified += 1
+        f.category = service.auto_classify(f.file_name)
+        classified += 1
     db.commit()
     return {"classified": classified, "message": f"自动分类完成，共 {classified} 个文件"}
 

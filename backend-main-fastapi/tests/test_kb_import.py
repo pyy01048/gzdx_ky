@@ -15,18 +15,20 @@
 4. doc_ids 不存在 → 404，detail 为 "文档不存在: [...]"（main.py 的 SPA 处理器已改为保留路由 detail，不再压成 "Not Found"）；
 5. confirm 未传任何选择 → 400。
 """
+
 from __future__ import annotations
 
 import os
 
 import pytest
 from database import SessionLocal
-from models import Document, QuizQuestion
 from services.delete_guard import (
     ENV_ENABLED_VALUE,
     ENV_FLAG,
     require_physical_delete_enabled,
 )
+
+from models import Document, QuizQuestion
 
 PREFIX = "QA-KB-IMPORT"
 
@@ -76,17 +78,27 @@ def kb_docs():
     try:
         a = Document(
             file_name=f"{PREFIX}-数电真题A.txt",
-            file_path="qa-a.txt", file_type="txt", size=len(DOC_A_CONTENT),
-            subject="数字电子技术", index_status="indexed",
-            knowledge_point_count=3, parse_progress=1.0,
-            content=DOC_A_CONTENT, doc_type="raw",
+            file_path="qa-a.txt",
+            file_type="txt",
+            size=len(DOC_A_CONTENT),
+            subject="数字电子技术",
+            index_status="indexed",
+            knowledge_point_count=3,
+            parse_progress=1.0,
+            content=DOC_A_CONTENT,
+            doc_type="raw",
         )
         b = Document(
             file_name=f"{PREFIX}-数电判断B.txt",
-            file_path="qa-b.txt", file_type="txt", size=len(DOC_B_CONTENT),
-            subject="数字电子技术", index_status="indexed",
-            knowledge_point_count=1, parse_progress=1.0,
-            content=DOC_B_CONTENT, doc_type="raw",
+            file_path="qa-b.txt",
+            file_type="txt",
+            size=len(DOC_B_CONTENT),
+            subject="数字电子技术",
+            index_status="indexed",
+            knowledge_point_count=1,
+            parse_progress=1.0,
+            content=DOC_B_CONTENT,
+            doc_type="raw",
         )
         db.add_all([a, b])
         db.commit()
@@ -101,14 +113,12 @@ def kb_docs():
         os.environ[ENV_FLAG] = ENV_ENABLED_VALUE
         try:
             require_physical_delete_enabled("quiz_questions")
-            db.query(QuizQuestion).filter(
-                QuizQuestion.source.like(f"知识库:{PREFIX}%")
-            ).delete(synchronize_session=False)
+            db.query(QuizQuestion).filter(QuizQuestion.source.like(f"知识库:{PREFIX}%")).delete(
+                synchronize_session=False
+            )
         finally:
             os.environ.pop(ENV_FLAG, None)
-        db.query(Document).filter(Document.id.in_(created_ids)).delete(
-            synchronize_session=False
-        )
+        db.query(Document).filter(Document.id.in_(created_ids)).delete(synchronize_session=False)
         db.commit()
         db.close()
 
@@ -138,8 +148,7 @@ def test_scan_detects_candidates_and_is_readonly(client, kb_docs):
     assert [c["index"] for c in cands] == [0, 1, 2]
     # 字段映射齐全
     c0 = cands[0]
-    for key in ("content", "question_type", "subject", "chapter",
-                "knowledge_point", "difficulty", "content_hash"):
+    for key in ("content", "question_type", "subject", "chapter", "knowledge_point", "difficulty", "content_hash"):
         assert key in c0
     assert c0["question_type"] == "fill"
     assert c0["subject"] == "数字电子技术"
@@ -196,8 +205,7 @@ def test_confirm_inserts_and_is_idempotent(client, kb_docs):
     # 勾选文档 A 的第 0、2 题
     r = client.post(
         "/api/kb-import/confirm",
-        json={"selected": [{"doc_id": doc_a_id, "index": 0},
-                           {"doc_id": doc_a_id, "index": 2}]},
+        json={"selected": [{"doc_id": doc_a_id, "index": 0}, {"doc_id": doc_a_id, "index": 2}]},
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -211,11 +219,7 @@ def test_confirm_inserts_and_is_idempotent(client, kb_docs):
     # 落库字段抽查：source = 知识库:<文件名>
     db = SessionLocal()
     try:
-        qs = (
-            db.query(QuizQuestion)
-            .filter(QuizQuestion.source == f"知识库:{kb_docs['files'][0]}")
-            .all()
-        )
+        qs = db.query(QuizQuestion).filter(QuizQuestion.source == f"知识库:{kb_docs['files'][0]}").all()
         assert len(qs) == 2
         for q in qs:
             assert q.question_type in ("fill", "single")
@@ -226,8 +230,7 @@ def test_confirm_inserts_and_is_idempotent(client, kb_docs):
     # 重复 confirm 同一批 → 全部跳过，不新增
     r2 = client.post(
         "/api/kb-import/confirm",
-        json={"selected": [{"doc_id": doc_a_id, "index": 0},
-                           {"doc_id": doc_a_id, "index": 2}]},
+        json={"selected": [{"doc_id": doc_a_id, "index": 0}, {"doc_id": doc_a_id, "index": 2}]},
     )
     assert r2.status_code == 200, r2.text
     body2 = r2.json()

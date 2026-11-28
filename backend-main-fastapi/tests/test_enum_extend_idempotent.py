@@ -13,6 +13,7 @@
 
 两条护栏：DDL 必须自带 ``IF NOT EXISTS``；调用不得吞掉调用方未提交的写入。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -59,7 +60,5 @@ def test_pending_writes_survive_schema_ensure(db) -> None:
 
     ensure_notices_schema(db)  # 第二次调用：DDL 已全部存在，是重复执行路径
 
-    remaining = db.execute(
-        text("select count(*) from kaoyan_notices where school_name = :s"), {"s": SCHOOL}
-    ).scalar()
+    remaining = db.execute(text("select count(*) from kaoyan_notices where school_name = :s"), {"s": SCHOOL}).scalar()
     assert remaining == 1, "ensure_notices_schema 吞掉了调用方未提交的写入（事务被毒化）"

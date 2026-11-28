@@ -16,6 +16,7 @@
       exports/quiz_analysis_eval_report.md（对照表）+
       eval_runs kind=quiz_analysis（每个模型一行）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -60,7 +61,7 @@ JUDGE_SYSTEM = (
     "只评价解析质量，不看学生选的答案对错。按 1-5 打分："
     "5=考点准确且步骤完整、结论正确；4=基本正确但略简；3=方向对但有缺漏；"
     "2=有明显错误或空泛；1=答非所问/复述题干/编造。"
-    "只输出 JSON：{\"score\": 整数, \"reason\": \"不超过30字\"}。"
+    '只输出 JSON：{"score": 整数, "reason": "不超过30字"}。'
 )
 
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -70,17 +71,23 @@ EXPL_RE = re.compile(r"解析[：:]\s*[*_`\s]*(.+)", re.S)
 LETTERS_RE = re.compile(r"[A-H]")
 
 
-def chat(model: str, system: str, user: str, *, temperature: float = 0.1,
-         timeout: float = 300.0, think: bool | None = None,
-         num_ctx: int = 1536, num_predict: int = 160) -> str:
+def chat(
+    model: str,
+    system: str,
+    user: str,
+    *,
+    temperature: float = 0.1,
+    timeout: float = 300.0,
+    think: bool | None = None,
+    num_ctx: int = 1536,
+    num_predict: int = 160,
+) -> str:
     payload = {
         "model": model,
-        "messages": [{"role": "system", "content": system},
-                     {"role": "user", "content": user}],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "stream": False,
         "keep_alive": "5m",
-        "options": {"temperature": temperature, "num_ctx": num_ctx,
-                    "num_predict": num_predict},
+        "options": {"temperature": temperature, "num_ctx": num_ctx, "num_predict": num_predict},
     }
     if think is not None:
         payload["think"] = think
@@ -133,8 +140,7 @@ def parse_output(text: str) -> tuple[set, str, bool]:
     return pred, expl, formatted
 
 
-def judge_score(judge_model: str, case: dict, model_out: str,
-                timeout: float) -> tuple[int | None, str]:
+def judge_score(judge_model: str, case: dict, model_out: str, timeout: float) -> tuple[int | None, str]:
     user = (
         f"题目：{case.get('content') or ''}\n"
         f"选项：\n{options_text(case.get('options'))}\n"
@@ -143,8 +149,16 @@ def judge_score(judge_model: str, case: dict, model_out: str,
         f"学生解析：\n{model_out[:2200]}\n/no_think"
     )
     try:
-        raw = chat(judge_model, JUDGE_SYSTEM, user, temperature=0.0,
-                   timeout=timeout, think=False, num_ctx=3072, num_predict=192)
+        raw = chat(
+            judge_model,
+            JUDGE_SYSTEM,
+            user,
+            temperature=0.0,
+            timeout=timeout,
+            think=False,
+            num_ctx=3072,
+            num_predict=192,
+        )
     except Exception as e:  # noqa: BLE001
         return None, f"裁判调用失败: {str(e)[:60]}"
     m = re.search(r"\{.*\}", raw, re.S)
@@ -198,12 +212,19 @@ def run_model(model: str, cases: list[dict], *, timeout: float) -> dict:
         refused += int(not pred)
         per_subject[case.get("subject") or "其他"][0] += int(ok)
         per_subject[case.get("subject") or "其他"][1] += 1
-        records.append({
-            "id": case.get("id"), "subject": case.get("subject"),
-            "gold": "".join(sorted(gold)), "pred": "".join(sorted(pred)),
-            "correct": ok, "formatted": is_fmt, "output": out,
-            "judge_score": None, "judge_reason": None,
-        })
+        records.append(
+            {
+                "id": case.get("id"),
+                "subject": case.get("subject"),
+                "gold": "".join(sorted(gold)),
+                "pred": "".join(sorted(pred)),
+                "correct": ok,
+                "formatted": is_fmt,
+                "output": out,
+                "judge_score": None,
+                "judge_reason": None,
+            }
+        )
         if i % 10 == 0 or i == len(cases):
             print(f"  {model}: {i}/{len(cases)} acc={correct / i:.3f}", flush=True)
 
@@ -217,8 +238,7 @@ def run_model(model: str, cases: list[dict], *, timeout: float) -> dict:
         "format_rate": round(formatted / max(1, len(records)), 4),
         "avg_judge_score": None,
         "judge_n": 0,
-        "per_subject": {s: {"acc": round(v[0] / v[1], 4), "n": v[1]}
-                        for s, v in sorted(per_subject.items())},
+        "per_subject": {s: {"acc": round(v[0] / v[1], 4), "n": v[1]} for s, v in sorted(per_subject.items())},
         "answer_secs": round(answer_secs, 1),
         "judge_secs": 0.0,
         "records": records,
@@ -241,13 +261,18 @@ def main() -> int:
     if not cases:
         print("评测集为空或答案都解析不出来")
         return 1
-    print(f"评测集 {len(cases)} 题，指纹 {fingerprint(cases)}；"
-          f"模型: {models}；裁判: {'无' if args.no_judge else args.judge_model}")
+    print(
+        f"评测集 {len(cases)} 题，指纹 {fingerprint(cases)}；"
+        f"模型: {models}；裁判: {'无' if args.no_judge else args.judge_model}"
+    )
 
-    report = {"holdout": args.holdout, "n": len(cases),
-              "fingerprint": fingerprint(cases),
-              "judge_model": None if args.no_judge else args.judge_model,
-              "models": {}}
+    report = {
+        "holdout": args.holdout,
+        "n": len(cases),
+        "fingerprint": fingerprint(cases),
+        "judge_model": None if args.no_judge else args.judge_model,
+        "models": {},
+    }
     for model in models:
         report["models"][model] = run_model(model, cases, timeout=args.timeout)
 
@@ -256,19 +281,16 @@ def main() -> int:
         done = 0
         for model, m in report["models"].items():
             t1 = time.time()
-            for case, rec in zip(cases, m["records"]):
-                score, reason = judge_score(args.judge_model, case, rec["output"],
-                                            args.timeout)
+            for case, rec in zip(cases, m["records"], strict=False):
+                score, reason = judge_score(args.judge_model, case, rec["output"], args.timeout)
                 rec["judge_score"] = score
                 rec["judge_reason"] = reason
                 done += 1
                 if done % 10 == 0 or done == total:
                     print(f"  judge[{args.judge_model}]: {done}/{total}", flush=True)
             m["judge_secs"] = round(time.time() - t1, 1)
-            scores = [r["judge_score"] for r in m["records"]
-                      if r["judge_score"] is not None]
-            m["avg_judge_score"] = (round(sum(scores) / len(scores), 3)
-                                    if scores else None)
+            scores = [r["judge_score"] for r in m["records"] if r["judge_score"] is not None]
+            m["avg_judge_score"] = round(sum(scores) / len(scores), 3) if scores else None
             m["judge_n"] = len(scores)
         unload(args.judge_model)
 
@@ -276,8 +298,7 @@ def main() -> int:
     print(f"{'模型':<32}{'答案准确率':>10}{'格式合规':>10}{'解析均分':>10}{'拒答':>8}")
     for model, m in report["models"].items():
         score = f"{m['avg_judge_score']:.2f}" if m["avg_judge_score"] is not None else "—"
-        print(f"{model:<32}{m['accuracy']:>10.3f}{m['format_rate']:>10.3f}"
-              f"{score:>10}{m['refusal_rate']:>8.1%}")
+        print(f"{model:<32}{m['accuracy']:>10.3f}{m['format_rate']:>10.3f}{score:>10}{m['refusal_rate']:>8.1%}")
 
     os.makedirs(os.path.dirname(OUT_JSON), exist_ok=True)
     with open(OUT_JSON, "w", encoding="utf-8") as f:
@@ -291,8 +312,10 @@ def main() -> int:
         f.write("| :--- | ---: | ---: | ---: | ---: | ---: |\n")
         for model, m in report["models"].items():
             score = f"{m['avg_judge_score']:.2f}" if m["avg_judge_score"] is not None else "—"
-            f.write(f"| {model} | {m['accuracy']:.3f} | {m['format_rate']:.3f} | "
-                    f"{score} | {m['refusal_rate']:.1%} | {m['answer_secs']:.0f}s |\n")
+            f.write(
+                f"| {model} | {m['accuracy']:.3f} | {m['format_rate']:.3f} | "
+                f"{score} | {m['refusal_rate']:.1%} | {m['answer_secs']:.0f}s |\n"
+            )
         f.write("\n## 分学科\n\n")
         for model, m in report["models"].items():
             f.write(f"### {model}\n\n")
@@ -316,8 +339,9 @@ def main() -> int:
                     n_samples=m["n"],
                     fingerprint=report["fingerprint"],
                     report_path=OUT_JSON,
-                    notes=(f"解析均分={m['avg_judge_score']}（裁判 {report['judge_model']}）；"
-                           f"格式合规={m['format_rate']}"),
+                    notes=(
+                        f"解析均分={m['avg_judge_score']}（裁判 {report['judge_model']}）；格式合规={m['format_rate']}"
+                    ),
                     db=db,
                 )
                 print(f"入库：eval_runs #{run_id} {model}" if run_id else f"入库失败 {model}")

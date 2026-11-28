@@ -19,6 +19,7 @@
 ``run_manifest.json``      / ``verification_report.json``
 ``schema.postgres.sql``    （``--emit-ddl`` 时生成）
 """
+
 from __future__ import annotations
 
 import json
@@ -39,8 +40,15 @@ _REPAIR = "repair"
 
 # documents 表读取列（与 models.Document 对齐）
 _DOC_COLUMNS = (
-    "id", "file_name", "file_type", "file_path", "subject",
-    "content", "doc_type", "content_category", "created_at",
+    "id",
+    "file_name",
+    "file_type",
+    "file_path",
+    "subject",
+    "content",
+    "doc_type",
+    "content_category",
+    "created_at",
 )
 
 
@@ -85,8 +93,7 @@ def _build_header_footer_index(conn: sqlite3.Connection, bundle: wm.RulesBundle,
     if not bundle.hf_enabled:
         return idx
     for did, content in conn.execute(
-        "SELECT id, content FROM documents "
-        "WHERE content IS NOT NULL AND TRIM(content) <> '' LIMIT ?",
+        "SELECT id, content FROM documents WHERE content IS NOT NULL AND TRIM(content) <> '' LIMIT ?",
         (limit,),
     ):
         idx.add(str(did), content)
@@ -134,9 +141,7 @@ def _clean_stem_and_leaks(
     return body, recovered
 
 
-def _transform_question(
-    row: dict, bundle: wm.RulesBundle, hf: wm.LineFrequencyIndex, answers: dict
-) -> dict:
+def _transform_question(row: dict, bundle: wm.RulesBundle, hf: wm.LineFrequencyIndex, answers: dict) -> dict:
     """把一行 quiz_questions 转成 canonical 记录（含完整证据）。"""
     qid = row.get("id")
     raw_source = row.get("source") or ""
@@ -161,11 +166,19 @@ def _transform_question(
         answer_source = f"answer_candidates:{cand['source']}:{cand['verified_by']}"
 
     q = CanonicalQuestion(
-        question_id=qid, stem=stem_final, options=options, answer=answer,
-        analysis=analysis_clean, knowledge_points=[row.get("knowledge_point") or ""],
-        question_type=row.get("question_type") or "", origin=origin,
-        origin_confidence=conf, subject_raw=row.get("subject") or "",
-        subject_norm=canonical, subject_bucket=bucket, source=raw_source,
+        question_id=qid,
+        stem=stem_final,
+        options=options,
+        answer=answer,
+        analysis=analysis_clean,
+        knowledge_points=[row.get("knowledge_point") or ""],
+        question_type=row.get("question_type") or "",
+        origin=origin,
+        origin_confidence=conf,
+        subject_raw=row.get("subject") or "",
+        subject_norm=canonical,
+        subject_bucket=bucket,
+        source=raw_source,
     )
     verdict = validate_question(q)
 
@@ -302,9 +315,7 @@ def run_etl(
             clean_records.extend(
                 json.loads(line) for line in fp.read_text(encoding="utf-8").split("\n") if line.strip()
             )
-        report = ver.verify_batch(
-            clean_records, threshold=threshold, sample_size=sample_size, seed=seed, bundle=bundle
-        )
+        report = ver.verify_batch(clean_records, threshold=threshold, sample_size=sample_size, seed=seed, bundle=bundle)
         if not dry_run:
             (out / "verification_report.json").write_text(
                 json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
@@ -324,80 +335,113 @@ def run_etl(
             " ORDER BY id LIMIT ?",
             (limit,),
         )
-        records = [_transform_question(dict(zip(
-            ["id", "content", "options", "answer", "analysis", "subject",
-             "question_type", "knowledge_point", "source"], r)), bundle, hf, answers)
+        records = [
+            _transform_question(
+                dict(
+                    zip(
+                        [
+                            "id",
+                            "content",
+                            "options",
+                            "answer",
+                            "analysis",
+                            "subject",
+                            "question_type",
+                            "knowledge_point",
+                            "source",
+                        ],
+                        r,
+                        strict=False,
+                    )
+                ),
+                bundle,
+                hf,
+                answers,
+            )
             for r in rows
         ]
         q_clean, q_repair = _partition(records)
 
         doc_records: list[dict] = []
-        for doc in conn.execute(
-            "SELECT " + ",".join(_DOC_COLUMNS) + " FROM documents LIMIT ?", (limit,)
-        ):
-            rowdict = dict(zip(_DOC_COLUMNS, doc))
+        for doc in conn.execute("SELECT " + ",".join(_DOC_COLUMNS) + " FROM documents LIMIT ?", (limit,)):
+            rowdict = dict(zip(_DOC_COLUMNS, doc, strict=False))
             text, hits = wm.strip_watermark(rowdict.get("content") or "", bundle, hf)
-            canonical, bucket, alias_hit = normalize_subject(
-                rowdict.get("subject"), None, rowdict.get("file_name")
-            )
+            canonical, bucket, alias_hit = normalize_subject(rowdict.get("subject"), None, rowdict.get("file_name"))
             origin, conf, ev = classify_origin(None, rowdict.get("file_name"), text)
-            ok = (ver.count_meaningful(text) >= ver.MIN_CONTENT_CHARS
-                  and not wm.find_residue(text, bundle))
-            doc_records.append({
-                "kind": "document",
-                "doc_id": rowdict.get("id"),
-                "file_name": rowdict.get("file_name"),
-                "file_type": rowdict.get("file_type"),
-                "text": text,
-                "origin": origin,
-                "origin_confidence": conf,
-                "subject_raw": rowdict.get("subject") or "",
-                "subject_norm": canonical,
-                "subject_bucket": bucket,
-                "subject_matched_alias": alias_hit,
-                "watermark_hits": hits,
-                "meta": {"chars": len(text), "engine": "passthrough:sqlite_content"},
-                "validation": {"ok": ok, "errors": [] if ok else ["empty_or_residue"],
-                               "warnings": [], "score": 1.0 if ok else 0.0},
-            })
+            ok = ver.count_meaningful(text) >= ver.MIN_CONTENT_CHARS and not wm.find_residue(text, bundle)
+            doc_records.append(
+                {
+                    "kind": "document",
+                    "doc_id": rowdict.get("id"),
+                    "file_name": rowdict.get("file_name"),
+                    "file_type": rowdict.get("file_type"),
+                    "text": text,
+                    "origin": origin,
+                    "origin_confidence": conf,
+                    "subject_raw": rowdict.get("subject") or "",
+                    "subject_norm": canonical,
+                    "subject_bucket": bucket,
+                    "subject_matched_alias": alias_hit,
+                    "watermark_hits": hits,
+                    "meta": {"chars": len(text), "engine": "passthrough:sqlite_content"},
+                    "validation": {
+                        "ok": ok,
+                        "errors": [] if ok else ["empty_or_residue"],
+                        "warnings": [],
+                        "score": 1.0 if ok else 0.0,
+                    },
+                }
+            )
         d_clean, d_repair = _partition(doc_records)
 
         chunk_records: list[dict] = []
         for cid, kid, text_raw, subj in conn.execute(
-            "SELECT chunk_id, id, text, subject FROM knowledge_chunks"
-            " WHERE text IS NOT NULL LIMIT ?",
+            "SELECT chunk_id, id, text, subject FROM knowledge_chunks WHERE text IS NOT NULL LIMIT ?",
             (limit,),
         ):
             text, hits = wm.strip_watermark(text_raw or "", bundle, hf)
             canonical, bucket, alias_hit = normalize_subject(subj, None, None)
-            ok = (ver.count_meaningful(text) >= ver.MIN_CONTENT_CHARS
-                  and not wm.find_residue(text, bundle))
-            chunk_records.append({
-                "kind": "chunk",
-                "chunk_id": cid,
-                "id": kid,
-                "text": text,
-                "subject_raw": subj or "",
-                "subject_norm": canonical,
-                "subject_bucket": bucket,
-                "subject_matched_alias": alias_hit,
-                "watermark_hits": hits,
-                "meta": {"chars": len(text)},
-                "validation": {"ok": ok, "errors": [] if ok else ["empty_or_residue"],
-                               "warnings": [], "score": 1.0 if ok else 0.0},
-            })
+            ok = ver.count_meaningful(text) >= ver.MIN_CONTENT_CHARS and not wm.find_residue(text, bundle)
+            chunk_records.append(
+                {
+                    "kind": "chunk",
+                    "chunk_id": cid,
+                    "id": kid,
+                    "text": text,
+                    "subject_raw": subj or "",
+                    "subject_norm": canonical,
+                    "subject_bucket": bucket,
+                    "subject_matched_alias": alias_hit,
+                    "watermark_hits": hits,
+                    "meta": {"chars": len(text)},
+                    "validation": {
+                        "ok": ok,
+                        "errors": [] if ok else ["empty_or_residue"],
+                        "warnings": [],
+                        "score": 1.0 if ok else 0.0,
+                    },
+                }
+            )
         c_clean, c_repair = _partition(chunk_records)
     finally:
         conn.close()
 
     report = ver.verify_batch(
         q_clean + d_clean + c_clean,
-        threshold=threshold, sample_size=sample_size, seed=seed, bundle=bundle, hf=hf,
+        threshold=threshold,
+        sample_size=sample_size,
+        seed=seed,
+        bundle=bundle,
+        hf=hf,
     )
     result.update(
-        questions_total=len(records), questions_clean=len(q_clean), questions_repair=len(q_repair),
-        documents_clean=len(d_clean), documents_repair=len(d_repair),
-        chunks_clean=len(c_clean), chunks_repair=len(c_repair),
+        questions_total=len(records),
+        questions_clean=len(q_clean),
+        questions_repair=len(q_repair),
+        documents_clean=len(d_clean),
+        documents_repair=len(d_repair),
+        chunks_clean=len(c_clean),
+        chunks_repair=len(c_repair),
         answers_enriched=sum(1 for r in records if r["answer_source"].startswith("answer_candidates")),
         verification=report.to_dict(),
     )
@@ -418,8 +462,8 @@ def run_etl(
         json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
     )
     (out / "run_manifest.json").write_text(
-        json.dumps({k: v for k, v in result.items() if k != "verification"},
-                   ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps({k: v for k, v in result.items() if k != "verification"}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
     if emit_ddl:
         emit_postgres_ddl(out / "schema.postgres.sql")

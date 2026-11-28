@@ -8,6 +8,7 @@
     python scripts/link_questions_to_kps_semantic.py --dry-run
     python scripts/link_questions_to_kps_semantic.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,8 +56,11 @@ def main() -> int:
             """)
             kps = [
                 {
-                    "id": r[0], "name": r[1], "subject": r[2] or "",
-                    "chapter": r[3], "chapter_id": r[4],
+                    "id": r[0],
+                    "name": r[1],
+                    "subject": r[2] or "",
+                    "chapter": r[3],
+                    "chapter_id": r[4],
                     "text": f"{r[1]}。{r[5] or ''}。{r[3] or ''}"[:MAX_TEXT],
                 }
                 for r in cur.fetchall()
@@ -104,8 +108,7 @@ def main() -> int:
 
         print(f"可关联题目 {len(planned)}/{len(questions)}")
         for qid, subject, chapter, picked in planned[:15]:
-            print(f"  q#{qid} [{subject}] -> " +
-                  ", ".join(f"{k['name']}({s:.3f})" for k, s in picked))
+            print(f"  q#{qid} [{subject}] -> " + ", ".join(f"{k['name']}({s:.3f})" for k, s in picked))
 
         if not apply:
             print("\n[DRY-RUN] 未写库；加 --apply 执行。")
@@ -117,19 +120,25 @@ def main() -> int:
             for qid, subject, chapter, picked in planned:
                 top = picked[0][0]
                 for i, (kp, score) in enumerate(picked):
-                    cur.execute("""
+                    cur.execute(
+                        """
                         INSERT INTO question_knowledge_links
                           (question_id, knowledge_point_id, role, weight, is_verified)
                         VALUES (%s, %s, %s, %s, false)
                         ON CONFLICT (question_id, knowledge_point_id) DO NOTHING
-                    """, (qid, kp["id"], "primary" if i == 0 else "secondary", score))
+                    """,
+                        (qid, kp["id"], "primary" if i == 0 else "secondary", score),
+                    )
                     inserted += cur.rowcount
-                cur.execute("""
+                cur.execute(
+                    """
                     UPDATE quiz_questions
                        SET knowledge_point = COALESCE(NULLIF(knowledge_point, ''), %s),
                            chapter = COALESCE(NULLIF(chapter, ''), %s)
                      WHERE id = %s
-                """, (top["name"], top["chapter"], qid))
+                """,
+                    (top["name"], top["chapter"], qid),
+                )
                 updated_q += cur.rowcount
             cur.execute("""
                 UPDATE knowledge_points k

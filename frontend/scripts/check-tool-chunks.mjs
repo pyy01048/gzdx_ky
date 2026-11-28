@@ -12,14 +12,14 @@ const MAX_BYTES = 500 * 1024
 const jsDir = path.resolve(process.cwd(), '..', 'backend-main-fastapi', 'static', 'assets', 'js')
 
 if (!fs.existsSync(jsDir)) {
-  console.warn('[chunk-gate] 构建产物目录不存在，跳过 Tools chunk 门禁')
-  process.exit(0)
+  console.error('[chunk-gate] 构建产物目录不存在，Tools chunk 门禁失败')
+  process.exit(1)
 }
 
 const files = fs.readdirSync(jsDir).filter((name) => /^Tools-.*\.js$/.test(name))
 if (files.length === 0) {
-  console.warn('[chunk-gate] 未找到独立的 Tools chunk，跳过门禁')
-  process.exit(0)
+  console.error('[chunk-gate] 未找到独立的 Tools chunk，门禁失败')
+  process.exit(1)
 }
 
 const violations = files

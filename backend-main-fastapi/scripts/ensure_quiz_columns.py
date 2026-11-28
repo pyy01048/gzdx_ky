@@ -20,6 +20,7 @@
     cd backend-main-fastapi
     D:/Anaconda/python.exe scripts/ensure_quiz_columns.py
 """
+
 from __future__ import annotations
 
 import os
@@ -35,8 +36,8 @@ from services.backup_service import _resolve_db_path, create_backup  # noqa: E40
 
 # (列名, 列定义) —— 与 models.QuizQuestion 对齐
 NEW_COLUMNS: list[tuple[str, str]] = [
-    ("answer_source", "VARCHAR(20)"),        # 答案来源：bank/source_extract/llm_generated/user_confirmed
-    ("answer_confidence", "FLOAT"),          # 答案置信度 0-1（<0.8 不参与自动判分）
+    ("answer_source", "VARCHAR(20)"),  # 答案来源：bank/source_extract/llm_generated/user_confirmed
+    ("answer_confidence", "FLOAT"),  # 答案置信度 0-1（<0.8 不参与自动判分）
 ]
 
 

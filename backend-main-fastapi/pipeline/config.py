@@ -4,6 +4,7 @@
 各模块一律从这里取路径和阈值，禁止各自硬编码，避免「清洗用的规则」和
 「验收用的规则」不是同一份，进而出现「清过了但验收仍报残留」的假故障。
 """
+
 from __future__ import annotations
 
 import os
@@ -27,9 +28,9 @@ __all__ = [
     "pg_database_url",
 ]
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent          # backend-main-fastapi
-PIPELINE_DIR = Path(__file__).resolve().parent                # pipeline
-PROJECT_ROOT = BACKEND_DIR.parent                             # 仓库根（由文件位置推导，不写字面量）
+BACKEND_DIR = Path(__file__).resolve().parent.parent  # backend-main-fastapi
+PIPELINE_DIR = Path(__file__).resolve().parent  # pipeline
+PROJECT_ROOT = BACKEND_DIR.parent  # 仓库根（由文件位置推导，不写字面量）
 
 # SQLite 源库。本阶段一律以只读模式打开，禁止任何写入。
 SQLITE_PATH = PROJECT_ROOT / "database" / "kaoyan.db"
@@ -96,8 +97,7 @@ def pg_database_url() -> str:
         raw = build_database_url().strip()
     if not raw:
         raise ValueError(
-            "解析不到 PostgreSQL 连接串：请设置 DATABASE_URL，或在 .env 配 PG_HOST/PG_USER/"
-            "PG_PASSWORD/PG_DATABASE"
+            "解析不到 PostgreSQL 连接串：请设置 DATABASE_URL，或在 .env 配 PG_HOST/PG_USER/PG_PASSWORD/PG_DATABASE"
         )
     if raw.startswith("sqlite"):
         raise ValueError(f"当前后端是 SQLite（{raw}），管线 PG 步骤需要 PostgreSQL")

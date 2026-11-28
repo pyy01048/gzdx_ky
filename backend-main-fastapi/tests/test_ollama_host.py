@@ -6,6 +6,7 @@
 `Request URL is missing an 'http://' or 'https://' protocol`，
 表现为 `/api/ai/local/status` 恒为 `available:false, models:[]`。
 """
+
 from __future__ import annotations
 
 import os
@@ -33,15 +34,11 @@ def test_ipv6_wildcard_rewritten_to_loopback() -> None:
 
 def test_already_valid_url_passes_through() -> None:
     assert resolve_ollama_host("http://127.0.0.1:11434") == "http://127.0.0.1:11434"
-    assert resolve_ollama_host("https://ollama.example.com:11434") == (
-        "https://ollama.example.com:11434"
-    )
+    assert resolve_ollama_host("https://ollama.example.com:11434") == ("https://ollama.example.com:11434")
 
 
 def test_trailing_slash_and_whitespace_stripped() -> None:
-    assert resolve_ollama_host("  http://127.0.0.1:11434/  ") == (
-        "http://127.0.0.1:11434"
-    )
+    assert resolve_ollama_host("  http://127.0.0.1:11434/  ") == ("http://127.0.0.1:11434")
 
 
 def test_empty_returns_default() -> None:
@@ -66,12 +63,8 @@ def test_custom_port_preserved() -> None:
 
 
 def test_path_preserved_for_proxied_deploy() -> None:
-    assert resolve_ollama_host("http://0.0.0.0:11434/ollama") == (
-        "http://127.0.0.1:11434/ollama"
-    )
+    assert resolve_ollama_host("http://0.0.0.0:11434/ollama") == ("http://127.0.0.1:11434/ollama")
 
 
 def test_credentials_preserved_when_rewriting_host() -> None:
-    assert resolve_ollama_host("http://user:pass@0.0.0.0:11434") == (
-        "http://user:pass@127.0.0.1:11434"
-    )
+    assert resolve_ollama_host("http://user:pass@0.0.0.0:11434") == ("http://user:pass@127.0.0.1:11434")

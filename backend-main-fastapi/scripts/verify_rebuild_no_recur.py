@@ -93,15 +93,12 @@ def main() -> int:
     from services import qbank_builder as qb
 
     docs = con.execute(
-        "SELECT id, file_name, content FROM documents WHERE id IN ({})".format(
-            ",".join(str(d[0]) for d in picked)
-        )
+        "SELECT id, file_name, content FROM documents WHERE id IN ({})".format(",".join(str(d[0]) for d in picked))
     ).fetchall()
     per_doc: list[tuple[str, list[dict]]] = []
     for d in docs:
         try:
-            qs = qb.extract_questions(d["content"] or "",
-                                      source_hint=d["file_name"] or "")
+            qs = qb.extract_questions(d["content"] or "", source_hint=d["file_name"] or "")
         except Exception as e:  # noqa: BLE001
             print(f"  [!] {d['file_name'][:40]} 切题失败: {e}")
             continue
@@ -117,10 +114,11 @@ def main() -> int:
         return 2
 
     # ---- 临时库 + 两轮入库 ----
-    from models import QuizQuestion
     from services import quiz_dedupe as dd
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
+    from models import QuizQuestion
 
     fd, path = tempfile.mkstemp(suffix=".db", prefix="rebuild_verify_")
     os.close(fd)
@@ -133,26 +131,32 @@ def main() -> int:
         db = Session()
         index = dd.build_index_from_db(db)
         stats = dd.DedupeStats()
-        real_insert = 0   # 有效指纹的新增（判重是否生效看这个）
+        real_insert = 0  # 有效指纹的新增（判重是否生效看这个）
         short_insert = 0  # 超短题干新增（设计内豁免，不算判重失效）
         for file_name, qs in per_doc:
             src = f"知识库:{file_name}"
             for q in qs:
                 content = (q.get("content") or "").strip()
                 decision = dd.decide_insert(
-                    db, content, src, index,
-                    answer=q.get("answer"), options=q.get("options"),
+                    db,
+                    content,
+                    src,
+                    index,
+                    answer=q.get("answer"),
+                    options=q.get("options"),
                     stats=stats,
                 )
                 if decision.is_insert:
                     row = QuizQuestion(
-                        content=content, options=q.get("options") or None,
-                        answer=q.get("answer"), source=src, source_ids=[src],
+                        content=content,
+                        options=q.get("options") or None,
+                        answer=q.get("answer"),
+                        source=src,
+                        source_ids=[src],
                     )
                     db.add(row)
                     db.flush()  # 拿到真实 id（生产路径同样先 flush 再登记指纹）
-                    index.add(decision.fingerprint, row.id, src,
-                                text=dd.canonical_text(content))
+                    index.add(decision.fingerprint, row.id, src, text=dd.canonical_text(content))
                     if decision.reason == "too_short_for_dedupe":
                         # 归一化后不足 MIN_CANONICAL_LEN 字：指纹不可靠，
                         # 设计内豁免判重（宁可留重复也绝不误并不同题）。
@@ -162,41 +166,47 @@ def main() -> int:
         db.commit()
         n = db.query(QuizQuestion).count()
         # 统计重复组（入库层口径：同一指纹出现>1 次即为重复）
-        hashes = [
-            canonical_hash(c or "") for (c,) in db.query(QuizQuestion.content).all()
-        ]
+        hashes = [canonical_hash(c or "") for (c,) in db.query(QuizQuestion.content).all()]
         cnt: dict[str, int] = defaultdict(int)
         for h in hashes:
             if h:
                 cnt[h] += 1
         dup_groups = sum(1 for v in cnt.values() if v > 1)
         print(f"\n--- 第 {round_no} 轮入库 ---")
-        print(f"  有效指纹入库 {real_insert} 道 / 合并重复 {stats.merged} 道 / "
-              f"超短题干入库 {short_insert} 道（设计内豁免）")
+        print(
+            f"  有效指纹入库 {real_insert} 道 / 合并重复 {stats.merged} 道 / "
+            f"超短题干入库 {short_insert} 道（设计内豁免）"
+        )
         print(f"  库中总题数 = {n}重复组数 = {dup_groups}")
         if round_no == 1:
             first_n = n
         else:
             second_n = n
             _round2_inserted = real_insert
-            print(f"\n第二轮（模拟重建重跑）有效指纹入库 {real_insert} 道 / "
-                  f"合并 {stats.merged} 道 / 超短入库 {short_insert} 道")
+            print(
+                f"\n第二轮（模拟重建重跑）有效指纹入库 {real_insert} 道 / "
+                f"合并 {stats.merged} 道 / 超短入库 {short_insert} 道"
+            )
             print(f"第二轮后总题数 = {second_n}（第一轮 {first_n}）")
             print(f"入库层重复组数 = {dup_groups}")
             print("\n判读：")
-            print("  · 第二轮「有效指纹入库」应为 0 —— 同一批文档重跑，"
-                  "所有有指纹的题都应被识别为已入库")
-            print(f"  · 超短题干每轮仍各入库 {short_insert} 道：这是刻意豁免"
-                  "（题干过短时指纹不可靠，宁可留重复也不误并），")
-            print("    它不属于本次要修的「跨来源重复」，但会让每次重建固定长"
-                  f" {short_insert} 条，属独立的存量问题。")
-            print("  · 残留的少量重复组来自 extract_questions 在**同一文档内**"
-                  "对同一段正文切出多道题（内容与来源完全相同），")
+            print("  · 第二轮「有效指纹入库」应为 0 —— 同一批文档重跑，所有有指纹的题都应被识别为已入库")
+            print(
+                f"  · 超短题干每轮仍各入库 {short_insert} 道：这是刻意豁免"
+                "（题干过短时指纹不可靠，宁可留重复也不误并），"
+            )
+            print(f"    它不属于本次要修的「跨来源重复」，但会让每次重建固定长 {short_insert} 条，属独立的存量问题。")
+            print(
+                "  · 残留的少量重复组来自 extract_questions 在**同一文档内**"
+                "对同一段正文切出多道题（内容与来源完全相同），"
+            )
             print("    属切题层的文档内重复，不是入库判重能拦截的范围。")
             ok = real_insert == 0
             print("=" * 74)
-            print("验证结果: " + ("通过 —— 重跑不再产生任何重复" if ok
-                                 else f"未通过 —— 重跑后多出 {second_n-first_n} 道"))
+            print(
+                "验证结果: "
+                + ("通过 —— 重跑不再产生任何重复" if ok else f"未通过 —— 重跑后多出 {second_n - first_n} 道")
+            )
             print("=" * 74)
         db.close()
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { aiApi } from '../../api/client'
 import { kaoyanApi } from '../../api/kaoyanApi'
@@ -16,12 +16,14 @@ const GREETING = '你好！我是考研择校 AI 助手。你可以问我分数�
 const AI_SYSTEM_PROMPT = '你是考研择校顾问，请基于下方引擎结论做简洁深度解读，给出选校策略建议。用中文，3-5 句话。'
 const UNVERIFIED_RE = /分数线|复录比|招生|拟招|录取/
 
+/** 把任意值格式化为定长数字字符串，非有限值返回 —。 */
 function num(value, digits = 0) {
   const n = Number(value)
   if (!Number.isFinite(n)) return '—'
   return digits ? n.toFixed(digits) : String(Math.round(n))
 }
 
+/** 渲染助手解析出的查询条件为徽标组。 */
 function ParsedConditions({ parsed }) {
   if (!parsed) return null
   const chips = []
@@ -39,6 +41,7 @@ function ParsedConditions({ parsed }) {
   )
 }
 
+/** 渲染助手返回的推荐院校卡片网格。 */
 function Recommendations({ items }) {
   if (!Array.isArray(items) || !items.length) return null
   return (
@@ -56,13 +59,14 @@ function Recommendations({ items }) {
               </em>
             </>
           )
+          const key = item.school_id ? `${item.school_id}-${index}` : `${item.name}-${index}`
           return item.school_id ? (
-            <Link key={`${item.school_id}-${index}`} className="v3-ky-msg__rec" to={`/kaoyan/schools/${item.school_id}`}>
+            <Link key={key} className="v3-ky-msg__rec" to={`/kaoyan/schools/${item.school_id}`}>
               {body}
               <ArrowRight size={13} />
             </Link>
           ) : (
-            <div key={`${item.name}-${index}`} className="v3-ky-msg__rec is-static">{body}</div>
+            <div key={key} className="v3-ky-msg__rec is-static">{body}</div>
           )
         })}
       </div>
@@ -70,6 +74,7 @@ function Recommendations({ items }) {
   )
 }
 
+/** 单条聊天消息：区分用户、引擎、AI 解读与错误降级四种形态。 */
 function Message({ message }) {
   const isUser = message.role === 'user'
   const isAi = message.kind === 'ai' || message.kind === 'ai-error'
@@ -122,11 +127,11 @@ export default function KaoyanAssistant() {
   const inputRef = useRef(null)
   const idRef = useRef(1)
 
-  const nextId = () => {
+  const nextId = useCallback(() => {
     const id = idRef.current
     idRef.current += 1
     return id
-  }
+  }, [])
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
@@ -149,14 +154,14 @@ export default function KaoyanAssistant() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, loading, phase])
 
-  const presets = [
+  const presets = useMemo(() => [
     '推荐几所稳妥的学校',
     '哪些985院校复录比较低？',
     myMajor ? `${myMajor}专业哪些学校招生人数多？` : '我报考的专业哪些学校招生人数多？',
     '帮我分析北京地区的院校难度',
-  ]
+  ], [myMajor])
 
-  const send = async (raw) => {
+  const send = useCallback(async (raw) => {
     const text = String(raw || '').trim()
     if (!text || loading) return
     setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: text }])
@@ -220,14 +225,14 @@ export default function KaoyanAssistant() {
       setPhase('')
       if (inputRef.current) inputRef.current.focus()
     }
-  }
+  }, [loading, nextId])
 
-  const resetChat = () => {
+  const resetChat = useCallback(() => {
     if (loading) return
     setMessages([{ id: 0, role: 'assistant', kind: 'engine', content: GREETING }])
     setInput('')
     if (inputRef.current) inputRef.current.focus()
-  }
+  }, [loading])
 
   if (!user) {
     return (

@@ -4,7 +4,8 @@
 所有写操作自动记录审计日志。
 """
 
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from core.db_session import get_db
 from core.models.schools import AuditLog, KaoyanCollege, KaoyanMajor, KaoyanSchool
@@ -13,13 +14,19 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from utils.security import require_admin
 
-router = APIRouter(prefix="/api/admin/schools", tags=["admin-schools"], dependencies=[Depends(require_admin)])
+router = APIRouter(
+    prefix="/api/admin/schools",
+    tags=["admin-schools"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 # --- Pydantic Schemas ---
 
 
 class SchoolCreate(BaseModel):
+    """创建院校请求体。"""
+
     name: str = Field(..., min_length=1, max_length=200)
     level: Optional[str] = None
     province: Optional[str] = None
@@ -27,13 +34,15 @@ class SchoolCreate(BaseModel):
     logo_url: Optional[str] = None
     cover_url: Optional[str] = None
     intro: Optional[str] = None
-    tags: list = []
+    tags: list = Field(default_factory=list)
     official_url: Optional[str] = None
     type: Optional[str] = None
     region: Optional[str] = None
 
 
 class SchoolUpdate(BaseModel):
+    """更新院校请求体（所有字段可选）。"""
+
     name: Optional[str] = None
     level: Optional[str] = None
     province: Optional[str] = None
@@ -49,28 +58,36 @@ class SchoolUpdate(BaseModel):
 
 
 class CollegeCreate(BaseModel):
+    """创建学院请求体。"""
+
     school_id: int
     name: str = Field(..., min_length=1, max_length=200)
 
 
 class CollegeUpdate(BaseModel):
+    """更新学院请求体。"""
+
     name: Optional[str] = None
     enabled: Optional[bool] = None
 
 
 class MajorCreate(BaseModel):
+    """创建专业请求体。"""
+
     school_id: int
     college_id: Optional[int] = None
     code: Optional[str] = None
     name: str = Field(..., min_length=1, max_length=200)
     research_direction: Optional[str] = None
     subject_code: Optional[str] = None
-    exam_subjects: list = []
-    reference_books: list = []
+    exam_subjects: list = Field(default_factory=list)
+    reference_books: list = Field(default_factory=list)
     degree_type: str = "unknown"
 
 
 class MajorUpdate(BaseModel):
+    """更新专业请求体。"""
+
     name: Optional[str] = None
     code: Optional[str] = None
     college_id: Optional[int] = None
@@ -86,16 +103,26 @@ class MajorUpdate(BaseModel):
 
 
 def _get_client_ip(request: Request) -> str:
-    """获取客户端IP地址"""
+    """获取客户端 IP 地址（优先取 X-Forwarded-For 首段）。"""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 
-def _soft_delete_filter(query, model):
-    """添加软删除过滤：只查询未删除的记录"""
+def _soft_delete_filter(query: Any, model: Any) -> Any:
+    """添加软删除过滤：只查询未删除的记录。"""
     return query.filter(model.deleted_at.is_(None))
+
+
+def _now_utc() -> datetime:
+    """统一获取当前 UTC 时间（带时区）。"""
+    return datetime.now(timezone.utc)
+
+
+def _iso(value: Optional[datetime]) -> Optional[str]:
+    """安全把 datetime 序列化为 ISO 字符串。"""
+    return value.isoformat() if value else None
 
 
 # --- School CRUD ---
@@ -110,8 +137,8 @@ async def list_schools(
     province: Optional[str] = None,
     level: Optional[str] = None,
     include_disabled: bool = False,
-):
-    """列出院校（支持筛选、分页）"""
+) -> dict:
+    """列出院校（支持筛选、分页）。"""
     q = db.query(KaoyanSchool)
 
     if not include_disabled:
@@ -143,7 +170,7 @@ async def list_schools(
                 "type": s.type,
                 "region": s.region,
                 "enabled": s.enabled,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "created_at": _iso(s.created_at),
             }
             for s in items
         ],
@@ -155,9 +182,8 @@ async def create_school(
     payload: SchoolCreate,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """创建院校"""
-    # 检查名称唯一性
+) -> dict:
+    """创建院校。"""
     existing = db.query(KaoyanSchool).filter(KaoyanSchool.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="院校名称已存在")
@@ -173,8 +199,8 @@ async def create_school(
 # `:int` 路径转换器：只匹配纯数字段。否则本路由先于 GET /majors、/audit-logs 注册，
 # 会把这两个列表接口吞掉并报 422「school_id 不是整数」，管理端永远拿不到数据。
 @router.get("/{school_id:int}")
-async def get_school(school_id: int, db: Session = Depends(get_db)):
-    """获取院校详情"""
+async def get_school(school_id: int, db: Session = Depends(get_db)) -> dict:
+    """获取院校详情。"""
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
@@ -193,9 +219,9 @@ async def get_school(school_id: int, db: Session = Depends(get_db)):
         "type": school.type,
         "region": school.region,
         "enabled": school.enabled,
-        "deleted_at": school.deleted_at.isoformat() if school.deleted_at else None,
-        "created_at": school.created_at.isoformat() if school.created_at else None,
-        "updated_at": school.updated_at.isoformat() if school.updated_at else None,
+        "deleted_at": _iso(school.deleted_at),
+        "created_at": _iso(school.created_at),
+        "updated_at": _iso(school.updated_at),
     }
 
 
@@ -205,13 +231,12 @@ async def update_school(
     payload: SchoolUpdate,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """更新院校信息"""
+) -> dict:
+    """更新院校信息。"""
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
 
-    # 更新字段
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(school, key, value)
@@ -227,15 +252,13 @@ async def delete_school(
     school_id: int,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """软删除院校"""
+) -> dict:
+    """软删除院校（置 deleted_at 并禁用）。"""
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
 
-    from datetime import datetime, timezone
-
-    school.deleted_at = datetime.now(timezone.utc)
+    school.deleted_at = _now_utc()
     school.enabled = False
     db.commit()
 
@@ -247,8 +270,8 @@ async def toggle_school_enabled(
     school_id: int,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """切换院校启用状态"""
+) -> dict:
+    """切换院校启用状态。"""
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
@@ -267,8 +290,8 @@ async def list_colleges(
     school_id: int,
     db: Session = Depends(get_db),
     include_disabled: bool = False,
-):
-    """列出院校下属学院"""
+) -> dict:
+    """列出院校下属学院。"""
     q = db.query(KaoyanCollege).filter(KaoyanCollege.school_id == school_id)
 
     if not include_disabled:
@@ -285,7 +308,7 @@ async def list_colleges(
                 "id": c.id,
                 "name": c.name,
                 "enabled": c.enabled,
-                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "created_at": _iso(c.created_at),
             }
             for c in colleges
         ],
@@ -297,9 +320,8 @@ async def create_college(
     payload: CollegeCreate,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """创建学院"""
-    # 验证院校存在
+) -> dict:
+    """创建学院。"""
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == payload.school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
@@ -318,8 +340,8 @@ async def update_college(
     payload: CollegeUpdate,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """更新学院信息"""
+) -> dict:
+    """更新学院信息。"""
     college = db.query(KaoyanCollege).filter(KaoyanCollege.id == college_id).first()
     if not college:
         raise HTTPException(status_code=404, detail="学院不存在")
@@ -339,15 +361,13 @@ async def delete_college(
     college_id: int,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """软删除学院"""
+) -> dict:
+    """软删除学院。"""
     college = db.query(KaoyanCollege).filter(KaoyanCollege.id == college_id).first()
     if not college:
         raise HTTPException(status_code=404, detail="学院不存在")
 
-    from datetime import datetime, timezone
-
-    college.deleted_at = datetime.now(timezone.utc)
+    college.deleted_at = _now_utc()
     college.enabled = False
     db.commit()
 
@@ -363,8 +383,8 @@ async def list_majors(
     school_id: Optional[int] = None,
     college_id: Optional[int] = None,
     include_disabled: bool = False,
-):
-    """列出专业（支持按院校/学院筛选）"""
+) -> dict:
+    """列出专业（支持按院校/学院筛选）。"""
     q = db.query(KaoyanMajor)
 
     if school_id:
@@ -390,7 +410,7 @@ async def list_majors(
                 "college_id": m.college_id,
                 "degree_type": m.degree_type,
                 "enabled": m.enabled,
-                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "created_at": _iso(m.created_at),
             }
             for m in majors
         ],
@@ -402,9 +422,8 @@ async def create_major(
     payload: MajorCreate,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """创建专业"""
-    # 验证院校存在
+) -> dict:
+    """创建专业。"""
     school = db.query(KaoyanSchool).filter(KaoyanSchool.id == payload.school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="院校不存在")
@@ -423,8 +442,8 @@ async def update_major(
     payload: MajorUpdate,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """更新专业信息"""
+) -> dict:
+    """更新专业信息。"""
     major = db.query(KaoyanMajor).filter(KaoyanMajor.id == major_id).first()
     if not major:
         raise HTTPException(status_code=404, detail="专业不存在")
@@ -444,15 +463,13 @@ async def delete_major(
     major_id: int,
     request: Request,
     db: Session = Depends(get_db),
-):
-    """软删除专业"""
+) -> dict:
+    """软删除专业。"""
     major = db.query(KaoyanMajor).filter(KaoyanMajor.id == major_id).first()
     if not major:
         raise HTTPException(status_code=404, detail="专业不存在")
 
-    from datetime import datetime, timezone
-
-    major.deleted_at = datetime.now(timezone.utc)
+    major.deleted_at = _now_utc()
     major.enabled = False
     db.commit()
 
@@ -462,7 +479,7 @@ async def delete_major(
 # --- Audit Logs ---
 
 
-@router.get("/audit-logs")
+@router.get("/audit-log")
 async def list_audit_logs(
     db: Session = Depends(get_db),
     table_name: Optional[str] = None,
@@ -471,8 +488,8 @@ async def list_audit_logs(
     operator_id: Optional[int] = None,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
-):
-    """查询审计日志（只读，不可修改删除）"""
+) -> dict:
+    """查询审计日志（只读，不可修改删除）。"""
     q = db.query(AuditLog)
 
     if table_name:
@@ -502,7 +519,7 @@ async def list_audit_logs(
                 "before_data": log.before_data,
                 "after_data": log.after_data,
                 "change_summary": log.change_summary,
-                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "created_at": _iso(log.created_at),
             }
             for log in logs
         ],

@@ -114,6 +114,36 @@ describe('KaoyanRecommend：自动调整权限与手动设置', () => {
       level: undefined,
     }))
   })
+  it('管理员自动调整展示分数位置与证据完整度，不误称录取信心', async () => {
+    currentRole = 'admin'
+    api.autoAdjust.mockResolvedValue({
+      coverage: 1,
+      year_window: [2024, 2025],
+      method: '分数位置为正态经验估算，非录取概率',
+      buckets: {
+        safe: [{
+          school_id: 1,
+          school_name: '目标院校',
+          avg3: 350,
+          gap: 30,
+          score_position: 0.8,
+          position: '高于历年录取均分',
+          evidence_confidence: 0.67,
+          evidence_label: '一般',
+          years_used: 2,
+          reasons: ['近2个数据年度录取均分 350'],
+        }],
+      },
+    })
+    renderPage()
+    await screen.findByRole('combobox', { name: '参考年份' })
+    fireEvent.change(screen.getByLabelText('预估总分'), { target: { value: '380' } })
+    fireEvent.click(screen.getByRole('button', { name: '按 380 分自动调整' }))
+
+    expect(await screen.findByText('分数位置 80%')).toBeInTheDocument()
+    expect(screen.getByText('证据完整度 67%')).toBeInTheDocument()
+    expect(screen.queryByText(/信心 \d+%/)).toBeNull()
+  })
 })
 
 describe('KaoyanRecommend：分差格式化', () => {

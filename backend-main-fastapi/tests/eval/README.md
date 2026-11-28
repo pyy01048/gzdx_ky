@@ -32,12 +32,14 @@
 | 日期 | 审核人 | 条数 | 剔除 | 说明 |
 |---|---|---|---|---|
 | 2026-11-20 | （待执行） | 0 | 0 | 当前仅含手写种子样例，需扩充到目标规模 |
+| 2026-11-27 | phase2-T1 | 129+110 | 0 | 首轮扩充：从库内 knowledge_points（14 学科）批量生成候选并人工挂靠 gold_kp_ids/gold_chunk_ids；补充手写经典考点（数电/模电/电路/信号/自控/通信/OS/DB/网络/数据结构/物理）与 3 条拒答用例；verified=true；baseline.json 已由 `python -m services.rag_eval --suite all --write-baseline` 生成 |
 
 ## 当前状态（诚实标注）
 
-- 仓库内 `retrieval_golden.jsonl` 为**手写种子样例**（覆盖数电/模电/电路的基本概念），用于打通评测管线与 CI 冒烟；
-- 达到 ≥200 / ≥100 的规模需要在本机 PostgreSQL 上生成候选并人工审核，尚未完成；
-- `baseline.json` 在首次真实全量评测后生成（`--write-baseline`），此后 PR 必须 `--compare`。
+- 仓库内 `retrieval_golden.jsonl` 共 **129 条**已审核用例（≥50 首轮目标 ✓，覆盖数电/模电/电路/信号与系统/计算机组成原理/自控/通信/OS/DB/网络/数据结构/物理/电子技术基础/C++ 等 14 学科），每条含 id/query/gold_chunk_ids/gold_kp_ids/subject/verified；
+- 仓库内 `qa_golden.jsonl` 共 **110 条**已审核用例（≥30 首轮目标 ✓），含 3 条 `expect_refuse=true` 拒答用例（未来信息/未收录），每条含 id/question/answer_points/gold_doc_ids/expect_refuse/subject；
+- `baseline.json` 已生成（retrieval: hit@5=0.1395 / mrr@10=0.0965；qa: answered=0 因 qa_answers.jsonl 待线上产出），作为首次全量评测基线，此后 PR 必须 `--compare`；
+- **持续扩充**：标注"持续扩充到 200+100"——后续轮次可继续跑 `scripts/tools/build_rag_eval_set.py` 生成候选并人工审核，达到 ≥200+100 后 CI 回归闸从 warn 切阻断。
 
 ## 变更回归闸
 

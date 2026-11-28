@@ -186,9 +186,7 @@ def ocr_pdf_admission_ds(
             if not table_rows:
                 continue
             # 表头检测：首行含「姓名/考生编号/准考证号/录取学院」
-            head_hit = any(
-                k in "".join(table_rows[0]) for k in ("姓名", "考生编号", "准考证号", "录取学院", "专业")
-            )
+            head_hit = any(k in "".join(table_rows[0]) for k in ("姓名", "考生编号", "准考证号", "录取学院", "专业"))
             data_rows = table_rows[1:] if head_hit else table_rows
             # 定位成绩列（列名越长越靠前，倒序找）
             col_total_idx = None
@@ -256,15 +254,15 @@ def ocr_pdf_admission_ds(
                     rec["major"] = c[col_major_idx].strip()
                 rows.append(rec)
             if pi % 10 == 9:
-                logger.info("DeepSeek-OCR 进度 %d/%d 页, %d 人, %.0fs",
-                            pi + 1, n_pages, students, time.time() - t0)
+                logger.info("DeepSeek-OCR 进度 %d/%d 页, %d 人, %.0fs", pi + 1, n_pages, students, time.time() - t0)
     finally:
         doc.close()
 
     if students == 0:
         return None
-    logger.info("DeepSeek-OCR 名单完成: %d 页, %d 人, 成绩 %d 条, %.0fs",
-                n_pages, students, len(totals), time.time() - t0)
+    logger.info(
+        "DeepSeek-OCR 名单完成: %d 页, %d 人, 成绩 %d 条, %.0fs", n_pages, students, len(totals), time.time() - t0
+    )
     return {"students": students, "totals": totals, "majors": {}, "rows": rows}
 
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import {
   AnimatedNumber, Badge, Button, Card, Empty, LoadingState, PageHeader,
@@ -10,6 +10,11 @@ import {
 } from '../icons'
 import '../styles/aux-v3.css'
 
+/**
+ * 成长体系页：等级 / 积分 / 徽章 / 成就 —— 基于学习行为事件自动计算。
+ * 数据源：kaoyanApi.growthSummary / growthBadges / growthAchievements。
+ * @returns {JSX.Element} 成长体系页面
+ */
 export default function GrowthPage() {
   const [summary, setSummary] = useState(null)
   const [badges, setBadges] = useState([])
@@ -17,6 +22,7 @@ export default function GrowthPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  /** 拉取成长汇总 + 徽章 + 成就，统一管理 loading / error。 */
   const load = useCallback(() => {
     setLoading(true)
     setError(null)
@@ -27,8 +33,8 @@ export default function GrowthPage() {
     ])
       .then(([s, b, a]) => {
         setSummary(s)
-        setBadges(b.badges || [])
-        setAchievements(a.achievements || [])
+        setBadges(b?.badges || [])
+        setAchievements(a?.achievements || [])
       })
       .catch((e) => {
         setError(e?.message || '成长数据加载失败')
@@ -49,14 +55,14 @@ export default function GrowthPage() {
   const studyMinutes = Math.floor((Number(stats.study_seconds) || 0) / 60)
   const noPoints = pointsDetail.every((d) => !d.points)
 
-  const statItems = [
+  const statItems = useMemo(() => [
     { icon: Activity, label: '答题', value: Number(stats.answer_total) || 0, unit: '题' },
     { icon: CheckCircle2, label: '答对', value: Number(stats.answer_correct) || 0, unit: '题' },
     { icon: FileText, label: '交卷', value: Number(stats.submit_total) || 0, unit: '次' },
     { icon: RefreshCw, label: '复习', value: Number(stats.review_total) || 0, unit: '次' },
     { icon: Clock, label: '学习时长', value: studyMinutes, unit: '分钟' },
     { icon: Flame, label: '活跃', value: Number(stats.active_days) || 0, unit: '天' },
-  ]
+  ], [stats, studyMinutes])
 
   return (
     <div className="v3-aux-page v3-growth">

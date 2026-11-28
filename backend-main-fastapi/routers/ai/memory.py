@@ -11,19 +11,21 @@
   POST /api/memory/distill           手动触发 L2 蒸馏（规则版）
   POST /api/memory/profile           生成/刷新 L3 综合画像
 """
+
 from __future__ import annotations
 
 from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import User
 from pydantic import BaseModel, Field
 from services import memory_service
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id
 from utils.security import current_user
+
+from models import User
 
 router = APIRouter(prefix="/api/memory", tags=["可审计记忆"])
 
@@ -60,7 +62,11 @@ def traces(
 ):
     """L1 原始轨迹列表（按时间倒序）。"""
     return memory_service.list_traces(
-        db, user_id=owner_id(user), trace_type=trace_type, limit=limit, offset=offset,
+        db,
+        user_id=owner_id(user),
+        trace_type=trace_type,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -88,8 +94,12 @@ def facts(
 ):
     """L2 摘要事实列表（含 evidence 溯源）。"""
     return memory_service.list_facts(
-        db, user_id=owner_id(user), fact_type=fact_type, subject=subject,
-        limit=limit, offset=offset,
+        db,
+        user_id=owner_id(user),
+        fact_type=fact_type,
+        subject=subject,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -102,7 +112,10 @@ def correct_fact(
 ):
     """用户纠错 L2 事实（保留原值快照）。"""
     updated = memory_service.correct_fact(
-        db, user_id=owner_id(user), fact_id=fact_id, corrected_claim=req.corrected_claim,
+        db,
+        user_id=owner_id(user),
+        fact_id=fact_id,
+        corrected_claim=req.corrected_claim,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="事实不存在或无权修改")
@@ -119,7 +132,11 @@ def synthesis(
 ):
     """L3 综合画像列表。"""
     return memory_service.list_synthesis(
-        db, user_id=owner_id(user), synth_type=synth_type, limit=limit, offset=offset,
+        db,
+        user_id=owner_id(user),
+        synth_type=synth_type,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -132,7 +149,9 @@ def correct_synthesis(
 ):
     """用户纠错 L3 综合画像（保留原值快照）。"""
     updated = memory_service.correct_synthesis(
-        db, user_id=owner_id(user), synthesis_id=synthesis_id,
+        db,
+        user_id=owner_id(user),
+        synthesis_id=synthesis_id,
         corrected_summary=req.corrected_summary,
     )
     if not updated:

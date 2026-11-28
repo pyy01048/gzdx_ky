@@ -58,26 +58,26 @@ from services.crawl.runner import (  # noqa: E402
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="院校公告采集栈 CLI（抓取 → 抽取 → 分类 → 去重 → 入库）"
-    )
-    parser.add_argument("--school-id", action="append", type=int, default=None,
-                        help="院校 id，可重复")
-    parser.add_argument("--from-notices", action="store_true",
-                        help="用 kaoyan_notices 里已有的 URL 作为采集目标")
+    parser = argparse.ArgumentParser(description="院校公告采集栈 CLI（抓取 → 抽取 → 分类 → 去重 → 入库）")
+    parser.add_argument("--school-id", action="append", type=int, default=None, help="院校 id，可重复")
+    parser.add_argument("--from-notices", action="store_true", help="用 kaoyan_notices 里已有的 URL 作为采集目标")
     parser.add_argument("--url", action="append", default=None, help="直接指定 URL，可重复")
     parser.add_argument("--limit", type=int, default=5, help="本批最多处理多少条")
     parser.add_argument("--dry-run", action="store_true", help="不写库，只跑完整流程")
     robots = parser.add_mutually_exclusive_group()
-    robots.add_argument("--respect-robots", dest="respect_robots", action="store_true",
-                        default=True, help="尊重 robots.txt（默认）")
-    robots.add_argument("--no-robots", dest="respect_robots", action="store_false",
-                        help="不查 robots.txt（不推荐）")
+    robots.add_argument(
+        "--respect-robots", dest="respect_robots", action="store_true", default=True, help="尊重 robots.txt（默认）"
+    )
+    robots.add_argument("--no-robots", dest="respect_robots", action="store_false", help="不查 robots.txt（不推荐）")
     attach = parser.add_mutually_exclusive_group()
-    attach.add_argument("--attachments", dest="attachments", action="store_true", default=True,
-                        help="下载公告附件并解析 PDF（默认开，仅真实落库时生效）")
-    attach.add_argument("--no-attachments", dest="attachments", action="store_false",
-                        help="不下载附件")
+    attach.add_argument(
+        "--attachments",
+        dest="attachments",
+        action="store_true",
+        default=True,
+        help="下载公告附件并解析 PDF（默认开，仅真实落库时生效）",
+    )
+    attach.add_argument("--no-attachments", dest="attachments", action="store_false", help="不下载附件")
     parser.add_argument("--stats", action="store_true", help="只打印队列统计")
     return parser.parse_args(argv)
 
@@ -144,8 +144,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             try:
                 queue = CrawlQueue(session)
             except _ModelsUnavailable as exc:
-                print(json.dumps({"error": "models_unavailable", "detail": str(exc)},
-                                 ensure_ascii=False, indent=2))
+                print(json.dumps({"error": "models_unavailable", "detail": str(exc)}, ensure_ascii=False, indent=2))
                 return 2
             print(json.dumps(queue.stats(), ensure_ascii=False, indent=2))
             return 0
@@ -160,11 +159,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             try:
                 queue = CrawlQueue(session)
             except _ModelsUnavailable as exc:
-                print(json.dumps(
-                    {"error": "models_unavailable", "detail": str(exc),
-                     "hint": "真实落库需要 models.CrawlJob/CrawlPage/CrawlDeadLetter "
-                             "与 queue_pg.py 适配层；先用 --dry-run 试跑。"},
-                    ensure_ascii=False, indent=2))
+                print(
+                    json.dumps(
+                        {
+                            "error": "models_unavailable",
+                            "detail": str(exc),
+                            "hint": "真实落库需要 models.CrawlJob/CrawlPage/CrawlDeadLetter "
+                            "与 queue_pg.py 适配层；先用 --dry-run 试跑。",
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
                 return 2
 
         # ---------------- 播种任务 ---------------- #
@@ -181,8 +187,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if key in seen:
                     continue
                 seen.add(key)
-                queue.enqueue(source_key=f"school:{row['id']}", url=url,
-                              school_id=row["id"], job_type="notice")
+                queue.enqueue(source_key=f"school:{row['id']}", url=url, school_id=row["id"], job_type="notice")
                 queued += 1
 
         if args.from_notices:
@@ -194,8 +199,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if key in seen:
                     continue
                 seen.add(key)
-                queue.enqueue(source_key=f"notice:{row['id']}", url=url,
-                              school_id=row["school_id"], job_type="notice")
+                queue.enqueue(source_key=f"notice:{row['id']}", url=url, school_id=row["school_id"], job_type="notice")
                 queued += 1
 
         for url in args.url or []:
@@ -207,8 +211,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             queued += 1
 
         if not args.school_id and not args.from_notices and not args.url:
-            print("[warn] 没有指定任何采集目标："
-                  "用 --school-id / --from-notices / --url 至少给一个。", file=sys.stderr)
+            print("[warn] 没有指定任何采集目标：用 --school-id / --from-notices / --url 至少给一个。", file=sys.stderr)
             return 1
 
         # ---------------- 跑一批 ---------------- #

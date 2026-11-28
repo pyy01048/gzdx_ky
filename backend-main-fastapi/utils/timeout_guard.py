@@ -114,12 +114,12 @@ class TimeoutGuardMiddleware:
     ) -> None:
         self.app = app
         self.get_timeout = (
-            get_timeout if get_timeout is not None else _env_float(
-                "API_TIMEOUT_GET_SECONDS", DEFAULT_GET_TIMEOUT)
+            get_timeout if get_timeout is not None else _env_float("API_TIMEOUT_GET_SECONDS", DEFAULT_GET_TIMEOUT)
         )
         self.write_timeout = (
-            write_timeout if write_timeout is not None else _env_float(
-                "API_TIMEOUT_WRITE_SECONDS", DEFAULT_WRITE_TIMEOUT)
+            write_timeout
+            if write_timeout is not None
+            else _env_float("API_TIMEOUT_WRITE_SECONDS", DEFAULT_WRITE_TIMEOUT)
         )
         self.exempt_prefixes = exempt_prefixes if exempt_prefixes is not None else load_exempt_prefixes()
         self.path_timeouts = dict(DEFAULT_PATH_TIMEOUTS)
@@ -188,9 +188,7 @@ class TimeoutGuardMiddleware:
             if response_started:
                 # 响应头已经发出（很可能是长连接/SSE），此时无法再改成 504，
                 # 只能继续等待——这正是 SSE 需要的行为。
-                logger.warning(
-                    f"请求超时但响应已开始传输，跳过超时中断: {method} {path}"
-                )
+                logger.warning(f"请求超时但响应已开始传输，跳过超时中断: {method} {path}")
                 await app_task
                 return
 
@@ -202,8 +200,7 @@ class TimeoutGuardMiddleware:
                 pass
             elapsed = (time.monotonic() - started_at) * 1000
             logger.error(
-                f"请求超时，已中断并返回 504: {method} {path} - "
-                f"超过阈值 {timeout:.0f}s（实际 {elapsed:.1f}ms）"
+                f"请求超时，已中断并返回 504: {method} {path} - 超过阈值 {timeout:.0f}s（实际 {elapsed:.1f}ms）"
             )
             await self._send_gateway_timeout(send, method, path, timeout, elapsed)
         except asyncio.CancelledError:
@@ -223,30 +220,34 @@ class TimeoutGuardMiddleware:
 
         from utils.exceptions import ErrorCode
 
-        body = json.dumps({
-            "code": ErrorCode.REQUEST_TIMEOUT,
-            "message": (
-                f"请求处理超时（阈值 {timeout:.0f}秒），已中断。"
-                "该接口耗时异常，请查看服务端日志定位慢查询。"
-            ),
-            "detail": {
-                "error": "request_timeout",
-                "method": method,
-                "path": path,
-                "timeout_seconds": timeout,
-                "elapsed_ms": round(elapsed_ms, 1),
+        body = json.dumps(
+            {
+                "code": ErrorCode.REQUEST_TIMEOUT,
+                "message": (
+                    f"请求处理超时（阈值 {timeout:.0f}秒），已中断。该接口耗时异常，请查看服务端日志定位慢查询。"
+                ),
+                "detail": {
+                    "error": "request_timeout",
+                    "method": method,
+                    "path": path,
+                    "timeout_seconds": timeout,
+                    "elapsed_ms": round(elapsed_ms, 1),
+                },
             },
-        }, ensure_ascii=False).encode("utf-8")
+            ensure_ascii=False,
+        ).encode("utf-8")
 
-        await send({
-            "type": "http.response.start",
-            "status": 504,
-            "headers": [
-                (b"content-type", b"application/json; charset=utf-8"),
-                (b"content-length", str(len(body)).encode("latin-1")),
-                (b"connection", b"close"),
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 504,
+                "headers": [
+                    (b"content-type", b"application/json; charset=utf-8"),
+                    (b"content-length", str(len(body)).encode("latin-1")),
+                    (b"connection", b"close"),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body})
 
 

@@ -18,6 +18,7 @@
     r = client.get("/api/health")
     assert r.status_code == 200
 """
+
 from __future__ import annotations
 
 import asyncio

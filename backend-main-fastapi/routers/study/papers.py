@@ -1,4 +1,5 @@
 """组题网路由：组卷 / 试卷管理 / 导出。"""
+
 from __future__ import annotations
 
 import os
@@ -6,16 +7,53 @@ from typing import Any, Dict, List, Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import Paper, PaperQuestion, User
 from pydantic import BaseModel
 from services import paper_builder
+from services.quiz_query import question_owner_expr
+from sqlalchemy import and_, or_
+from sqlalchemy import text as _text
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
-from utils.security import current_user, require_admin
+from utils.security import current_user, optional_user, require_admin
+
+from models import Paper, PaperQuestion, QuizQuestion, User
 
 router = APIRouter(prefix="/api/papers", tags=["组题网"])
 
 LECTURES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "lectures")
+
+# 客观题题型：options 为空时不进入练习/模考
+_OBJECTIVE_TYPES = ("single", "multiple", "judge")
+
+
+def _gate_question_ids(db: Session, question_ids: list[int]) -> set[int]:
+    """内容可用性门禁（T2）：从给定题目 ID 中筛出通过门禁的子集。
+
+    门禁条件：validation_status='pass' AND is_available=true；
+    客观题（single/multiple/judge）额外要求 options 非空（NOT NULL 且文本形态非 '[]'/'null'/'{}'）。
+    用于对 PaperQuestion 快照 / service 返回的题目做后置过滤，确保练习/模考不出现
+    无答案、无选项的题。
+    """
+    if not question_ids:
+        return set()
+    objective_has_options = or_(
+        QuizQuestion.question_type.notin_(_OBJECTIVE_TYPES),
+        and_(
+            QuizQuestion.options.isnot(None),
+            _text("quiz_questions.options::text NOT IN ('[]','null','{}')"),
+        ),
+    )
+    rows = (
+        db.query(QuizQuestion.id)
+        .filter(
+            QuizQuestion.id.in_(question_ids),
+            QuizQuestion.validation_status == "pass",
+            QuizQuestion.is_available.is_(True),
+            objective_has_options,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
 
 
 class BuildRequest(BaseModel):
@@ -40,7 +78,10 @@ class SaveRequest(BaseModel):
 
 
 @router.get("/subjects")
-async def paper_subjects(db: Session = Depends(get_db)):
+async def paper_subjects(
+    db: Session = Depends(get_db),
+    user: User | None = Depends(optional_user),
+):
     """组卷入口：题库可用科目与题目数（供前端组卷筛选）。
 
     M0-4 学科统一收口：数据源改为 `services.subject_registry` 唯一聚合器，
@@ -51,7 +92,8 @@ async def paper_subjects(db: Session = Depends(get_db)):
     """
     from services import subject_registry
 
-    data = subject_registry.list_subjects(db)["subjects"]
+    owner_filter = question_owner_expr(user) if user is not None else QuizQuestion.owner_user_id.is_(None)
+    data = subject_registry.list_subjects(db, question_filter=owner_filter)["subjects"]
     items = [{"subject": s["subject"], "count": s["question_count"]} for s in data]
     items.sort(key=lambda it: (-it["count"], it["subject"]))
     return {"items": items}
@@ -82,8 +124,12 @@ async def save_paper(req: SaveRequest, db: Session = Depends(get_db)):
     """保存试卷（题目快照，独立于题库）。"""
     try:
         paper = paper_builder.save_paper(
-            db, title=req.title, subject=req.subject,
-            description=req.description, rules=req.rules, items=req.items,
+            db,
+            title=req.title,
+            subject=req.subject,
+            description=req.description,
+            rules=req.rules,
+            items=req.items,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"保存失败: {e}")
@@ -104,8 +150,11 @@ async def list_papers(
         "total": len(rows),
         "items": [
             {
-                "id": p.id, "title": p.title, "subject": p.subject,
-                "total_score": p.total_score, "question_count": len(p.questions),
+                "id": p.id,
+                "title": p.title,
+                "subject": p.subject,
+                "total_score": p.total_score,
+                "question_count": len(p.questions),
                 "created_at": p.created_at,
             }
             for p in rows
@@ -120,12 +169,10 @@ async def paper_detail(paper_id: int, db: Session = Depends(get_db)):
     paper = db.query(Paper).filter(Paper.id == paper_id).first()
     if not paper:
         raise HTTPException(status_code=404, detail="试卷不存在")
-    questions = (
-        db.query(PaperQuestion)
-        .filter(PaperQuestion.paper_id == paper_id)
-        .order_by(PaperQuestion.seq)
-        .all()
-    )
+    questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).order_by(PaperQuestion.seq).all()
+    # T2 内容可用性门禁：练习/模考只展示 validation_status='pass' AND is_available=true 的题
+    gate_ids = _gate_question_ids(db, [q.question_id for q in questions if q.question_id])
+    questions = [q for q in questions if q.question_id in gate_ids]
     return {
         "id": paper.id,
         "title": paper.title,
@@ -136,9 +183,15 @@ async def paper_detail(paper_id: int, db: Session = Depends(get_db)):
         "created_at": paper.created_at,
         "items": [
             {
-                "seq": q.seq, "question_id": q.question_id, "content": q.content,
-                "options": q.options, "answer": q.answer, "analysis": q.analysis,
-                "question_type": q.question_type, "difficulty": q.difficulty, "score": q.score,
+                "seq": q.seq,
+                "question_id": q.question_id,
+                "content": q.content,
+                "options": q.options,
+                "answer": q.answer,
+                "analysis": q.analysis,
+                "question_type": q.question_type,
+                "difficulty": q.difficulty,
+                "score": q.score,
             }
             for q in questions
         ],
@@ -151,12 +204,10 @@ async def export_paper(paper_id: int, db: Session = Depends(get_db)):
     paper = db.query(Paper).filter(Paper.id == paper_id).first()
     if not paper:
         raise HTTPException(status_code=404, detail="试卷不存在")
-    questions = (
-        db.query(PaperQuestion)
-        .filter(PaperQuestion.paper_id == paper_id)
-        .order_by(PaperQuestion.seq)
-        .all()
-    )
+    questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).order_by(PaperQuestion.seq).all()
+    # T2 内容可用性门禁：导出试卷同样只含通过门禁的题
+    gate_ids = _gate_question_ids(db, [q.question_id for q in questions if q.question_id])
+    questions = [q for q in questions if q.question_id in gate_ids]
     path = paper_builder.paper_to_lecture_html(paper, questions, LECTURES_DIR)
     return {"message": "已导出", "file_path": path}
 
@@ -210,7 +261,12 @@ async def list_papers_indexed(
 ):
     """按年份/卷种筛选试卷列表（P2-M4 新接口）。"""
     items = paper_exam_service.list_papers_by_year_type(
-        db, subject=subject, year=year, paper_type=paper_type, is_mock=is_mock, limit=limit,
+        db,
+        subject=subject,
+        year=year,
+        paper_type=paper_type,
+        is_mock=is_mock,
+        limit=limit,
     )
     return {"total": len(items), "items": items}
 
@@ -226,9 +282,27 @@ async def start_attempt(
     user: User = Depends(current_user),
 ):
     """开始一份试卷的模考作答。"""
+    # T2 内容可用性门禁：模考只含 validation_status='pass' AND is_available=true 的题。
+    # 先取出该卷题目 ID，按门禁筛子集，再把合格子集透传给 service（service 据此创建会话）。
+    paper = db.query(Paper).filter(Paper.id == req.paper_id).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="试卷不存在")
+    all_items = db.query(PaperQuestion).filter(PaperQuestion.paper_id == req.paper_id).order_by(PaperQuestion.seq).all()
+    all_qids = [item.question_id for item in all_items if item.question_id]
+    gate_qids = _gate_question_ids(db, all_qids)
+    # 仅保留通过门禁的题目；service 内部按 paper_id 取题时也会受此子集约束
     try:
         result = paper_exam_service.start_paper_attempt(
-            db, req.paper_id, user_id=user.id)
+            db, req.paper_id, user_id=user.id, question_ids=list(gate_qids) if gate_qids else None
+        )
+    except TypeError:
+        # 兼容 service 不接受 question_ids 参数的旧签名：回落原行为后做后置过滤
+        result = paper_exam_service.start_paper_attempt(db, req.paper_id, user_id=user.id)
+        if isinstance(result, dict):
+            for key in ("questions", "items"):
+                items = result.get(key)
+                if isinstance(items, list):
+                    result[key] = [it for it in items if not isinstance(it, dict) or it.get("question_id") in gate_qids]
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result
@@ -251,8 +325,7 @@ async def submit_attempt(
 ):
     """提交试卷作答并生成报告。"""
     try:
-        result = paper_exam_service.submit_paper_attempt(
-            db, req.attempt_id, req.answers, user_id=user.id)
+        result = paper_exam_service.submit_paper_attempt(db, req.attempt_id, req.answers, user_id=user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result
@@ -266,8 +339,7 @@ async def attempt_report(
 ):
     """查看某次作答的报告（仅本人）。"""
     try:
-        report = paper_exam_service.generate_paper_report(
-            db, attempt_id, user_id=user.id)
+        report = paper_exam_service.generate_paper_report(db, attempt_id, user_id=user.id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return report
@@ -281,7 +353,6 @@ async def attempt_history(
     user: User = Depends(current_user),
 ):
     """获取历史作答记录（仅本人）。"""
-    items = paper_exam_service.get_attempt_history(
-        db, paper_id=paper_id, limit=limit, user_id=user.id)
+    items = paper_exam_service.get_attempt_history(db, paper_id=paper_id, limit=limit, user_id=user.id)
     # 分页约定：items 必须与 total 成对（tests/test_api_conventions.py），与 /indexed 同口径
     return {"total": len(items), "items": items}

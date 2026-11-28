@@ -6,6 +6,7 @@ from typing import List, Optional
 from database import get_db
 from fastapi import APIRouter, Depends, File, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id, scoped  # B4 行级隔离：词库/单词均严格本人
@@ -342,9 +343,19 @@ def _require_own_deck(db: Session, deck_id: int, user: User) -> WordDeck:
 def list_decks(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """获取词库分类（B4：只返回本人词库；内置模板走 GET /templates 目录）。"""
     decks = db.query(WordDeck).filter(scoped(WordDeck, user)).order_by(WordDeck.id).all()
-    # 实时统计每个词库的单词数（B4：只统计本人单词）
+    # 批量统计每个词库的单词数，避免 N+1（每词库一条 COUNT）
+    deck_ids = [d.id for d in decks]
+    counts: dict[int, int] = {}
+    if deck_ids:
+        rows = (
+            db.query(Word.deck_id, func.count(Word.id))
+            .filter(Word.deck_id.in_(deck_ids), scoped(Word, user))
+            .group_by(Word.deck_id)
+            .all()
+        )
+        counts = {deck_id: cnt for deck_id, cnt in rows}
     for d in decks:
-        d.word_count = db.query(Word).filter(Word.deck_id == d.id, scoped(Word, user)).count()
+        d.word_count = counts.get(d.id, 0)
     return decks
 
 
@@ -358,9 +369,20 @@ def list_template_decks(db: Session = Depends(get_db), user: User = Depends(curr
     uid = owner_id(user)
     templates = db.query(WordDeck).filter(WordDeck.user_id == TEMPLATE_OWNER_ID).order_by(WordDeck.id).all()
     own_names = {name for (name,) in db.query(WordDeck.name).filter(WordDeck.user_id == uid).all()}
+    # 批量统计每个模板的单词数，避免 N+1（每模板一条 COUNT）
+    tpl_ids = [t.id for t in templates]
+    tpl_counts: dict[int, int] = {}
+    if tpl_ids:
+        rows = (
+            db.query(Word.deck_id, func.count(Word.id))
+            .filter(Word.deck_id.in_(tpl_ids), Word.user_id == TEMPLATE_OWNER_ID)
+            .group_by(Word.deck_id)
+            .all()
+        )
+        tpl_counts = {deck_id: cnt for deck_id, cnt in rows}
     out = []
     for t in templates:
-        count = db.query(Word).filter(Word.deck_id == t.id, Word.user_id == TEMPLATE_OWNER_ID).count()
+        count = tpl_counts.get(t.id, 0)
         out.append(
             {
                 "id": t.id,

@@ -18,6 +18,7 @@
   3. `book_name` 回退到「正文首个《》」的老规则。
 这样同一份样本清单能跑出修复前 / 修复后的两组可比数字。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,11 +46,28 @@ CACHE_DIR = os.path.join(BASE_DIR, "data", "_eval_text_cache")
 
 #: 修复前的数学/政治强信号词表（取自 git HEAD，用于 --legacy 复现旧行为）
 _LEGACY_STRONG = {
-    "数学": ["数学", "高数", "高等数学", "线代", "线性代数", "概率论", "数理统计",
-             "张宇", "660", "1000题", "基础30讲", "数一", "数二", "数三",
-             "概统", "概率统计", "微积分", "同济", "复习全书"],
-    "政治": ["政治", "马原", "毛中特", "史纲", "思修", "肖秀荣", "徐涛", "腿姐",
-             "辩证法", "唯物史观", "近代史纲要"],
+    "数学": [
+        "数学",
+        "高数",
+        "高等数学",
+        "线代",
+        "线性代数",
+        "概率论",
+        "数理统计",
+        "张宇",
+        "660",
+        "1000题",
+        "基础30讲",
+        "数一",
+        "数二",
+        "数三",
+        "概统",
+        "概率统计",
+        "微积分",
+        "同济",
+        "复习全书",
+    ],
+    "政治": ["政治", "马原", "毛中特", "史纲", "思修", "肖秀荣", "徐涛", "腿姐", "辩证法", "唯物史观", "近代史纲要"],
 }
 
 
@@ -57,10 +75,9 @@ def apply_legacy_patch() -> None:
     """把服务端的判定逻辑**在内存里**还原成修复前的样子。"""
     _SUBJECT_STRONG.update(_LEGACY_STRONG)
     kb._subject_from_path = lambda path: None
-    si._BOOK_NAME_NOISE = re.compile(r"(?!x)x")      # 永不命中 = 关掉噪声过滤
+    si._BOOK_NAME_NOISE = re.compile(r"(?!x)x")  # 永不命中 = 关掉噪声过滤
     si._pick_book_name_from_text = lambda head: (
-        si._BOOK_RE.search(head).group(1).strip()
-         if si._BOOK_RE.search(head) else ""
+        si._BOOK_RE.search(head).group(1).strip() if si._BOOK_RE.search(head) else ""
     )
 
 
@@ -74,7 +91,7 @@ def parse_text(path: str) -> str:
             return f.read()
     try:
         text = DocumentParser().parse(path) or ""
-    except Exception as e:                                  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         print(f"    [解析失败] {type(e).__name__}: {e}")
         text = ""
     # errors="replace"：PDF 文本层里偶有孤立代理字符（'\ud835'），直接写会崩
@@ -95,16 +112,14 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="只跑前 N 个样本")
     ap.add_argument("--verbose", action="store_true", help="打印正文前 200 字")
     ap.add_argument("--samples", default=SAMPLES_PATH, help="样本清单 json 路径")
-    ap.add_argument("--legacy", action="store_true",
-                    help="打补丁复现修复前的判定逻辑，产出基线数据")
+    ap.add_argument("--legacy", action="store_true", help="打补丁复现修复前的判定逻辑，产出基线数据")
     args = ap.parse_args()
 
     global _LEGACY
     _LEGACY = args.legacy
     if args.legacy:
         apply_legacy_patch()
-        print("[legacy] 已还原修复前逻辑：无路径信号 / 数学含裸「1000题」/ "
-              "book_name 取正文首个《》\n")
+        print("[legacy] 已还原修复前逻辑：无路径信号 / 数学含裸「1000题」/ book_name 取正文首个《》\n")
 
     with open(args.samples, encoding="utf-8") as f:
         samples = json.load(f)
@@ -139,26 +154,25 @@ def main() -> int:
             else:
                 bad += 1
                 flag = "XX"
-                wrong.append({"path": path, "expected": expected,
-                              "actual": actual, "book": book})
+                wrong.append({"path": path, "expected": expected, "actual": actual, "book": book})
 
         print(f"{i:>2} {expected:<22} {actual:<22} {flag:<3} {name[:52]}")
-        print(f"       chars={chars} ({time.time() - t0:.1f}s) "
-              f"book={book!r} chapter={meta.get('chapter', '')!r} "
-              f"ctype={meta.get('content_type', '')!r}")
+        print(
+            f"       chars={chars} ({time.time() - t0:.1f}s) "
+            f"book={book!r} chapter={meta.get('chapter', '')!r} "
+            f"ctype={meta.get('content_type', '')!r}"
+        )
         if args.verbose and text:
             print("       head:", repr(text.strip()[:200]))
 
     print("-" * 110)
     print(f"样本 {len(samples)} 个，可判定 {total} 个，无文本层 {no_text} 个")
     if total:
-        print(f"学科判定准确率：{ok}/{total} = {ok / total * 100:.1f}%  "
-              f"（错 {bad}）")
+        print(f"学科判定准确率：{ok}/{total} = {ok / total * 100:.1f}%  （错 {bad}）")
     if wrong:
         print("\n判错明细：")
         for w in wrong:
-            print(f"  期望={w['expected']}  实际={w['actual']}  "
-                  f"book={w['book']!r}\n    {w['path']}")
+            print(f"  期望={w['expected']}  实际={w['actual']}  book={w['book']!r}\n    {w['path']}")
     return 0 if bad == 0 else 1
 
 

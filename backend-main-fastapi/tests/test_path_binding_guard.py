@@ -11,6 +11,7 @@
   2. **降级**：真题索引指不到时，检索这一路必须退化成空索引而不是抛异常——它藏在
      搜索链路里，让它崩等于让搜索 500。
 """
+
 from __future__ import annotations
 
 import ast
@@ -34,14 +35,19 @@ def _string_constants(path: Path) -> list[tuple[int, str]]:
     tree = ast.parse(path.read_text(encoding="utf-8-sig"))
     doc_ids = set()
     for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) and node.body:
             first = node.body[0]
-            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
-                    and isinstance(first.value.value, str)):
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
                 doc_ids.add(id(first.value))
-    return [(n.lineno, n.value)
-            for n in ast.walk(tree)
-            if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in doc_ids]
+    return [
+        (n.lineno, n.value)
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in doc_ids
+    ]
 
 
 def test_runtime_code_has_no_machine_bound_paths():
@@ -118,6 +124,5 @@ def test_kb_ingest_root_uses_single_authority(monkeypatch, tmp_path):
     assert "resolve_kb_root" in src, "kb_ingest 的 KB 根必须来自 resolve_kb_root()"
     literals = {v for _l, v in _string_constants(BACKEND_DIR / "services" / "kb_ingest.py")}
     assert "KB_ROOT" not in literals, (
-        "kb_ingest 不应再自带 KB_ROOT 环境变量——与 KAOYAN_KB_ROOT 同义不同名，"
-        "两套名字必然只有一套生效"
+        "kb_ingest 不应再自带 KB_ROOT 环境变量——与 KAOYAN_KB_ROOT 同义不同名，两套名字必然只有一套生效"
     )

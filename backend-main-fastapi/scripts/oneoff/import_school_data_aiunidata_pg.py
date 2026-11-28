@@ -8,6 +8,7 @@ ai-for-unidata 院校数据补全 (PostgreSQL)
 
 运行: python scripts/import_school_data_aiunidata_pg.py
 """
+
 # [DONE 2026-11] 院校数据导入（aiunidata 源）。回滚：见脚本内备份表。
 import csv
 import os
@@ -19,7 +20,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(PROJECT_ROOT, "..", "data_sources", "ai-for-unidata", "backend", "src", "main", "resources")
 
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -45,7 +45,7 @@ def update_school_urls(conn):
         for s in schools:
             name = s["name"].strip()
             url = (s.get("admissionUrl") or "").strip()
-            level = (s.get("level") or "").strip()
+            (s.get("level") or "").strip()
             if not url:
                 continue
             cur.execute(
@@ -99,9 +99,11 @@ def import_national_lines(conn):
             year = int(r["year"]) if r.get("year") else None
             discipline = (r.get("discipline") or "").strip()
             subjects = (r.get("subjects") or "").strip() or None
+
             def to_int(v):
                 v = (v or "").strip()
                 return int(v) if v else None
+
             total_a = to_int(r.get("totalA"))
             politics_a = to_int(r.get("oneA"))
             math_a = to_int(r.get("overA"))
@@ -123,8 +125,7 @@ def import_national_lines(conn):
                     total_b=EXCLUDED.total_b, politics_b=EXCLUDED.politics_b, math_b=EXCLUDED.math_b,
                     note=EXCLUDED.note
                 """,
-                (year, discipline, subjects, total_a, politics_a, math_a,
-                 total_b, politics_b, math_b, note),
+                (year, discipline, subjects, total_a, politics_a, math_a, total_b, politics_b, math_b, note),
             )
             inserted += cur.rowcount
     conn.commit()

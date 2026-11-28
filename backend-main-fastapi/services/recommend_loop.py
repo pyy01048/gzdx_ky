@@ -13,13 +13,14 @@ import logging
 import re
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from models import (
     AnswerRecord,
     KnowledgePoint,
     QuestionKnowledgeLink,
     QuizQuestion,
 )
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +49,7 @@ def identify_weak_points(
     limit = max(int(limit or 10), 0)
 
     # 信号 A：错题密度（已按 user_id 过滤）
-    error_rows = error_linker.weak_knowledge_points(
-        db, subject=subject, limit=30, user_id=user_id
-    )
+    error_rows = error_linker.weak_knowledge_points(db, subject=subject, limit=30, user_id=user_id)
     merged: dict[int, dict[str, Any]] = {}
     for r in error_rows:
         kp_id = r.get("knowledge_point_id")
@@ -69,12 +68,13 @@ def identify_weak_points(
 
     # 信号 B：四态模型中的 weak 状态（已学且 mastery ∈ (0, 70)）
     try:
-        learned_ids = kp_mastery.learned_kp_ids(db)
+        learned_ids = kp_mastery.learned_kp_ids(db, user_id=user_id)
+        personal_mastery = kp_mastery.user_mastery(db, user_id)
         kp_q = db.query(KnowledgePoint)
         if subject:
             kp_q = kp_q.filter(KnowledgePoint.subject == subject)
         for kp in kp_q.all():
-            mastery = int(kp.mastery or 0)
+            mastery = int(personal_mastery.get(kp.id, 0))
             state = kp_mastery.classify_state(mastery, kp.id in learned_ids)
             if state != kp_mastery.STATE_WEAK:
                 continue
@@ -103,9 +103,7 @@ def identify_weak_points(
 
     # 信号 C：L2 记忆 weakness 事实（带 knowledge_point 字段）
     try:
-        facts = memory_service.list_facts(
-            db, user_id=user_id, fact_type="weakness", limit=200
-        )
+        facts = memory_service.list_facts(db, user_id=user_id, fact_type="weakness", limit=200)
         for fact in facts:
             kp_id = fact.get("knowledge_point_id")
             # 名称字段：优先 kp_name，其次兼容 knowledge_point 字段
@@ -142,11 +140,7 @@ def identify_weak_points(
         error_count = int(item.get("error_count") or 0)
         memory_fact_count = int(item.get("memory_fact_count") or 0)
         mastery = int(item.get("mastery") or 0)
-        weak_score = (
-            error_count * 2
-            + memory_fact_count * 3
-            + (100 - mastery) / 10
-        )
+        weak_score = error_count * 2 + memory_fact_count * 3 + (100 - mastery) / 10
         item["weak_score"] = round(weak_score, 2)
         item["sources"] = sorted(set(item.get("sources") or []))
         out.append(item)
@@ -275,13 +269,16 @@ def generate_variant_questions(
         question_type = str(item.get("question_type") or "single").strip().lower()
         if question_type not in _VARIANT_QUESTION_TYPES:
             question_type = "single"
-        answer_type = str(item.get("answer_type") or (
-            "objective" if question_type in ("single", "multiple", "judge") else "subjective"
-        )).strip().lower()
-        if answer_type not in ("objective", "subjective"):
-            answer_type = (
-                "objective" if question_type in ("single", "multiple", "judge") else "subjective"
+        answer_type = (
+            str(
+                item.get("answer_type")
+                or ("objective" if question_type in ("single", "multiple", "judge") else "subjective")
             )
+            .strip()
+            .lower()
+        )
+        if answer_type not in ("objective", "subjective"):
+            answer_type = "objective" if question_type in ("single", "multiple", "judge") else "subjective"
         q = QuizQuestion(
             content=content,
             options=_normalize_variant_options(item.get("options")),
@@ -337,6 +334,7 @@ def mastery_gate(
     kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == int(kp_id)).first()
     if kp is None:
         return {"mastered": False, "reason": "kp_not_found"}
+    personal_mastery = kp_mastery.user_mastery(db, user_id)
 
     linked_qids = [
         row[0]
@@ -352,7 +350,7 @@ def mastery_gate(
             "required": consecutive_required,
             "kp_id": kp.id,
             "kp_name": kp.name,
-            "mastery": int(kp.mastery or 0),
+            "mastery": int(personal_mastery.get(kp.id, 0)),
         }
 
     records = (
@@ -403,5 +401,5 @@ def mastery_gate(
         "required": int(consecutive_required or 3),
         "kp_id": kp.id,
         "kp_name": kp.name,
-        "mastery": int(kp.mastery or 0),
+        "mastery": int(personal_mastery.get(kp.id, 0)),
     }

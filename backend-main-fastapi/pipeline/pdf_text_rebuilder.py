@@ -38,6 +38,7 @@
   · 不推断标点（不擅自补全缺失的句号、括号）
   · 不处理图片（图片题保持标记，交由上层决定）
 """
+
 from __future__ import annotations
 
 import re
@@ -46,7 +47,7 @@ import re
 HARD_LINE_RE = re.compile(
     r"^\s*(?:"
     r"第\s*[一二三四五六七八九十\d]+\s*[部分章节]|"
-    r"[一二三四五六七八九十]+\s*[、.]\s*\S{2,8}|"      # 一、选择题
+    r"[一二三四五六七八九十]+\s*[、.]\s*\S{2,8}|"  # 一、选择题
     r"【答案】|【解析】|【分析】|参考答案|目\s*录"
     r")\s*$"
 )
@@ -112,7 +113,7 @@ def rebuild_lines(content: str) -> list[str]:
     """
     src = (content or "").splitlines()
     out: list[str] = []
-    buf = ""          # 正在累积的行
+    buf = ""  # 正在累积的行
 
     def flush(keep_blank: bool = False) -> None:
         """收尾当前累积行。
@@ -181,8 +182,8 @@ def rebuild_lines(content: str) -> list[str]:
             # 否则抽取器 SECTION_RE 命中 0 → 整个选择题区抽不到题。
             m = RE_SECTION_HEAD.search(merged)
             if m and m.start() > 0:
-                head = merged[:m.start()].rstrip()
-                tail = merged[m.start():].strip()
+                head = merged[: m.start()].rstrip()
+                tail = merged[m.start() :].strip()
                 if head:
                     out.append(head)
                 buf = tail
@@ -246,12 +247,15 @@ def split_inline_options(line: str) -> list[str]:
             if not matches:
                 return [line]
             first = matches[0]
-            if first.start() > 0 and line[first.start() - 1] not in STEM_END_CHARS \
-                    and not line[first.start() - 1].isspace():
+            if (
+                first.start() > 0
+                and line[first.start() - 1] not in STEM_END_CHARS
+                and not line[first.start() - 1].isspace()
+            ):
                 return [line]
 
     parts: list[str] = []
-    head = line[:first.start()].rstrip()
+    head = line[: first.start()].rstrip()
     if head:
         parts.append(head)
 
@@ -259,7 +263,7 @@ def split_inline_options(line: str) -> list[str]:
     seq = matches
     for i, m in enumerate(seq):
         end = seq[i + 1].start() if i + 1 < len(seq) else len(line)
-        seg = line[m.start():end].strip()
+        seg = line[m.start() : end].strip()
         if not seg:
             continue
         if parts and parts[-1] and parts[-1][-1] not in STEM_END_CHARS:

@@ -6,6 +6,7 @@ recall 判定，precision 仍按 top-1 组池，于是报表显示零精度代�
 口径实测 precision 0.862→0.667、F1 −10.6pt。本测试锁死修正后的口径，防止旧数字
 被重新用来立项。纯函数测试，不连库、不跑 bge。
 """
+
 import os
 import sys
 
@@ -19,12 +20,11 @@ A, B = SCOPES[0], SCOPES[1]
 
 
 def feat(gold, sub, alt=""):
-    return {"gold": gold, "sub": sub, "alt": alt, "conf": 0.8, "junk": "",
-            "pua_share": 0.0, "top_sim": 0.5}
+    return {"gold": gold, "sub": sub, "alt": alt, "conf": 0.8, "junk": "", "pua_share": 0.0, "top_sim": 0.5}
 
 
 def test_baseline_top1_only():
-    fs = [feat(A, A), feat(A, B)]          # 一块判对、一块判错，都在 A 池
+    fs = [feat(A, A), feat(A, B)]  # 一块判对、一块判错，都在 A 池
     r = score(fs, {})
     assert r["exposures"] == 2
     assert r["prec"] == pytest.approx(0.5)
@@ -38,10 +38,10 @@ def test_alt_relaxation_moves_precision_too():
     所以 precision 必然下降；旧口径把这部分曝光从分母里抹掉了。
     """
     fs = [
-        feat(A, A),                          # A 池判对
-        feat(A, B, alt=A),                   # top1 判错，alt 才对 → 新增一次正确曝光
-        feat(B, B, alt=A),                   # top1 判对，alt 让它在 A 池变成污染
-        feat("其他", A, alt=B),               # 域外块，两个池都被污染
+        feat(A, A),  # A 池判对
+        feat(A, B, alt=A),  # top1 判错，alt 才对 → 新增一次正确曝光
+        feat(B, B, alt=A),  # top1 判对，alt 让它在 A 池变成污染
+        feat("其他", A, alt=B),  # 域外块，两个池都被污染
     ]
     strict = score(fs, {})
     relaxed = score(fs, {"use_alt": True})
@@ -56,7 +56,7 @@ def test_double_pool_counts_two_exposures():
     fs = [feat(A, A, alt=B)]
     r = score(fs, {"use_alt": True})
     assert r["exposures"] == 2
-    assert r["prec"] == pytest.approx(0.5)      # 另一池里它是污染
+    assert r["prec"] == pytest.approx(0.5)  # 另一池里它是污染
 
 
 def test_alt_equal_to_top1_does_not_duplicate():
@@ -73,6 +73,7 @@ def test_out_of_domain_gold_never_counts_correct():
 
 def test_abstention_removes_exposure():
     """弃权块被 stamp 成「其他」后既不进池也不该被 alt 捞回来。"""
+
     def junk_all(f):
         return True
 

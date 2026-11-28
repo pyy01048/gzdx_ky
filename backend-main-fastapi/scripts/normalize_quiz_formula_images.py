@@ -32,6 +32,7 @@ python scripts/normalize_quiz_formula_images.py            # 干跑
 python scripts/normalize_quiz_formula_images.py --apply    # 写库
 ```
 """
+
 from __future__ import annotations
 
 import argparse
@@ -81,16 +82,19 @@ def main() -> int:
     args = ap.parse_args()
 
     from database import SessionLocal
-    from models import QuizQuestion
     from sqlalchemy import text as sqltext
+
+    from models import QuizQuestion
 
     db = SessionLocal()
     try:
-        rows = db.execute(sqltext("""
+        rows = db.execute(
+            sqltext("""
             select id, coalesce(content,''), coalesce(analysis,''),
                    coalesce(options::text,'')
             from quiz_questions
-        """)).fetchall()
+        """)
+        ).fetchall()
 
         rels = set()
         for _qid, c, a, o in rows:

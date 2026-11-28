@@ -10,6 +10,7 @@
 
 只用 conftest 的测试沙箱库（kaoyan_test），绝不碰生产库。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -33,10 +34,24 @@ def _fake_result() -> ParseResult:
         ocr_engine="fake",
         ocr_confidence=0.99,
         blocks=[
-            ParsedBlock(page_no=1, block_type=BLOCK_TEXT, text="1. 放大电路的输入电阻应当足够大。",
-                        bbox=(50, 100, 500, 130), block_id="b1", reading_order=0, confidence=0.98),
-            ParsedBlock(page_no=1, block_type=BLOCK_FIGURE, text="图1-1 放大电路示意图",
-                        bbox=(50, 200, 500, 400), block_id="f1", reading_order=1, confidence=0.9),
+            ParsedBlock(
+                page_no=1,
+                block_type=BLOCK_TEXT,
+                text="1. 放大电路的输入电阻应当足够大。",
+                bbox=(50, 100, 500, 130),
+                block_id="b1",
+                reading_order=0,
+                confidence=0.98,
+            ),
+            ParsedBlock(
+                page_no=1,
+                block_type=BLOCK_FIGURE,
+                text="图1-1 放大电路示意图",
+                bbox=(50, 200, 500, 400),
+                block_id="f1",
+                reading_order=1,
+                confidence=0.9,
+            ),
         ],
     )
     page2 = ParsedPage(
@@ -47,8 +62,15 @@ def _fake_result() -> ParseResult:
         ocr_engine="fake",
         ocr_confidence=0.97,
         blocks=[
-            ParsedBlock(page_no=2, block_type=BLOCK_TEXT, text="2. 判断放大电路是否工作在线性区。",
-                        bbox=(50, 100, 520, 130), block_id="b2", reading_order=0, confidence=0.95),
+            ParsedBlock(
+                page_no=2,
+                block_type=BLOCK_TEXT,
+                text="2. 判断放大电路是否工作在线性区。",
+                bbox=(50, 100, 520, 130),
+                block_id="b2",
+                reading_order=0,
+                confidence=0.95,
+            ),
         ],
     )
     return ParseResult(
@@ -71,12 +93,14 @@ def fake_parse_fn():
 @pytest.fixture()
 def document_id(db_schema):  # noqa: ARG001 - 依赖建表夹具
     from database import SessionLocal
+
     from models import Document
 
     db = SessionLocal()
     try:
-        doc = Document(file_name="幂等测试.pdf", file_path="fake://idempotent.pdf",
-                       source_format="pdf", subject="数字电子技术")
+        doc = Document(
+            file_name="幂等测试.pdf", file_path="fake://idempotent.pdf", source_format="pdf", subject="数字电子技术"
+        )
         db.add(doc)
         db.commit()
         return int(doc.id)
@@ -86,34 +110,43 @@ def document_id(db_schema):  # noqa: ARG001 - 依赖建表夹具
 
 def test_ingest_is_idempotent(fake_parse_fn, document_id):
     from database import SessionLocal
+
     from models import DocumentBlock, DocumentPage
 
     db = SessionLocal()
     try:
-        first = ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
-                           subject="数字电子技术", parse_fn=fake_parse_fn, write=True)
+        first = ingest_pdf(
+            db,
+            "fake://idempotent.pdf",
+            document_id=document_id,
+            subject="数字电子技术",
+            parse_fn=fake_parse_fn,
+            write=True,
+        )
         assert first["written"] is True
         assert first["pages"] == 2
         assert first["blocks"] == 3
         assert first["document_id"] == document_id
 
-        pages_after_first = db.query(DocumentPage).filter(
-            DocumentPage.document_id == document_id).count()
-        blocks_after_first = db.query(DocumentBlock).filter(
-            DocumentBlock.document_id == document_id).count()
+        pages_after_first = db.query(DocumentPage).filter(DocumentPage.document_id == document_id).count()
+        blocks_after_first = db.query(DocumentBlock).filter(DocumentBlock.document_id == document_id).count()
         assert pages_after_first == 2
         assert blocks_after_first == 3
 
         # —— 第二遍：同参数再跑一次 ——
-        second = ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
-                            subject="数字电子技术", parse_fn=fake_parse_fn, write=True)
+        second = ingest_pdf(
+            db,
+            "fake://idempotent.pdf",
+            document_id=document_id,
+            subject="数字电子技术",
+            parse_fn=fake_parse_fn,
+            write=True,
+        )
         assert second["pages"] == 2
         assert second["blocks"] == 3
 
-        pages_after_second = db.query(DocumentPage).filter(
-            DocumentPage.document_id == document_id).count()
-        blocks_after_second = db.query(DocumentBlock).filter(
-            DocumentBlock.document_id == document_id).count()
+        pages_after_second = db.query(DocumentPage).filter(DocumentPage.document_id == document_id).count()
+        blocks_after_second = db.query(DocumentBlock).filter(DocumentBlock.document_id == document_id).count()
 
         assert pages_after_second == pages_after_first, "重复 ingest 产生了重复的页行"
         assert blocks_after_second == blocks_after_first, "重复 ingest 产生了重复的块行"
@@ -123,17 +156,17 @@ def test_ingest_is_idempotent(fake_parse_fn, document_id):
 
 def test_page_no_is_one_based(fake_parse_fn, document_id):
     from database import SessionLocal
+
     from models import DocumentBlock, DocumentPage
 
     db = SessionLocal()
     try:
-        ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
-                   parse_fn=fake_parse_fn, write=True)
+        ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id, parse_fn=fake_parse_fn, write=True)
 
-        page_nos = [row.page_no for row in db.query(DocumentPage).filter(
-            DocumentPage.document_id == document_id).all()]
-        block_page_nos = [row.page_no for row in db.query(DocumentBlock).filter(
-            DocumentBlock.document_id == document_id).all()]
+        page_nos = [row.page_no for row in db.query(DocumentPage).filter(DocumentPage.document_id == document_id).all()]
+        block_page_nos = [
+            row.page_no for row in db.query(DocumentBlock).filter(DocumentBlock.document_id == document_id).all()
+        ]
 
         assert sorted(page_nos) == [1, 2]
         assert min(page_nos) >= 1, "页码必须 1 基"
@@ -146,18 +179,16 @@ def test_page_no_is_one_based(fake_parse_fn, document_id):
 def test_dry_run_writes_nothing(fake_parse_fn, document_id):
     """write=False 只统计不写库。"""
     from database import SessionLocal
+
     from models import DocumentBlock, DocumentPage
 
     db = SessionLocal()
     try:
-        stats = ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
-                           parse_fn=fake_parse_fn, write=False)
+        stats = ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id, parse_fn=fake_parse_fn, write=False)
         assert stats["written"] is False
         assert stats["pages"] == 2
-        assert db.query(DocumentPage).filter(
-            DocumentPage.document_id == document_id).count() == 0
-        assert db.query(DocumentBlock).filter(
-            DocumentBlock.document_id == document_id).count() == 0
+        assert db.query(DocumentPage).filter(DocumentPage.document_id == document_id).count() == 0
+        assert db.query(DocumentBlock).filter(DocumentBlock.document_id == document_id).count() == 0
     finally:
         db.close()
 
@@ -168,8 +199,7 @@ def test_grades_and_stats(fake_parse_fn, document_id):
 
     db = SessionLocal()
     try:
-        stats = ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
-                           parse_fn=fake_parse_fn, write=True)
+        stats = ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id, parse_fn=fake_parse_fn, write=True)
         assert stats["questions"] >= 1
         assert set(stats["grades"]) == {"A", "B", "C", "JUNK"}
         assert stats["grades"]["C"] >= 1
@@ -186,6 +216,7 @@ def test_corrupted_block_flag_lands_in_db(fake_parse_fn, document_id):
     对应查询：SELECT * FROM document_blocks WHERE extra->>'math_corrupted' = 'true'
     """
     from database import SessionLocal
+
     from models import DocumentBlock
 
     def fake_corrupt(pdf_path, **kwargs):  # noqa: ARG001
@@ -195,12 +226,15 @@ def test_corrupted_block_flag_lands_in_db(fake_parse_fn, document_id):
 
     db = SessionLocal()
     try:
-        ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
-                   parse_fn=fake_corrupt, write=True)
-        row = db.query(DocumentBlock).filter(
-            DocumentBlock.document_id == document_id,
-            DocumentBlock.block_id == "b1",
-        ).first()
+        ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id, parse_fn=fake_corrupt, write=True)
+        row = (
+            db.query(DocumentBlock)
+            .filter(
+                DocumentBlock.document_id == document_id,
+                DocumentBlock.block_id == "b1",
+            )
+            .first()
+        )
         assert row is not None
         assert row.extra.get("math_corrupted") is True
         assert "empty_call" in row.extra.get("math_corrupt_reasons", [])
@@ -217,6 +251,7 @@ def test_json_columns_roundtrip_as_dict(fake_parse_fn, document_id):
     AttributeError。现在这些列改用 ``RawJSON``（只把 None 短路成 SQL NULL）。
     """
     from database import SessionLocal
+
     from models import DocumentBlock, DocumentPage
 
     def fake_with_layout(pdf_path, **kwargs):  # noqa: ARG001
@@ -227,16 +262,23 @@ def test_json_columns_roundtrip_as_dict(fake_parse_fn, document_id):
 
     db = SessionLocal()
     try:
-        ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id,
-                   parse_fn=fake_with_layout, write=True)
-        page_row = db.query(DocumentPage).filter(
-            DocumentPage.document_id == document_id,
-            DocumentPage.page_no == 1,
-        ).first()
-        block_row = db.query(DocumentBlock).filter(
-            DocumentBlock.document_id == document_id,
-            DocumentBlock.block_id == "b1",
-        ).first()
+        ingest_pdf(db, "fake://idempotent.pdf", document_id=document_id, parse_fn=fake_with_layout, write=True)
+        page_row = (
+            db.query(DocumentPage)
+            .filter(
+                DocumentPage.document_id == document_id,
+                DocumentPage.page_no == 1,
+            )
+            .first()
+        )
+        block_row = (
+            db.query(DocumentBlock)
+            .filter(
+                DocumentBlock.document_id == document_id,
+                DocumentBlock.block_id == "b1",
+            )
+            .first()
+        )
         assert page_row.layout_json == {"text_blocks": 3, "body_font_size": 10.5}
         assert block_row.extra == {"math_corrupted": True}
         assert isinstance(block_row.extra, dict)

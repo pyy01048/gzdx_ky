@@ -238,6 +238,7 @@ function buildIcs(events, calName) {
   return L.join('\r\n') + '\r\n'
 }
 
+/** 触发浏览器下载文本文件（用于 .ics 日历导出）。 */
 function downloadText(text, filename, mime) {
   const blob = new Blob(['\ufeff' + text], { type: mime || 'text/calendar;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -250,6 +251,7 @@ function downloadText(text, filename, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
+/** 加载失败提示条，含重试按钮。 */
 function LoadErrorBar({ title, detail, onRetry }) {
   return (
     <div className="v3-plan-errorbar" role="alert">
@@ -262,6 +264,7 @@ function LoadErrorBar({ title, detail, onRetry }) {
   )
 }
 
+/** 无备考科目时的空状态提示。 */
 function NoSubjects({ ready }) {
   return (
     <Empty
@@ -276,13 +279,17 @@ function NoSubjects({ ready }) {
 }
 
 /* ============================================================ */
+/**
+ * 学习计划表主组件：日 / 周月 / 艾宾浩斯 / 早起 / 阶段复习 五个视图。
+ * 顶部展示连续打卡天数与艾宾浩斯待复习数，支持 .ics 日历导出。
+ */
 export default function Planner() {
   const [tab, setTab] = useState('daily')
   const [streak, setStreak] = useState(0)
   const [ebbCount, setEbbCount] = useState(0)
   const [exporting, setExporting] = useState(false)
 
-  const loadOverview = async () => {
+  const loadOverview = useCallback(async () => {
     let ok = true
     try {
       const eb = await plannerApi.listEarlyBird()
@@ -298,17 +305,17 @@ export default function Planner() {
       ok = false
     }
     return ok
-  }
+  }, [])
 
-  useEffect(() => { loadOverview() }, [])
+  useEffect(() => { loadOverview() }, [loadOverview])
 
-  const refreshOverview = async () => {
+  const refreshOverview = useCallback(async () => {
     const ok = await loadOverview()
     if (ok) toastOk('计划概览已刷新')
     else toastErr('刷新失败，请稍后重试')
-  }
+  }, [loadOverview])
 
-  const exportIcs = async () => {
+  const exportIcs = useCallback(async () => {
     setExporting(true)
     try {
       const events = []
@@ -394,7 +401,7 @@ export default function Planner() {
     } finally {
       setExporting(false)
     }
-  }
+  }, [])
 
   return (
     <div className="v3-stack v3-plan">

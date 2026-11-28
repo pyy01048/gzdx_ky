@@ -14,6 +14,7 @@
     python scripts/apply_noise_markers.py            # dry-run，报数 + 抽样
     python scripts/apply_noise_markers.py --apply    # 写库（先 backup()）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,8 +65,7 @@ def main() -> int:
     conn = sqlite3.connect(DB if args.apply else f"file:{DB}?mode=ro", uri=True)
     try:
         rows = conn.execute(
-            "SELECT id, school_id, school_name, title, notice_type, importance_reason "
-            "FROM kaoyan_notices ORDER BY id"
+            "SELECT id, school_id, school_name, title, notice_type, importance_reason FROM kaoyan_notices ORDER BY id"
         ).fetchall()
     finally:
         conn.close()
@@ -73,11 +73,11 @@ def main() -> int:
     total = len(rows)
 
     # ---- 扫描：只对未被现有规则覆盖的行跑新增判据 ----
-    high_hits: list[tuple] = []   # (row, kind)   —— 写库
+    high_hits: list[tuple] = []  # (row, kind)   —— 写库
     review_hits: list[tuple] = []  # (row, kind)   —— 只记录
     already = 0
     for r in rows:
-        reason = (r[5] or "")
+        reason = r[5] or ""
         if any(k in reason for k in EXISTING_NOISE_REASONS):
             already += 1
             continue
@@ -151,10 +151,9 @@ def main() -> int:
         print(f"  跳过（已含标记）        : {skipped} 条")
         print(f"  review 级未动           : {len(review_hits)} 条")
         # 写后核验
-        marked = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_notices "
-            "WHERE importance_reason LIKE '%噪声:%'"
-        ).fetchone()[0]
+        marked = conn.execute("SELECT COUNT(*) FROM kaoyan_notices WHERE importance_reason LIKE '%噪声:%'").fetchone()[
+            0
+        ]
         print(f"  当前 importance_reason 含「噪声:」总数: {marked}")
     finally:
         conn.close()

@@ -20,6 +20,7 @@
   3. 清洗后选项数 < 2 的客观题，同步把 question_type 降级依据留给人工，
      此处只记录到报告，不擅自改题型。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,9 +63,7 @@ def main() -> int:
     conn = sqlite3.connect(args.db)
     conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(
-            "SELECT id, options, question_type FROM quiz_questions"
-        ).fetchall()
+        rows = conn.execute("SELECT id, options, question_type FROM quiz_questions").fetchall()
 
         changes, anomalies = [], []
         for r in rows:
@@ -85,18 +84,19 @@ def main() -> int:
             old_val = None if raw is None else raw
             if (old_val or None) != (new_val or None):
                 # old_count：解析前的项数（"null" 视为 0 项）
-                old_count = 0 if (raw is None or str(raw).strip().lower() in ("", "null")) \
-                    else diag.get("before", 0)
-                changes.append({
-                    "id": r["id"], "question_type": qtype,
-                    "old_count": old_count,
-                    "new_count": len(target) if target else 0,
-                })
+                old_count = 0 if (raw is None or str(raw).strip().lower() in ("", "null")) else diag.get("before", 0)
+                changes.append(
+                    {
+                        "id": r["id"],
+                        "question_type": qtype,
+                        "old_count": old_count,
+                        "new_count": len(target) if target else 0,
+                    }
+                )
 
             # 异常留证：客观题清洗后仍无选项
             if qtype in {"single", "multiple", "judge"} and not target:
-                anomalies.append({"id": r["id"], "question_type": qtype,
-                                  "reason": "客观题无可提取选项"})
+                anomalies.append({"id": r["id"], "question_type": qtype, "reason": "客观题无可提取选项"})
 
         print("=" * 60)
         print("题库选项清洗计划")
@@ -107,6 +107,7 @@ def main() -> int:
 
         if changes:
             from collections import Counter
+
             dist = Counter(f"{c['old_count']}→{c['new_count']}" for c in changes)
             print("\n  改写分布（旧→新项数）：")
             for k, v in dist.most_common(10):
@@ -114,8 +115,8 @@ def main() -> int:
 
         if args.report:
             Path(args.report).write_text(
-                json.dumps({"changes": changes, "anomalies": anomalies},
-                           ensure_ascii=False, indent=2), encoding="utf-8")
+                json.dumps({"changes": changes, "anomalies": anomalies}, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             print(f"\n  报告：{args.report}")
 
         if not args.apply:
@@ -127,17 +128,16 @@ def main() -> int:
 
         done = 0
         for c in changes:
-            r = conn.execute("SELECT options, question_type FROM quiz_questions WHERE id=?",
-                             (c["id"],)).fetchone()
+            r = conn.execute("SELECT options, question_type FROM quiz_questions WHERE id=?", (c["id"],)).fetchone()
             opts, _ = normalize_options(r["options"])
-            target = None if (r["question_type"] or "") in SUBJECTIVE_TYPES else (
-                opts if len(opts) >= 2 else None)
+            target = None if (r["question_type"] or "") in SUBJECTIVE_TYPES else (opts if len(opts) >= 2 else None)
             # 明确写 SQL NULL（不是字符串 'null'）
             if target is None:
                 conn.execute("UPDATE quiz_questions SET options=NULL WHERE id=?", (c["id"],))
             else:
-                conn.execute("UPDATE quiz_questions SET options=? WHERE id=?",
-                             (json.dumps(target, ensure_ascii=False), c["id"]))
+                conn.execute(
+                    "UPDATE quiz_questions SET options=? WHERE id=?", (json.dumps(target, ensure_ascii=False), c["id"])
+                )
             done += 1
         conn.commit()
         print(f"已改写 {done} 题")
@@ -148,9 +148,7 @@ def main() -> int:
             "WHERE options IS NOT NULL AND options <> 'null' "
             "AND json_valid(options) AND json_array_length(options) > 6"
         ).fetchone()[0]
-        nullstr = conn.execute(
-            "SELECT COUNT(*) FROM quiz_questions WHERE options = 'null'"
-        ).fetchone()[0]
+        nullstr = conn.execute("SELECT COUNT(*) FROM quiz_questions WHERE options = 'null'").fetchone()[0]
         print(f"复核：超 6 项脏数据 {dirty} 条（清洗前 33）；字符串 null {nullstr} 条（清洗前 8099）")
         return 0
     finally:

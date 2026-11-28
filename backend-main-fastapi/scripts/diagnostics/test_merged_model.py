@@ -6,6 +6,7 @@
   2. 是否输出连贯中文（而非乱码/复读）
   3. 是否遵守 system 人设
 """
+
 import os
 import sys
 import time
@@ -45,11 +46,14 @@ def main() -> int:
 
     print("加载模型（float32，CPU 上约需 12GB 内存）...")
     model = AutoModelForCausalLM.from_pretrained(
-        MERGED, torch_dtype=torch.float32, trust_remote_code=True, low_cpu_mem_usage=True,
+        MERGED,
+        torch_dtype=torch.float32,
+        trust_remote_code=True,
+        low_cpu_mem_usage=True,
     )
     model.eval()
     n_param = sum(p.numel() for p in model.parameters())
-    print(f"  参数量 {n_param/1e9:.2f}B | 加载耗时 {time.time()-t0:.1f}s")
+    print(f"  参数量 {n_param / 1e9:.2f}B | 加载耗时 {time.time() - t0:.1f}s")
 
     for q in PROMPTS:
         print("\n" + "=" * 70)
@@ -60,12 +64,15 @@ def main() -> int:
         t1 = time.time()
         with torch.no_grad():
             out = model.generate(
-                **inputs, max_new_tokens=120, do_sample=False,
-                repetition_penalty=1.1, pad_token_id=tok.eos_token_id,
+                **inputs,
+                max_new_tokens=120,
+                do_sample=False,
+                repetition_penalty=1.1,
+                pad_token_id=tok.eos_token_id,
             )
-        gen = out[0][inputs["input_ids"].shape[1]:]
+        gen = out[0][inputs["input_ids"].shape[1] :]
         ans = tok.decode(gen, skip_special_tokens=True)
-        print(f"A ({time.time()-t1:.1f}s): {ans.strip()[:400]}")
+        print(f"A ({time.time() - t1:.1f}s): {ans.strip()[:400]}")
     return 0
 
 

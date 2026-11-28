@@ -16,10 +16,10 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from models import AnswerRecord, ErrorRecord
 from sqlalchemy.orm import Session
 from utils.timeutil import iso_utc_z, local_today, utcnow
 
+from models import AnswerRecord, ErrorRecord
 from services import error_linker, kp_mastery
 from services.ai_service import AIService
 from services.study_calendar import day_ledger, fill_series, streak_summary
@@ -35,11 +35,12 @@ class LearningAnalyticsService:
     # ------------------------------------------------------------------
     # 错题AI分析
     # ------------------------------------------------------------------
-    async def analyze_error(self, error_id: int) -> Dict[str, Any]:
+    async def analyze_error(self, error_id: int, *, user_id: Optional[int] = None) -> Dict[str, Any]:
         """AI分析单道错题，生成错误原因、详细解析、知识点链接和变式题建议。
 
         Args:
             error_id: 错题记录ID
+            user_id: 登录用户ID；传入时只能查询该用户自己的错题
 
         Returns:
             {
@@ -55,18 +56,21 @@ class LearningAnalyticsService:
                 "review_suggestion": str,      # 复习建议
             }
         """
-        error = self.db.query(ErrorRecord).filter(ErrorRecord.id == error_id).first()
+        query = self.db.query(ErrorRecord).filter(ErrorRecord.id == error_id)
+        if user_id is not None:
+            query = query.filter(ErrorRecord.user_id == user_id)
+        error = query.first()
         if not error:
             raise ValueError(f"错题记录 {error_id} 不存在")
 
         # 构建AI分析prompt
         prompt = f"""请作为一位经验丰富的考研辅导老师，分析以下错题：
 
-题目：{error.content or '（无题目内容）'}
-用户答案：{error.my_answer or '（未作答）'}
-正确答案：{error.correct_answer or '（无正确答案）'}
-题目解析：{error.analysis or '（无解析）'}
-学科：{error.subject or '未知'}
+题目：{error.content or "（无题目内容）"}
+用户答案：{error.my_answer or "（未作答）"}
+正确答案：{error.correct_answer or "（无正确答案）"}
+题目解析：{error.analysis or "（无解析）"}
+学科：{error.subject or "未知"}
 
 请按以下格式输出分析结果：
 
@@ -91,7 +95,10 @@ class LearningAnalyticsService:
 
         try:
             messages = [
-                {"role": "system", "content": "你是一位经验丰富的考研辅导老师，擅长分析错题和给出针对性学习建议。回答要专业、详细、有针对性。"},
+                {
+                    "role": "system",
+                    "content": "你是一位经验丰富的考研辅导老师，擅长分析错题和给出针对性学习建议。回答要专业、详细、有针对性。",
+                },
                 {"role": "user", "content": prompt},
             ]
             result = await self.ai.chat(messages)
@@ -177,7 +184,13 @@ class LearningAnalyticsService:
     # ------------------------------------------------------------------
     # 考点诊断
     # ------------------------------------------------------------------
-    def diagnose_weak_points(self, subject: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
+    def diagnose_weak_points(
+        self,
+        subject: Optional[str] = None,
+        limit: int = 20,
+        *,
+        user_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """基于答题记录和错题记录，诊断薄弱考点。
 
         考点名单**不在这里算**：唯一出口是
@@ -199,14 +212,20 @@ class LearningAnalyticsService:
         """
         # 统计答题记录
         query = self.db.query(AnswerRecord)
+        if user_id is not None:
+            query = query.filter(AnswerRecord.user_id == user_id)
         if subject:
             query = query.filter(AnswerRecord.subject == subject)
         total_answers = query.count()
-        correct_answers = query.filter(AnswerRecord.is_correct == True).count()
-        correct_rate = round(correct_answers / total_answers * 100, 1) if total_answers > 0 else 0
+        graded_answers = query.filter(AnswerRecord.is_correct.is_not(None)).count()
+        pending_answers = total_answers - graded_answers
+        correct_answers = query.filter(AnswerRecord.is_correct.is_(True)).count()
+        correct_rate = round(correct_answers / graded_answers * 100, 1) if graded_answers else 0
 
         # 统计错题
         error_query = self.db.query(ErrorRecord).filter(ErrorRecord.status == "active")
+        if user_id is not None:
+            error_query = error_query.filter(ErrorRecord.user_id == user_id)
         if subject:
             error_query = error_query.filter(ErrorRecord.subject == subject)
         errors = error_query.all()
@@ -231,11 +250,13 @@ class LearningAnalyticsService:
             subject_dist[subj] = subject_dist.get(subj, 0) + 1
 
         # 薄弱考点分析（唯一出口：error_knowledge_links × active 错题）
-        weak_points = self._weak_point_rows(subject, limit)
+        weak_points = self._weak_point_rows(subject, limit, user_id=user_id)
 
         return {
             "total_questions": total_answers,
             "correct_answers": correct_answers,
+            "graded_questions": graded_answers,
+            "pending_questions": pending_answers,
             "correct_rate": correct_rate,
             "total_errors": len(errors),
             "weak_points": weak_points,
@@ -244,7 +265,13 @@ class LearningAnalyticsService:
             "diagnosis_time": iso_utc_z(utcnow()),
         }
 
-    def _weak_point_rows(self, subject: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    def _weak_point_rows(
+        self,
+        subject: Optional[str],
+        limit: int,
+        *,
+        user_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
         """把 ``error_linker.weak_points_view`` 投影成 /weak-points 的响应字段。
 
         ``knowledge_point`` 是 ``name`` 的旧键名，保留是为了不弄坏已有调用方；
@@ -254,30 +281,32 @@ class LearningAnalyticsService:
         不再用正则从题干猜考点名（那会凭空造出「XX定理」这种库里不存在的标签）。
         """
         rows = []
-        for p in error_linker.weak_points_view(self.db, subject=subject, limit=limit):
+        for p in error_linker.weak_points_view(self.db, subject=subject, limit=limit, user_id=user_id):
             # weak_points_view 的行必然来自 error_knowledge_links，即有学习记录。
             state = kp_mastery.classify_state(p["mastery"], has_records=True)
             name = p["name"]
-            rows.append({
-                "knowledge_point_id": p["knowledge_point_id"],
-                "knowledge_point": name,
-                "subject": p["subject"],
-                "chapter": p["chapter"],
-                "error_count": p["error_count"],
-                "mastery": p["mastery"],
-                "level": kp_mastery.STATE_LABELS[state],
-                "suggestion": (
-                    f"「{name}」掌握较好，可适当减少复习频率。"
-                    if state == kp_mastery.STATE_MASTERED
-                    else f"「{name}」还有 {p['error_count']} 道错题未毕业，建议优先复习这个考点。"
-                ),
-            })
+            rows.append(
+                {
+                    "knowledge_point_id": p["knowledge_point_id"],
+                    "knowledge_point": name,
+                    "subject": p["subject"],
+                    "chapter": p["chapter"],
+                    "error_count": p["error_count"],
+                    "mastery": p["mastery"],
+                    "level": kp_mastery.STATE_LABELS[state],
+                    "suggestion": (
+                        f"「{name}」掌握较好，可适当减少复习频率。"
+                        if state == kp_mastery.STATE_MASTERED
+                        else f"「{name}」还有 {p['error_count']} 道错题未毕业，建议优先复习这个考点。"
+                    ),
+                }
+            )
         return rows
 
     # ------------------------------------------------------------------
     # 学习轨迹
     # ------------------------------------------------------------------
-    def get_learning_traces(self, days: int = 30) -> Dict[str, Any]:
+    def get_learning_traces(self, days: int = 30, *, user_id: Optional[int] = None) -> Dict[str, Any]:
         """最近 N 天的学习轨迹：**全部派生自 ``services/study_calendar`` 日活台账**。
 
         Returns:
@@ -310,7 +339,7 @@ class LearningAnalyticsService:
         end_date = local_today()
         start_date = end_date - timedelta(days=days - 1)
 
-        ledger = day_ledger(self.db, start_day=start_date, end_day=end_date)
+        ledger = day_ledger(self.db, start_day=start_date, end_day=end_date, user_id=user_id)
         series = fill_series(ledger, start_date, end_date)
         streak = streak_summary(ledger, today=end_date)
 
@@ -375,26 +404,31 @@ class LearningAnalyticsService:
     # ------------------------------------------------------------------
     # 学习报告生成
     # ------------------------------------------------------------------
-    async def generate_study_report(self, report_type: str = "weekly") -> Dict[str, Any]:
+    async def generate_study_report(
+        self,
+        report_type: str = "weekly",
+        *,
+        user_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """生成学习报告（周报/月报）。
 
         Args:
             report_type: "weekly" 或 "monthly"
         """
         days = 7 if report_type == "weekly" else 30
-        traces = self.get_learning_traces(days)
-        diagnosis = self.diagnose_weak_points()
+        traces = self.get_learning_traces(days, user_id=user_id)
+        diagnosis = self.diagnose_weak_points(user_id=user_id)
 
         # AI生成报告总结
-        prompt = f"""请根据以下学习数据，生成一份{'周' if report_type == 'weekly' else '月'}学习报告总结：
+        prompt = f"""请根据以下学习数据，生成一份{"周" if report_type == "weekly" else "月"}学习报告总结：
 
-学习天数：{traces['total_study_days']}天
-连续学习：{traces['current_streak']}天
-完成任务：{traces['total_tasks_completed']}个
-刷题数量：{traces['total_questions_done']}道
-学习时长：{traces['total_study_minutes']}分钟
-正确率：{diagnosis['correct_rate']}%
-薄弱考点：{', '.join([p['knowledge_point'] for p in diagnosis['weak_points'][:5]])}
+学习天数：{traces["total_study_days"]}天
+连续学习：{traces["current_streak"]}天
+完成任务：{traces["total_tasks_completed"]}个
+刷题数量：{traces["total_questions_done"]}道
+学习时长：{traces["total_study_minutes"]}分钟
+正确率：{diagnosis["correct_rate"]}%
+薄弱考点：{", ".join([p["knowledge_point"] for p in diagnosis["weak_points"][:5]])}
 
 请用鼓励性的语气，总结本阶段学习情况，指出优点和不足，给出下一阶段的学习建议。
 字数控制在300字以内。"""
@@ -439,7 +473,9 @@ class LearningAnalyticsService:
 
         if diagnosis["weak_points"]:
             weak = diagnosis["weak_points"][0]
-            suggestions.append(f"最薄弱考点是「{weak['knowledge_point']}」（错误{weak['error_count']}次），建议本周重点复习。")
+            suggestions.append(
+                f"最薄弱考点是「{weak['knowledge_point']}」（错误{weak['error_count']}次），建议本周重点复习。"
+            )
 
         if traces["total_questions_done"] < 50:
             suggestions.append("刷题量偏少，建议每天至少完成10道练习题，保持题感。")

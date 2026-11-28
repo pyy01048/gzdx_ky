@@ -184,10 +184,15 @@ class MemoryJobStore(JobStore):
     def find_active(self, source_key: str, url: str) -> Optional[Job]:
         with self._lock:
             for job in self._jobs.values():
-                if job.source_key == source_key and job.url == url and job.status in (
-                    STATUS_PENDING,
-                    STATUS_FAILED,
-                    STATUS_RUNNING,
+                if (
+                    job.source_key == source_key
+                    and job.url == url
+                    and job.status
+                    in (
+                        STATUS_PENDING,
+                        STATUS_FAILED,
+                        STATUS_RUNNING,
+                    )
                 ):
                     return job
         return None
@@ -390,9 +395,7 @@ class SqliteJobStore(JobStore):
 
     def get(self, job_id: int) -> Optional[Job]:
         with self.engine.begin() as conn:
-            row = conn.execute(
-                select(_JOBS_TABLE).where(_JOBS_TABLE.c.id == job_id)
-            ).first()
+            row = conn.execute(select(_JOBS_TABLE).where(_JOBS_TABLE.c.id == job_id)).first()
         return self._row_to_job(row) if row else None
 
     def update(self, job_id: int, **fields) -> Optional[Job]:
@@ -421,9 +424,7 @@ class SqliteJobStore(JobStore):
     def dead_letters(self, limit: int = 50) -> List[Dict[str, Any]]:
         with self.engine.begin() as conn:
             rows = conn.execute(
-                select(_DEAD_TABLE)
-                .order_by(_DEAD_TABLE.c.id.desc())
-                .limit(max(0, int(limit)))
+                select(_DEAD_TABLE).order_by(_DEAD_TABLE.c.id.desc()).limit(max(0, int(limit)))
             ).fetchall()
         out = []
         for row in rows:
@@ -448,9 +449,7 @@ class SqliteJobStore(JobStore):
     def counts(self) -> Dict[str, int]:
         result = {status: 0 for status in ALL_STATUSES}
         with self.engine.begin() as conn:
-            rows = conn.execute(
-                select(_JOBS_TABLE.c.status, _JOBS_TABLE.c.id).select_from(_JOBS_TABLE)
-            ).fetchall()
+            rows = conn.execute(select(_JOBS_TABLE.c.status, _JOBS_TABLE.c.id).select_from(_JOBS_TABLE)).fetchall()
             for row in rows:
                 result[row.status] = result.get(row.status, 0) + 1
         result["total"] = sum(result.get(status, 0) for status in ALL_STATUSES)
@@ -524,7 +523,7 @@ class CrawlQueue:
             self.store.update(job_id, status=STATUS_DEAD, last_error=error)
             self.store.add_dead_letter(job, error, payload=job.to_dict())
             return STATUS_DEAD
-        delay_minutes = 2 ** attempts
+        delay_minutes = 2**attempts
         self.store.update(
             job_id,
             status=STATUS_FAILED,

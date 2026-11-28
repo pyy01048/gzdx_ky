@@ -22,6 +22,7 @@ image/jpg/png services.ocr_service.OCRService
 2. **源文件只归档不删除**：:func:`archive_source` 用 ``copy2`` 而非 ``move``；
    转换失败也不能丢原件。
 """
+
 from __future__ import annotations
 
 import re
@@ -40,10 +41,17 @@ __all__ = [
 ]
 
 EXT_TO_TYPE = {
-    ".pdf": "pdf", ".txt": "txt", ".md": "md",
-    ".doc": "doc", ".docx": "docx",
-    ".ppt": "ppt", ".pptx": "pptx",
-    ".jpg": "image", ".jpeg": "image", ".png": "image", ".bmp": "image",
+    ".pdf": "pdf",
+    ".txt": "txt",
+    ".md": "md",
+    ".doc": "doc",
+    ".docx": "docx",
+    ".ppt": "ppt",
+    ".pptx": "pptx",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".png": "image",
+    ".bmp": "image",
     ".word": "word",
 }
 SUPPORTED_EXTENSIONS = frozenset(EXT_TO_TYPE)

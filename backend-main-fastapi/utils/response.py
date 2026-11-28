@@ -24,6 +24,7 @@
 或分页壳，失败 = 固定三键。这里**不再**提供 ``success_response`` / ``data`` 信封 ——
 两套成功壳并存等于没有壳。
 """
+
 from __future__ import annotations
 
 import math
@@ -44,9 +45,7 @@ _NAIVE_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d{1,
 #: 零偏移而非 ``Z``，与上面的 naive 补 Z 混用会让"全站时间统一"约定破功
 #: （同一字段族两种形状）。这里把 UTC 零偏移一并收敛成 ``Z``。
 #: 非零偏移（如 +08:00）是真实本地时区，语义不同，**不**改写，避免篡改时刻。
-_ISO_UTC_OFFSET_RE = re.compile(
-    r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d{1,6})?)\+00:00$"
-)
+_ISO_UTC_OFFSET_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d{1,6})?)\+00:00$")
 
 
 def to_utc_z(value: str) -> str:

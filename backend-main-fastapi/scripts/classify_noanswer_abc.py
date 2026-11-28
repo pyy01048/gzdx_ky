@@ -20,6 +20,7 @@
     python scripts/classify_noanswer_abc.py --json-out data/diagnostics/noanswer_abc.json
 只读：不写 quiz_questions，不删任何数据。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -66,17 +67,20 @@ MAX_LEN_OK = 400
 # --------------------------------------------------------------------------- #
 NEAR_ANS = re.compile(
     r"(?:【答案】|【参考答案】|\[答案\]|答案\s*[:：]|解\s*[:：]|答\s*[:：]|"
-    r"故\s*选\s*[A-DＡ-Ｄ]|所以答案|因此答案|答案为|故\s*可得)")
+    r"故\s*选\s*[A-DＡ-Ｄ]|所以答案|因此答案|答案为|故\s*可得)"
+)
 PLACEHOLDER = re.compile(r"查看答案|见解析|答案略|（略）|扫码")
 NEXT_Q = re.compile(
     r"(?:^|\n)\s*\d{1,3}\s*[．.、]\s*|查看答案|下一题|"
     # 下一题的起点：题库惯例是「【答案】<本题答案>【解析】<解析>【答案】<下一题>」，
     # 因此答案段必须止于第一个【解析】，否则会把下一题的答案/解析吞进来。
     r"【解析】|〔解析〕|\[解析\]|"
-    r"^\d{1,3}\s*[．.、]")
+    r"^\d{1,3}\s*[．.、]"
+)
 TAIL_NOISE = re.compile(
     r"(第\d+页\s*---|\(OCR\)|微信公众号|公众号|免费分享|考研资料|视频课程|"
-    r"qq\d{6,}|东坡哥|水木观畴|研池大叔|笃学考研|名师精品课程|电话：|客服)")
+    r"qq\d{6,}|东坡哥|水木观畴|研池大叔|笃学考研|名师精品课程|电话：|客服)"
+)
 MIN_ANS_LEN = 4
 
 
@@ -98,7 +102,7 @@ def completeness(content: str, options) -> tuple:
         return "残缺", "OCR碎片（符号/下划线噪声）"
     if n > MAX_LEN_OK:
         return "残缺", f"超长({n}字)疑似讲义段"
-    opts = options if isinstance(options, (list, tuple)) else []
+    opts = options if isinstance(options, list | tuple) else []
     if len(opts) >= 2 and n < 45:
         return "残缺", "题干过短但有选项（题干被腰斩）"
     return "完整", ""
@@ -145,14 +149,13 @@ def extract_answer_after(content: str) -> dict:
     """P1：答案是否就在题干里。"""
     c = content or ""
     for m in NEAR_ANS.finditer(c):
-        seg = c[m.end(): m.end() + 800]
+        seg = c[m.end() : m.end() + 800]
         nm = TAIL_NOISE.search(seg)
         if nm and nm.start() > 0:
             seg = seg[: nm.start()]
         seg = seg.strip()
         if len(seg) >= MIN_ANS_LEN:
-            return {"ok": True, "cut_at": m.start(), "answer": seg[:300],
-                    "stem": c[: m.start()].strip()[-120:]}
+            return {"ok": True, "cut_at": m.start(), "answer": seg[:300], "stem": c[: m.start()].strip()[-120:]}
     return {"ok": False}
 
 
@@ -170,11 +173,11 @@ def probe_align(qnorm: str, body: str, narrow: int = 300) -> dict:
             break
     if idx < 0:
         return {"hit": False, "why": "题干未在文档中定位"}
-    tail = body[idx + max(hit_len, len(qnorm)): idx + max(hit_len, len(qnorm)) + narrow]
+    tail = body[idx + max(hit_len, len(qnorm)) : idx + max(hit_len, len(qnorm)) + narrow]
     m = NEAR_ANS.search(tail)
     if not m:
         return {"hit": False, "why": "就近无答案信号"}
-    seg = tail[m.end():]
+    seg = tail[m.end() :]
     b = NEXT_Q.search(seg)
     if b and b.start() > 0:
         seg = seg[: b.start()]
@@ -221,8 +224,7 @@ def main() -> int:
                 opts = json.loads(opts)
             except Exception:
                 opts = []
-        cls, why, comp, comp_why = classify(
-            (r["id"], r["content"], opts, r["answer"], r["source"], r["question_type"]))
+        cls, why, comp, comp_why = classify((r["id"], r["content"], opts, r["answer"], r["source"], r["question_type"]))
         buckets[cls].append((dict(r), opts, comp, comp_why))
         cls_tot[cls] += 1
         cls_comp[cls][comp] += 1
@@ -233,7 +235,7 @@ def main() -> int:
     print("=" * 78)
     order = ["A-真题缺答案", "B-习题缺答案", "C-不是题"]
     for k in order:
-        print(f"  {k:<14}{cls_tot.get(k,0):>6}  ({cls_tot.get(k,0)*100//max(1,len(rows))}%)")
+        print(f"  {k:<14}{cls_tot.get(k, 0):>6}  ({cls_tot.get(k, 0) * 100 // max(1, len(rows))}%)")
     print(f"  {'合计':<14}{sum(cls_tot.values()):>6}")
 
     print("\n完整度交叉:")
@@ -242,7 +244,7 @@ def main() -> int:
         c = cls_comp.get(k)
         if not c:
             continue
-        print(f"  {k:<14}{c.get('完整',0):>8}{c.get('图缺',0):>8}{c.get('残缺',0):>8}{sum(c.values()):>8}")
+        print(f"  {k:<14}{c.get('完整', 0):>8}{c.get('图缺', 0):>8}{c.get('残缺', 0):>8}{sum(c.values()):>8}")
 
     print("\n" + "=" * 78)
     print("二、判定原因 TOP18")
@@ -282,14 +284,24 @@ def main() -> int:
                     break
                 i += 1
             samples[f"{cls}|{comp}"] = [
-                {"id": r["id"], "source": r["source"], "subject": r["subject"],
-                 "question_type": r["question_type"], "chapter": r["chapter"],
-                 "year": r["year"], "content": r["content"]} for r, _, _ in picked]
+                {
+                    "id": r["id"],
+                    "source": r["source"],
+                    "subject": r["subject"],
+                    "question_type": r["question_type"],
+                    "chapter": r["chapter"],
+                    "year": r["year"],
+                    "content": r["content"],
+                }
+                for r, _, _ in picked
+            ]
             print(f"\n---------- [{cls} / {comp}] 共 {len(lst)} 条，抽样 {len(picked)} 条 ----------")
             for r, opts, cw in picked:
                 txt = (r["content"] or "").replace("\n", " ⏎ ")
-                print(f"\n[id={r['id']}] {r['subject']}/{r['question_type']} "
-                      f"chapter={r['chapter']} year={r['year']} ({len(r['content'] or '')}字, {cw})")
+                print(
+                    f"\n[id={r['id']}] {r['subject']}/{r['question_type']} "
+                    f"chapter={r['chapter']} year={r['year']} ({len(r['content'] or '')}字, {cw})"
+                )
                 print(f"  source: {r['source']}")
                 if opts:
                     print(f"  options: {str(opts)[:150]}")
@@ -303,18 +315,17 @@ def main() -> int:
         print("=" * 78)
         # 4.1 documents 正文归一化索引
         docs = con.execute(
-            "SELECT id, file_name, content FROM documents "
-            "WHERE content IS NOT NULL AND length(content)>500").fetchall()
+            "SELECT id, file_name, content FROM documents WHERE content IS NOT NULL AND length(content)>500"
+        ).fetchall()
         doc_idx = defaultdict(list)
         for d in docs:
             base = re.sub(r"\.(txt|pdf|docx?|doc)$", "", d["file_name"], flags=re.I)[:14]
             doc_idx[base].append(d)
         # 4.2 knowledge_chunks 索引（按 doc_name 分组，拼回全文便于就近查找）
         chunk_docs = con.execute(
-            "SELECT doc_name, count(*) n, sum(length(text)) total FROM knowledge_chunks "
-            "GROUP BY doc_name").fetchall()
-        chunk_idx = {re.sub(r"\.(txt|pdf|docx?|doc)$", "", r["doc_name"], flags=re.I)[:14]: r
-                     for r in chunk_docs}
+            "SELECT doc_name, count(*) n, sum(length(text)) total FROM knowledge_chunks GROUP BY doc_name"
+        ).fetchall()
+        chunk_idx = {re.sub(r"\.(txt|pdf|docx?|doc)$", "", r["doc_name"], flags=re.I)[:14]: r for r in chunk_docs}
 
         def find_doc(src: str):
             fn = re.sub(r"^(知识库|真题):", "", src or "")
@@ -350,9 +361,13 @@ def main() -> int:
                     re.sub(r"\.(txt|pdf|docx?|doc)$", "", k, flags=re.I)[:8]
                     in re.sub(r"\.(txt|pdf|docx?|doc)$", "", d["file_name"], flags=re.I)[:12]
                     or re.sub(r"\.(txt|pdf|docx?|doc)$", "", d["file_name"], flags=re.I)[:8] in k
-                    for k in chunk_idx)
-                key = ("B-文档就近可抽取" if res["why"] == "strict-ok"
-                       else ("C-占位符" if res["hit"] else "D-文档内无答案"))
+                    for k in chunk_idx
+                )
+                key = (
+                    "B-文档就近可抽取"
+                    if res["why"] == "strict-ok"
+                    else ("C-占位符" if res["hit"] else "D-文档内无答案")
+                )
                 stats[key] += 1
                 stats["  └该文档有chunks" if has_chunk else "  └该文档无chunks"] += 1
                 by_cls[cls][key] += 1
@@ -365,8 +380,8 @@ def main() -> int:
         print("\n分类别:")
         for cls in ("A-真题缺答案", "B-习题缺答案"):
             c = by_cls[cls]
-            tot = sum(v for k, v in c.items() if not k.startswith("无"))
-            print(f"  {cls} (闸门放行 {sum(cls_tot.get(k,0) for k in order if k<=cls)} 条中):")
+            sum(v for k, v in c.items() if not k.startswith("无"))
+            print(f"  {cls} (闸门放行 {sum(cls_tot.get(k, 0) for k in order if k <= cls)} 条中):")
             for k, v in c.most_common():
                 print(f"      {k}: {v}")
 
@@ -378,15 +393,15 @@ def main() -> int:
             for r, doc, ans in arr[:6]:
                 print(f"\n[id={r['id']}] {r['subject']}/{r['question_type']} src={r['source']}")
                 print(f"  对齐文档: {doc}")
-                print(f"  题干     : {(r['content'] or '').replace(chr(10),' ')[:150]}")
+                print(f"  题干     : {(r['content'] or '').replace(chr(10), ' ')[:150]}")
                 print(f"  ▶答案    : {ans[:220]}")
 
-        kb = {"stats": dict(stats),
-              "by_cls": {k: dict(v) for k, v in by_cls.items()},
-              "alignable_A": by_cls["A-真题缺答案"]["B-文档就近可抽取"]
-              + by_cls["A-真题缺答案"]["P1"],
-              "alignable_B": by_cls["B-习题缺答案"]["B-文档就近可抽取"]
-              + by_cls["B-习题缺答案"]["P1"]}
+        kb = {
+            "stats": dict(stats),
+            "by_cls": {k: dict(v) for k, v in by_cls.items()},
+            "alignable_A": by_cls["A-真题缺答案"]["B-文档就近可抽取"] + by_cls["A-真题缺答案"]["P1"],
+            "alignable_B": by_cls["B-习题缺答案"]["B-文档就近可抽取"] + by_cls["B-习题缺答案"]["P1"],
+        }
 
     # ---------------- 汇总 ----------------
     print("\n" + "=" * 78)
@@ -399,8 +414,7 @@ def main() -> int:
             p2 = c["B-文档就近可抽取"]
             # 只统计完整度为"完整"的（残缺/图缺即便抽到答案也刷不了）
             n = len(buckets.get(cls, []))
-            print(f"  {cls}: 闸门放行 {n} 条 → 可对齐补答案 {p1 + p2} 条 "
-                  f"(P1题干内 {p1} + P2文档就近 {p2})")
+            print(f"  {cls}: 闸门放行 {n} 条 → 可对齐补答案 {p1 + p2} 条 (P1题干内 {p1} + P2文档就近 {p2})")
         print(f"\n  ** 合计可零风险补答案: {kb['alignable_A'] + kb['alignable_B']} 条 **")
     else:
         print("  （--no-kb 模式，跳过）")
@@ -410,13 +424,19 @@ def main() -> int:
         out = os.path.join(BASE_DIR, args.json_out)
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as f:
-            json.dump({
-                "total_no_answer": len(rows),
-                "cls_totals": dict(cls_tot),
-                "cls_completeness": {k: dict(v) for k, v in cls_comp.items()},
-                "reasons": {f"{a}|{b}": n for (a, b), n in reason_tot.items()},
-                "kb": kb, "samples": samples,
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(
+                {
+                    "total_no_answer": len(rows),
+                    "cls_totals": dict(cls_tot),
+                    "cls_completeness": {k: dict(v) for k, v in cls_comp.items()},
+                    "reasons": {f"{a}|{b}": n for (a, b), n in reason_tot.items()},
+                    "kb": kb,
+                    "samples": samples,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
         print(f"\n[JSON] {out}")
 
     con.close()

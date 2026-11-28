@@ -19,6 +19,7 @@
     python scripts/assess_alignment_precision.py --dump-all     # 打印全部 124 条明细
 只读。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -91,15 +92,23 @@ def main() -> int:
         g, why = grade(d.get("answer", ""))
         stat[g] += 1
         by_hit[(d.get("hit", "")[:40], g)] += 1
-        rows.append({"id": d["id"], "grade": g, "why": why,
-                     "source": d.get("source", ""), "hit": d.get("hit", ""),
-                     "content": d.get("content", ""), "answer": d.get("answer", "")})
+        rows.append(
+            {
+                "id": d["id"],
+                "grade": g,
+                "why": why,
+                "source": d.get("source", ""),
+                "hit": d.get("hit", ""),
+                "content": d.get("content", ""),
+                "answer": d.get("answer", ""),
+            }
+        )
 
     print("=" * 76)
     print("一、质量分级")
     print("=" * 76)
     for k, v in stat.most_common():
-        print(f"  {k}: {v}  ({v*100//max(1,len(det))}%)")
+        print(f"  {k}: {v}  ({v * 100 // max(1, len(det))}%)")
 
     print("\n二、按命中来源 × 等级")
     src_stat = Counter()
@@ -114,7 +123,7 @@ def main() -> int:
     g1 = [r for r in rows if r["grade"] == "G1-可用"]
     for r in g1[: args.dump_all and len(g1) or 25]:
         print(f"\n[id={r['id']}] {r['why']} | hit={r['hit'][:50]}")
-        print(f"  Q: {(r['content'] or '').replace(chr(10),' ')[:130]}")
+        print(f"  Q: {(r['content'] or '').replace(chr(10), ' ')[:130]}")
         print(f"  A: {r['answer'][:220]}")
 
     if args.dump_all:
@@ -123,7 +132,7 @@ def main() -> int:
         print("=" * 76)
         for r in [x for x in rows if x["grade"] == "G2-需复核"]:
             print(f"\n[id={r['id']}] {r['why']} | hit={r['hit'][:50]}")
-            print(f"  Q: {(r['content'] or '').replace(chr(10),' ')[:130]}")
+            print(f"  Q: {(r['content'] or '').replace(chr(10), ' ')[:130]}")
             print(f"  A: {r['answer'][:200]}")
 
     print("\n" + "=" * 76)

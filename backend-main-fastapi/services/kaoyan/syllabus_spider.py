@@ -12,6 +12,7 @@
 `crawl_syllabus(db, school_id, dry_run)` 编排入口（落 code_questions 的
 statement 前缀占位 + tags=[复试大纲]，供全景视图先挂出来）。
 """
+
 from __future__ import annotations
 
 import re
@@ -20,8 +21,7 @@ from typing import Dict, List
 from services.dbapi_compat import wrap_conn
 
 # 匹配含"复试"的栏目/大纲链接（a 标签文本+href）
-_LINK_RE = re.compile(
-    r'<a[^>]+href=["\']([^"\'#]+)["\'][^>]*>([^<]{0,60}?复试[^<]{0,30})</a>', re.I)
+_LINK_RE = re.compile(r'<a[^>]+href=["\']([^"\'#]+)["\'][^>]*>([^<]{0,60}?复试[^<]{0,30})</a>', re.I)
 # 章节标题：第X章 / 一、二、（中文序号）
 _SECTION_RE = re.compile(r"(第[一二三四五六七八九十\d]+章[^<\n]{0,40}|[一二三四五六七八九十]+、[^<\n]{0,40})")
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -60,9 +60,9 @@ def crawl_syllabus(db, school_id: int, dry_run: bool = True) -> Dict:
     云端/离线环境无网络时如实返回 skipped。
     """
     from services.kaoyan.spider_notices import _fetch, _polite, _robots_allows
+
     conn = wrap_conn(db.connection().connection)
-    row = conn.execute(
-        "SELECT name, official_url FROM kaoyan_schools WHERE id=?", (school_id,)).fetchone()
+    row = conn.execute("SELECT name, official_url FROM kaoyan_schools WHERE id=?", (school_id,)).fetchone()
     if not row:
         return {"error": "school_not_found"}
     name, base = row  # 原生 sqlite3 fetchone 返回元组
@@ -82,22 +82,25 @@ def crawl_syllabus(db, school_id: int, dry_run: bool = True) -> Dict:
         except Exception:
             sections_map[lk["title"]] = []
     if dry_run:
-        return {"school": name, "links": links, "sections": sections_map,
-                "dry_run": True}
+        return {"school": name, "links": links, "sections": sections_map, "dry_run": True}
     from services.codebank_service import upsert_question
+
     created = 0
     for title, secs in sections_map.items():
         if not secs:
             continue
-        upsert_question(db, {
-            "title": f"复试大纲 · {title}",
-            "subject": "复试大纲",
-            "difficulty": "easy",
-            "tags": ["复试大纲", row["name"]],
-            "languages": [],
-            "statement": "；".join(secs),
-            "source": "syllabus_spider",
-            "frequency": 3,
-        })
+        upsert_question(
+            db,
+            {
+                "title": f"复试大纲 · {title}",
+                "subject": "复试大纲",
+                "difficulty": "easy",
+                "tags": ["复试大纲", row["name"]],
+                "languages": [],
+                "statement": "；".join(secs),
+                "source": "syllabus_spider",
+                "frequency": 3,
+            },
+        )
         created += 1
     return {"school": row["name"], "links": len(links), "created": created}

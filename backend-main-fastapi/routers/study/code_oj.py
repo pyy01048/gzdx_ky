@@ -1,15 +1,17 @@
 """P2-M5 代码上机 OJ 路由。"""
+
 from __future__ import annotations
 
 from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import User
 from pydantic import BaseModel
 from services import code_oj_service
 from sqlalchemy.orm import Session
 from utils.security import current_user
+
+from models import User
 
 router = APIRouter(prefix="/api/code", tags=["代码上机OJ"])
 
@@ -31,7 +33,12 @@ async def list_problems(
 ):
     """编程题目列表。"""
     items = code_oj_service.list_problems(
-        db, subject=subject, difficulty=difficulty, tag=tag, limit=limit, offset=offset,
+        db,
+        subject=subject,
+        difficulty=difficulty,
+        tag=tag,
+        limit=limit,
+        offset=offset,
     )
     return {"total": len(items), "items": items}
 

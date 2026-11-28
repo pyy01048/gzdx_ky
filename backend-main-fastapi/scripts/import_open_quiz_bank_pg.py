@@ -16,6 +16,7 @@
 
 运行: python scripts/import_open_quiz_bank_pg.py
 """
+
 import glob
 import json
 import logging
@@ -33,7 +34,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts._conn import dsn as DB_DSN_F; DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
+from scripts._conn import dsn as DB_DSN_F
+
+DB_DSN = DB_DSN_F()  # 口令来自 .env（scripts/_conn.py）
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("import_open_quiz_bank")
@@ -175,10 +178,24 @@ def quality_gate(record):
     return True, "ok"
 
 
-def make_record(source, subject, subject_id, content, options, answer, analysis,
-                question_type, chapter=None, chapter_id=None, knowledge_point=None,
-                source_label=None, difficulty=3, year=None, paper=None,
-                external_suffix=None):
+def make_record(
+    source,
+    subject,
+    subject_id,
+    content,
+    options,
+    answer,
+    analysis,
+    question_type,
+    chapter=None,
+    chapter_id=None,
+    knowledge_point=None,
+    source_label=None,
+    difficulty=3,
+    year=None,
+    paper=None,
+    external_suffix=None,
+):
     """构造标准 record dict"""
     external_id = f"{EXT_PREFIX}_{external_suffix}" if external_suffix else None
     rec = {
@@ -234,7 +251,11 @@ def parse_zhangyu():
                 continue
             stem_html = stem_m.group(1)
             # 提取选项
-            opt_blocks = re.findall(r'<span class="opt"><b class="opt-key">\(([^)]+)\)</b><span class="opt-val">(.*?)</span></span>', stem_html, re.S)
+            opt_blocks = re.findall(
+                r'<span class="opt"><b class="opt-key">\(([^)]+)\)</b><span class="opt-val">(.*?)</span></span>',
+                stem_html,
+                re.S,
+            )
             options = None
             stem_text = stem_html
             if opt_blocks:
@@ -263,7 +284,7 @@ def parse_zhangyu():
                 answer = normalize_answer(answer)
                 if answer and not answer_in_options(answer, options):
                     # 尝试从答案文本中提取字母
-                    m = re.search(r'[A-D]', answer)
+                    m = re.search(r"[A-D]", answer)
                     if m:
                         answer = m.group(0)
             elif qtype == "fill":
@@ -307,10 +328,10 @@ def parse_english():
             log.warning("英语 JSON 解析失败 %s: %s", fp, e)
             continue
         year = data.get("year")
-        exam = data.get("exam", "英语")
+        data.get("exam", "英语")
         # 遍历 sections
         for sec in data.get("sections", []):
-            sec_title = sec.get("title", "")
+            sec.get("title", "")
             for g in sec.get("groups", []):
                 gtype = g.get("type", "unknown")
                 questions = g.get("questions", [])
@@ -427,9 +448,9 @@ def parse_politics_json(fp, source, suffix_prefix):
         answer = item.get("answer", "")
         analysis = item.get("analysis", "")
         qtype_raw = item.get("type", "single")  # single / multiple
-        disc = item.get("disc", "")
+        item.get("disc", "")
         disc_label = item.get("disc_label", "")
-        qno = item.get("qno", i + 1)
+        item.get("qno", i + 1)
 
         qtype = "multiple" if str(qtype_raw).lower() in ("multiple", "multi") else "single"
         options = None
@@ -475,6 +496,7 @@ def parse_openexam_politics():
         log.warning("openexam.seed.db 不存在")
         return records
     import sqlite3
+
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute("""
@@ -483,7 +505,7 @@ def parse_openexam_politics():
         LEFT JOIN papers p ON q.paper_id = p.id
         WHERE q.category='changshi' AND q.sub_category='zhengzhi'
     """)
-    for i, (qid, content, options_str, answer, analysis, difficulty, paper_title, year) in enumerate(cur.fetchall()):
+    for i, (_qid, content, options_str, answer, analysis, difficulty, paper_title, year) in enumerate(cur.fetchall()):
         options = None
         try:
             if options_str:
@@ -523,7 +545,8 @@ def parse_openexam_politics():
 # 408 各科目映射到 subjects / chapters
 SUBJECT_408_MAP = {
     "数据结构": {
-        "subject": "数据结构", "subject_id": 24,
+        "subject": "数据结构",
+        "subject_id": 24,
         "chapters": {  # 章节关键词 -> (chapter title, chapter_id)
             "绪论": ("线性表", 179),
             "线性表": ("线性表", 179),
@@ -539,7 +562,8 @@ SUBJECT_408_MAP = {
         },
     },
     "操作系统": {
-        "subject": "操作系统", "subject_id": 25,
+        "subject": "操作系统",
+        "subject_id": 25,
         "chapters": {
             "进程": ("进程与线程", 185),
             "线程": ("进程与线程", 185),
@@ -554,7 +578,8 @@ SUBJECT_408_MAP = {
         },
     },
     "计组": {
-        "subject": "计算机基础", "subject_id": 23,
+        "subject": "计算机基础",
+        "subject_id": 23,
         "chapters": {
             "数据": ("计算机组成原理", 175),
             "存储": ("计算机组成原理", 175),
@@ -567,7 +592,8 @@ SUBJECT_408_MAP = {
         },
     },
     "计网": {
-        "subject": "计算机网络", "subject_id": 5,
+        "subject": "计算机网络",
+        "subject_id": 5,
         "chapters": {
             "体系结构": ("概述", 46),
             "物理层": ("物理层", 47),
@@ -606,9 +632,9 @@ def parse_408quiz():
             qs_list = sec.get("qs", [])
             for qi, qs in enumerate(qs_list):
                 # 格式: [题号, 答案, 题干, 解析, [选项A-D], 图片]
-                if not isinstance(qs, (list, tuple)) or len(qs) < 5:
+                if not isinstance(qs, list | tuple) or len(qs) < 5:
                     continue
-                q_no, answer, content, analysis = qs[0], qs[1], qs[2], qs[3]
+                _q_no, answer, content, analysis = qs[0], qs[1], qs[2], qs[3]
                 opt_strs = qs[4] if len(qs) > 4 else []
                 options = None
                 if opt_strs:
@@ -667,11 +693,17 @@ def parse_egg781():
     # 简化: 按 "id: 'c..." 定位
     items = re.split(r"\n\{\n", content)[1:]
     chapter_titles = {
-        "ch1": "绪论", "ch2": "线性表", "ch3": "栈队列与数组", "ch4": "串",
-        "ch5": "树与二叉树", "ch6": "图", "ch7": "查找", "ch8": "排序",
+        "ch1": "绪论",
+        "ch2": "线性表",
+        "ch3": "栈队列与数组",
+        "ch4": "串",
+        "ch5": "树与二叉树",
+        "ch6": "图",
+        "ch7": "查找",
+        "ch8": "排序",
     }
     for idx, blk in enumerate(items):
-        id_m = re.search(r"id:\s*'([^']+)'", blk)
+        re.search(r"id:\s*'([^']+)'", blk)
         chapter_m = re.search(r"chapter:\s*'([^']+)'", blk)
         type_m = re.search(r"type:\s*'([^']+)'", blk)
         difficulty_m = re.search(r"difficulty:\s*(\d+)", blk)
@@ -835,7 +867,7 @@ def parse_cacheflow408():
             line = lines[i].strip()
             m = re.match(r"^###\s*第(\d+)题", line)
             if m:
-                qno = int(m.group(1))
+                int(m.group(1))
                 content = ""
                 options_raw = []
                 answer = ""
@@ -849,7 +881,7 @@ def parse_cacheflow408():
                     if l2.startswith("**题目**"):
                         content = l2.replace("**题目**", "").replace("：", ":", 1).strip()
                         # 可能跨行
-                        while j + 1 < len(lines) and not lines[j+1].strip().startswith("**"):
+                        while j + 1 < len(lines) and not lines[j + 1].strip().startswith("**"):
                             j += 1
                             content += " " + lines[j].strip()
                     elif l2.startswith("**选项**"):
@@ -864,7 +896,11 @@ def parse_cacheflow408():
                         answer = l2.replace("**答案**", "").replace("：", ":", 1).strip()
                     elif l2.startswith("**解析**"):
                         analysis = l2.replace("**解析**", "").replace("：", ":", 1).strip()
-                        while j + 1 < len(lines) and not lines[j+1].strip().startswith("**") and not re.match(r"^###", lines[j+1].strip()):
+                        while (
+                            j + 1 < len(lines)
+                            and not lines[j + 1].strip().startswith("**")
+                            and not re.match(r"^###", lines[j + 1].strip())
+                        ):
                             j += 1
                             analysis += " " + lines[j].strip()
                     elif l2.startswith("**考察知识点**"):
@@ -977,10 +1013,16 @@ def load_all_records():
     parsers = [
         ("zhangyu-1000t", parse_zhangyu),
         ("structured-kaoyan-english", parse_english),
-        ("xiao1000", lambda: parse_politics_json(
-            os.path.join(DATA_DIR, "xiao1000_questions.json"), "肖秀荣1000题", "xiao1000")),
-        ("manmanxue1500", lambda: parse_politics_json(
-            os.path.join(DATA_DIR, "manmanxue1500_questions.json"), "漫漫学1500题", "manmanxue1500")),
+        (
+            "xiao1000",
+            lambda: parse_politics_json(os.path.join(DATA_DIR, "xiao1000_questions.json"), "肖秀荣1000题", "xiao1000"),
+        ),
+        (
+            "manmanxue1500",
+            lambda: parse_politics_json(
+                os.path.join(DATA_DIR, "manmanxue1500_questions.json"), "漫漫学1500题", "manmanxue1500"
+            ),
+        ),
         ("openexam-gwy", parse_openexam_politics),
         ("408-quiz", parse_408quiz),
         ("egg781", parse_egg781),

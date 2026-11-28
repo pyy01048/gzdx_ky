@@ -46,6 +46,7 @@ Usage
     python clean_kp_noise.py --apply --no-backup  # skip the sqlite backup
     python clean_kp_noise.py --scope ima          # only IMA-derived rows
 """
+
 from __future__ import annotations
 
 import argparse
@@ -126,19 +127,15 @@ def classify(name: str) -> Optional[str]:
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
-    ).fetchone()
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
     return row is not None
 
 
 def load_rows(conn: sqlite3.Connection, scope: str) -> List[Tuple[Any, ...]]:
     """Return (id, name, subject, chapter, document_id) for the requested scope."""
-    sql = ("SELECT kp.id, kp.name, kp.subject, kp.chapter, kp.document_id "
-           "FROM knowledge_points kp")
+    sql = "SELECT kp.id, kp.name, kp.subject, kp.chapter, kp.document_id FROM knowledge_points kp"
     if scope == "ima":
-        sql += (" JOIN documents d ON d.id = kp.document_id "
-                "WHERE d.subject_source = 'ima'")
+        sql += " JOIN documents d ON d.id = kp.document_id WHERE d.subject_source = 'ima'"
     sql += " ORDER BY kp.id"
     return conn.execute(sql).fetchall()
 
@@ -153,7 +150,7 @@ def referenced_ids(conn: sqlite3.Connection, ids: List[int]) -> Dict[int, List[s
             continue
         # Chunk to keep the IN clause small.
         for i in range(0, len(ids), 400):
-            chunk = ids[i:i + 400]
+            chunk = ids[i : i + 400]
             marks = ",".join("?" * len(chunk))
             rows = conn.execute(
                 "SELECT %s FROM %s WHERE %s IN (%s)" % (column, table, column, marks),
@@ -182,16 +179,13 @@ def backup(conn: sqlite3.Connection) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--apply", action="store_true",
-                        help="actually delete flagged rows (default is dry-run)")
-    parser.add_argument("--no-backup", action="store_true",
-                        help="skip the sqlite backup that precedes --apply")
-    parser.add_argument("--scope", choices=("all", "ima"), default="all",
-                        help="all knowledge points (default) or only IMA-derived ones")
-    parser.add_argument("--samples", type=int, default=12,
-                        help="how many sample rows to print per rule")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--apply", action="store_true", help="actually delete flagged rows (default is dry-run)")
+    parser.add_argument("--no-backup", action="store_true", help="skip the sqlite backup that precedes --apply")
+    parser.add_argument(
+        "--scope", choices=("all", "ima"), default="all", help="all knowledge points (default) or only IMA-derived ones"
+    )
+    parser.add_argument("--samples", type=int, default=12, help="how many sample rows to print per rule")
     args = parser.parse_args()
 
     conn = sqlite3.connect(REAL_DB, timeout=60)
@@ -208,14 +202,16 @@ def main() -> int:
                 if _norm(name).lstrip(REF_PREFIX) in clean_names:
                     rule = "R8_dash_duplicate"
             if rule:
-                hits.append({
-                    "id": kp_id,
-                    "name": name,
-                    "subject": subject,
-                    "chapter": chapter,
-                    "document_id": document_id,
-                    "rule": rule,
-                })
+                hits.append(
+                    {
+                        "id": kp_id,
+                        "name": name,
+                        "subject": subject,
+                        "chapter": chapter,
+                        "document_id": document_id,
+                        "rule": rule,
+                    }
+                )
 
         by_rule: Dict[str, List[Dict[str, Any]]] = {}
         for hit in hits:
@@ -223,28 +219,27 @@ def main() -> int:
 
         total = len(rows)
         print("=" * 72)
-        print("scope=%s  scanned=%d  flagged=%d (%.1f%%)  mode=%s"
-              % (args.scope, total, len(hits), 100.0 * len(hits) / max(total, 1),
-                 "APPLY" if args.apply else "DRY-RUN"))
+        print(
+            "scope=%s  scanned=%d  flagged=%d (%.1f%%)  mode=%s"
+            % (args.scope, total, len(hits), 100.0 * len(hits) / max(total, 1), "APPLY" if args.apply else "DRY-RUN")
+        )
         print("=" * 72)
         for rule in sorted(by_rule):
             print("\n[%s] %d hits" % (rule, len(by_rule[rule])))
-            for hit in by_rule[rule][:args.samples]:
+            for hit in by_rule[rule][: args.samples]:
                 shown = hit["name"] if len(hit["name"]) <= 60 else hit["name"][:57] + "..."
                 print("   - id=%-5s doc=%-5s %s" % (hit["id"], hit["document_id"], shown))
             if len(by_rule[rule]) > args.samples:
                 print("   ... %d more" % (len(by_rule[rule]) - args.samples))
 
         # False-positive inspection: short-but-kept names, and names with digits.
-        kept_short = [r for r in rows if 0 < len(_norm(r[1])) < 5
-                      and classify(r[1]) is None]
+        kept_short = [r for r in rows if 0 < len(_norm(r[1])) < 5 and classify(r[1]) is None]
         print("\n[KEPT] short names (<5 chars, not flagged) -> %d, samples:" % len(kept_short))
-        for r in kept_short[:args.samples]:
+        for r in kept_short[: args.samples]:
             print("   + id=%-5s %s" % (r[0], r[1]))
-        kept_digit = [r for r in rows if re.search(r"\d", r[1] or "")
-                      and classify(r[1]) is None]
+        kept_digit = [r for r in rows if re.search(r"\d", r[1] or "") and classify(r[1]) is None]
         print("\n[KEPT] names containing digits (not flagged) -> %d, samples:" % len(kept_digit))
-        for r in kept_digit[:args.samples]:
+        for r in kept_digit[: args.samples]:
             shown = r[1] if len(r[1]) <= 60 else r[1][:57] + "..."
             print("   + id=%-5s %s" % (r[0], shown))
 
@@ -261,20 +256,18 @@ def main() -> int:
         if backup_path:
             print("\nbackup -> %s" % backup_path)
         if skipped:
-            print("\n[SKIP] %d flagged rows are referenced elsewhere and were kept:"
-                  % len(skipped))
-            for hit in skipped[:args.samples]:
-                print("   ! id=%-5s %s <- %s" % (hit["id"], hit["name"][:40],
-                                                 ",".join(refs[hit["id"]])))
+            print("\n[SKIP] %d flagged rows are referenced elsewhere and were kept:" % len(skipped))
+            for hit in skipped[: args.samples]:
+                print("   ! id=%-5s %s <- %s" % (hit["id"], hit["name"][:40], ",".join(refs[hit["id"]])))
         if deletable:
             conn.executemany(
                 "DELETE FROM knowledge_points WHERE id=?",
                 [(h["id"],) for h in deletable],
             )
             conn.commit()
-        print("\nDELETED %d rows%s" % (len(deletable),
-                                       "" if not skipped else
-                                       " (skipped %d referenced)" % len(skipped)))
+        print(
+            "\nDELETED %d rows%s" % (len(deletable), "" if not skipped else " (skipped %d referenced)" % len(skipped))
+        )
         remaining = conn.execute("SELECT COUNT(*) FROM knowledge_points").fetchone()[0]
         print("knowledge_points total now = %d" % remaining)
 

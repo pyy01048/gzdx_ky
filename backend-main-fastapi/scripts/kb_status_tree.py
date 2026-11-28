@@ -14,6 +14,7 @@
     python scripts/kb_status_tree.py --markdown      # 额外导出 markdown 到 knowledge_base/meta/kb_status_tree.md
     python scripts/kb_status_tree.py --max-depth 2   # 限制目录深度
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,7 +69,7 @@ def collect_state(kb_root: str) -> dict:
     for base_dir, label in ((docs_dir, "documents"), (inbox_dir, "inbox")):
         if not os.path.isdir(base_dir):
             continue
-        for root, dirs, files in os.walk(base_dir):
+        for root, _dirs, files in os.walk(base_dir):
             for fn in sorted(files):
                 rel = os.path.relpath(os.path.join(root, fn), kb_root)
                 if label == "documents":
@@ -81,9 +82,13 @@ def collect_state(kb_root: str) -> dict:
                     else:
                         st = ".."
                 states[rel] = st
-    return {"kb_root": kb_root, "states": states,
-            "indexed_count": len(indexed), "invalid_count": len(invalid_names),
-            "manifest_count": len(manifest)}
+    return {
+        "kb_root": kb_root,
+        "states": states,
+        "indexed_count": len(indexed),
+        "invalid_count": len(invalid_names),
+        "manifest_count": len(manifest),
+    }
 
 
 def dir_agg(states: dict[str, str], kb_root: str, rel_dir: str) -> str:
@@ -131,8 +136,7 @@ def main() -> int:
     n_wait = sum(1 for v in states.values() if v == "..")
     n_invalid = sum(1 for v in states.values() if v == "!!")
     n_orphan = sum(1 for v in states.values() if v == "??")
-    summary = (f"文件总数 {len(states)} | 已入库 {n_ok} | 待入库 {n_wait} | "
-               f"不合格 {n_invalid} | 孤儿 {n_orphan}")
+    summary = f"文件总数 {len(states)} | 已入库 {n_ok} | 待入库 {n_wait} | 不合格 {n_invalid} | 孤儿 {n_orphan}"
     print(summary)
 
     tree = render_tree(states, args.kb_root, args.max_depth)
@@ -143,8 +147,7 @@ def main() -> int:
         os.makedirs(md_dir, exist_ok=True)
         md_path = os.path.join(md_dir, "kb_status_tree.md")
         with open(md_path, "w", encoding="utf-8") as f:
-            f.write(f"# 知识库目录状态（E7 前缀标注）\n\n{summary}\n\n```\n" +
-                    "\n".join(tree) + "\n```\n")
+            f.write(f"# 知识库目录状态（E7 前缀标注）\n\n{summary}\n\n```\n" + "\n".join(tree) + "\n```\n")
         print(f"已导出: {md_path}")
     return 0
 

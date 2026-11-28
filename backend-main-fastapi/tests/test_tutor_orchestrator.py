@@ -14,6 +14,7 @@
 
 注意：所有 AIService 调用一律 monkeypatch，不依赖真实外部模型。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,9 +22,10 @@ import asyncio
 import pytest
 from database import SessionLocal
 from main import app
-from models import QuizQuestion
 from services import tutor_orchestrator
 from tests.asgi_client import ASGIClient
+
+from models import QuizQuestion
 
 client = ASGIClient(app)
 
@@ -70,9 +72,16 @@ def _stub_ai(monkeypatch, *, hits=None, chat_result=None, chat_side_effect=None)
         if hits is not None:
             return hits
         return [
-            {"score": 0.9, "source": "知识分块", "title": "四则运算",
-             "content": "先括号后乘除，再加减。", "doc_id": 1, "chunk_id": 1,
-             "subject": "数学", "doc_name": "高数讲义"},
+            {
+                "score": 0.9,
+                "source": "知识分块",
+                "title": "四则运算",
+                "content": "先括号后乘除，再加减。",
+                "doc_id": 1,
+                "chunk_id": 1,
+                "subject": "数学",
+                "doc_name": "高数讲义",
+            },
         ]
 
     monkeypatch.setattr("services.ai_service.AIService.chat", _fake_chat)
@@ -93,10 +102,17 @@ def test_retrieve_returns_hits(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db)
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id, my_answer="9",
-            subject="数学", question=q, knowledge_point="四则运算",
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                my_answer="9",
+                subject="数学",
+                question=q,
+                knowledge_point="四则运算",
+            )
+        )
         retrieve = result["trace"][0]
         assert retrieve["stage"] == "retrieve"
         assert retrieve["status"] == "ok"
@@ -113,9 +129,14 @@ def test_retrieve_no_hits_still_ok(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db)
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id, question=q,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                question=q,
+            )
+        )
         retrieve = result["trace"][0]
         assert retrieve["stage"] == "retrieve"
         assert retrieve["status"] == "ok"
@@ -146,10 +167,16 @@ def test_solve_calls_chat_and_returns_content(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db)
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id, my_answer="9",
-            question=q, knowledge_point="四则运算",
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                my_answer="9",
+                question=q,
+                knowledge_point="四则运算",
+            )
+        )
         assert result["answer"] == "先算括号：1+2=3，再乘 3，得 9。"
         assert result["route"] == "online"
         assert result["confidence"] in ("high", "medium", "low")
@@ -171,18 +198,26 @@ def test_solve_calls_chat_and_returns_content(monkeypatch):
 
 def test_solve_offline_marks_degraded(monkeypatch):
     """route==offline 时 solve 阶段 status=degraded，但整体仍返回 200 结构。"""
-    _stub_ai(monkeypatch, chat_result={
-        "content": "（本地知识库离线回答）",
-        "provider": "offline-kb",
-        "route": "offline",
-    })
+    _stub_ai(
+        monkeypatch,
+        chat_result={
+            "content": "（本地知识库离线回答）",
+            "provider": "offline-kb",
+            "route": "offline",
+        },
+    )
 
     db = SessionLocal()
     try:
         q = _make_question(db)
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id, question=q,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                question=q,
+            )
+        )
         assert result["degraded"] is True
         solve = result["trace"][1]
         assert solve["status"] == "degraded"
@@ -201,10 +236,15 @@ def test_verify_calc_runs_sandbox(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db, question_type="calc", answer="(1+2)*3")
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id, my_answer="9",
-            question=q,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                my_answer="9",
+                question=q,
+            )
+        )
         verify = result["trace"][2]
         assert verify["stage"] == "verify"
         assert verify["status"] == "ok"
@@ -229,18 +269,22 @@ def test_verify_essay_uses_consistency_only(monkeypatch):
             answer="微积分是研究变化的数学工具",
             content="请简述微积分是什么。",
         )
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id,
-            my_answer="微积分是研究变化的数学工具",
-            question=q,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                my_answer="微积分是研究变化的数学工具",
+                question=q,
+            )
+        )
         verify = result["trace"][2]
         assert verify["stage"] == "verify"
         assert verify["status"] == "ok"
         ver = verify["data"]["verification"]
         assert ver["math_verified"] is None  # 主观题不执行沙箱
-        assert ver["consistency"] is True   # 关键词命中
-        assert "sandbox" not in ver         # 主观题不产出沙箱验算卡
+        assert ver["consistency"] is True  # 关键词命中
+        assert "sandbox" not in ver  # 主观题不产出沙箱验算卡
     finally:
         db.close()
 
@@ -252,10 +296,15 @@ def test_verify_inconsistent_answer(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db, question_type="calc", answer="(1+2)*3")
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id,
-            my_answer="我不确定，答案是 100", question=q,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                my_answer="我不确定，答案是 100",
+                question=q,
+            )
+        )
         ver = result["trace"][2]["data"]["verification"]
         assert ver["consistency"] is False
         assert result["confidence"] == "low"
@@ -273,10 +322,16 @@ def test_remedy_outputs_suggestions(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db)
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id,
-            my_answer="100", question=q, knowledge_point="QA-四则运算",
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                my_answer="100",
+                question=q,
+                knowledge_point="QA-四则运算",
+            )
+        )
         remedy = result["trace"][3]
         assert remedy["stage"] == "remedy"
         assert remedy["status"] == "ok"
@@ -305,9 +360,14 @@ def test_retrieve_exception_degrades_but_continues(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db)
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id, question=q,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                question=q,
+            )
+        )
         assert result["trace"][0]["status"] == "degraded"
         assert result["trace"][1]["status"] == "ok"  # solve 继续执行
         assert len(result["trace"]) == 4
@@ -330,9 +390,14 @@ def test_solve_exception_falls_back(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db)
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id, question=q,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                question=q,
+            )
+        )
         assert result["degraded"] is True
         assert result["trace"][1]["status"] == "degraded"
         assert "本地兜底" in result["answer"]
@@ -355,9 +420,14 @@ def test_verify_exception_degrades(monkeypatch):
     db = SessionLocal()
     try:
         q = _make_question(db)
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=q.id, question=q,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=q.id,
+                question=q,
+            )
+        )
         verify = result["trace"][2]
         assert verify["status"] == "degraded"
         ver = verify["data"]["verification"]
@@ -372,9 +442,13 @@ def test_question_not_found_returns_early(monkeypatch):
     """题目不存在时编排器返回 question_id + degraded=True，不抛异常。"""
     db = SessionLocal()
     try:
-        result = _run(tutor_orchestrator.orchestrate_tutoring(
-            db=db, user_id=TEST_USER_ID, question_id=999999999,
-        ))
+        result = _run(
+            tutor_orchestrator.orchestrate_tutoring(
+                db=db,
+                user_id=TEST_USER_ID,
+                question_id=999999999,
+            )
+        )
         assert result["question_id"] == 999999999
         assert result["degraded"] is True
         assert result["trace"][0]["stage"] == "retrieve"
@@ -392,10 +466,12 @@ def _clean_orchestrated_questions():
     db = SessionLocal()
     try:
         db.query(QuizQuestion).filter(
-            QuizQuestion.content.in_([
-                "计算 (1+2)*3 的值。",
-                "请简述微积分是什么。",
-            ])
+            QuizQuestion.content.in_(
+                [
+                    "计算 (1+2)*3 的值。",
+                    "请简述微积分是什么。",
+                ]
+            )
         ).delete(synchronize_session=False)
         db.commit()
     finally:
@@ -404,10 +480,12 @@ def _clean_orchestrated_questions():
     db = SessionLocal()
     try:
         db.query(QuizQuestion).filter(
-            QuizQuestion.content.in_([
-                "计算 (1+2)*3 的值。",
-                "请简述微积分是什么。",
-            ])
+            QuizQuestion.content.in_(
+                [
+                    "计算 (1+2)*3 的值。",
+                    "请简述微积分是什么。",
+                ]
+            )
         ).delete(synchronize_session=False)
         db.commit()
     finally:
@@ -425,11 +503,14 @@ def test_api_orchestrated_returns_trace(monkeypatch):
     finally:
         db.close()
 
-    r = client.post("/api/ai/tutoring/orchestrated", json={
-        "question_id": qid,
-        "my_answer": "9",
-        "subject": "数学",
-    })
+    r = client.post(
+        "/api/ai/tutoring/orchestrated",
+        json={
+            "question_id": qid,
+            "my_answer": "9",
+            "subject": "数学",
+        },
+    )
     assert r.status_code == 200, r.text
     data = r.json()
     assert data["question_id"] == qid

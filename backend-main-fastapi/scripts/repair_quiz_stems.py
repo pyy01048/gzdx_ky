@@ -46,6 +46,7 @@ python scripts/repair_quiz_stems.py --quiz-id 308  # 指定题目
 python scripts/repair_quiz_stems.py --apply        # 真写
 ```
 """
+
 from __future__ import annotations
 
 import argparse
@@ -270,8 +271,13 @@ def locate(
 
 
 def locate_by_prefix(
-    plain: str, text: str, norm_plain: str, norm_idx: List[int],
-    *, expected_pos: int = 0, probe_len: int = 60,
+    plain: str,
+    text: str,
+    norm_plain: str,
+    norm_idx: List[int],
+    *,
+    expected_pos: int = 0,
+    probe_len: int = 60,
 ) -> Optional[Tuple[int, int]]:
     """前缀定位 + 长度估算（全文匹配失败时的兜底）。"""
     nt = norm(text)
@@ -295,8 +301,12 @@ def markers_in_range(marked: str, m_start: int, m_end: int) -> List[int]:
 
 
 def collect_targets(
-    db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0,
-    field: str = "both", only_marker: bool = False,
+    db,
+    *,
+    quiz_ids: Optional[List[int]] = None,
+    limit: int = 0,
+    field: str = "both",
+    only_marker: bool = False,
 ) -> List[dict]:
     """收集待修复的题。field: content=题干 / analysis=解析 / both。
 
@@ -310,13 +320,15 @@ def collect_targets(
     """
     from sqlalchemy import text as sqltext
 
-    rows = db.execute(sqltext("""
+    rows = db.execute(
+        sqltext("""
         select id, coalesce(subject,''), coalesce(content,''),
                coalesce(analysis,''), coalesce(source_label,'')
         from quiz_questions
         where coalesce(source_label,'') <> ''
         order by source_label, id
-    """)).fetchall()
+    """)
+    ).fetchall()
     out: List[dict] = []
     for qid, subj, content, analysis, label in rows:
         if quiz_ids and qid not in quiz_ids:
@@ -349,8 +361,9 @@ def collect_targets(
                     target_field, target_text = "analysis", analysis
         if not feat:
             continue
-        out.append({"id": qid, "subject": subj, "field": target_field,
-                    "text": target_text, "label": label, "feature": feat})
+        out.append(
+            {"id": qid, "subject": subj, "field": target_field, "text": target_text, "label": label, "feature": feat}
+        )
     if limit:
         out = out[:limit]
     return out
@@ -377,16 +390,19 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--apply", action="store_true", help="真写库（默认干跑）")
     ap.add_argument(
-        "--field", choices=["content", "analysis", "both"], default="both",
-        help="修哪个字段：content=题干 / analysis=解析 / both（默认）。"
-             "解析里公式缺口实测有 215 道，比题干严重得多",
+        "--field",
+        choices=["content", "analysis", "both"],
+        default="both",
+        help="修哪个字段：content=题干 / analysis=解析 / both（默认）。解析里公式缺口实测有 215 道，比题干严重得多",
     )
     ap.add_argument(
-        "--only-marker", action="store_true",
+        "--only-marker",
+        action="store_true",
         help="只处理文本里还留着 [[F:n]] 原始占位符的题（旧管线漏渲染的那批）",
     )
     ap.add_argument(
-        "--no-image-fallback", action="store_true",
+        "--no-image-fallback",
+        action="store_true",
         help="识别失败时不要退回公式图片，只保留 [[F:n]] 占位符",
     )
     ap.add_argument("--report", help="导出 JSON 报告")
@@ -398,8 +414,11 @@ def main() -> int:
     db = SessionLocal()
     try:
         targets = collect_targets(
-            db, quiz_ids=args.quiz_id or None, limit=args.limit,
-            field=args.field, only_marker=args.only_marker,
+            db,
+            quiz_ids=args.quiz_id or None,
+            limit=args.limit,
+            field=args.field,
+            only_marker=args.only_marker,
         )
         print(f"[修复] 疑似残缺题 {len(targets)} 道")
         if not targets:
@@ -459,7 +478,11 @@ def main() -> int:
                 if not span:
                     sp = strip_rendered(raw)
                     span = locate_by_prefix(
-                        al.plain, sp or raw, norm_plain, norm_idx, expected_pos=cursor,
+                        al.plain,
+                        sp or raw,
+                        norm_plain,
+                        norm_idx,
+                        expected_pos=cursor,
                     )
                 if not span:
                     it["status"] = "locate_failed"
@@ -488,10 +511,7 @@ def main() -> int:
                 # 不能等到那时才发现没 URL
                 if not args.no_image_fallback:
                     usable = _ensure_web_png(img.out_path)
-                    img_url[idx] = (
-                        f"/media/images/quiz_stem/{d.id}/"
-                        f"{os.path.basename(usable)}"
-                    )
+                    img_url[idx] = f"/media/images/quiz_stem/{d.id}/{os.path.basename(usable)}"
                 r = rec.recognize(img.out_path)
                 if r.ok and r.latex:
                     tex = sanitize_latex(r.latex)
@@ -545,9 +565,7 @@ def main() -> int:
                 solved = it["latex_ok"] + it["img_ok"]
                 rate = (solved / it["markers"]) if it["markers"] else 0.0
                 it["high_confidence"] = (
-                    it["markers"] > 0
-                    and rate >= min_rate
-                    and norm(new_text) != norm(it.get("text") or "")
+                    it["markers"] > 0 and rate >= min_rate and norm(new_text) != norm(it.get("text") or "")
                 )
                 results.append(it)
 
@@ -569,8 +587,9 @@ def main() -> int:
             print(f"\n[修复] 报告已写 {args.report}")
 
         if args.apply and high:
-            from models import QuizQuestion
             from services.backup_service import create_backup
+
+            from models import QuizQuestion
 
             backup = create_backup()
             print(f"[修复] 已备份: {backup}")

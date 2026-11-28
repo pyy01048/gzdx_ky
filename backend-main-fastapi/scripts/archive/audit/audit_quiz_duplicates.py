@@ -47,9 +47,7 @@ NEAR_PREFIX = 100
 # 一份带乱码、一份不带，导致 content_hash 不同、编辑距离相似度也 <0.86，
 # 于是 dedupe_scan / _is_bank_dup 全部判为「不重复」→ 重复入库。
 OCR_JUNK = re.compile(r"[\ufffd\ufffe\u001a-\u001f\ue000-\uf8ff]+")
-SIGN_STRIP = re.compile(
-    r"[\s（）()【】\[\]、,，。.；;：:？?！!“”\"'’‘、·—\-]+"
-)
+SIGN_STRIP = re.compile(r"[\s（）()【】\[\]、,，。.；;：:？?！!“”\"'’‘、·—\-]+")
 
 
 def deocr(s: str) -> str:
@@ -68,7 +66,7 @@ def question_signature(content: str, prefix: int = 80) -> str:
 def src_kind(source: str) -> str:
     """把 source 归成三档：真题 / 习题 / 讲义 / 其他。"""
     s = source or ""
-    tail = s.split(":", 1)[1] if ":" in s else s
+    s.split(":", 1)[1] if ":" in s else s
     has_real = bool(REAL_SRC.search(s))
     has_lecture = bool(LECTURE_SRC.search(s))
     if has_real and not has_lecture:
@@ -114,20 +112,20 @@ def main() -> None:
     by_prefix: dict[str, list[sqlite3.Row]] = defaultdict(list)
     for r in rows:
         n = normalize_text(r["content"] or "")[:NEAR_PREFIX]
-        if len(n) >= 40:      # 太短的前缀不可靠
+        if len(n) >= 40:  # 太短的前缀不可靠
             by_prefix[n].append(r)
     near_groups = {}
     for n, g in by_prefix.items():
         if len(g) < 2:
             continue
         hashes = {content_hash(r["content"] or "") for r in g}
-        if len(hashes) > 1:      # 已被 exact 覆盖的跳过
+        if len(hashes) > 1:  # 已被 exact 覆盖的跳过
             near_groups[n] = g
     # ---------------- 组 3：去 OCR 乱码后的题目签名（推荐口径） ----------------
     by_sig: dict[str, list[sqlite3.Row]] = defaultdict(list)
     for r in rows:
         s = question_signature(r["content"] or "")
-        if len(s) >= 30:      # 签名太短不可靠
+        if len(s) >= 30:  # 签名太短不可靠
             by_sig[s].append(r)
     sig_groups = {s: g for s, g in by_sig.items() if len(g) > 1}
 
@@ -146,27 +144,27 @@ def main() -> None:
             assigned.add(r["id"])
         all_groups.append((key, fresh, kind))
 
-    for s, g in sig_groups.items():              # 最严口径优先
+    for s, g in sig_groups.items():  # 最严口径优先
         # 签名相同只说明前 80 字一致，仍需编辑距离复核 —— 否则「开头同一句
         # 习题题干」的正常同系列题会被误并成一组。
         rep = next((r for r in g), None)
         if rep is None:
             continue
-        base = normalize_text(rep["content"] or "")
+        normalize_text(rep["content"] or "")
         cluster = [rep]
         for r in g[1:]:
             if similarity_ratio(rep["content"] or "", r["content"] or "") >= 0.80:
                 cluster.append(r)
         add_group(s, cluster, "SIGN")
-    for h, g in exact_groups.items():            # 完全相同
+    for h, g in exact_groups.items():  # 完全相同
         add_group(h, g, "EXACT")
-    for n, g in near_groups.items():             # 前 100 字相同（乱码未去净的残留）
+    for n, g in near_groups.items():  # 前 100 字相同（乱码未去净的残留）
         add_group(n, g, "NEAR")
 
     # ---------------- 统计 ----------------
     involved = {r["id"] for _, g, _ in all_groups for r in g}
     dist = Counter(len(g) for _, g, _ in all_groups)
-    redundant = sum(len(g) - 1 for _, g, _ in all_groups)   # 可清理掉的冗余条数
+    redundant = sum(len(g) - 1 for _, g, _ in all_groups)  # 可清理掉的冗余条数
 
     # 分类：同源 vs 跨源 vs 垃圾
     same_src = 0
@@ -178,7 +176,7 @@ def main() -> None:
     quality_counter: Counter = Counter()
 
     detail = []
-    for key, g, kind in all_groups:
+    for _key, g, kind in all_groups:
         kinds = {src_kind(r["source"]) for r in g}
         keys = {doc_key(r["source"]) for r in g}
         junk_flags = {int(r["is_junk"] or 0) for r in g}
@@ -203,18 +201,20 @@ def main() -> None:
             kind_counter[k] += 1
         src_pair_counter[f"{sorted(keys)[0][:40]}"] += 1
 
-        detail.append({
-            "kind": kind,
-            "category": cat,
-            "n": len(g),
-            "ids": [r["id"] for r in g],
-            "sources": [r["source"] for r in g],
-            "doc_keys": sorted(keys),
-            "is_junk": [r["is_junk"] for r in g],
-            "has_answer": [bool((r["answer"] or "").strip()) for r in g],
-            "subject": [r["subject"] for r in g],
-            "preview": (g[0]["content"] or "")[:110],
-        })
+        detail.append(
+            {
+                "kind": kind,
+                "category": cat,
+                "n": len(g),
+                "ids": [r["id"] for r in g],
+                "sources": [r["source"] for r in g],
+                "doc_keys": sorted(keys),
+                "is_junk": [r["is_junk"] for r in g],
+                "has_answer": [bool((r["answer"] or "").strip()) for r in g],
+                "subject": [r["subject"] for r in g],
+                "preview": (g[0]["content"] or "")[:110],
+            }
+        )
 
     detail.sort(key=lambda d: (-d["n"], d["ids"][0]))
 
@@ -223,8 +223,8 @@ def main() -> None:
         """保留优先级：answer 非空 > is_junk=0 > 已验证 > 长度适中 > id 小。"""
         ans_len = len((r["answer"] or "").strip())
         return (
-            0 if ans_len > 0 else 1,        # 有答案优先
-            int(r["is_junk"] or 0),         # 非垃圾优先
+            0 if ans_len > 0 else 1,  # 有答案优先
+            int(r["is_junk"] or 0),  # 非垃圾优先
             0 if (r["verified"] or 0) else 1,
             0 if (r["quality"] or "") in ("", None) else 1,
             -min(len(r["content"] or ""), 1000),
@@ -271,16 +271,16 @@ def main() -> None:
     L.append("全库重复题体检报告（只读，未写库）")
     L.append("=" * 78)
     L.append(f"quiz_questions 总量        : {total}")
-    L.append(f"重复组数                    : {len(all_groups)}"
-             f"（EXACT 指纹相同 {len(exact_groups)} / NEAR 前{NEAR_PREFIX}字相同 {len(near_groups)}）")
-    L.append(f"涉及条数                    : {len(involved)}"
-             f"（占全库 {len(involved)*100.0/max(total,1):.2f}%）")
-    L.append(f"冗余条数（可清理）          : {redundant}"
-             f"（占全库 {redundant*100.0/max(total,1):.2f}%）")
+    L.append(
+        f"重复组数                    : {len(all_groups)}"
+        f"（EXACT 指纹相同 {len(exact_groups)} / NEAR 前{NEAR_PREFIX}字相同 {len(near_groups)}）"
+    )
+    L.append(f"涉及条数                    : {len(involved)}（占全库 {len(involved) * 100.0 / max(total, 1):.2f}%）")
+    L.append(f"冗余条数（可清理）          : {redundant}（占全库 {redundant * 100.0 / max(total, 1):.2f}%）")
     L.append("")
     L.append("### 1. 按组大小分布")
     for k, v in sorted(dist.items()):
-        L.append(f"  {k} 条/组 : {v} 组  （涉及 {k*v} 条，冗余 {k-1}×{v}={k*v-v} 条）")
+        L.append(f"  {k} 条/组 : {v} 组  （涉及 {k * v} 条，冗余 {k - 1}×{v}={k * v - v} 条）")
     L.append("")
     L.append("### 2. 重复性质分类")
     L.append(f"  同源重复（同一份资料被 .txt/.pdf 各抽一遍，应去重）: {same_src} 组")
@@ -295,8 +295,10 @@ def main() -> None:
     L.append("### 4. 冗余最多 Top 25 组（含保留方案）")
     L.append(f"{'类':<12} {'n':>2} {'保留':>6} {'丢弃':<24} {'说明':<8} 题干预览")
     for d in detail[:25]:
-        L.append(f"{d['category']:<12} {d['n']:>2} #{d['keep_id']:<5} "
-                 f"{str(d['drop_ids']):<24} {d['keep_reason']:<8} {d['preview'][:56]}")
+        L.append(
+            f"{d['category']:<12} {d['n']:>2} #{d['keep_id']:<5} "
+            f"{str(d['drop_ids']):<24} {d['keep_reason']:<8} {d['preview'][:56]}"
+        )
     L.append("")
     L.append("### 5. 同源重复的文档对（Top 20，说明 .txt/.pdf 双份入库）")
     for d in detail:

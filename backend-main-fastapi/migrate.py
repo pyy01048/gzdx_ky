@@ -22,6 +22,7 @@
     故本步骤复用 ``services.backup_service`` 的**真库解析**与 **SQLite backup API**，
     只作用于真库。
 """
+
 import os
 import subprocess
 import sys
@@ -48,8 +49,11 @@ MIGRATIONS = [
 # --------------------------------------------------------------------------- #
 REQUIRED_COLUMNS: list[tuple[str, str, str]] = [
     # (表, 列, ADD COLUMN 语句) —— 类型/默认值照抄 models.QuizQuestion.figure_missing
-    ("quiz_questions", "figure_missing",
-     "ALTER TABLE quiz_questions ADD COLUMN figure_missing INTEGER NOT NULL DEFAULT 0"),
+    (
+        "quiz_questions",
+        "figure_missing",
+        "ALTER TABLE quiz_questions ADD COLUMN figure_missing INTEGER NOT NULL DEFAULT 0",
+    ),
 ]
 
 
@@ -68,9 +72,7 @@ def ensure_schema_columns() -> int:
         cur = conn.cursor()
         todo: list[tuple[str, str, str]] = []
         for table, col, ddl in REQUIRED_COLUMNS:
-            if not cur.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
-            ).fetchone():
+            if not cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                 print(f"[!] 跳过 {table}.{col}：表不存在")
                 continue
             cols = [r[1] for r in cur.execute(f'PRAGMA table_info("{table}")')]

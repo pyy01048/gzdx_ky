@@ -12,6 +12,7 @@
 
 这两个单测锁住的是两件事：**失败必须留痕**，以及**缓存必须真的生效**。
 """
+
 from __future__ import annotations
 
 import logging
@@ -94,9 +95,9 @@ class TestLearnedCacheFailure(unittest.TestCase):
         """缓存命中时零查询 —— 一篇文档几千行不能打几千次库。"""
         calls, real = _install_broken_db()
         try:
-            cs.get_learned_patterns()          # 首次：失败并记入降级状态
+            cs.get_learned_patterns()  # 首次：失败并记入降级状态
             n_after_first = calls["n"]
-            for _ in range(1000):              # 后续：全部走缓存
+            for _ in range(1000):  # 后续：全部走缓存
                 cs.get_learned_patterns()
             self.assertEqual(calls["n"], n_after_first)
         finally:
@@ -131,6 +132,7 @@ class TestLearnedCacheSuccess(unittest.TestCase):
                 class _R:
                     def fetchall(self):
                         return [("内部资料",), ("请勿外传",), ("  ",)]
+
                 return _R()
 
             def close(self):

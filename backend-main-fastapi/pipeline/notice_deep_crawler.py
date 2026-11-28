@@ -19,6 +19,7 @@
 合规：同 spider_notices——robots 检查、2-5s 随机延迟、UA 声明个人备考用途；
       KAOYAN_AUTO_COLLECT=1 时才有意义（由 autofill/调度入口统一把关）。
 """
+
 import json
 import re
 import statistics
@@ -168,8 +169,14 @@ def _fetch_blob(url: str, referer: str = "", timeout: int = 90) -> bytes:
 
 
 def _extract_sub_pages(
-    db, notice_id: int, school_id: int, school_name: str,
-    notice_type: str, year: int, html: str, url: str,
+    db,
+    notice_id: int,
+    school_id: int,
+    school_name: str,
+    notice_type: str,
+    year: int,
+    html: str,
+    url: str,
     max_sub: int = 0,
 ) -> dict:
     """学院聚合页二级抓取：对正文子站链接逐一执行名单解析并入库。
@@ -221,7 +228,8 @@ def _extract_sub_pages(
                     "VALUES (:s, NULL, :y, NULL, :rc, :ac, :avg, NULL, NULL, :src)"
                 ),
                 {
-                    "s": school_id, "y": year,
+                    "s": school_id,
+                    "y": year,
                     "rc": data["students"] if notice_type == "复试" else None,
                     "ac": data["students"] if is_admit else None,
                     "avg": round(statistics.mean(st), 1) if st else None,
@@ -273,11 +281,13 @@ def list_webplus_entries(entry: dict) -> list:
                 if not title or not url or key in seen:
                     continue
                 seen.add(key)
-                out.append({
-                    "title": title,
-                    "url": _clean_url(url, f"https://{domain}/"),
-                    "publish_date": (it.get("publishTime") or "")[:10] or None,
-                })
+                out.append(
+                    {
+                        "title": title,
+                        "url": _clean_url(url, f"https://{domain}/"),
+                        "publish_date": (it.get("publishTime") or "")[:10] or None,
+                    }
+                )
             if len(data) < entry.get("page_size", 30):
                 break
             _polite()
@@ -293,7 +303,7 @@ def list_html_entries(entry: dict) -> list:
     out, seen = [], set()
     base = entry["list_url"]
     for i in range(1, entry.get("max_pages", 2) + 1):
-        url = base if i == 1 else re.sub(r"index\.htm$", f"index_{i-1}.htm", base)
+        url = base if i == 1 else re.sub(r"index\.htm$", f"index_{i - 1}.htm", base)
         html = _fetch(url)
         if not html:
             break  # 分页耗尽 / 首页失败
@@ -306,11 +316,13 @@ def list_html_entries(entry: dict) -> list:
             if key in seen:
                 continue
             seen.add(key)
-            out.append({
-                "title": lk["title"],
-                "url": _clean_url(lk["url"], dir_base),
-                "publish_date": lk["publish_date"],
-            })
+            out.append(
+                {
+                    "title": lk["title"],
+                    "url": _clean_url(lk["url"], dir_base),
+                    "publish_date": lk["publish_date"],
+                }
+            )
         _polite()
     return out
 
@@ -374,7 +386,14 @@ def _extract_admission_from_notice(
         mac.polite()
         # 一级无直挂名单 → 若是「学院聚合页」（天大形态），子站二级抓取
         sub = _extract_sub_pages(
-            db, notice_id, school_id, school_name, notice_type, year, html, url,
+            db,
+            notice_id,
+            school_id,
+            school_name,
+            notice_type,
+            year,
+            html,
+            url,
         )
         if sub["status"] == "inserted_sub":
             return {
@@ -395,7 +414,8 @@ def _extract_admission_from_notice(
             "VALUES (:s, NULL, :y, NULL, :rc, :ac, :avg, NULL, NULL, :src)"
         ),
         {
-            "s": school_id, "y": year,
+            "s": school_id,
+            "y": year,
             "rc": data["students"] if notice_type == "复试" else None,
             "ac": data["students"] if is_admit else None,
             "avg": round(statistics.mean(st), 1) if st else None,
@@ -444,8 +464,14 @@ def main(
         rows = db_session.execute(text("SELECT id, name FROM kaoyan_schools")).fetchall()
         name_to_id = {n: i for i, n in rows}
 
-        stats = {"entries": len(entries), "list_total": 0, "filtered": 0,
-                 "notices_new": 0, "notices_updated": 0, "admissions": {}}
+        stats = {
+            "entries": len(entries),
+            "list_total": 0,
+            "filtered": 0,
+            "notices_new": 0,
+            "notices_updated": 0,
+            "admissions": {},
+        }
 
         for entry in entries:
             school = entry["school"]
@@ -460,7 +486,8 @@ def main(
             stats["list_total"] += len(links)
             stats["filtered"] += len(hits)
             stats.setdefault("by_school", {})[school] = {
-                "list": len(links), "hits": len(hits),
+                "list": len(links),
+                "hits": len(hits),
             }
 
             if dry_run or not hits:
@@ -506,16 +533,24 @@ def main(
                 per_school = {"admit": 0, "retest": 0, "sub": 0, "no_data": 0, "detail": []}
                 for nid in new_ids:
                     nrow = db_session.execute(
-                        text("SELECT id, school_id, school_name, notice_type, title, url, publish_date "
-                             "FROM kaoyan_notices WHERE id = :i"),
+                        text(
+                            "SELECT id, school_id, school_name, notice_type, title, url, publish_date "
+                            "FROM kaoyan_notices WHERE id = :i"
+                        ),
                         {"i": nid},
                     ).fetchone()
                     if not nrow:
                         continue
                     try:
                         r = _extract_admission_from_notice(
-                            db_session, nrow[0], nrow[1] or name_to_id.get(school),
-                            nrow[2] or school, nrow[3], nrow[4], nrow[5], nrow[6],
+                            db_session,
+                            nrow[0],
+                            nrow[1] or name_to_id.get(school),
+                            nrow[2] or school,
+                            nrow[3],
+                            nrow[4],
+                            nrow[5],
+                            nrow[6],
                         )
                         if r["status"] == "inserted":
                             if nrow[3] in ("录取", "调剂"):
@@ -523,8 +558,7 @@ def main(
                             else:
                                 per_school["retest"] += 1
                             per_school["detail"].append(
-                                f"{nrow[2] or school} {r['students']}人 "
-                                f"avg={r['avg']} ← {title_short(r['title'])}"
+                                f"{nrow[2] or school} {r['students']}人 avg={r['avg']} ← {title_short(r['title'])}"
                             )
                         elif r["status"] == "inserted_sub":
                             per_school["sub"] += r["rows"]
@@ -558,8 +592,14 @@ if __name__ == "__main__":  # pragma: no cover
     ap.add_argument("--no-extract", action="store_true", help="只通知补录，不跑名单提取")
     ap.add_argument("--schools", nargs="*", help="指定院校名")
     args = ap.parse_args()
-    print(json.dumps(main(
-        school_names=args.schools,
-        dry_run=args.dry_run,
-        do_extract=not args.no_extract,
-    ), ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            main(
+                school_names=args.schools,
+                dry_run=args.dry_run,
+                do_extract=not args.no_extract,
+            ),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )

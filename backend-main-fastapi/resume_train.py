@@ -90,10 +90,13 @@ def resume_training(checkpoint_path):
         print("✗ 训练数据不存在，请先运行 lora_finetune.py --stage prepare")
         return None
 
-    dataset = load_dataset("json", data_files={
-        "train": train_path,
-        "validation": val_path,
-    })
+    dataset = load_dataset(
+        "json",
+        data_files={
+            "train": train_path,
+            "validation": val_path,
+        },
+    )
     print(f"训练集: {len(dataset['train'])} 条")
     print(f"验证集: {len(dataset['validation'])} 条")
 

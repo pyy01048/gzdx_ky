@@ -60,20 +60,46 @@ SECTION_TYPES: list[tuple[str, str]] = [
 ]
 
 # 大标题正则：一、填空题（45分，每空3分）
-_SECTION_RE = re.compile(
-    r"^\s*[一二三四五六七八九十]+\s*[、.．]\s*([^\n（(]{2,20}?)\s*(?:[（(][^）)]*[）)])?\s*$"
-)
+_SECTION_RE = re.compile(r"^\s*[一二三四五六七八九十]+\s*[、.．]\s*([^\n（(]{2,20}?)\s*(?:[（(][^）)]*[）)])?\s*$")
 
 # 讲义/PPT 里形似"题型大标题"、实为知识点小标题的前缀词。
 # 这些标题一旦被 _SECTION_RE 命中，_norm_section 会把整篇讲义误判成
 # "进入某个题型区"，导致后续所有 `1. / 2、` 编号行都被当成题号切分 ——
 # 这正是 3576 条 JUNK 的源头。
 _NOT_A_SECTION_PREFIX = (
-    "设计步骤", "设计关键", "设计方法", "设计原则", "设计要求",
-    "综上所述", "综上", "小结", "本章小结", "要点", "重点", "难点",
-    "知识点", "考点", "重点难点", "内容提要", "内容盛要", "目录",
-    "引言", "绪论", "本章", "第", "复习", "回顾", "思考题", "习题",
-    "举例", "例题", "说明", "注意", "补充", "小结与", "问题",
+    "设计步骤",
+    "设计关键",
+    "设计方法",
+    "设计原则",
+    "设计要求",
+    "综上所述",
+    "综上",
+    "小结",
+    "本章小结",
+    "要点",
+    "重点",
+    "难点",
+    "知识点",
+    "考点",
+    "重点难点",
+    "内容提要",
+    "内容盛要",
+    "目录",
+    "引言",
+    "绪论",
+    "本章",
+    "第",
+    "复习",
+    "回顾",
+    "思考题",
+    "习题",
+    "举例",
+    "例题",
+    "说明",
+    "注意",
+    "补充",
+    "小结与",
+    "问题",
 )
 #: 命中这些词的小标题一律不视作题型大标题
 _SECTION_VETO_RE = re.compile(
@@ -92,6 +118,7 @@ def _is_real_section_title(title: str) -> bool:
         return False
     # 归一化后必须真的能映射到一个标准题型，否则不是题型标题
     return bool(_norm_section(t))
+
 
 # 题号正则：1、  12、  1.  3．
 _QNUM_RE = re.compile(r"(?:^|\n)\s*(\d{1,3})\s*[、.．)）]\s*")
@@ -115,7 +142,7 @@ def _norm_section(title: str) -> str:
 
 def _clean_text(t: str) -> str:
     t = t.replace("\u3000", " ").replace("\xa0", " ")
-    t = re.sub(r"\\\(|\\\)|\\\[|\\\]", "", t)          # LaTeX 定界符
+    t = re.sub(r"\\\(|\\\)|\\\[|\\\]", "", t)  # LaTeX 定界符
     t = re.sub(r"[ \t]{2,}", " ", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
@@ -150,7 +177,7 @@ def extract_questions(text: str, *, source_hint: str = "") -> list[dict[str, Any
         sections[i] = cur
 
     # —— 2. 收集全部题号位置 —— #
-    marks: list[tuple[int, int, str]] = []   # (字符偏移, 行号, 题号)
+    marks: list[tuple[int, int, str]] = []  # (字符偏移, 行号, 题号)
     offset = 0
     line_offsets: list[int] = []
     for i, ln in enumerate(lines):
@@ -189,11 +216,11 @@ def extract_questions(text: str, *, source_hint: str = "") -> list[dict[str, Any
         am = _ANSWER_RE.search(body)
         if am:
             ans = am.group(1).strip()
-            body = body[:am.start()].strip()
+            body = body[: am.start()].strip()
         nm = _ANALYSIS_RE.search(body)
         if nm:
             ana = nm.group(1).strip()
-            body = body[:nm.start()].strip()
+            body = body[: nm.start()].strip()
 
         # ===== 切题源头修复 3：跨题串接检测 =====
         # 题块末尾若出现下一个题型大标题（如「四、简答题（共4题，每题6分，共24分）」），
@@ -250,14 +277,16 @@ def extract_questions(text: str, *, source_hint: str = "") -> list[dict[str, Any
         if not ok:
             continue
 
-        questions.append({
-            "section_type": sec_type,
-            "number": num,
-            "content": content[:2000],
-            "options": options,
-            "answer": ans,
-            "analysis": ana,
-        })
+        questions.append(
+            {
+                "section_type": sec_type,
+                "number": num,
+                "content": content[:2000],
+                "options": options,
+                "answer": ans,
+                "analysis": ana,
+            }
+        )
 
     gate_log_summary()
     return questions
@@ -306,10 +335,19 @@ def classify_question(
 
 
 _QTYPE_MAP = {
-    "选择": "single", "多选": "multiple", "判断": "judge",
-    "填空": "fill", "简答": "essay", "计算": "calc",
-    "分析": "essay", "设计": "essay", "证明": "essay",
-    "画图": "draw", "论述": "essay", "综合": "essay", "其他": "single",
+    "选择": "single",
+    "多选": "multiple",
+    "判断": "judge",
+    "填空": "fill",
+    "简答": "essay",
+    "计算": "calc",
+    "分析": "essay",
+    "设计": "essay",
+    "证明": "essay",
+    "画图": "draw",
+    "论述": "essay",
+    "综合": "essay",
+    "其他": "single",
 }
 
 
@@ -319,14 +357,66 @@ def _norm_qtype(t: str) -> str:
 
 def _guess_subject(content: str) -> str | None:
     """按关键词判断是数电还是模电。"""
-    digital_kw = ["逻辑", "门电路", "触发器", "卡诺图", "真值表", "计数器", "寄存器",
-                  "编码器", "译码器", "时序", "组合逻辑", "TTL", "CMOS", "与非门",
-                  "或非门", "异或", "二进制", "D/A", "A/D", "数制", "555", "三态门",
-                  "存储器", "可编程", "移位", "竞争冒险", "化简", "最小项", "触发器"]
-    analog_kw = ["二极管", "三极管", "场效应", "放大电路", "共射", "共集", "共基",
-                 "运放", "运算放大", "反馈", "差分", "静态工作点", "稳压", "整流",
-                 "滤波", "功率放大", "振荡", "偏置", "PN结", "饱和失真", "截止失真",
-                 "交越失真", "射极跟随", "集成运放", "有源滤波", "直流电源", "三端稳压"]
+    digital_kw = [
+        "逻辑",
+        "门电路",
+        "触发器",
+        "卡诺图",
+        "真值表",
+        "计数器",
+        "寄存器",
+        "编码器",
+        "译码器",
+        "时序",
+        "组合逻辑",
+        "TTL",
+        "CMOS",
+        "与非门",
+        "或非门",
+        "异或",
+        "二进制",
+        "D/A",
+        "A/D",
+        "数制",
+        "555",
+        "三态门",
+        "存储器",
+        "可编程",
+        "移位",
+        "竞争冒险",
+        "化简",
+        "最小项",
+        "触发器",
+    ]
+    analog_kw = [
+        "二极管",
+        "三极管",
+        "场效应",
+        "放大电路",
+        "共射",
+        "共集",
+        "共基",
+        "运放",
+        "运算放大",
+        "反馈",
+        "差分",
+        "静态工作点",
+        "稳压",
+        "整流",
+        "滤波",
+        "功率放大",
+        "振荡",
+        "偏置",
+        "PN结",
+        "饱和失真",
+        "截止失真",
+        "交越失真",
+        "射极跟随",
+        "集成运放",
+        "有源滤波",
+        "直流电源",
+        "三端稳压",
+    ]
     d = sum(1 for k in digital_kw if k in content)
     a = sum(1 for k in analog_kw if k in content)
     if d == 0 and a == 0:
@@ -336,8 +426,9 @@ def _guess_subject(content: str) -> str | None:
 
 def _guess_difficulty(content: str, qtype: str) -> int:
     """粗略难度：计算/设计/分析偏难，填空选择偏易。"""
-    base = {"填空": 2, "选择": 2, "判断": 2, "简答": 3,
-            "计算": 4, "分析": 4, "设计": 5, "证明": 5, "画图": 4}.get(qtype, 3)
+    base = {"填空": 2, "选择": 2, "判断": 2, "简答": 3, "计算": 4, "分析": 4, "设计": 5, "证明": 5, "画图": 4}.get(
+        qtype, 3
+    )
     if len(content) > 200:
         base = min(5, base + 1)
     return base
@@ -432,6 +523,7 @@ def normalize_text(content: str) -> str:
 def similarity_ratio(a: str, b: str) -> float:
     """两题干文本相似度 0~1（基于 difflib.SequenceMatcher）。"""
     from difflib import SequenceMatcher
+
     na, nb = normalize_text(a), normalize_text(b)
     if not na and not nb:
         return 1.0
@@ -515,9 +607,15 @@ def generate_answer_prompt(question: dict) -> str:
     约定输出 JSON：{"answer": "...", "analysis": "...", "confidence": 0~1}
     """
     qtype = question.get("question_type") or "single"
-    type_name = {"single": "单选题", "multiple": "多选题", "judge": "判断题",
-                 "fill": "填空题", "essay": "简答题/计算题", "calc": "计算题",
-                 "draw": "作图题"}.get(qtype, "题目")
+    type_name = {
+        "single": "单选题",
+        "multiple": "多选题",
+        "judge": "判断题",
+        "fill": "填空题",
+        "essay": "简答题/计算题",
+        "calc": "计算题",
+        "draw": "作图题",
+    }.get(qtype, "题目")
     lines = [
         "你是一名严谨的考研专业课（834 电子技术基础：数字电子技术/模拟电子技术）命题与教研专家。",
         "请对下面这道" + type_name + "给出正确答案与解析。",
@@ -543,9 +641,15 @@ def generate_answer_prompt(question: dict) -> str:
 def generate_variant_prompt(question: dict) -> str:
     """为一道题构造变式题生成提示词（换数据/换问法/换角度，保留考点）。"""
     qtype = question.get("question_type") or "single"
-    type_name = {"single": "单选题", "multiple": "多选题", "judge": "判断题",
-                 "fill": "填空题", "essay": "简答题/计算题", "calc": "计算题",
-                 "draw": "作图题"}.get(qtype, "题目")
+    type_name = {
+        "single": "单选题",
+        "multiple": "多选题",
+        "judge": "判断题",
+        "fill": "填空题",
+        "essay": "简答题/计算题",
+        "calc": "计算题",
+        "draw": "作图题",
+    }.get(qtype, "题目")
     lines = [
         "你是一名考研专业课命题专家。请基于下面这道题生成 1 道同考点的变式题：",
         "要求：保持考点与难度基本一致，但更换数据/参数、改变提问角度或情境；",

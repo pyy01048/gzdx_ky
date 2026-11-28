@@ -10,6 +10,7 @@
 幂等: 仅更新 extra IS NULL 的行
 运行: python scripts/enrich_words_kylebing_pg.py
 """
+
 import json
 import os
 import sys
@@ -19,11 +20,17 @@ import psycopg
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 JSONL = os.path.join(
-    PROJECT_ROOT, "..", "data_sources", "english-vocabulary", "english-vocabulary-master",
-    "full_line_jsonl", "full", "正序", "考研.jsonl",
+    PROJECT_ROOT,
+    "..",
+    "data_sources",
+    "english-vocabulary",
+    "english-vocabulary-master",
+    "full_line_jsonl",
+    "full",
+    "正序",
+    "考研.jsonl",
 )
 
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -53,20 +60,26 @@ def load_unique_words(path: str):
                 continue
             synos = []
             for s in (wc.get("syno") or {}).get("synos") or []:
-                synos.append({
-                    "pos": s.get("pos"),
-                    "tran": s.get("tran"),
-                    "words": [w.get("w") for w in (s.get("hwds") or []) if w.get("w")],
-                })
+                synos.append(
+                    {
+                        "pos": s.get("pos"),
+                        "tran": s.get("tran"),
+                        "words": [w.get("w") for w in (s.get("hwds") or []) if w.get("w")],
+                    }
+                )
             phrases = []
             for p in (wc.get("phrase") or {}).get("phrases") or []:
                 phrases.append({"phrase": p.get("pContent"), "cn": p.get("pCn")})
             rels = []
             for r in (wc.get("relWord") or {}).get("rels") or []:
-                rels.append({
-                    "pos": r.get("pos"),
-                    "words": [{"w": x.get("hwd"), "tran": x.get("tran")} for x in (r.get("words") or []) if x.get("hwd")],
-                })
+                rels.append(
+                    {
+                        "pos": r.get("pos"),
+                        "words": [
+                            {"w": x.get("hwd"), "tran": x.get("tran")} for x in (r.get("words") or []) if x.get("hwd")
+                        ],
+                    }
+                )
             extra = {"synonyms": synos, "phrases": phrases, "rel_words": rels, "source": "KyleBing"}
             result[word.lower()] = extra  # 后出现的覆盖（内容更全）
     return result
@@ -97,7 +110,7 @@ def main():
                     batch.append((json.dumps(extra, ensure_ascii=False), wid))
             BATCH_SIZE = 500
             for i in range(0, len(batch), BATCH_SIZE):
-                sub = batch[i:i + BATCH_SIZE]
+                sub = batch[i : i + BATCH_SIZE]
                 cur.executemany(
                     "UPDATE words SET extra = %s::jsonb, updated_at = NOW() WHERE id = %s",
                     sub,

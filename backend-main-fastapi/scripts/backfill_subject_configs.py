@@ -26,6 +26,7 @@ question_types 默认取 ``services.taxonomy.QUESTION_TYPES`` 对应值；
     python scripts/backfill_subject_configs.py            # dry-run
     python scripts/backfill_subject_configs.py --apply    # 备份并写库
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,7 +46,20 @@ from services import taxonomy  # noqa: E402
 
 #: 待补种的目标 subject_id 列表（经诊断确认的 14 个缺失科目）
 MISSING_SUBJECT_IDS = [
-    1, 2, 3, 4, 5, 68, 69, 70, 71, 72, 73, 74, 75, 76,
+    1,
+    2,
+    3,
+    4,
+    5,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
 ]
 
 BACKUP_DIR = r"D:\平台\database\backups"
@@ -60,8 +74,16 @@ def _backup_subject_configs() -> str:
     env["PGPASSWORD"] = os.environ["PG_PASSWORD"]  # 口令来自 .env（scripts/_conn 加载）
     cmd = [
         "D:/pgsql/pgenv/Library/bin/pg_dump",
-        "-h", "127.0.0.1", "-U", "kaoyan", "-d", "kaoyan",
-        "-t", "public.subject_configs", "-f", out,
+        "-h",
+        "127.0.0.1",
+        "-U",
+        "kaoyan",
+        "-d",
+        "kaoyan",
+        "-t",
+        "public.subject_configs",
+        "-f",
+        out,
     ]
     subprocess.run(cmd, check=True, env=env)
     return out
@@ -87,13 +109,15 @@ def plan(db) -> list[tuple[int, str, list[str]]]:
 def apply(db) -> int:
     """执行补种，返回插入行数。"""
     inserts = plan(db)
-    for sid, name, types in inserts:
-        db.add(CoreSubjectConfig(
-            subject_id=sid,
-            question_types=list(types),
-            is_custom=False,
-            extra={},
-        ))
+    for sid, _name, types in inserts:
+        db.add(
+            CoreSubjectConfig(
+                subject_id=sid,
+                question_types=list(types),
+                is_custom=False,
+                extra={},
+            )
+        )
     if inserts:
         db.commit()
     return len(inserts)

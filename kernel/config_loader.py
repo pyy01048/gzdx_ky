@@ -7,10 +7,11 @@
 - 加载结果全部 frozen dataclass（含 tuple 字段），杜绝运行期被篡改。
 - 任何解析错误显式抛出 ConfigError，绝不静默给默认值掩盖问题。
 """
+
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Tuple
 
@@ -46,9 +47,7 @@ def _parse_scalar(tok: str) -> Any:
         if not inner:
             return []
         return [_parse_scalar(p) for p in inner.split(",")]
-    if (tok.startswith('"') and tok.endswith('"')) or (
-        tok.startswith("'") and tok.endswith("'")
-    ):
+    if (tok.startswith('"') and tok.endswith('"')) or (tok.startswith("'") and tok.endswith("'")):
         return tok[1:-1]
     return tok
 
@@ -103,27 +102,27 @@ def _req(data: Mapping[str, Any], key: str, ctx: str) -> Any:
 class DriftConfig:
     window_days: int
     min_days: int
-    on_track_band: float      # drift >= -on_track_band → on_track
-    recovery_band: float      # drift < -recovery_band → recovery
-    micro_adjust_pct: float   # R1 明日任务量下调比例上限
+    on_track_band: float  # drift >= -on_track_band → on_track
+    recovery_band: float  # drift < -recovery_band → recovery
+    micro_adjust_pct: float  # R1 明日任务量下调比例上限
 
 
 @dataclass(frozen=True)
 class RulesConfig:
     drift: DriftConfig
-    debt_soft_gate_hours: float     # R2' 欠账软闸门
-    debt_exit_hours: float          # 恢复退出条件：欠账 < 3h
-    recovery_exit_days: int         # 连续 3 天
-    review_backlog_ratio: float     # R5：积压 > 日配额 × 1.5
-    zero_report_days: int           # R6：连续 3 天零汇报
-    expire_after_days: int          # 非核心消解 14d
+    debt_soft_gate_hours: float  # R2' 欠账软闸门
+    debt_exit_hours: float  # 恢复退出条件：欠账 < 3h
+    recovery_exit_days: int  # 连续 3 天
+    review_backlog_ratio: float  # R5：积压 > 日配额 × 1.5
+    zero_report_days: int  # R6：连续 3 天零汇报
+    expire_after_days: int  # 非核心消解 14d
     quota_new: int
     quota_review: int
-    new_learn_cap_on_debt: float    # 软闸门封顶 50%
-    too_hard_accuracy: float        # R3：<60%
-    too_easy_accuracy: float        # R4：>90%
-    too_easy_streak: int            # R4：连续 5 天
-    milestone_delay_days: int       # R9：>7 天
+    new_learn_cap_on_debt: float  # 软闸门封顶 50%
+    too_hard_accuracy: float  # R3：<60%
+    too_easy_accuracy: float  # R4：>90%
+    too_easy_streak: int  # R4：连续 5 天
+    milestone_delay_days: int  # R9：>7 天
     priority_order: Tuple[str, ...]  # 仲裁优先级
     reflow_block_minutes: Tuple[int, ...]  # R10：25/45min 块
 
@@ -139,25 +138,25 @@ class ComplianceConfig:
 
 @dataclass(frozen=True)
 class AuditConfig:
-    tuimian_cum_pp: float        # 推免挤压三年累计 ≥10pp
-    shrink_pct: float            # 缩招同比 ≥20%
-    heat_rise_pct: float         # 爆热报录比上升 ≥30%
-    heat_abs_ratio: float        # 且绝对值 >8
-    retest_ratio_high: float     # 复录比高判定
-    stale_seasons: int           # access_date 超 N 个招生季 → 待复核
+    tuimian_cum_pp: float  # 推免挤压三年累计 ≥10pp
+    shrink_pct: float  # 缩招同比 ≥20%
+    heat_rise_pct: float  # 爆热报录比上升 ≥30%
+    heat_abs_ratio: float  # 且绝对值 >8
+    retest_ratio_high: float  # 复录比高判定
+    stale_seasons: int  # access_date 超 N 个招生季 → 待复核
 
 
 @dataclass(frozen=True)
 class FsrsConfig:
     desired_retention: float
-    familiar_maps_to: str        # Good（默认）| Easy
-    impression_maps_to: str      # Hard（默认）| Good
-    optimizer_gate: int          # ≥1000 条日志才启用
-    optimizer_gate_min: int      # 可配下限 512
+    familiar_maps_to: str  # Good（默认）| Easy
+    impression_maps_to: str  # Hard（默认）| Good
+    optimizer_gate: int  # ≥1000 条日志才启用
+    optimizer_gate_min: int  # 可配下限 512
     queue_quota_new: int
     queue_quota_review: int
     first_interval_min_days: int  # V12 口径：新卡首间隔 ≥1 天
-    reinsert_offset: int          # 轮内 +4 重现
+    reinsert_offset: int  # 轮内 +4 重现
 
 
 @dataclass(frozen=True)

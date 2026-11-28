@@ -19,6 +19,7 @@
    - 独立模型调用失败时返回 degraded 评分卡，不抛异常
    - verified_score 回退首遍分
 """
+
 from __future__ import annotations
 
 import pytest
@@ -165,7 +166,10 @@ def test_verify_degraded_fallback():
     assert res["verified_score"] == 7.5
     assert res["comment"] == "验证器暂不可用"
     assert set(res["dimensions"].keys()) == {
-        "accuracy", "logic", "format", "completeness",
+        "accuracy",
+        "logic",
+        "format",
+        "completeness",
     }
     # 中性维度分
     for dim in res["dimensions"].values():
@@ -186,9 +190,7 @@ def test_verify_score_fallback_on_exception(monkeypatch):
 
     # verify_score 内部是 from services.model_gateway import get_gateway，
     # 因此需要 patch model_gateway 模块的 get_gateway。
-    monkeypatch.setattr(
-        "services.model_gateway.get_gateway", lambda: type("G", (), {"chat": _boom})()
-    )
+    monkeypatch.setattr("services.model_gateway.get_gateway", lambda: type("G", (), {"chat": _boom})())
     q = {"content": "题目", "answer": "答案", "analysis": "解析", "subject": "数学"}
     res = verify_score(q, "考生答案", score=6.0, max_score=10.0)
     assert res["verdict"] == "degraded"
@@ -209,9 +211,7 @@ def test_verify_score_parses_json(monkeypatch):
             )
         }
 
-    monkeypatch.setattr(
-        "services.model_gateway.get_gateway", lambda: type("G", (), {"chat": _fake_chat})()
-    )
+    monkeypatch.setattr("services.model_gateway.get_gateway", lambda: type("G", (), {"chat": _fake_chat})())
     q = {"content": "题目", "answer": "答案", "analysis": "解析", "subject": "数学"}
     res = verify_score(q, "考生答案", score=6.0, max_score=10.0)
     assert res["degraded"] is False
@@ -236,8 +236,11 @@ def _make_calc_question(db):
         answer="(1+2)*3",
         analysis="先算括号内加法，再乘 3。",
         subject="数学",
-        chapter="QA-高数", knowledge_point="QA-四则运算",
-        difficulty=1, source="自建", question_type="calc",
+        chapter="QA-高数",
+        knowledge_point="QA-四则运算",
+        difficulty=1,
+        source="自建",
+        question_type="calc",
         answer_type="subjective",
     )
     db.add(q)
@@ -281,7 +284,10 @@ def test_grade_subjective_returns_verification():
     assert "sandbox" in ver
     # 维度卡含四维
     assert set(ver["dimensions"].keys()) == {
-        "accuracy", "logic", "format", "completeness",
+        "accuracy",
+        "logic",
+        "format",
+        "completeness",
     }
     # 计算题沙箱应可用
     sbx = ver["sandbox"]

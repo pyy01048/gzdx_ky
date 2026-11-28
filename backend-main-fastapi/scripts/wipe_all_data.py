@@ -13,6 +13,7 @@
 - TRUNCATE 保留表结构、视图、触发器、函数、ENUM、序列定义；仅清数据并重置序列
 - 执行前打印完整表清单与总行数，需 --yes 才真正动手
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,13 +50,17 @@ def main() -> int:
 
     with engine.connect() as conn:
         db = conn.execute(text("SELECT current_database()")).scalar()
-        rows = conn.execute(
-            text(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema='public' AND table_type='BASE TABLE' "
-                "ORDER BY table_name"
+        rows = (
+            conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema='public' AND table_type='BASE TABLE' "
+                    "ORDER BY table_name"
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         if not rows:
             print("public schema 下没有表，无需处理。")

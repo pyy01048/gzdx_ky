@@ -40,7 +40,6 @@ from typing import Any, Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from models import Document, QuizQuestion
 from pydantic import BaseModel
 from services import qbank_builder as qb
 from services import taxonomy
@@ -48,6 +47,8 @@ from services.quiz_content_gate import admit as gate_admit
 from services.quiz_content_gate import build_stem_answer_index, gate_log_summary
 from sqlalchemy.orm import Session
 from utils.security import require_admin
+
+from models import Document, QuizQuestion
 
 router = APIRouter(prefix="/api/kb-import", tags=["kb-import"], dependencies=[Depends(require_admin)])
 
@@ -57,8 +58,20 @@ MAX_CANDIDATES_PER_DOC = 200
 SIMILARITY_THRESHOLD = 0.86
 #: documents.source_format（PG 枚举 doc_format）的合法值；scan 按类型过滤时校验
 ALLOWED_FILE_TYPES = {
-    "pdf", "txt", "doc", "docx", "md", "image", "pptx", "ppt",
-    "xlsx", "html", "json", "jpg", "png", "other",
+    "pdf",
+    "txt",
+    "doc",
+    "docx",
+    "md",
+    "image",
+    "pptx",
+    "ppt",
+    "xlsx",
+    "html",
+    "json",
+    "jpg",
+    "png",
+    "other",
 }
 
 
@@ -182,11 +195,7 @@ def _build_stem_index(db: Session):
     只收 ``is_junk`` 不为 1 的题（隔离题不应参与冲突判定，否则被隔离的
     错误答案会把正确的新题也拦下来），且只收答案非空的行。
     """
-    rows = (
-        db.query(QuizQuestion.content, QuizQuestion.answer)
-        .filter(QuizQuestion.is_junk.isnot(True))
-        .all()
-    )
+    rows = db.query(QuizQuestion.content, QuizQuestion.answer).filter(QuizQuestion.is_junk.isnot(True)).all()
     return build_stem_answer_index(rows)
 
 
@@ -283,20 +292,20 @@ async def scan(payload: ScanRequest, db: Session = Depends(get_db)):
     total_candidates = 0
     total_dup = 0
     for doc in docs:
-        cands, already_count, truncated = _list_doc_candidates(
-            doc, existing_hashes, existing_by_len, existing_lengths
-        )
+        cands, already_count, truncated = _list_doc_candidates(doc, existing_hashes, existing_by_len, existing_lengths)
         total_candidates += len(cands)
         total_dup += already_count
-        items.append({
-            "doc_id": doc.id,
-            "doc_title": doc.file_name,
-            "subject": doc.subject,
-            "candidate_count": len(cands),
-            "already_exists": already_count,
-            "truncated": truncated,
-            "candidates": cands,
-        })
+        items.append(
+            {
+                "doc_id": doc.id,
+                "doc_title": doc.file_name,
+                "subject": doc.subject,
+                "candidate_count": len(cands),
+                "already_exists": already_count,
+                "truncated": truncated,
+                "candidates": cands,
+            }
+        )
 
     elapsed = round(time.perf_counter() - t0, 3)
     return {
@@ -327,7 +336,7 @@ def _resolve_selected(payload: ConfirmRequest) -> list[tuple[int, int]]:
                 status_code=400,
                 detail="doc_ids 与 candidate_indexes 长度不一致",
             )
-        for did, idxs in zip(payload.doc_ids, payload.candidate_indexes):
+        for did, idxs in zip(payload.doc_ids, payload.candidate_indexes, strict=False):
             for i in idxs:
                 pairs.append((int(did), int(i)))
         return pairs

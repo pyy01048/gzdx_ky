@@ -22,6 +22,7 @@
     python scripts/mark_notice_noise.py            # dry-run 报数
     python scripts/mark_notice_noise.py --apply    # 备份 + 加列 + 标记 + 导 CSV
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,9 +68,7 @@ def main() -> int:
 
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True) if not args.apply else sqlite3.connect(DB)
     try:
-        rows = conn.execute(
-            "SELECT id, title, importance_reason FROM kaoyan_notices"
-        ).fetchall()
+        rows = conn.execute("SELECT id, title, importance_reason FROM kaoyan_notices").fetchall()
         mark_ids: list[int] = []
         review_rows: list[tuple] = []
         for rid, title, reason in rows:
@@ -103,9 +102,7 @@ def main() -> int:
         print("=" * 70)
         print("已备份:", backup_db("real"))
         # 幂等加列
-        conn.execute(
-            "ALTER TABLE kaoyan_notices ADD COLUMN is_noise INTEGER DEFAULT 0"
-        )
+        conn.execute("ALTER TABLE kaoyan_notices ADD COLUMN is_noise INTEGER DEFAULT 0")
         conn.commit()
         # 标记
         conn.executemany(
@@ -113,13 +110,10 @@ def main() -> int:
             [(i,) for i in mark_ids],
         )
         conn.commit()
-        flagged = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_notices WHERE is_noise = 1"
-        ).fetchone()[0]
+        flagged = conn.execute("SELECT COUNT(*) FROM kaoyan_notices WHERE is_noise = 1").fetchone()[0]
         print(f"  已标记 is_noise=1 : {flagged} 条")
         # 复核 CSV
-        audit = (os.path.dirname(DB)
-                 + f"\\notice_noise_review_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        audit = os.path.dirname(DB) + f"\\notice_noise_review_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         with open(audit, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
             w.writerow(["id", "title", "noise_kind"])

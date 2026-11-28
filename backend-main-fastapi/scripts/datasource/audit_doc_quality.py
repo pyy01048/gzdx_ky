@@ -10,6 +10,7 @@
   6. 大量非中文非英文符号（公式崩坏）
   7. 重复行（PPT 讲义常见）
 """
+
 import re
 import sqlite3
 from collections import Counter
@@ -18,14 +19,13 @@ DB = r"D:\平台\database\kaoyan.db"
 con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
 
 rows = con.execute(
-    "SELECT id, file_name, file_type, subject, subject_source, ocr_used, content "
-    "FROM documents"
+    "SELECT id, file_name, file_type, subject, subject_source, ocr_used, content FROM documents"
 ).fetchall()
 print(f"文档总数 {len(rows)}")
 
 stat = Counter()
 samples = {}
-for did, fn, ft, subj, src, ocr, content in rows:
+for did, fn, _ft, _subj, src, _ocr, content in rows:
     c = content or ""
     n = len(c)
     if n < 50:
@@ -74,4 +74,4 @@ print()
 print("=== ocr_used 分布 × 平均正文字数 ===")
 for k, v in Counter(r[5] for r in rows).items():
     lens = [len(r[6] or "") for r in rows if r[5] == k]
-    print(f"  ocr_used={k}: {v} 篇, 平均 {sum(lens)//max(len(lens),1)} 字")
+    print(f"  ocr_used={k}: {v} 篇, 平均 {sum(lens) // max(len(lens), 1)} 字")

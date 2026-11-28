@@ -39,6 +39,7 @@
     其他        → 英语             11
     dry-run：未写库。确认无误后加 --apply。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,9 +54,10 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from database import SessionLocal  # noqa: E402
-from models import Document, KnowledgeChunk  # noqa: E402
 from services import kb_service  # noqa: E402
 from services.taxonomy import normalize_subject  # noqa: E402
+
+from models import Document, KnowledgeChunk  # noqa: E402
 
 BACKUP_DIR = os.path.join(BASE_DIR, "data", "reclassify_backup")
 
@@ -86,8 +88,7 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="真正写库（默认 dry-run）")
     ap.add_argument("--no-backup", action="store_true", help="--apply 时跳过备份")
     ap.add_argument("--limit", type=int, default=0, help="只处理前 N 篇")
-    ap.add_argument("--id", type=int, action="append", default=[],
-                    help="只处理指定 document id（可重复）")
+    ap.add_argument("--id", type=int, action="append", default=[], help="只处理指定 document id（可重复）")
     ap.add_argument("--subject", default="", help="只处理当前学科为 X 的文档")
     ap.add_argument("--show", type=int, default=15, help="打印前 N 条明细")
     args = ap.parse_args()
@@ -107,7 +108,8 @@ def main() -> int:
                 # 无正文只能靠文件名/路径判，仍然判，但置信度门槛会挡掉臆测
                 no_content += 1
             new_raw, conf = kb_service.classify_subject_confidence(
-                d.file_name or "", content,
+                d.file_name or "",
+                content,
                 path=d.file_path or "",
             )
             if not conf:
@@ -119,20 +121,20 @@ def main() -> int:
                 unchanged += 1
                 continue
             meta = kb_service.classify_content_category(d.file_name or "", content)
-            changes.append({
-                "id": d.id,
-                "file_name": d.file_name,
-                "file_path": d.file_path,
-                "old_subject": old,
-                "new_subject": new,
-                "content_type": meta,
-            })
+            changes.append(
+                {
+                    "id": d.id,
+                    "file_name": d.file_name,
+                    "file_path": d.file_path,
+                    "old_subject": old,
+                    "new_subject": new,
+                    "content_type": meta,
+                }
+            )
 
         total = scanned
-        print(f"扫描 {total} 篇文档"
-              + (f"（其中无正文 {no_content} 篇）" if no_content else ""))
-        print(f"  需重分类 {len(changes)} 篇"
-              + (f" = {len(changes) / total * 100:.1f}%" if total else ""))
+        print(f"扫描 {total} 篇文档" + (f"（其中无正文 {no_content} 篇）" if no_content else ""))
+        print(f"  需重分类 {len(changes)} 篇" + (f" = {len(changes) / total * 100:.1f}%" if total else ""))
         print(f"  判定不变 {unchanged} 篇，低置信跳过 {low_conf} 篇")
 
         if not changes:
@@ -146,8 +148,7 @@ def main() -> int:
 
         print(f"\n明细（前 {min(args.show, len(changes))} 条）：")
         for c in changes[: args.show]:
-            print(f"  #{c['id']} [{c['old_subject'] or '(空)'} → {c['new_subject']}] "
-                  f"{c['file_name']}")
+            print(f"  #{c['id']} [{c['old_subject'] or '(空)'} → {c['new_subject']}] {c['file_name']}")
 
         if not args.apply:
             print("\ndry-run：未写库。确认无误后加 --apply 执行。")
@@ -159,11 +160,11 @@ def main() -> int:
 
         for c in changes:
             db.query(Document).filter(Document.id == c["id"]).update(
-                {Document.subject: c["new_subject"]}, synchronize_session="fetch")
-            db.query(KnowledgeChunk).filter(
-                KnowledgeChunk.document_id == c["id"]).update(
-                {KnowledgeChunk.subject: c["new_subject"]},
-                synchronize_session="fetch")
+                {Document.subject: c["new_subject"]}, synchronize_session="fetch"
+            )
+            db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == c["id"]).update(
+                {KnowledgeChunk.subject: c["new_subject"]}, synchronize_session="fetch"
+            )
         db.commit()
         print(f"已写库：{len(changes)} 篇 documents.subject + 其 knowledge_chunks.subject")
         return 0

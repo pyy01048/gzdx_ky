@@ -16,6 +16,7 @@
 
 只用 conftest 的临时库（红线：绝不碰 D:\\平台\\database\\kaoyan.db）。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -37,17 +38,23 @@ def _flag_off(monkeypatch, chunk_fts_mirror):  # noqa: ARG001
 def _doc(db, file_name):
     from models import Document
 
-    d = Document(file_name=file_name, subject="数字电子技术", content=BODY,
-                 file_path=f"knowledge_base/数电/{file_name}", index_status="indexed")
+    d = Document(
+        file_name=file_name,
+        subject="数字电子技术",
+        content=BODY,
+        file_path=f"knowledge_base/数电/{file_name}",
+        index_status="indexed",
+    )
     db.add(d)
     db.commit()
     return d.id
 
 
 def _chunk_ids(db, doc_id):
-    return [r[0] for r in db.execute(
-        text("SELECT id FROM knowledge_chunks WHERE document_id=:d ORDER BY id"),
-        {"d": doc_id})]
+    return [
+        r[0]
+        for r in db.execute(text("SELECT id FROM knowledge_chunks WHERE document_id=:d ORDER BY id"), {"d": doc_id})
+    ]
 
 
 def _purge(db, doc_id):
@@ -58,9 +65,9 @@ def _purge(db, doc_id):
 
 
 def _fts_cnt(db, doc_id):
-    return int(db.execute(
-        text("SELECT COUNT(*) FROM knowledge_chunks_fts WHERE document_id=:d"),
-        {"d": doc_id}).scalar())
+    return int(
+        db.execute(text("SELECT COUNT(*) FROM knowledge_chunks_fts WHERE document_id=:d"), {"d": doc_id}).scalar()
+    )
 
 
 def test_first_time_ingest_produces_chunks_with_flag_off(db_schema):  # noqa: ARG001
@@ -71,8 +78,7 @@ def test_first_time_ingest_produces_chunks_with_flag_off(db_schema):  # noqa: AR
     db = SessionLocal()
     try:
         doc_id = _doc(db, f"GATE-{__file__}-fresh.txt")
-        n = ingest_text(db, doc_id, "GATE-fresh.txt", BODY,
-                        subject="数字电子技术", replace=True)
+        n = ingest_text(db, doc_id, "GATE-fresh.txt", BODY, subject="数字电子技术", replace=True)
         db.commit()
         assert n > 0, "首次入库被物理删除闸门挡住 → 文档有正文但零分块"
         assert len(_chunk_ids(db, doc_id)) == n
@@ -89,15 +95,13 @@ def test_replace_with_existing_chunks_stays_blocked_and_keeps_them(db_schema):  
     db = SessionLocal()
     try:
         doc_id = _doc(db, "GATE-existing.txt")
-        first = ingest_text(db, doc_id, "GATE-existing.txt", BODY,
-                            subject="数字电子技术", replace=True)
+        first = ingest_text(db, doc_id, "GATE-existing.txt", BODY, subject="数字电子技术", replace=True)
         db.commit()
         before = _chunk_ids(db, doc_id)
         assert len(before) == first > 0
 
         with pytest.raises(PhysicalDeleteBlocked):
-            ingest_text(db, doc_id, "GATE-existing.txt", BODY + "追加一段正文。",
-                        subject="数字电子技术", replace=True)
+            ingest_text(db, doc_id, "GATE-existing.txt", BODY + "追加一段正文。", subject="数字电子技术", replace=True)
 
         db.rollback()
         assert _chunk_ids(db, doc_id) == before, "被拦截却把旧分块删了，就是最坏结果"
@@ -114,14 +118,12 @@ def test_replace_rechunks_when_flag_explicitly_enabled(db_schema, monkeypatch): 
     db = SessionLocal()
     try:
         doc_id = _doc(db, "GATE-enabled.txt")
-        first = ingest_text(db, doc_id, "GATE-enabled.txt", BODY,
-                            subject="数字电子技术", replace=True)
+        first = ingest_text(db, doc_id, "GATE-enabled.txt", BODY, subject="数字电子技术", replace=True)
         db.commit()
         assert first > 0
 
         monkeypatch.setenv(ENV_FLAG, ENV_ENABLED_VALUE)
-        again = ingest_text(db, doc_id, "GATE-enabled.txt", BODY + BODY,
-                            subject="数字电子技术", replace=True)
+        again = ingest_text(db, doc_id, "GATE-enabled.txt", BODY + BODY, subject="数字电子技术", replace=True)
         db.commit()
         ids = _chunk_ids(db, doc_id)
         assert again > first, (first, again)
@@ -144,8 +146,7 @@ def test_mirror_deletes_are_not_committed_ahead_of_the_chunks(db_schema, monkeyp
     db = SessionLocal()
     try:
         doc_id = _doc(db, "GATE-atomic.txt")
-        first = kb_service.ingest_text(db, doc_id, "GATE-atomic.txt", BODY,
-                                       subject="数字电子技术", replace=True)
+        first = kb_service.ingest_text(db, doc_id, "GATE-atomic.txt", BODY, subject="数字电子技术", replace=True)
         db.commit()
         assert first > 0 and _fts_cnt(db, doc_id) == first
 
@@ -156,8 +157,7 @@ def test_mirror_deletes_are_not_committed_ahead_of_the_chunks(db_schema, monkeyp
 
         monkeypatch.setattr(kb_service, "chunk_text", boom)
         with pytest.raises(RuntimeError):
-            kb_service.ingest_text(db, doc_id, "GATE-atomic.txt", BODY,
-                                   subject="数字电子技术", replace=True)
+            kb_service.ingest_text(db, doc_id, "GATE-atomic.txt", BODY, subject="数字电子技术", replace=True)
 
         db.rollback()
         assert len(_chunk_ids(db, doc_id)) == first, "分块被删了"

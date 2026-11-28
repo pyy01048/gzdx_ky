@@ -7,7 +7,7 @@
  * 每一步都可「跳过此步」，任何时刻可「跳过引导」—— 完成/跳过均进入 /hub，
  * 后续随时可在「设置」页补全，不做强拦截。
  * ========================================================================== */
-import React, { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { goalsApi } from '../../api/client'
 import { refreshSubjectConfig } from '../../hooks/useSubjectConfig'
@@ -34,6 +34,10 @@ const numOrNull = (v) => {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
+/**
+ * 首跑初始化向导主组件。
+ * 四步表单分别保存到后端，任一步可跳过；完成或跳过均进入 /hub。
+ */
 export default function Onboarding() {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
@@ -88,13 +92,13 @@ export default function Onboarding() {
     return () => { alive = false }
   }, [])
 
-  const finish = () => navigate('/hub', { replace: true })
-  const advance = () => {
+  const finish = useCallback(() => navigate('/hub', { replace: true }), [navigate])
+  const advance = useCallback(() => {
     if (step < STEPS.length - 1) setStep(step + 1)
     else finish()
-  }
+  }, [step, finish])
 
-  const saveAndNext = async () => {
+  const saveAndNext = useCallback(async () => {
     if (saving) return
     setSaving(true)
     try {
@@ -127,11 +131,11 @@ export default function Onboarding() {
     } finally {
       setSaving(false)
     }
-  }
+  }, [saving, step, school, major, score, year, quota, exam, support, advance])
 
-  const toggle = (list, setList, name) => {
+  const toggle = useCallback((list, setList, name) => {
     setList(list.includes(name) ? list.filter((x) => x !== name) : [...list, name])
-  }
+  }, [])
 
   const meta = STEPS[step]
   const StepIcon = meta.icon

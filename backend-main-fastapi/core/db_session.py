@@ -127,9 +127,7 @@ def _engine_kwargs() -> dict[str, Any]:
     }
 
 
-engine: Engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args=_connect_args(), **_engine_kwargs()
-)
+engine: Engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=_connect_args(), **_engine_kwargs())
 
 
 # --------------------------------------------------------------------------- #
@@ -142,13 +140,13 @@ def _on_sqlite_connect(dbapi_connection, connection_record) -> None:
         return
     cursor = dbapi_connection.cursor()
     try:
-        cursor.execute("PRAGMA journal_mode=WAL")     # WAL：读写不互斥
+        cursor.execute("PRAGMA journal_mode=WAL")  # WAL：读写不互斥
         cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA cache_size=-64000")   # 64MB 缓存
+        cursor.execute("PRAGMA cache_size=-64000")  # 64MB 缓存
         cursor.execute("PRAGMA temp_store=MEMORY")
         cursor.execute("PRAGMA mmap_size=268435456")  # 256MB 内存映射
-        cursor.execute("PRAGMA busy_timeout=5000")    # 等价于 PG 的锁等待
-        cursor.execute("PRAGMA foreign_keys=ON")      # 与 PG 外键行为一致
+        cursor.execute("PRAGMA busy_timeout=5000")  # 等价于 PG 的锁等待
+        cursor.execute("PRAGMA foreign_keys=ON")  # 与 PG 外键行为一致
     except Exception as exc:  # pragma: no cover
         logger.debug("SQLite PRAGMA 设置失败: %s", exc)
     finally:
@@ -224,8 +222,7 @@ def check_database_health() -> dict[str, Any]:
         result["status"] = "healthy"
         result["response"] = row[0] if row else None
         if IS_POSTGRES:
-            result["pgvector_enabled"] = bool(
-                db.execute(text("SELECT pgvector_available()")).scalar())
+            result["pgvector_enabled"] = bool(db.execute(text("SELECT pgvector_available()")).scalar())
     except Exception as exc:
         logger.warning("数据库健康检查失败: %s", exc)
         result["status"] = "unhealthy"
@@ -262,8 +259,7 @@ def _resolve_sql(path: str, seen: frozenset[str] = frozenset()) -> str:
         stripped = line.strip()
         match = _INCLUDE_RE.match(stripped)
         if match:
-            child = os.path.normpath(
-                os.path.join(os.path.dirname(resolved), match.group("target")))
+            child = os.path.normpath(os.path.join(os.path.dirname(resolved), match.group("target")))
             out.append(_resolve_sql(child, seen | {resolved}))
         elif stripped.startswith("\\"):
             continue  # psql 元命令，Python 侧无需处理

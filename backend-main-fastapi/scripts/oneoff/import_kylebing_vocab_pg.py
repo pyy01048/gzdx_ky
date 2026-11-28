@@ -22,6 +22,7 @@
 幂等: uq_word_in_deck(deck_id, word) ON CONFLICT DO NOTHING
 运行: python scripts/import_kylebing_vocab_pg.py
 """
+
 # [STATUS] 一次性数据脚本（迁入 oneoff/，docs/完善方案/04 §3.4）。执行前确认数据源与备份。
 import json
 import os
@@ -33,11 +34,17 @@ import psycopg
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 JSONL = os.path.join(
-    PROJECT_ROOT, "..", "data_sources", "english-vocabulary", "english-vocabulary-master",
-    "full_line_jsonl", "full", "正序", "考研.jsonl",
+    PROJECT_ROOT,
+    "..",
+    "data_sources",
+    "english-vocabulary",
+    "english-vocabulary-master",
+    "full_line_jsonl",
+    "full",
+    "正序",
+    "考研.jsonl",
 )
 
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -99,11 +106,13 @@ def extract_word_info(obj: dict):
 
     synos = []
     for s in (wc.get("syno") or {}).get("synos") or []:
-        synos.append({
-            "pos": s.get("pos"),
-            "tran": s.get("tran"),
-            "words": [w.get("w") for w in (s.get("hwds") or []) if w.get("w")],
-        })
+        synos.append(
+            {
+                "pos": s.get("pos"),
+                "tran": s.get("tran"),
+                "words": [w.get("w") for w in (s.get("hwds") or []) if w.get("w")],
+            }
+        )
 
     phrases = []
     for p in (wc.get("phrase") or {}).get("phrases") or []:
@@ -111,10 +120,12 @@ def extract_word_info(obj: dict):
 
     rels = []
     for r in (wc.get("relWord") or {}).get("rels") or []:
-        rels.append({
-            "pos": r.get("pos"),
-            "words": [{"w": x.get("hwd"), "tran": x.get("tran")} for x in (r.get("words") or []) if x.get("hwd")],
-        })
+        rels.append(
+            {
+                "pos": r.get("pos"),
+                "words": [{"w": x.get("hwd"), "tran": x.get("tran")} for x in (r.get("words") or []) if x.get("hwd")],
+            }
+        )
 
     extra = {
         "synonyms": synos,
@@ -154,7 +165,9 @@ def main():
         print(f"核心 deck {core_id} 词数: {len(core_words)}")
 
         # 创建/复用扩展 deck
-        cur.execute("SELECT id FROM word_decks WHERE name = %s AND user_id = %s ORDER BY id LIMIT 1", (DECK_NAME, USER_ID))
+        cur.execute(
+            "SELECT id FROM word_decks WHERE name = %s AND user_id = %s ORDER BY id LIMIT 1", (DECK_NAME, USER_ID)
+        )
         deck = cur.fetchone()
         if deck:
             deck_id = deck[0]
@@ -178,11 +191,30 @@ def main():
             if lower_w in core_words:
                 skipped_existing += 1
                 continue
-            insert_batch.append((
-                deck_id, word, phonetic, pos, meaning, example, example_cn, TAG,
-                STATUS, 2.5, 0, 0, 0, today, None, [], json.dumps(extra, ensure_ascii=False),
-                now, now, USER_ID,
-            ))
+            insert_batch.append(
+                (
+                    deck_id,
+                    word,
+                    phonetic,
+                    pos,
+                    meaning,
+                    example,
+                    example_cn,
+                    TAG,
+                    STATUS,
+                    2.5,
+                    0,
+                    0,
+                    0,
+                    today,
+                    None,
+                    [],
+                    json.dumps(extra, ensure_ascii=False),
+                    now,
+                    now,
+                    USER_ID,
+                )
+            )
 
         print(f"需插入（核心 deck 之外）: {len(insert_batch)}，跳过已存在核心词: {skipped_existing}")
 
@@ -197,7 +229,7 @@ def main():
         BATCH = 500
         inserted = 0
         for i in range(0, len(insert_batch), BATCH):
-            cur.executemany(INSERT_SQL, insert_batch[i:i + BATCH])
+            cur.executemany(INSERT_SQL, insert_batch[i : i + BATCH])
             inserted += cur.rowcount
 
         cur.execute(

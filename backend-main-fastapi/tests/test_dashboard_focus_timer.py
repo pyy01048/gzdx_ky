@@ -14,19 +14,21 @@
 隔离方式：本文件所有行都带 ``remark == MARK``，teardown 按它删；
 断言只看**增量**，因此不受临时库里别人留下的"今天"的数据影响。
 """
+
 from __future__ import annotations
 
 import datetime
 
 import pytest
 from conftest import TEST_USER_ID
-from models import StudySession
 from services.study_calendar import (
     FOCUS_SOURCES,
     MAX_FOCUS_MINUTES_PER_DAY,
     MAX_FOCUS_MINUTES_PER_SESSION,
     focus_minutes_on,
 )
+
+from models import StudySession
 
 #: 本文件专属标记：写库的行用它自证来源，也用它清理。
 MARK = "专注计时测试科目"
@@ -55,17 +57,21 @@ def _today():
 # --------------------------------------------------------------------------- #
 # 1. 写入 → 台账读到同一个数（单一口径）
 # --------------------------------------------------------------------------- #
-def test_a_recorded_session_moves_the_dashboard_number_by_exactly_its_minutes(
-    client, db
-):
+def test_a_recorded_session_moves_the_dashboard_number_by_exactly_its_minutes(client, db):
     from services.dashboard_service import DashboardService
 
     day = _today()
     before = focus_minutes_on(db, day)
 
-    r = client.post(URL, json={
-        "duration": 25, "task_type": "pomodoro", "subject": MARK, "remark": MARK,
-    })
+    r = client.post(
+        URL,
+        json={
+            "duration": 25,
+            "task_type": "pomodoro",
+            "subject": MARK,
+            "remark": MARK,
+        },
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["ok"] is True
@@ -104,13 +110,16 @@ def test_streak_effective_threshold_is_reached_by_real_minutes(client, db):
 # --------------------------------------------------------------------------- #
 # 2. duration 必填 + 上下限
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("payload", [
-    {},                                             # 漏传：绝不能默认记 25 分钟
-    {"duration": 0},                                # 0 分钟不是"学过"
-    {"duration": -5},
-    {"duration": MAX_FOCUS_MINUTES_PER_SESSION + 1},  # 一次专注不可能 10 小时+
-    {"duration": "twenty five"},
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},  # 漏传：绝不能默认记 25 分钟
+        {"duration": 0},  # 0 分钟不是"学过"
+        {"duration": -5},
+        {"duration": MAX_FOCUS_MINUTES_PER_SESSION + 1},  # 一次专注不可能 10 小时+
+        {"duration": "twenty five"},
+    ],
+)
 def test_invalid_duration_is_rejected_and_nothing_is_written(client, db, payload):
     r = client.post(URL, json={"remark": MARK, **payload})
     assert r.status_code == 422, f"{payload} 竟然被接受：{r.text}"
@@ -179,10 +188,16 @@ def test_subject_is_stored_verbatim_for_per_subject_totals(client, db):
 def test_a_day_cannot_accumulate_more_minutes_than_a_day_has(client, db):
     day = _today()
     already_minutes = MAX_FOCUS_MINUTES_PER_DAY - 10
-    db.add(StudySession(
-        date=day, duration=already_minutes, subject=MARK, task_type="manual", remark=MARK,
-        user_id=TEST_USER_ID,  # B4：种子数据归属测试主体
-    ))
+    db.add(
+        StudySession(
+            date=day,
+            duration=already_minutes,
+            subject=MARK,
+            task_type="manual",
+            remark=MARK,
+            user_id=TEST_USER_ID,  # B4：种子数据归属测试主体
+        )
+    )
     db.commit()
 
     r = client.post(URL, json={"duration": 20, "task_type": "manual", "remark": MARK})
@@ -201,11 +216,16 @@ def test_a_day_cannot_accumulate_more_minutes_than_a_day_has(client, db):
 def test_day_gate_is_date_scoped(client, db):
     """闸门只看**当天**：昨天记满 1440 分钟不该挡住今天的第一次专注。"""
     yesterday = _today() - datetime.timedelta(days=1)
-    db.add(StudySession(
-        date=yesterday, duration=MAX_FOCUS_MINUTES_PER_DAY,
-        subject=MARK, task_type="manual", remark=MARK,
-        user_id=TEST_USER_ID,  # B4：种子数据归属测试主体
-    ))
+    db.add(
+        StudySession(
+            date=yesterday,
+            duration=MAX_FOCUS_MINUTES_PER_DAY,
+            subject=MARK,
+            task_type="manual",
+            remark=MARK,
+            user_id=TEST_USER_ID,  # B4：种子数据归属测试主体
+        )
+    )
     db.commit()
 
     r = client.post(URL, json={"duration": 25, "task_type": "pomodoro", "remark": MARK})

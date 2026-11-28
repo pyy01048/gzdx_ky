@@ -1,0 +1,282 @@
+{
+  "date": "2026-11-25T09:53:33.044Z",
+  "baseURL": "http://60.204.223.140",
+  "results": [
+    {
+      "viewport": "1440",
+      "route": "home",
+      "status": 200,
+      "title": "院校库 · 硕途考研",
+      "renderedH1": [
+        "院校库"
+      ],
+      "visibleH1": [
+        "院校库"
+      ],
+      "hash": "#/kaoyan",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "1440",
+      "route": "login",
+      "status": 200,
+      "title": "登录 · 硕途考研",
+      "renderedH1": [
+        "把考研的每一步，放在同一张地图上。放在同一张地图上。"
+      ],
+      "visibleH1": [
+        "把考研的每一步，放在同一张地图上。放在同一张地图上。"
+      ],
+      "hash": "#/login",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "1440",
+      "route": "schools",
+      "status": 200,
+      "title": "院校库 · 硕途考研",
+      "renderedH1": [
+        "院校库"
+      ],
+      "visibleH1": [
+        "院校库"
+      ],
+      "hash": "#/kaoyan/schools",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "1440",
+      "route": "tools",
+      "status": 200,
+      "title": "复试工具箱 · 硕途考研",
+      "renderedH1": [
+        "学习工具箱 · 复试工具箱"
+      ],
+      "visibleH1": [],
+      "hash": "#/tools?tool=diagram&v=255&s=10&t=2&w=16",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "1440",
+      "route": "quiz",
+      "status": 200,
+      "title": "登录 · 刷题中心 · 硕途考研",
+      "renderedH1": [
+        "把考研的每一步，放在同一张地图上。放在同一张地图上。"
+      ],
+      "visibleH1": [
+        "把考研的每一步，放在同一张地图上。放在同一张地图上。"
+      ],
+      "hash": "#/login",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "390",
+      "route": "home",
+      "status": 200,
+      "title": "院校库 · 硕途考研",
+      "renderedH1": [
+        "院校库"
+      ],
+      "visibleH1": [
+        "院校库"
+      ],
+      "hash": "#/kaoyan",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "390",
+      "route": "login",
+      "status": 200,
+      "title": "登录 · 硕途考研",
+      "renderedH1": [
+        "欢迎来到硕途"
+      ],
+      "visibleH1": [
+        "欢迎来到硕途"
+      ],
+      "hash": "#/login",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "390",
+      "route": "schools",
+      "status": 200,
+      "title": "院校库 · 硕途考研",
+      "renderedH1": [
+        "院校库"
+      ],
+      "visibleH1": [
+        "院校库"
+      ],
+      "hash": "#/kaoyan/schools",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "390",
+      "route": "tools",
+      "status": 200,
+      "title": "复试工具箱 · 硕途考研",
+      "renderedH1": [
+        "学习工具箱 · 复试工具箱"
+      ],
+      "visibleH1": [],
+      "hash": "#/tools?tool=diagram&v=255&s=10&t=2&w=16",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    },
+    {
+      "viewport": "390",
+      "route": "quiz",
+      "status": 200,
+      "title": "登录 · 刷题中心 · 硕途考研",
+      "renderedH1": [
+        "欢迎来到硕途"
+      ],
+      "visibleH1": [
+        "欢迎来到硕途"
+      ],
+      "hash": "#/login",
+      "overflow": 0,
+      "smallTargets": [],
+      "pageErrors": [],
+      "serverErrors": [],
+      "authDenials": [
+        {
+          "status": 401,
+          "path": "/api/auth/me"
+        },
+        {
+          "status": 401,
+          "path": "/api/auth/refresh"
+        }
+      ],
+      "failedRequests": []
+    }
+  ]
+}

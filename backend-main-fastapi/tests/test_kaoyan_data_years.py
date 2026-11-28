@@ -8,6 +8,7 @@
 单测用独立内存 SQLite（空库状态必须能真的造出来，共享测试库里全是别的用例的种子），
 端测走 conftest 的临时库，只断言「与派生结果一致」而不钉死具体年份。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -37,11 +38,13 @@ def isolated_db():
 
 def _seed_two_years(db):
     db.add(KaoyanSchool(id=987001, name="测试院校A", province="测试省", level="211"))
-    db.add_all([
-        KaoyanScoreline(school_id=987001, year=2025, total_line=330),
-        KaoyanScoreline(school_id=987001, year=2027, total_line=345),
-        KaoyanAdmission(school_id=987001, year=2026, enroll_count=40, retest_ratio=1.2),
-    ])
+    db.add_all(
+        [
+            KaoyanScoreline(school_id=987001, year=2025, total_line=330),
+            KaoyanScoreline(school_id=987001, year=2027, total_line=345),
+            KaoyanAdmission(school_id=987001, year=2026, enroll_count=40, retest_ratio=1.2),
+        ]
+    )
     db.commit()
 
 

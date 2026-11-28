@@ -26,6 +26,29 @@ const finePointer = () => {
   }
 }
 
+/**
+ * 绑定 scroll/resize 事件并用 rAF 节流执行 compute。
+ * 立即执行一次 compute，返回 cleanup 函数用于解绑事件与取消未决 rAF。
+ */
+function bindRafScroll(compute) {
+  let raf = 0
+  const onScroll = () => {
+    if (!raf) raf = requestAnimationFrame(() => {
+      raf = 0
+      compute()
+    })
+  }
+  compute()
+  window.addEventListener('scroll', onScroll, { passive: true })
+  window.addEventListener('resize', onScroll)
+  return () => {
+    window.removeEventListener('scroll', onScroll)
+    window.removeEventListener('resize', onScroll)
+    if (raf) cancelAnimationFrame(raf)
+  }
+}
+
+/** 监听 prefers-reduced-motion 变化，返回当前是否启用降级动画 */
 export function useReducedMotion() {
   const [reduced, setReduced] = useState(prefersReduced)
   useEffect(() => {
@@ -43,6 +66,7 @@ export function useReducedMotion() {
 }
 
 /* ---------- Scroll Reveal（IntersectionObserver，进入视口后一次性显现） ---------- */
+/** 滚动显现 hook：元素进入视口后一次性添加 is-revealed 类；reduced-motion 下立即显现 */
 export function useReveal(delay = 0) {
   const ref = useRef(null)
   const reduced = useReducedMotion()
@@ -83,6 +107,10 @@ export function Reveal({ as: As = 'div', delay = 0, className = '', style, child
 }
 
 /* ---------- Spotlight / 3D Tilt / Magnetic（共用一个指针处理器，零额外 DOM） ---------- */
+/**
+ * 指针特效 hook：在元素上根据指针位置写入 CSS 变量，驱动 spotlight / 3D tilt / magnetic 三种特效。
+ * 三种特效可同时开启；reduced-motion 或非精确指针下自动禁用。返回 onPointerMove/onPointerLeave。
+ */
 export function usePointerFx({ spotlight = false, tilt = 0, magnetic = 0, disabled = false }) {
   const onPointerMove = useCallback(
     (e) => {
@@ -138,6 +166,7 @@ export function useMagnetic(strength = 4) {
 }
 
 /* ---------- Typewriter（ghost 占位防回流；读屏拿全文） ---------- */
+/** 打字机效果：逐字显现 text，ghost 占位防布局回流，sr-only 给读屏拿全文 */
 export function Typewriter({ text, speed = 32, startDelay = 0, caret = true, className = '' }) {
   const reduced = useReducedMotion()
   const [n, setN] = useState(() => (prefersReduced() ? text.length : 0))
@@ -179,6 +208,7 @@ const LATIN_POOL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 const CJK_POOL = '考研学府硕博知行思学问道志远登峰砺剑'
 const KEEP = /[\s，。、·：；！？「」]/
 
+/** 文本解码效果：挂载时从乱码逐字解码到目标文本；中文用汉字池，标点/空格不参与解码 */
 export function ScrambleText({ text, duration = 700, className = '', as: As = 'span' }) {
   const reduced = useReducedMotion()
   const [out, setOut] = useState(text)
@@ -217,6 +247,7 @@ export function ScrambleText({ text, duration = 700, className = '', as: As = 's
 }
 
 /* ---------- Marquee（无缝横滚；reduced-motion 下退化为可横滑静态条） ---------- */
+/** 无缝横滚跑马灯：复制两组内容横向滚动；reduced-motion 下退化为可横滑静态条 */
 export function Marquee({ children, duration = 30, className = '' }) {
   return (
     <div className={cx('v3-marquee', className)}>
@@ -229,29 +260,24 @@ export function Marquee({ children, duration = 30, className = '' }) {
 }
 
 /* ---------- Parallax（装饰层专用；transform-only，rAF 节流） ---------- */
+/**
+ * 装饰层视差 hook：根据元素中心与视窗中心的偏移，写入 CSS 变量 --par-y。
+ * 仅动 transform/opacity；reduced-motion 下静态降级。返回绑定到装饰层的 ref。
+ */
 export function useParallax(factor = 0.12, max = 40) {
   const ref = useRef(null)
   const reduced = useReducedMotion()
   useEffect(() => {
     const el = ref.current
     if (!el || reduced) return undefined
-    let raf = 0
     const compute = () => {
-      raf = 0
       const r = el.getBoundingClientRect()
       const offset = (r.top + r.height / 2 - window.innerHeight / 2) * factor
       el.style.setProperty('--par-y', `${Math.max(-max, Math.min(max, offset)).toFixed(1)}px`)
     }
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(compute)
-    }
-    compute()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
+    const cleanup = bindRafScroll(compute)
     return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
-      if (raf) cancelAnimationFrame(raf)
+      cleanup()
       el.style.removeProperty('--par-y')
     }
   }, [factor, max, reduced])
@@ -259,37 +285,29 @@ export function useParallax(factor = 0.12, max = 40) {
 }
 
 /* ---------- Scrollytelling 基础：滚动进度（0..1）与阅读进度条 ---------- */
+/**
+ * 滚动进度 hook：返回 0..1 的阅读进度。
+ * 传入 targetRef 时按该元素滚动进度计算，否则按整页文档进度计算。
+ */
 export function useScrollProgress(targetRef) {
   const [p, setP] = useState(0)
   useEffect(() => {
-    let raf = 0
     const compute = () => {
-      raf = 0
       const el = targetRef?.current
-      if (el) {
-        const r = el.getBoundingClientRect()
-        const total = r.height - window.innerHeight
-        setP(total > 0 ? Math.min(1, Math.max(0, -r.top / total)) : 1)
-      } else {
-        const total = document.documentElement.scrollHeight - window.innerHeight
-        setP(total > 0 ? Math.min(1, Math.max(0, window.scrollY / total)) : 1)
-      }
+      const total = el
+        ? el.getBoundingClientRect().height - window.innerHeight
+        : document.documentElement.scrollHeight - window.innerHeight
+      const ratio = el
+        ? -el.getBoundingClientRect().top / total
+        : window.scrollY / total
+      setP(total > 0 ? Math.min(1, Math.max(0, ratio)) : 1)
     }
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(compute)
-    }
-    compute()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
-      if (raf) cancelAnimationFrame(raf)
-    }
+    return bindRafScroll(compute)
   }, [targetRef])
   return p
 }
 
+/** 阅读进度条：根据 useScrollProgress 横向缩放一条进度条 */
 export function ReadingProgress({ targetRef, className = '' }) {
   const p = useScrollProgress(targetRef)
   return <div className={cx('v3-read-progress', className)} style={{ transform: `scaleX(${p.toFixed(4)})` }} />

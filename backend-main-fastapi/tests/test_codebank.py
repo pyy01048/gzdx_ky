@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """V15 复试代码题库回归：导入/列表过滤/详情/全景/考频/科目管理。"""
+
 from __future__ import annotations
 
 import pytest

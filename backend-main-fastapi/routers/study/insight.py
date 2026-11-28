@@ -20,16 +20,10 @@ from typing import List, Optional
 import sqlalchemy as sa
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from models import (
-    ErrorRecord,
-    QuizQuestion,
-    StudyEvent,
-    StudyStats,
-    User,
-)
 from pydantic import BaseModel, Field
 from services import daily_load, error_linker, kp_mastery, review_service
 from services.dashboard_service import DashboardService
+from services.quiz_query import question_owner_expr
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from utils.scope import owner_id  # B4 行级隔离：今日引导只看本人流水
@@ -39,6 +33,14 @@ from utils.timeutil import (
     local_day_window,
     local_range_utc,
     local_today,
+)
+
+from models import (
+    ErrorRecord,
+    QuizQuestion,
+    StudyEvent,
+    StudyStats,
+    User,
 )
 
 router = APIRouter(prefix="/api/insight", tags=["学习洞察"])
@@ -314,11 +316,14 @@ class SmartPaperReq(BaseModel):
 def smart_paper(req: SmartPaperReq, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """按模式智能抽题组卷（只返回可练题目，供前端直接进入练习会话）。
 
-    B4：薄弱/易错依据只取本人错题，题库本身是共享内容不受隔离影响。
+    B4：薄弱/易错依据只取本人错题，抽题范围只含公共题和本人私有题。
     """
     uid = owner_id(user)
     size = req.size
-    base_q = db.query(QuizQuestion).filter(QuizQuestion.is_available == True)  # noqa: E712
+    base_q = db.query(QuizQuestion).filter(
+        QuizQuestion.is_available == True,  # noqa: E712
+        question_owner_expr(user),
+    )
     if req.subject:
         base_q = base_q.filter(QuizQuestion.subject == req.subject)
 
@@ -351,7 +356,10 @@ def smart_paper(req: SmartPaperReq, db: Session = Depends(get_db), user: User = 
         rows = (
             db.query(QuizQuestion.knowledge_point, func.count(ErrorRecord.id).label("n"))
             .join(ErrorRecord, ErrorRecord.question_id == QuizQuestion.id)
-            .filter(ErrorRecord.user_id == uid)
+            .filter(
+                ErrorRecord.user_id == uid,
+                question_owner_expr(user),
+            )
             .group_by(QuizQuestion.knowledge_point)
             .order_by(func.count(ErrorRecord.id).desc())
             .limit(8)

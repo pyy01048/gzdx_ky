@@ -26,6 +26,7 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.orm import Session
 from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 
 from services.db_retry import exec_retry
@@ -36,10 +37,15 @@ def _now_str() -> str:
     return utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _log_ignored(exc: BaseException) -> None:
+    """记录已忽略的非阻塞异常（不静默：保留留痕以便排查，项目血泪教训 #1）。"""
+    logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(exc)[:200])
+
+
 # --------------------------------------------------------------------------- #
 # 蓝图
 # --------------------------------------------------------------------------- #
-def load_blueprints(db, subject: str, paper: str, year: Optional[int] = None) -> List[Dict[str, Any]]:
+def load_blueprints(db: Session, subject: str, paper: str, year: Optional[int] = None) -> List[Dict[str, Any]]:
     from services.module_a_schema import ensure_blueprints, ensure_module_a_schema
 
     ensure_module_a_schema(db)
@@ -96,7 +102,7 @@ def _question_base_sql(extra_where: str = "", params: Optional[List[Any]] = None
 
 
 def _query_candidates(
-    db,
+    db: Session,
     bp: Dict[str, Any],
     *,
     kp_ids: Optional[List[int]] = None,
@@ -104,10 +110,17 @@ def _query_candidates(
     exclude_question_ids: Optional[List[int]] = None,
     subject: str,
     paper: str,
+    user_id: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     conn = wrap_conn(db.connection().connection)
     where = " AND is_available = TRUE"
     params: List[Any] = []
+
+    if user_id is None:
+        where += " AND owner_user_id IS NULL"
+    else:
+        where += " AND (owner_user_id IS NULL OR owner_user_id = ?)"
+        params.append(user_id)
 
     # 题型映射
     qt_map = {
@@ -141,7 +154,14 @@ def _query_candidates(
 
     # 题库来源
     if question_source == "error":
-        where += " AND id IN (SELECT DISTINCT question_id FROM error_records WHERE question_id IS NOT NULL)"
+        if user_id is None:
+            where += " AND 1=0"
+        else:
+            where += (
+                " AND id IN (SELECT DISTINCT question_id FROM error_records"
+                " WHERE question_id IS NOT NULL AND user_id = ?)"
+            )
+            params.append(user_id)
     elif question_source == "ai_generated":
         where += " AND ai_generated = TRUE"
 
@@ -175,15 +195,17 @@ def _query_candidates(
     return [dict(zip(cols, r, strict=False)) for r in rows]
 
 
-def recent_question_ids(db, exclude_recent_days: int = 14) -> List[int]:
-    """近 N 天考过的题（来自 exam_answers）。"""
+def recent_question_ids(db: Session, exclude_recent_days: int = 14, user_id: Optional[int] = None) -> List[int]:
+    """本人近 N 天考过的题；无用户上下文时不读取任何个人答题记录。"""
+    if user_id is None:
+        return []
     conn = wrap_conn(db.connection().connection)
     cutoff = (utcnow() - timedelta(days=exclude_recent_days)).strftime("%Y-%m-%d %H:%M:%S")
     rows = conn.execute(
         "SELECT DISTINCT question_id FROM exam_answers ea"
         " JOIN exam_sessions es ON es.id = ea.session_id"
-        " WHERE es.created_at >= ?",
-        (cutoff,),
+        " WHERE es.created_at >= ? AND es.user_id = ?",
+        (cutoff, user_id),
     ).fetchall()
     return [r[0] for r in rows]
 
@@ -212,13 +234,15 @@ def uniform_sample_by_chapter(candidates: List[Dict[str, Any]], n: int) -> List[
     return picked[:n]
 
 
-def mastery_score(q: Dict[str, Any], conn) -> float:
-    """weakest 模式排序：错题/mastery 低/盲区薄弱 → 排前（分数低 = 更弱）。"""
+def mastery_score(q: Dict[str, Any], conn, user_id: Optional[int] = None) -> float:
+    """weakest 模式排序：本人错题/mastery 低/盲区薄弱 → 排前（分数低 = 更弱）。"""
     score = 50.0
+    if user_id is None:
+        return score
     err = conn.execute(
         "SELECT mastery_level, repetitions, lapses FROM error_records"
-        " WHERE question_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
-        (q["id"],),
+        " WHERE question_id = ? AND user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
+        (q["id"], user_id),
     ).fetchone()
     if err:
         level = err[0] or "not_mastered"
@@ -230,11 +254,13 @@ def mastery_score(q: Dict[str, Any], conn) -> float:
     return max(0.0, min(100.0, score))
 
 
-def _weakest_pick(candidates: List[Dict[str, Any]], n: int, conn) -> List[Dict[str, Any]]:
-    """按薄弱度排序取题（错题/盲区薄弱点优先）。"""
+def _weakest_pick(
+    candidates: List[Dict[str, Any]], n: int, conn, user_id: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """按本人薄弱度排序取题（错题/盲区薄弱点优先）。"""
     if n <= 0:
         return []
-    ranked = sorted(candidates, key=lambda q: (mastery_score(q, conn), random.random()))
+    ranked = sorted(candidates, key=lambda q: (mastery_score(q, conn, user_id), random.random()))
     return ranked[:n]
 
 
@@ -242,7 +268,7 @@ def _weakest_pick(candidates: List[Dict[str, Any]], n: int, conn) -> List[Dict[s
 # 组卷入口
 # --------------------------------------------------------------------------- #
 def build_paper(
-    db,
+    db: Session,
     subject: str,
     paper: str,
     *,
@@ -256,7 +282,8 @@ def build_paper(
 ) -> Dict[str, Any]:
     """组卷 → 建 exam_sessions 会话（试卷冻结）。
 
-    B4：user_id 传入时会话落归属（121 加列）；None 保持旧行为（脚本/回退）。
+    B4：user_id 传入时会话落归属（121 加列），组卷只可见公共题和本人私有题；
+    None 保持旧会话行为，但候选、近期题目和掌握度均按公共数据 fail-closed。
 
     Returns:
         {"session_id", "blueprint_key", "subject", "paper", "mode", "total_count",
@@ -277,7 +304,7 @@ def build_paper(
     # load_blueprints 内部会 commit（ensure schema/blueprints），须在其后获取底层连接
     conn = wrap_conn(db.connection().connection)
 
-    exclude_ids = recent_question_ids(db, exclude_recent_days)
+    exclude_ids = recent_question_ids(db, exclude_recent_days, user_id=user_id)
     sections: List[Dict[str, Any]] = []
     picked_question_ids: List[int] = []
     total_score = 0.0
@@ -295,9 +322,10 @@ def build_paper(
             exclude_question_ids=exclude_ids,
             subject=subject,
             paper=paper,
+            user_id=user_id,
         )
         if mode == "weakest":
-            picked = _weakest_pick(candidates, n, conn)
+            picked = _weakest_pick(candidates, n, conn, user_id=user_id)
         elif mode == "random":
             picked = random.sample(candidates, min(n, len(candidates)))
         else:
@@ -450,7 +478,7 @@ def _trusted_answer(conn, question_id: int, snap_answer: str) -> tuple:
         return snap_answer, "trusted"
 
 
-def _ai_score_question(db, q_snap: Dict[str, Any], user_answer: str) -> Optional[float]:
+def _ai_score_question(db: Session, q_snap: Dict[str, Any], user_answer: str) -> Optional[float]:
     """主观题 AI 建议分（按 rubric/max_score），失败返回 None。"""
     try:
         from services.model_gateway import get_gateway
@@ -485,7 +513,7 @@ def _ai_score_question(db, q_snap: Dict[str, Any], user_answer: str) -> Optional
         return None
 
 
-def submit_session(db, session_id: int, answers, *, user_id: Optional[int] = None) -> Dict[str, Any]:
+def submit_session(db: Session, session_id: int, answers: Any, *, user_id: Optional[int] = None) -> Dict[str, Any]:
     """交卷判分。
 
     B4：user_id 传入时校验会话归属（他人会话按不存在处理），错题回流
@@ -650,9 +678,7 @@ def submit_session(db, session_id: int, answers, *, user_id: Optional[int] = Non
                     }
                 )
         except Exception as _exc:  # noqa: BLE001
-            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
-            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
+            _log_ignored(_exc)
 
     submitted_at = _now_str()
     exec_retry(
@@ -672,16 +698,13 @@ def submit_session(db, session_id: int, answers, *, user_id: Optional[int] = Non
 
             record_abstain(db, **call)
         except Exception as _exc:  # noqa: BLE001
-            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
-            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200])
+            _log_ignored(_exc)
 
     # —— 错题 ↔ 知识点联动（2026-10）—— #
     # 模考回流此前只插 error_records、不挂知识点，导致模考错题在复盘页成「孤岛」
     # （联调实测：20 条模考错题 0 条有链路）。此处与刷题/手动收录对齐。
     try:
         from models import ErrorRecord
-
         from services import error_linker
 
         qids = [wq["question_id"] for wq in wrong_questions]
@@ -697,11 +720,7 @@ def submit_session(db, session_id: int, answers, *, user_id: Optional[int] = Non
                 try:
                     error_linker.auto_link_error(db, e, top_k=3)
                 except Exception as _exc:  # noqa: BLE001
-                    # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
-                    # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-                    logging.getLogger(__name__).warning(
-                        "%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(_exc)[:200]
-                    )
+                    _log_ignored(_exc)
     except Exception as _exc:  # noqa: BLE001
         # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
         # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
@@ -746,7 +765,12 @@ def submit_session(db, session_id: int, answers, *, user_id: Optional[int] = Non
 
 
 def list_sessions(
-    db, subject: Optional[str] = None, status: Optional[str] = None, limit: int = 50, *, user_id: Optional[int] = None
+    db: Session,
+    subject: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+    *,
+    user_id: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     from services.module_a_schema import ensure_module_a_schema
 
@@ -786,6 +810,7 @@ def list_sessions(
 
     # 列表增强（P0-3）：从 exam_answers 现算每场的聚合成绩与可出报告标记。
     # 一次性取出所有相关作答，Python 聚合，避免 N+1。
+    agg: Dict[int, Dict[str, Any]] = {}
     if sessions:
         ids = [s["id"] for s in sessions]
         placeholders = ",".join("?" * len(ids))
@@ -794,7 +819,6 @@ def list_sessions(
             f" FROM exam_answers WHERE session_id IN ({placeholders})",
             ids,
         ).fetchall()
-        agg: Dict[int, Dict[str, Any]] = {}
         for r in ans_rows:
             sid = r[0]
             a = agg.setdefault(sid, {"max_score": 0.0, "earned_score": 0.0, "submitted_count": 0})
@@ -822,7 +846,7 @@ def list_sessions(
     return sessions
 
 
-def session_detail(db, session_id: int, *, user_id: Optional[int] = None) -> Dict[str, Any]:
+def session_detail(db: Session, session_id: int, *, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     from services.module_a_schema import ensure_module_a_schema
 
     ensure_module_a_schema(db)

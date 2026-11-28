@@ -16,6 +16,7 @@ clean_knowledge_points.py 把 subject 粗粒度归一成了 数模电/公共课/
     python scripts/restore_kp_subject.py
     python scripts/restore_kp_subject.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,19 +35,83 @@ DIGITAL = "数字电子技术"
 ANALOG = "模拟电子技术"
 CS408 = "计算机学科专业基础408"
 
-_DIGITAL_KW = ("逻辑", "门电路", "触发器", "计数器", "寄存器", "组合", "时序",
-               "编码", "译码", "加法器", "存储器", "RAM", "ROM", "ADC", "DAC",
-               "卡诺", "真值表", "与或", "或非", "与非", "异或", "CMOS", "TTL",
-               "进制", "BCD", "数模", "模数", "波形", "555", "VHDL", "时钟")
-_ANALOG_KW = ("放大", "运放", "运算放大", "功放", "功率放大", "反馈", "稳压",
-              "整流", "滤波", "三极管", "二极管", "场效应", "晶体管", "偏置",
-              "静态工作点", "频率响应", "差分", "共射", "共集", "共基", "振荡",
-              "直流电源", "半导体", "小信号")
-_MATH_KW = ("积分", "微分", "极限", "矩阵", "向量", "级数", "方程", "函数",
-            "概率", "统计", "导数", "线性代数", "高数", "数列")
+_DIGITAL_KW = (
+    "逻辑",
+    "门电路",
+    "触发器",
+    "计数器",
+    "寄存器",
+    "组合",
+    "时序",
+    "编码",
+    "译码",
+    "加法器",
+    "存储器",
+    "RAM",
+    "ROM",
+    "ADC",
+    "DAC",
+    "卡诺",
+    "真值表",
+    "与或",
+    "或非",
+    "与非",
+    "异或",
+    "CMOS",
+    "TTL",
+    "进制",
+    "BCD",
+    "数模",
+    "模数",
+    "波形",
+    "555",
+    "VHDL",
+    "时钟",
+)
+_ANALOG_KW = (
+    "放大",
+    "运放",
+    "运算放大",
+    "功放",
+    "功率放大",
+    "反馈",
+    "稳压",
+    "整流",
+    "滤波",
+    "三极管",
+    "二极管",
+    "场效应",
+    "晶体管",
+    "偏置",
+    "静态工作点",
+    "频率响应",
+    "差分",
+    "共射",
+    "共集",
+    "共基",
+    "振荡",
+    "直流电源",
+    "半导体",
+    "小信号",
+)
+_MATH_KW = (
+    "积分",
+    "微分",
+    "极限",
+    "矩阵",
+    "向量",
+    "级数",
+    "方程",
+    "函数",
+    "概率",
+    "统计",
+    "导数",
+    "线性代数",
+    "高数",
+    "数列",
+)
 _EN_KW = ("词汇", "单词", "语法", "阅读", "翻译", "作文", "时态", "从句", "长难句")
-_POL_KW = ("马原", "毛概", "思修", "史纲", "马克思主义", "政治", "唯物", "辩证",
-           "社会主义", "近代史")
+_POL_KW = ("马原", "毛概", "思修", "史纲", "马克思主义", "政治", "唯物", "辩证", "社会主义", "近代史")
 
 
 def infer(subject: str, chapter: str, name: str) -> str:
@@ -55,9 +120,24 @@ def infer(subject: str, chapter: str, name: str) -> str:
     ctx = f"{chapter or ''} {name or ''} {s}"
 
     # 已是细分学科
-    if s in (DIGITAL, ANALOG, CS408, "数学", "英语", "政治", "真题综合",
-             "电路", "电路分析", "信号与系统", "通信原理", "光学与工程光学",
-             "光学", "普通物理", "网络补充", "其他"):
+    if s in (
+        DIGITAL,
+        ANALOG,
+        CS408,
+        "数学",
+        "英语",
+        "政治",
+        "真题综合",
+        "电路",
+        "电路分析",
+        "信号与系统",
+        "通信原理",
+        "光学与工程光学",
+        "光学",
+        "普通物理",
+        "网络补充",
+        "其他",
+    ):
         return s
 
     if re.search(r"408|计算机|数据结构|操作系统|计算机网络|组成原理", s):
@@ -90,8 +170,7 @@ def infer(subject: str, chapter: str, name: str) -> str:
 def backup(con: sqlite3.Connection) -> str:
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_kpsubjrestore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+    bak = os.path.join(bak_dir, f"kaoyan_pre_kpsubjrestore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     return bak
@@ -102,8 +181,7 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
-    baks = sorted(glob.glob(os.path.join(BASE_DIR, "data", "backups",
-                                         "kaoyan_pre_kpclean_*.db")))
+    baks = sorted(glob.glob(os.path.join(BASE_DIR, "data", "backups", "kaoyan_pre_kpclean_*.db")))
     if not baks:
         print("找不到 kpclean 备份")
         return 1
@@ -125,6 +203,7 @@ def main() -> int:
             updates.append((i, s, new))
 
     from collections import Counter
+
     print(f"待更新 {len(updates)} 条")
     for (old, new), c in Counter((o, n) for _, o, n in updates).most_common():
         print(f"  {old} → {new}  ({c})")
@@ -139,8 +218,7 @@ def main() -> int:
         print(f"已更新 {len(updates)} 条")
 
     print("\n=== 复核（当前 subject 分布）===")
-    for r in con.execute("SELECT subject, count(*) FROM knowledge_points "
-                         "GROUP BY subject ORDER BY 2 DESC"):
+    for r in con.execute("SELECT subject, count(*) FROM knowledge_points GROUP BY subject ORDER BY 2 DESC"):
         print(f"  {r[0]}: {r[1]}")
     return 0
 

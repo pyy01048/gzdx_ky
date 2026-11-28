@@ -23,6 +23,7 @@
     python scripts/link_chunks_chapter_propagate.py --dry-run
     python scripts/link_chunks_chapter_propagate.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,11 +38,28 @@ if str(BASE) not in sys.path:
 import psycopg  # noqa: E402
 from pipeline.config import pg_database_url  # noqa: E402
 
-CN_DIGIT = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
-            "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
-            "十一": 11, "十二": 12, "十三": 13, "十四": 14,
-            "十五": 15, "十六": 16, "十七": 17, "十八": 18,
-            "十九": 19, "二十": 20}
+CN_DIGIT = {
+    "一": 1,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+    "十一": 11,
+    "十二": 12,
+    "十三": 13,
+    "十四": 14,
+    "十五": 15,
+    "十六": 16,
+    "十七": 17,
+    "十八": 18,
+    "十九": 19,
+    "二十": 20,
+}
 
 #: 章号标记：第3章 / 第三章 / 第 3 章 / 第3章：xxx / CHAPTER 3
 RE_CHAPTER = re.compile(
@@ -52,7 +70,7 @@ RE_CHAPTER = re.compile(
 #: 小节号（3.1 / 3.1.2）——只有在同一章内出现时才用于校验，不单独跨章
 RE_SECTION = re.compile(r"(?<![\d.])([0-9]{1,2})\.([0-9]{1,2})(?:\.[0-9]{1,2})?(?![\d.])")
 
-HEAD_LEN = 400   # 只看块首若干字，避免正文里的「第3章」引用造成误判
+HEAD_LEN = 400  # 只看块首若干字，避免正文里的「第3章」引用造成误判
 
 
 def parse_chapter_no(text: str) -> int | None:
@@ -88,12 +106,15 @@ def main() -> int:
         print(f"章节索引：{len(chap_map)} 条（subject_id, 章号）→ chapter_id")
 
         # 逐文档顺序扫描
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id, document_id, chunk_index, subject_id, left(coalesce(text,''), %s)
             FROM knowledge_chunks
             WHERE chapter_id IS NULL
             ORDER BY document_id, chunk_index
-        """, (args.head_len,))
+        """,
+            (args.head_len,),
+        )
         rows = cur.fetchall()
         print(f"待挂接分块：{len(rows)}")
 
@@ -102,7 +123,7 @@ def main() -> int:
         cur_doc = None
         current: int | None = None
         seen_doc: set[int] = set()
-        for cid, doc_id, idx, sid, head in rows:
+        for cid, doc_id, _idx, sid, head in rows:
             if doc_id != cur_doc:
                 cur_doc, current = doc_id, None
             no = parse_chapter_no(head)
@@ -121,10 +142,8 @@ def main() -> int:
                 continue
             updates.append((chapter_id, cid))
 
-        print(f"可挂接：{len(updates)} 个分块"
-              f"（覆盖 {len(updates)/max(1,len(rows)):.1%}）")
-        print(f"有章号标记的文档：{stats['doc_with_marker']}；"
-              f"章号在章节表里找不到：{stats['unmatched_chapter']} 块")
+        print(f"可挂接：{len(updates)} 个分块（覆盖 {len(updates) / max(1, len(rows)):.1%}）")
+        print(f"有章号标记的文档：{stats['doc_with_marker']}；章号在章节表里找不到：{stats['unmatched_chapter']} 块")
 
         if args.dry_run:
             print("\n[DRY-RUN] 未写库；加 --apply 执行。")
@@ -134,7 +153,7 @@ def main() -> int:
         BATCH = 2000
         total = 0
         for i in range(0, len(updates), BATCH):
-            chunk = updates[i:i + BATCH]
+            chunk = updates[i : i + BATCH]
             cur.executemany(
                 "UPDATE knowledge_chunks SET chapter_id=%s, updated_at=now() WHERE id=%s",
                 chunk,

@@ -13,7 +13,6 @@ from typing import Optional, Tuple
 from database import SessionLocal, get_db
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from models import AIProvider, PlatformConfig
 from pydantic import BaseModel
 from schemas import (
     AIProviderCreate,
@@ -27,10 +26,13 @@ from schemas import (
     SummarizeTrendRequest,
 )
 from services import retrieval_gate
+from services.ai_router import _resolve_confidence, _resolve_engine_enum
 from services.ai_service import AIService
 from services.dbapi_compat import wrap_conn
 from sqlalchemy.orm import Session
-from utils.security import require_admin
+from utils.security import optional_user, require_admin
+
+from models import AIProvider, PlatformConfig
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +165,50 @@ def _format_citation_footer(citations: list) -> str:
     return "\n".join(lines)
 
 
+def _engine_enum_from_route(route: Optional[str]) -> str:
+    """从 ai_service.chat 的 route 字段推断 engine_enum（C-ENGINE-ENUM@1）。
+
+    ai_service 的 route 取值：online/local/offline/blocked。
+      - local：本地 Ollama 调用 → local-ollama（经 provider_type 分支）
+      - offline/blocked：离线知识库/内容安全拦截 → local-rules
+      - online/其他：云端 API → cloud-api
+    """
+    if route in ("offline", "blocked"):
+        return _resolve_engine_enum(engine="local")
+    if route == "local":
+        return _resolve_engine_enum(engine=None, provider_type="ollama")
+    return _resolve_engine_enum(engine=route)
+
+
+def _engine_enum_from_engine_used(engine_used: Optional[str]) -> str:
+    """从 ai_router.chat_with_router 的 engine_used 推断 engine_enum（C-ENGINE-ENUM@1）。
+
+    ai_router 的 engine_used 取值：local/api/rag/bank/none。
+      - bank/local：题库规则/本地引擎 → local-rules（契约 engine=="local" → local-rules）
+      - rag/api/none/其他：→ cloud-api
+    """
+    if engine_used in ("bank", "local"):
+        return _resolve_engine_enum(engine="local")
+    return _resolve_engine_enum(engine=engine_used)
+
+
+def _engine_enum_from_stream_request(request: "ChatRequest") -> str:
+    """SSE meta 事件在流开始前发出，尚无 result；按 request 参数推测 engine_enum。
+
+    - force_local：强制本地 → local-rules（契约 engine=="local"）
+    - provider_override：临时服务商，按其 provider_type 判定
+    - 其余：cloud-api（流中 done 事件会带更准确的 route，前端可据其刷新）
+    """
+    if request.force_local:
+        return _resolve_engine_enum(engine="local")
+    if request.provider_override:
+        return _resolve_engine_enum(
+            engine=None,
+            provider_type=(request.provider_override or {}).get("provider_type"),
+        )
+    return _resolve_engine_enum(engine=None)
+
+
 async def _rag_system_prompt(query: str, ai: AIService) -> Tuple[str, dict, list]:
     """构建带本地知识库上下文的 system prompt（RAG，异步混合检索）。
 
@@ -264,7 +310,7 @@ def _provider_has_key(p: AIProvider) -> bool:
 
 
 @router.get("/providers")
-async def list_providers(db: Session = Depends(get_db)):
+async def list_providers(db: Session = Depends(get_db)) -> list:
     """AI 服务商列表。"""
     providers = db.query(AIProvider).order_by(AIProvider.fallback_priority.asc()).all()
     return [
@@ -285,7 +331,7 @@ async def list_providers(db: Session = Depends(get_db)):
 
 
 @router.post("/providers", dependencies=[Depends(require_admin)])
-async def create_provider(provider: AIProviderCreate, db: Session = Depends(get_db)):
+async def create_provider(provider: AIProviderCreate, db: Session = Depends(get_db)) -> dict:
     """添加 AI 配置。"""
     # 如果设为默认，取消其他默认
     if provider.is_default:
@@ -299,7 +345,7 @@ async def create_provider(provider: AIProviderCreate, db: Session = Depends(get_
 
 
 @router.put("/providers/{provider_id}", dependencies=[Depends(require_admin)])
-async def update_provider(provider_id: int, provider: AIProviderUpdate, db: Session = Depends(get_db)):
+async def update_provider(provider_id: int, provider: AIProviderUpdate, db: Session = Depends(get_db)) -> dict:
     """更新配置。"""
     db_provider = db.query(AIProvider).filter(AIProvider.id == provider_id).first()
     if not db_provider:
@@ -318,7 +364,7 @@ async def update_provider(provider_id: int, provider: AIProviderUpdate, db: Sess
 
 
 @router.delete("/providers/{provider_id}", dependencies=[Depends(require_admin)])
-async def delete_provider(provider_id: int, db: Session = Depends(get_db)):
+async def delete_provider(provider_id: int, db: Session = Depends(get_db)) -> dict:
     """删除配置。"""
     db_provider = db.query(AIProvider).filter(AIProvider.id == provider_id).first()
     if not db_provider:
@@ -330,7 +376,7 @@ async def delete_provider(provider_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/providers/{provider_id}/test", dependencies=[Depends(require_admin)])
-async def test_provider(provider_id: int, db: Session = Depends(get_db)):
+async def test_provider(provider_id: int, db: Session = Depends(get_db)) -> dict:
     """测试 AI API 连通性。"""
     ai = AIService(db)
     try:
@@ -351,7 +397,7 @@ class RoutingModeRequest(BaseModel):
 
 
 @router.get("/routing")
-async def get_routing(db: Session = Depends(get_db)):
+async def get_routing(db: Session = Depends(get_db)) -> dict:
     """当前 AI 路由模式与可选值说明（前端设置页渲染用）。"""
     from services import model_gateway as gw
 
@@ -368,7 +414,7 @@ async def get_routing(db: Session = Depends(get_db)):
 
 
 @router.put("/routing", dependencies=[Depends(require_admin)])
-async def set_routing(req: RoutingModeRequest, db: Session = Depends(get_db)):
+async def set_routing(req: RoutingModeRequest, db: Session = Depends(get_db)) -> dict:
     """设置 AI 路由模式并立即生效（清网关缓存，无需重启）。"""
     from services import model_gateway as gw
 
@@ -417,7 +463,11 @@ def _format_bank_answer(b: dict) -> str:
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    user=Depends(optional_user),
+) -> dict:
     """AI 对话（统一接口，自动选择启用的服务商，可选 RAG 知识库增强 + 智能路由）。"""
     ai = AIService(db)
     try:
@@ -430,7 +480,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             try:
                 from services.qa_foundation import find_bank_answer
 
-                _bank = find_bank_answer(db, _last_user)
+                _bank = find_bank_answer(db, _last_user, user=user)
             except Exception as _be:
                 logger.warning("bank_answer 查询失败，继续 RAG: %s", _be)
                 _bank = None
@@ -450,6 +500,8 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                     "rag": False,
                     "bank_hit": True,
                     "citations": [],
+                    "engine_enum": "local-rules",
+                    "confidence": None,
                 }
         # RAG：把最后一条用户消息作为查询，检索本地知识库注入 system
         rag_prompt = ""
@@ -487,6 +539,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         # observe 模式：把门控判定（would_abstain 率）透传给前端，便于灰度观测
         if gate_meta is not None:
             result["retrieval_gate"] = gate_meta
+        # C-ENGINE-ENUM@1：统一引擎枚举与置信度（单向追加，不删改现有字段）
+        result["engine_enum"] = _engine_enum_from_route(result.get("route"))
+        result["confidence"] = _resolve_confidence(gate_meta.get("metrics")) if gate_meta else None
         return result
     except HTTPException:
         raise
@@ -509,7 +564,7 @@ _IMAGE_MAX_MB = 10
 
 
 @router.post("/upload-image")
-async def upload_chat_image(file: UploadFile = File(...)):
+async def upload_chat_image(file: UploadFile = File(...)) -> dict:
     """答疑页图片上传（电路读图题用）。
 
     保存到 uploads/chat_images/，返回本地绝对路径；前端随后在
@@ -540,7 +595,11 @@ async def upload_chat_image(file: UploadFile = File(...)):
 
 
 @router.post("/chat/router")
-async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat_with_router(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    user=Depends(optional_user),
+) -> dict:
     """V3.0 AI 智能路由对话（自动选择本地/API/RAG引擎，带失败回退）。"""
     from services.ai_router import get_ai_router
 
@@ -555,7 +614,7 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
         try:
             from services.qa_foundation import find_bank_answer
 
-            _bank = find_bank_answer(db, last_user)
+            _bank = find_bank_answer(db, last_user, user=user)
         except Exception as _be:
             logger.warning("bank_answer 查询失败，继续路由引擎: %s", _be)
             _bank = None
@@ -582,6 +641,8 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
                     "year": _bank["year"],
                     "source_label": _bank["source_label"],
                 },
+                "engine_enum": "local-rules",
+                "confidence": None,
             }
 
         # 强制引擎
@@ -617,6 +678,9 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
             "cache_hit": result.get("cache_hit", False),
             "from_cache": result.get("from_cache", False),
             "reranker_backend": result.get("reranker_backend", "none"),
+            # C-ENGINE-ENUM@1：统一引擎枚举；chat_with_router 不透传 gate_meta，confidence 恒为 None
+            "engine_enum": _engine_enum_from_engine_used(result["engine_used"]),
+            "confidence": None,
         }
     except HTTPException:
         raise
@@ -631,7 +695,7 @@ async def chat_with_router(request: ChatRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/chat/stream")
-async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
     """AI 对话 SSE 流式输出（可选 RAG 知识库增强）。"""
     ai = AIService(db)
 
@@ -666,7 +730,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             # V12 修复：SSE 必须按 "data: {json}\n\n" 逐事件输出，前端按行切分。
             # 旧实现 yield 紧凑 JSON 无换行 → 前端 indexOf('\n') 永远 -1 → 流永不渲染，
             # AI 助手卡"生成中…"。
-            yield f"data: {json.dumps({'type': 'meta', 'rag': rag_used, 'rag_hits': len(citations), 'retrieval_gate': gate_meta, 'citations': citations}, ensure_ascii=False)}\n\n"
+            # C-ENGINE-ENUM@1：meta 事件在流开始前发出，尚无 result；engine_enum 按
+            # request 参数推测，done 事件会带更准确的 route 供前端刷新。
+            _meta_engine_enum = _engine_enum_from_stream_request(request)
+            _meta_confidence = _resolve_confidence(gate_meta.get("metrics")) if gate_meta else None
+            yield f"data: {json.dumps({'type': 'meta', 'rag': rag_used, 'rag_hits': len(citations), 'retrieval_gate': gate_meta, 'citations': citations, 'engine_enum': _meta_engine_enum, 'confidence': _meta_confidence}, ensure_ascii=False)}\n\n"
             async for ev in ai.chat_stream(
                 messages,
                 provider_id=request.provider_id,
@@ -677,15 +745,22 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             ):
                 # 流结束时把「参考来源」作为最后一段正文补上：前端只渲染 delta，
                 # 不在正文里补的话用户看不到引用；同时 done 事件带结构化 citations。
-                if ev.get("type") == "done" and citations:
-                    footer = _format_citation_footer(citations)
-                    if footer:
-                        yield f"data: {json.dumps({'type': 'delta', 'content': footer}, ensure_ascii=False)}\n\n"
+                if ev.get("type") == "done":
+                    # C-ENGINE-ENUM@1：done 事件带更准确的 route，覆盖 meta 事件的推测值
                     ev = {
                         **ev,
-                        "content": (ev.get("content") or "") + footer,
-                        "citations": citations,
+                        "engine_enum": _engine_enum_from_route(ev.get("route")),
+                        "confidence": _resolve_confidence(gate_meta.get("metrics")) if gate_meta else None,
                     }
+                    if citations:
+                        footer = _format_citation_footer(citations)
+                        if footer:
+                            yield f"data: {json.dumps({'type': 'delta', 'content': footer}, ensure_ascii=False)}\n\n"
+                        ev = {
+                            **ev,
+                            "content": (ev.get("content") or "") + footer,
+                            "citations": citations,
+                        }
                 # 服务商层抛出的 error 事件只有原始英文信息，补齐可展示的原因码，
                 # 保证前端拿到的不是一句无法行动的 "All connection attempts failed"。
                 if ev.get("type") == "error" and not ev.get("code"):
@@ -710,7 +785,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/rag-search")
-async def rag_search(request: RAGSearchRequest, db: Session = Depends(get_db)):
+async def rag_search(request: RAGSearchRequest, db: Session = Depends(get_db)) -> dict:
     """本地知识库检索（RAG 调试/前端提示展示）。支持学科过滤。
 
     检索链是同步阻塞的（分词 + 三路 SQL + RRF），必须丢工作线程执行，
@@ -724,7 +799,7 @@ async def rag_search(request: RAGSearchRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/search-status")
-async def search_status(db: Session = Depends(get_db)):
+async def search_status(db: Session = Depends(get_db)) -> dict:
     """检索索引状态（FTS/向量索引统计）。"""
     from services.search_service import get_index_stats
 
@@ -732,7 +807,7 @@ async def search_status(db: Session = Depends(get_db)):
 
 
 @router.post("/rebuild-fts", dependencies=[Depends(require_admin)])
-async def rebuild_fts(db: Session = Depends(get_db)):
+async def rebuild_fts(db: Session = Depends(get_db)) -> dict:
     """重建 FTS5 全文检索索引（删除并重新同步 5164 条分块）。"""
     from services.search_service import ensure_fts_table
 
@@ -745,7 +820,7 @@ async def rebuild_fts(db: Session = Depends(get_db)):
 
 
 @router.post("/build-embeddings", dependencies=[Depends(require_admin)])
-async def build_embeddings(force: bool = False):
+async def build_embeddings(force: bool = False) -> dict:
     """构建知识分块的 embedding 向量索引（完全离线，后台异步执行，不阻塞服务）。
 
     Args:
@@ -781,7 +856,7 @@ async def build_embeddings(force: bool = False):
 
 
 @router.get("/build-embeddings/status/{task_id}")
-async def build_embeddings_status(task_id: str):
+async def build_embeddings_status(task_id: str) -> dict:
     """查询向量构建任务进度。"""
     if task_id not in _embedding_tasks:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -789,7 +864,7 @@ async def build_embeddings_status(task_id: str):
 
 
 @router.post("/explain")
-async def explain(request: ExplainRequest, db: Session = Depends(get_db)):
+async def explain(request: ExplainRequest, db: Session = Depends(get_db)) -> dict:
     """知识点讲解。"""
     ai = AIService(db)
     try:
@@ -800,7 +875,7 @@ async def explain(request: ExplainRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/grade-essay")
-async def grade_essay(request: EssayGradeRequest, db: Session = Depends(get_db)):
+async def grade_essay(request: EssayGradeRequest, db: Session = Depends(get_db)) -> dict:
     """作文批改。"""
     ai = AIService(db)
     try:
@@ -811,7 +886,7 @@ async def grade_essay(request: EssayGradeRequest, db: Session = Depends(get_db))
 
 
 @router.post("/analyze-sentence")
-async def analyze_sentence(request: SentenceAnalyzeRequest, db: Session = Depends(get_db)):
+async def analyze_sentence(request: SentenceAnalyzeRequest, db: Session = Depends(get_db)) -> dict:
     """长难句分析。"""
     ai = AIService(db)
     try:
@@ -822,7 +897,7 @@ async def analyze_sentence(request: SentenceAnalyzeRequest, db: Session = Depend
 
 
 @router.post("/generate-plan")
-async def generate_plan(request: GeneratePlanRequest, db: Session = Depends(get_db)):
+async def generate_plan(request: GeneratePlanRequest, db: Session = Depends(get_db)) -> dict:
     """生成复习计划。"""
     ai = AIService(db)
     try:
@@ -833,7 +908,7 @@ async def generate_plan(request: GeneratePlanRequest, db: Session = Depends(get_
 
 
 @router.post("/summarize-trend")
-async def summarize_trend(request: SummarizeTrendRequest, db: Session = Depends(get_db)):
+async def summarize_trend(request: SummarizeTrendRequest, db: Session = Depends(get_db)) -> dict:
     """真题规律总结。"""
     ai = AIService(db)
     try:
@@ -847,7 +922,7 @@ async def summarize_trend(request: SummarizeTrendRequest, db: Session = Depends(
 # 本地模型（Ollama）管理接口
 # ------------------------------------------------------------------ #
 @router.get("/models/catalog")
-async def model_catalog(db: Session = Depends(get_db)):
+async def model_catalog(db: Session = Depends(get_db)) -> dict:
     """模型选型报告：硬件画像 + 全部模型档案 + 本机适配判定 + 分科建议。
 
     这是"该装哪个模型"的唯一权威答案 —— 依据是本机实际显存，
@@ -880,7 +955,7 @@ async def model_catalog(db: Session = Depends(get_db)):
 
 
 @router.get("/models/recommend")
-async def model_recommend(subject: Optional[str] = None, task: Optional[str] = None):
+async def model_recommend(subject: Optional[str] = None, task: Optional[str] = None) -> dict:
     """按科目（或任务类型）推荐模型。
 
     `subject=数学` → 推理型；`subject=政治` → 中文型；
@@ -908,7 +983,7 @@ async def model_recommend(subject: Optional[str] = None, task: Optional[str] = N
 
 
 @router.get("/models/hardware")
-async def model_hardware():
+async def model_hardware() -> dict:
     """本机硬件画像（显存/内存/档位）。"""
     from dataclasses import asdict
 
@@ -923,7 +998,7 @@ async def model_hardware():
 
 
 @router.get("/local/status")
-async def local_model_status(db: Session = Depends(get_db)):
+async def local_model_status(db: Session = Depends(get_db)) -> dict:
     """本地 Ollama 模型可用性检测。
 
     2026-10-14 变更：原先 ``force_check=True`` 完全绕过缓存，导致该接口
@@ -972,7 +1047,7 @@ async def local_model_status(db: Session = Depends(get_db)):
 
 
 @router.get("/local/models")
-async def local_model_list(db: Session = Depends(get_db)):
+async def local_model_list(db: Session = Depends(get_db)) -> dict:
     """获取本地已安装的模型列表。"""
     try:
         import httpx
@@ -1002,7 +1077,7 @@ async def local_model_test(
     model: str = "qwen3:8b",
     prompt: str = "你好，请用一句话介绍你自己。",
     db: Session = Depends(get_db),
-):
+) -> dict:
     """测试本地模型调用。"""
     try:
         import httpx

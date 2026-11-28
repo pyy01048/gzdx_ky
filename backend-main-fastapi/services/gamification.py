@@ -33,7 +33,7 @@ from __future__ import annotations
 import datetime
 import logging
 import uuid
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.gamification import (
     CheckinLog,
@@ -46,7 +46,7 @@ from core.models.gamification import (
 )
 from sqlalchemy import case, func, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 from utils.exceptions import BusinessException, ErrorCode
 from utils.timeutil import local_today, local_window_for_day, utcnow
 
@@ -268,7 +268,7 @@ _TABLE_NAMES = (
 )
 
 #: 已确认过建表的连接串（避免每请求 inspect 一次）
-_ensured_urls: set = set()
+_ensured_urls: set[str] = set()
 
 
 # --------------------------------------------------------------------------- #
@@ -832,13 +832,14 @@ def checkin(db: Session, user_id: int) -> Dict[str, Any]:
     db.commit()
     db.expire_all()  # expire_on_commit=False：批量 update 后必须重载，否则读到的余额是旧值
 
+    final_acct = find_account(db, user_id)
     return {
         "biz_date": today.isoformat(),
         "kind": "manual",
         "coins": coins,
         "checkin_streak": new_streak,
         "milestones": [b for b in bonus_items if b["coins"]],
-        "balance": _int(find_account(db, user_id).balance) if find_account(db, user_id) else 0,
+        "balance": _int(final_acct.balance) if final_acct else 0,
     }
 
 
@@ -877,7 +878,7 @@ def makeup(db: Session, user_id: int, day: datetime.date) -> Dict[str, Any]:
 
     # 月度补签次数按"这次动作发生在哪个自然月"计（按 created_at，而不是被补的那天：
     # 1 月补 12 月的签要占 1 月的额度）。计数器不在账户上另存一份 —— 两份必然漂移。
-    month_first = local_today().replace(day=1)
+    month_first = today.replace(day=1)
     next_month = (month_first + datetime.timedelta(days=32)).replace(day=1)
     used_in_month = _int(
         db.query(func.count(CheckinLog.id))
@@ -1209,7 +1210,7 @@ def summary(db: Session, user_id: int) -> Dict[str, Any]:
     }
 
 
-def history(db: Session, user_id: int, *, page: int = 1, page_size: int = 20, direction: Optional[str] = None):
+def history(db: Session, user_id: int, *, page: int = 1, page_size: int = 20, direction: Optional[str] = None) -> Query:
     """个人金币流水（分页壳由 utils.response 统一给）。"""
     q = db.query(CoinLedger).filter(CoinLedger.user_id == user_id)
     if direction in ("earn", "spend", "adjust"):
@@ -1534,7 +1535,7 @@ def admin_adjust(db: Session, *, actor_id: Optional[int], user_id: int, coins: i
 
 def admin_ledger_query(
     db: Session, *, user_id: Optional[int] = None, rule_code: Optional[str] = None, direction: Optional[str] = None
-):
+) -> Query:
     q = db.query(CoinLedger)
     if user_id is not None:
         q = q.filter(CoinLedger.user_id == user_id)
@@ -1567,5 +1568,5 @@ def calendar_dict(db: Session, user_id: int, *, days: int = 35) -> Dict[str, Any
     return out
 
 
-def available_rules(db: Session) -> Iterable[str]:
+def available_rules(db: Session) -> List[str]:
     return [r["rule_code"] for r in list_rules(db)]

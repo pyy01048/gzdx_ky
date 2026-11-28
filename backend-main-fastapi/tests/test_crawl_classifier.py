@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """``services/crawl/classifier.py`` 单测：规则分类（doc §5.4 规则表全覆盖）。"""
+
 from __future__ import annotations
 
 import os

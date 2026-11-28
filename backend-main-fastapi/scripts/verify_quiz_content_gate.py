@@ -12,6 +12,7 @@
      证明讲义被拦、真题通过
   C. 存量回放：从真库只读取样，跑一遍新闸门，统计"若当初有闸门会拦掉多少"
 """
+
 from __future__ import annotations
 
 import os
@@ -49,7 +50,10 @@ SAMPLES: list[tuple[str, str, str, str, list, str | None, bool]] = [
         "触发器的驱动方程。 一、设计步骤：（先简单介绍，通过以下的举例后，再进 行总结，"
         "特别再点出设计关键）",
         "知识库:【电子技术基础-数字部分】康华光 精华教案与复习.txt",
-        "设计", [], None, False,
+        "设计",
+        [],
+        None,
+        False,
     ),
     (
         "讲义正文：知识点段落",
@@ -57,7 +61,10 @@ SAMPLES: list[tuple[str, str, str, str, list, str | None, bool]] = [
         "双端输入时无共模信号输入，单端输入时有共模信号输入。 输出方式：Q点、Ad、Ac、"
         "KCMR、Ro均与之有关。",
         "知识库:【电子技术基础-模拟部分】康华光 精品复习课件.txt",
-        "", [], None, False,
+        "",
+        [],
+        None,
+        False,
     ),
     (
         "教材段落：定义+推导叙述",
@@ -65,56 +72,93 @@ SAMPLES: list[tuple[str, str, str, str, list, str | None, bool]] = [
         "其主要性能与OCL 电路类似，只需将OCL 公式中的 V_CC 换成V_CC/2。因此最大效率仍为"
         "78.5%。最大输出功率P_om = (V_CC^2)/(8 R_L)。",
         "知识库:【电子技术基础-模拟部分】康华光 全章节总结.txt",
-        "", [], None, False,
+        "",
+        [],
+        None,
+        False,
     ),
     (
         "PPT残留：版式噪声",
         "返回下页继续放映第 12 页，共 30 页，本页内容盛要是触发器的分类，请点击查看",
-        "知识库:某课件.ppt", "", [], None, False,
+        "知识库:某课件.ppt",
+        "",
+        [],
+        None,
+        False,
     ),
     (
         "答案体被当成题干",
         "答案：B。因为与非门的逻辑表达式为 Y=(AB)'，故选择 B 项。",
-        "真题:某真题", "", [], None, False,
+        "真题:某真题",
+        "",
+        [],
+        None,
+        False,
     ),
     (
         "OCR乱码",
         "触发器的电路结构形式、逻辑功能、触发方式这三者之间的关系 һ 第五章 半导体存储电路",
-        "知识库:某教材.txt", "", [], None, False,
+        "知识库:某教材.txt",
+        "",
+        [],
+        None,
+        False,
     ),
     (
         "★ 真题题干：填空",
         "在RS触发器中，当 R=1、S=0 时，Q 端的输出为 ____。",
-        "真题:贵州大学电子技术基础真题", "填空", [], "0", True,
+        "真题:贵州大学电子技术基础真题",
+        "填空",
+        [],
+        "0",
+        True,
     ),
     (
         "★ 真题题干：选择题（带选项）",
         "下列关于同步时序逻辑电路的说法，正确的是（ ）。A、各触发器的状态在同一时刻更新 "
         "B、CP到来时所有触发器同时翻转 C、不受CP控制 D、只能由组合逻辑构成",
-        "真题:某大学2016真题", "选择",
-        ["A、各触发器的状态在同一时刻更新", "B、CP到来时所有触发器同时翻转",
-         "C、不受CP控制", "D、只能由组合逻辑构成"], "B", True,
+        "真题:某大学2016真题",
+        "选择",
+        ["A、各触发器的状态在同一时刻更新", "B、CP到来时所有触发器同时翻转", "C、不受CP控制", "D、只能由组合逻辑构成"],
+        "B",
+        True,
     ),
     (
         "★ 真题题干：判断题",
         "多级放大电路中电信号在各级传输过程中应不发生失真现象。（  ）",
-        "真题:模拟电子技术真题", "判断", [], "对", True,
+        "真题:模拟电子技术真题",
+        "判断",
+        [],
+        "对",
+        True,
     ),
     (
         "★ 真题题干：简答/计算",
         "已知放大电路中 U_CC=12V，R_C=2kΩ，求静态集电极电流 I_CQ 和静态电压 U_CEQ。",
-        "真题:2018年真题", "计算", [], "I_CQ=3mA，U_CEQ=6V", True,
+        "真题:2018年真题",
+        "计算",
+        [],
+        "I_CQ=3mA，U_CEQ=6V",
+        True,
     ),
     (
         "★ 真题题干：概念简答",
         "简述触发器的逻辑功能与触发方式之间的关系，并说明二者的区别。",
-        "真题:数字电子技术真题", "简答", [], "见解析", True,
+        "真题:数字电子技术真题",
+        "简答",
+        [],
+        "见解析",
+        True,
     ),
     (
         "★ 真题声称但内容是讲义段落（加严样本）",
         "因此答案：因为场效应管是一种电压控制型器件，输入电阻很高，因此所谓场效应管"
         "放大电路的电压增益较大；综上，设计时通常选择较大的静态工作点以提高动态范围。",
-        "真题:某真题（实际为讲义页）", "", [], "x", False,
+        "真题:某真题（实际为讲义页）",
+        "",
+        [],
+        "x",
+        False,
     ),
 ]
 
@@ -124,7 +168,11 @@ def part_a() -> None:
     for label, content, source, sect, opts, ans, expect_ok in SAMPLES:
         gate.gate_reset_stats()
         ok, reason = gate.admit(
-            content, options=opts, answer=ans, source=source, section_type=sect,
+            content,
+            options=opts,
+            answer=ans,
+            source=source,
+            section_type=sect,
         )
         check(
             label,
@@ -174,8 +222,7 @@ def part_b() -> None:
     try:
         gate.gate_reset_stats()
         qs_off = qb.extract_questions(MIXED_DOC, source_hint="康华光 精品复习课件.txt")
-        check("QUIZ_CONTENT_GATE=0 可回退到旧行为（放行 6 条）", len(qs_off) == 6,
-              f"→ 实际 {len(qs_off)} 条")
+        check("QUIZ_CONTENT_GATE=0 可回退到旧行为（放行 6 条）", len(qs_off) == 6, f"→ 实际 {len(qs_off)} 条")
     finally:
         os.environ.pop("QUIZ_CONTENT_GATE", None)
 
@@ -214,34 +261,38 @@ def part_b2() -> None:
         (
             "灰区A：靠陈述式兜底、无问号无选项",
             "译码器在工作时不存在竞争冒险现象，输出是唯一确定的逻辑电平。",
-            "判断", "错误", [], False, True,
+            "判断",
+            "错误",
+            [],
+            False,
+            True,
         ),
         (
             "灰区B：带问号的叙述体段",
             "如何理解二极管的伏安特性？所谓理想二极管是指正向电阻为零、反向电流为零的"
             "一种理想模型，因此在分析整流电路时通常可以忽略导通压降。",
-            "选择", None, [], False, False,
+            "选择",
+            None,
+            [],
+            False,
+            False,
         ),
     ]
     for label, content, sect, ans, opts, exp_real, exp_lecture in discriminative:
-        r_real = gate.admit(content, options=opts, answer=ans,
-                            source="2024年考研数学一真题.pdf", section_type=sect)[0]
-        r_lec = gate.admit(content, options=opts, answer=ans,
-                           source="某某讲义.pdf", section_type=sect)[0]
+        r_real = gate.admit(content, options=opts, answer=ans, source="2024年考研数学一真题.pdf", section_type=sect)[0]
+        r_lec = gate.admit(content, options=opts, answer=ans, source="某某讲义.pdf", section_type=sect)[0]
         print(f"  · {label}")
-        print(f"      真题源 → {'放行' if r_real else '拦截'}   "
-              f"讲义源 → {'放行' if r_lec else '拦截'}")
+        print(f"      真题源 → {'放行' if r_real else '拦截'}   讲义源 → {'放行' if r_lec else '拦截'}")
         check(f"  {label}·真题源判定符合预期", r_real == exp_real)
         check(f"  {label}·讲义源判定符合预期", r_lec == exp_lecture)
 
     check(
         "存在至少一条'真题拦 / 讲义放'的分叉样本（证明加严非死代码）",
         any(
-            not gate.admit(c, options=o, answer=a,
-                           source="2024年考研真题.pdf", section_type=s)[0]
-            and gate.admit(c, options=o, answer=a,
-                           source="某某讲义.pdf", section_type=s)[0]
-            for _, c, s, a, o, er, el in discriminative if er != el
+            not gate.admit(c, options=o, answer=a, source="2024年考研真题.pdf", section_type=s)[0]
+            and gate.admit(c, options=o, answer=a, source="某某讲义.pdf", section_type=s)[0]
+            for _, c, s, a, o, er, el in discriminative
+            if er != el
         ),
     )
 
@@ -249,33 +300,31 @@ def part_b2() -> None:
 def part_c() -> None:
     print("\n===== C. 存量回放（只读真库，统计闸门若当初存在会拦掉多少）=====")
     import sqlite3
+
     db = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
     if not os.path.exists(db):
         print("  [SKIP] 真库不存在:", db)
         return
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    rows = con.execute(
-        "SELECT content, answer, source, question_type, options FROM quiz_questions"
-    ).fetchall()
+    rows = con.execute("SELECT content, answer, source, question_type, options FROM quiz_questions").fetchall()
     con.close()
     gate.gate_reset_stats()
     kept = 0
-    for content, answer, source, qtype, options in rows:
+    for content, answer, source, _qtype, options in rows:
         opts = []
         if options:
             try:
                 import json
+
                 opts = json.loads(options) or []
             except Exception:
                 opts = []
-        ok, _ = gate.admit(content or "", options=opts, answer=answer,
-                           source=source or "")
+        ok, _ = gate.admit(content or "", options=opts, answer=answer, source=source or "")
         if ok:
             kept += 1
     snap = gate.gate_stats_snapshot()
     rejected = sum(v for k, v in snap.items() if k.startswith("reject:"))
-    print(f"  存量总数 {len(rows)} → 新闸门放行 {kept}，拦截 {rejected}"
-          f"（拦截率 {rejected / max(1, len(rows)):.1%}）")
+    print(f"  存量总数 {len(rows)} → 新闸门放行 {kept}，拦截 {rejected}（拦截率 {rejected / max(1, len(rows)):.1%}）")
     for k, v in sorted(snap.items(), key=lambda x: -x[1]):
         if k.startswith("reject:"):
             print(f"    {k[7:]:<24} {v}")

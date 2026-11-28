@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
+import shutil
 import uuid
+from pathlib import Path
 
 import pytest
 from core.migrations import (
@@ -113,6 +115,41 @@ def sql_dir(tmp_path):
     return d
 
 
+def test_schema_and_initializer_exclude_manual_data_scripts():
+    from scripts.init_db import extra_shards
+
+    backend = Path(__file__).resolve().parents[1]
+    assert "212_admission_details_anonymize.sql" not in (backend / "core" / "pg_schema.sql").read_text(encoding="utf-8")
+    shards = extra_shards()
+    assert not any(name.startswith(("212_", "213_", "160_", "203_")) for name in shards)
+
+
+def test_manual_data_scripts_never_execute_automatically(scratch_engine, tmp_path):
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "212_admission_details_anonymize.sql").write_text(
+        "CREATE TABLE must_not_exist (id int);", encoding="utf-8"
+    )
+    result = run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    assert result.applied == []
+    assert result.manual_required == ["212_admission_details_anonymize"]
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT to_regclass('must_not_exist')")).scalar_one() is None
+    assert ledger_status(scratch_engine, sql_dir)["pending"] == []
+
+
+def test_script_failure_rolls_back_all_its_statements(scratch_engine, tmp_path):
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "001_atomic.sql").write_text(
+        "CREATE TABLE atomic_first (id int); INSERT INTO missing_table VALUES (1);", encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="事务已回滚|第 2/2 条"):
+        run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT to_regclass('atomic_first')")).scalar_one() is None
+
+
 def test_run_pending_is_idempotent(scratch_engine, sql_dir):
     first = run_pending(scratch_engine, sql_dir, applied_by="pytest")
     assert first.mode == "pending"
@@ -134,6 +171,73 @@ def test_checksum_mismatch_blocks(scratch_engine, sql_dir):
     )
     with pytest.raises(ChecksumMismatch):
         run_pending(scratch_engine, sql_dir, applied_by="pytest")
+
+
+def test_audited_drift_reconciliation_requires_postcondition(scratch_engine, sql_dir, monkeypatch):
+    import core.migrations as migrations
+
+    run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    old_checksum = migrations.file_checksum(sql_dir / "001_users.sql")
+    (sql_dir / "001_users.sql").write_text(
+        "CREATE TABLE users (id serial PRIMARY KEY, name text, email text);", encoding="utf-8"
+    )
+    new_checksum = migrations.file_checksum(sql_dir / "001_users.sql")
+    monkeypatch.setitem(
+        migrations.AUDITED_CHECKSUM_DRIFT,
+        "001_users",
+        {
+            "ledger_checksum": old_checksum,
+            "file_checksum": new_checksum,
+            "verify_sql": "SELECT EXISTS (SELECT 1 FROM users WHERE name = 'ready')",
+        },
+    )
+
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (name) VALUES ('ready')"))
+    with pytest.raises(ChecksumMismatch):
+        run_pending(scratch_engine, sql_dir, applied_by="pytest")
+
+    result = run_pending(
+        scratch_engine,
+        sql_dir,
+        applied_by="pytest",
+        reconcile_audited_drift=True,
+    )
+    assert result.reconciled == ["001_users"]
+    assert ledger_status(scratch_engine, sql_dir)["checksum_drift"] == []
+
+
+def test_audited_drift_reconciliation_fails_closed_when_postcondition_is_false(scratch_engine, sql_dir, monkeypatch):
+    import core.migrations as migrations
+
+    run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    old_checksum = migrations.file_checksum(sql_dir / "001_users.sql")
+    (sql_dir / "001_users.sql").write_text(
+        "CREATE TABLE users (id serial PRIMARY KEY, name text, email text);", encoding="utf-8"
+    )
+    new_checksum = migrations.file_checksum(sql_dir / "001_users.sql")
+    monkeypatch.setitem(
+        migrations.AUDITED_CHECKSUM_DRIFT,
+        "001_users",
+        {
+            "ledger_checksum": old_checksum,
+            "file_checksum": new_checksum,
+            "verify_sql": "SELECT EXISTS (SELECT 1 FROM users WHERE name = 'missing')",
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="账本校正后校验失败"):
+        run_pending(
+            scratch_engine,
+            sql_dir,
+            applied_by="pytest",
+            reconcile_audited_drift=True,
+        )
+    with scratch_engine.connect() as conn:
+        assert (
+            conn.execute(text("SELECT checksum FROM schema_migrations WHERE version = '001_users'")).scalar_one()
+            == old_checksum
+        )
 
 
 def test_baseline_mode_records_without_executing(scratch_engine, sql_dir):
@@ -164,3 +268,181 @@ def test_new_script_runs_on_baselined_db(scratch_engine, sql_dir):
     result = run_pending(scratch_engine, sql_dir, applied_by="pytest")
     assert result.mode == "pending"
     assert result.applied == ["003_new"]
+
+
+def test_empty_ledger_baseline_executes_personal_bank_migrations(scratch_engine, tmp_path):
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    for name in ("204_personal_question_bank.sql", "205_exam_question_source_text.sql"):
+        shutil.copyfile(Path(__file__).resolve().parents[1] / "core" / "sql" / name, sql_dir / name)
+
+    with scratch_engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id BIGSERIAL PRIMARY KEY)"))
+        conn.execute(
+            text("""
+            CREATE TABLE quiz_questions (
+                id BIGSERIAL PRIMARY KEY,
+                is_available BOOLEAN,
+                is_junk BOOLEAN
+            )
+        """)
+        )
+        conn.execute(text("CREATE TYPE source_kind AS ENUM ('bank', 'exam')"))
+        conn.execute(
+            text("""
+            CREATE TABLE exam_sessions (
+                id BIGSERIAL PRIMARY KEY,
+                question_source source_kind NOT NULL DEFAULT 'bank'::source_kind
+            )
+        """)
+        )
+        conn.execute(
+            text("""
+            CREATE FUNCTION set_updated_at() RETURNS trigger AS $$
+            BEGIN NEW.updated_at = now(); RETURN NEW; END;
+            $$ LANGUAGE plpgsql
+        """)
+        )
+
+    preview = run_pending(scratch_engine, sql_dir, applied_by="pytest", dry_run=True)
+    assert preview.mode == "baseline"
+    assert preview.applied == ["204_personal_question_bank", "205_exam_question_source_text"]
+
+    result = run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    assert result.mode == "baseline"
+    assert result.applied == ["204_personal_question_bank", "205_exam_question_source_text"]
+    assert result.baselined == []
+
+    with scratch_engine.connect() as conn:
+        tables = set(
+            conn.execute(
+                text("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()")
+            ).scalars()
+        )
+        assert {"quiz_question_sets", "quiz_question_set_items", "quiz_question_states"} <= tables
+        assert conn.execute(text("SELECT owner_user_id FROM quiz_questions LIMIT 0")).fetchall() == []
+        data_type = conn.execute(
+            text("""
+            SELECT data_type FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'exam_sessions' AND column_name = 'question_source'
+        """)
+        ).scalar_one()
+        assert data_type == "character varying"
+
+    second = run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    assert second.applied == []
+    assert second.skipped == ["204_personal_question_bank", "205_exam_question_source_text"]
+
+
+def test_preflight_206_handles_schema_before_client_attempt_column(scratch_engine, tmp_path):
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "206_quiz_persistent_sessions.sql").write_text(
+        "CREATE TABLE preflight_marker (id int);", encoding="utf-8"
+    )
+    with scratch_engine.begin() as conn:
+        conn.execute(text("CREATE TABLE quiz_attempts (session_id bigint, question_id int)"))
+
+    result = run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    assert result.applied == ["206_quiz_persistent_sessions"]
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT to_regclass('preflight_marker')")).scalar_one() is not None
+
+
+def test_preflight_206_blocks_existing_duplicate_client_attempts(scratch_engine, tmp_path):
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "206_quiz_persistent_sessions.sql").write_text("CREATE TABLE must_not_exist (id int);", encoding="utf-8")
+    with scratch_engine.begin() as conn:
+        conn.execute(
+            text("""
+            CREATE TABLE quiz_attempts (
+                session_id bigint, question_id int,
+                user_id bigint, client_attempt_id varchar(100)
+            )
+        """)
+        )
+        conn.execute(
+            text("""
+            INSERT INTO quiz_attempts VALUES
+            (1, 10, 1, 'same-attempt'), (2, 20, 1, 'same-attempt')
+        """)
+        )
+
+    with pytest.raises(RuntimeError, match="迁移预检失败"):
+        run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT to_regclass('must_not_exist')")).scalar_one() is None
+
+
+def test_preflight_208_blocks_unsupported_modes(scratch_engine, tmp_path):
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "208_quiz_practice_modes.sql").write_text("CREATE TABLE must_not_exist (id int);", encoding="utf-8")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("CREATE TABLE quiz_sessions (mode varchar(50))"))
+        conn.execute(text("INSERT INTO quiz_sessions VALUES ('unsupported')"))
+
+    with pytest.raises(RuntimeError, match="迁移预检失败"):
+        run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT to_regclass('must_not_exist')")).scalar_one() is None
+
+
+def test_school_official_url_guard_cleans_only_audited_values(scratch_engine):
+    from core.migrations import _apply_script
+
+    script = Path(__file__).resolve().parents[1] / "core" / "sql" / "213_school_official_url_guard.sql"
+    with scratch_engine.begin() as conn:
+        conn.execute(
+            text("""
+            CREATE TABLE kaoyan_schools (
+                id bigint PRIMARY KEY,
+                official_url varchar(500),
+                deleted_at timestamptz,
+                updated_at timestamptz
+            )
+        """)
+        )
+        conn.execute(
+            text("""
+            INSERT INTO kaoyan_schools (id, official_url) VALUES
+            (1, 'http://www.***'),
+            (2, 'https://yz.chsi.com.cn/sch/schoolInfo--schId-367887.dhtml'),
+            (705, 'https://www.gznc.edu.cn/'),
+            (897, 'https://www.hljut.edu.cn/'),
+            (999, 'https://www.example.edu.cn/')
+        """)
+        )
+
+    _apply_script(scratch_engine, script)
+    _apply_script(scratch_engine, script)
+    with scratch_engine.connect() as conn:
+        rows = dict(conn.execute(text("SELECT id, official_url FROM kaoyan_schools")).all())
+        assert rows[1] is None and rows[2] is None
+        assert rows[705] is None and rows[897] is None
+        assert rows[999] == "https://www.example.edu.cn/"
+    with pytest.raises(Exception, match="ck_kaoyan_schools_official_url"):
+        with scratch_engine.begin() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO kaoyan_schools (id, official_url)
+                VALUES (1000, 'https://yz.chsi.com.cn/sch/schoolInfo--schId-1.dhtml')
+            """)
+            )
+
+
+def test_apply_script_owns_transaction_despite_legacy_begin_commit(scratch_engine, tmp_path):
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "001_legacy_tx.sql").write_text(
+        "BEGIN; CREATE TABLE first_table (id int); COMMIT; "
+        "CREATE TABLE second_table (id int); INSERT INTO missing_table VALUES (1);",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="第 3/3 条"):
+        run_pending(scratch_engine, sql_dir, applied_by="pytest")
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT to_regclass('first_table')")).scalar_one() is None
+        assert conn.execute(text("SELECT to_regclass('second_table')")).scalar_one() is None

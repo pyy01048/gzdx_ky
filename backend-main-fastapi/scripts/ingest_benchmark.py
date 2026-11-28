@@ -14,6 +14,7 @@
 
 **安全**：不加 ``--write`` 时**绝不写库**（只解析、统计）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -88,8 +89,12 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--subject", default="", help="科目（写进 documents.subject）")
     parser.add_argument("--max-pages", type=int, default=None, help="每份最多解析多少页")
     parser.add_argument("--parse-fn", default="", help="解析函数 module:attr（默认用 route_parse）")
-    parser.add_argument("--document-id", type=int, default=None,
-                        help="写入指定的 documents.id（不传则每次新建文档；传同一个 id 可验证幂等）")
+    parser.add_argument(
+        "--document-id",
+        type=int,
+        default=None,
+        help="写入指定的 documents.id（不传则每次新建文档；传同一个 id 可验证幂等）",
+    )
     args = parser.parse_args(argv)
 
     write = bool(args.write) and not args.dry_run
@@ -107,8 +112,16 @@ def main(argv: List[str] | None = None) -> int:
 
     results: List[Dict[str, Any]] = []
     failures: List[Dict[str, Any]] = []
-    totals = {"pages": 0, "blocks": 0, "questions": 0, "figures_bound": 0, "figure_missing": 0,
-              "math_corrupted_blocks": 0, "math_corrupted_questions": 0, "low_confidence_blocks": 0}
+    totals = {
+        "pages": 0,
+        "blocks": 0,
+        "questions": 0,
+        "figures_bound": 0,
+        "figure_missing": 0,
+        "math_corrupted_blocks": 0,
+        "math_corrupted_questions": 0,
+        "low_confidence_blocks": 0,
+    }
     grades = {"A": 0, "B": 0, "C": 0, "JUNK": 0}
     started = time.time()
 
@@ -129,25 +142,27 @@ def main(argv: List[str] | None = None) -> int:
                 totals[key] += int(stats.get(key, 0) or 0)
             for key in grades:
                 grades[key] += int(stats.get("grades", {}).get(key, 0) or 0)
-            results.append({
-                "file": name,
-                "path": pdf_path,
-                "kind": stats.get("pdf_kind"),
-                "engine": stats.get("engine"),
-                "elapsed_seconds": stats.get("elapsed_seconds"),
-                "pages": stats.get("pages"),
-                "blocks": stats.get("blocks"),
-                "questions": stats.get("questions"),
-                "figures_bound": stats.get("figures_bound"),
-                "figure_missing": stats.get("figure_missing"),
-                "grades": stats.get("grades"),
-                "document_id": stats.get("document_id"),
-                "issues": len(stats.get("issues", []) or []),
-                "math_corrupted_blocks": stats.get("math_corrupted_blocks", 0),
-                "math_suspect_blocks": stats.get("math_suspect_blocks", 0),
-                "math_corrupted_questions": stats.get("math_corrupted_questions", 0),
-                "low_confidence_blocks": stats.get("low_confidence_blocks", 0),
-            })
+            results.append(
+                {
+                    "file": name,
+                    "path": pdf_path,
+                    "kind": stats.get("pdf_kind"),
+                    "engine": stats.get("engine"),
+                    "elapsed_seconds": stats.get("elapsed_seconds"),
+                    "pages": stats.get("pages"),
+                    "blocks": stats.get("blocks"),
+                    "questions": stats.get("questions"),
+                    "figures_bound": stats.get("figures_bound"),
+                    "figure_missing": stats.get("figure_missing"),
+                    "grades": stats.get("grades"),
+                    "document_id": stats.get("document_id"),
+                    "issues": len(stats.get("issues", []) or []),
+                    "math_corrupted_blocks": stats.get("math_corrupted_blocks", 0),
+                    "math_suspect_blocks": stats.get("math_suspect_blocks", 0),
+                    "math_corrupted_questions": stats.get("math_corrupted_questions", 0),
+                    "low_confidence_blocks": stats.get("low_confidence_blocks", 0),
+                }
+            )
             print(
                 f"[{index}/{len(pdfs)}] {name}｜kind={stats.get('pdf_kind')}"
                 f" engine={stats.get('engine')} 用时={_fmt_secs(stats.get('elapsed_seconds') or 0)}"
@@ -157,12 +172,14 @@ def main(argv: List[str] | None = None) -> int:
                 f" 缺置信块={stats.get('low_confidence_blocks', 0)}"
             )
         except Exception as exc:  # noqa: BLE001 - 单份失败不中断整批
-            failures.append({
-                "file": name,
-                "path": pdf_path,
-                "error": f"{type(exc).__name__}: {exc}",
-                "traceback": traceback.format_exc(limit=6),
-            })
+            failures.append(
+                {
+                    "file": name,
+                    "path": pdf_path,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "traceback": traceback.format_exc(limit=6),
+                }
+            )
             print(f"[{index}/{len(pdfs)}] {name}｜失败：{type(exc).__name__}: {exc}")
         finally:
             db.rollback()
@@ -183,10 +200,14 @@ def main(argv: List[str] | None = None) -> int:
 
     print("\n===== 汇总 =====")
     print(f"成功 {len(results)} / 失败 {len(failures)}｜总用时 {_fmt_secs(report['total_elapsed_seconds'])}")
-    print(f"页 {totals['pages']}｜块 {totals['blocks']}｜题 {totals['questions']}"
-          f"｜配图命中 {totals['figures_bound']}｜缺图 {totals['figure_missing']}")
-    print(f"公式损坏：块 {totals['math_corrupted_blocks']}｜题 {totals['math_corrupted_questions']}"
-          f"｜缺置信度块 {totals['low_confidence_blocks']}")
+    print(
+        f"页 {totals['pages']}｜块 {totals['blocks']}｜题 {totals['questions']}"
+        f"｜配图命中 {totals['figures_bound']}｜缺图 {totals['figure_missing']}"
+    )
+    print(
+        f"公式损坏：块 {totals['math_corrupted_blocks']}｜题 {totals['math_corrupted_questions']}"
+        f"｜缺置信度块 {totals['low_confidence_blocks']}"
+    )
     print(f"门禁分布：A={grades['A']} B={grades['B']} C={grades['C']} JUNK={grades['JUNK']}")
     if failures:
         print("\n失败清单：")

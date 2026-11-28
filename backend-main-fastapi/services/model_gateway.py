@@ -75,9 +75,9 @@ def get_routing_mode() -> str:
         from sqlalchemy import text as _sql_text
 
         with engine.connect() as conn:
-            row = conn.execute(_sql_text(
-                "SELECT extra FROM platform_configs WHERE platform_name = 'ai_routing'"
-            )).fetchone()
+            row = conn.execute(
+                _sql_text("SELECT extra FROM platform_configs WHERE platform_name = 'ai_routing'")
+            ).fetchone()
             if row and row[0]:
                 extra = row[0] if isinstance(row[0], dict) else json.loads(row[0])
                 m = (extra or {}).get("mode")
@@ -96,6 +96,8 @@ def get_routing_mode() -> str:
 def reset_routing_cache() -> None:
     """设置页改完路由模式后立即生效（否则要等 15s TTL 过期）。"""
     _routing_cache.update(ts=0.0, mode=None)
+
+
 LOCAL_TIMEOUT = float(os.environ.get("MODEL_GATEWAY_LOCAL_TIMEOUT", "360"))
 CLOUD_TIMEOUT = float(os.environ.get("MODEL_GATEWAY_CLOUD_TIMEOUT", "60"))
 OLLAMA_BASE = resolve_ollama_host(os.environ.get("OLLAMA_BASE", ""))
@@ -123,10 +125,17 @@ _GENERATION_TASK_RE = re.compile(r"仅输出 JSON|生成\s*1\s*道|变式题|命
 
 #: 任务类型（对齐 model_registry 的 task 域）
 TASK_ALIASES = {
-    "学术答疑": "qa_academic", "答疑": "qa_academic", "qa": "qa_academic",
-    "文档处理": "doc_process", "总结": "doc_process", "改写": "doc_process",
-    "代码": "code", "编程": "code",
-    "通用": "general", "闲聊": "general", "chat": "general",
+    "学术答疑": "qa_academic",
+    "答疑": "qa_academic",
+    "qa": "qa_academic",
+    "文档处理": "doc_process",
+    "总结": "doc_process",
+    "改写": "doc_process",
+    "代码": "code",
+    "编程": "code",
+    "通用": "general",
+    "闲聊": "general",
+    "chat": "general",
 }
 
 
@@ -143,23 +152,30 @@ def _list_cloud_providers(db) -> List[Dict[str, Any]]:
     """读取 AIProvider 表中启用的云端供应商，按 fallback_priority 升序。"""
     from models import AIProvider
 
-    rows = db.query(AIProvider).filter(
-        AIProvider.is_enabled.is_(True),
-        AIProvider.provider_type.in_(CLOUD_PROVIDER_TYPES),
-        AIProvider.base_url.isnot(None),
-    ).order_by(AIProvider.fallback_priority.asc()).all()
+    rows = (
+        db.query(AIProvider)
+        .filter(
+            AIProvider.is_enabled.is_(True),
+            AIProvider.provider_type.in_(CLOUD_PROVIDER_TYPES),
+            AIProvider.base_url.isnot(None),
+        )
+        .order_by(AIProvider.fallback_priority.asc())
+        .all()
+    )
     out = []
     for r in rows:
-        out.append({
-            "kind": "cloud",
-            "provider": r.provider_type,
-            "name": r.name,
-            "base_url": (r.base_url or "").rstrip("/"),
-            "api_key": r.api_key or "",
-            "model": r.model_name,
-            "temperature": r.temperature if r.temperature is not None else 0.7,
-            "priority": r.fallback_priority or 99,
-        })
+        out.append(
+            {
+                "kind": "cloud",
+                "provider": r.provider_type,
+                "name": r.name,
+                "base_url": (r.base_url or "").rstrip("/"),
+                "api_key": r.api_key or "",
+                "model": r.model_name,
+                "temperature": r.temperature if r.temperature is not None else 0.7,
+                "priority": r.fallback_priority or 99,
+            }
+        )
     return out
 
 
@@ -170,23 +186,30 @@ def _list_retrieval_providers(db) -> List[Dict[str, Any]]:
     """读取 AIProvider 表中启用的专有答疑模型（provider_type=local-retrieval）。"""
     from models import AIProvider
 
-    rows = db.query(AIProvider).filter(
-        AIProvider.is_enabled.is_(True),
-        AIProvider.provider_type.in_(RETRIEVAL_PROVIDER_TYPES),
-        AIProvider.base_url.isnot(None),
-    ).order_by(AIProvider.fallback_priority.asc()).all()
+    rows = (
+        db.query(AIProvider)
+        .filter(
+            AIProvider.is_enabled.is_(True),
+            AIProvider.provider_type.in_(RETRIEVAL_PROVIDER_TYPES),
+            AIProvider.base_url.isnot(None),
+        )
+        .order_by(AIProvider.fallback_priority.asc())
+        .all()
+    )
     out = []
     for r in rows:
-        out.append({
-            "kind": "retrieval",
-            "provider": r.provider_type,
-            "name": r.name,
-            "base_url": (r.base_url or "").rstrip("/"),
-            "api_key": r.api_key or "local",
-            "model": r.model_name,
-            "temperature": r.temperature if r.temperature is not None else 0.3,
-            "priority": r.fallback_priority or 99,
-        })
+        out.append(
+            {
+                "kind": "retrieval",
+                "provider": r.provider_type,
+                "name": r.name,
+                "base_url": (r.base_url or "").rstrip("/"),
+                "api_key": r.api_key or "local",
+                "model": r.model_name,
+                "temperature": r.temperature if r.temperature is not None else 0.3,
+                "priority": r.fallback_priority or 99,
+            }
+        )
     return out
 
 
@@ -225,11 +248,19 @@ def _build_local_candidates(subject: Optional[str], task: str, installed: List[s
         best = None
     cands = []
     if best:
-        cands.append({
-            "kind": "local", "provider": "ollama", "name": "本地最佳", "base_url": OLLAMA_BASE,
-            "api_key": "ollama", "model": best.get("ollama_name") or best.get("model_name") or best.get("name") or "", "temperature": 0.7,
-            "priority": 0, "fit": best.get("fit_verdict", best.get("fit", "")),
-        })
+        cands.append(
+            {
+                "kind": "local",
+                "provider": "ollama",
+                "name": "本地最佳",
+                "base_url": OLLAMA_BASE,
+                "api_key": "ollama",
+                "model": best.get("ollama_name") or best.get("model_name") or best.get("name") or "",
+                "temperature": 0.7,
+                "priority": 0,
+                "fit": best.get("fit_verdict", best.get("fit", "")),
+            }
+        )
     return cands
 
 
@@ -277,9 +308,7 @@ class ModelGateway:
         # （get_routing_mode），支持设置页热切换路由模式。
         self.strategy = strategy if (strategy is None or strategy in ROUTING_MODES) else None
 
-    def _candidate_chain(
-        self, db, *, subject: Optional[str], task: str, prefer: Optional[str]
-    ) -> List[Dict[str, Any]]:
+    def _candidate_chain(self, db, *, subject: Optional[str], task: str, prefer: Optional[str]) -> List[Dict[str, Any]]:
         """构建候选链（按策略排序）。"""
         installed = _ollama_installed()
         local = _build_local_candidates(subject, task, installed)
@@ -343,18 +372,20 @@ class ModelGateway:
         try:
             # 真题类问题（错题答疑/题目解析）优先路由到专有答疑模型（local-retrieval）；
             # 生成类任务（变式题/答案解析生成）豁免，避免误走检索导致 JSON 指令丢失
-            if (
-                task == "qa_academic"
-                and is_exam_query(question)
-                and not _GENERATION_TASK_RE.search(question)
-            ):
+            if task == "qa_academic" and is_exam_query(question) and not _GENERATION_TASK_RE.search(question):
                 prefer = "retrieval"
             chain = self._candidate_chain(db, subject=subject, task=task, prefer=prefer)
             if not chain:
                 return {
-                    "answer": "", "engine": "none", "provider": "", "model": "",
-                    "strategy": self.strategy or get_routing_mode(), "latency_ms": 0, "fallback_used": True,
-                    "attempts": [], "error": "无可用模型：本地 Ollama 未运行且无云端供应商配置",
+                    "answer": "",
+                    "engine": "none",
+                    "provider": "",
+                    "model": "",
+                    "strategy": self.strategy or get_routing_mode(),
+                    "latency_ms": 0,
+                    "fallback_used": True,
+                    "attempts": [],
+                    "error": "无可用模型：本地 Ollama 未运行且无云端供应商配置",
                 }
 
             default_sys = (
@@ -379,10 +410,15 @@ class ModelGateway:
                     out = _chat_openai_compat(cfg, messages, timeout=timeout)
                     answer = (out["text"] or "").strip()
                     latency = out["latency_ms"]
-                    attempts.append({
-                        "kind": cfg["kind"], "provider": cfg.get("provider"),
-                        "model": cfg["model"], "status": "ok", "latency_ms": round(latency, 1),
-                    })
+                    attempts.append(
+                        {
+                            "kind": cfg["kind"],
+                            "provider": cfg.get("provider"),
+                            "model": cfg["model"],
+                            "status": "ok",
+                            "latency_ms": round(latency, 1),
+                        }
+                    )
                     return {
                         "answer": answer,
                         "engine": cfg["kind"],
@@ -395,18 +431,28 @@ class ModelGateway:
                         "error": None,
                     }
                 except Exception as e:
-                    attempts.append({
-                        "kind": cfg["kind"], "provider": cfg.get("provider"),
-                        "model": cfg["model"], "status": "failed",
-                        "error": f"{type(e).__name__}: {str(e)[:200]}",
-                        "latency_ms": round((time.time() - attempt_t0) * 1000, 1),
-                    })
+                    attempts.append(
+                        {
+                            "kind": cfg["kind"],
+                            "provider": cfg.get("provider"),
+                            "model": cfg["model"],
+                            "status": "failed",
+                            "error": f"{type(e).__name__}: {str(e)[:200]}",
+                            "latency_ms": round((time.time() - attempt_t0) * 1000, 1),
+                        }
+                    )
                     continue
 
             return {
-                "answer": "", "engine": "none", "provider": "", "model": "",
-                "strategy": self.strategy or get_routing_mode(), "latency_ms": 0, "fallback_used": True,
-                "attempts": attempts, "error": "全部模型候选均失败",
+                "answer": "",
+                "engine": "none",
+                "provider": "",
+                "model": "",
+                "strategy": self.strategy or get_routing_mode(),
+                "latency_ms": 0,
+                "fallback_used": True,
+                "attempts": attempts,
+                "error": "全部模型候选均失败",
             }
         finally:
             if close_db:
@@ -453,7 +499,9 @@ class ModelGateway:
                 "strategy": self.strategy or get_routing_mode(),
                 "hardware": {"gpu": hw.gpu_name, "vram_gb": hw.vram_gb, "tier": hw.tier, "ram_gb": hw.ram_gb},
                 "local_models": installed,
-                "cloud_providers": [{"provider": c["provider"], "model": c["model"], "priority": c["priority"]} for c in cloud],
+                "cloud_providers": [
+                    {"provider": c["provider"], "model": c["model"], "priority": c["priority"]} for c in cloud
+                ],
                 "timeouts": {"local_s": LOCAL_TIMEOUT, "cloud_s": CLOUD_TIMEOUT},
             }
         finally:

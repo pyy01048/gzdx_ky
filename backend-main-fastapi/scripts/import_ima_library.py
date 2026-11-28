@@ -24,6 +24,7 @@ IMA 知识库 → 本地 documents 表 导入器
     python import_ima_library.py                 # dry-run，只看计划
     python import_ima_library.py --apply         # 真正写库（自动备份）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,19 +79,21 @@ def build_plan(items: list[dict]) -> list[dict]:
         path = it.get("folder_path") or ""
         intro = it.get("intro") or ""
         cls = classify_item(title, path, intro)
-        plan.append({
-            "media_id": it["media_id"],
-            "file_name": title,
-            "file_type": MEDIA_TYPE_MAP.get(it.get("media_type"), "unknown"),
-            "size": int(it.get("file_size") or 0),
-            "folder_path": path,
-            "can_fetch_content": int(it.get("can_fetch_content") or 0),
-            "content_preview_len": len(intro),
-            # IMA 已解析的正文（introduction）。注意：采集时为省上下文，
-            # 部分条目 intro 留空 —— 空的不覆盖已有 content。
-            "intro": intro,
-            **cls,
-        })
+        plan.append(
+            {
+                "media_id": it["media_id"],
+                "file_name": title,
+                "file_type": MEDIA_TYPE_MAP.get(it.get("media_type"), "unknown"),
+                "size": int(it.get("file_size") or 0),
+                "folder_path": path,
+                "can_fetch_content": int(it.get("can_fetch_content") or 0),
+                "content_preview_len": len(intro),
+                # IMA 已解析的正文（introduction）。注意：采集时为省上下文，
+                # 部分条目 intro 留空 —— 空的不覆盖已有 content。
+                "intro": intro,
+                **cls,
+            }
+        )
     return plan
 
 
@@ -117,9 +120,7 @@ def apply_plan(plan: list[dict], real_db: str) -> dict:
     inserted, skipped, updated = 0, 0, 0
     try:
         # 幂等去重：先看已有 ima_media_id
-        have = {r[0] for r in con.execute(
-            "SELECT ima_media_id FROM documents WHERE ima_media_id IS NOT NULL"
-        )}
+        have = {r[0] for r in con.execute("SELECT ima_media_id FROM documents WHERE ima_media_id IS NOT NULL")}
         for p in plan:
             mid = p["media_id"]
             if mid in have:
@@ -131,8 +132,7 @@ def apply_plan(plan: list[dict], real_db: str) -> dict:
                     con.execute(
                         "UPDATE documents SET subject=?, content_type=?, stage=?, folder_path=?, "
                         "content=?, updated_at=? WHERE ima_media_id=?",
-                        (p["subject"], p["doc_type"], p["stage"], p["folder_path"],
-                         p["intro"], now, mid),
+                        (p["subject"], p["doc_type"], p["stage"], p["folder_path"], p["intro"], now, mid),
                     )
                 else:
                     con.execute(
@@ -148,14 +148,22 @@ def apply_plan(plan: list[dict], real_db: str) -> dict:
                 "content, index_status, parse_progress, created_at, updated_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    p["file_name"], mid, p["file_type"], p["size"],
+                    p["file_name"],
+                    mid,
+                    p["file_type"],
+                    p["size"],
                     p["subject"],
-                    "raw",          # doc_type 保持既有语义：IMA 资料属"原始层"
+                    "raw",  # doc_type 保持既有语义：IMA 资料属"原始层"
                     p["doc_type"],  # 知识/试题/单词 → content_type 新列
                     p["stage"],
-                    mid, p["folder_path"], "ima",
-                    p.get("intro") or "",   # IMA 已解析正文（可能为空，待后续 fetch 补齐）
-                    "pending", 0, now, now,
+                    mid,
+                    p["folder_path"],
+                    "ima",
+                    p.get("intro") or "",  # IMA 已解析正文（可能为空，待后续 fetch 补齐）
+                    "pending",
+                    0,
+                    now,
+                    now,
                 ),
             )
             inserted += 1
@@ -206,18 +214,23 @@ def main() -> int:
     # 审计落盘
     os.makedirs(os.path.dirname(AUDIT_PATH), exist_ok=True)
     with open(AUDIT_PATH, "w", encoding="utf-8") as f:
-        json.dump({
-            "generated_at": datetime.now().isoformat(),
-            "staging_db": args.staging,
-            "total": len(plan),
-            "distribution": {
-                "stage": dict(stage_c),
-                "subject": dict(subj_c),
-                "doc_type": dict(type_c),
+        json.dump(
+            {
+                "generated_at": datetime.now().isoformat(),
+                "staging_db": args.staging,
+                "total": len(plan),
+                "distribution": {
+                    "stage": dict(stage_c),
+                    "subject": dict(subj_c),
+                    "doc_type": dict(type_c),
+                },
+                "needs_review": [{"file_name": p["file_name"], "folder": p["folder_path"]} for p in review],
+                "items": [{k: v for k, v in p.items() if k != "reason"} for p in plan],
             },
-            "needs_review": [{"file_name": p["file_name"], "folder": p["folder_path"]} for p in review],
-            "items": [{k: v for k, v in p.items() if k != "reason"} for p in plan],
-        }, f, ensure_ascii=False, indent=2)
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
     print(f"\n[3/4] 审计已写入：{AUDIT_PATH}")
 
     if not args.apply:

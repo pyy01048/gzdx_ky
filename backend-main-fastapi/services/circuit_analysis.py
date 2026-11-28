@@ -49,9 +49,9 @@ from utils.ollama_host import resolve_ollama_host as _resolve_ollama_host
 
 OLLAMA_HOST = _resolve_ollama_host()
 OCR_PADDLE_URL = ocr_service_url()
-TEXT_MODEL = os.getenv("CIRCUIT_LLM_MODEL", "qwen3:8b")          # 文本结构化描述
-VLM_MODEL = os.getenv("CIRCUIT_VLM_MODEL", "qwen2.5vl:7b")       # VLM 直接读图兜底
-TEXT_TIMEOUT = float(os.getenv("CIRCUIT_TEXT_TIMEOUT", "360"))    # qwen3 思考模型，给够
+TEXT_MODEL = os.getenv("CIRCUIT_LLM_MODEL", "qwen3:8b")  # 文本结构化描述
+VLM_MODEL = os.getenv("CIRCUIT_VLM_MODEL", "qwen2.5vl:7b")  # VLM 直接读图兜底
+TEXT_TIMEOUT = float(os.getenv("CIRCUIT_TEXT_TIMEOUT", "360"))  # qwen3 思考模型，给够
 VLM_TIMEOUT = float(os.getenv("CIRCUIT_VLM_TIMEOUT", "180"))
 
 #: OCR 有效标签数阈值：少于此数视为"标签过少"，直接走 VLM 读图兜底
@@ -62,7 +62,7 @@ MIN_LABELS = 2
 # 图内文字标签提取（R1 / C2 / VCC / GND / 10kΩ / +5V …）
 # --------------------------------------------------------------------------- #
 _LABEL_RES = [
-    re.compile(r"^[A-Za-z]{1,4}\d{1,4}[A-Za-z]?$"),                       # R1, C10, Q2, U1A
+    re.compile(r"^[A-Za-z]{1,4}\d{1,4}[A-Za-z]?$"),  # R1, C10, Q2, U1A
     re.compile(r"^(VCC|VDD|VEE|VSS|GND|AGND|DGND|Vin|Vout|Vi|Vo|Vb|Ve|Vc)$", re.I),
     re.compile(r"^[+\-]?\d+(?:\.\d+)?(?:V|v|kΩ|K|Ω|ohm|uF|µF|nF|pF|mF)$", re.I),
     re.compile(r"^(地|电源|输入|输出)$"),
@@ -140,9 +140,7 @@ def _map_circuit_vision(cv: Dict[str, Any], question_text: str) -> Dict[str, Any
     }
 
 
-async def _circuit_vision_priority(
-    image_path: str, question_text: str
-) -> Optional[Dict[str, Any]]:
+async def _circuit_vision_priority(image_path: str, question_text: str) -> Optional[Dict[str, Any]]:
     """优先尝试 CircuitVisionService；任何失败都返回 None，由主路径接管。"""
     if not image_path or not os.path.exists(image_path):
         return None
@@ -242,7 +240,8 @@ def _build_text_prompt(question_text: str, labels: List[str]) -> str:
 async def _text_describe(question_text: str, labels: List[str]) -> str:
     """qwen3:8b 按结构化模板输出电路描述。"""
     return await _ollama_chat(
-        TEXT_MODEL, _build_text_prompt(question_text, labels),
+        TEXT_MODEL,
+        _build_text_prompt(question_text, labels),
         timeout=TEXT_TIMEOUT,
     )
 
@@ -259,7 +258,10 @@ async def _vlm_describe(image_path: str, question_text: str) -> str:
         f"【与题面结合】{question_text or '无题面文字'}"
     )
     return await _ollama_chat(
-        VLM_MODEL, prompt, images_b64=[image_b64], timeout=VLM_TIMEOUT,
+        VLM_MODEL,
+        prompt,
+        images_b64=[image_b64],
+        timeout=VLM_TIMEOUT,
     )
 
 
@@ -374,9 +376,7 @@ async def analyze_circuit_image(image_path: str, question_text: str = "") -> Dic
     if not description:
         description = _question_only_description(question_text, labels)
         if description:
-            degraded_reasons.append(
-                "所有图描述引擎均未返回结构化结果，当前为仅基于题面文字的兜底内容"
-            )
+            degraded_reasons.append("所有图描述引擎均未返回结构化结果，当前为仅基于题面文字的兜底内容")
 
     circuit_type = _parse_circuit_type(description)
 

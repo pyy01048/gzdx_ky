@@ -943,6 +943,7 @@ describe('页面健壮性总守卫', () => {
     ['CodeBank', '../v3/pages/CodeBank', '/codebank'],
     /* Quiz 是会话容器（真题/知识点会话引擎），子视图在 v3/pages/Quiz*，路由仍指向容器 */
     ['Quiz', '../v3/pages/Quiz', '/quiz'],
+    ['PersonalQuestionBank', '../v3/pages/PersonalQuestionBank', '/personal-question-bank'],
     ['QuizBank', '../v3/pages/QuizBank', '/admin/quiz-bank'],
     /* 管理员题库复核页：核心接口全挂时应显示可重试错误态，不白屏 */
     ['QuizReview', '../v3/pages/QuizReview', '/admin/quiz-review'],
@@ -956,6 +957,7 @@ describe('页面健壮性总守卫', () => {
     ['KaoyanSchoolEval', '../v3/pages/KaoyanSchoolEval', '/kaoyan/school-eval'],
     ['NoticeCenter', '../v3/pages/NoticeCenter', '/kaoyan/notices'],
     ['KaoyanSchoolDetail', '../v3/pages/KaoyanSchoolDetail', '/kaoyan/schools/1'],
+    ['KaoyanMajorDetail', '../v3/pages/KaoyanMajorDetail', '/kaoyan/majors/1'],
     ['KaoyanCompare', '../v3/pages/KaoyanCompare', '/kaoyan/compare'],
     ['KaoyanAnalysis', '../v3/pages/KaoyanAnalysis', '/kaoyan/analysis'],
     ['KaoyanRecommend', '../v3/pages/KaoyanRecommend', '/kaoyan/recommend'],
@@ -990,6 +992,9 @@ describe('页面健壮性总守卫', () => {
     ['GlassLab', '../v3/pages/GlassLab', '/glass'],
     ['Tools', '../v3/pages/Tools', '/tools'],
     ['Onboarding', '../v3/pages/Onboarding', '/onboarding'],
+    ['Alumni', '../v3/pages/Alumni', '/alumni'],
+    ['Contribute', '../v3/pages/Contribute', '/contribute'],
+    ['AdminExperiences', '../v3/pages/AdminExperiences', '/admin/experiences'],
   ]
   const routes = new Set(pages.map(([, , r]) => r))
 

@@ -8,6 +8,7 @@
 落盘文件是 MCP 超长结果被自动保存的 JSON：{"content": "<markdown 正文>"}
 本脚本解析 JSON 取 content，截断到 3 万字后幂等写入 documents.content。
 """
+
 from __future__ import annotations
 
 import json

@@ -73,8 +73,10 @@ def grade_subjective(
         q_max_score = getattr(question, "max_score", None)
 
     try:
-        max_score = float(max_score) if max_score is not None else (
-            float(q_max_score) if q_max_score is not None else DEFAULT_MAX_SCORE
+        max_score = (
+            float(max_score)
+            if max_score is not None
+            else (float(q_max_score) if q_max_score is not None else DEFAULT_MAX_SCORE)
         )
     except (TypeError, ValueError):
         max_score = DEFAULT_MAX_SCORE
@@ -109,10 +111,7 @@ def grade_subjective(
             subject=subject,
             task="题目分析",
             context=None,
-            system_prompt=(
-                "你是考研阅卷老师，评分客观公正。"
-                f"先输出建议分数（0~{max_score} 的数字），再输出点评。"
-            ),
+            system_prompt=(f"你是考研阅卷老师，评分客观公正。先输出建议分数（0~{max_score} 的数字），再输出点评。"),
             prefer=None,
             db=db,
         )
@@ -123,9 +122,7 @@ def grade_subjective(
         score = _extract_score(txt, max_score)
         # 点评：去掉纯数字行，保留评语
         lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
-        evaluation_lines = [
-            ln for ln in lines if not re.fullmatch(r"\d+(?:\.\d+)?", ln)
-        ]
+        evaluation_lines = [ln for ln in lines if not re.fullmatch(r"\d+(?:\.\d+)?", ln)]
         evaluation = "；".join(evaluation_lines)[:500] if evaluation_lines else txt[:500]
         if score is None:
             return None, evaluation or "AI 批改暂不可用，请参考标准答案自评"
@@ -187,21 +184,39 @@ def _extract_math_expr(text: str) -> Optional[str]:
 #    变量名（Name）的表达式都会被误判为非法。
 # 2. 函数调用（Call）及其参数需要显式放行，否则 abs()/sqrt() 等会被拒绝。
 _ALLOWED_NODES = (
-    ast.Expression, ast.BinOp, ast.UnaryOp, ast.Constant, ast.Name,
-    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow, ast.USub, ast.UAdd,
-    ast.Mod, ast.FloorDiv,
-    ast.Call, ast.keyword,
-    ast.Load, ast.Store, ast.Del,
+    ast.Expression,
+    ast.BinOp,
+    ast.UnaryOp,
+    ast.Constant,
+    ast.Name,
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.Pow,
+    ast.USub,
+    ast.UAdd,
+    ast.Mod,
+    ast.FloorDiv,
+    ast.Call,
+    ast.keyword,
+    ast.Load,
+    ast.Store,
+    ast.Del,
 )
 
 #: 沙箱允许的常量/简单函数
 import math as _math
 
 _SAFE_NAMES = {
-    "x": 1.0, "X": 1.0,
+    "x": 1.0,
+    "X": 1.0,
     "pi": _math.pi,
     "e": _math.e,
-    "abs": abs, "round": round, "min": min, "max": max,
+    "abs": abs,
+    "round": round,
+    "min": min,
+    "max": max,
 }
 
 
@@ -216,16 +231,14 @@ def _safe_eval_expr(expr: str, timeout_ms: int = 500) -> Optional[float]:
     try:
         # 允许的 Name：_SAFE_NAMES 常量/变量 + math 模块公开名称（函数与常量）。
         allowed_names = set(_SAFE_NAMES)
-        allowed_names.update(
-            k for k in dir(_math) if not k.startswith("_")
-        )
+        allowed_names.update(k for k in dir(_math) if not k.startswith("_"))
         tree = ast.parse(expr, mode="eval")
         for node in ast.walk(tree):
             if not isinstance(node, _ALLOWED_NODES):
                 return None
             if isinstance(node, ast.Name) and node.id not in allowed_names:
                 return None
-            if isinstance(node, ast.Constant) and not isinstance(node.value, (int, float)):
+            if isinstance(node, ast.Constant) and not isinstance(node.value, int | float):
                 return None
         env = dict(_SAFE_NAMES)
         env.update({k: getattr(_math, k) for k in dir(_math) if not k.startswith("_")})
@@ -271,21 +284,28 @@ def sandbox_verify(question: Any, reference_answer: str) -> Dict[str, Any]:
         or "计算" in str(content)[:200]
     )
     if not is_calc:
-        return {"verified": False, "expr": None, "value": None,
-                "detail": "非计算题，跳过沙箱验算", "usable": False}
+        return {"verified": False, "expr": None, "value": None, "detail": "非计算题，跳过沙箱验算", "usable": False}
     expr = _extract_math_expr(reference_answer)
     if not expr:
-        return {"verified": False, "expr": None, "value": None,
-                "detail": "参考答案中未提取到可验算表达式", "usable": False}
+        return {
+            "verified": False,
+            "expr": None,
+            "value": None,
+            "detail": "参考答案中未提取到可验算表达式",
+            "usable": False,
+        }
     value = _safe_eval_expr(expr)
     if value is None:
-        return {"verified": False, "expr": expr, "value": None,
-                "detail": "表达式包含沙箱不允许的运算", "usable": True}
+        return {"verified": False, "expr": expr, "value": None, "detail": "表达式包含沙箱不允许的运算", "usable": True}
     if _math.isfinite(value):
-        return {"verified": True, "expr": expr, "value": round(float(value), 6),
-                "detail": f"沙箱验算通过，结果 ≈ {value:.4f}", "usable": True}
-    return {"verified": False, "expr": expr, "value": None,
-            "detail": "表达式求值结果非有限数", "usable": True}
+        return {
+            "verified": True,
+            "expr": expr,
+            "value": round(float(value), 6),
+            "detail": f"沙箱验算通过，结果 ≈ {value:.4f}",
+            "usable": True,
+        }
+    return {"verified": False, "expr": expr, "value": None, "detail": "表达式求值结果非有限数", "usable": True}
 
 
 def verify_score(
@@ -323,9 +343,7 @@ def verify_score(
         subject = getattr(question, "subject", None)
 
     try:
-        max_score = float(max_score) if max_score is not None else (
-            float(getattr(question, "max_score", None) or 10.0)
-        )
+        max_score = float(max_score) if max_score is not None else (float(getattr(question, "max_score", None) or 10.0))
     except (TypeError, ValueError):
         max_score = 10.0
     if max_score <= 0:
@@ -361,10 +379,7 @@ def verify_score(
             subject=subject,
             task="题目分析",
             context=None,
-            system_prompt=(
-                "你是严格的考研阅卷复核员，输出必须是指定 JSON 格式，"
-                "分数要客观、可解释，不能无脑给高分。"
-            ),
+            system_prompt=("你是严格的考研阅卷复核员，输出必须是指定 JSON 格式，分数要客观、可解释，不能无脑给高分。"),
             prefer=None,
             db=db,
         )
@@ -397,9 +412,7 @@ def verify_score(
         return _verify_degraded(first_score, max_score, "验证器暂不可用")
 
 
-def _verify_degraded(
-    first_score: Optional[float], max_score: float, reason: str
-) -> Dict[str, Any]:
+def _verify_degraded(first_score: Optional[float], max_score: float, reason: str) -> Dict[str, Any]:
     """验证器降级返回：维度卡用中性值，最终分回退首遍分。"""
     dims = {}
     for k in _DIMENSIONS:

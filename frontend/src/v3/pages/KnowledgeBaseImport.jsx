@@ -203,7 +203,7 @@ function KbScanDialog({ docIds, fileType, scopeLabel, onClose, onImported }) {
     return { total, checked: checked.size }
   }, [result, checked])
 
-  const toggleKb = (cand) => {
+  const toggleKb = useCallback((cand) => {
     if (cand.existing) return
     setChecked((prev) => {
       const next = new Set(prev)
@@ -211,9 +211,9 @@ function KbScanDialog({ docIds, fileType, scopeLabel, onClose, onImported }) {
       else next.add(cand._key)
       return next
     })
-  }
+  }, [])
 
-  const toggleAllKb = (check) => {
+  const toggleAllKb = useCallback((check) => {
     if (!result) return
     if (!check) {
       setChecked(new Set())
@@ -224,16 +224,16 @@ function KbScanDialog({ docIds, fileType, scopeLabel, onClose, onImported }) {
       if (!cand.existing) next.add(cand._key)
     }))
     setChecked(next)
-  }
+  }, [result])
 
-  const toggleDoc = (docId) => {
+  const toggleDoc = useCallback((docId) => {
     setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(docId)) next.delete(docId)
       else next.add(docId)
       return next
     })
-  }
+  }, [])
 
   const doConfirm = async () => {
     if (!result || !checked.size) {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { studyApi } from '../../api/client'
 import { ukey } from '../../utils/userKeys'
 import { Button, Chip, IconButton, Input, Progress, Select, toast } from '../ui'
@@ -45,6 +45,13 @@ function readPresets() {
 }
 
 /* 专注计时：只在用户点「记录」时写 study_sessions，写的是真实经过的分钟数。 */
+/**
+ * 专注计时面板。
+ * @param {number}  todayMinutes  今日已专注分钟数（来自聚合数据）。
+ * @param {number|null} targetMinutes 每日专注目标，null 表示未设。
+ * @param {string[]} subjects 可选科目列表。
+ * @param {Function} [onRecorded] 记录成功后的回调。
+ */
 export function FocusTile({ todayMinutes = 0, targetMinutes = null, subjects = [], onRecorded }) {
   const [session, setSession] = useState(readState)
   const [minutes, setMinutes] = useState(() => readState()?.minutes || readNumber(MINUTES_KEY, 25))
@@ -80,25 +87,25 @@ export function FocusTile({ todayMinutes = 0, targetMinutes = null, subjects = [
   const ss = String(Math.floor((remaining % 60000) / 1000)).padStart(2, '0')
   const pct = targetMinutes ? Math.min(100, Math.round((todayMinutes / targetMinutes) * 100)) : null
 
-  const start = () => {
+  const start = useCallback(() => {
     const ts = Date.now()
     setNow(ts)
     setSession({ minutes, subject, runningSince: ts, accumMs: 0, startedAt: ts })
-  }
-  const pause = () => setSession((s) => (s ? { ...s, accumMs: elapsedMs, runningSince: null } : s))
-  const resume = () => {
+  }, [minutes, subject])
+  const pause = useCallback(() => setSession((s) => (s ? { ...s, accumMs: elapsedMs, runningSince: null } : s)), [elapsedMs])
+  const resume = useCallback(() => {
     setNow(Date.now())
     setSession((s) => (s ? { ...s, runningSince: Date.now() } : s))
-  }
-  const discard = () => {
+  }, [])
+  const discard = useCallback(() => {
     setSession(null)
     toast('已放弃本次计时，没有写入记录')
-  }
-  const pickSubject = (value) => {
+  }, [])
+  const pickSubject = useCallback((value) => {
     setSubject(value)
     // 计时途中改科目也要落在本轮会话上，刷新后不会退回旧科目
     setSession((s) => (s ? { ...s, subject: value } : s))
-  }
+  }, [])
 
   const commit = useCallback(async () => {
     const mins = session ? Math.min(session.minutes, Math.floor(elapsedMs / 60000)) : 0
@@ -145,16 +152,16 @@ export function FocusTile({ todayMinutes = 0, targetMinutes = null, subjects = [
   const parsedDraft = Math.floor(Number(draft))
   const draftValid = Number.isFinite(parsedDraft) && parsedDraft >= MIN_MIN && parsedDraft <= MAX_MIN
 
-  const applyCustom = () => {
+  const applyCustom = useCallback(() => {
     if (!draftValid) {
       toast(`时长请填 ${MIN_MIN}–${MAX_MIN} 之间的整数分钟`)
       return
     }
     setMinutes(parsedDraft)
     toast(`本轮时长 ${parsedDraft} 分钟`)
-  }
+  }, [draftValid, parsedDraft])
 
-  const savePreset = () => {
+  const savePreset = useCallback(() => {
     if (!draftValid) {
       toast(`时长请填 ${MIN_MIN}–${MAX_MIN} 之间的整数分钟`)
       return
@@ -165,7 +172,7 @@ export function FocusTile({ todayMinutes = 0, targetMinutes = null, subjects = [
       return [...prev, parsedDraft].sort((a, b) => a - b).slice(-6)
     })
     toast(`已存为常用预设：${parsedDraft} 分钟`)
-  }
+  }, [draftValid, parsedDraft])
 
   const chipMinutes = [...PRESETS, ...customPresets.filter((p) => !PRESETS.includes(p))]
 

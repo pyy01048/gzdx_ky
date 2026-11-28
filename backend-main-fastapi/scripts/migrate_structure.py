@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """⚠️ 已被 `rebuild_knowledge_base.py` 取代，请勿单独运行。
 
 保留原因：本脚本记录了早期"只补空缺、不重建"的思路，作历史参考。
@@ -39,8 +39,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from database import SessionLocal  # noqa: E402
-from models import Document, KnowledgePoint  # noqa: E402
 from services import structure_parser, taxonomy  # noqa: E402
+
+from models import Document, KnowledgePoint  # noqa: E402
 
 DRY_RUN = "--dry-run" in sys.argv
 
@@ -81,7 +82,7 @@ def main() -> int:
 
         # ---------------- 1. 科目归一化 ---------------- #
         print("=== 1. 科目归一化 ===")
-        for model, label in ((Document, "documents"), (KnowledgePoint, "knowledge_points")):
+        for model, _label in ((Document, "documents"), (KnowledgePoint, "knowledge_points")):
             for row in db.query(model).all():
                 std = taxonomy.normalize_subject(row.subject)
                 if std != row.subject:
@@ -130,18 +131,17 @@ def main() -> int:
 
         if not DRY_RUN:
             db.commit()
-        print(f"  填充 doc_type {stats['doc_type_filled']} 篇；"
-              f"解析出章节结构 {stats['structure_parsed']} 篇（共扫描 {len(docs)} 篇）")
+        print(
+            f"  填充 doc_type {stats['doc_type_filled']} 篇；"
+            f"解析出章节结构 {stats['structure_parsed']} 篇（共扫描 {len(docs)} 篇）"
+        )
 
         # ---------------- 3. 知识点补章节 ---------------- #
         print("\n=== 3. 知识点补章节 ===")
         kps = db.query(KnowledgePoint).all()
         # 只为"被知识点引用的文档"解析章节树，避免解析 1500+ 篇无关键
         needed_doc_ids = {kp.document_id for kp in kps if kp.document_id}
-        struct_cache = {
-            doc_id: parsed for doc_id, parsed in struct_cache.items()
-            if doc_id in needed_doc_ids
-        }
+        struct_cache = {doc_id: parsed for doc_id, parsed in struct_cache.items() if doc_id in needed_doc_ids}
         missing = [d for d in needed_doc_ids if d not in struct_cache]
         if missing:
             print(f"  补充解析 {len(missing)} 篇被引用的文档…")
@@ -201,18 +201,23 @@ def main() -> int:
         # ---------------- 4. 汇总 ---------------- #
         print("\n=== 4. 迁移结果 ===")
         from sqlalchemy import func
-        rows = (
-            db.query(KnowledgePoint.subject, func.count(KnowledgePoint.id))
-            .group_by(KnowledgePoint.subject).all()
-        )
+
+        rows = db.query(KnowledgePoint.subject, func.count(KnowledgePoint.id)).group_by(KnowledgePoint.subject).all()
         for subject, cnt in sorted(rows, key=lambda x: -x[1]):
-            with_ch = db.query(func.count(KnowledgePoint.id)).filter(
-                KnowledgePoint.subject == subject,
-                KnowledgePoint.chapter.isnot(None),
-                KnowledgePoint.chapter != "",
-            ).scalar() or 0
-            print(f"  {subject:<12} 知识点 {cnt:>5}  已标章节 {with_ch:>5}  "
-                  f"({round(with_ch / cnt * 100, 1) if cnt else 0}%)")
+            with_ch = (
+                db.query(func.count(KnowledgePoint.id))
+                .filter(
+                    KnowledgePoint.subject == subject,
+                    KnowledgePoint.chapter.isnot(None),
+                    KnowledgePoint.chapter != "",
+                )
+                .scalar()
+                or 0
+            )
+            print(
+                f"  {subject:<12} 知识点 {cnt:>5}  已标章节 {with_ch:>5}  "
+                f"({round(with_ch / cnt * 100, 1) if cnt else 0}%)"
+            )
 
         if DRY_RUN:
             print("\n[!] --dry-run 模式，未写入数据库")

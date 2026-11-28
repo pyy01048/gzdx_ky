@@ -10,6 +10,7 @@ doc_role 必须在 ['body','exercise','answer','slides','scan'] 内（DB 检查�
 
 幂等：textbook_id+document_id 唯一冲突跳过。默认 dry-run，--apply 写库。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,6 +49,7 @@ TEXTBOOK_RULES = {
     26: (["谢希仁"], ["计算机网络"]),
 }
 
+
 def infer_role(fname: str) -> str:
     fn = fname or ""
     if any(k in fn for k in ["配套题库", "章节题库", "模拟试题", "题库"]):
@@ -57,6 +59,7 @@ def infer_role(fname: str) -> str:
     if any(k in fn for k in ["知识点总结", "复习提纲", "讲义", "笔记", "总结"]):
         return "slides"
     return "body"
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="教材-文档关联填充（强匹配+角色）")
@@ -77,7 +80,7 @@ def main() -> int:
         existing = {(r[0], r[1]) for r in cur.fetchall()}
 
         plan = []
-        for tbid, title, tsid in textbooks:
+        for tbid, _title, tsid in textbooks:
             authors, title_kws = TEXTBOOK_RULES.get(tbid, ([], []))
             for doc_id, fname, dsid in documents:
                 if dsid != tsid:
@@ -107,6 +110,7 @@ def main() -> int:
     finally:
         conn.close()
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

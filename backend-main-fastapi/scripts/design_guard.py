@@ -17,6 +17,7 @@
     python scripts/design_guard.py            # 扫描并报告
     python scripts/design_guard.py --json     # 输出 JSON（供 CI 消费）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,16 +42,28 @@ BOUNCE = "cubic-bezier(0.68"
 #: 「文字模拟图标」检测：把图标写成文字前缀（旧版遗留），如 "清单 题库列表"、"卡包 卡包"。
 #: 特征：短词（2-4 字）+ 空格 + 后续文字，且短词属于常见图标词表。
 #: 观感差、易写出重复（实测出现 "卡包 卡包"），且无法随主题变色。
-FAKE_ICON_WORDS = ("地图", "清单", "统计", "资料", "卡包", "记录", "导航", "模块",
-                   "对话", "快速", "重点", "工具", "设置", "数据", "图标", "目录", "文字")
-FAKE_ICON_RE = re.compile(
-    r"['\"“](?:" + "|".join(FAKE_ICON_WORDS) + r")[ 　][^'\"”]{2,18}['\"”]"
+FAKE_ICON_WORDS = (
+    "地图",
+    "清单",
+    "统计",
+    "资料",
+    "卡包",
+    "记录",
+    "导航",
+    "模块",
+    "对话",
+    "快速",
+    "重点",
+    "工具",
+    "设置",
+    "数据",
+    "图标",
+    "目录",
+    "文字",
 )
+FAKE_ICON_RE = re.compile(r"['\"“](?:" + "|".join(FAKE_ICON_WORDS) + r")[ 　][^'\"”]{2,18}['\"”]")
 
-EMOJI_RE = re.compile(
-    "[\U0001F300-\U0001F9FF\u2600-\u26FF\u2700-\u27BF\ufe0f"
-    "\U0001FA00-\U0001FAFF]"
-)
+EMOJI_RE = re.compile("[\U0001f300-\U0001f9ff\u2600-\u26ff\u2700-\u27bf\ufe0f\U0001fa00-\U0001faff]")
 HEX_RE = re.compile(r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b")
 STYLE_RE = re.compile(r"style=\{\{.*?\}\}", re.S)
 VAR_HEX_FALLBACK_RE = re.compile(r"var\(--[a-z0-9-]+,\s*#[0-9a-fA-F]{3,6}\)")
@@ -71,10 +84,9 @@ def iter_files(exts: tuple[str, ...]) -> list[Path]:
     """
     out: list[Path] = []
     for root, dirs, names in os.walk(SRC):
-        dirs[:] = [d for d in dirs
-                   if d not in EXCLUDE_DIRS
-                   and not (d.startswith("_") and "backup" in d)
-                   and d != "_removed"]
+        dirs[:] = [
+            d for d in dirs if d not in EXCLUDE_DIRS and not (d.startswith("_") and "backup" in d) and d != "_removed"
+        ]
         for n in names:
             if n.endswith(exts) and ".bak" not in n:
                 out.append(Path(root) / n)
@@ -113,9 +125,14 @@ def main() -> int:
     css_files = [f for f in iter_files((".css",)) if f.name != "tokens.css"]
 
     findings: dict[str, list[dict]] = {
-        "emoji_icon": [], "forbidden_purple": [], "bounce_easing": [],
-        "inline_bare_hex": [], "css_bare_hex": [], "var_hex_fallback": [],
-        "undefined_token": [], "fake_icon_text": [],
+        "emoji_icon": [],
+        "forbidden_purple": [],
+        "bounce_easing": [],
+        "inline_bare_hex": [],
+        "css_bare_hex": [],
+        "var_hex_fallback": [],
+        "undefined_token": [],
+        "fake_icon_text": [],
     }
 
     # ---- JSX / JS ----
@@ -125,8 +142,7 @@ def main() -> int:
 
         if fp.name not in EMOJI_EXEMPT:
             for m in EMOJI_RE.finditer(text):
-                findings["emoji_icon"].append(
-                    {"file": rel, "char": m.group(), "pos": m.start()})
+                findings["emoji_icon"].append({"file": rel, "char": m.group(), "pos": m.start()})
 
         clean = strip_comments(text, False)
         low = clean.lower()
@@ -138,20 +154,17 @@ def main() -> int:
 
         # 文字模拟图标（如 "清单 题库列表"）：排除代码标识符与 URL
         for fm in FAKE_ICON_RE.finditer(clean):
-            findings["fake_icon_text"].append(
-                {"file": rel, "text": fm.group().strip("'\"“”")})
+            findings["fake_icon_text"].append({"file": rel, "text": fm.group().strip("'\"“”")})
 
         for i, line in enumerate(text.splitlines(), 1):
             if "style={{" in line:
                 for c in HEX_RE.findall(line):
                     if c.lower() not in ALLOWED_HEX:
-                        findings["inline_bare_hex"].append(
-                            {"file": rel, "line": i, "color": c})
+                        findings["inline_bare_hex"].append({"file": rel, "line": i, "color": c})
 
         for m in VAR_USE_RE.finditer(strip_comments(text, False)):
             if m.group(1) not in tokens:
-                findings["undefined_token"].append(
-                    {"file": rel, "token": m.group(1)})
+                findings["undefined_token"].append({"file": rel, "token": m.group(1)})
 
     # ---- CSS ----
     for fp in css_files:
@@ -176,9 +189,7 @@ def main() -> int:
                 findings["undefined_token"].append({"file": rel, "token": m.group(1)})
 
     # ---- 去重 ----
-    findings["undefined_token"] = list({
-        (d["file"], d["token"]): d for d in findings["undefined_token"]
-    }.values())
+    findings["undefined_token"] = list({(d["file"], d["token"]): d for d in findings["undefined_token"]}.values())
 
     if args.json:
         print(json.dumps(findings, ensure_ascii=False, indent=2))

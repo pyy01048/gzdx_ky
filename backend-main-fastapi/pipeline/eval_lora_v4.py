@@ -24,6 +24,7 @@
     python pipeline/eval_lora_v4.py                       # 需 Ollama 已启动
     python pipeline/eval_lora_v4.py --new kaoyan-assistant-v4
 """
+
 from __future__ import annotations
 
 import argparse
@@ -59,12 +60,15 @@ TESTS = [
 
 
 def ask(model: str, question: str, timeout: int = 120) -> str:
-    body = json.dumps({
-        "model": model, "prompt": question, "stream": False,
-        "options": {"temperature": 0.3, "num_predict": 300},
-    }).encode()
-    req = urllib.request.Request(OLLAMA, data=body,
-                                 headers={"Content-Type": "application/json"})
+    body = json.dumps(
+        {
+            "model": model,
+            "prompt": question,
+            "stream": False,
+            "options": {"temperature": 0.3, "num_predict": 300},
+        }
+    ).encode()
+    req = urllib.request.Request(OLLAMA, data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read()).get("response", "")
 
@@ -98,12 +102,13 @@ def eval_model(model: str, questions) -> dict:
             rows.append({"q": q, "error": str(exc)[:120], "elapsed": time.time() - t})
             continue
         m = score(a)
-        m.update({"q": q, "answer": a[:400], "elapsed": round(el, 1),
-                  "relevance": round(relevance(a, keys), 2)})
+        m.update({"q": q, "answer": a[:400], "elapsed": round(el, 1), "relevance": round(relevance(a, keys), 2)})
         rows.append(m)
-        print(f"    {q[:18]:<20} 模板={int(m['template_prefix'])} "
-              f"章节={int(m['chapter_mark'])} 相关={m['relevance']:.0%} "
-              f"长度={m['len_chars']} {el:.1f}s")
+        print(
+            f"    {q[:18]:<20} 模板={int(m['template_prefix'])} "
+            f"章节={int(m['chapter_mark'])} 相关={m['relevance']:.0%} "
+            f"长度={m['len_chars']} {el:.1f}s"
+        )
     ok_rows = [r for r in rows if "error" not in r]
     n = max(1, len(ok_rows))
     return {
@@ -145,10 +150,14 @@ def main(argv: list[str] | None = None) -> int:
         om, nm = results["old"]["metrics"], results["new"]["metrics"]
         print("\n" + "-" * 70)
         print("对比结论：")
-        print(f"  模板套用率   {om['template_rate']:.0%} -> {nm['template_rate']:.0%}"
-              f"  {'↓ 改善' if nm['template_rate'] < om['template_rate'] else '— 持平/上升'}")
-        print(f"  错误章节率   {om['chapter_mark_rate']:.0%} -> {nm['chapter_mark_rate']:.0%}"
-              f"  {'↓ 改善' if nm['chapter_mark_rate'] < om['chapter_mark_rate'] else '— 持平/上升'}")
+        print(
+            f"  模板套用率   {om['template_rate']:.0%} -> {nm['template_rate']:.0%}"
+            f"  {'↓ 改善' if nm['template_rate'] < om['template_rate'] else '— 持平/上升'}"
+        )
+        print(
+            f"  错误章节率   {om['chapter_mark_rate']:.0%} -> {nm['chapter_mark_rate']:.0%}"
+            f"  {'↓ 改善' if nm['chapter_mark_rate'] < om['chapter_mark_rate'] else '— 持平/上升'}"
+        )
         print(f"  平均回答长度 {om['avg_len']} -> {nm['avg_len']} 字")
         print(f"  关键词相关性 {om['avg_relevance']:.0%} -> {nm['avg_relevance']:.0%}")
         print("-" * 70)

@@ -13,12 +13,14 @@ evidence 落 misconceptions 表。
 
 错因分类：概念混淆 / 审题失误 / 计算错误 / 记忆缺失 / 方法没想到 / 时间不足
 """
+
 from __future__ import annotations
 
 import json
 import re
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import func
 from utils.timeutil import utcnow  # 写库时间统一 naive UTC（P1-C2）
 
 from services.dbapi_compat import wrap_conn
@@ -46,7 +48,7 @@ def _extract_json(text: str) -> Optional[Dict[str, Any]]:
     start, end = t.find("{"), t.rfind("}")
     if start == -1 or end <= start:
         return None
-    body = t[start:end + 1]
+    body = t[start : end + 1]
     try:
         return json.loads(body)
     except Exception:
@@ -142,7 +144,7 @@ def infer_error_category(
     return DEFAULT_CATEGORY
 
 
-def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str, Any]:
+def analyze_error(db, error_record_id: int, *, use_llm: bool = True, user: Any = None) -> Dict[str, Any]:
     """四段式错因分析入口（供 routers/errors.py ai-analyze 增强调用）。"""
     from services.module_a_schema import ensure_module_a_schema
 
@@ -157,15 +159,12 @@ def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str
     if not row:
         return {"error": "error_record not found", "analysis": "", "message": "错题不存在"}
 
-    (rid, question_id, content, my_answer, correct_answer, error_reason,
-     subject, kp_id, old_analysis) = row
+    (rid, question_id, content, my_answer, correct_answer, error_reason, subject, kp_id, old_analysis) = row
 
     # 1) 确定知识点 ID（优先显式字段，其次 error_knowledge_links / 文本）
     kp_hint = ""
     if kp_id:
-        kp_row = conn.execute(
-            "SELECT name, chapter FROM knowledge_points WHERE id = ?", (kp_id,)
-        ).fetchone()
+        kp_row = conn.execute("SELECT name, chapter FROM knowledge_points WHERE id = ?", (kp_id,)).fetchone()
         if kp_row:
             kp_hint = f"{kp_row[0]}（章节：{kp_row[1] or ''}，ID={kp_id}）"
     else:
@@ -175,9 +174,7 @@ def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str
         ).fetchone()
         if link:
             kp_id = link[0]
-            kp_row = conn.execute(
-                "SELECT name, chapter FROM knowledge_points WHERE id = ?", (kp_id,)
-            ).fetchone()
+            kp_row = conn.execute("SELECT name, chapter FROM knowledge_points WHERE id = ?", (kp_id,)).fetchone()
             if kp_row:
                 kp_hint = f"{kp_row[0]}（章节：{kp_row[1] or ''}，ID={kp_id}）"
 
@@ -218,14 +215,15 @@ def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str
 
     # 4) 组装四段式文本
     steps = result.get("steps") or []
-    steps_text = "\n".join(
-        f"步骤{i + 1}｜{s.get('title', '')}：{s.get('content', '')}"
-        for i, s in enumerate(steps)
-    ) or "（模型未返回分步，以下为整体思路）"
+    steps_text = (
+        "\n".join(f"步骤{i + 1}｜{s.get('title', '')}：{s.get('content', '')}" for i, s in enumerate(steps))
+        or "（模型未返回分步，以下为整体思路）"
+    )
     distractors = result.get("distractor_analysis") or []
-    distractor_text = "\n".join(
-        f"- {d.get('option', '干扰项')}：{d.get('why_wrong', '')}" for d in distractors
-    ) or "- （无选项类题目，跳过干扰项解析）"
+    distractor_text = (
+        "\n".join(f"- {d.get('option', '干扰项')}：{d.get('why_wrong', '')}" for d in distractors)
+        or "- （无选项类题目，跳过干扰项解析）"
+    )
     analysis_text = (
         f"【四段式错因分析】\n"
         f"1. 考点定位：{result.get('knowledge_point', '未识别')}"
@@ -249,9 +247,7 @@ def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str
     )
 
     # 6) 落 misconceptions（幂等：同 error_record_id 更新）
-    exists = conn.execute(
-        "SELECT id FROM misconceptions WHERE error_record_id = ?", (rid,)
-    ).fetchone()
+    exists = conn.execute("SELECT id FROM misconceptions WHERE error_record_id = ?", (rid,)).fetchone()
     evidence = result.get("evidence") or analysis_text[:500]
     if exists:
         exec_retry(
@@ -260,8 +256,16 @@ def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str
             UPDATE misconceptions SET question_id = ?, knowledge_point_id = ?, pattern = ?,
             category = ?, suggestion = ?, evidence = ?, synced_at = ? WHERE id = ?
             """,
-            (question_id, kp_id, result.get("pattern", ""), category,
-             result.get("suggestion", ""), evidence, _now_str(), exists[0]),
+            (
+                question_id,
+                kp_id,
+                result.get("pattern", ""),
+                category,
+                result.get("suggestion", ""),
+                evidence,
+                _now_str(),
+                exists[0],
+            ),
         )
     else:
         exec_retry(
@@ -271,12 +275,20 @@ def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str
             (question_id, error_record_id, knowledge_point_id, pattern, category, suggestion, evidence, synced_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (question_id, rid, kp_id, result.get("pattern", ""), category,
-             result.get("suggestion", ""), evidence, _now_str()),
+            (
+                question_id,
+                rid,
+                kp_id,
+                result.get("pattern", ""),
+                category,
+                result.get("suggestion", ""),
+                evidence,
+                _now_str(),
+            ),
         )
 
     # 7) 复练建议：同知识点未做错题抽取（weakest 反哺）
-    practice = _practice_questions(db, conn, question_id, kp_id, subject, limit=3)
+    practice = _practice_questions(db, conn, question_id, kp_id, subject, limit=3, user=user)
 
     db.commit()
     return {
@@ -291,71 +303,73 @@ def analyze_error(db, error_record_id: int, *, use_llm: bool = True) -> Dict[str
     }
 
 
-def _practice_questions(db, conn, question_id, kp_id, subject, limit: int = 3) -> List[Dict[str, Any]]:
-    """从 quiz_questions 同知识点/章节未做错题抽取复练题。"""
+def _practice_questions(
+    db, conn, question_id, kp_id, subject, limit: int = 3, user: Any = None
+) -> List[Dict[str, Any]]:
+    """从当前用户可见且可练习的题目中抽取同知识点/章节复练题。"""
     try:
+        from models import KnowledgePoint, QuestionKnowledgeLink, QuizQuestion
+        from services.quiz_query import (
+            practiceable_expr,
+            question_owner_expr,
+            visible_quiz_filter,
+        )
+
+        # question_owner_expr(None) 为旧全局调用兼容返回 true，不能用于此处的
+        # 无用户上下文；复练建议必须 fail-closed，只允许明确公共题。
+        owner_filter = question_owner_expr(user) if user is not None else QuizQuestion.owner_user_id.is_(None)
+
+        def base_query():
+            return visible_quiz_filter(
+                db.query(QuizQuestion).filter(
+                    QuizQuestion.id != (question_id or 0),
+                    owner_filter,
+                    practiceable_expr(),
+                )
+            )
+
+        query = base_query()
         rows = []
         # 优先经 question_knowledge_links 精确关联（kp_id 为 knowledge_points 真实 ID）
         if kp_id:
-            rows = conn.execute(
-                """
-                SELECT q.id, q.content, q.options, q.answer, q.analysis
-                FROM quiz_questions q
-                JOIN question_knowledge_links qkl ON qkl.question_id = q.id
-                WHERE q.id != ? AND qkl.knowledge_point_id = ?
-                ORDER BY RANDOM() LIMIT ?
-                """,
-                (question_id or 0, kp_id, int(limit)),
-            ).fetchall()
+            query = query.join(
+                QuestionKnowledgeLink,
+                QuestionKnowledgeLink.question_id == QuizQuestion.id,
+            ).filter(QuestionKnowledgeLink.knowledge_point_id == kp_id)
+            rows = query.order_by(func.random()).limit(int(limit)).all()
         if not rows and kp_id:
             # 退化：按知识点名称文本匹配
-            kp_name = conn.execute(
-                "SELECT name FROM knowledge_points WHERE id = ?", (kp_id,)
-            ).fetchone()
-            if kp_name and kp_name[0]:
-                rows = conn.execute(
-                    """
-                    SELECT id, content, options, answer, analysis FROM quiz_questions
-                    WHERE id != ? AND knowledge_point LIKE ?
-                    ORDER BY RANDOM() LIMIT ?
-                    """,
-                    (question_id or 0, f"%{kp_name[0]}%", int(limit)),
-                ).fetchall()
+            kp = db.get(KnowledgePoint, kp_id)
+            if kp and kp.name:
+                rows = (
+                    base_query()
+                    .filter(QuizQuestion.knowledge_point.like(f"%{kp.name}%"))
+                    .order_by(func.random())
+                    .limit(int(limit))
+                    .all()
+                )
         if not rows:
-            rows = conn.execute(
-                """
-                SELECT id, content, options, answer, analysis FROM quiz_questions
-                WHERE id != ? AND subject IS ?
-                ORDER BY RANDOM() LIMIT ?
-                """,
-                (question_id or 0, subject, int(limit)),
-            ).fetchall()
+            rows = (
+                base_query().filter(QuizQuestion.subject.is_(subject)).order_by(func.random()).limit(int(limit)).all()
+            )
         if not rows:
-            rows = conn.execute(
-                """
-                SELECT id, content, options, answer, analysis FROM quiz_questions
-                WHERE id != ? ORDER BY RANDOM() LIMIT ?
-                """,
-                (question_id or 0, int(limit)),
-            ).fetchall()
+            rows = base_query().order_by(func.random()).limit(int(limit)).all()
         return [
             {
-                "question_id": r[0],
-                "content": (r[1] or "")[:300],
-                "options": r[2] or "",
-                "answer": r[3] or "",
-                "analysis": (r[4] or "")[:200],
+                "question_id": q.id,
+                "content": (q.content or "")[:300],
+                "options": q.options or "",
+                "answer": q.answer or "",
+                "analysis": (q.analysis or "")[:200],
             }
-            for r in rows
+            for q in rows
         ]
     except Exception as exc:  # noqa: BLE001
         # 不静默：复练题抽取失败会让讲题结果缺"相似题"块，用户看到的是
         # 内容变少而非报错 —— 不留痕就永远查不到（项目血泪教训 #1）。
         import logging
 
-        logging.getLogger(__name__).warning(
-            "_practice_questions 抽取失败（讲题将缺相似题）: %s", str(exc)[:200]
-        )
+        logging.getLogger(__name__).warning("_practice_questions 抽取失败（讲题将缺相似题）: %s", str(exc)[:200])
         return []
 
 

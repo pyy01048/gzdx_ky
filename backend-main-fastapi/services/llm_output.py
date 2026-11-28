@@ -34,18 +34,56 @@ from typing import Optional
 
 #: 思维链开头的典型话术（第一人称自述、复述任务）
 _COT_OPENERS = [
-    "首先，", "首先用户", "用户要求", "用户问", "用户想要", "用户需要",
-    "我需要", "我得", "我要", "让我", "我来", "我们来", "让我想想",
-    "好的，我", "嗯，", "这个问题的", "分析一下", "让我分析",
-    "the user", "i need to", "i should", "let me", "first,", "okay,",
-    "we need to", "the question",
+    "首先，",
+    "首先用户",
+    "用户要求",
+    "用户问",
+    "用户想要",
+    "用户需要",
+    "我需要",
+    "我得",
+    "我要",
+    "让我",
+    "我来",
+    "我们来",
+    "让我想想",
+    "好的，我",
+    "嗯，",
+    "这个问题的",
+    "分析一下",
+    "让我分析",
+    "the user",
+    "i need to",
+    "i should",
+    "let me",
+    "first,",
+    "okay,",
+    "we need to",
+    "the question",
 ]
 
 #: 思维链高频标记词（出现多次基本可判定为推理过程）
 _COT_MARKERS = [
-    "用户", "要求", "我需要", "需要输出", "可能的", "要点：", "关键点",
-    "让我", "应该", "可以考虑", "首先", "其次", "然后", "最后",
-    "user", "request", "i need", "i should", "we need", "let me",
+    "用户",
+    "要求",
+    "我需要",
+    "需要输出",
+    "可能的",
+    "要点：",
+    "关键点",
+    "让我",
+    "应该",
+    "可以考虑",
+    "首先",
+    "其次",
+    "然后",
+    "最后",
+    "user",
+    "request",
+    "i need",
+    "i should",
+    "we need",
+    "let me",
 ]
 
 
@@ -101,7 +139,7 @@ def extract_answer(message: dict, *, allow_thinking_fallback: bool = True) -> st
         # 尝试从 thinking 里找干净结论（一般 thinking 为空，但以防万一）
         if thinking and not looks_like_chain_of_thought(thinking):
             return thinking
-        return ""      # 宁可返回空，也不把思维链当答案
+        return ""  # 宁可返回空，也不把思维链当答案
 
     # 3. content 为空，回退 thinking
     if allow_thinking_fallback and thinking:

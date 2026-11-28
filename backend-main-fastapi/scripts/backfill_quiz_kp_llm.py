@@ -31,6 +31,7 @@
     python scripts/backfill_quiz_kp_llm.py --apply              # 备份后写库
     python scripts/backfill_quiz_kp_llm.py --apply --json-out data/reports/kp_llm.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,10 +56,10 @@ OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_MODEL = "qwen2.5-coder:7b"
 DEFAULT_THRESHOLD = 0.60
 DEFAULT_TIMEOUT = 120
-MAX_KP_POOL = 120          # 单段候选上限
-MAX_CHAPTERS = 40          # 两段式时交给模型的章节数上限
-MAX_CONTENT_CHARS = 1200   # 题干截断
-MAX_OPTION_CHARS = 400     # 选项整体截断
+MAX_KP_POOL = 120  # 单段候选上限
+MAX_CHAPTERS = 40  # 两段式时交给模型的章节数上限
+MAX_CONTENT_CHARS = 1200  # 题干截断
+MAX_OPTION_CHARS = 400  # 选项整体截断
 DRY_RUN_SAMPLE = 15
 
 SYSTEM_PROMPT = (
@@ -113,13 +114,15 @@ def load_questions(cur) -> list[dict]:
     """)
     out = []
     for qid, subject, chapter, content, options in cur.fetchall():
-        out.append({
-            "id": qid,
-            "subject": (subject or "").strip(),
-            "chapter": (chapter or "").strip(),
-            "content": (content or "").strip(),
-            "options": option_text(options),
-        })
+        out.append(
+            {
+                "id": qid,
+                "subject": (subject or "").strip(),
+                "chapter": (chapter or "").strip(),
+                "content": (content or "").strip(),
+                "options": option_text(options),
+            }
+        )
     return out
 
 
@@ -154,7 +157,7 @@ def name_overlap(text: str, name: str) -> float:
     """知识点名/章节名与题干文本的字面重叠（2-gram 覆盖率，便宜且够用）。"""
     if not text or not name:
         return 0.0
-    grams = {name[i:i + 2] for i in range(len(name) - 1)} or {name}
+    grams = {name[i : i + 2] for i in range(len(name) - 1)} or {name}
     hit = sum(1 for g in grams if g in text)
     return hit / len(grams)
 
@@ -174,20 +177,21 @@ def rank_chapters(groups: dict[str, list[dict]], q: dict) -> list[str]:
         hit = max((name_overlap(hay, it["name"]) for it in items[:40]), default=0.0)
         scored.append((round(hit, 4), len(items), ch))
     scored.sort(reverse=True)
-    return [ch for _, _, ch in scored[:MAX_CHAPTERS]] if len(groups) > MAX_CHAPTERS \
-        else [ch for _, _, ch in scored]
+    return [ch for _, _, ch in scored[:MAX_CHAPTERS]] if len(groups) > MAX_CHAPTERS else [ch for _, _, ch in scored]
 
 
 # --------------------------------------------------------------------------- #
 # Ollama 调用
 # --------------------------------------------------------------------------- #
 def ollama_chat(model: str, messages: list[dict], timeout: int) -> str:
-    body = json.dumps({
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "options": {"temperature": 0.1, "top_p": 0.9, "num_ctx": 8192},
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": 0.1, "top_p": 0.9, "num_ctx": 8192},
+        }
+    ).encode("utf-8")
     req = urllib.request.Request(
         f"{OLLAMA_URL}/api/chat",
         data=body,
@@ -236,8 +240,7 @@ def validate(obj: dict, candidates: list[str]) -> tuple[str | None, float, str, 
         conf = 0.0
     conf = max(0.0, min(1.0, conf))
 
-    if raw_kp is None or (isinstance(raw_kp, str) and norm_name(raw_kp).lower() in
-                          ("", "null", "none", "无")):
+    if raw_kp is None or (isinstance(raw_kp, str) and norm_name(raw_kp).lower() in ("", "null", "none", "无")):
         return None, 0.0, reason, ""
 
     if not isinstance(raw_kp, str):
@@ -264,9 +267,19 @@ def build_question_block(q: dict) -> str:
 #: 自动控制原理章节特征词。库里有一批「数学」科目的题其实是自控原理题
 #: （第1-10章 线性系统/根轨迹/频域/校正…），而数学科目的 1208 条知识点里
 #: 只有 2 条根轨迹相关，强行匹配只会产出「二阶常系数微分方程」这类错标。
-CONTROL_KEYWORDS = ("自动控制", "控制系统", "根轨迹", "频域分析", "校正方法",
-                    "线性系统", "离散系统", "非线性控制", "最优控制",
-                    "状态空间", "时域分析法")
+CONTROL_KEYWORDS = (
+    "自动控制",
+    "控制系统",
+    "根轨迹",
+    "频域分析",
+    "校正方法",
+    "线性系统",
+    "离散系统",
+    "非线性控制",
+    "最优控制",
+    "状态空间",
+    "时域分析法",
+)
 CONTROL_KP_MIN = 10
 
 
@@ -274,8 +287,7 @@ def looks_cross_domain(q: dict, kps: list[dict]) -> bool:
     """题干章节像自控，但本学科几乎没有自控知识点 → 判为串科，转人工。"""
     if not q["chapter"] or not any(kw in q["chapter"] for kw in CONTROL_KEYWORDS):
         return False
-    hits = sum(1 for kp in kps
-               if any(kw in f"{kp['chapter']} {kp['name']}" for kw in CONTROL_KEYWORDS))
+    hits = sum(1 for kp in kps if any(kw in f"{kp['chapter']} {kp['name']}" for kw in CONTROL_KEYWORDS))
     return hits < CONTROL_KP_MIN
 
 
@@ -290,8 +302,7 @@ def format_candidates(pool: list[dict]) -> str:
     return "\n".join(blocks)
 
 
-def ask_point(model: str, q: dict, pool: list[dict], timeout: int,
-              chapter_hint: str = "") -> tuple[dict, dict]:
+def ask_point(model: str, q: dict, pool: list[dict], timeout: int, chapter_hint: str = "") -> tuple[dict, dict]:
     """返回 ({kp, confidence, reason, error}, meta)。失败会自动重试 1 次。"""
     candidates = [k["name"] for k in pool]
     head = build_question_block(q)
@@ -303,12 +314,11 @@ def ask_point(model: str, q: dict, pool: list[dict], timeout: int,
         + format_candidates(pool)
         + "\n\n请从中选最匹配的 1 个。信息不足时 kp 返回 null。只输出 JSON。"
     )
-    messages = [{"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user}]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
     meta = {"calls": 0, "seconds": 0.0}
     last_err = "未执行"
 
-    for attempt in range(2):
+    for _attempt in range(2):
         t0 = time.time()
         try:
             raw = ollama_chat(model, messages, timeout)
@@ -331,16 +341,19 @@ def ask_point(model: str, q: dict, pool: list[dict], timeout: int,
         # 把失败输出回喂，要求修正（仅重试 1 次）
         messages = messages + [
             {"role": "assistant", "content": raw[:600]},
-            {"role": "user", "content":
-             f"上面的输出无效：{last_err}。只能从候选列表里逐字照抄一个名字，"
-             "信息不足就返回 null。请重新只输出 JSON。"},
+            {
+                "role": "user",
+                "content": f"上面的输出无效：{last_err}。只能从候选列表里逐字照抄一个名字，"
+                "信息不足就返回 null。请重新只输出 JSON。",
+            },
         ]
 
     return {"kp": None, "confidence": 0.0, "reason": "", "error": last_err}, meta
 
 
-def ask_chapter(model: str, q: dict, chapters: list[str], counts: dict[str, int],
-                timeout: int) -> tuple[str | None, str, int]:
+def ask_chapter(
+    model: str, q: dict, chapters: list[str], counts: dict[str, int], timeout: int
+) -> tuple[str | None, str, int]:
     listing = "\n".join(f"- {ch}（{counts[ch]} 条）" for ch in chapters)
     user = (
         f"{build_question_block(q)}\n\n"
@@ -348,9 +361,10 @@ def ask_chapter(model: str, q: dict, chapters: list[str], counts: dict[str, int]
         "先判断这道题属于哪个章节，只输出 JSON："
         '{"chapter": "章节名", "reason": "一句话"}。信息不足时 chapter 返回 null。'
     )
-    messages = [{"role": "system", "content":
-                 "你是考研题库的章节归类助手，只能从候选章节里逐字选择，只输出 JSON。"},
-                {"role": "user", "content": user}]
+    messages = [
+        {"role": "system", "content": "你是考研题库的章节归类助手，只能从候选章节里逐字选择，只输出 JSON。"},
+        {"role": "user", "content": user},
+    ]
     raw = ""
     calls = 0
     err = "未执行"
@@ -395,8 +409,7 @@ def decide(model: str, q: dict, kps: list[dict], timeout: int) -> dict:
         meta["mode"] = "chapter"
         groups = chapter_groups(kps)
         chap_names = rank_chapters(groups, q)
-        picked, err, chap_calls = ask_chapter(
-            model, q, chap_names, {c: len(groups[c]) for c in chap_names}, timeout)
+        picked, err, chap_calls = ask_chapter(model, q, chap_names, {c: len(groups[c]) for c in chap_names}, timeout)
         meta["calls"] += chap_calls
         if picked:
             meta["chapter"] = picked
@@ -431,11 +444,11 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="只判断不写库（默认前 15 道）")
     ap.add_argument("--apply", action="store_true", help="备份后写库")
     ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama 模型，默认 {DEFAULT_MODEL}")
-    ap.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
-                    help=f"写库置信度阈值，默认 {DEFAULT_THRESHOLD}")
+    ap.add_argument(
+        "--threshold", type=float, default=DEFAULT_THRESHOLD, help=f"写库置信度阈值，默认 {DEFAULT_THRESHOLD}"
+    )
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="单次调用超时（秒）")
-    ap.add_argument("--limit", type=int, default=-1,
-                    help="只处理前 N 道（0=全部；默认 dry-run 15 道、apply 全部）")
+    ap.add_argument("--limit", type=int, default=-1, help="只处理前 N 道（0=全部；默认 dry-run 15 道、apply 全部）")
     ap.add_argument("--no-backup", action="store_true", help="跳过备份（不建议）")
     ap.add_argument("--json-out", default="", help="把逐题结果写到 JSON 报告")
     args = ap.parse_args()
@@ -455,31 +468,56 @@ def main() -> int:
         questions = all_questions[:limit] if limit else all_questions
 
         print(f"[data] 全库空知识点 {total_empty} 道；本次判断 {len(questions)} 道")
-        print("[pool] 知识点科目：" + "，".join(
-            f"{s}={len(v)}" for s, v in sorted(kps_by_subject.items(), key=lambda kv: -len(kv[1]))))
-        print(f"[model] {args.model} @ {OLLAMA_URL}  threshold={args.threshold} "
-              f"timeout={args.timeout}s  mode={'APPLY' if apply else 'DRY-RUN'}")
+        print(
+            "[pool] 知识点科目："
+            + "，".join(f"{s}={len(v)}" for s, v in sorted(kps_by_subject.items(), key=lambda kv: -len(kv[1])))
+        )
+        print(
+            f"[model] {args.model} @ {OLLAMA_URL}  threshold={args.threshold} "
+            f"timeout={args.timeout}s  mode={'APPLY' if apply else 'DRY-RUN'}"
+        )
 
         records: list[dict] = []
         for i, q in enumerate(questions, 1):
             kps = kps_by_subject.get(q["subject"], [])
             preview = " ".join(q["content"].split())[:48] or "(题干为空)"
             if not kps:
-                rec = {"id": q["id"], "subject": q["subject"], "status": "pending",
-                       "kp": None, "confidence": 0.0, "reason": "该科目无知识点候选",
-                       "error": "no_candidates", "preview": preview, "elapsed": 0.0,
-                       "calls": 0, "mode": "skip", "chapter": None, "candidates": 0,
-                       "model_kp": None}
+                rec = {
+                    "id": q["id"],
+                    "subject": q["subject"],
+                    "status": "pending",
+                    "kp": None,
+                    "confidence": 0.0,
+                    "reason": "该科目无知识点候选",
+                    "error": "no_candidates",
+                    "preview": preview,
+                    "elapsed": 0.0,
+                    "calls": 0,
+                    "mode": "skip",
+                    "chapter": None,
+                    "candidates": 0,
+                    "model_kp": None,
+                }
                 records.append(rec)
                 print(f"  [{i}/{len(questions)}] q{q['id']} 跳过：科目「{q['subject']}」无候选")
                 continue
             if looks_cross_domain(q, kps):
-                rec = {"id": q["id"], "subject": q["subject"], "status": "pending",
-                       "kp": None, "confidence": 0.0,
-                       "reason": f"章节「{q['chapter']}」属自控原理，本学科无对应知识点（疑似串科）",
-                       "error": "cross_domain", "preview": preview, "elapsed": 0.0,
-                       "calls": 0, "mode": "skip", "chapter": None, "candidates": 0,
-                       "model_kp": None}
+                rec = {
+                    "id": q["id"],
+                    "subject": q["subject"],
+                    "status": "pending",
+                    "kp": None,
+                    "confidence": 0.0,
+                    "reason": f"章节「{q['chapter']}」属自控原理，本学科无对应知识点（疑似串科）",
+                    "error": "cross_domain",
+                    "preview": preview,
+                    "elapsed": 0.0,
+                    "calls": 0,
+                    "mode": "skip",
+                    "chapter": None,
+                    "candidates": 0,
+                    "model_kp": None,
+                }
                 records.append(rec)
                 print(f"  [{i}/{len(questions)}] q{q['id']} 跳过：{rec['reason']}")
                 continue
@@ -497,21 +535,26 @@ def main() -> int:
                 reason = res["reason"]
 
             rec = {
-                "id": q["id"], "subject": q["subject"], "status": status,
+                "id": q["id"],
+                "subject": q["subject"],
+                "status": status,
                 "kp": kp["name"] if kp else None,
                 "kp_id": kp["id"] if kp else None,
                 "confidence": round(res["confidence"], 3),
-                "reason": reason, "error": res["error"],
-                "preview": preview, "model_kp": res["kp"],
-                "mode": res["meta"]["mode"], "chapter": res["meta"]["chapter"],
-                "candidates": res["candidates"], "elapsed": res["elapsed"],
+                "reason": reason,
+                "error": res["error"],
+                "preview": preview,
+                "model_kp": res["kp"],
+                "mode": res["meta"]["mode"],
+                "chapter": res["meta"]["chapter"],
+                "candidates": res["candidates"],
+                "elapsed": res["elapsed"],
                 "calls": res["meta"]["calls"],
             }
             records.append(rec)
             mark = "OK " if status == "ok" else "-- "
             print(f"  [{i}/{len(questions)}] q{q['id']} {mark}{rec['subject']} | {preview}")
-            print(f"        → {rec['kp'] or '(不写)'}  conf={rec['confidence']:.2f}  "
-                  f"{rec['elapsed']}s  {reason[:70]}")
+            print(f"        → {rec['kp'] or '(不写)'}  conf={rec['confidence']:.2f}  {rec['elapsed']}s  {reason[:70]}")
 
         ok = [r for r in records if r["status"] == "ok"]
         pending = [r for r in records if r["status"] != "ok"]
@@ -524,14 +567,14 @@ def main() -> int:
 
         print("\n" + "=" * 72)
         print(f"[result] 可写库 {len(ok)} / {len(records)}   待人工 {len(pending)}")
-        print(f"         待人工构成：信息不足 {null_cnt}，章节串科 {cross}，"
-              f"置信度不足 {lowconf}，调用/校验失败 {failed}")
+        print(
+            f"         待人工构成：信息不足 {null_cnt}，章节串科 {cross}，置信度不足 {lowconf}，调用/校验失败 {failed}"
+        )
         print(f"[perf]   单题平均 {avg:.1f}s，共 {total_calls} 次模型调用")
         by_subj: dict[str, list[int]] = defaultdict(lambda: [0, 0])
         for r in records:
             by_subj[r["subject"]][0 if r["status"] == "ok" else 1] += 1
-        print("[by-subject] " + "；".join(f"{s}: 命中 {a} / 待人工 {b}"
-                                          for s, (a, b) in sorted(by_subj.items())))
+        print("[by-subject] " + "；".join(f"{s}: 命中 {a} / 待人工 {b}" for s, (a, b) in sorted(by_subj.items())))
 
         if pending:
             print("\n[pending] 待人工清单（前 20）：")
@@ -543,12 +586,24 @@ def main() -> int:
             if not out.is_absolute():
                 out = BASE / out
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps({
-                "generated_at": datetime.now().isoformat(timespec="seconds"),
-                "model": args.model, "threshold": args.threshold, "apply": apply,
-                "total": len(records), "ok": len(ok), "pending": len(pending),
-                "avg_seconds": round(avg, 2), "records": records,
-            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            out.write_text(
+                json.dumps(
+                    {
+                        "generated_at": datetime.now().isoformat(timespec="seconds"),
+                        "model": args.model,
+                        "threshold": args.threshold,
+                        "apply": apply,
+                        "total": len(records),
+                        "ok": len(ok),
+                        "pending": len(pending),
+                        "avg_seconds": round(avg, 2),
+                        "records": records,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
             print(f"[report] {out}")
 
         if not apply:
@@ -593,10 +648,11 @@ def main() -> int:
                        count(*)
                 FROM quiz_questions
             """).fetchone()
-            linked = cur.execute(
-                "SELECT count(DISTINCT question_id) FROM question_knowledge_links").fetchone()[0]
-        print(f"[OK] 写入 {written} 道；knowledge_point {filled}/{total}；"
-              f"有关联的题目 {linked}/{total}；仍待人工 {total - filled} 道")
+            linked = cur.execute("SELECT count(DISTINCT question_id) FROM question_knowledge_links").fetchone()[0]
+        print(
+            f"[OK] 写入 {written} 道；knowledge_point {filled}/{total}；"
+            f"有关联的题目 {linked}/{total}；仍待人工 {total - filled} 道"
+        )
     return 0
 
 

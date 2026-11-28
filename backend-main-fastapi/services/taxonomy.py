@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import re
+
 # --------------------------------------------------------------------------- #
 # 主线科目（考试口径）
 #
@@ -58,10 +60,10 @@ EXT_SUBJECTS = [
     # M0-4：对齐 kaoyan_subjects 剩余工科学科（0803 光学工程 / 0810 信息与通信工程 /
     # 0812 计算机科学与技术），以及 0854 电子信息（专硕）—— 工科最常考专业学位。
     # 这些科目默认不计入考试口径，但必须出现在可选池（资料/出题/路由支持）。
-    "电子信息",          # 0854 电子信息（专硕）
-    "信息与通信工程",    # 0810
+    "电子信息",  # 0854 电子信息（专硕）
+    "信息与通信工程",  # 0810
     "计算机科学与技术",  # 0812
-    "光学工程",          # 0803
+    "光学工程",  # 0803
     # 胡寿松《自动控制原理》独立成科（原题库误标为「数学」）
     "自动控制原理",
 ]
@@ -78,20 +80,20 @@ EXT_SUBJECTS = [
 # 作用是让语料有正当归属、让择校页能显式说明"覆盖/未覆盖"。
 # --------------------------------------------------------------------------- #
 CROSS_SUBJECTS = [
-    "管理类联考综合",     # 199
-    "经济类联考综合",     # 396
-    "法律硕士专业基础",   # 397/398（法学/非法学）
-    "教育学专业基础",     # 311 / 333 教育综合
-    "心理学专业基础",     # 312 / 347
-    "西医综合",          # 306
-    "中医综合",          # 320
+    "管理类联考综合",  # 199
+    "经济类联考综合",  # 396
+    "法律硕士专业基础",  # 397/398（法学/非法学）
+    "教育学专业基础",  # 311 / 333 教育综合
+    "心理学专业基础",  # 312 / 347
+    "西医综合",  # 306
+    "中医综合",  # 320
 ]
 
 ALL_SUBJECTS = CORE_SUBJECTS + MAJOR_SUBJECTS + EXT_SUBJECTS + CROSS_SUBJECTS
 
 # 旧分类 → 新分类归一化（存量数据有 8 类，需平滑迁移）
 SUBJECT_ALIASES = {
-    "电子技术基础": "数字电子技术",   # 834 合并科目，主教材为阎石《数字电子技术基础》
+    "电子技术基础": "数字电子技术",  # 834 合并科目，主教材为阎石《数字电子技术基础》
     "数字电路": "数字电子技术",
     "模拟电路": "模拟电子技术",
     "数电": "数字电子技术",
@@ -573,10 +575,7 @@ def mark_subject_removed(db, subject: str) -> None:
     if not name:
         return
     db.execute(
-        text(
-            "INSERT INTO subject_removals (subject) VALUES (:s) "
-            "ON CONFLICT (subject) DO NOTHING"
-        ),
+        text("INSERT INTO subject_removals (subject) VALUES (:s) ON CONFLICT (subject) DO NOTHING"),
         {"s": name},
     )
 
@@ -628,12 +627,14 @@ def ensure_subject_config_seeds(db) -> int:
     for name in ALL_SUBJECTS:  # CORE + MAJOR + EXT 已合并去重
         if name in existing or name in removed:
             continue
-        db.add(SubjectConfig(
-            subject=name,
-            chapters=CHAPTERS.get(name, []),
-            question_types=QUESTION_TYPES.get(name, DEFAULT_QUESTION_TYPES),
-            is_custom=False,
-        ))
+        db.add(
+            SubjectConfig(
+                subject=name,
+                chapters=CHAPTERS.get(name, []),
+                question_types=QUESTION_TYPES.get(name, DEFAULT_QUESTION_TYPES),
+                is_custom=False,
+            )
+        )
         inserted += 1
     if inserted:
         db.commit()
@@ -701,12 +702,11 @@ def question_types_of(subject: str | None) -> list[str]:
 
 def all_question_types() -> list[str]:
     """全部题型去重（用于前端筛选下拉）。"""
-    seen: list[str] = []
+    seen: dict[str, None] = {}
     for types in QUESTION_TYPES.values():
         for t in types:
-            if t not in seen:
-                seen.append(t)
-    return seen
+            seen.setdefault(t, None)
+    return list(seen)
 
 
 def guess_question_type(text: str, subject: str | None = None) -> str:
@@ -714,27 +714,33 @@ def guess_question_type(text: str, subject: str | None = None) -> str:
 
     仅做保守判断：命中明确关键词才返回，否则返回空串交给调用方兜底。
     """
-    t = (text or "")
-    std = normalize_subject(subject)
+    t = text or ""
 
     # 显式出现"单选题/填空题/计算题"等
-    import re
-
     m = re.search(r"(单项?选择|多选|填空|判断|简答|论述|计算|分析|设计|证明|化简|画图|作图|翻译|作文|阅读)", t)
     if m:
         raw = m.group(1)
         table = {
-            "单项选择": "选择", "单项": "选择", "选择": "选择",
-            "多选": "多选", "填空": "填空", "判断": "选择",
-            "简答": "分析", "论述": "论述", "计算": "计算",
-            "分析": "分析", "设计": "设计", "证明": "证明",
-            "化简": "化简", "画图": "画图", "作图": "画图",
-            "翻译": "翻译", "作文": "大作文", "阅读": "阅读",
+            "单项选择": "选择",
+            "单项": "选择",
+            "选择": "选择",
+            "多选": "多选",
+            "填空": "填空",
+            "判断": "选择",
+            "简答": "分析",
+            "论述": "论述",
+            "计算": "计算",
+            "分析": "分析",
+            "设计": "设计",
+            "证明": "证明",
+            "化简": "化简",
+            "画图": "画图",
+            "作图": "画图",
+            "翻译": "翻译",
+            "作文": "大作文",
+            "阅读": "阅读",
         }
         mapped = table.get(raw, "")
-        allowed = question_types_of(std)
-        if mapped and mapped in allowed:
-            return mapped
         if mapped:
             return mapped
     return ""
@@ -750,8 +756,8 @@ def guess_question_type(text: str, subject: str | None = None) -> str:
 CHAPTER_PATTERNS = [
     r"^\s*第\s*[0-9一二三四五六七八九十]+\s*章\s*[^\n]{0,40}$",
     r"^\s*Chapter\s*\d+[^\n]{0,40}$",
-    r"^\s*[0-9]{1,2}\s+[^\n]{2,40}$",              # "1 逻辑代数基础"（必须有空格）
-    r"^[0-9]{1,2}\s*[、．]\s*[^\n]{2,40}$",         # "1、逻辑代数基础"
+    r"^\s*[0-9]{1,2}\s+[^\n]{2,40}$",  # "1 逻辑代数基础"（必须有空格）
+    r"^[0-9]{1,2}\s*[、．]\s*[^\n]{2,40}$",  # "1、逻辑代数基础"
 ]
 
 SECTION_PATTERNS = [

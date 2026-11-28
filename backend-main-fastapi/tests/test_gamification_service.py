@@ -30,7 +30,6 @@ if BACKEND_DIR not in sys.path:
 import core.models.gamification as gami_models  # noqa: E402,F401  (把激励表挂进元数据)
 from core.models.base import Base as CoreBase  # noqa: E402
 from database import Base as LegacyBase  # noqa: E402
-from models import AnswerRecord, ReviewRecord, StudySession, Task  # noqa: E402
 from services import gamification as gami  # noqa: E402
 from services.study_calendar import day_ledger  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
@@ -38,6 +37,8 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 from utils.exceptions import BusinessException  # noqa: E402
 from utils.timeutil import local_today, local_window_for_day  # noqa: E402
+
+from models import AnswerRecord, ReviewRecord, StudySession, Task  # noqa: E402
 
 USER_ID = 777
 OTHER_ID = 778
@@ -59,9 +60,8 @@ def db():
     """独立内存库：激励表（core Base）+ 日活台账会读到的四张业务表。
 
     ``check_same_thread=False`` + ``StaticPool`` 是给下面的 HTTP 用例准备的：
-    ``TestClient`` 把请求跑在它自己的工作线程里，默认的 in-memory 连接跨线程
-    直接 ``ProgrammingError``（StaticPool 让所有线程共用同一条内存连接，
-    顺带也保证 ``sqlite://`` 只有一个库，不会各线程各建一个空库）。
+    让所有请求共用同一条内存连接，并保证 ``sqlite://`` 只有一个库，不会出现
+    不同连接各自建一个空库的情况。
     """
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     CoreBase.metadata.create_all(engine, tables=[CoreBase.metadata.tables[t] for t in _TABLES])
@@ -679,12 +679,12 @@ def test_profile_display_name_too_long(db):
 #   4. BusinessException 的 status_code 是否真透传成 HTTP 状态码。
 @pytest.fixture()
 def api(db):
-    """TestClient + 假登录态；退出时清掉 override，避免污染同会话其它用例。"""
+    """ASGI 客户端 + 假登录态；退出时清掉 override，避免污染同会话其它用例。"""
     import routers.auth.profile as prof_mod
     import routers.study.gamification as gami_router
+    from asgi_client import ASGIClient
     from database import get_db
     from fastapi import FastAPI
-    from fastapi.testclient import TestClient
     from utils.exceptions import register_exception_handlers
     from utils.security import current_user
 
@@ -698,11 +698,14 @@ def api(db):
     # 两组 router 都走 ``user=Depends(current_user)``（与 goals.py / growth.py 同构），
     # 所以注入身份只需 dependency_overrides 这一处 —— 与 conftest 给全站用的是同一个接缝。
     app.dependency_overrides[current_user] = lambda: _fake_user()
-    client = TestClient(app)
+    # 使用仓库现有的版本无关 ASGI 客户端，绕开 starlette 0.27 向 httpx 0.28
+    # 传已移除的 app= 参数问题；保留 TestClient 默认的异常透传语义。
+    client = ASGIClient(app, raise_server_exceptions=True)
     try:
         yield client
     finally:
         app.dependency_overrides.clear()
+        client.close()
 
 
 def test_routers_are_registered_in_registry():

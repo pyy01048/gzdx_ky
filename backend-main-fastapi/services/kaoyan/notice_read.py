@@ -52,6 +52,7 @@ WAL 注意事项
 备份必须用 ``sqlite3.Connection.backup()``（见 ``backup.py``），
 否则会拿到撕裂的快照。
 """
+
 from __future__ import annotations
 
 import logging
@@ -204,6 +205,7 @@ class _DictCursor:
         SQLite 下 wrap_conn 直通原对象，行为不变。
         """
         from services.dbapi_compat import wrap_conn
+
         return wrap_conn(self._session.connection().connection)
 
     def execute(self, sql, params=None):
@@ -235,11 +237,11 @@ class _DictCursorResult:
 
     def fetchall(self):
         cols = self._cols
-        return [dict(zip(cols, row)) for row in self._cur.fetchall()]
+        return [dict(zip(cols, row, strict=False)) for row in self._cur.fetchall()]
 
     def fetchone(self):
         row = self._cur.fetchone()
-        return dict(zip(self._cols, row)) if row is not None else None
+        return dict(zip(self._cols, row, strict=False)) if row is not None else None
 
     @property
     def rowcount(self):
@@ -319,8 +321,7 @@ def _state_join(user_id: Optional[int]):
     if user_id is None:
         return " FROM kaoyan_notices n", []
     return (
-        " FROM kaoyan_notices n"
-        " LEFT JOIN notice_user_states s ON s.notice_id = n.id AND s.user_id = ?",
+        " FROM kaoyan_notices n LEFT JOIN notice_user_states s ON s.notice_id = n.id AND s.user_id = ?",
         [user_id],
     )
 
@@ -430,7 +431,9 @@ def mark_read(
 
 
 def set_starred(
-    db_session, notice_ids: List[int], is_starred: bool = True,
+    db_session,
+    notice_ids: List[int],
+    is_starred: bool = True,
     user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """批量置顶/取消置顶（加星）。user_id 非空时写 notice_user_states（P5）。"""
@@ -480,19 +483,9 @@ def unread_stats(db_session, user_id: Optional[int] = None) -> Dict[str, Any]:
     starred_pred = _starred_pred(user_id)
 
     # 标量聚合：给列起别名后按名取值（与下方 dict 行保持一致的可读写法）
-    total_notices = int(
-        conn.execute("SELECT COUNT(*) AS c" + from_sql, join_args).fetchone()["c"]
-    )
-    total_unread = int(
-        conn.execute(
-            f"SELECT COUNT(*) AS c{from_sql} WHERE {read_pred}", join_args
-        ).fetchone()["c"]
-    )
-    total_starred = int(
-        conn.execute(
-            f"SELECT COUNT(*) AS c{from_sql} WHERE {starred_pred}", join_args
-        ).fetchone()["c"]
-    )
+    total_notices = int(conn.execute("SELECT COUNT(*) AS c" + from_sql, join_args).fetchone()["c"])
+    total_unread = int(conn.execute(f"SELECT COUNT(*) AS c{from_sql} WHERE {read_pred}", join_args).fetchone()["c"])
+    total_starred = int(conn.execute(f"SELECT COUNT(*) AS c{from_sql} WHERE {starred_pred}", join_args).fetchone()["c"])
 
     by_type_rows = conn.execute(
         "SELECT COALESCE(NULLIF(CAST(n.notice_type AS TEXT), ''), '公告') AS t,"
@@ -501,9 +494,7 @@ def unread_stats(db_session, user_id: Optional[int] = None) -> Dict[str, Any]:
         f"{from_sql} GROUP BY t ORDER BY unread DESC, total DESC",
         join_args,
     ).fetchall()
-    by_type = {
-        r["t"]: {"total": int(r["total"]), "unread": int(r["unread"] or 0)} for r in by_type_rows
-    }
+    by_type = {r["t"]: {"total": int(r["total"]), "unread": int(r["unread"] or 0)} for r in by_type_rows}
 
     # 院校分组用 COALESCE 兜底：采集时可能 school_id 为空，退化为按校名分组
     by_school_rows = conn.execute(
@@ -543,12 +534,8 @@ def unread_stats(db_session, user_id: Optional[int] = None) -> Dict[str, Any]:
             ).fetchone()["c"]
         )
     else:
-        important_unread = sum(
-            v["unread"] for k, v in by_type.items() if k in IMPORTANT_TYPES
-        )
-        important_total = sum(
-            v["total"] for k, v in by_type.items() if k in IMPORTANT_TYPES
-        )
+        important_unread = sum(v["unread"] for k, v in by_type.items() if k in IMPORTANT_TYPES)
+        important_total = sum(v["total"] for k, v in by_type.items() if k in IMPORTANT_TYPES)
         urgent_unread = 0
 
     # 紧急未读：前端「仅紧急」筛选与概览条红色计数用。urgent 是
@@ -557,8 +544,7 @@ def unread_stats(db_session, user_id: Optional[int] = None) -> Dict[str, Any]:
     if _has_importance_column(conn):
         urgent_unread = int(
             conn.execute(
-                f"SELECT COUNT(*) AS c{from_sql}"
-                f" WHERE {read_pred} AND n.importance_level = 'urgent'",
+                f"SELECT COUNT(*) AS c{from_sql} WHERE {read_pred} AND n.importance_level = 'urgent'",
                 join_args,
             ).fetchone()["c"]
         )

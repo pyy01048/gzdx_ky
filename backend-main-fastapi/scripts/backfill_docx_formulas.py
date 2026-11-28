@@ -39,6 +39,7 @@ python scripts/backfill_docx_formulas.py --all-docx --no-recognize
 python scripts/backfill_docx_formulas.py --doc-id 35 --doc-id 89 --apply
 ```
 """
+
 from __future__ import annotations
 
 import argparse
@@ -108,7 +109,7 @@ def _all_positions(haystack: str, needle: str) -> List[int]:
     if not needle:
         return out
     start = 0
-    n = len(needle)
+    len(needle)
     while True:
         p = haystack.find(needle, start)
         if p < 0:
@@ -336,9 +337,7 @@ def process_document(
     wanted: set = set()
     cursor = 0
     for ch in sorted(chunks, key=lambda c: c["id"]):
-        span = locate(
-            aligned, ch["text"] or "", norm_plain, norm_idx, expected_pos=cursor
-        )
+        span = locate(aligned, ch["text"] or "", norm_plain, norm_idx, expected_pos=cursor)
         if not span:
             # 已回填过的块：剥掉 LaTeX/图片标记再试一次（重复回填）
             stripped = strip_rendered(ch["text"] or "")
@@ -347,14 +346,10 @@ def process_document(
                 if not span:
                     # 剥离后首尾仍可能有残留（不配对的 $ 会让正则错位），
                     # 退到「前缀定位 + 长度估算」
-                    span = locate_by_prefix(
-                        aligned, stripped, norm_plain, norm_idx, expected_pos=cursor
-                    )
+                    span = locate_by_prefix(aligned, stripped, norm_plain, norm_idx, expected_pos=cursor)
         if not span:
             # 最后兜底：即使剥离不干净，原始文本的开头一般还可信
-            span = locate_by_prefix(
-                aligned, ch["text"] or "", norm_plain, norm_idx, expected_pos=cursor
-            )
+            span = locate_by_prefix(aligned, ch["text"] or "", norm_plain, norm_idx, expected_pos=cursor)
         if not span:
             continue
         mids = markers_in(aligned, span[0], span[1])
@@ -431,15 +426,9 @@ def process_document(
                     latex_map[idx] = r.latex
                     ok_cnt += 1
                 if log and (n % 20 == 0 or n == len(to_recognize)):
-                    log(
-                        f"    识别 {n}/{len(to_recognize)} "
-                        f"成功 {ok_cnt} {time.time() - t0:.0f}s"
-                    )
+                    log(f"    识别 {n}/{len(to_recognize)} 成功 {ok_cnt} {time.time() - t0:.0f}s")
             if log:
-                log(
-                    f"    识别完成 {ok_cnt}/{len(to_recognize)} 成功 "
-                    f"{time.time() - t0:.0f}s"
-                )
+                log(f"    识别完成 {ok_cnt}/{len(to_recognize)} 成功 {time.time() - t0:.0f}s")
 
     updates: List[Tuple[str, int]] = []
     for ch, span, mids in plans:
@@ -487,7 +476,7 @@ def main() -> int:
         type=float,
         default=0.0,
         help="宽高比低于此值不当作公式（0=不过滤，默认 0）。"
-             "**别再用 1.2 那种值**：短公式本身就是近方形的，实测误杀 766 个真公式",
+        "**别再用 1.2 那种值**：短公式本身就是近方形的，实测误杀 766 个真公式",
     )
     ap.add_argument(
         "--min-formula-side",
@@ -510,6 +499,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from database import SessionLocal
+
     from models import Document, KnowledgeChunk
 
     recognizer = None
@@ -567,11 +557,7 @@ def main() -> int:
             print(f"[回填] 已备份: {backup}")
         for d in docs:
             t0 = time.time()
-            chunks = (
-                db.query(KnowledgeChunk)
-                .filter(KnowledgeChunk.document_id == d.id)
-                .all()
-            )
+            chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == d.id).all()
             rows = [{"id": c.id, "text": c.text or ""} for c in chunks]
             stat = process_document(
                 {"id": d.id, "file_name": d.file_name, "file_path": d.file_path},
@@ -615,9 +601,17 @@ def main() -> int:
 
         total = {
             k: sum(s[k] for s in all_stats)
-            for k in ("repaired", "latexs", "images", "kept",
-                      "skipped_big", "skipped_shape", "skipped_tall",
-                      "skipped_wide", "skipped_tiny")
+            for k in (
+                "repaired",
+                "latexs",
+                "images",
+                "kept",
+                "skipped_big",
+                "skipped_shape",
+                "skipped_tall",
+                "skipped_wide",
+                "skipped_tiny",
+            )
         }
         print(
             f"[回填] 合计：修复 {total['repaired']} 块 | "

@@ -3,6 +3,7 @@
 不需要真实 PDF：把字符数统计和页数读取都 monkeypatch 掉，
 只验证判定规则本身（doc §4.1）。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -86,9 +87,9 @@ def test_hybrid_when_avg_between_thresholds(fake_pdf):
 @pytest.mark.parametrize(
     "chars,expect_kind",
     [
-        (DIGITAL_MIN_CHARS, "digital"),      # 正好 100 → digital
+        (DIGITAL_MIN_CHARS, "digital"),  # 正好 100 → digital
         (DIGITAL_MIN_CHARS - 1, "hybrid"),  # 99 → hybrid
-        (SCANNED_MAX_CHARS, "hybrid"),      # 正好 30 → hybrid
+        (SCANNED_MAX_CHARS, "hybrid"),  # 正好 30 → hybrid
         (SCANNED_MAX_CHARS - 1, "scanned"),  # 29 → scanned
     ],
 )

@@ -102,6 +102,7 @@ export function buildParams(stage, subject, contentType, source = '') {
   return p
 }
 
+/** 统计瓦片：图标 + 标签 + 数值 + 单位 + 提示。 */
 function StatTile({ icon, label, value, unit, hint }) {
   return (
     <Tile span={3} className="lb3-stat">
@@ -164,14 +165,14 @@ export default function Library() {
   const openIdRef = useRef(null)
   const previewBoxRef = useRef(null)
 
-  const scrollPreviewIntoView = () => {
+  const scrollPreviewIntoView = useCallback(() => {
     requestAnimationFrame(() => {
       const el = previewBoxRef.current
       if (el) {
         try { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) } catch (e) { /* ignore */ }
       }
     })
-  }
+  }, [])
 
   /* 请求序号：快速切换筛选时丢弃过期响应 */
   const listSeq = useRef(0)
@@ -203,11 +204,11 @@ export default function Library() {
   useEffect(() => { loadList() }, [loadList])
 
   /* 手动刷新：只有用户点按钮才弹成败提示 */
-  const refreshList = async () => {
+  const refreshList = useCallback(async () => {
     const ok = await loadList()
     if (ok) toastOk('资料列表已刷新')
     else toastErr('刷新失败，请检查后端服务后重试')
-  }
+  }, [loadList])
 
   /* 计数请求（facet）：只在阶段/来源变化时重拉。
      新后端：page_size=1 只取一行，计数全部来自 facets.groups（DB 侧 GROUP BY）；
@@ -282,54 +283,60 @@ export default function Library() {
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
 
-  const closePreview = () => {
+  const closePreview = useCallback(() => {
     openIdRef.current = null
     setOpenId(null)
     setPreview({ id: null, state: 'idle', text: '', note: '' })
-  }
+  }, [])
   /* 换筛选 = 换结果集：页码回到 1，避免落在空页 */
-  const pickSubject = (v) => { closePreview(); setPage(1); setSubject(v) }
-  const pickContentType = (v) => { closePreview(); setPage(1); setContentType(v) }
-  const pickStage = (v) => { closePreview(); setPage(1); setStage(v) }
-  const pickSource = (v) => { closePreview(); setPage(1); setSource(v) }
-  const gotoPage = (p) => {
-    const next = Math.min(Math.max(1, p), pageCount)
-    if (next === page) return
-    closePreview()
-    setPage(next)
-  }
+  const pickSubject = useCallback((v) => { closePreview(); setPage(1); setSubject(v) }, [closePreview])
+  const pickContentType = useCallback((v) => { closePreview(); setPage(1); setContentType(v) }, [closePreview])
+  const pickStage = useCallback((v) => { closePreview(); setPage(1); setStage(v) }, [closePreview])
+  const pickSource = useCallback((v) => { closePreview(); setPage(1); setSource(v) }, [closePreview])
+  const gotoPage = useCallback(
+    (p) => {
+      const next = Math.min(Math.max(1, p), pageCount)
+      if (next === page) return
+      closePreview()
+      setPage(next)
+    },
+    [pageCount, page, closePreview],
+  )
 
   /* 点击文件名：就地展开正文预览（GET /documents/{id}/content） */
-  const togglePreview = async (doc) => {
-    const id = doc?.id
-    if (id == null) return
-    if (openId === id) {
-      closePreview()
-      return
-    }
-    openIdRef.current = id
-    setOpenId(id)
-    setPreview({ id, state: 'loading', text: '', note: '' })
-    try {
-      const r = await documentsApi.getContent(id, 3000)
-      if (openIdRef.current !== id) return
-      const text = (r && typeof r.content === 'string') ? r.content : ''
-      setPreview({
-        id,
-        state: 'ok',
-        text,
-        note: text
-          ? `已解析 ${Number(r?.content_length) || text.length} 字${r?.truncated ? '（预览已截断）' : ''}`
-          : (r?.message || '该资料尚未解析正文'),
-      })
-      scrollPreviewIntoView()
-    } catch (e) {
-      if (openIdRef.current !== id) return
-      setPreview({ id, state: 'error', text: '', note: e?.message || '正文加载失败' })
-      toastErr('正文加载失败：' + (e?.message || ''))
-      scrollPreviewIntoView()
-    }
-  }
+  const togglePreview = useCallback(
+    async (doc) => {
+      const id = doc?.id
+      if (id == null) return
+      if (openId === id) {
+        closePreview()
+        return
+      }
+      openIdRef.current = id
+      setOpenId(id)
+      setPreview({ id, state: 'loading', text: '', note: '' })
+      try {
+        const r = await documentsApi.getContent(id, 3000)
+        if (openIdRef.current !== id) return
+        const text = (r && typeof r.content === 'string') ? r.content : ''
+        setPreview({
+          id,
+          state: 'ok',
+          text,
+          note: text
+            ? `已解析 ${Number(r?.content_length) || text.length} 字${r?.truncated ? '（预览已截断）' : ''}`
+            : (r?.message || '该资料尚未解析正文'),
+        })
+        scrollPreviewIntoView()
+      } catch (e) {
+        if (openIdRef.current !== id) return
+        setPreview({ id, state: 'error', text: '', note: e?.message || '正文加载失败' })
+        toastErr('正文加载失败：' + (e?.message || ''))
+        scrollPreviewIntoView()
+      }
+    },
+    [openId, closePreview, scrollPreviewIntoView],
+  )
 
   const subjectLabel = subject || '全部科目'
   const ctLabel = contentType || '全部性质'

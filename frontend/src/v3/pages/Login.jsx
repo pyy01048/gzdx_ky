@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { authApi, goalsApi } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
@@ -22,6 +22,18 @@ const FEATURES = [
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
+/**
+ * 邮件已发送提示面板：用于注册验证与重置密码两种场景的"已发送"反馈。
+ * @param {Object} props - 组件属性
+ * @param {React.ComponentType} props.icon - 顶部图标组件
+ * @param {string} props.title - 面板标题
+ * @param {string} props.text - 面板说明文案
+ * @param {string} [props.email] - 目标邮箱（可选，展示用）
+ * @param {Function} [props.onResend] - 重发回调（不传则不显示重发按钮）
+ * @param {boolean} props.resendBusy - 重发按钮 loading 态
+ * @param {number} props.cooldown - 重发冷却倒计时秒数
+ * @param {Function} props.onBack - 返回登录回调
+ */
 function SentPanel({ icon: Icon, title, text, email, onResend, resendBusy, cooldown, onBack }) {
   return (
     <div className="v3-login__sent">
@@ -42,6 +54,10 @@ function SentPanel({ icon: Icon, title, text, email, onResend, resendBusy, coold
   )
 }
 
+/**
+ * 登录/注册/找回密码合一页：支持登录、邮箱注册、忘记密码三种模式，
+ * 并在注册/重置后展示"邮件已发送"面板。登录成功后拉取目标档案判断是否首跑。
+ */
 export default function Login() {
   const { status, login } = useAuth()
   const navigate = useNavigate()
@@ -77,14 +93,15 @@ export default function Login() {
   const panelFx = usePointerFx({ spotlight: true, disabled: reduced })
   const auroraRef = useParallax(0.1, 30)
 
-  /* busy 期间不早退：submitLogin 登录成功后还要拉 /goals 判断是否首跑，
-     若此处提前 <Navigate to={from}> 会抢在判断之前把用户带走 */
-  if (status === 'ready' && !busy) return <Navigate to={from} replace />
-  if (status === 'must-change') return <Navigate to="/force-change-password" replace />
+  /** 切换登录/注册/找回模式并清空提示 */
+  const switchMode = useCallback((m) => {
+    setMode(m)
+    setError('')
+    setNotice('')
+  }, [])
 
-  const switchMode = (m) => { setMode(m); setError(''); setNotice('') }
-
-  const submitLogin = async (e) => {
+  /** 提交登录：成功后按需跳转强制改密或首跑向导 */
+  const submitLogin = useCallback(async (e) => {
     e.preventDefault()
     if (!username.trim() || !password) {
       setError('请输入用户名/邮箱和密码')
@@ -94,7 +111,7 @@ export default function Login() {
     setError('')
     try {
       const r = await login(username.trim(), password)
-      if (r.must_change_password) {
+      if (r?.must_change_password) {
         navigate('/force-change-password', { replace: true })
         return
       }
@@ -111,9 +128,10 @@ export default function Login() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [username, password, login, navigate, from])
 
-  const submitRegister = async (e) => {
+  /** 提交注册：校验邮箱与密码强度后调用注册接口 */
+  const submitRegister = useCallback(async (e) => {
     e.preventDefault()
     const mail = email.trim().toLowerCase()
     if (!EMAIL_RE.test(mail)) { setError('请输入正确的邮箱地址'); return }
@@ -130,9 +148,10 @@ export default function Login() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [email, regPwdOk, regPwd, nickname])
 
-  const submitForgot = async (e) => {
+  /** 提交找回密码：发送重置邮件并切换到"已发送"面板 */
+  const submitForgot = useCallback(async (e) => {
     e.preventDefault()
     const mail = email.trim().toLowerCase()
     if (!EMAIL_RE.test(mail)) { setError('请输入正确的邮箱地址'); return }
@@ -147,9 +166,10 @@ export default function Login() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [email])
 
-  const resendVerification = async () => {
+  /** 重发验证邮件并启动 60s 冷却 */
+  const resendVerification = useCallback(async () => {
     setBusy(true)
     try {
       await authApi.resendVerification(email.trim().toLowerCase())
@@ -160,7 +180,12 @@ export default function Login() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [email])
+
+  /* busy 期间不早退：submitLogin 登录成功后还要拉 /goals 判断是否首跑，
+     若此处提前 <Navigate to={from}> 会抢在判断之前把用户带走 */
+  if (status === 'ready' && !busy) return <Navigate to={from} replace />
+  if (status === 'must-change') return <Navigate to="/force-change-password" replace />
 
   return (
     <div className="v3-login">

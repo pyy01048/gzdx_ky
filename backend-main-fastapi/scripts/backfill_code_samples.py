@@ -3,8 +3,8 @@
 
 既匹配 ```text 代码块，也匹配描述中直接以「输入：」「输出：」开头的普通段落。
 """
-import re
 
+import re
 import sys
 from pathlib import Path
 
@@ -38,8 +38,9 @@ for pid, title, desc in rows:
         if im and om:
             si, so = im.group(1).strip(), om.group(1).strip()
     if si and so:
-        cur.execute("UPDATE code_problems SET sample_input=%s, sample_output=%s, updated_at=now() WHERE id=%s",
-                    (si, so, pid))
+        cur.execute(
+            "UPDATE code_problems SET sample_input=%s, sample_output=%s, updated_at=now() WHERE id=%s", (si, so, pid)
+        )
         updated += 1
     else:
         print("仍无法提取:", pid, title)

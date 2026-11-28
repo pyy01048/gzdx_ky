@@ -10,6 +10,7 @@
     python scripts/clean_draft_marks_all.py
     python scripts/clean_draft_marks_all.py --apply
 """
+
 from __future__ import annotations
 
 import argparse

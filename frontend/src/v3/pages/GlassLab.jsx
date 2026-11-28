@@ -3,7 +3,7 @@
    「液态玻璃」动效演示场：极光底 + 实时可调的毛玻璃面板 + 指针追光/拖拽/翻转交互。
    全部令牌来自 ../styles/tokens.css；调参变量（--gl-*）见 glasslab-v3.css。
    ========================================================================== */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useStore from '../../store/useStore'
 import { useResolvedTheme } from '../../components/UI'
 import { AnimatedNumber, Ring, toast, toastOk } from '../ui'
@@ -22,7 +22,17 @@ const PRESETS = [
 ]
 const SUBJECTS = ['高等数学', '考研英语', '思想政治', '数据结构']
 
-/* 单张追光倾斜卡：指针位置驱动 3D 倾斜与高光 */
+/**
+ * 单张追光倾斜卡：指针位置驱动 3D 倾斜与高光。
+ * @param {object} props 组件属性。
+ * @param {import('react').ComponentType} props.icon 顶部图标组件。
+ * @param {string} props.label 卡片标题。
+ * @param {number} props.value 主数值。
+ * @param {string} [props.unit] 数值单位。
+ * @param {string} [props.foot] 底部说明。
+ * @param {string} [props.tone] 配色变体。
+ * @param {import('react').ReactNode} [props.extra] 额外嵌入内容。
+ */
 function TiltCard({ icon: Icon, label, value, unit, foot, tone = '', extra }) {
   const ref = useRef(null)
   const onMove = useCallback((e) => {
@@ -59,7 +69,11 @@ function TiltCard({ icon: Icon, label, value, unit, foot, tone = '', extra }) {
   )
 }
 
-/* 迷你柱状趋势：填充同排大卡留下的高度，也让「积累」有形 */
+/**
+ * 迷你柱状趋势：填充同排大卡留下的高度，也让「积累」有形。
+ * @param {number[]} [days] 每日数值。
+ * @param {string[]} [labels] 每日标签。
+ */
 function WeekBars({ days = [32, 45, 28, 51, 39, 62, 48], labels = ['一', '二', '三', '四', '五', '六', '日'] }) {
   const max = Math.max(...days, 1)
   return (
@@ -77,6 +91,10 @@ function WeekBars({ days = [32, 45, 28, 51, 39, 62, 48], labels = ['一', '二',
 }
 
 /* ---------------------------------------------------------------- page ---- */
+/**
+ * 毛玻璃交互实验室主页面。
+ * 实时可调的毛玻璃面板 + 指针追光/拖拽/翻转交互，明暗主题即时切换。
+ */
 export default function GlassLab() {
   /* —— 翻转卡状态 —— */
   const [flipped, setFlipped] = useState(false)
@@ -162,6 +180,18 @@ export default function GlassLab() {
     toastOk('已恢复标准玻璃')
   }, [applyPreset])
 
+  const toggleTheme = useCallback(() => {
+    updateSettings({ theme: isDark ? 'light' : 'dark' })
+    toast(isDark ? '已切回浅色，玻璃更透亮' : '已进入暗色，玻璃更深邃')
+  }, [updateSettings, isDark])
+
+  const toggleFlip = useCallback(() => {
+    setFlipped((v) => {
+      if (!v) toast('玻璃背面：参数配方藏在这里')
+      return !v
+    })
+  }, [])
+
   return (
     <section
       className="glab"
@@ -198,7 +228,7 @@ export default function GlassLab() {
           <button
             type="button"
             className="glab-pill"
-            onClick={() => { updateSettings({ theme: isDark ? 'light' : 'dark' }); toast(isDark ? '已切回浅色，玻璃更透亮' : '已进入暗色，玻璃更深邃') }}
+            onClick={toggleTheme}
           >
             {isDark ? <Sun size={15} /> : <Moon size={15} />}
             {isDark ? '浅色玻璃' : '暗色玻璃'}
@@ -390,7 +420,7 @@ export default function GlassLab() {
             type="button"
             className={`glab-glass glab-flip${flipped ? ' is-flipped' : ''}`}
             aria-pressed={flipped}
-            onClick={() => { setFlipped((v) => !v); if (!flipped) toast('玻璃背面：参数配方藏在这里') }}
+            onClick={toggleFlip}
           >
             <span className="glab-flip__face">
               <span className="glab-tilt__icon"><Sparkles size={20} /></span>

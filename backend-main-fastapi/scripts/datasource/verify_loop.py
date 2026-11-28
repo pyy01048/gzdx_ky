@@ -3,6 +3,7 @@
 必须是真实调用：选一道真实题（有答案、有知识点链路），提交错误答案，
 然后核对 error_records / error_knowledge_links / study_events 是否真的写入。
 """
+
 import json
 import sqlite3
 import urllib.request
@@ -13,8 +14,8 @@ DB = r"D:\平台\database\kaoyan.db"
 
 def post(path, body):
     req = urllib.request.Request(
-        API + path, data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"}, method="POST")
+        API + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST"
+    )
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.loads(r.read().decode())
 
@@ -47,8 +48,7 @@ if not q:
 
 qid, subj, qtype, ans, clen = q
 print(f"选用题目 #{qid} [{subj}/{qtype}] 正确答案={ans!r} 题干{clen}字")
-kp = con.execute("select knowledge_point_id from question_knowledge_links "
-                 "where question_id=?", (qid,)).fetchall()
+kp = con.execute("select knowledge_point_id from question_knowledge_links where question_id=?", (qid,)).fetchall()
 print(f"该题的知识点链路: {kp}")
 
 before = snap()
@@ -57,10 +57,15 @@ print("\n提交前:", before)
 # 构造一个必然错误的答案
 wrong = "___WRONG_FOR_TEST___"
 print(f"\n提交错误答案 {wrong!r} ...")
-res = post("/api/quiz/submit", {
-    "question_id": qid, "my_answer": wrong,
-    "mode": "practice", "cost_seconds": 9,
-})
+res = post(
+    "/api/quiz/submit",
+    {
+        "question_id": qid,
+        "my_answer": wrong,
+        "mode": "practice",
+        "cost_seconds": 9,
+    },
+)
 print("响应:", json.dumps(res, ensure_ascii=False))
 
 after = snap()
@@ -73,14 +78,16 @@ for k in before:
     print(f"  {k}: {before[k]} → {after[k]}  (+{d}) {mark}")
 
 # 检查新错题的关联情况
-er = con.execute("select id, question_id, error_reason from error_records "
-                 "order by id desc limit 1").fetchone()
+er = con.execute("select id, question_id, error_reason from error_records order by id desc limit 1").fetchone()
 if er:
-    links = con.execute("select knowledge_point_id, relevance, source "
-                        "from error_knowledge_links where error_id=?", (er[0],)).fetchall()
+    links = con.execute(
+        "select knowledge_point_id, relevance, source from error_knowledge_links where error_id=?", (er[0],)
+    ).fetchall()
     print(f"\n最新错题 #{er[0]} (question#{er[1]}, {er[2]})")
     print(f"  关联知识点: {links if links else '无'}")
 
-ev = con.execute("select id, event_type, subject, is_correct, duration_seconds, occurred_at "
-                 "from study_events order by id desc limit 1").fetchone()
+ev = con.execute(
+    "select id, event_type, subject, is_correct, duration_seconds, occurred_at "
+    "from study_events order by id desc limit 1"
+).fetchone()
 print(f"\n最新埋点: {ev}")

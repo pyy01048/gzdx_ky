@@ -72,9 +72,11 @@ STEM_SIN = "计算 lim(x→0) (sin 2x) / (sin 3x) 的值。"
 
 def _fresh_session():
     """建临时库 + 返回 (session, QuizQuestion, Document, db_path)。"""
-    from models import Document, QuizQuestion
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
+    from models import Document, QuizQuestion
+
     global _ENGINES
 
     fd, path = tempfile.mkstemp(suffix=".db", prefix="dedupe_selftest_")
@@ -88,8 +90,7 @@ def _fresh_session():
     return sessionmaker(bind=engine)(), QuizQuestion, Document, path
 
 
-def _ingest(db, QuizQuestion, content: str, source: str, index, stats,
-            *, answer=None, analysis=None, options=None):
+def _ingest(db, QuizQuestion, content: str, source: str, index, stats, *, answer=None, analysis=None, options=None):
     """模拟一条真实入库路径：判重 → 合并或插入。返回 (decision, row_or_None)。
 
     与 ``routers/documents.py::confirm_questions`` /
@@ -98,8 +99,14 @@ def _ingest(db, QuizQuestion, content: str, source: str, index, stats,
     from services import quiz_dedupe as dd
 
     decision = dd.decide_insert(
-        db, content, source, index,
-        answer=answer, analysis=analysis, options=options, stats=stats,
+        db,
+        content,
+        source,
+        index,
+        answer=answer,
+        analysis=analysis,
+        options=options,
+        stats=stats,
     )
     if decision.is_insert:
         row = QuizQuestion(
@@ -115,8 +122,7 @@ def _ingest(db, QuizQuestion, content: str, source: str, index, stats,
         if stats is not None:
             stats.inserted += 1
         if index is not None:
-            index.add(decision.fingerprint, row.id, source,
-                      text=dd.canonical_text(content))
+            index.add(decision.fingerprint, row.id, source, text=dd.canonical_text(content))
         return decision, row
     return decision, decision.existing
 
@@ -142,22 +148,22 @@ def main() -> int:
         """旧行为：只与 source 含**当前文档名**的行比前100 字。"""
         existing = {
             (q.content or "")[:100]
-            for q in db.query(QuizQuestion)
-            .filter(QuizQuestion.source.like(f"%{file_name}%"))
-            .all()
+            for q in db.query(QuizQuestion).filter(QuizQuestion.source.like(f"%{file_name}%")).all()
         }
         return content[:100] in existing
 
     # 先按旧逻辑把两篇文档各插一条
     for doc, stem in ((doc_a, STEM), (doc_b, STEM_VARIANT_B)):
         if not _legacy_is_dup(stem, doc.file_name):
-            db.add(QuizQuestion(content=stem, source=f"文档提取：{doc.file_name}",
-                                source_ids=[f"文档提取：{doc.file_name}"]))
+            db.add(
+                QuizQuestion(
+                    content=stem, source=f"文档提取：{doc.file_name}", source_ids=[f"文档提取：{doc.file_name}"]
+                )
+            )
     db.commit()
     legacy_count = db.query(QuizQuestion).count()
     print(f"  旧逻辑入库两篇文档后 → 同题共 {legacy_count} 条（重复入库了）")
-    check("旧「来源内去重」拦不住跨来源同题（根因复现）", legacy_count == 2,
-          f"实际 {legacy_count} 条")
+    check("旧「来源内去重」拦不住跨来源同题（根因复现）", legacy_count == 2, f"实际 {legacy_count} 条")
 
     # --- 新逻辑：从干净库开始，验证能拦住 ---
     # 物理删除闸门：这里 db.query(QuizQuestion).delete() 会清空整张题库表。
@@ -174,8 +180,7 @@ def main() -> int:
     new_count = db.query(QuizQuestion).count()
     print(f"  新逻辑同样三份副本 -> action=({r1[0].action}, {r2[0].action}, {r3[0].action})")
     print(f"  新逻辑入库后 → 同题共 {new_count} 条")
-    check("新「跨来源去重」把 3 份副本收敛成 1 条", new_count == 1,
-          f"实际 {new_count} 条")
+    check("新「跨来源去重」把 3 份副本收敛成 1 条", new_count == 1, f"实际 {new_count} 条")
     db.close()
 
     # ---------------- 用例 1：正样本（跨来源同题 → 1 条 + 溯源含多来源） ---------------- #
@@ -184,21 +189,17 @@ def main() -> int:
     index = dd.FingerprintIndex()
     stats = dd.DedupeStats()
 
-    d1, r1 = _ingest(db, QuizQuestion, STEM, "知识库:source_a.pdf",
-                     index, stats, answer="A", analysis="原解析")
+    d1, r1 = _ingest(db, QuizQuestion, STEM, "知识库:source_a.pdf", index, stats, answer="A", analysis="原解析")
     print(f"  入库1 source_a(干净)-> action={d1.action:5s} reason={d1.reason}")
-    d2, _ = _ingest(db, QuizQuestion, STEM_VARIANT_B, "知识库:source_b.pdf",
-                    index, stats, answer="A")
+    d2, _ = _ingest(db, QuizQuestion, STEM_VARIANT_B, "知识库:source_b.pdf", index, stats, answer="A")
     print(f"  入库2 source_b(排版差异) -> action={d2.action:5s} reason={d2.reason}")
-    d3, _ = _ingest(db, QuizQuestion, STEM_VARIANT_C, "知识库:source_c.pdf",
-                    index, stats, answer="A")
+    d3, _ = _ingest(db, QuizQuestion, STEM_VARIANT_C, "知识库:source_c.pdf", index, stats, answer="A")
     print(f"  入库3 source_c(OCR乱码)  -> action={d3.action:5s} reason={d3.reason}")
 
     db.commit()
     rows = db.query(QuizQuestion).all()
     print(f"  → 库中条数 = {len(rows)}")
-    check("三份同题（干净+排版差异+OCR乱码）入库后只剩 1 条",
-          len(rows) == 1, f"实际 {len(rows)} 条")
+    check("三份同题（干净+排版差异+OCR乱码）入库后只剩 1 条", len(rows) == 1, f"实际 {len(rows)} 条")
     if rows:
         raw = rows[0].source_ids
         # source_ids 是 JSON 列：SQLAlchemy 在测试表（无 JSON 类型转换）下
@@ -213,15 +214,13 @@ def main() -> int:
             "知识库:source_b.pdf",
             "知识库:source_c.pdf",
         ]
-        check("溯源恰好含三个来源且无多余项",
-              sorted(srcs) == sorted(expected), f"实际={srcs}")
-        check("溯源含全部三个来源（溯源不丢）",
-              len(srcs) == 3, f"source_ids={srcs}")
-        check("source 字段可读拼接了多来源",
-              bool(rows[0].source) and "|" in rows[0].source, f"source={rows[0].source}")
+        check("溯源恰好含三个来源且无多余项", sorted(srcs) == sorted(expected), f"实际={srcs}")
+        check("溯源含全部三个来源（溯源不丢）", len(srcs) == 3, f"source_ids={srcs}")
+        check("source 字段可读拼接了多来源", bool(rows[0].source) and "|" in rows[0].source, f"source={rows[0].source}")
     print(f"  → 计数上报 {stats.as_dict()}")
-    check("merged=2 且 inserted=1（不静默丢弃，有上报）",
-          stats.merged == 2 and stats.inserted == 1, str(stats.as_dict()))
+    check(
+        "merged=2 且 inserted=1（不静默丢弃，有上报）", stats.merged == 2 and stats.inserted == 1, str(stats.as_dict())
+    )
     db.close()
 
     # ---------------- 用例 2：负样本（相似但不同的题 → 两条都保留） ---------------- #
@@ -252,8 +251,11 @@ def main() -> int:
     db.commit()
     rows = db.query(QuizQuestion).all()
     print(f"  → 两条 'A' 入库后共 {len(rows)} 条（too_short={stats.too_short}）")
-    check("过短题干不判重（宁可留重复也绝不误并）",
-          len(rows) == 2 and stats.too_short == 2, f"条数={len(rows)} too_short={stats.too_short}")
+    check(
+        "过短题干不判重（宁可留重复也绝不误并）",
+        len(rows) == 2 and stats.too_short == 2,
+        f"条数={len(rows)} too_short={stats.too_short}",
+    )
     db.close()
 
     # ---------------- 用例 4：溯源合并时补齐缺失字段 ---------------- #
@@ -262,8 +264,7 @@ def main() -> int:
     index = dd.FingerprintIndex()
     stats = dd.DedupeStats()
     _ingest(db, QuizQuestion, STEM, "知识库:source_a.pdf", index, stats)  # 无答案
-    _ingest(db, QuizQuestion, STEM_VARIANT_B, "知识库:source_b.pdf", index, stats,
-            answer="A", analysis="来自B的解析")
+    _ingest(db, QuizQuestion, STEM_VARIANT_B, "知识库:source_b.pdf", index, stats, answer="A", analysis="来自B的解析")
     db.commit()
     rows = db.query(QuizQuestion).all()
     if rows:
@@ -283,13 +284,15 @@ def main() -> int:
         index = dd.FingerprintIndex()
         stats = dd.DedupeStats()
         o1, _ = _ingest(db, QuizQuestion, STEM, "知识库:source_a.pdf", index, stats)
-        o2, _ = _ingest(db, QuizQuestion, STEM_VARIANT_B, "知识库:source_b.pdf",
-                        index, stats)
+        o2, _ = _ingest(db, QuizQuestion, STEM_VARIANT_B, "知识库:source_b.pdf", index, stats)
         db.commit()
         rows = db.query(QuizQuestion).all()
         print(f"  → 关闭去重后两条同题都插入，共 {len(rows)} 条（旧行为）")
-        check("关闭开关后同题不去重（旧行为回归）",
-              len(rows) == 2 and o1.is_insert and o2.is_insert, f"实际 {len(rows)} 条")
+        check(
+            "关闭开关后同题不去重（旧行为回归）",
+            len(rows) == 2 and o1.is_insert and o2.is_insert,
+            f"实际 {len(rows)} 条",
+        )
         db.close()
     finally:
         if old is None:

@@ -21,6 +21,7 @@
     python scripts/project_healthcheck.py
 退出码 0 = 全通过；1 = 有 FAIL。
 """
+
 from __future__ import annotations
 
 import importlib
@@ -67,8 +68,11 @@ def check_imports() -> None:
                 importlib.import_module(f"{pkg}.{name}")
             except Exception as exc:  # noqa: BLE001
                 failed.append(f"{name}({type(exc).__name__})")
-        check(f"{pkg} 子模块导入", not failed,
-              f"{len(names) - len(failed)}/{len(names)}" + (f" 失败: {failed[:3]}" if failed else ""))
+        check(
+            f"{pkg} 子模块导入",
+            not failed,
+            f"{len(names) - len(failed)}/{len(names)}" + (f" 失败: {failed[:3]}" if failed else ""),
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -137,8 +141,7 @@ def check_test_isolation() -> None:
 
     try:
         src = inspect.getsource(c.db_schema)
-        check("db_schema 调用 apply_schema", "apply_schema" in src,
-              "缺调用会导致 textbooks/notice_alerts 等表缺失")
+        check("db_schema 调用 apply_schema", "apply_schema" in src, "缺调用会导致 textbooks/notice_alerts 等表缺失")
         check("db_schema 调用 create_all 兜底", "create_all" in src)
     except Exception as exc:  # noqa: BLE001
         check("db_schema 可读", False, f"{type(exc).__name__}: {exc}")
@@ -184,9 +187,7 @@ def check_schema_idempotent() -> None:
     # 只统计行首（顶层）DDL；DO $$ 块内的属函数体，不参与判定
     patterns = {
         "CREATE TABLE": re.compile(r"^CREATE\s+TABLE\s+(?!IF\s+NOT\s+EXISTS)", re.M | re.I),
-        "CREATE INDEX": re.compile(
-            r"^CREATE\s+(UNIQUE\s+)?INDEX\s+(?!IF\s+NOT\s+EXISTS)", re.M | re.I
-        ),
+        "CREATE INDEX": re.compile(r"^CREATE\s+(UNIQUE\s+)?INDEX\s+(?!IF\s+NOT\s+EXISTS)", re.M | re.I),
     }
     total_bad = 0
     for label, pat in patterns.items():
@@ -216,8 +217,11 @@ def check_schema_idempotent() -> None:
             if not re.search(rf"DROP\s+TRIGGER\s+IF\s+EXISTS\s+{re.escape(name)}\b", text, re.I):
                 bad_trig.append(f"{os.path.basename(path)}:{name}")
     total_bad += len(bad_trig)
-    check("CREATE TRIGGER 均幂等（DROP 守卫）", not bad_trig,
-          ("缺 DROP 守卫: " + ", ".join(bad_trig[:3])) if bad_trig else "")
+    check(
+        "CREATE TRIGGER 均幂等（DROP 守卫）",
+        not bad_trig,
+        ("缺 DROP 守卫: " + ", ".join(bad_trig[:3])) if bad_trig else "",
+    )
 
     # 分片顺序：094a（加列）必须排在 080/081（视图）之前。
     # 只认真正执行的 ``\ir`` 行，忽略注释里的提及（注释也含文件名，会误判）。
@@ -225,18 +229,13 @@ def check_schema_idempotent() -> None:
         root = fh.read()
     # 只认**非注释行**的 \ir：文件头的清单注释里也列了这些文件名，
     # 直接 find 会命中第 22 行的文档清单而非真实执行位置。
-    exec_lines = [
-        ln for ln in root.splitlines()
-        if ln.lstrip().startswith("\\ir")
-    ]
+    exec_lines = [ln for ln in root.splitlines() if ln.lstrip().startswith("\\ir")]
     exec_text = "\n".join(exec_lines)
     pos_cols = exec_text.find("094a_kp_mastery_columns.sql")
     pos_view = exec_text.find("080_views_and_gates.sql")
     pos_trigger = exec_text.find("093_kp_mastery_compat.sql")
-    check("分片顺序：加列先于视图", 0 <= pos_cols < pos_view,
-          f"094a@{pos_cols} 080@{pos_view}")
-    check("分片顺序：触发器后于视图", 0 <= pos_view < pos_trigger,
-          f"080@{pos_view} 093@{pos_trigger}")
+    check("分片顺序：加列先于视图", 0 <= pos_cols < pos_view, f"094a@{pos_cols} 080@{pos_view}")
+    check("分片顺序：触发器后于视图", 0 <= pos_view < pos_trigger, f"080@{pos_view} 093@{pos_trigger}")
 
     # 分片必须被 \ir 引用（2026-10-18 生产故障复盘）：
     # 8 个分片（audit_logs / kaoyan_schools.enabled / papers.year /
@@ -245,14 +244,15 @@ def check_schema_idempotent() -> None:
     # 接口集体 500，且本地测试库同样缺表——只因没有门禁校验"写了就必须接"。
     # 本检查让"加了分片忘接 \ir"在提交前即失败。
     referenced = {
-        os.path.basename(ln.lstrip()[len("\\ir"):].strip())
-        for ln in exec_lines
-        if ln.lstrip().startswith("\\ir")
+        os.path.basename(ln.lstrip()[len("\\ir") :].strip()) for ln in exec_lines if ln.lstrip().startswith("\\ir")
     }
     on_disk = {os.path.basename(p) for p in files}
     orphans = sorted(on_disk - referenced)
-    check("所有 SQL 分片均被 pg_schema 引用", not orphans,
-          ("漏接 \\ir: " + ", ".join(orphans)) if orphans else f"{len(on_disk)} 个分片全部接入")
+    check(
+        "所有 SQL 分片均被 pg_schema 引用",
+        not orphans,
+        ("漏接 \\ir: " + ", ".join(orphans)) if orphans else f"{len(on_disk)} 个分片全部接入",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -287,9 +287,9 @@ def check_enum_contract() -> None:
 
     # 匹配  col = Column(PgEnumAware("enum_name", ...) ...) / mapped_column(build_enum(...))
     # 只取**本条声明自身**的参数：以右括号为界，避免 default 抓到下一个字段的值
-    #（误报实录：stage 没有默认值，却被判成 default='pending'——那是 status 的）。
+    # （误报实录：stage 没有默认值，却被判成 default='pending'——那是 status 的）。
     decl = re.compile(
-        r'(\w+)\s*=\s*(?:mapped_column|Column)\(\s*'
+        r"(\w+)\s*=\s*(?:mapped_column|Column)\(\s*"
         r'(?:PgEnumAware|build_enum)\(\s*"([a-z_]+)"[^()]*'
     )
     total = 0
@@ -321,17 +321,15 @@ def check_enum_contract() -> None:
                     if depth == 0:
                         break
                 i += 1
-            args = text[open_paren + 1: i]
+            args = text[open_paren + 1 : i]
             d = re.search(r'default\s*=\s*"([^"]+)"', args)
             if not d:
                 continue
             val = d.group(1)
             legal = ENUM_CATALOG.get(enum_name, ())
             if legal and val not in legal:
-                bad.append(f"{label}:{m.group(1)} default={val!r} "
-                           f"但 {enum_name} 合法值={list(legal)}")
-    check("ENUM 列默认值均合法", not bad,
-          f"扫描 {total} 个 ENUM 列" + ("；" + "；".join(bad[:3]) if bad else ""))
+                bad.append(f"{label}:{m.group(1)} default={val!r} 但 {enum_name} 合法值={list(legal)}")
+    check("ENUM 列默认值均合法", not bad, f"扫描 {total} 个 ENUM 列" + ("；" + "；".join(bad[:3]) if bad else ""))
 
 
 # --------------------------------------------------------------------------- #
@@ -368,8 +366,7 @@ def check_no_drive_literals() -> None:
     # 盘符 + 分隔符 + 至少一段路径
     pat = _re.compile(r"""(?<!://)\b[A-Z]:[\\/][^\s'"]*""")
     # docstring/独立字符串语句的前一个有效 token 类型
-    _STMT_HEAD = {None, _tokenize.NEWLINE, _tokenize.INDENT, _tokenize.DEDENT,
-                  _tokenize.ENCODING}
+    _STMT_HEAD = {None, _tokenize.NEWLINE, _tokenize.INDENT, _tokenize.DEDENT, _tokenize.ENCODING}
 
     def _code_literals(path: str) -> list[tuple[int, str]]:
         """只返回**代码里**的字符串字面量（行号, 内容）。
@@ -403,9 +400,11 @@ def check_no_drive_literals() -> None:
     for path in files:
         for lineno, lit in _code_literals(path):
             bad.append(f"{os.path.relpath(path, BACKEND_DIR)}:{lineno} {lit}")
-    check("运行时无盘符字面量路径", not bad,
-          (f"{len(bad)} 处: " + "; ".join(bad[:3])) if bad else
-          f"扫描 {len(files)} 个运行时模块（注释/文档字符串不计）")
+    check(
+        "运行时无盘符字面量路径",
+        not bad,
+        (f"{len(bad)} 处: " + "; ".join(bad[:3])) if bad else f"扫描 {len(files)} 个运行时模块（注释/文档字符串不计）",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -416,8 +415,9 @@ def check_model_drift() -> None:
     # 同名表被两个 Base 各定义一次是**有意设计**（models.py 服务存量路由，
     # core/models 是迁移目标态），但类名拼写分裂会让人误以为是两个东西。
     try:
-        import models as legacy
         from core import pg_models as new
+
+        import models as legacy
     except Exception as exc:  # noqa: BLE001
         check("两套模型可导入", False, f"{type(exc).__name__}: {exc}")
         return
@@ -467,8 +467,7 @@ def check_module_attrs() -> None:
         bad = _scan()
         if bad:
             b = bad[0]
-            check("跨模块常量引用", False,
-                  f"{len(bad)} 处指向不存在的常量，例: {b['file']}:{b['line']} {b['ref']}")
+            check("跨模块常量引用", False, f"{len(bad)} 处指向不存在的常量，例: {b['file']}:{b['line']} {b['ref']}")
         else:
             check("跨模块常量引用", True, "无失效引用")
     except Exception as exc:  # noqa: BLE001
@@ -498,12 +497,10 @@ def check_silent_except() -> None:
             check(
                 "静默异常(HIGH)",
                 False,
-                f"{len(high)} 处无说明的静默 except，例: "
-                f"{first['file']}:{first['line']} {first['except']}",
+                f"{len(high)} 处无说明的静默 except，例: {first['file']}:{first['line']} {first['except']}",
             )
         else:
-            check("静默异常(HIGH)", True,
-                  f"共 {len(items)} 处，全部有说明或已收窄异常类型")
+            check("静默异常(HIGH)", True, f"共 {len(items)} 处，全部有说明或已收窄异常类型")
     except Exception as exc:  # noqa: BLE001
         # 审计工具自身不可用不应让体检整体失败（工具是辅助，不是产品）
         check("静默异常(HIGH)", True, f"审计跳过: {str(exc)[:80]}")

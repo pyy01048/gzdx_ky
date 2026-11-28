@@ -5,6 +5,7 @@
 - AI 辅助选题：当筛选结果多于需求时，调用模型网关让 LLM 从候选池挑选
 - 试卷保存（快照题目内容）与导出（可打印 HTML 讲义）
 """
+
 from __future__ import annotations
 
 import json
@@ -14,9 +15,10 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from models import Paper, PaperQuestion, QuizQuestion
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+from models import Paper, PaperQuestion, QuizQuestion
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +29,25 @@ except Exception:  # 导入兜底，避免循环依赖
 
 # 题型分值默认表（可被 rules 覆盖）
 DEFAULT_SCORES = {
-    "single": 2, "multiple": 4, "judge": 2, "blank": 3,
-    "short_answer": 8, "calculation": 10, "essay": 15, "analysis": 10,
+    "single": 2,
+    "multiple": 4,
+    "judge": 2,
+    "blank": 3,
+    "short_answer": 8,
+    "calculation": 10,
+    "essay": 15,
+    "analysis": 10,
 }
 
 SUBJECT_ALIAS = {
-    "数学": "数学", "数电": "数字电子技术", "数字电子技术": "数字电子技术",
-    "模电": "模拟电子技术", "模拟电子技术": "模拟电子技术",
-    "英语": "英语", "政治": "政治", "408": "408",
+    "数学": "数学",
+    "数电": "数字电子技术",
+    "数字电子技术": "数字电子技术",
+    "模电": "模拟电子技术",
+    "模拟电子技术": "模拟电子技术",
+    "英语": "英语",
+    "政治": "政治",
+    "408": "408",
 }
 
 
@@ -77,6 +90,7 @@ def _query_candidates(db: Session, rules: Dict[str, Any]):
         # knowledge_point 字段是单个标签，先按 OR 匹配
         conds = [QuizQuestion.knowledge_point == k for k in rules["knowledge_points"]]
         from sqlalchemy import or_
+
         q = q.filter(or_(*conds))
     if rules.get("difficulties"):
         q = q.filter(QuizQuestion.difficulty.in_(rules["difficulties"]))
@@ -89,12 +103,14 @@ def _fill_question_type(q: QuizQuestion) -> str:
     return (q.question_type or "single").strip()
 
 
-def _pick_by_counts(cands: List[QuizQuestion], counts: Dict[str, int], types: Optional[List[str]]) -> List[QuizQuestion]:
+def _pick_by_counts(
+    cands: List[QuizQuestion], counts: Dict[str, int], types: Optional[List[str]]
+) -> List[QuizQuestion]:
     """按题型配额挑题：先保证每种题型满足配额，余量从剩余候选随机补充。"""
     picked: List[QuizQuestion] = []
     remain = [q for q in cands]
     type_used: Dict[str, List[QuizQuestion]] = {}
-    total_quota = sum(int(v) for v in counts.values())
+    sum(int(v) for v in counts.values())
 
     if counts:
         for t, quota in counts.items():
@@ -160,7 +176,7 @@ def ai_assist_select(
             }
             for q in sample
         ],
-        "要求": "请从候选题目中挑选最合适的 N 道组成一份试卷，返回 JSON 数组：[\"题目id1\", \"题目id2\", ...]。只返回数组，不要额外解释。",
+        "要求": '请从候选题目中挑选最合适的 N 道组成一份试卷，返回 JSON 数组：["题目id1", "题目id2", ...]。只返回数组，不要额外解释。',
     }
     try:
         res = get_gateway().chat(
@@ -173,7 +189,7 @@ def ai_assist_select(
         text = res.get("answer") or ""
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
         ids = [int(x) for x in re.findall(r"\d+", text)]
-        id_set = {q.id for q in candidates}
+        {q.id for q in candidates}
         ordered = [q for q in candidates if q.id in ids][:target]
         if len(ordered) >= target * 0.6:
             return ordered
@@ -220,17 +236,19 @@ def build_paper(
         qt = _fill_question_type(q)
         score = score_map.get(qt, 5)
         total_score += score
-        items.append({
-            "seq": i,
-            "question_id": q.id,
-            "content": q.content,
-            "options": q.options,
-            "answer": q.answer,
-            "analysis": q.analysis,
-            "question_type": qt,
-            "difficulty": q.difficulty or 3,
-            "score": score,
-        })
+        items.append(
+            {
+                "seq": i,
+                "question_id": q.id,
+                "content": q.content,
+                "options": q.options,
+                "answer": q.answer,
+                "analysis": q.analysis,
+                "question_type": qt,
+                "difficulty": q.difficulty or 3,
+                "score": score,
+            }
+        )
     return {
         "ok": True,
         "title": title,
@@ -240,8 +258,14 @@ def build_paper(
     }
 
 
-def save_paper(db: Session, title: str, subject: Optional[str], description: Optional[str],
-               rules: Dict[str, Any], items: List[Dict[str, Any]]) -> Paper:
+def save_paper(
+    db: Session,
+    title: str,
+    subject: Optional[str],
+    description: Optional[str],
+    rules: Dict[str, Any],
+    items: List[Dict[str, Any]],
+) -> Paper:
     paper = Paper(
         title=title,
         subject=normalize_subject(subject),
@@ -252,18 +276,20 @@ def save_paper(db: Session, title: str, subject: Optional[str], description: Opt
     db.add(paper)
     db.flush()
     for it in items:
-        db.add(PaperQuestion(
-            paper_id=paper.id,
-            question_id=it.get("question_id"),
-            seq=it.get("seq") or 0,
-            content=it.get("content") or "",
-            options=it.get("options"),
-            answer=it.get("answer"),
-            analysis=it.get("analysis"),
-            question_type=it.get("question_type"),
-            difficulty=it.get("difficulty") or 3,
-            score=it.get("score") or 5,
-        ))
+        db.add(
+            PaperQuestion(
+                paper_id=paper.id,
+                question_id=it.get("question_id"),
+                seq=it.get("seq") or 0,
+                content=it.get("content") or "",
+                options=it.get("options"),
+                answer=it.get("answer"),
+                analysis=it.get("analysis"),
+                question_type=it.get("question_type"),
+                difficulty=it.get("difficulty") or 3,
+                score=it.get("score") or 5,
+            )
+        )
     db.commit()
     db.refresh(paper)
     return paper
@@ -297,16 +323,18 @@ def paper_to_lecture_html(paper: Paper, questions: List[PaperQuestion], base_dir
 </head>
 <body>
 <h1>{paper.title}</h1>
-<div class="meta">科目：{paper.subject or '综合'} ｜ 总分：{paper.total_score} ｜ 共 {len(questions)} 题 ｜ 生成：{now.strftime("%Y-%m-%d %H:%M")}</div>
+<div class="meta">科目：{paper.subject or "综合"} ｜ 总分：{paper.total_score} ｜ 共 {len(questions)} 题 ｜ 生成：{now.strftime("%Y-%m-%d %H:%M")}</div>
 """
     for q in questions:
         opts_html = ""
         if q.options:
-            opts_html = '<div class="opts">' + "".join(
-                f"<div>{chr(65 + i)}. {o}</div>" for i, o in enumerate(q.options)
-            ) + "</div>"
+            opts_html = (
+                '<div class="opts">'
+                + "".join(f"<div>{chr(65 + i)}. {o}</div>" for i, o in enumerate(q.options))
+                + "</div>"
+            )
         ans = f'<div class="ans"><b>答案：</b>{q.answer or "—"}　<b>分值：</b>{q.score}分</div>'
-        html += f"""<div class="q"><div class="head">{q.seq}. 【{q.question_type or 'single'}·难度{q.difficulty or 3}】{q.content}</div>{opts_html}{ans}</div>\n"""
+        html += f"""<div class="q"><div class="head">{q.seq}. 【{q.question_type or "single"}·难度{q.difficulty or 3}】{q.content}</div>{opts_html}{ans}</div>\n"""
     html += """<div class="footer">由贵大834考研备考系统 · 组题网生成</div>
 </body>
 </html>"""

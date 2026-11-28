@@ -7,6 +7,7 @@
 
 本文件不连库、不建表（conftest 的临时库夹具一律不用），必须保持毫秒级。
 """
+
 from __future__ import annotations
 
 
@@ -14,11 +15,14 @@ def test_decode_subjects_strips_codes_and_parenthetical_noise():
     """库内 exam_subjects 的真实格式：' | ' 拼接、(301) 代码前缀、数学（一）括注、JSON 数组。"""
     from services.major_coverage import decode_subjects
 
-    assert decode_subjects('["思想政治理论", "英语一", "数学一", "专业课"]') == \
-        ["思想政治理论", "英语一", "数学一", "专业课"]
+    assert decode_subjects('["思想政治理论", "英语一", "数学一", "专业课"]') == [
+        "思想政治理论",
+        "英语一",
+        "数学一",
+        "专业课",
+    ]
     # 真库样例（2026-10-13 实测）：代码和罗马数字括注都要剥掉
-    assert decode_subjects("(302)数学（二） | (204)英语（二） | (857)电子技术基础") == \
-        ["数学", "英语", "电子技术基础"]
+    assert decode_subjects("(302)数学（二） | (204)英语（二） | (857)电子技术基础") == ["数学", "英语", "电子技术基础"]
     assert decode_subjects("专业课（含有机化学）") == ["专业课"]
     assert decode_subjects(None) == []
     # 原生带空格的学科名要归一（supply 侧同样 _norm）
@@ -29,8 +33,10 @@ def test_professional_subject_skips_public_courses():
     """公共课人人必考，拿它匹配覆盖率会虚高到 98%，等于没信息量。"""
     from services.major_coverage import decode_subjects, professional_subject
 
-    assert professional_subject(decode_subjects(
-        "(301)数学（一） | (201)英语（一） | (802)通信类专业综合")) == "通信类专业综合"
+    assert (
+        professional_subject(decode_subjects("(301)数学（一） | (201)英语（一） | (802)通信类专业综合"))
+        == "通信类专业综合"
+    )
     # 全是公共课 → None（该专业不进覆盖率分母）
     assert professional_subject(["数学一", "政治", "英语二"]) is None
     assert professional_subject([]) is None
@@ -45,8 +51,7 @@ def test_professional_subject_rejects_public_variants():
     """
     from services.major_coverage import decode_subjects, is_public_subject, professional_subject
 
-    assert professional_subject(decode_subjects(
-        "(302)数学（二） | (857)电子技术基础")) == "电子技术基础"
+    assert professional_subject(decode_subjects("(302)数学（二） | (857)电子技术基础")) == "电子技术基础"
     assert professional_subject(["自命题数学一", "电子技术基础"]) == "电子技术基础"
     assert professional_subject(["英语或日语", "电路"]) == "电路"
     assert professional_subject(["自命题数学一"]) is None
@@ -66,7 +71,7 @@ def test_coverage_state_boundaries():
     from services.major_coverage import MIN_DOCUMENTS, coverage_state
 
     assert coverage_state(MIN_DOCUMENTS, 1) == "covered"
-    assert coverage_state(MIN_DOCUMENTS, 0) == "unindexed"   # 数模电：186 篇 0 块
+    assert coverage_state(MIN_DOCUMENTS, 0) == "unindexed"  # 数模电：186 篇 0 块
     assert coverage_state(MIN_DOCUMENTS - 1, 500) == "thin"  # 文档数不足，块再多也偏薄
     assert coverage_state(0, 0) == "uncovered"
 
@@ -92,16 +97,19 @@ def test_matched_rate_is_not_coverage_rate():
     from services.major_coverage import _lookup, coverage_state
 
     supply = {
-        "数模电": {"documents": 186, "chunks": 0},      # 命中但无可检索语料
+        "数模电": {"documents": 186, "chunks": 0},  # 命中但无可检索语料
         "数字电子技术": {"documents": 611, "chunks": 6595},
-        "通信原理": {"documents": 4, "chunks": 6},      # 命中但偏薄
+        "通信原理": {"documents": 4, "chunks": 6},  # 命中但偏薄
     }
     majors = ["数模电", "数字电子技术", "通信原理", "半导体物理"]
 
     matched = sum(1 for ps in majors if _lookup(ps, supply))
-    covered = sum(1 for ps in majors
-                  if coverage_state(int(_lookup(ps, supply).get("documents") or 0),
-                                    int(_lookup(ps, supply).get("chunks") or 0)) == "covered")
-    assert matched == 3            # 命中率 3/4
-    assert covered == 1            # covered 只有 1/4
-    assert covered < matched       # 任何报表都必须区分这两者
+    covered = sum(
+        1
+        for ps in majors
+        if coverage_state(int(_lookup(ps, supply).get("documents") or 0), int(_lookup(ps, supply).get("chunks") or 0))
+        == "covered"
+    )
+    assert matched == 3  # 命中率 3/4
+    assert covered == 1  # covered 只有 1/4
+    assert covered < matched  # 任何报表都必须区分这两者

@@ -20,6 +20,7 @@
 - ``classify_batch_v2(questions, db)``：批量（一次 embedding），返回每题决策字典。
 - ``autoclassify_v2(questions, db, use_llm)``：就地补全字段 + 返回统计，供导入入口调用。
 """
+
 from __future__ import annotations
 
 import json
@@ -36,11 +37,11 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 # 阈值（可调，评测脚本会扫这些值定位 99% 落点）
 # --------------------------------------------------------------------------- #
-SUBJECT_AUTO_THRESH = 0.90   # 科目置信 ≥ 此值才自动入库（主判据；实测自动集精度 ~98%，
-                             # 残差主要为库内标签噪声——详见 scripts/_diag_real_sweep.py）
-TYPE_AUTO_THRESH = 0.80      # 题型置信 ≥ 此值才自动入库
-LLM_TRIGGER_CONF = 0.60      # 两路都低于此值或分歧时，触发 LLM 兜底
-LLM_BUDGET_S = 45.0          # LLM 兜底单批时间预算（超时静默降级）
+SUBJECT_AUTO_THRESH = 0.90  # 科目置信 ≥ 此值才自动入库（主判据；实测自动集精度 ~98%，
+# 残差主要为库内标签噪声——详见 scripts/_diag_real_sweep.py）
+TYPE_AUTO_THRESH = 0.80  # 题型置信 ≥ 此值才自动入库
+LLM_TRIGGER_CONF = 0.60  # 两路都低于此值或分歧时，触发 LLM 兜底
+LLM_BUDGET_S = 45.0  # LLM 兜底单批时间预算（超时静默降级）
 
 # 合法题型集合（约束 LLM 输出，禁止幻觉）
 VALID_TYPES = {"single", "multiple", "judge", "fill", "calc", "essay", "draw"}
@@ -65,14 +66,16 @@ _CHOICE_OPT_RE = re.compile(r"^[A-D][\.、．\)]", re.M)
 @dataclass
 class FieldDecision:
     """单个字段的分类决策。"""
+
     value: str = ""
     confidence: float = 0.0
-    source: str = "none"   # none/keyword/vector/fusion/llm/disagree
+    source: str = "none"  # none/keyword/vector/fusion/llm/disagree
 
 
 @dataclass
 class QuestionDecision:
     """单题的完整分类决策。"""
+
     subject: FieldDecision = field(default_factory=FieldDecision)
     question_type: FieldDecision = field(default_factory=FieldDecision)
     knowledge_point: FieldDecision = field(default_factory=FieldDecision)
@@ -122,9 +125,9 @@ def _keyword_decision(text: str) -> FieldDecision:
     second = ranked[1][1] if len(ranked) > 1 else 0
     dominance = (best_hits - second) / best_hits if best_hits else 0.0
     if best_hits >= 2:
-        conf = round(0.50 + 0.45 * dominance, 4)   # 2 命中且压倒 → 0.95
+        conf = round(0.50 + 0.45 * dominance, 4)  # 2 命中且压倒 → 0.95
     else:
-        conf = 0.35                                  # 单命中，弱信号
+        conf = 0.35  # 单命中，弱信号
     return FieldDecision(best_subj, conf, "keyword")
 
 
@@ -139,6 +142,7 @@ def _load_vector_assets(db):
     """
     try:
         from services.chunk_classifier import encode_texts
+
         if db is None:
             return None, None
         centroids = _load_quiz_centroids(db)
@@ -158,12 +162,13 @@ def _load_quiz_centroids(db) -> Dict[str, np.ndarray]:
     一并传入，导致向量路整批静默失效、小科目全判空）。
     """
     from sqlalchemy import text
+
     global _QUIZ_CENTROID_LOADED
     if _QUIZ_CENTROID_LOADED:
         return {k: v for k, v in _QUIZ_CENTROID_CACHE.items()}
-    rows = db.execute(text(
-        "SELECT subject, dim, vector FROM quiz_subject_centroids")).fetchall()
+    rows = db.execute(text("SELECT subject, dim, vector FROM quiz_subject_centroids")).fetchall()
     import numpy as _np
+
     for subject, dim, vec in rows:
         if vec is None:
             continue
@@ -188,6 +193,7 @@ _SIB_GAP_MIN = 0.06
 def _cosine_scores(emb, centroids) -> Dict[str, float]:
     """逐科目原始余弦相似度（L2 归一后点积）。"""
     import numpy as _np
+
     q = emb / max(float(_np.linalg.norm(emb)), 1e-9)
     out: Dict[str, float] = {}
     for s, c in centroids.items():
@@ -214,8 +220,7 @@ def _vector_decision(text: str, embed_func, centroids) -> FieldDecision:
         # （softmax 概率最大仅 ~0.4，无法直接做闸门，故改用原始余弦+边距校准。）
         conf = round(float(min(0.98, max(0.0, 0.30 + 1.0 * (best_c - 0.60) + 2.5 * margin))), 4)
         # 兄弟科贴身肉搏：第二恰为其兄弟科且间隙小 → 压低置信，强制进复核
-        if (best_subj in _SIB_PAIR and second_subj in _SIB_PAIR
-                and (best_c - second_c) < _SIB_GAP_MIN):
+        if best_subj in _SIB_PAIR and second_subj in _SIB_PAIR and (best_c - second_c) < _SIB_GAP_MIN:
             conf = min(conf, 0.60)
         return FieldDecision(best_subj, conf, "vector")
     except Exception as e:  # noqa: BLE001
@@ -262,6 +267,7 @@ def _llm_subject_decision(text: str, candidates: List[str]) -> Optional[FieldDec
 def _subject_candidates_list() -> List[str]:
     try:
         from services.chunk_classifier import subject_candidates
+
         return list(subject_candidates())
     except Exception:  # noqa: BLE001
         return [s for s, _ in _SUBJECT_RULES]
@@ -379,8 +385,7 @@ def decide_question(
     use_llm: bool = True,
 ) -> QuestionDecision:
     d = QuestionDecision()
-    d.subject = classify_subject_v2(
-        content or "", embed_func=embed_func, protos=protos, db=db, use_llm=use_llm)
+    d.subject = classify_subject_v2(content or "", embed_func=embed_func, protos=protos, db=db, use_llm=use_llm)
     d.question_type = classify_type_v2(content, options)
     d.knowledge_point = classify_kp_v2(d.subject.value, content or "")
 
@@ -392,11 +397,9 @@ def decide_question(
 
     # 整体置信度：取科目与题型置信的调和下限（任一低都拉低）
     if d.subject.confidence and d.question_type.confidence:
-        d.classify_confidence = round(
-            min(d.subject.confidence, d.question_type.confidence), 4)
+        d.classify_confidence = round(min(d.subject.confidence, d.question_type.confidence), 4)
     else:
-        d.classify_confidence = round(
-            max(d.subject.confidence, d.question_type.confidence), 4)
+        d.classify_confidence = round(max(d.subject.confidence, d.question_type.confidence), 4)
 
     if d.needs_review:
         d.reason = (
@@ -425,15 +428,14 @@ def classify_batch_v2(
             decisions: List[QuestionDecision] = []
             for i, q in enumerate(questions):
                 d = decide_question(
-                    q.get("content") or "", q.get("options"),
-                    embed_func=None, protos=None, db=db, use_llm=use_llm)
+                    q.get("content") or "", q.get("options"), embed_func=None, protos=None, db=db, use_llm=use_llm
+                )
                 # 用批量向量结果覆盖（避免 decide 内部再编一次）
                 if embs is not None and len(embs) > i:
                     vec = _vector_decision_from_embedding(embs[i], protos)
                     # 重新融合科目（用向量结果 + 关键词）
                     kw = _keyword_decision(q.get("content") or "")
-                    d.subject = _fuse_subject(kw, vec, use_llm=use_llm,
-                                             text=q.get("content") or "", db=db)
+                    d.subject = _fuse_subject(kw, vec, use_llm=use_llm, text=q.get("content") or "", db=db)
                 d.question_type = classify_type_v2(q.get("content"), q.get("options"))
                 d.knowledge_point = classify_kp_v2(d.subject.value, q.get("content") or "")
                 _finalize(d)
@@ -443,8 +445,9 @@ def classify_batch_v2(
             logger.info("[quiz_cls_v2] 批量向量失败，退回逐题: %s", e)
 
     return [
-        decide_question(q.get("content") or "", q.get("options"),
-                       embed_func=embed_func, protos=protos, db=db, use_llm=use_llm)
+        decide_question(
+            q.get("content") or "", q.get("options"), embed_func=embed_func, protos=protos, db=db, use_llm=use_llm
+        )
         for q in questions
     ]
 
@@ -459,8 +462,7 @@ def _vector_decision_from_embedding(emb, protos) -> FieldDecision:
         second_subj, second_c = ranked[1] if len(ranked) > 1 else (None, 0.0)
         margin = best_c - second_c
         conf = round(float(min(0.98, max(0.0, 0.30 + 1.0 * (best_c - 0.60) + 2.5 * margin))), 4)
-        if (best_subj in _SIB_PAIR and second_subj in _SIB_PAIR
-                and (best_c - second_c) < _SIB_GAP_MIN):
+        if best_subj in _SIB_PAIR and second_subj in _SIB_PAIR and (best_c - second_c) < _SIB_GAP_MIN:
             conf = min(conf, 0.60)
         return FieldDecision(best_subj, conf, "vector")
     except Exception:  # noqa: BLE001
@@ -503,8 +505,10 @@ def _finalize(d: QuestionDecision) -> None:
     else:
         d.classify_confidence = round(max(d.subject.confidence, d.question_type.confidence), 4)
     if d.needs_review:
-        d.reason = (f"科目({d.subject.source}={d.subject.confidence:.2f})"
-                    f"/题型({d.question_type.source}={d.question_type.confidence:.2f}) 未达自动入库阈值")
+        d.reason = (
+            f"科目({d.subject.source}={d.subject.confidence:.2f})"
+            f"/题型({d.question_type.source}={d.question_type.confidence:.2f}) 未达自动入库阈值"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -526,7 +530,7 @@ def autoclassify_v2(
     decisions = classify_batch_v2(questions, db=db, use_llm=use_llm)
     auto = review = 0
     by_source: Dict[str, int] = {}
-    for q, dec in zip(questions, decisions):
+    for q, dec in zip(questions, decisions, strict=False):
         # 仅补全 *缺* 字段：若调用方已显式给了科目/题型，尊重其输入（人工/来源已知）
         if not q.get("subject") and dec.subject.value:
             q["subject"] = dec.subject.value

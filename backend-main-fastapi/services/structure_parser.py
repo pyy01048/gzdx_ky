@@ -185,7 +185,7 @@ def assign_structure(text: str, structure: dict[str, Any], chunks: list[str]) ->
             continue
         found = text.find(probe, cursor)
         if found < 0:
-            found = text.find(probe)          # 回退全量搜索
+            found = text.find(probe)  # 回退全量搜索
         if found < 0:
             result.append(None)
             continue
@@ -213,15 +213,21 @@ def extract_knowledge_points(
         for sec in sections:
             title = sec["title"]
             # 去掉编号前缀
-            name = re.sub(r"^\s*(第\s*[0-9一二三四五六七八九十]+\s*节|[0-9]{1,2}\.[0-9]{1,2}|[一二三四五六七八九十]+[、.])\s*", "", title).strip()
+            name = re.sub(
+                r"^\s*(第\s*[0-9一二三四五六七八九十]+\s*节|[0-9]{1,2}\.[0-9]{1,2}|[一二三四五六七八九十]+[、.])\s*",
+                "",
+                title,
+            ).strip()
             if not name or len(name) < 2:
                 continue
-            kps.append({
-                "name": name,
-                "chapter": ch["title"],
-                "subject": std,
-                "question_types": _types_for(name, std),
-            })
+            kps.append(
+                {
+                    "name": name,
+                    "chapter": ch["title"],
+                    "subject": std,
+                    "question_types": _types_for(name, std),
+                }
+            )
     return kps
 
 

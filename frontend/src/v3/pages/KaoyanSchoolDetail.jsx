@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import {
   SCORE_FIELDS, examSubjects, resolveSourceType,
@@ -270,12 +270,18 @@ const SOURCE_META = {
   未验证: { label: '来源未核验', cls: 'is-unverified', tone: undefined },
 }
 
-function sourceMeta(source) {
-  return SOURCE_META[resolveSourceType(source)] || SOURCE_META['未验证']
+function sourceMeta(source, sourceType) {
+  return SOURCE_META[resolveSourceType(source, sourceType)] || SOURCE_META['未验证']
 }
 
-function SourceDot({ source }) {
-  const meta = sourceMeta(source)
+function sourceTypeSummary(rows) {
+  const labels = { 官方: '官方来源', 聚合: '聚合来源', 未验证: '来源未核验' }
+  const types = [...new Set(rows.map((row) => resolveSourceType(row.data_source, row.source_type)))]
+  return types.length ? types.map((type) => labels[type]).join(' / ') : '来源未核验'
+}
+
+function SourceDot({ source, sourceType }) {
+  const meta = sourceMeta(source, sourceType)
   return (
     <span
       className={cx('kyv3-src-dot', meta.cls)}
@@ -311,6 +317,11 @@ function useThemeMode() {
 
 export default function KaoyanSchoolDetail() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
+  const subjectCode = searchParams.get('subject_code') || null
+  const scopeParams = subjectCode ? { subject_code: subjectCode } : undefined
+  const schoolsPath = subjectCode ? `/kaoyan/schools?subject_code=${encodeURIComponent(subjectCode)}` : '/kaoyan/schools'
+  const scopeLabel = subjectCode?.length === 2 ? `${subjectCode} 门类口径` : `${subjectCode} 专业口径`
   const navigate = useNavigate()
   const { isAdmin } = useAuth()
   const [school, setSchool] = useState(null)
@@ -366,36 +377,37 @@ export default function KaoyanSchoolDetail() {
     setTab('overview')
 
     /* 基础信息单独请求：1.7KB 先到先渲染 hero，不必等 200KB 的 scores。 */
-    kaoyanApi.schoolDetail(id)
+    kaoyanApi.schoolDetail(id, scopeParams)
       .then((detail) => { if (alive) setSchool(detail || null) })
       .catch((e) => {
         if (!alive) return
         setLoadError({ status: e?.status || 0, message: e?.message || '院校详情加载失败' })
       })
 
-    /* 次要数据失败只保留空态，不打断已经可用的 hero。 */
-    Promise.all([
-      kaoyanApi.schoolMajors(id),
-      kaoyanApi.schoolScores(id),
-      kaoyanApi.schoolAdmissions(id),
-    ]).then(([majorRows, scoreRows, admissionRows]) => {
+    /* 次要数据分别落地：一项失败不清空其他接口已经返回的数据。 */
+    Promise.allSettled([
+      kaoyanApi.schoolMajors(id, scopeParams),
+      kaoyanApi.schoolScores(id, scopeParams),
+      kaoyanApi.schoolAdmissions(id, scopeParams),
+    ]).then(([majorResult, scoreResult, admissionResult]) => {
       if (!alive) return
-      setMajors(Array.isArray(majorRows) ? majorRows : [])
-      setScores(Array.isArray(scoreRows) ? scoreRows : [])
-      setAdmissions(dedupeAdmissionRows(Array.isArray(admissionRows) ? admissionRows : []))
-      setScoreYear(Array.isArray(scoreRows) && scoreRows.length
-        ? Math.max(...scoreRows.map((x) => Number(x.year) || 0))
-        : null)
-    }).catch(() => {
-      if (!alive) return
-      setMajors([])
-      setScores([])
-      setAdmissions([])
-      setScoreYear(null)
-      setDataError(true)
+      if (majorResult.status === 'fulfilled') {
+        setMajors(Array.isArray(majorResult.value) ? majorResult.value : [])
+      }
+      if (scoreResult.status === 'fulfilled') {
+        const scoreRows = Array.isArray(scoreResult.value) ? scoreResult.value : []
+        setScores(scoreRows)
+        setScoreYear(scoreRows.length
+          ? Math.max(...scoreRows.map((x) => Number(x.year) || 0))
+          : null)
+      }
+      if (admissionResult.status === 'fulfilled') {
+        setAdmissions(dedupeAdmissionRows(Array.isArray(admissionResult.value) ? admissionResult.value : []))
+      }
+      setDataError([majorResult, scoreResult, admissionResult].some((item) => item.status === 'rejected'))
     })
 
-    kaoyanApi.schoolEnrollmentPlan(id)
+    kaoyanApi.schoolEnrollmentPlan(id, scopeParams)
       .then((plan) => { if (alive) setEnrollPlan(plan || null) })
       .catch(() => { if (alive) setEnrollPlan(null) })
 
@@ -407,12 +419,12 @@ export default function KaoyanSchoolDetail() {
       .then((rows) => { if (alive) setReforms(Array.isArray(rows) ? rows : []) })
       .catch(() => { if (alive) setReforms([]) })
 
-    kaoyanApi.scoreDetail(id)
+    kaoyanApi.scoreDetail(id, scopeParams)
       .then((data) => { if (alive) setInsight(data || null) })
       .catch(() => { if (alive) setInsight(null) })
 
     return () => { alive = false }
-  }, [id, reloadKey])
+  }, [id, subjectCode, reloadKey])
 
   /* 逐人录取明细只服务「招生数据」标签页：用户打开该页时才拉取，避免详情页
      每次多打一个 200 行的请求（后端上限 200）。 */
@@ -421,7 +433,7 @@ export default function KaoyanSchoolDetail() {
     let alive = true
     setAdmDetailsLoading(true)
     setAdmDetailsError(false)
-    kaoyanApi.schoolAdmissionDetails(id, { limit: 200 })
+    kaoyanApi.schoolAdmissionDetails(id, { limit: 200, ...scopeParams })
       .then((rows) => {
         if (!alive) return
         setAdmissionDetails(Array.isArray(rows) ? rows : [])
@@ -435,7 +447,7 @@ export default function KaoyanSchoolDetail() {
       })
       .finally(() => { if (alive) setAdmDetailsLoading(false) })
     return () => { alive = false }
-  }, [tab, id, admDetailsLoaded, reloadKey])
+  }, [tab, id, subjectCode, admDetailsLoaded, reloadKey])
 
   const scoreYears = useMemo(
     () => Array.from(new Set(scores.map((s) => s.year))).filter((y) => y != null).sort((a, b) => b - a),
@@ -595,6 +607,7 @@ export default function KaoyanSchoolDetail() {
 
   /* V14: 最新年份拟录取分数分布（逐人分数直方图） */
   const hist = useMemo(() => scoreHistogram(admissionDetails), [admissionDetails])
+  const detailSourceText = sourceTypeSummary(admissionDetails)
   const histOption = useMemo(() => {
     if (!hist) return null
     const t = chartTheme(isDark)
@@ -637,7 +650,7 @@ export default function KaoyanSchoolDetail() {
     if (!loadError) {
       return (
         <div className="kyv3-page">
-          <Link to="/kaoyan/schools" className="kyv3-back"><ChevronLeft size={14} /> 返回院校库</Link>
+          <Link to={schoolsPath} className="kyv3-back"><ChevronLeft size={14} /> 返回院校库</Link>
           <Card className="kyv3-hero-card">
             <div className="kyv3-hero-top">
               <Skeleton width={66} height={66} radius={20} />
@@ -660,7 +673,7 @@ export default function KaoyanSchoolDetail() {
     const notFound = loadError.status === 404
     return (
       <div className="kyv3-page">
-        <Link to="/kaoyan/schools" className="kyv3-back"><ChevronLeft size={14} /> 返回院校库</Link>
+        <Link to={schoolsPath} className="kyv3-back"><ChevronLeft size={14} /> 返回院校库</Link>
         <Card>
           <Empty
             icon={notFound ? <School size={26} /> : <AlertCircle size={26} />}
@@ -670,7 +683,7 @@ export default function KaoyanSchoolDetail() {
               : loadError.message}
             action={(
               <div className="v3-row">
-                <Link className="v3-btn v3-btn--tonal" to="/kaoyan/schools">返回院校库</Link>
+                <Link className="v3-btn v3-btn--tonal" to={schoolsPath}>返回院校库</Link>
                 {!notFound ? (
                   <Button variant="text" icon={<RefreshCw size={14} />} onClick={() => setReloadKey((k) => k + 1)}>
                     重试
@@ -687,7 +700,8 @@ export default function KaoyanSchoolDetail() {
   const isFav = !!favs[school.id]
   const isCompared = cmpIds.some((x) => String(x) === String(school.id))
   const heroTags = normalizeTags(school.tags).filter((tag, i, arr) => arr.indexOf(tag) === i).slice(0, 8)
-  const has0854 = majors.some((m) => String(m.subject_code || '').startsWith('0854'))
+  const has0854 = majors.some((m) => String(m.major_code || m.code || '').startsWith('0854'))
+  const majorScope = school?.metric_scope === 'major' || Boolean(subjectCode)
   const coverageItems = Array.isArray(school.coverage_items) ? school.coverage_items : []
   const noticeTypes = school.notice_types && typeof school.notice_types === 'object'
     ? Object.entries(school.notice_types)
@@ -746,17 +760,17 @@ export default function KaoyanSchoolDetail() {
       .finally(() => setCrawling(false))
   }
 
-  // 0 在这类聚合里等同「未采集」，直接展示 0 会误导；统一显示占位符
-  const nz = (v) => (v == null || v === '' || Number(v) === 0 ? '—' : v)
+  const nz = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? '—' : v)
   const scoreStats = [
     { label: '学院数', value: nz(school.college_count) },
-    { label: '专业方向', value: nz(school.major_count) },
+    { label: '专业', value: nz(school.major_count) },
+    { label: '方向', value: nz(school.direction_count) },
     { label: `进复试${school.year ? `(${school.year})` : ''}`, value: nz(school.retest_count) },
     { label: '拟录取', value: nz(school.admit_count) },
     { label: '复录比', value: school.retest_ratio, tone: 'warn' },
     { label: '录取均分', value: school.admit_avg_score, tone: 'danger' },
     { label: '专业课均分', value: school.major_avg_score, tone: 'success' },
-    { label: '热度', value: nz(school.heat) },
+    ...(!majorScope ? [{ label: '热度', value: nz(school.heat) }] : []),
   ]
 
   const factRows = [
@@ -809,7 +823,7 @@ export default function KaoyanSchoolDetail() {
 
   return (
     <div className="kyv3-page">
-      <Link to="/kaoyan/schools" className="kyv3-back"><ChevronLeft size={14} /> 返回院校库</Link>
+      <Link to={schoolsPath} className="kyv3-back"><ChevronLeft size={14} /> 返回院校库</Link>
 
       <Card className={cx('kyv3-hero-card', school.cover_url && coverOk && 'has-cover')}>
         {school.cover_url && coverOk ? (
@@ -887,6 +901,12 @@ export default function KaoyanSchoolDetail() {
           {scoreStats.map((s) => <HeroStat key={s.label} label={s.label} value={s.value} tone={s.tone} />)}
         </div>
       </Card>
+
+      {majorScope ? (
+        <Alert tone="primary" icon={<InfoCircle size={18} />} className="kyv3-scope-alert">
+          当前为 <strong>{scopeLabel}</strong>：统计、历年分数和招生数据仅包含该范围，不混入全校指标。
+        </Alert>
+      ) : null}
 
       {reforms.length > 0 ? (
         <Alert tone="danger" icon={<AlertTriangle size={18} />} className="kyv3-reform-alert">
@@ -1178,6 +1198,14 @@ export default function KaoyanSchoolDetail() {
                     <h3>{selMajor.name}</h3>
                     <code>{selMajor.code || '—'}</code>
                     {selMajor.degree_type ? <Badge>{selMajor.degree_type}</Badge> : null}
+                    {String(selMajor.subject_code || '').startsWith('08') ? (
+                      <Link
+                        className="v3-btn v3-btn--ghost v3-btn--sm"
+                        to={`/kaoyan/majors/${selMajor.id}?school_id=${school.id}&major_id=${selMajor.id}`}
+                      >
+                        专业详情与资源 <ArrowRight size={14} aria-hidden="true" />
+                      </Link>
+                    ) : null}
                     {planItem?.enroll_count != null ? (
                       <Badge tone="primary">拟招 {planItem.enroll_count} 人</Badge>
                     ) : null}
@@ -1245,14 +1273,14 @@ export default function KaoyanSchoolDetail() {
           <CardHead
             icon={<FileText size={17} />}
             title={`历年分数${scores.length ? `（${scores.length}）` : ''}`}
-            sub="数据来源：掌上考研（聚合）。总分为该专业复试（院）线，红色 ↗N 为高于国家线的分差 · 区间趋势图见「院校概况」"
+            sub={`数据来源：${sourceTypeSummary(scores)}。总分为该专业复试（院）线，红色 ↗N 为高于国家线的分差 · 区间趋势图见「院校概况」`}
           />
 
           {scores.length === 0 ? (
             <Empty
               icon={<BarChart3 size={26} />}
               title="暂无分数线数据"
-              text="掌上考研暂未收录该校复试线，或该校暂未公布。"
+              text="暂未收到该校官方或已收录来源的复试线，暂未公布不代表没有数据。"
             />
           ) : (
             <>
@@ -1272,7 +1300,7 @@ export default function KaoyanSchoolDetail() {
                 <table className="v3-table">
                   <thead>
                     <tr>
-                      {['名称', '代码', '招生院系', ...SCORE_FIELDS.map((f) => f.label), '备注'].map((h) => (
+                      {['名称', '代码', '招生院系', ...SCORE_FIELDS.map((f) => f.label), '备注', '来源'].map((h) => (
                         <th key={h}>{h}</th>
                       ))}
                     </tr>
@@ -1310,6 +1338,14 @@ export default function KaoyanSchoolDetail() {
                             <td key={f.key}>{scoreLineValue(s[f.key])}</td>
                           ))}
                           <td className="is-note">{s.note || s.special_remark || '—'}</td>
+                          <td>
+                            <Badge
+                              tone={sourceMeta(s.data_source, s.source_type).tone}
+                              title={s.data_source ? `原始来源：${s.data_source}` : '来源未标注'}
+                            >
+                              {sourceMeta(s.data_source, s.source_type).label}
+                            </Badge>
+                          </td>
                         </tr>
                       )
                     })}
@@ -1324,7 +1360,7 @@ export default function KaoyanSchoolDetail() {
               ) : null}
 
               <p className="kyv3-soft-note" style={{ marginTop: 12 }}>
-                说明：总分 / 单科线为该校该专业的复试基本线；国家线差值由掌上考研给出，具体以院校研究生院官网公布为准。
+                说明：总分 / 单科线为该校该专业的复试基本线；国家线差值优先采用来源记录中的「diff_total」，缺失时按总分减国家线计算，具体以院校研究生院官网公布为准。
               </p>
             </>
           )}
@@ -1339,7 +1375,7 @@ export default function KaoyanSchoolDetail() {
               <CardHead
                 icon={<BarChart3 size={17} />}
                 title={`${hist?.year || latestAdmYear} 分数分布`}
-                sub="逐人总分分布 + 分专业分数区间 · 来源于 27 考研择校宝典（txkyer.cn），与招生数据同源"
+                sub={`逐人明细来源：${detailSourceText}；分专业区间来源见下方招生数据表`}
               />
               {admDetailsError ? (
                 <Alert tone="warning">
@@ -1409,7 +1445,7 @@ export default function KaoyanSchoolDetail() {
           <CardHead
             icon={<BarChart3 size={17} />}
             title={`招生数据${admissions.length ? `（${admissions.length}）` : ''}`}
-            sub="拟招生 / 进复试 / 拟录取 / 录取均分 / 专业课均分 / 复录比均为第三方聚合口径"
+            sub="拟招生 / 进复试 / 拟录取 / 录取均分 / 专业课均分 / 复录比按行标注来源；推荐与风险汇总仅使用明确官方记录"
           />
 
           {admissions.length === 0 ? (
@@ -1431,7 +1467,7 @@ export default function KaoyanSchoolDetail() {
                   </thead>
                   <tbody>
                     {admissions.map((a, i) => {
-                      const meta = sourceMeta(a.data_source)
+                      const meta = sourceMeta(a.data_source, a.source_type)
                       return (
                         <tr key={`${a.year || ''}-${a.major_code || ''}-${a.major_name || ''}-${i}`}>
                           <td>{a.year ?? '—'}</td>
@@ -1447,7 +1483,7 @@ export default function KaoyanSchoolDetail() {
                               <td key={f.key}>
                                 <span className="kyv3-data-cell">
                                   {has ? a[f.key] : '—'}
-                                  {f.kind !== 'ratio' && has ? <SourceDot source={a.data_source} /> : null}
+                                  {f.kind !== 'ratio' && has ? <SourceDot source={a.data_source} sourceType={a.source_type} /> : null}
                                 </span>
                               </td>
                             )

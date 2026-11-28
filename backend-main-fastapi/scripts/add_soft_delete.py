@@ -157,7 +157,7 @@ def _sqlite_url_to_path(url: str) -> Optional[str]:
         return None
     for prefix in ("sqlite+aiosqlite:///", "sqlite:///"):
         if url.startswith(prefix):
-            raw = url[len(prefix):]
+            raw = url[len(prefix) :]
             break
     else:
         return None
@@ -196,17 +196,12 @@ def resolve_db_path(explicit: Optional[str]) -> str:
     path = os.path.abspath(os.path.join(BASE_DIR, os.pardir, "database", "kaoyan.db"))
     if os.path.isfile(path):
         return path
-    raise SystemExit(
-        "[add_soft_delete] 无法定位目标库。请用 --db 显式指定，"
-        "或设置 KAOYAN_DB_PATH。"
-    )
+    raise SystemExit("[add_soft_delete] 无法定位目标库。请用 --db 显式指定，或设置 KAOYAN_DB_PATH。")
 
 
 def table_exists(conn: sqlite3.Connection, table: str) -> bool:
     """表是否存在。"""
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
-    ).fetchone()
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
     return row is not None
 
 
@@ -218,17 +213,14 @@ def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
 
 def index_exists(conn: sqlite3.Connection, index_name: str) -> bool:
     """索引是否存在。"""
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", (index_name,)
-    ).fetchone()
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", (index_name,)).fetchone()
     return row is not None
 
 
 # --------------------------------------------------------------------------- #
 # 计划生成
 # --------------------------------------------------------------------------- #
-def build_plan(conn: sqlite3.Connection, db_path: str, dry_run: bool,
-               with_log_table: bool) -> Report:
+def build_plan(conn: sqlite3.Connection, db_path: str, dry_run: bool, with_log_table: bool) -> Report:
     """扫描目标库，生成迁移计划（不写库）。"""
     report = Report(db_path=db_path, dry_run=dry_run)
 
@@ -243,22 +235,26 @@ def build_plan(conn: sqlite3.Connection, db_path: str, dry_run: bool,
         # 仅在列还不存在时统计「多少行会是 NULL」——已存在则无需关心。
         nullable_rows = 0
         if not exists:
-            nullable_rows = conn.execute(
-                f'SELECT COUNT(*) FROM "{table}"'
-            ).fetchone()[0]
+            nullable_rows = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
 
-        report.columns.append(ColumnPlan(
-            table=table, exists=exists, ddl=col_ddl, nullable_rows=nullable_rows,
-        ))
-
-        idx_ddl = (
-            f'CREATE INDEX IF NOT EXISTS "{index_name}" '
-            f'ON "{table}" ({COLUMN_NAME})'
+        report.columns.append(
+            ColumnPlan(
+                table=table,
+                exists=exists,
+                ddl=col_ddl,
+                nullable_rows=nullable_rows,
+            )
         )
-        report.indexes.append(IndexPlan(
-            table=table, index_name=index_name,
-            exists=index_exists(conn, index_name), ddl=idx_ddl,
-        ))
+
+        idx_ddl = f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table}" ({COLUMN_NAME})'
+        report.indexes.append(
+            IndexPlan(
+                table=table,
+                index_name=index_name,
+                exists=index_exists(conn, index_name),
+                ddl=idx_ddl,
+            )
+        )
 
     report.log_table_created = with_log_table and not table_exists(conn, LOG_TABLE)
     return report
@@ -278,10 +274,7 @@ def apply_plan(conn: sqlite3.Connection, report: Report) -> None:
 
     if report.log_table_created:
         conn.execute(LOG_TABLE_DDL)
-        conn.execute(
-            f"CREATE INDEX IF NOT EXISTS ix_soft_delete_log_lookup "
-            f"ON {LOG_TABLE} (table_name, deleted_at)"
-        )
+        conn.execute(f"CREATE INDEX IF NOT EXISTS ix_soft_delete_log_lookup ON {LOG_TABLE} (table_name, deleted_at)")
         print(f"[add_soft_delete] 已建软删流水表: {LOG_TABLE}")
 
     for plan in report.indexes:
@@ -344,15 +337,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         description="给 quiz_questions / knowledge_chunks 加软删字段（幂等迁移）",
     )
     parser.add_argument(
-        "--apply", action="store_true",
+        "--apply",
+        action="store_true",
         help="真正写库。缺省为 dry-run，只打印计划。",
     )
     parser.add_argument(
-        "--db", default=None,
+        "--db",
+        default=None,
         help="目标库路径。缺省按 KAOYAN_DB_PATH → database.py → ../database 解析。",
     )
     parser.add_argument(
-        "--no-log-table", action="store_true",
+        "--no-log-table",
+        action="store_true",
         help="不创建 soft_delete_log 流水表（不推荐：会失去按时间窗口回滚的能力）。",
     )
     args = parser.parse_args(argv)
@@ -362,16 +358,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     # 体积下限校验：拦住 data/kaoyan.db 这类空壳诱饵库。
     size = os.path.getsize(db_path)
     if size < MIN_DB_BYTES:
-        print(
-            f"[add_soft_delete] 拒绝：目标库过小（{size} B < {MIN_DB_BYTES} B），"
-            f"疑似空壳库: {db_path}"
-        )
+        print(f"[add_soft_delete] 拒绝：目标库过小（{size} B < {MIN_DB_BYTES} B），疑似空壳库: {db_path}")
         return 2
 
     conn = sqlite3.connect(db_path)
     try:
         report = build_plan(
-            conn, db_path, dry_run=not args.apply,
+            conn,
+            db_path,
+            dry_run=not args.apply,
             with_log_table=not args.no_log_table,
         )
 
@@ -379,8 +374,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             apply_plan(conn, report)
             conn.commit()
             # 提交后重建一次报告，让输出反映最终状态。
-            report = build_plan(conn, db_path, dry_run=False,
-                                with_log_table=not args.no_log_table)
+            report = build_plan(conn, db_path, dry_run=False, with_log_table=not args.no_log_table)
         print_report(report)
     finally:
         conn.close()

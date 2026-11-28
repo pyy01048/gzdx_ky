@@ -7,9 +7,10 @@ grade 枚举冻结：official | inferred | anecdotal | hard_fact | needs_confirm
 
 缺失显式化（G2）：missing_fields 是一等字段；任何 None 不得被渲染成 0/"无"。
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
 GRADE_OFFICIAL = "official"
@@ -18,8 +19,7 @@ GRADE_ANECDOTAL = "anecdotal"
 GRADE_HARD_FACT = "hard_fact"
 GRADE_NEEDS_CONFIRM = "needs_confirm"
 
-GRADES = (GRADE_OFFICIAL, GRADE_INFERRED, GRADE_ANECDOTAL,
-          GRADE_HARD_FACT, GRADE_NEEDS_CONFIRM)
+GRADES = (GRADE_OFFICIAL, GRADE_INFERRED, GRADE_ANECDOTAL, GRADE_HARD_FACT, GRADE_NEEDS_CONFIRM)
 
 CONFIDENCES = ("high", "medium", "low")
 
@@ -64,16 +64,16 @@ class EvidenceRecord:
     grade: str
     source_url: Optional[str] = None
     source_type: Optional[str] = None
-    publish_date: Optional[str] = None      # ISO 日期串
-    access_date: Optional[str] = None       # ISO 日期串
-    caliber: Optional[str] = None           # 口径说明
-    missing_fields: Tuple[str, ...] = ()    # 一等字段：缺什么显式写什么
+    publish_date: Optional[str] = None  # ISO 日期串
+    access_date: Optional[str] = None  # ISO 日期串
+    caliber: Optional[str] = None  # 口径说明
+    missing_fields: Tuple[str, ...] = ()  # 一等字段：缺什么显式写什么
     confidence: str = "low"
     firsthand: bool = False
     promotion_suspect: bool = False
     method: Optional[str] = None
     notes: Optional[str] = None
-    is_sample: bool = False                 # sample 数据物理隔离标记
+    is_sample: bool = False  # sample 数据物理隔离标记
 
     def __post_init__(self) -> None:
         if self.grade not in GRADES:
@@ -83,14 +83,19 @@ class EvidenceRecord:
 
     def to_dict(self) -> Dict:
         d = {
-            "ev_id": self.ev_id, "claim": self.claim, "grade": self.grade,
-            "source_url": self.source_url, "source_type": self.source_type,
-            "publish_date": self.publish_date, "access_date": self.access_date,
-            "caliber": self.caliber, "missing_fields": list(self.missing_fields),
+            "ev_id": self.ev_id,
+            "claim": self.claim,
+            "grade": self.grade,
+            "source_url": self.source_url,
+            "source_type": self.source_type,
+            "publish_date": self.publish_date,
+            "access_date": self.access_date,
+            "caliber": self.caliber,
+            "missing_fields": list(self.missing_fields),
             "confidence": self.confidence,
-            "credibility_flags": {"firsthand": self.firsthand,
-                                  "promotion_suspect": self.promotion_suspect},
-            "method": self.method, "notes": self.notes,
+            "credibility_flags": {"firsthand": self.firsthand, "promotion_suspect": self.promotion_suspect},
+            "method": self.method,
+            "notes": self.notes,
             "is_sample": self.is_sample,
         }
         return d

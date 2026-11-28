@@ -9,18 +9,22 @@
 写入，用户上传的文档 / 网盘资料完全进不了知识库。
 本服务让任何文本来源都能进入知识库并被 AI 检索。
 """
+
 from __future__ import annotations
 
 import collections
+import logging
 import os
 import re
 
-from models import Document, KnowledgeChunk
 from sqlalchemy.orm import Session
 
+from models import Document, KnowledgeChunk
 from services import search_service
 from services.dbapi_compat import wrap_conn
 from services.delete_guard import require_physical_delete_enabled
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # 学科分类
@@ -46,79 +50,252 @@ from services.delete_guard import require_physical_delete_enabled
 #: 所以引入 `(关键词, 排除前缀)` 二元组：紧邻排除前缀出现时不算命中。
 _SUBJECT_STRONG: dict[str, list] = {
     "数字电子技术": [
-        "数电", "数字电路", "数字电子", "逻辑代数", "逻辑函数", "门电路", "触发器",
-        "组合逻辑", "时序逻辑", "锁存器", "寄存器", "可编程逻辑", "vhdl", "verilog",
-        "数制", "编码器", "译码器", "计数器", "卡诺图", "二进制", "数据选择器",
-        "全加器", "半加器", "移位寄存器", "施密特", "555", "阎石",
+        "数电",
+        "数字电路",
+        "数字电子",
+        "逻辑代数",
+        "逻辑函数",
+        "门电路",
+        "触发器",
+        "组合逻辑",
+        "时序逻辑",
+        "锁存器",
+        "寄存器",
+        "可编程逻辑",
+        "vhdl",
+        "verilog",
+        "数制",
+        "编码器",
+        "译码器",
+        "计数器",
+        "卡诺图",
+        "二进制",
+        "数据选择器",
+        "全加器",
+        "半加器",
+        "移位寄存器",
+        "施密特",
+        "555",
+        "阎石",
         # 数电特有的"XX电路"表述（要抢在"电路"的排除判定之前命中）
-        "时序电路", "组合电路", "脉冲电路", "整形电路", "存储电路", "逻辑电路",
-        "时序逻辑电路", "组合逻辑电路", "触发电路", "计数电路", "中规模", "小规模",
-        "存储器", "随机存储器", "只读存储器", "ram", "rom", "sram", "dram",
+        "时序电路",
+        "组合电路",
+        "脉冲电路",
+        "整形电路",
+        "存储电路",
+        "逻辑电路",
+        "时序逻辑电路",
+        "组合逻辑电路",
+        "触发电路",
+        "计数电路",
+        "中规模",
+        "小规模",
+        "存储器",
+        "随机存储器",
+        "只读存储器",
+        "ram",
+        "rom",
+        "sram",
+        "dram",
     ],
     "模拟电子技术": [
-        "模电", "模拟电子", "模拟电路", "模拟部分", "放大电路", "半导体器件", "多级放大",
-        "集成运算", "运算放大", "功率放大", "直流电源", "电子线路", "二极管", "三极管",
-        "场效应", "差分放大", "共射", "共集", "共基", "静态工作点", "基本放大",
-        "童诗白", "康华光", "pn结",
+        "模电",
+        "模拟电子",
+        "模拟电路",
+        "模拟部分",
+        "放大电路",
+        "半导体器件",
+        "多级放大",
+        "集成运算",
+        "运算放大",
+        "功率放大",
+        "直流电源",
+        "电子线路",
+        "二极管",
+        "三极管",
+        "场效应",
+        "差分放大",
+        "共射",
+        "共集",
+        "共基",
+        "静态工作点",
+        "基本放大",
+        "童诗白",
+        "康华光",
+        "pn结",
         # 裸"电子技术(基础)"专名：无"数字/模拟"限定时按模电归类
-        #（该教材主体是模电半导体内容；若出现"数字部分"由 _MUTEX_HINTS 纠正为数电）
-        "电子技术基础", "电子技术",
+        # （该教材主体是模电半导体内容；若出现"数字部分"由 _MUTEX_HINTS 纠正为数电）
+        "电子技术基础",
+        "电子技术",
     ],
     "英语": [
-        "英语", "英一", "英二", "长难句", "背单词", "单词", "词汇", "作文",
-        "完形", "刘晓艳", "阅读理解", "考研英语", "英语真题",
+        "英语",
+        "英一",
+        "英二",
+        "长难句",
+        "背单词",
+        "单词",
+        "词汇",
+        "作文",
+        "完形",
+        "刘晓艳",
+        "阅读理解",
+        "考研英语",
+        "英语真题",
     ],
     "数学": [
-        "数学", "高数", "高等数学", "线代", "线性代数", "概率论", "数理统计",
-        "张宇", "660", "基础30讲", "数一", "数二", "数三",
-        "概统", "概率统计", "微积分", "同济", "复习全书",
+        "数学",
+        "高数",
+        "高等数学",
+        "线代",
+        "线性代数",
+        "概率论",
+        "数理统计",
+        "张宇",
+        "660",
+        "基础30讲",
+        "数一",
+        "数二",
+        "数三",
+        "概统",
+        "概率统计",
+        "微积分",
+        "同济",
+        "复习全书",
         # ⚠️ 裸「1000题」是**跨科歧义词**：肖秀荣1000题是政治、张宇1000题是数学，
         # 写法完全一样。2026-10 实测它把
         # `专业课-其他/政治/1000题：学习打卡表（新思想）.pdf` 直接判成数学，
         # 同期一批肖1000 / 政治课堂笔记被误归到数学。裸词一律**不记分**，
         # 只认带科目限定的写法，其余交给路径目录与正文特征。
-        "张宇1000题", "数学1000题",
+        "张宇1000题",
+        "数学1000题",
     ],
     "政治": [
-        "政治", "马原", "毛中特", "史纲", "思修", "肖秀荣", "徐涛", "腿姐",
-        "辩证法", "唯物史观", "近代史纲要",
+        "政治",
+        "马原",
+        "毛中特",
+        "史纲",
+        "思修",
+        "肖秀荣",
+        "徐涛",
+        "腿姐",
+        "辩证法",
+        "唯物史观",
+        "近代史纲要",
         # 补（2026-10）：政治五大板块里的「新思想」（习思想）此前完全不在词表，
         # 配合上面被数学抢走的「1000题」，政治资料一旦文件名不含「政治/马原/史纲」
         # 就没有任何强信号可命中，只能掉进正文兜底被判成别的科。
-        "新思想", "毛概", "马哲", "时政", "考研政治", "政治理论", "思修法基",
-        "肖1000", "帽子题", "优题库",
+        "新思想",
+        "毛概",
+        "马哲",
+        "时政",
+        "考研政治",
+        "政治理论",
+        "思修法基",
+        "肖1000",
+        "帽子题",
+        "优题库",
     ],
     # ---- 专业课支撑科目 ----
     "电路": [
         # "电路" 需排除数电/模电的章节词
-        ("电路", ["时序", "组合", "放大", "逻辑", "脉冲", "整形", "存储", "门",
-                 "序", "合", "大", "辑", "冲", "形", "储"]),
+        (
+            "电路",
+            ["时序", "组合", "放大", "逻辑", "脉冲", "整形", "存储", "门", "序", "合", "大", "辑", "冲", "形", "储"],
+        ),
         # "电路分析" 同理：数电里有"时序电路分析专题"这种表述
-        ("电路分析", ["时序", "组合", "放大", "逻辑", "脉冲", "整形", "存储", "门",
-                   "序", "合", "大", "辑", "冲", "形", "储"]),
-        "电路原理", "邱关源", "基尔霍夫", "戴维南", "诺顿",
-        "节点电压", "网孔电流", "三相电路", "二端口", "耦合电感", "相量法",
+        (
+            "电路分析",
+            ["时序", "组合", "放大", "逻辑", "脉冲", "整形", "存储", "门", "序", "合", "大", "辑", "冲", "形", "储"],
+        ),
+        "电路原理",
+        "邱关源",
+        "基尔霍夫",
+        "戴维南",
+        "诺顿",
+        "节点电压",
+        "网孔电流",
+        "三相电路",
+        "二端口",
+        "耦合电感",
+        "相量法",
     ],
     "信号与系统": [
-        "信号与系统", "信号系统", "郑君里", "奥本海姆", "卷积", "傅里叶变换",
-        "拉普拉斯变换", "z变换", "抽样定理", "采样定理", "冲激响应", "系统函数",
+        "信号与系统",
+        "信号系统",
+        "郑君里",
+        "奥本海姆",
+        "卷积",
+        "傅里叶变换",
+        "拉普拉斯变换",
+        "z变换",
+        "抽样定理",
+        "采样定理",
+        "冲激响应",
+        "系统函数",
     ],
     "通信原理": [
-        "通信原理", "通信系统", "樊昌信", "调制解调", "误码率", "信噪比",
-        "香农", "基带传输", "带通传输", "差错控制", "汉明码", "循环码", "眼图",
+        "通信原理",
+        "通信系统",
+        "樊昌信",
+        "调制解调",
+        "误码率",
+        "信噪比",
+        "香农",
+        "基带传输",
+        "带通传输",
+        "差错控制",
+        "汉明码",
+        "循环码",
+        "眼图",
     ],
     "光学与工程光学": [
-        "光学", "工程光学", "物理光学", "应用光学", "郁道银", "干涉", "衍射",
-        "偏振", "光栅", "双缝", "牛顿环", "迈克尔逊", "透镜", "像差",
+        "光学",
+        "工程光学",
+        "物理光学",
+        "应用光学",
+        "郁道银",
+        "干涉",
+        "衍射",
+        "偏振",
+        "光栅",
+        "双缝",
+        "牛顿环",
+        "迈克尔逊",
+        "透镜",
+        "像差",
     ],
     "普通物理": [
-        "普通物理", "大学物理", "程守洙", "马文蔚", "刚体", "转动惯量",
-        "热力学", "静电场", "稳恒磁场", "电磁感应", "麦克斯韦", "简谐振动",
-        "电磁场", "电磁波", "波动光学", "狭义相对论",
+        "普通物理",
+        "大学物理",
+        "程守洙",
+        "马文蔚",
+        "刚体",
+        "转动惯量",
+        "热力学",
+        "静电场",
+        "稳恒磁场",
+        "电磁感应",
+        "麦克斯韦",
+        "简谐振动",
+        "电磁场",
+        "电磁波",
+        "波动光学",
+        "狭义相对论",
     ],
     "计算机学科专业基础408": [
-        "408", "数据结构", "计算机组成", "操作系统", "计算机网络", "计算机统考",
-        "线性表", "二叉树", "图论", "排序算法", "进程管理", "内存管理",
+        "408",
+        "数据结构",
+        "计算机组成",
+        "操作系统",
+        "计算机网络",
+        "计算机统考",
+        "线性表",
+        "二叉树",
+        "图论",
+        "排序算法",
+        "进程管理",
+        "内存管理",
     ],
 }
 
@@ -134,11 +311,12 @@ def _kw_hit(keyword, name: str) -> bool:
             if i == -1:
                 return False
             # 取该词前面 2 个字判断是否踩到排除前缀
-            prefix = name[max(0, i - 2):i]
+            prefix = name[max(0, i - 2) : i]
             if not any(prefix.endswith(x) for x in excludes):
                 return True
             start = i + 1
     return keyword.lower() in name
+
 
 #: 弱信号（题型名，多科通用 —— 只给 1 分，不能定科）
 _SUBJECT_WEAK: dict[str, list[str]] = {
@@ -147,41 +325,157 @@ _SUBJECT_WEAK: dict[str, list[str]] = {
 }
 
 #: 文档类型词：**只描述资料形态，不参与科目判定**
-_DOC_TYPE_WORDS = [
-    "精讲册", "逐词逐句", "真题逐题细解", "真题", "月考", "模拟考试", "试卷",
-    "答案", "测试", "考纲", "讲义", "笔记", "习题", "解析", "速查", "大纲",
-    "课件", "辅导", "必练", "真题及答案",
+_DOC_TYPE_WORDS: list[str] = [
+    "精讲册",
+    "逐词逐句",
+    "真题逐题细解",
+    "真题",
+    "月考",
+    "模拟考试",
+    "试卷",
+    "答案",
+    "测试",
+    "考纲",
+    "讲义",
+    "笔记",
+    "习题",
+    "解析",
+    "速查",
+    "大纲",
+    "课件",
+    "辅导",
+    "必练",
+    "真题及答案",
 ]
 
-_CONTENT_KW = {
-    '数字电子技术': ['逻辑门', '触发器', '计数器', '译码器', '时序电路', '组合逻辑', '布尔', '卡诺图',
-                  '二进制', '与非', '或非', '寄存器', '锁存器', '数据选择器', '全加器', '真值表', '编码',
-                  'vhdl', '555', '施密特', '状态方程', '驱动方程', '激励表', '波形图'],
-    '模拟电子技术': ['二极管', '三极管', '运放', '运算放大', '反馈', '差分', '共射', '共集', '场效应',
-                  '整流', '稳压', '偏置', '静态工作点', '放大倍数', '波特图', '功放', 'pn结', '基极', '集电极'],
-    '英语': ['passage', 'sentence', 'vocabulary', 'reading', '单词', '词汇', '长难句', '完形填空',
-             '阅读理解', 'the ', ' and ', ' that ', ' which '],
-    '数学': ['函数', '导数', '极限', '矩阵', '概率', '积分', '向量', '行列式', '微分', '连续', '收敛',
-             '概率统计', '大数定律', '分布函数', '抽样'],
-    '政治': ['马克思主义', '唯物', '辩证法', '生产力', '生产关系', '社会主义', '矛盾', '实践'],
-    '电路': ['基尔霍夫', '节点电压', '网孔', '戴维南', '诺顿', '叠加定理', '相量', '谐振', '三相'],
-    '信号与系统': ['卷积', '傅里叶', '拉普拉斯', 'z变换', '冲激响应', '系统函数', '零极点', '频谱'],
-    '通信原理': ['调制', '解调', '误码率', '信噪比', '香农', '基带', '带通', '汉明码', '眼图'],
-    '光学与工程光学': ['干涉', '衍射', '偏振', '光栅', '双缝', '透镜', '折射', '全反射'],
-    '普通物理': ['刚体', '转动惯量', '动量守恒', '热力学', '熵', '高斯定理', '电磁感应', '麦克斯韦',
-             '电磁场', '电磁波', '静电场', '稳恒磁场', '简谐振动', '波动方程', '狭义相对论'],
-    '计算机学科专业基础408': ['数据结构', '二叉树', '链表', '进程', '死锁', '页面置换', 'tcp',
-                       '指令系统', '流水线', 'cache', '路由'],
+_CONTENT_KW: dict[str, list[str]] = {
+    "数字电子技术": [
+        "逻辑门",
+        "触发器",
+        "计数器",
+        "译码器",
+        "时序电路",
+        "组合逻辑",
+        "布尔",
+        "卡诺图",
+        "二进制",
+        "与非",
+        "或非",
+        "寄存器",
+        "锁存器",
+        "数据选择器",
+        "全加器",
+        "真值表",
+        "编码",
+        "vhdl",
+        "555",
+        "施密特",
+        "状态方程",
+        "驱动方程",
+        "激励表",
+        "波形图",
+    ],
+    "模拟电子技术": [
+        "二极管",
+        "三极管",
+        "运放",
+        "运算放大",
+        "反馈",
+        "差分",
+        "共射",
+        "共集",
+        "场效应",
+        "整流",
+        "稳压",
+        "偏置",
+        "静态工作点",
+        "放大倍数",
+        "波特图",
+        "功放",
+        "pn结",
+        "基极",
+        "集电极",
+    ],
+    "英语": [
+        "passage",
+        "sentence",
+        "vocabulary",
+        "reading",
+        "单词",
+        "词汇",
+        "长难句",
+        "完形填空",
+        "阅读理解",
+        "the ",
+        " and ",
+        " that ",
+        " which ",
+    ],
+    "数学": [
+        "函数",
+        "导数",
+        "极限",
+        "矩阵",
+        "概率",
+        "积分",
+        "向量",
+        "行列式",
+        "微分",
+        "连续",
+        "收敛",
+        "概率统计",
+        "大数定律",
+        "分布函数",
+        "抽样",
+    ],
+    "政治": ["马克思主义", "唯物", "辩证法", "生产力", "生产关系", "社会主义", "矛盾", "实践"],
+    "电路": ["基尔霍夫", "节点电压", "网孔", "戴维南", "诺顿", "叠加定理", "相量", "谐振", "三相"],
+    "信号与系统": ["卷积", "傅里叶", "拉普拉斯", "z变换", "冲激响应", "系统函数", "零极点", "频谱"],
+    "通信原理": ["调制", "解调", "误码率", "信噪比", "香农", "基带", "带通", "汉明码", "眼图"],
+    "光学与工程光学": ["干涉", "衍射", "偏振", "光栅", "双缝", "透镜", "折射", "全反射"],
+    "普通物理": [
+        "刚体",
+        "转动惯量",
+        "动量守恒",
+        "热力学",
+        "熵",
+        "高斯定理",
+        "电磁感应",
+        "麦克斯韦",
+        "电磁场",
+        "电磁波",
+        "静电场",
+        "稳恒磁场",
+        "简谐振动",
+        "波动方程",
+        "狭义相对论",
+    ],
+    "计算机学科专业基础408": [
+        "数据结构",
+        "二叉树",
+        "链表",
+        "进程",
+        "死锁",
+        "页面置换",
+        "tcp",
+        "指令系统",
+        "流水线",
+        "cache",
+        "路由",
+    ],
 }
 
 
 #: 互斥词对：文件名同时出现两者时，按"更具体"的一方定科。
 #  例：《【电子技术基础-数字部分】康华光…》里 "模拟部分" 不出现，
 #  但 "数字部分" 明确指向数电 —— 不能因为"康华光"两边都沾就判错。
-_MUTEX_HINTS = [
-    ("数字电子技术", "模拟电子技术",
-     ["数字部分", "数字电路", "数电", "逻辑", "数字电子"],
-     ["模拟部分", "模拟电路", "模电", "放大"]),
+_MUTEX_HINTS: list[tuple[str, str, list[str], list[str]]] = [
+    (
+        "数字电子技术",
+        "模拟电子技术",
+        ["数字部分", "数字电路", "数电", "逻辑", "数字电子"],
+        ["模拟部分", "模拟电路", "模电", "放大"],
+    ),
 ]
 
 
@@ -198,7 +492,7 @@ def _apply_mutex(name: str, scores: collections.Counter) -> collections.Counter:
         a = sum(1 for h in hints_a if h.lower() in n)
         b = sum(1 for h in hints_b if h.lower() in n)
         if a and not b:
-            scores[subj_a] += a * 10      # 明确指向 A，压倒性加权
+            scores[subj_a] += a * 10  # 明确指向 A，压倒性加权
         elif b and not a:
             scores[subj_b] += b * 10
     return scores
@@ -214,34 +508,77 @@ def _apply_mutex(name: str, scores: collections.Counter) -> collections.Counter:
 #: 只能靠正文兜底，被判成数学。目录名是白送的强信号，不该丢。
 _PATH_DIR_SUBJECTS: dict[str, str] = {
     # ---- 公共课 ----
-    "政治": "政治", "考研政治": "政治", "政治理论": "政治",
-    "马原": "政治", "马克思主义基本原理": "政治", "马哲": "政治",
-    "毛概": "政治", "毛中特": "政治", "毛泽东思想": "政治",
-    "史纲": "政治", "近代史纲要": "政治", "中国近现代史纲要": "政治",
-    "思修": "政治", "思修法基": "政治", "思想道德与法治": "政治",
-    "新思想": "政治", "新思想概论": "政治", "习思想": "政治", "时政": "政治",
-    "数学": "数学", "考研数学": "数学", "数学辅导": "数学",
-    "高数": "数学", "高等数学": "数学",
-    "线代": "数学", "线性代数": "数学", "概率": "数学", "概率论": "数学",
-    "英语": "英语", "考研英语": "英语", "英语一": "英语", "英语二": "英语",
+    "政治": "政治",
+    "考研政治": "政治",
+    "政治理论": "政治",
+    "马原": "政治",
+    "马克思主义基本原理": "政治",
+    "马哲": "政治",
+    "毛概": "政治",
+    "毛中特": "政治",
+    "毛泽东思想": "政治",
+    "史纲": "政治",
+    "近代史纲要": "政治",
+    "中国近现代史纲要": "政治",
+    "思修": "政治",
+    "思修法基": "政治",
+    "思想道德与法治": "政治",
+    "新思想": "政治",
+    "新思想概论": "政治",
+    "习思想": "政治",
+    "时政": "政治",
+    "数学": "数学",
+    "考研数学": "数学",
+    "数学辅导": "数学",
+    "高数": "数学",
+    "高等数学": "数学",
+    "线代": "数学",
+    "线性代数": "数学",
+    "概率": "数学",
+    "概率论": "数学",
+    "英语": "英语",
+    "考研英语": "英语",
+    "英语一": "英语",
+    "英语二": "英语",
     # ---- 专业课 ----
-    "数字电子技术": "数字电子技术", "数电": "数字电子技术", "数字电路": "数字电子技术",
-    "模拟电子技术": "模拟电子技术", "模电": "模拟电子技术", "模拟电路": "模拟电子技术",
+    "数字电子技术": "数字电子技术",
+    "数电": "数字电子技术",
+    "数字电路": "数字电子技术",
+    "模拟电子技术": "模拟电子技术",
+    "模电": "模拟电子技术",
+    "模拟电路": "模拟电子技术",
     "模电试题": "模拟电子技术",
     # 「电子技术基础」是模电+数电的合并课，按 taxonomy.SUBJECT_ALIASES 的既有口径
     # 归一到数字电子技术（834 同理，见下）。
-    "电子技术基础": "数字电子技术", "电子技术": "数字电子技术",
-    "电路": "电路", "电路分析": "电路", "电路原理": "电路", "电路理论": "电路",
-    "信号与系统": "信号与系统", "信号系统": "信号与系统", "信号": "信号与系统",
-    "通信原理": "通信原理", "通信": "通信原理", "通信系统": "通信原理",
-    "光学": "光学与工程光学", "工程光学": "光学与工程光学", "物理光学": "光学与工程光学",
-    "普通物理": "普通物理", "大学物理": "普通物理", "物理": "普通物理",
-    "408": "计算机学科专业基础408", "计算机408": "计算机学科专业基础408",
-    "计算机专业课": "计算机学科专业基础408", "计算机": "计算机学科专业基础408",
-    "数据结构": "计算机学科专业基础408", "操作系统": "计算机学科专业基础408",
-    "计算机网络": "计算机学科专业基础408", "软件工程": "计算机学科专业基础408",
+    "电子技术基础": "数字电子技术",
+    "电子技术": "数字电子技术",
+    "电路": "电路",
+    "电路分析": "电路",
+    "电路原理": "电路",
+    "电路理论": "电路",
+    "信号与系统": "信号与系统",
+    "信号系统": "信号与系统",
+    "信号": "信号与系统",
+    "通信原理": "通信原理",
+    "通信": "通信原理",
+    "通信系统": "通信原理",
+    "光学": "光学与工程光学",
+    "工程光学": "光学与工程光学",
+    "物理光学": "光学与工程光学",
+    "普通物理": "普通物理",
+    "大学物理": "普通物理",
+    "物理": "普通物理",
+    "408": "计算机学科专业基础408",
+    "计算机408": "计算机学科专业基础408",
+    "计算机专业课": "计算机学科专业基础408",
+    "计算机": "计算机学科专业基础408",
+    "数据结构": "计算机学科专业基础408",
+    "操作系统": "计算机学科专业基础408",
+    "计算机网络": "计算机学科专业基础408",
+    "软件工程": "计算机学科专业基础408",
     # 院校自命题科目代码：贵州大学 834 = 电子技术基础
-    "834": "数字电子技术", "贵大834": "数字电子技术",
+    "834": "数字电子技术",
+    "贵大834": "数字电子技术",
     # 真题集合：不指科目，但显式目录名也算一种归属
     "真题综合": "真题综合",
 }
@@ -250,7 +587,7 @@ _PATH_DIR_SUBJECTS: dict[str, str] = {
 _PATH_DIR_NOISE_PREFIX = re.compile(r"^\s*[\(（]?\d+(?:[.\-_]\d+)*[)）]?\s*[.、_\-\s]*")
 
 
-def _subject_from_path(path: str):
+def _subject_from_path(path: str) -> str | None:
     """从**文件路径的目录段**推断学科，命中返回标准科目名，否则 None。
 
     从最深层目录往浅层找，第一个命中即返回 —— 深层目录更具体
@@ -259,7 +596,7 @@ def _subject_from_path(path: str):
     if not path:
         return None
     segs = [s for s in str(path).replace("\\", "/").split("/") if s]
-    if len(segs) < 2:          # 只有文件名，没有目录信息
+    if len(segs) < 2:  # 只有文件名，没有目录信息
         return None
     for seg in reversed(segs[:-1]):
         s = _PATH_DIR_NOISE_PREFIX.sub("", seg).strip()
@@ -290,6 +627,13 @@ def _subject_scores(name: str) -> collections.Counter:
     return _apply_mutex(name, scores)
 
 
+def _top_score(scores: collections.Counter) -> tuple[str, int, int]:
+    """返回 ``(top_subject, top_count, second_count)``。"""
+    top, cnt = scores.most_common(1)[0]
+    second = scores.most_common(2)[1][1] if len(scores) > 1 else 0
+    return top, cnt, second
+
+
 #: 解析失败时写进 content 的标记前缀（见 document_parser）。
 #: ⚠️ 这类文本是**英文报错信息**，绝不能被当成"英语资料"或被用来判科目。
 _PARSE_FAIL_MARK = "[解析失败"
@@ -310,8 +654,11 @@ def _latin_ratio(text: str) -> float:
 
 
 def classify_subject_confidence(
-    name: str, content_text: str = '', *, allow_weak: bool = False,
-    path: str = '',
+    name: str,
+    content_text: str = "",
+    *,
+    allow_weak: bool = False,
+    path: str = "",
 ) -> tuple[str, bool]:
     """返回 `(科目, 是否高置信)`。
 
@@ -330,7 +677,7 @@ def classify_subject_confidence(
     n = (name or "").lower()
     content = content_text or ""
     if is_parse_failure(content):
-        content = ""      # 报错信息不参与判定
+        content = ""  # 报错信息不参与判定
 
     # -1. 路径目录名（最强信号）：`.../政治/xxx.pdf` → 政治。
     #     实测没它的时候，`1000题：学习打卡表（新思想）.pdf` 会被判成数学。
@@ -351,8 +698,7 @@ def classify_subject_confidence(
     # 1. 文件名强信号
     scores = _subject_scores(name)
     if scores:
-        top, cnt = scores.most_common(1)[0]
-        second = scores.most_common(2)[1][1] if len(scores) > 1 else 0
+        top, cnt, second = _top_score(scores)
         if cnt >= 3 and cnt > second:
             return taxonomy.normalize_subject(top), True
 
@@ -364,8 +710,7 @@ def classify_subject_confidence(
             if hits:
                 scores[subj] += hits
         if scores:
-            top, cnt = scores.most_common(1)[0]
-            second = scores.most_common(2)[1][1] if len(scores) > 1 else 0
+            top, cnt, second = _top_score(scores)
             if cnt >= 2 and cnt > second:
                 return taxonomy.normalize_subject(top), True
 
@@ -375,7 +720,7 @@ def classify_subject_confidence(
     return "其他", False
 
 
-def classify_subject(name: str, content_text: str = '', path: str = '') -> str:
+def classify_subject(name: str, content_text: str = "", path: str = "") -> str:
     """根据文件名 + 正文推断学科分类（对外主入口）。
 
     先按文件名打分（强信号优先），分数不足时用正文关键词补足。
@@ -397,24 +742,24 @@ def chunk_text(text: str, chunk_size: int = 600, overlap: int = 80) -> list[str]
     - 超长段落按中英文句末标点切分；
     - 除首块外，每块前缀上一块的尾部 overlap 字符，保留上下文连贯。
     """
-    text = (text or '').strip()
+    text = (text or "").strip()
     if not text:
         return []
 
-    paragraphs = [p.strip() for p in re.split(r'\n+', text) if p.strip()]
+    paragraphs = [p.strip() for p in re.split(r"\n+", text) if p.strip()]
     chunks: list[str] = []
-    cur = ''
+    cur = ""
 
     for para in paragraphs:
         if len(cur) + len(para) <= chunk_size:
-            cur = (cur + '\n' + para).strip()
+            cur = (cur + "\n" + para).strip()
             continue
         # 当前累积已满，先落盘
         if cur:
             chunks.append(cur)
         if len(para) > chunk_size:
             # 超长段落按句切分
-            for sent in re.split(r'(?<=[。！？；.!?;])', para):
+            for sent in re.split(r"(?<=[。！？；.!?;])", para):
                 sent = sent.strip()
                 if not sent:
                     continue
@@ -426,7 +771,7 @@ def chunk_text(text: str, chunk_size: int = 600, overlap: int = 80) -> list[str]
                     cur = sent
             if cur.strip():
                 chunks.append(cur.strip())
-                cur = ''
+                cur = ""
         else:
             cur = para
 
@@ -438,7 +783,7 @@ def chunk_text(text: str, chunk_size: int = 600, overlap: int = 80) -> list[str]
         merged = [chunks[0]]
         for c in chunks[1:]:
             prev = merged[-1]
-            piece = (prev[-overlap:] + '\n' + c) if len(prev) >= overlap else c
+            piece = (prev[-overlap:] + "\n" + c) if len(prev) >= overlap else c
             merged.append(piece)
         chunks = merged
 
@@ -454,8 +799,7 @@ def has_searchable_chunks(db: Session, doc_id) -> bool:
     """
     if doc_id is None:
         return False
-    return db.query(KnowledgeChunk.id).filter(
-        KnowledgeChunk.document_id == doc_id).first() is not None
+    return db.query(KnowledgeChunk.id).filter(KnowledgeChunk.document_id == doc_id).first() is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -484,6 +828,48 @@ def chunk_is_retrievable(chunk: str) -> bool:
     return True
 
 
+def _clean_unicode(text: str) -> str:
+    """清理无效 Unicode 字符（代理对、控制字符），确保能存入 UTF-8 数据库。"""
+    cleaned: list[str] = []
+    for ch in text:
+        code = ord(ch)
+        if 0xD800 <= code <= 0xDFFF:
+            continue
+        if code < 32 and ch not in ("\n", "\t", "\r"):
+            continue
+        if code == 0x7F:
+            continue
+        cleaned.append(ch)
+    return "".join(cleaned)
+
+
+def _delete_old_chunks(db: Session, conn0, doc_id, old_ids: list[int]) -> None:
+    """删除旧分块的依赖镜像行（向量/FTS/错题关联），不 commit。
+
+    依赖表按表存在才删：knowledge_chunks_vec / _fts 不在 ORM metadata 里，
+    是检索侧 ensure_* 惰性建的；库还没建过它们时本就 0 行可清，
+    若硬删会抛 "no such table" 把整个重新解析打断。
+    """
+    if not old_ids:
+        return
+    require_physical_delete_enabled("knowledge_chunks")
+    from services.dbapi_compat import list_tables as _list_tables
+
+    _have = {r[0] for r in _list_tables(conn0)}
+    placeholders = ",".join("?" * len(old_ids))
+    for _dep in ("knowledge_chunks_vec", "error_knowledge_links", "knowledge_chunks_fts"):
+        if _dep in _have:
+            conn0.execute(
+                f"DELETE FROM {_dep} WHERE chunk_id IN ({placeholders})",
+                old_ids,
+            )
+    # 这里**不 commit**：raw cursor 与 ORM 同一条连接，删镜像行必须和
+    # 下面的 knowledge_chunks 删除、以及新块插入进同一个事务。
+    # 原先在此 commit 会把「FTS/向量已删、分块还在」的中间态钉死：
+    # 一旦后续 flush/插入异常，调用方 rollback 也救不回镜像，
+    # 文档就会变成「块在、检索不到」的静默损坏。
+
+
 def ingest_text(
     db: Session,
     doc_id,
@@ -500,23 +886,12 @@ def ingest_text(
     - 同步 knowledge_chunks_fts（FTS5 全文检索），使 RAG 可检索
     - replace=True 时先删除该文档已有的分块与 FTS 记录（用于重新解析）
     """
-    text = (text or '').strip()
+    text = (text or "").strip()
     if not text:
         return 0
     # 清理无效Unicode字符（代理对、控制字符等），确保能存入UTF-8数据库
-    import re
-    cleaned = []
-    for ch in text:
-        code = ord(ch)
-        if 0xD800 <= code <= 0xDFFF:
-            continue
-        if code < 32 and ch not in ('\n', '\t', '\r'):
-            continue
-        if code == 0x7F:
-            continue
-        cleaned.append(ch)
-    text = ''.join(cleaned)
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = _clean_unicode(text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     if not text:
         return 0
     if not subject:
@@ -526,33 +901,13 @@ def ingest_text(
     if replace and doc_id is not None:
         old = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc_id).all()
         old_ids = [c.id for c in old]
-        # 物理删除闸门只在**真要删已有分块**时才要放行：
+        # 物理删除闸门只在**真要删已有分块**时才放行：
         # 本周曾因判重缺陷误删大量真题，所以清空旧块必须显式开 KAOYAN_ALLOW_PHYSICAL_DELETE。
         # 但闸门原先放在查询之前，首次入库（本来一块都没有）也被它挡死 ——
         # 而所有入库路径都传 replace=True，于是正文落库成功、分块 0 条，
         # 文档静静进不了 RAG。删 0 行不可能是数据损失，这里按 old_ids 判定。
-        if old_ids:
-            require_physical_delete_enabled("knowledge_chunks")
-            conn0 = wrap_conn(db.connection().connection)
-            placeholders = ','.join('?' * len(old_ids))
-            # 先清依赖表引用（向量表 / 错题-知识点关联），避免外键约束失败。
-            # 依赖表按 sqlite_master 判定存在才删：knowledge_chunks_vec / _fts 不在 ORM
-            # metadata 里，是检索侧 ensure_* 惰性建的；库还没建过它们时本就 0 行可清，
-            # 若硬删会抛 "no such table" 把整个重新解析打断。
-            from services.dbapi_compat import list_tables as _list_tables
-            _have = {r[0] for r in _list_tables(conn0)}
-            for _dep in ("knowledge_chunks_vec", "error_knowledge_links",
-                         "knowledge_chunks_fts"):
-                if _dep in _have:
-                    conn0.execute(
-                        f"DELETE FROM {_dep} WHERE chunk_id IN ({placeholders})",
-                        old_ids,
-                    )
-            # 这里**不 commit**：raw cursor 与 ORM 同一条连接，删镜像行必须和
-            # 下面的 knowledge_chunks 删除、以及新块插入进同一个事务。
-            # 原先在此 commit 会把「FTS/向量已删、分块还在」的中间态钉死：
-            # 一旦后续 flush/插入异常，调用方 rollback 也救不回镜像，
-            # 文档就会变成「块在、检索不到」的静默损坏。
+        conn0 = wrap_conn(db.connection().connection)
+        _delete_old_chunks(db, conn0, doc_id, old_ids)
         for c in old:
             db.delete(c)
         db.flush()
@@ -585,8 +940,8 @@ def ingest_text(
     # 上面 replace 分支在 PG 下同样会按「表存在」去删镜像行，若这里只删不写，
     # 重新解析后镜像会整篇丢失 —— 与 sync_mirror_subjects 同一口径，按表存在判定。
     from services.dbapi_compat import table_exists as _table_exists
-    write_fts_mirror = (not search_service._is_pg(conn)) or _table_exists(
-        conn, "knowledge_chunks_fts")
+
+    write_fts_mirror = (not search_service._is_pg(conn)) or _table_exists(conn, "knowledge_chunks_fts")
 
     count = 0
     for idx, ch in enumerate(chunks):
@@ -613,10 +968,10 @@ def ingest_text(
 # --------------------------------------------------------------------------- #
 # 资料层级分类（# 原始层 / 加工层 / 索引层）
 # --------------------------------------------------------------------------- #
-_NOTE_KW = ["笔记", "总结", "整理", "错题", "手写", "摘要", "划重点"]
-_INDEX_KW = ["思维导图", "考点清单", "大纲", "目录", "速查", "索引"]
-_RAW_KW = ["教材", "课本", "真题", "试卷", "试题", "题库", "习题", "讲义", "课件", "模拟"]
-_IMAGE_TYPES = ("jpg", "jpeg", "png", "bmp", "tiff", "webp")
+_NOTE_KW: list[str] = ["笔记", "总结", "整理", "错题", "手写", "摘要", "划重点"]
+_INDEX_KW: list[str] = ["思维导图", "考点清单", "大纲", "目录", "速查", "索引"]
+_RAW_KW: list[str] = ["教材", "课本", "真题", "试卷", "试题", "题库", "习题", "讲义", "课件", "模拟"]
+_IMAGE_TYPES: tuple[str, ...] = ("jpg", "jpeg", "png", "bmp", "tiff", "webp")
 
 
 # --------------------------------------------------------------------------- #
@@ -624,21 +979,46 @@ _IMAGE_TYPES = ("jpg", "jpeg", "png", "bmp", "tiff", "webp")
 # --------------------------------------------------------------------------- #
 # 与 doc_type（raw/note/index 加工层级）正交：这是"这份资料讲什么"的语义分类。
 # 判定优先级：exam > example > method > textbook（兜底）。
-_EXAM_KW = ["真题", "试题", "试卷", "考卷", "月考", "模拟考试", "模拟试题", "模拟题", "模拟卷", "回忆版", "年卷", "冲刺卷"]
-_EXAMPLE_KW = ["题解", "例题", "典型题", "习题", "题库", "题全解", "答案部分",
-                "小题专项", "解答", "课后答案", "同步辅导", "答案"]
-_METHOD_KW = ["方法", "技巧", "总结", "攻略", "精讲", "思维导图", "笔记"]
-_TEXTBOOK_KW = ["教材", "讲义", "课件", "课本", "基础课", "冲刺课"]
+_EXAM_KW: list[str] = [
+    "真题",
+    "试题",
+    "试卷",
+    "考卷",
+    "月考",
+    "模拟考试",
+    "模拟试题",
+    "模拟题",
+    "模拟卷",
+    "回忆版",
+    "年卷",
+    "冲刺卷",
+]
+_EXAMPLE_KW: list[str] = [
+    "题解",
+    "例题",
+    "典型题",
+    "习题",
+    "题库",
+    "题全解",
+    "答案部分",
+    "小题专项",
+    "解答",
+    "课后答案",
+    "同步辅导",
+    "答案",
+]
+_METHOD_KW: list[str] = ["方法", "技巧", "总结", "攻略", "精讲", "思维导图", "笔记"]
+_TEXTBOOK_KW: list[str] = ["教材", "讲义", "课件", "课本", "基础课", "冲刺课"]
 _YEAR_PAPER_RE = re.compile(r"\d{4}\s*年.*?卷")
 
 # 差异化切分：按语义类别给不同 chunk_size（overlap ≈ chunk_size 的 1/8）
-CONTENT_CATEGORY_CHUNK = {
+CONTENT_CATEGORY_CHUNK: dict[str, tuple[int, int]] = {
     "textbook": (512, 64),
     "example": (1024, 128),
     "exam": (2048, 256),
     "method": (768, 96),
 }
-_DEFAULT_CHUNK = (600, 80)
+_DEFAULT_CHUNK: tuple[int, int] = (600, 80)
 
 
 def classify_content_category(file_name: str, content: str = "") -> str:
@@ -661,7 +1041,7 @@ def classify_content_category(file_name: str, content: str = "") -> str:
     return "textbook"
 
 
-def chunk_size_for_category(category):
+def chunk_size_for_category(category: str | None) -> tuple[int, int]:
     """返回 (chunk_size, overlap)。未知/None → 旧默认 (600, 80)，保持存量兼容。"""
     return CONTENT_CATEGORY_CHUNK.get(category, _DEFAULT_CHUNK)
 
@@ -727,16 +1107,18 @@ def ingest_document(db: Session, doc, *, replace: bool = True) -> int:
     """对已有 Document 记录重新分块入库。"""
     if not doc or not doc.content:
         return 0
-    subject = doc.subject or classify_subject(
-        doc.file_name, doc.content, path=getattr(doc, "file_path", "") or "")
+    subject = doc.subject or classify_subject(doc.file_name, doc.content, path=getattr(doc, "file_path", "") or "")
     if not doc.subject:
         doc.subject = subject
-    category = getattr(doc, "content_category", None) or classify_content_category(
-        doc.file_name, doc.content
-    )
+    category = getattr(doc, "content_category", None) or classify_content_category(doc.file_name, doc.content)
     return ingest_text(
-        db, doc.id, doc.file_name, doc.content, subject=subject,
-        replace=replace, content_category=category,
+        db,
+        doc.id,
+        doc.file_name,
+        doc.content,
+        subject=subject,
+        replace=replace,
+        content_category=category,
     )
 
 
@@ -983,7 +1365,7 @@ def _render_pdf(text: str, title: str) -> bytes | None:
         for raw_line in (text or "").split("\n"):
             line = raw_line.rstrip()
             # 依字符宽度硬折行（中文字符等宽近似），保证不溢出页宽
-            pieces = [line[i:i + chars_per_line] for i in range(0, len(line), chars_per_line)] or [""]
+            pieces = [line[i : i + chars_per_line] for i in range(0, len(line), chars_per_line)] or [""]
             for piece in pieces:
                 ctx.textLine(piece)
                 y -= line_h
@@ -996,6 +1378,44 @@ def _render_pdf(text: str, title: str) -> bytes | None:
         return None
 
 
+def _move_source_file(
+    doc,
+    target_dirname: str,
+    *,
+    kb_root: str | None = None,
+    no_path_reason: str = "未登记原文路径",
+    external_reason: str = "原文在外部知识库，本地无文件",
+    already_in_reason: str = "已在目标目录",
+) -> dict:
+    """把文档源文件移动到 ``knowledge_base/{target_dirname}/`` 子目录。
+
+    归档与软删共用本逻辑：文件不存在/断链 → 返回原因而不抛异常
+    （否则存量 315 篇断链记录会把整批操作一起带崩）。
+    """
+    raw = (getattr(doc, "file_path", None) or "").strip()
+    if not raw:
+        return {"archived": False, "new_path": None, "reason": no_path_reason}
+    if not os.path.isabs(raw):
+        return {"archived": False, "new_path": None, "reason": external_reason}
+    src = os.path.abspath(raw)
+    if not os.path.isfile(src):
+        return {"archived": False, "new_path": None, "reason": "原文文件已不在磁盘（断链）"}
+    root = resolve_kb_root(kb_root)
+    target_dir = os.path.join(root, target_dirname)
+    if _is_under(src, target_dir):
+        return {"archived": False, "new_path": src, "reason": already_in_reason}
+    stem, ext = os.path.splitext(os.path.basename(src))
+    dest = os.path.join(target_dir, f"{stem}_{doc.id}{ext}")
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+        if os.path.exists(dest):
+            dest = os.path.join(target_dir, f"{stem}_{doc.id}_{int(os.path.getmtime(src))}{ext}")
+        os.replace(src, dest)
+    except OSError as e:
+        return {"archived": False, "new_path": None, "reason": f"移动失败：{e}"}
+    return {"archived": True, "new_path": dest, "reason": ""}
+
+
 def archive_source_file(doc, *, kb_root: str | None = None) -> dict:
     """把文档源文件移动到 ``knowledge_base/_archive/``（默认归档而非删除）。
 
@@ -1003,28 +1423,12 @@ def archive_source_file(doc, *, kb_root: str | None = None) -> dict:
     文件不存在/未登记路径 → ``archived=False`` 且给出原因（调用方据此计数，
     **绝不抛异常**，否则存量 315 篇断链记录会把整批归档一起带崩）。
     """
-    raw = (getattr(doc, "file_path", None) or "").strip()
-    if not raw:
-        return {"archived": False, "new_path": None, "reason": "未登记原文路径"}
-    if not os.path.isabs(raw):
-        return {"archived": False, "new_path": None, "reason": "原文在外部知识库，本地无文件"}
-    src = os.path.abspath(raw)
-    if not os.path.isfile(src):
-        return {"archived": False, "new_path": None, "reason": "原文文件已不在磁盘（断链）"}
-    root = resolve_kb_root(kb_root)
-    archive_dir = os.path.join(root, ARCHIVE_DIRNAME)
-    if _is_under(src, archive_dir):
-        return {"archived": False, "new_path": src, "reason": "已在归档目录"}
-    stem, ext = os.path.splitext(os.path.basename(src))
-    dest = os.path.join(archive_dir, f"{stem}_{doc.id}{ext}")
-    try:
-        os.makedirs(archive_dir, exist_ok=True)
-        if os.path.exists(dest):
-            dest = os.path.join(archive_dir, f"{stem}_{doc.id}_{int(os.path.getmtime(src))}{ext}")
-        os.replace(src, dest)
-    except OSError as e:
-        return {"archived": False, "new_path": None, "reason": f"移动失败：{e}"}
-    return {"archived": True, "new_path": dest, "reason": ""}
+    return _move_source_file(
+        doc,
+        ARCHIVE_DIRNAME,
+        kb_root=kb_root,
+        already_in_reason="已在归档目录",
+    )
 
 
 def soft_delete_source_file(doc, *, kb_root: str | None = None) -> dict:
@@ -1032,26 +1436,14 @@ def soft_delete_source_file(doc, *, kb_root: str | None = None) -> dict:
 
     与归档同一口径：文件不存在/断链 → 返回原因而不抛异常。
     """
-    raw = (getattr(doc, "file_path", None) or "").strip()
-    if not raw or not os.path.isabs(raw):
-        return {"archived": False, "new_path": None, "reason": "无可移动的本地原文"}
-    src = os.path.abspath(raw)
-    if not os.path.isfile(src):
-        return {"archived": False, "new_path": None, "reason": "原文文件已不在磁盘（断链）"}
-    root = resolve_kb_root(kb_root)
-    trash_dir = os.path.join(root, TRASH_DIRNAME)
-    if _is_under(src, trash_dir):
-        return {"archived": False, "new_path": src, "reason": "已在回收目录"}
-    stem, ext = os.path.splitext(os.path.basename(src))
-    dest = os.path.join(trash_dir, f"{stem}_{doc.id}{ext}")
-    try:
-        os.makedirs(trash_dir, exist_ok=True)
-        if os.path.exists(dest):
-            dest = os.path.join(trash_dir, f"{stem}_{doc.id}_{int(os.path.getmtime(src))}{ext}")
-        os.replace(src, dest)
-    except OSError as e:
-        return {"archived": False, "new_path": None, "reason": f"移动失败：{e}"}
-    return {"archived": True, "new_path": dest, "reason": ""}
+    return _move_source_file(
+        doc,
+        TRASH_DIRNAME,
+        kb_root=kb_root,
+        no_path_reason="无可移动的本地原文",
+        external_reason="无可移动的本地原文",
+        already_in_reason="已在回收目录",
+    )
 
 
 def ensure_write_backup() -> str | None:
@@ -1076,9 +1468,7 @@ def ensure_write_backup() -> str | None:
     try:
         return create_backup()
     except Exception as e:  # noqa: BLE001 —— 统一成调用方必须接住的闸门异常
-        raise WriteBackupBlocked(
-            f"写前备份失败，写入已中止（不可回滚的写一律挡在门外）：{e}"
-        ) from e
+        raise WriteBackupBlocked(f"写前备份失败，写入已中止（不可回滚的写一律挡在门外）：{e}") from e
 
 
 def scan_root_and_archive(
@@ -1182,9 +1572,7 @@ def scan_root_and_archive(
                 except OSError:
                     pass
                 report["errors"] += 1
-                report["skipped_items"].append(
-                    {"file": name, "reason": f"DB 写回失败已回滚文件：{e}"}
-                )
+                report["skipped_items"].append({"file": name, "reason": f"DB 写回失败已回滚文件：{e}"})
                 continue
 
         report["moved"] += 1

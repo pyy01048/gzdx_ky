@@ -8,6 +8,7 @@ P2-M5 代码上机 OJ 服务层
 3. 提交记录查询
 4. 统计信息
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,7 +40,7 @@ def list_problems(
     """获取编程题目列表。"""
     q = db.query(CodeProblem)
     if is_public:
-        q = q.filter(CodeProblem.is_public == True)
+        q = q.filter(CodeProblem.is_public)
     if subject:
         q = q.filter(CodeProblem.subject == subject)
     if difficulty:

@@ -5,7 +5,6 @@ from typing import Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
-from models import Flashcard, User
 from schemas import FlashcardBatchCreate, FlashcardCreate, FlashcardReview
 from services.review_scheduler import ReviewScheduler
 from sqlalchemy.orm import Session
@@ -13,6 +12,8 @@ from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id, scoped  # B4 行级隔离
 from utils.security import current_user
 from utils.timeutil import utcnow  # 统一 naive UTC 时间规范（P0-4）
+
+from models import Flashcard, User
 
 router = APIRouter(prefix="/api/flashcards", tags=["flashcards"])
 
@@ -31,12 +32,7 @@ async def list_flashcards(
         query = query.filter(Flashcard.mastery == mastery)
 
     total = query.count()
-    cards = (
-        query.order_by(Flashcard.next_review.asc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    cards = query.order_by(Flashcard.next_review.asc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "total": total,
         "page": page,
@@ -75,7 +71,9 @@ async def create_flashcard(card: FlashcardCreate, db: Session = Depends(get_db),
 
 
 @router.post("/batch")
-async def batch_create_flashcards(data: FlashcardBatchCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def batch_create_flashcards(
+    data: FlashcardBatchCreate, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """批量创建。"""
     count = 0
     for card in data.cards:
@@ -91,7 +89,9 @@ async def batch_create_flashcards(data: FlashcardBatchCreate, db: Session = Depe
 
 
 @router.put("/{card_id}/review")
-async def review_flashcard(card_id: int, review: FlashcardReview, db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def review_flashcard(
+    card_id: int, review: FlashcardReview, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """复习打卡（更新艾宾浩斯）。"""
     card = db.query(Flashcard).filter(Flashcard.id == card_id, scoped(Flashcard, user)).first()
     if not card:
@@ -106,6 +106,7 @@ async def review_flashcard(card_id: int, review: FlashcardReview, db: Session = 
 
     # FSRS：统一调度表为准；SM-2 字段保留为兼容快照
     from services.srs import fsrs
+
     sched = fsrs.schedule(
         db,
         item_type="flashcard",
@@ -133,7 +134,9 @@ async def review_flashcard(card_id: int, review: FlashcardReview, db: Session = 
 
 
 @router.get("/due")
-async def due_flashcards(limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE), db: Session = Depends(get_db), user: User = Depends(current_user)):
+async def due_flashcards(
+    limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE), db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """今日待复习卡片（B4：只看本人）。"""
     cards = ReviewScheduler.get_due_flashcards(db, limit=limit, user_id=owner_id(user))
     return {

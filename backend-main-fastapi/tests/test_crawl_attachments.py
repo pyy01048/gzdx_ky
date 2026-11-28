@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """``services/crawl/attachments.py`` 单测：附件下载/存盘/解析（不联网、不写生产库）。"""
+
 from __future__ import annotations
 
 import json
@@ -38,14 +39,19 @@ class FakeBinaryFetcher:
         if isinstance(item, FetchResult):
             return item
         if isinstance(item, str):
-            return FetchResult(url=url, final_url=url, status=0, html="", content_type="",
-                               elapsed=0.01, error=item)
+            return FetchResult(url=url, final_url=url, status=0, html="", content_type="", elapsed=0.01, error=item)
         if item is None:
-            return FetchResult(url=url, final_url=url, status=200,
-                               html="<html><body>公告正文</body></html>",
-                               content_type="text/html", elapsed=0.01)
-        return FetchResult(url=url, final_url=url, status=200, html="",
-                           content_type="application/pdf", elapsed=0.01, content=item)
+            return FetchResult(
+                url=url,
+                final_url=url,
+                status=200,
+                html="<html><body>公告正文</body></html>",
+                content_type="text/html",
+                elapsed=0.01,
+            )
+        return FetchResult(
+            url=url, final_url=url, status=200, html="", content_type="application/pdf", elapsed=0.01, content=item
+        )
 
 
 def _make_job():
@@ -70,8 +76,7 @@ def test_storage_root_env_override(monkeypatch, tmp_path):
 def test_attachments_are_downloaded_and_stored(tmp_path):
     url = "https://yz.example.edu.cn/files/fenshuxian.pdf"
     fetcher = FakeBinaryFetcher({url: b"%PDF-1.4 fake"})
-    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(),
-                                  parse_pdfs=False)
+    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(), parse_pdfs=False)
     artifacts = pipeline.process(
         html="<html></html>",
         url=PAGE_URL,
@@ -113,8 +118,9 @@ def test_pdf_attachment_is_parsed_and_ingested(tmp_path):
         kwargs.get("parse_fn")(pdf_path)
         return {"document_id": 42, "pages": 7, "blocks": 31}
 
-    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(),
-                                  parse_fn=fake_parse, ingest_fn=fake_ingest)
+    pipeline = AttachmentPipeline(
+        root=str(tmp_path), fetcher=fetcher, db=object(), parse_fn=fake_parse, ingest_fn=fake_ingest
+    )
     artifacts = pipeline.process(
         url=PAGE_URL,
         attachments=[{"url": url, "filename": "zhuanye.pdf", "ext": "pdf"}],
@@ -131,9 +137,13 @@ def test_pdf_attachment_is_parsed_and_ingested(tmp_path):
 def test_non_pdf_attachment_is_only_stored(tmp_path):
     url = "https://yz.example.edu.cn/files/list.xlsx"
     fetcher = FakeBinaryFetcher({url: b"PK\x03\x04"})
-    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(),
-                                  parse_fn=lambda *a, **k: object(),
-                                  ingest_fn=lambda *a, **k: {})
+    pipeline = AttachmentPipeline(
+        root=str(tmp_path),
+        fetcher=fetcher,
+        db=object(),
+        parse_fn=lambda *a, **k: object(),
+        ingest_fn=lambda *a, **k: {},
+    )
     artifacts = pipeline.process(
         url=PAGE_URL,
         attachments=[{"url": url, "filename": "list.xlsx", "ext": "xlsx"}],
@@ -150,8 +160,7 @@ def test_parser_unavailable_does_not_crash_and_reports_dead_letter(tmp_path):
     def boom(*_args, **_kwargs):
         raise ImportError("No module named 'services.parsers.router'")
 
-    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(),
-                                  parse_fn=boom, ingest_fn=boom)
+    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(), parse_fn=boom, ingest_fn=boom)
     errors = []
     artifacts = pipeline.process(
         url=PAGE_URL,
@@ -169,8 +178,7 @@ def test_parser_unavailable_does_not_crash_and_reports_dead_letter(tmp_path):
 def test_download_failure_is_recorded(tmp_path):
     url = "https://yz.example.edu.cn/files/missing.pdf"
     fetcher = FakeBinaryFetcher({url: "http_404"})
-    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(),
-                                  parse_pdfs=False)
+    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(), parse_pdfs=False)
     errors = []
     artifacts = pipeline.process(
         url=PAGE_URL,
@@ -183,11 +191,11 @@ def test_download_failure_is_recorded(tmp_path):
 
 
 def test_max_files_limit(tmp_path):
-    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=FakeBinaryFetcher(),
-                                  db=object(), parse_pdfs=False, max_files=2)
+    pipeline = AttachmentPipeline(
+        root=str(tmp_path), fetcher=FakeBinaryFetcher(), db=object(), parse_pdfs=False, max_files=2
+    )
     attachments = [
-        {"url": f"https://yz.example.edu.cn/f/{i}.pdf", "filename": f"{i}.pdf", "ext": "pdf"}
-        for i in range(5)
+        {"url": f"https://yz.example.edu.cn/f/{i}.pdf", "filename": f"{i}.pdf", "ext": "pdf"} for i in range(5)
     ]
     artifacts = pipeline.process(url=PAGE_URL, attachments=attachments)
     assert len(artifacts.attachments) == 2
@@ -196,8 +204,7 @@ def test_max_files_limit(tmp_path):
 def test_runner_wires_attachment_pipeline(tmp_path):
     url = "https://yz.example.edu.cn/files/fenshuxian.pdf"
     fetcher = FakeBinaryFetcher({url: b"%PDF-1.4 fake"})
-    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(),
-                                  parse_pdfs=False)
+    pipeline = AttachmentPipeline(root=str(tmp_path), fetcher=fetcher, db=object(), parse_pdfs=False)
     queue = CrawlQueue(store=MemoryJobStore())
     queue.enqueue(source_key="test", url=PAGE_URL, school_id=None)
     index = MemoryPageIndex()
@@ -220,6 +227,5 @@ class _FakeExtracted:
     publish_date = None
     engine = "fake"
     attachments = [
-        {"url": "https://yz.example.edu.cn/files/fenshuxian.pdf",
-         "filename": "fenshuxian.pdf", "ext": "pdf"}
+        {"url": "https://yz.example.edu.cn/files/fenshuxian.pdf", "filename": "fenshuxian.pdf", "ext": "pdf"}
     ]

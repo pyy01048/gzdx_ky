@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """只读探针：题库假数据来源 + 各写入路径的实际产出。绝不写库（mode=ro）。"""
+
 import os
 import sqlite3
 
@@ -43,9 +44,13 @@ print("  is_junk=1:", q("SELECT count(*) FROM quiz_questions WHERE is_junk=1"))
 print("  answer 空:", q("SELECT count(*) FROM quiz_questions WHERE answer IS NULL OR trim(answer)=''"))
 print("  verified=1:", q("SELECT count(*) FROM quiz_questions WHERE verified=1"))
 print("  is_deleted=1:", q("SELECT count(*) FROM quiz_questions WHERE is_deleted=1"))
-print("  可用池(非junk且有答案):", q(
-    "SELECT count(*) FROM quiz_questions WHERE (is_junk IS NULL OR is_junk=0) "
-    "AND answer IS NOT NULL AND trim(answer)<>'' AND (is_deleted IS NULL OR is_deleted=0)"))
+print(
+    "  可用池(非junk且有答案):",
+    q(
+        "SELECT count(*) FROM quiz_questions WHERE (is_junk IS NULL OR is_junk=0) "
+        "AND answer IS NOT NULL AND trim(answer)<>'' AND (is_deleted IS NULL OR is_deleted=0)"
+    ),
+)
 
 print()
 print("=== 按 source 前缀分组：谁在往题库里写垃圾 ===")

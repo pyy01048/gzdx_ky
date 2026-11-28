@@ -28,6 +28,7 @@
 * **过滤留证据**：每条被剔除的样本都记录原因，写入报告，可回溯。
 * **不做"生成式补数据"**：不从零编造问答对，只用已有真实语料。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,15 +55,16 @@ SYSTEM_PROMPT = (
 )
 
 #: 质量门禁阈值
-MIN_ANSWER_CHARS = 40        # assistant 太短说明被截断或不完整
-MIN_QUESTION_CHARS = 6       # 题干太短无信息量
-MAX_ANSWER_CHARS = 3000      # 超长多为拼接污染
-RELEVANCE_MIN = 0.12         # 题干关键词在答案中的最低覆盖率
+MIN_ANSWER_CHARS = 40  # assistant 太短说明被截断或不完整
+MIN_QUESTION_CHARS = 6  # 题干太短无信息量
+MAX_ANSWER_CHARS = 3000  # 超长多为拼接污染
+RELEVANCE_MIN = 0.12  # 题干关键词在答案中的最低覆盖率
 
 #: 明显的占位/噪声答案
 _PLACEHOLDER_RE = re.compile(
     r"^(略|见解析|见正文|无|None|null|答案见.{0,6}|详见.{0,6}|"
-    r"（?[0-9]+）?\s*$|第?\s*[0-9]+\s*页)", re.I
+    r"（?[0-9]+）?\s*$|第?\s*[0-9]+\s*页)",
+    re.I,
 )
 #: 选项/题号残留（答案里混进下一题的题号）
 _NEXT_QUESTION_RE = re.compile(r"^\s*[（(]?\s*[0-9]{1,2}\s*[）)]?\s*[、.]\s*\S{0,4}(下列|如图|已知|求)")
@@ -136,7 +138,7 @@ def _tokenize(s: str) -> list[str]:
     han = re.findall(r"[\u4e00-\u9fff]+", s)
     for seg in han:
         for i in range(len(seg) - 1):
-            toks.append(seg[i:i + 2])
+            toks.append(seg[i : i + 2])
     return toks
 
 
@@ -194,14 +196,13 @@ def load_pg_samples() -> list[dict]:
     try:
         from database import engine
         from sqlalchemy import text as _t
+
         with engine.connect() as conn:
-            rows = conn.execute(_t(
-                "SELECT system, user_input, assistant, subject FROM sft_examples"
-            )).fetchall()
+            rows = conn.execute(_t("SELECT system, user_input, assistant, subject FROM sft_examples")).fetchall()
         for sysm, u, a, subj in rows:
-            out.append({"system": sysm or "", "user": u or "",
-                        "assistant": a or "", "subject": subj or "其他",
-                        "_src": "pg"})
+            out.append(
+                {"system": sysm or "", "user": u or "", "assistant": a or "", "subject": subj or "其他", "_src": "pg"}
+            )
     except Exception as exc:  # noqa: BLE001
         print(f"  [警告] 读取 PG sft_examples 失败：{str(exc)[:120]}")
     return out
@@ -235,9 +236,15 @@ def load_file_samples() -> list[dict]:
                     elif role in ("assistant", "gpt"):
                         a = c
                 if u and a:
-                    out.append({"system": s, "user": u, "assistant": a,
-                                "subject": obj.get("subject") or "其他",
-                                "_src": f"{ver}_{split}"})
+                    out.append(
+                        {
+                            "system": s,
+                            "user": u,
+                            "assistant": a,
+                            "subject": obj.get("subject") or "其他",
+                            "_src": f"{ver}_{split}",
+                        }
+                    )
     return out
 
 
@@ -304,10 +311,14 @@ def main(argv: list[str] | None = None) -> int:
         else:
             rejects[reason] += 1
             if len(reject_detail) < 300:
-                reject_detail.append({"reason": reason,
-                                      "user": (s["user"] or "")[:120],
-                                      "assistant": (s["assistant"] or "")[:120],
-                                      "_src": s["_src"]})
+                reject_detail.append(
+                    {
+                        "reason": reason,
+                        "user": (s["user"] or "")[:120],
+                        "assistant": (s["assistant"] or "")[:120],
+                        "_src": s["_src"],
+                    }
+                )
     print(f"  模板剥离生效 {stripped_n} 条（答案已还原为自然表述）")
     print(f"  保留 {len(kept)} 条 / 剔除 {len(merged) - len(kept)} 条")
     for r, n in rejects.most_common():
@@ -319,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     for s in kept:
         by_subj.setdefault(s["subject"], []).append(s)
     train, val = [], []
-    for subj, items in by_subj.items():
+    for _subj, items in by_subj.items():
         n_val = max(1, int(len(items) * args.val_ratio)) if len(items) >= 12 else 0
         val.extend(items[:n_val])
         train.extend(items[n_val:])
@@ -337,25 +348,33 @@ def main(argv: list[str] | None = None) -> int:
     def _write(path: Path, items: list[dict]) -> None:
         with path.open("w", encoding="utf-8") as f:
             for s in items:
-                f.write(json.dumps({
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": s["user"]},
-                        {"role": "assistant", "content": s["assistant"]},
-                    ],
-                    "subject": s["subject"],
-                    "source": s["_src"],
-                }, ensure_ascii=False) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "messages": [
+                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "user", "content": s["user"]},
+                                {"role": "assistant", "content": s["assistant"]},
+                            ],
+                            "subject": s["subject"],
+                            "source": s["_src"],
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
 
     _write(out / "train.jsonl", train)
     _write(out / "val.jsonl", val)
 
     report = {
         "sources": {"pg": len(pg), "files": len(files), "merged": len(merged)},
-        "kept": len(kept), "rejected": len(merged) - len(kept),
+        "kept": len(kept),
+        "rejected": len(merged) - len(kept),
         "reject_reasons": dict(rejects),
         "template_stripped": stripped_n,
-        "train": len(train), "val": len(val),
+        "train": len(train),
+        "val": len(val),
         "subject_distribution": dict(Counter(s["subject"] for s in kept).most_common()),
         "reject_samples": reject_detail,
         "system_prompt": SYSTEM_PROMPT,

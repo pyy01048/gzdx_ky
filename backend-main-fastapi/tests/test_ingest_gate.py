@@ -13,6 +13,7 @@ B 部分测块级谓词：短块/乱码块不写 knowledge_chunks，因此也不
 
 红线：只用 conftest 的临时库，绝不碰 D:\\平台\\database\\kaoyan.db。
 """
+
 from __future__ import annotations
 
 import ast
@@ -56,23 +57,29 @@ def _content_writers():
     for path in _py_files("routers", "services", "scripts"):
         with open(path, encoding="utf-8-sig") as fh:
             tree = ast.parse(fh.read(), filename=path)
-        for fn in [n for n in ast.walk(tree)
-                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-            writes = [n for n in ast.walk(fn)
-                      if isinstance(n, (ast.Assign, ast.AugAssign))
-                      and any(isinstance(t, ast.Attribute) and t.attr == "content"
-                              for t in (n.targets if isinstance(n, ast.Assign) else [n.target]))
-                      ]
+        for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
+            writes = [
+                n
+                for n in ast.walk(fn)
+                if isinstance(n, ast.Assign | ast.AugAssign)
+                and any(
+                    isinstance(t, ast.Attribute) and t.attr == "content"
+                    for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+                )
+            ]
             # Document(content=...) 构造参数也算写入
-            writes += [n for n in ast.walk(fn)
-                       if isinstance(n, ast.Call)
-                       and isinstance(n.func, ast.Name) and n.func.id == "Document"
-                       and any(kw.arg == "content" for kw in n.keywords)]
+            writes += [
+                n
+                for n in ast.walk(fn)
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Name)
+                and n.func.id == "Document"
+                and any(kw.arg == "content" for kw in n.keywords)
+            ]
             if not writes:
                 continue
             if not (GATE_CALLS & _call_names(fn)):
-                bad.append((os.path.relpath(path, BACKEND).replace(os.sep, '/'),
-                            writes[0].lineno, fn.name))
+                bad.append((os.path.relpath(path, BACKEND).replace(os.sep, "/"), writes[0].lineno, fn.name))
     return bad
 
 
@@ -86,10 +93,12 @@ CONTENT_WRITE_EXEMPT = {
     # 跨来源去重自测脚本：全程在自己的**临时库**里造 Document 当夹具，
     # 不是入库入口（正文是手写的 STEM 常量，本来就短，接闸只会被长度规则拦掉，
     # 反而测不到它要测的去重逻辑）。
-    ('scripts/test_cross_source_dedupe.py', 'main'),
+    ("scripts/test_cross_source_dedupe.py", "main"),
     # AST 只认属性名 ``content``：这里写的是 QuizQuestion.content（题目题干），
     # 不是 Document.content，属误伤。该脚本自带 --apply 与写前备份。
-    ('scripts/repair_quiz_stems.py', 'main'),
+    ("scripts/repair_quiz_stems.py", "main"),
+    # 管理员逐题复核题目题干；restore 分支另经 validate_question 质量校验。
+    ("routers/study/quiz.py", "review_question"),
 }
 
 
@@ -98,62 +107,62 @@ def test_content_write_sites_are_gated():
     assert not offenders, (
         "以下位置写 Document.content 但没过入库闸门 "
         f"{sorted(GATE_CALLS)}（脏数据就是从这种入口进来的）："
-        + "; ".join(f"{p}:{ln} in {fn}" for p, ln, fn in offenders))
+        + "; ".join(f"{p}:{ln} in {fn}" for p, ln, fn in offenders)
+    )
 
 
 def _bare_calls(node) -> set:
-    '''函数名形态的调用（``gate_for_write(...)`` 这种裸名）。
+    """函数名形态的调用（``gate_for_write(...)`` 这种裸名）。
 
     只看裸名是刻意的：本轮踩过的 BLOCKER 就是「写了调用却没写 import」，
     NameError 被入口外层的 except 吞成一行日志，看起来接了闸、实际一篇都没校验。
-    '''
-    return {n.func.id for n in ast.walk(node)
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+    """
+    return {n.func.id for n in ast.walk(node) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
 
 
 def _bound_names(tree) -> set:
-    '''模块里可用的名字：任意层级的 import + 任意层级的 def（含函数内导入）。'''
+    """模块里可用的名字：任意层级的 import + 任意层级的 def（含函数内导入）。"""
     bound = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             bound |= {a.asname or a.name for a in node.names}
         elif isinstance(node, ast.Import):
-            bound |= {a.asname or a.name.split('.')[0] for a in node.names}
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            bound |= {a.asname or a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             bound.add(node.name)
     return bound
 
 
 def test_gate_call_sites_resolve_the_name():
-    '''每个调用点所在文件必须真的能解析到那个名字（import 进来或本文件定义）。'''
+    """每个调用点所在文件必须真的能解析到那个名字（import 进来或本文件定义）。"""
     bad = []
-    for path in _py_files('routers', 'services', 'scripts'):
-        with open(path, encoding='utf-8-sig') as fh:
+    for path in _py_files("routers", "services", "scripts"):
+        with open(path, encoding="utf-8-sig") as fh:
             tree = ast.parse(fh.read(), filename=path)
         used = GATE_CALLS & _bare_calls(tree)
         if not used:
             continue
         for name in sorted(used - _bound_names(tree)):
-            bad.append(f'{os.path.relpath(path, BACKEND)}: 调用了 {name} 但名字无法解析')
-    assert not bad, '; '.join(bad)
+            bad.append(f"{os.path.relpath(path, BACKEND)}: 调用了 {name} 但名字无法解析")
+    assert not bad, "; ".join(bad)
 
 
 # --------------------------------------------------------------------------- #
 # 2. 文档级闸门行为（临时库）
 # --------------------------------------------------------------------------- #
-GOOD = ("第 3 章 一元函数积分学\n" +
-        "本节讨论不定积分的换元法与分部积分法，配套 2019 年数学一真题讲解，"
-        "要求掌握三角代换、倒代换以及有理函数积分的部分分式分解。") * 6
+GOOD = (
+    "第 3 章 一元函数积分学\n" + "本节讨论不定积分的换元法与分部积分法，配套 2019 年数学一真题讲解，"
+    "要求掌握三角代换、倒代换以及有理函数积分的部分分式分解。"
+) * 6
 
 
 def _body(tag: str) -> str:
-    '''给每个用例一份独立正文。
+    """给每个用例一份独立正文。
 
     闸门本身带「正文全等去重」，同一库内重复用同一份正文会被判成重复导入 ——
     那是正确行为，但会让不同用例互相污染，所以每个用例自带标题。
-    '''
+    """
     return tag + "\n" + GOOD
-
 
 
 @pytest.fixture(autouse=True)
@@ -175,6 +184,7 @@ def _purge_created_docs():
         db.close()
         _CREATED_DOCS.clear()
 
+
 def _session():
     from database import SessionLocal
 
@@ -192,8 +202,7 @@ def _insert_doc(db, content, file_name, file_path):
 
     # PG 的 ck_documents_canonical 要求 canonical_content 非空（content 由触发器
     # 双向同步）；空正文夹具给一行占位，不影响闸门断言。
-    d = Document(file_name=file_name, file_path=file_path, content=content or "# 占位正文",
-                 index_status="indexed")
+    d = Document(file_name=file_name, file_path=file_path, content=content or "# 占位正文", index_status="indexed")
     db.add(d)
     db.commit()
     db.refresh(d)
@@ -206,8 +215,12 @@ def test_placeholder_and_empty_are_rejected(db_schema):  # noqa: ARG001
 
     db = _session()
     try:
-        for bad in ("", "   ", "[扫描版 PDF OCR 失败: No module named PIL]",
-                    "[pdf 文件，未能提取到文本内容] 文件名：01.pdf"):
+        for bad in (
+            "",
+            "   ",
+            "[扫描版 PDF OCR 失败: No module named PIL]",
+            "[pdf 文件，未能提取到文本内容] 文件名：01.pdf",
+        ):
             v = gate_for_write(db, bad, path="knowledge_base/数学/a.pdf")
             assert not v["ok"], f"占位/空正文竟然放行：{bad[:40]!r}"
     finally:
@@ -220,9 +233,11 @@ def test_self_produced_files_are_rejected(db_schema):  # noqa: ARG001
 
     db = _session()
     try:
-        for p in ("D:/平台/knowledge_base/README.md",
-                  "D:/平台/knowledge_base/数学/chunks/0001.md",
-                  "D:/平台/knowledge_base/_trash/旧版.pdf"):
+        for p in (
+            "D:/平台/knowledge_base/README.md",
+            "D:/平台/knowledge_base/数学/chunks/0001.md",
+            "D:/平台/knowledge_base/_trash/旧版.pdf",
+        ):
             assert is_self_produced(p), p
             v = gate_for_write(db, GOOD, path=p)
             assert not v["ok"], p
@@ -243,8 +258,7 @@ def test_identical_content_rejected_and_self_excluded(db_schema):  # noqa: ARG00
         # 前置清理：历史运行残留的同正文文档会让 dedup 命中错误 id
         from sqlalchemy import text as _t
 
-        stale = db.execute(_t("SELECT id FROM documents WHERE content = :c"),
-                           {"c": GOOD}).fetchall()
+        stale = db.execute(_t("SELECT id FROM documents WHERE content = :c"), {"c": GOOD}).fetchall()
         for (sid,) in stale:
             db.execute(_t("DELETE FROM knowledge_chunks WHERE document_id=:d"), {"d": sid})
             db.execute(_t("DELETE FROM documents WHERE id=:d"), {"d": sid})
@@ -270,8 +284,7 @@ def test_binary_residue_rejected_but_readable_text_kept(db_schema):  # noqa: ARG
 
     db = _session()
     try:
-        binary = ("2021 年真题\n" + "".join(
-            chr(c) for c in (0x00, 0x01, 0x02, 0x03, 0x1A, 0x7F, 0x80, 0x90)) * 90)
+        binary = "2021 年真题\n" + "".join(chr(c) for c in (0x00, 0x01, 0x02, 0x03, 0x1A, 0x7F, 0x80, 0x90)) * 90
         v = gate_for_write(db, binary, path="knowledge_base/数学/ole.pdf")
         assert not v["ok"], v["reasons"]
 
@@ -297,7 +310,7 @@ def test_mojibake_rejected(db_schema):  # noqa: ARG001
         # 阈值 MAX_MOJIBAKE_RATIO=0.10 只数 U+FFFD，所以取样里替换符必须真的过线
         # （这里 120/600=20%）。只堆「锟斤拷」是测不到这条规则的 —— 它是 GBK 误
         # 解码出的合法汉字，字节层面完全可读，闸门按定义不该拦它。
-        junk = '锟斤拷' * 160 + chr(0xFFFD) * 120
+        junk = "锟斤拷" * 160 + chr(0xFFFD) * 120
         v = gate_for_write(db, junk, path="knowledge_base/英语/坏编码.pdf")
         assert not v["ok"] and any("乱码" in r for r in v["reasons"]), v["reasons"]
     finally:
@@ -321,18 +334,25 @@ def test_chunk_gate_filters_bad_chunks_and_keeps_mirror_in_sync(db_schema, chunk
         assert chunk_is_retrievable("逻辑代数的基本运算与公式。" * 40 + chr(0xFFFD))
 
         d = _insert_doc(db, "", "GATE-chunk.pdf", "knowledge_base/数电/GATE-chunk.pdf")
-        body = ("第一章 逻辑代数\n" + "逻辑代数的基本公式与卡诺图化简方法举例。" * 12
-                + "\n\n残句\n\n" + "第二章 组合电路分析\n" + "方法步骤与例题详解。" * 12)
+        body = (
+            "第一章 逻辑代数\n"
+            + "逻辑代数的基本公式与卡诺图化简方法举例。" * 12
+            + "\n\n残句\n\n"
+            + "第二章 组合电路分析\n"
+            + "方法步骤与例题详解。" * 12
+        )
         n = ingest_text(db, d.id, d.file_name, body, subject="数字电子技术", replace=True)
         assert n > 0
-        cnt = int(db.execute(sql_text(
-            "SELECT COUNT(*) FROM knowledge_chunks WHERE document_id=:d"), {"d": d.id}).scalar())
-        fts = int(db.execute(sql_text(
-            "SELECT COUNT(*) FROM knowledge_chunks_fts WHERE document_id=:d"), {"d": d.id}).scalar())
+        cnt = int(
+            db.execute(sql_text("SELECT COUNT(*) FROM knowledge_chunks WHERE document_id=:d"), {"d": d.id}).scalar()
+        )
+        fts = int(
+            db.execute(sql_text("SELECT COUNT(*) FROM knowledge_chunks_fts WHERE document_id=:d"), {"d": d.id}).scalar()
+        )
         assert cnt == n and fts == n, (cnt, fts, n)
-        short = db.execute(sql_text(
-            "SELECT COUNT(*) FROM knowledge_chunks WHERE document_id=:d "
-            "AND length(text) < 80"), {"d": d.id}).scalar()
+        short = db.execute(
+            sql_text("SELECT COUNT(*) FROM knowledge_chunks WHERE document_id=:d AND length(text) < 80"), {"d": d.id}
+        ).scalar()
         assert int(short) == 0, "短块仍然进了知识库"
     finally:
         db.close()

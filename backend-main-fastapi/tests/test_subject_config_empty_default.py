@@ -11,9 +11,11 @@
 界面仍然宣称他考数电；而内置目录（`all_known` / `core_defaults`）本来只该回答
 "系统认识哪些科目"，不该回答"你考什么"。
 """
+
 from __future__ import annotations
 
 import pytest
+
 from models import Goal
 
 

@@ -17,6 +17,7 @@
 ``MIN_CALLS`` 是自检：正则一旦因为 client.js 改写而抽不到东西，本文件不能"零命中
 全通过"，必须显式报错。
 """
+
 from __future__ import annotations
 
 import re
@@ -27,9 +28,7 @@ FE_API_DIR = ROOT.parent / "frontend" / "src" / "api"
 FE_FILES = ("client.js", "kaoyanApi.js", "sync.js")
 
 #: 发起网络请求的封装名（client.js 内部与 kaoyanApi/sync 复用的都是这几个）
-CALL_RE = re.compile(
-    r"\b(?:request|postJson|getJson|delJson|upload)\(\s*(['\"`])(.+?)\1", re.S
-)
+CALL_RE = re.compile(r"\b(?:request|postJson|getJson|delJson|upload)\(\s*(['\"`])(.+?)\1", re.S)
 
 #: 抽到的调用条数下限（实测 2026-10-17：224 条去重路径）。低于它说明抽取逻辑失效。
 MIN_CALLS = 150
@@ -103,7 +102,7 @@ def _matches_any(call: str, templates: list[str]) -> bool:
             tsegs = _segments(tpl)
             if len(tsegs) != len(segs):
                 continue
-            for a, b in zip(segs, tsegs):
+            for a, b in zip(segs, tsegs, strict=False):
                 if b.startswith("{") and b.endswith("}"):
                     continue  # 后端路径参数：任意前端段都算命中
                 if _is_wildcard(a):
@@ -127,9 +126,9 @@ def test_matcher_rejects_unknown_paths():
     """守卫不能只会放行：造假路径必须判死，否则 404 照样漏。"""
     templates = ["/api/kaoyan/notices/{id}", "/api/dashboard/summary"]
     assert _matches_any("/kaoyan/notices/123", templates)
-    assert _matches_any("/kaoyan/notices/", templates)        # '/x/' + id 的拼接尾巴
-    assert _matches_any("/kaoyan/notices/${id}", templates)   # 模板字符串插值
-    assert not _matches_any("/kaoyan/noticez", templates)     # 拼写漂移
+    assert _matches_any("/kaoyan/notices/", templates)  # '/x/' + id 的拼接尾巴
+    assert _matches_any("/kaoyan/notices/${id}", templates)  # 模板字符串插值
+    assert not _matches_any("/kaoyan/noticez", templates)  # 拼写漂移
     assert not _matches_any("/kaoyan/notices/123/extra", templates)
     assert not _matches_any("/nope", templates)
 
@@ -139,10 +138,7 @@ def test_every_frontend_call_has_a_live_route(app_module):
     templates = list(app_module.openapi()["paths"].keys())
     assert templates, "OpenAPI 里一个路径都没有，测试环境异常"
     dead = sorted(c for c in calls if not _matches_any(c, templates))
-    assert not dead, (
-        "前端在调、后端 OpenAPI 里没有的接口（页面会拿到 404）：\n"
-        + "\n".join(f"  /api{c}" for c in dead)
-    )
+    assert not dead, "前端在调、后端 OpenAPI 里没有的接口（页面会拿到 404）：\n" + "\n".join(f"  /api{c}" for c in dead)
 
 
 def test_raw_fetch_literals_are_live(app_module):
@@ -153,11 +149,8 @@ def test_raw_fetch_literals_are_live(app_module):
     """
     literals = _raw_fetch_literals()
     templates = list(app_module.openapi()["paths"].keys())
-    dead = sorted(c for c in literals if not _matches_any(c[len("/api"):], templates))
-    assert not dead, (
-        "组件/工具里写死的 fetch 路径在 OpenAPI 中不存在（会 404）：\n"
-        + "\n".join(f"  {c}" for c in dead)
-    )
+    dead = sorted(c for c in literals if not _matches_any(c[len("/api") :], templates))
+    assert not dead, "组件/工具里写死的 fetch 路径在 OpenAPI 中不存在（会 404）：\n" + "\n".join(f"  {c}" for c in dead)
 
 
 def test_api_base_prefix_is_single_source():

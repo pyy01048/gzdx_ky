@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { request } from '../../api/client'
@@ -286,6 +286,7 @@ function KeyScheduleCard() {
 }
 
 /* ---------- 主页面 ---------- */
+/** 通知中心主组件：公告已读/加星 + 改考雷达。 */
 export default function NoticeCenter() {
   const { isAdmin, user, status: authStatus } = useAuth()
   const isGuest = !user

@@ -23,12 +23,13 @@ const TYPE_LABEL = Object.fromEntries(QUESTION_TYPE_OPTIONS.map((t) => [t.value,
 
 const EMPTY_FORM = { subject: '', chaptersText: '', types: [] }
 
-/* 兼容后端返回形态：数组 / {subjects:[...]} / 旧分页体 {items:[...]} */
+/** 兼容后端返回形态：数组 / {subjects:[...]} / 旧分页体 {items:[...]} */
 function normalizeSubjects(d) {
   if (Array.isArray(d)) return d
   return (d && (d.subjects || d.items)) || []
 }
 
+/** 科目表格加载骨架。 */
 function TableSkeleton() {
   return (
     <div className="v3-admin-table-wrap">
@@ -52,6 +53,11 @@ function TableSkeleton() {
   )
 }
 
+/**
+ * 科目管理页：维护科目、章节与题型；刷题 / 题库 / 错题本的科目列表由此动态加载。
+ * 数据源：taxonomyApi.subjects / createSubject / updateSubject / removeSubject。
+ * @returns {JSX.Element} 科目管理页面
+ */
 export default function SubjectManager() {
   const [confirm, confirmDialog] = useConfirm()
   const [list, setList] = useState([])
@@ -62,6 +68,7 @@ export default function SubjectManager() {
   const [editor, setEditor] = useState({ open: false, mode: 'create', original: '', form: EMPTY_FORM })
   const subjectNameRef = useRef(null)
 
+  /** 拉取科目清单并归一化为数组形态。 */
   const load = useCallback(async () => {
     setLoading(true)
     setLoadError('')
@@ -79,11 +86,12 @@ export default function SubjectManager() {
 
   useEffect(() => { load() }, [load])
 
-  const refresh = async () => {
+  /** 刷新科目列表并提示结果。 */
+  const refresh = useCallback(async () => {
     const ok = await load()
     if (ok) toastOk('科目列表已刷新')
     else toastErr('刷新失败，请检查后端服务后重试')
-  }
+  }, [load])
 
   const stats = useMemo(() => ({
     subjects: list.length,
@@ -99,10 +107,10 @@ export default function SubjectManager() {
       || (s.chapters || []).some((c) => String(c).toLowerCase().includes(kw)))
   }, [list, q])
 
-  const openCreate = () =>
-    setEditor({ open: true, mode: 'create', original: '', form: { ...EMPTY_FORM, types: [] } })
+  const openCreate = useCallback(() =>
+    setEditor({ open: true, mode: 'create', original: '', form: { ...EMPTY_FORM, types: [] } }), [])
 
-  const openEdit = (item) => setEditor({
+  const openEdit = useCallback((item) => setEditor({
     open: true,
     mode: 'edit',
     original: item.subject,
@@ -111,14 +119,14 @@ export default function SubjectManager() {
       chaptersText: (item.chapters || []).join('\n'),
       types: Array.isArray(item.question_types) ? [...item.question_types] : [],
     },
-  })
+  }), [])
 
-  const closeEditor = () => {
+  const closeEditor = useCallback(() => {
     if (saving) return
     setEditor((ed) => ({ ...ed, open: false }))
-  }
+  }, [saving])
 
-  const toggleType = (v) =>
+  const toggleType = useCallback((v) =>
     setEditor((ed) => ({
       ...ed,
       form: {
@@ -127,9 +135,10 @@ export default function SubjectManager() {
           ? ed.form.types.filter((x) => x !== v)
           : [...ed.form.types, v],
       },
-    }))
+    })), [])
 
-  const handleSubmit = async () => {
+  /** 提交科目新建 / 编辑表单。 */
+  const handleSubmit = useCallback(async () => {
     const f = editor.form
     if (!f.subject.trim()) {
       toastErr('请填写科目名称')
@@ -154,13 +163,14 @@ export default function SubjectManager() {
       setEditor((ed) => ({ ...ed, open: false }))
       load()
     } catch (e) {
-      toastErr('保存失败：' + (e.message || ''))
+      toastErr('保存失败：' + (e?.message || ''))
     } finally {
       setSaving(false)
     }
-  }
+  }, [editor, load])
 
-  const handleDelete = async (item) => {
+  /** 删除科目，带题目归属确认。 */
+  const handleDelete = useCallback(async (item) => {
     const hasQuestions = (item.question_count || 0) > 0
     const tip = hasQuestions
       ? `科目「${item.subject}」下已有 ${item.question_count} 道题目，删除后这些题目将失去科目归属，确定删除吗？`
@@ -171,9 +181,9 @@ export default function SubjectManager() {
       toastOk('科目已删除')
       load()
     } catch (e) {
-      toastErr('删除失败：' + (e.message || ''))
+      toastErr('删除失败：' + (e?.message || ''))
     }
-  }
+  }, [confirm, load])
 
   return (
     <div className="v3-admin-page">

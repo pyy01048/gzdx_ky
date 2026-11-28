@@ -333,7 +333,7 @@ export default function KnowledgeArticle() {
   }, [])
 
   /** 提交掌握度自评 → 后端重排下次复习时间 */
-  const submitGrade = async (q) => {
+  const submitGrade = useCallback(async (q) => {
     if (!user) {
       navigate('/login')
       return
@@ -371,7 +371,7 @@ export default function KnowledgeArticle() {
     } finally {
       setSubmitting(false)
     }
-  }
+  }, [user, navigate, submitting, id])
 
   const mapHref = useCallback((options = {}) => {
     if (!kp) return '/knowledge'

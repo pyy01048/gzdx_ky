@@ -20,6 +20,7 @@
     python scripts/backfill_quiz_kp_text.py --dry-run
     python scripts/backfill_quiz_kp_text.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,10 +41,15 @@ def norm_subject(s: str | None) -> str:
     t = re.sub(r"[\s　]+", "", (s or ""))
     # 常见别名归一
     alias = {
-        "数字电子": "数字电子技术", "数电": "数字电子技术",
-        "模拟电子": "模拟电子技术", "模电": "模拟电子技术",
-        "电路分析": "电路", "高等数学": "数学", "高数": "数学",
-        "线性代数": "数学", "概率论": "数学",
+        "数字电子": "数字电子技术",
+        "数电": "数字电子技术",
+        "模拟电子": "模拟电子技术",
+        "模电": "模拟电子技术",
+        "电路分析": "电路",
+        "高等数学": "数学",
+        "高数": "数学",
+        "线性代数": "数学",
+        "概率论": "数学",
     }
     return alias.get(t, t)
 
@@ -51,10 +57,39 @@ def norm_subject(s: str | None) -> str:
 #: 这些词作为「知识点名」太泛，题干里必然出现，挂上去就是假关联。
 #: 实测 dry-run 里「运放/函数/连续」把大批题错误挂接，故一律不匹配。
 STOP_NAMES = {
-    "函数", "连续", "极限", "概率", "矩阵", "向量", "导数", "积分", "级数",
-    "电路", "电压", "电流", "电阻", "功率", "逻辑", "门电路", "触发器",
-    "运放", "放大", "反馈", "信号", "系统", "分析", "计算", "方法",
-    "定理", "定义", "概念", "原理", "应用", "问题", "条件", "性质",
+    "函数",
+    "连续",
+    "极限",
+    "概率",
+    "矩阵",
+    "向量",
+    "导数",
+    "积分",
+    "级数",
+    "电路",
+    "电压",
+    "电流",
+    "电阻",
+    "功率",
+    "逻辑",
+    "门电路",
+    "触发器",
+    "运放",
+    "放大",
+    "反馈",
+    "信号",
+    "系统",
+    "分析",
+    "计算",
+    "方法",
+    "定理",
+    "定义",
+    "概念",
+    "原理",
+    "应用",
+    "问题",
+    "条件",
+    "性质",
 }
 
 
@@ -86,7 +121,7 @@ def main() -> int:
         rows = cur.fetchall()
         print(f"待回填题目：{len(rows)}")
 
-        hits: list[tuple[int, int, str]] = []     # (question_id, kp_id, kp_name)
+        hits: list[tuple[int, int, str]] = []  # (question_id, kp_id, kp_name)
         unmatched: list[int] = []
         for qid, subj, content, chap in rows:
             pool = by_subject.get(norm_subject(subj), [])
@@ -104,8 +139,7 @@ def main() -> int:
             else:
                 unmatched.append(qid)
 
-        print(f"可匹配：{len(hits)} 道（{len(hits)/max(1,len(rows)):.1%}）；"
-              f"未匹配：{len(unmatched)} 道")
+        print(f"可匹配：{len(hits)} 道（{len(hits) / max(1, len(rows)):.1%}）；未匹配：{len(unmatched)} 道")
 
         if args.dry_run:
             for qid, kid, name in hits[:10]:
@@ -131,7 +165,9 @@ def main() -> int:
             )
         pg.commit()
 
-        cur.execute("SELECT count(*) FILTER (WHERE btrim(coalesce(knowledge_point,''))<>''), count(*) FROM quiz_questions")
+        cur.execute(
+            "SELECT count(*) FILTER (WHERE btrim(coalesce(knowledge_point,''))<>''), count(*) FROM quiz_questions"
+        )
         filled, total = cur.fetchone()
         cur.execute("SELECT count(DISTINCT question_id) FROM question_knowledge_links")
         linked = cur.fetchone()[0]

@@ -11,6 +11,7 @@
 - 全程 try/except 旁路容错：任何异常都不向外抛，调用方无需感知。
 - 只读操作，不修改任何业务数据。
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,9 +25,7 @@ logger = logging.getLogger(__name__)
 MAX_MATCHED_KPS = 5
 
 
-def expand_query_with_graph(
-    db, query: str, subject: str | None = None, max_expansions: int = 3
-) -> Dict[str, Any]:
+def expand_query_with_graph(db, query: str, subject: str | None = None, max_expansions: int = 3) -> Dict[str, Any]:
     """基于知识图谱扩展检索查询词。
 
     匹配策略：
@@ -187,9 +186,7 @@ def _collect_related_terms(db, matched_kps: List[Dict[str, Any]]) -> List[str]:
     return related
 
 
-def _collect_prerequisites(
-    db, kp_id: int, depth: int, visited: set[int], path: List[Dict[str, Any]]
-) -> None:
+def _collect_prerequisites(db, kp_id: int, depth: int, visited: set[int], path: List[Dict[str, Any]]) -> None:
     """递归收集前置知识点（自底向上）。
 
     - 防环：``visited`` 记录已访问的 kp_id，重复即停止。

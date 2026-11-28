@@ -310,9 +310,7 @@ def local_today(*, grace_minutes: int = 0) -> date:
     return local_date_of(utcnow(), grace_minutes=grace_minutes)
 
 
-def local_window_for_day(
-    day: date, *, grace_minutes: int = 0
-) -> tuple[datetime, datetime]:
+def local_window_for_day(day: date, *, grace_minutes: int = 0) -> tuple[datetime, datetime]:
     """给定一个本地自然日，返回它在 DB 里的 ``[起点, 终点)`` naive UTC 窗口。
 
     这是「按日范围取数」的最小原语：凡是要算「近 7 天」「上周」「本月第 N 天」
@@ -326,16 +324,12 @@ def local_window_for_day(
         >>> local_window_for_day(date(2026, 10, 17), grace_minutes=60)[0].isoformat()
         '2026-10-16T17:00:00'
     """
-    boundary = datetime.combine(day, time.min, tzinfo=local_tz()) + timedelta(
-        minutes=int(grace_minutes)
-    )
+    boundary = datetime.combine(day, time.min, tzinfo=local_tz()) + timedelta(minutes=int(grace_minutes))
     start = boundary.astimezone(UTC).replace(tzinfo=None)
     return start, start + timedelta(days=1)
 
 
-def local_range_utc(
-    day_from: date, day_to: date, *, grace_minutes: int = 0
-) -> tuple[datetime, datetime]:
+def local_range_utc(day_from: date, day_to: date, *, grace_minutes: int = 0) -> tuple[datetime, datetime]:
     """``[day_from, day_to)`` 若干本地日对应的 naive UTC 时间区间。
 
     ``day_to`` **不含**，所以正好配 ``col >= start, col < end``；同时它也是
@@ -359,9 +353,7 @@ def _day_of(value: Optional[datetime], *, grace_minutes: int) -> date:
     return local_date_of(value, grace_minutes=grace_minutes)
 
 
-def local_day_start_utc(
-    value: Optional[datetime] = None, *, grace_minutes: int = 0
-) -> datetime:
+def local_day_start_utc(value: Optional[datetime] = None, *, grace_minutes: int = 0) -> datetime:
     """返回 value 所在本地日的起点，表示为 **naive UTC**（可直接与 DB 列比较）。
 
     Examples:
@@ -376,17 +368,13 @@ def local_day_start_utc(
     return local_window_for_day(day, grace_minutes=grace_minutes)[0]
 
 
-def local_day_end_utc(
-    value: Optional[datetime] = None, *, grace_minutes: int = 0
-) -> datetime:
+def local_day_end_utc(value: Optional[datetime] = None, *, grace_minutes: int = 0) -> datetime:
     """本地日的**右开**边界（naive UTC）。配合 ``<`` 使用，避免跨日重复计数。"""
     day = _day_of(value, grace_minutes=grace_minutes)
     return local_window_for_day(day, grace_minutes=grace_minutes)[1]
 
 
-def local_day_window(
-    value: Optional[datetime] = None, *, grace_minutes: int = 0
-) -> tuple[date, datetime, datetime]:
+def local_day_window(value: Optional[datetime] = None, *, grace_minutes: int = 0) -> tuple[date, datetime, datetime]:
     """一次拿到 ``(日, 起点, 终点)``，写「今日」类查询的标准入口。
 
     返回的时间都是 naive UTC，可直接进 ``filter(col >= start, col < end)``。
@@ -440,11 +428,7 @@ def day_bucket_expr(column: Any, bind: Any = None, *, grace_minutes: int = 0) ->
             *[text(str(v)) for v in (0, 0, 0, 0, 0, minutes, 0)]
         )
         return cast(shifted, Date)
-    expr = (
-        func.date(column, text(f"'{minutes:+d} minutes'"))
-        if minutes
-        else func.date(column)
-    )
+    expr = func.date(column, text(f"'{minutes:+d} minutes'")) if minutes else func.date(column)
     return type_coerce(expr, Date)
 
 
@@ -470,16 +454,11 @@ def day_bucket_text_expr(column_sql: str, *, grace_minutes: int = 0) -> str:
     """
     tz = local_tz()
     if _has_dst(tz):
-        raise NotImplementedError(
-            f"day_bucket_text_expr 只支持固定偏移时区（当前 {KAOYAN_TZ_NAME} 含夏令时）"
-        )
+        raise NotImplementedError(f"day_bucket_text_expr 只支持固定偏移时区（当前 {KAOYAN_TZ_NAME} 含夏令时）")
     minutes = int(_shift_delta(grace_minutes).total_seconds() // 60)
 
     if _is_postgres(None):
-        shifted = (
-            f"({column_sql})::timestamp"
-            + (f" + interval '{minutes} minutes'" if minutes else "")
-        )
+        shifted = f"({column_sql})::timestamp" + (f" + interval '{minutes} minutes'" if minutes else "")
         return f"to_char(({shifted})::date, 'YYYY-MM-DD')"
     modifier = f", '{minutes:+d} minutes'" if minutes else ""
     return f"date({column_sql}{modifier})"

@@ -18,6 +18,7 @@
     python scripts/probe_strict_alignment.py --narrow 300
 只读。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,14 +40,16 @@ LAYER_DEF = [
 # 就近答案信号（要求前面有分隔符，避免命中题干中间）
 NEAR_ANS = re.compile(
     r"(?:【答案】|【参考答案】|\[答案\]|答案\s*[:：]|解\s*[:：]|答\s*[:：]|"
-    r"故\s*选\s*[A-DＡ-Ｄ]|所以答案|因此答案|答案为)")
+    r"故\s*选\s*[A-DＡ-Ｄ]|所以答案|因此答案|答案为)"
+)
 # 占位符：命中说明答案不可抽取
 PLACEHOLDER = re.compile(r"查看答案|见解析|扫码|略$|答案略|（略）")
 # 下一题/下一答案的边界：题号 + 换行/句号
 NEXT_Q = re.compile(r"(?:^|\n)\s*\d{1,3}\s*[．.、]\s*|查看答案|下一题")
 TAIL_NOISE = re.compile(
     r"(第\d+页\s*---|\(OCR\)|微信公众号|公众号|免费分享|考研资料|视频课程|"
-    r"qq\d{6,}|东坡哥|水木观畴|研池大叔|笃学考研|名师精品课程|电话：|客服)")
+    r"qq\d{6,}|东坡哥|水木观畴|研池大叔|笃学考研|名师精品课程|电话：|客服)"
+)
 
 
 def layer_of(source: str) -> str:
@@ -77,11 +80,11 @@ def probe(qnorm: str, body: str, narrow: int) -> dict:
     if idx < 0:
         return {"hit": False, "why": "题干未在文档中定位"}
     end = idx + max(hit_len, len(qnorm))
-    window = body[end: end + narrow]
+    window = body[end : end + narrow]
     m = NEAR_ANS.search(window)
     if not m:
         return {"hit": False, "why": "就近无答案信号", "window": window[:120]}
-    seg = window[m.end():]
+    seg = window[m.end() :]
     b = NEXT_Q.search(seg)
     if b and b.start() > 0:
         seg = seg[: b.start()]
@@ -117,12 +120,13 @@ def main() -> int:
 
     # 题干内已有答案的先排除（这部分走零成本切分）
     import probe_answer_recoverability as P1
+
     rows = [r for r in rows if not P1.split_inline_answer(r["content"])["ok"]]
     print(f"排除题干内已含答案后，剩 {len(rows)} 条待外部对齐\n")
 
     docs = con.execute(
-        "SELECT id, file_name, content FROM documents "
-        "WHERE content IS NOT NULL AND length(content)>800").fetchall()
+        "SELECT id, file_name, content FROM documents WHERE content IS NOT NULL AND length(content)>800"
+    ).fetchall()
     idx = defaultdict(list)
     norm_cache = {}
     for d in docs:
@@ -139,7 +143,7 @@ def main() -> int:
     by_layer = defaultdict(Counter)
     by_src = defaultdict(Counter)
     strict_samples = defaultdict(list)
-    doc_has_answer = {}   # source -> 该文档是否存在任何答案信号（文档级画像）
+    doc_has_answer = {}  # source -> 该文档是否存在任何答案信号（文档级画像）
 
     for src, items in groups.items():
         fname = re.sub(r"^(知识库|真题):", "", src or "")
@@ -167,7 +171,7 @@ def main() -> int:
     print("一、就近对齐结果（P2-strict）")
     print("=" * 76)
     for k, v in stat.most_common():
-        print(f"  {k}: {v}  ({v*100//max(1,len(rows))}%)")
+        print(f"  {k}: {v}  ({v * 100 // max(1, len(rows))}%)")
 
     print("\n按层:")
     for lay in ["L1-真题", "L2-习题题库", "L3-讲义正文", "L4-未归类"]:
@@ -176,8 +180,10 @@ def main() -> int:
             continue
         tot = sum(c.values())
         ok = c["strict-ok"]
-        print(f"  {lay:<12} 总 {tot:>5}  可抽取 {ok:>4} ({ok*100//max(1,tot)}%)  "
-              f"占位符 {c['占位符(查看答案等)']:>4}  其他 {tot-ok-c['占位符(查看答案等)']:>4}")
+        print(
+            f"  {lay:<12} 总 {tot:>5}  可抽取 {ok:>4} ({ok * 100 // max(1, tot)}%)  "
+            f"占位符 {c['占位符(查看答案等)']:>4}  其他 {tot - ok - c['占位符(查看答案等)']:>4}"
+        )
 
     print("\n按来源文档（题数≥10，按 strict-ok 占比排序，TOP20）:")
     for src, c in sorted(by_src.items(), key=lambda kv: -sum(kv[1].values()))[:20]:
@@ -208,14 +214,20 @@ def main() -> int:
         out = os.path.join(BASE_DIR, args.json_out)
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as f:
-            json.dump({
-                "narrow": args.narrow, "total": len(rows),
-                "stat": dict(stat),
-                "by_layer": {k: dict(v) for k, v in by_layer.items()},
-                "by_source": {k: dict(v) for k, v in by_src.items()},
-                "doc_has_answer": doc_has_answer,
-                "strict_samples": {k: v[:8] for k, v in strict_samples.items()},
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(
+                {
+                    "narrow": args.narrow,
+                    "total": len(rows),
+                    "stat": dict(stat),
+                    "by_layer": {k: dict(v) for k, v in by_layer.items()},
+                    "by_source": {k: dict(v) for k, v in by_src.items()},
+                    "doc_has_answer": doc_has_answer,
+                    "strict_samples": {k: v[:8] for k, v in strict_samples.items()},
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
         print(f"\n[JSON] {out}")
     con.close()
     return 0

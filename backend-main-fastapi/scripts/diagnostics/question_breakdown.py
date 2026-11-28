@@ -5,6 +5,7 @@
 
     python scripts/diagnostics/question_breakdown.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,16 +38,11 @@ def main() -> int:
                 # year 等数值列不能和 '' 比较；逐列自适应。
                 try:
                     n = db.execute(
-                        text(
-                            f"select count(*) from quiz_questions"
-                            f" where {col} is not null and {col} <> ''"
-                        )
+                        text(f"select count(*) from quiz_questions where {col} is not null and {col} <> ''")
                     ).scalar()
                 except Exception:  # noqa: BLE001 数值列 → 只看 IS NOT NULL
                     db.rollback()
-                    n = db.execute(
-                        text(f"select count(*) from quiz_questions where {col} is not null")
-                    ).scalar()
+                    n = db.execute(text(f"select count(*) from quiz_questions where {col} is not null")).scalar()
                 print(f"  {col} 非空 = {n}")
         for table in ("exam_papers", "papers", "quiz_papers"):
             try:

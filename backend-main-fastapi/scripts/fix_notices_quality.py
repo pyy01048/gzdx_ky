@@ -23,6 +23,7 @@
   python scripts/fix_notices_quality.py --clean-noise --apply    # 只清噪声
   python scripts/fix_notices_quality.py --fix-dates --clean-noise --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -72,7 +73,7 @@ def extract_date(title: str):
             yy, mm, dd = int(g[0]), int(g[1]), int(g[2])
         if not _valid_ymd(yy, mm, dd):
             continue
-        clean = t[m.end():].strip(" 　-—|·")
+        clean = t[m.end() :].strip(" 　-—|·")
         return f"{yy:04d}-{mm:02d}-{dd:02d}", (clean or t)
     # 尾部："xxx 05.22/2024"
     m = SUFFIX_PATTERN.search(t)
@@ -106,8 +107,7 @@ def main():
         src = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
 
     cur = src.cursor()
-    audit = {"time": datetime.now(timezone.utc).isoformat(), "apply": args.apply,
-             "date_fixes": [], "noise_deleted": []}
+    audit = {"time": datetime.now(timezone.utc).isoformat(), "apply": args.apply, "date_fixes": [], "noise_deleted": []}
 
     # ---------- 动作 1：日期回填 ----------
     if args.fix_dates:
@@ -154,7 +154,7 @@ def main():
         nodate = cur.execute(
             "SELECT COUNT(*) FROM kaoyan_notices WHERE publish_date IS NULL OR publish_date=''"
         ).fetchone()[0]
-        print(f"\n完成：notices 总数 {tot}（{sch} 所）；无日期剩余 {nodate}（{nodate*100//max(tot,1)}%）")
+        print(f"\n完成：notices 总数 {tot}（{sch} 所）；无日期剩余 {nodate}（{nodate * 100 // max(tot, 1)}%）")
         print(f"审计 → {AUDIT}")
     else:
         print("\n[DRY-RUN] 未写库。加 --apply 执行（建议先 --fix-dates 后 --clean-noise 分两批）。")

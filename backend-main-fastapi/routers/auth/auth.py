@@ -14,7 +14,6 @@ from core.models.schools import AuditLog
 from database import get_db
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
-from models import AuthEvent, EmailToken, Role, RolePermission, User
 from pydantic import BaseModel, Field
 from services import email_service
 from sqlalchemy import func
@@ -54,6 +53,8 @@ from utils.security import (
     verify_password,
 )
 from utils.timeutil import iso_utc_z, to_naive_utc, utcnow
+
+from models import AuthEvent, EmailToken, Role, RolePermission, User
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 admin_router = APIRouter(prefix="/api/admin/users", tags=["用户管理"], dependencies=[Depends(require_admin)])
@@ -154,12 +155,12 @@ def _audit(
 # 会话
 # --------------------------------------------------------------------------- #
 @router.get("/status")
-def auth_status():
+def auth_status() -> dict:
     return {"enabled": True, "mode": "account", "message": "请使用账号密码登录"}
 
 
 @router.post("/login")
-def login(body: LoginBody, request: Request, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginBody, request: Request, response: Response, db: Session = Depends(get_db)) -> dict:
     key = login_limiter.key(client_ip(request), body.username)
     wait = login_limiter.retry_after(key)
     if wait:
@@ -227,7 +228,7 @@ def login(body: LoginBody, request: Request, response: Response, db: Session = D
 
 
 @router.post("/refresh")
-def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
+def refresh(request: Request, response: Response, db: Session = Depends(get_db)) -> dict:
     token = request.cookies.get(REFRESH_COOKIE)
     payload = decode_token(token, "refresh") if token else None
     user = load_token_user(db, payload)
@@ -260,7 +261,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
 
 
 @router.post("/logout")
-def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+def logout(request: Request, response: Response, db: Session = Depends(get_db)) -> dict:
     # 服务端吊销（120 / 评审 C6）：只清 cookie 不够 —— 被窃取的 token
     # 在过期前仍可用。吊销本会话后，该会话 access/refresh 立即 401，
     # 其他设备的会话不受影响。
@@ -275,7 +276,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
 
 @router.get("/me")
-def me(user: User = Depends(current_user)):
+def me(user: User = Depends(current_user)) -> dict:
     return user_snapshot(user)
 
 
@@ -286,7 +287,7 @@ def change_password(
     response: Response,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-):
+) -> dict:
     if not verify_password(body.old_password, user.password_hash):
         raise _invalid("原密码错误")
     validate_new_password(body.new_password)
@@ -353,7 +354,7 @@ def list_users(
     registered_to: Optional[str] = None,
     include_deleted: bool = False,
     db: Session = Depends(get_db),
-):
+) -> dict:
     q = db.query(User)
     # 软删除的用户默认不出现在列表里（deleted_at 非空）；勾选"含已删除"才带出来，
     # 否则管理员建错一个用户名就只能停用、看不到、也删不掉（本次修复的原始诉求）。
@@ -378,7 +379,9 @@ def list_users(
 
 
 @admin_router.post("", status_code=status.HTTP_201_CREATED)
-def create_user(body: UserCreateBody, request: Request, operator=Depends(require_admin), db: Session = Depends(get_db)):
+def create_user(
+    body: UserCreateBody, request: Request, operator=Depends(require_admin), db: Session = Depends(get_db)
+) -> dict:
     if body.role not in ROLES:
         raise _invalid(f"角色只能是 {'/'.join(ROLES)}")
     exists = db.query(User.id).filter(func.lower(User.username) == body.username.lower()).first()
@@ -415,7 +418,7 @@ def create_user(body: UserCreateBody, request: Request, operator=Depends(require
 @admin_router.patch("/{user_id}")
 def update_user(
     user_id: int, body: UserPatchBody, request: Request, operator=Depends(require_admin), db: Session = Depends(get_db)
-):
+) -> dict:
     user = _get_user(db, user_id)
     before = {k: v for k, v in user_snapshot(user).items() if k not in ("last_login_at", "created_at", "deleted_at")}
     revoke = False
@@ -494,7 +497,7 @@ def reset_password(
     body: Optional[AdminResetBody] = None,
     operator=Depends(require_admin),
     db: Session = Depends(get_db),
-):
+) -> dict:
     """强制重置密码（§5.2）：临时密码（默认）或发送重置邮件，均记审计。"""
     user = _get_user(db, user_id)
     mode = body.mode if body else "temp"
@@ -540,7 +543,7 @@ def reset_password(
 # 恢复 = 清空 deleted_at，数据原样回来。用户名在软删期间仍被 UNIQUE 占用，
 # 这正是"可恢复"的代价——要复用同名得先恢复或换一个。
 @admin_router.delete("/{user_id}")
-def delete_user(user_id: int, request: Request, operator=Depends(require_admin), db: Session = Depends(get_db)):
+def delete_user(user_id: int, request: Request, operator=Depends(require_admin), db: Session = Depends(get_db)) -> dict:
     user = _get_user(db, user_id)
     if user.deleted_at is not None:
         raise BusinessException(
@@ -564,7 +567,9 @@ def delete_user(user_id: int, request: Request, operator=Depends(require_admin),
 
 
 @admin_router.post("/{user_id}/restore")
-def restore_user(user_id: int, request: Request, operator=Depends(require_admin), db: Session = Depends(get_db)):
+def restore_user(
+    user_id: int, request: Request, operator=Depends(require_admin), db: Session = Depends(get_db)
+) -> dict:
     user = _get_user(db, user_id)
     if user.deleted_at is None:
         raise _invalid("用户未被删除，无需恢复")
@@ -788,7 +793,7 @@ def _normalize_email_or_400(email: str) -> str:
 
 
 @router.post("/register")
-def register(body: RegisterBody, request: Request, db: Session = Depends(get_db)):
+def register(body: RegisterBody, request: Request, db: Session = Depends(get_db)) -> dict:
     ip = client_ip(request)
     wait = register_limiter.retry_after(ip)
     if wait:
@@ -839,7 +844,7 @@ def register(body: RegisterBody, request: Request, db: Session = Depends(get_db)
 
 
 @router.post("/resend-verification")
-def resend_verification(body: EmailOnlyBody, request: Request, db: Session = Depends(get_db)):
+def resend_verification(body: EmailOnlyBody, request: Request, db: Session = Depends(get_db)) -> dict:
     email = _normalize_email_or_400(body.email)
     user = _find_by_email(db, email)
     if (
@@ -859,7 +864,7 @@ def resend_verification(body: EmailOnlyBody, request: Request, db: Session = Dep
 
 
 @router.post("/verify-email")
-def verify_email(body: TokenBody, request: Request, db: Session = Depends(get_db)):
+def verify_email(body: TokenBody, request: Request, db: Session = Depends(get_db)) -> dict:
     row = _load_valid_token(db, body.token, "verify")
     if row is None:
         raise _invalid("验证链接无效或已过期，请重新发送验证邮件")
@@ -874,7 +879,7 @@ def verify_email(body: TokenBody, request: Request, db: Session = Depends(get_db
 
 
 @router.post("/forgot-password")
-def forgot_password(body: EmailOnlyBody, request: Request, db: Session = Depends(get_db)):
+def forgot_password(body: EmailOnlyBody, request: Request, db: Session = Depends(get_db)) -> dict:
     start = time.monotonic()
     # 节流在账号查找之前（§4.2）：IP 3 次/小时 + 邮箱 1 次/10 分钟，任一触发即拒绝。
     ip = client_ip(request)
@@ -915,7 +920,7 @@ def forgot_password(body: EmailOnlyBody, request: Request, db: Session = Depends
 
 
 @router.get("/reset-link")
-def reset_link(token: str, db: Session = Depends(get_db)):
+def reset_link(token: str, db: Session = Depends(get_db)) -> RedirectResponse:
     """邮件链接入口：token 移入 httpOnly cookie 后 302 到干净路径（§4.1）。
 
     避免 token 以 URL 形式留在前端访问日志 / Referer / 浏览器历史。
@@ -937,7 +942,7 @@ def reset_link(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/reset-password/inspect")
-def inspect_reset(request: Request, body: Optional[InspectResetBody] = None, db: Session = Depends(get_db)):
+def inspect_reset(request: Request, body: Optional[InspectResetBody] = None, db: Session = Depends(get_db)) -> dict:
     token = (body.token if body else None) or request.cookies.get(RESET_COOKIE)
     row = _load_valid_token(db, token or "", "reset")
     if row is None:
@@ -949,7 +954,7 @@ def inspect_reset(request: Request, body: Optional[InspectResetBody] = None, db:
 @router.post("/reset-password")
 def reset_password_via_email(
     body: ResetPasswordBody, request: Request, response: Response, db: Session = Depends(get_db)
-):
+) -> dict:
     token = body.token or request.cookies.get(RESET_COOKIE)
     row = _load_valid_token(db, token or "", "reset")
     if row is None:
@@ -978,7 +983,7 @@ def reset_password_via_email(
 @router.post("/delete-request")
 def request_deletion(
     request: Request, response: Response, user: User = Depends(current_user), db: Session = Depends(get_db)
-):
+) -> dict:
     if getattr(user, "status", None) == STATUS_PENDING_DELETION:
         raise _invalid("已提交注销申请，冷静期内可取消")
     user.status = STATUS_PENDING_DELETION
@@ -992,7 +997,7 @@ def request_deletion(
 
 
 @router.post("/delete-cancel")
-def cancel_deletion(body: LoginBody, request: Request, db: Session = Depends(get_db)):
+def cancel_deletion(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> dict:
     """冷静期内凭原账号密码取消注销（此时无法登录，故不走会话）。"""
     ident = body.username.strip().lower()
     q = db.query(User).filter(User.deleted_at.is_(None), User.status == STATUS_PENDING_DELETION)
@@ -1016,7 +1021,7 @@ def cancel_deletion(body: LoginBody, request: Request, db: Session = Depends(get
 # 管理端：用户详情 / 角色权限目录 / 认证审计（只读）
 # --------------------------------------------------------------------------- #
 @admin_router.get("/roles")
-def list_roles(db: Session = Depends(get_db)):
+def list_roles(db: Session = Depends(get_db)) -> dict:
     roles = db.query(Role).order_by(Role.role).all()
     perms = db.query(RolePermission).all()
     by_role: dict = {}
@@ -1042,7 +1047,7 @@ def list_auth_events(
     user_id: Optional[int] = None,
     keyword: Optional[str] = None,
     db: Session = Depends(get_db),
-):
+) -> dict:
     q = db.query(AuthEvent)
     if event_type:
         q = q.filter(AuthEvent.event_type == event_type)
@@ -1069,7 +1074,7 @@ def list_auth_events(
 
 
 @admin_router.get("/{user_id}")
-def user_detail(user_id: int, db: Session = Depends(get_db)):
+def user_detail(user_id: int, db: Session = Depends(get_db)) -> dict:
     user = _get_user(db, user_id)
     events = db.query(AuthEvent).filter(AuthEvent.user_id == user_id).order_by(AuthEvent.id.desc()).limit(20).all()
     return {

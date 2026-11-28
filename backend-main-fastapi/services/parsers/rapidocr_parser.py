@@ -40,9 +40,9 @@ def _box_to_bbox(box: Any) -> Optional[Tuple[float, float, float, float]]:
     if not box:
         return None
     points = []
-    if isinstance(box, (list, tuple)):
+    if isinstance(box, list | tuple):
         for point in box:
-            if isinstance(point, (list, tuple)) and len(point) >= 2:
+            if isinstance(point, list | tuple) and len(point) >= 2:
                 try:
                     points.append((float(point[0]), float(point[1])))
                 except (TypeError, ValueError):
@@ -256,9 +256,7 @@ class RapidOCRParser:
         return page, ({"page_no": page_no, "error": str(error)} if error else None)
 
 
-def _resolve_indices(
-    total_pages: int, max_pages: Optional[int], page_numbers: Optional[Sequence[int]]
-) -> List[int]:
+def _resolve_indices(total_pages: int, max_pages: Optional[int], page_numbers: Optional[Sequence[int]]) -> List[int]:
     """要处理的 0 基页索引。``page_numbers`` 是 1 基页码，优先于 ``max_pages``。"""
     total = int(total_pages)
     if page_numbers is not None:

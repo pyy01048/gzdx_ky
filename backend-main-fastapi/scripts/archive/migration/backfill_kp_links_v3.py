@@ -21,6 +21,7 @@
     python scripts/backfill_kp_links_v3.py --sample 30     # 抽查
     python scripts/backfill_kp_links_v3.py --apply         # 写库（先备份）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,22 +45,40 @@ REPO_ROOT = os.path.dirname(BASE_DIR)
 # --------------------------------------------------------------------------- #
 # 可调参数
 # --------------------------------------------------------------------------- #
-CONTENT_NAME_MIN_LEN = 5      # 题面匹配：知识点整名最短长度（低于此不采信）
-MAX_LINKS_PER_Q = 3           # 单题最多新增链路数（防一题挂满）
-ROLE = "primary"              # 本脚本产出的链角色
+CONTENT_NAME_MIN_LEN = 5  # 题面匹配：知识点整名最短长度（低于此不采信）
+MAX_LINKS_PER_Q = 3  # 单题最多新增链路数（防一题挂满）
+ROLE = "primary"  # 本脚本产出的链角色
 WEIGHT_PRIMARY = 1.0
 
 #: 泛名黑名单：这些名字几乎出现在每道题里，命中不足以证明"考了这个知识点"
 GENERIC_NAMES = {
-    "输出电压", "输入电压", "输出电压值", "放大倍数", "输入电阻", "输出电阻",
-    "电压放大倍数", "电流放大倍数", "静态工作点", "频率响应", "通频带",
-    "截止频率", "上限频率", "下限频率", "反馈", "电路", "信号", "电压", "电流",
+    "输出电压",
+    "输入电压",
+    "输出电压值",
+    "放大倍数",
+    "输入电阻",
+    "输出电阻",
+    "电压放大倍数",
+    "电流放大倍数",
+    "静态工作点",
+    "频率响应",
+    "通频带",
+    "截止频率",
+    "上限频率",
+    "下限频率",
+    "反馈",
+    "电路",
+    "信号",
+    "电压",
+    "电流",
 }
 
 #: chapter 是否"可信"（形如 第N章 xxx / 高等数学·xxx / 数据结构-xxx）。
 #: 库里存在把题干片段误当 chapter 的知识点（如 "8.8 电路如图 P8.8 所示"），
 #: 这类章值不能用于同章约束。
-_TRUSTED_CHAPTER_RE = re.compile(r"^(第\s*\d+\s*章|[0-9]+\.\d+\s*[\u4e00-\u9fff]|[\u4e00-\u9fff]{2,}(·|-|—)[\u4e00-\u9fff]{2,})")
+_TRUSTED_CHAPTER_RE = re.compile(
+    r"^(第\s*\d+\s*章|[0-9]+\.\d+\s*[\u4e00-\u9fff]|[\u4e00-\u9fff]{2,}(·|-|—)[\u4e00-\u9fff]{2,})"
+)
 
 #: 题面匹配时，若**题目没有可信章值**，则要求更长的整名（<=5 字太容易偶然命中）
 CONTENT_NAME_MIN_LEN_NO_CH = 6
@@ -67,10 +86,12 @@ CONTENT_NAME_MIN_LEN_NO_CH = 6
 # --------------------------------------------------------------------------- #
 # 归一化
 # --------------------------------------------------------------------------- #
-_FULL2HALF = {ord(ch): ord(ch) - 0xFEE0 for ch in
-              "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ"
-              "ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"
-              "０１２３４５６７８９"}
+_FULL2HALF = {
+    ord(ch): ord(ch) - 0xFEE0
+    for ch in "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ"
+    "ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"
+    "０１２３４５６７８９"
+}
 _BRACKET_RE = re.compile(r"[（(【\[][^）)】\]]*[）)】\]]")
 
 
@@ -107,13 +128,18 @@ def trusted_chapter(ch: str | None) -> bool:
 # --------------------------------------------------------------------------- #
 def load_points(cur: sqlite3.Cursor) -> list[dict]:
     rows = cur.execute(
-        "SELECT id, name, subject, chapter FROM knowledge_points "
-        "WHERE name IS NOT NULL AND TRIM(name) != ''"
+        "SELECT id, name, subject, chapter FROM knowledge_points WHERE name IS NOT NULL AND TRIM(name) != ''"
     ).fetchall()
     return [
-        {"id": r[0], "name": str(r[1]).strip(), "norm": normalize(r[1]),
-         "compact": compact(r[1]), "subject": r[2], "chapter": r[3],
-         "chapter_trusted": trusted_chapter(r[3])}
+        {
+            "id": r[0],
+            "name": str(r[1]).strip(),
+            "norm": normalize(r[1]),
+            "compact": compact(r[1]),
+            "subject": r[2],
+            "chapter": r[3],
+            "chapter_trusted": trusted_chapter(r[3]),
+        }
         for r in rows
     ]
 
@@ -130,12 +156,16 @@ def load_questions(cur: sqlite3.Cursor, require_answer: bool) -> list[dict]:
         ans = (r[5] or "").strip()
         if require_answer and not ans:
             continue
-        out.append({
-            "id": r[0], "subject": r[1], "chapter": r[2],
-            "kp_text": (r[3] or "").strip(),
-            "content": compact(r[4] or ""),
-            "chapter_trusted": trusted_chapter(r[2]),
-        })
+        out.append(
+            {
+                "id": r[0],
+                "subject": r[1],
+                "chapter": r[2],
+                "kp_text": (r[3] or "").strip(),
+                "content": compact(r[4] or ""),
+                "chapter_trusted": trusted_chapter(r[2]),
+            }
+        )
     return out
 
 
@@ -175,8 +205,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="题目↔知识点关联回填 v3")
     ap.add_argument("--apply", action="store_true", help="实际写库（默认仅预览）")
     ap.add_argument("--sample", type=int, default=20, help="抽查样例条数")
-    ap.add_argument("--require-answer", action="store_true",
-                    help="只统计/只链接有答案的题（更严的'可作答'口径）")
+    ap.add_argument("--require-answer", action="store_true", help="只统计/只链接有答案的题（更严的'可作答'口径）")
     ap.add_argument("--max-links-per-q", type=int, default=MAX_LINKS_PER_Q)
     args = ap.parse_args()
 
@@ -189,22 +218,24 @@ def main() -> int:
     alias = load_alias()
 
     cov_before, kp_total, cov_pct = coverage(cur, args.require_answer)
-    existing = {(r[0], r[1]) for r in cur.execute(
-        "SELECT question_id, knowledge_point_id FROM question_knowledge_links")}
+    existing = {
+        (r[0], r[1]) for r in cur.execute("SELECT question_id, knowledge_point_id FROM question_knowledge_links")
+    }
 
     print(f"数据库: {DB_PATH}")
     print(f"知识点 {kp_total} 个 / 可作答题目 {len(questions)} 题 / 现有链路 {len(existing)} 条")
     print(f"回填前覆盖率（有链路知识点）：{cov_before}/{kp_total} = {cov_pct:.1f}%\n")
 
     # ---- 清洗：名字等于科目名的"知识点"不是真知识点（如 KP1119 就叫「数字电子技术」）----
-    subject_names = {str(s[0]).strip() for s in cur.execute(
-        "SELECT DISTINCT subject FROM knowledge_points WHERE subject IS NOT NULL")}
+    subject_names = {
+        str(s[0]).strip()
+        for s in cur.execute("SELECT DISTINCT subject FROM knowledge_points WHERE subject IS NOT NULL")
+    }
     subject_norms = {normalize(s) for s in subject_names}
     dropped = [p for p in points if p["norm"] in subject_norms]
     points = [p for p in points if p["norm"] not in subject_norms]
     if dropped:
-        print(f"剔除「名字==科目名」的伪知识点 {len(dropped)} 个"
-              f"（如 {dropped[0]['name']}）")
+        print(f"剔除「名字==科目名」的伪知识点 {len(dropped)} 个（如 {dropped[0]['name']}）")
 
     # ---- 索引 ----
     by_subject: dict[str, list[dict]] = defaultdict(list)
@@ -220,7 +251,7 @@ def main() -> int:
                 norm_index[(p["subject"] or "", na)].append(p)
 
     # ---- 三层匹配 ----
-    new_links: list[tuple[int, int, str]] = []   # (qid, kpid, 层标记)
+    new_links: list[tuple[int, int, str]] = []  # (qid, kpid, 层标记)
     stat = defaultdict(int)
     per_q: dict[int, int] = defaultdict(int)
     # 幂等：单题"已有链路数"也计入上限，否则每次重跑都会再补最多 N 条，永不收敛
@@ -297,19 +328,21 @@ def main() -> int:
         uniq_links.append((qid, kpid, layer))
 
     newly_kps = {k for _, k, _ in uniq_links}
-    cov_after = len({r[0] for r in cur.execute(
-        "SELECT DISTINCT knowledge_point_id FROM question_knowledge_links")} | newly_kps)
+    len({r[0] for r in cur.execute("SELECT DISTINCT knowledge_point_id FROM question_knowledge_links")} | newly_kps)
     # 按可作答口径重算（新增链路均指向可作答题，故直接相加安全的条件是题本身可作答）
-    cov_after_strict = cov_before + len(newly_kps - {
-        r[0] for r in cur.execute("SELECT DISTINCT knowledge_point_id FROM question_knowledge_links")})
+    cov_after_strict = cov_before + len(
+        newly_kps - {r[0] for r in cur.execute("SELECT DISTINCT knowledge_point_id FROM question_knowledge_links")}
+    )
 
     print("== 拟新增（dry-run）==")
     for layer, n in sorted(stat.items()):
         print(f"  {layer}: {n}")
     print(f"  去重后新增链路：{len(uniq_links)} 条")
     print(f"  新增覆盖知识点：{len(newly_kps)} 个")
-    print(f"  覆盖率：{cov_before}/{kp_total} = {cov_pct:.1f}%  →  "
-          f"{cov_after_strict}/{kp_total} = {cov_after_strict / kp_total * 100:.1f}%")
+    print(
+        f"  覆盖率：{cov_before}/{kp_total} = {cov_pct:.1f}%  →  "
+        f"{cov_after_strict}/{kp_total} = {cov_after_strict / kp_total * 100:.1f}%"
+    )
 
     if args.sample > 0 and uniq_links:
         print(f"\n----- 抽查样例（随机 {args.sample} 条）-----")
@@ -320,8 +353,7 @@ def main() -> int:
             q = q_by_id.get(qid, {})
             p = kp_by_id.get(kpid, {})
             snippet = (q.get("content") or "")[:44]
-            print(f"  [{layer}] Q{qid} → KP{kpid}「{p.get('name', '')}」"
-                  f"（{p.get('chapter') or '-'}）")
+            print(f"  [{layer}] Q{qid} → KP{kpid}「{p.get('name', '')}」（{p.get('chapter') or '-'}）")
             print(f"      「{snippet}」")
 
     # ---- 0 链路知识点清单 ----
@@ -335,8 +367,7 @@ def main() -> int:
     # ---- 备份（SQLite backup API，WAL 安全）----
     bak_dir = os.path.join(BASE_DIR, "data", "backups")
     os.makedirs(bak_dir, exist_ok=True)
-    bak = os.path.join(
-        bak_dir, f"kaoyan_pre_kplink_v3_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+    bak = os.path.join(bak_dir, f"kaoyan_pre_kplink_v3_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     with sqlite3.connect(bak) as dest:
         con.backup(dest)
     print(f"\n已备份 → {bak}")
@@ -353,33 +384,36 @@ def main() -> int:
     cov_now, kp_tot, cov_now_pct = coverage(cur, args.require_answer)
     print("\n===== 写库完成 =====")
     print(f"新增链路 {len(uniq_links)} 条")
-    print(f"覆盖率：{cov_before}/{kp_total} = {cov_pct:.1f}%  →  "
-          f"{cov_now}/{kp_tot} = {cov_now_pct:.1f}%")
+    print(f"覆盖率：{cov_before}/{kp_total} = {cov_pct:.1f}%  →  {cov_now}/{kp_tot} = {cov_now_pct:.1f}%")
     con.close()
     return 0
 
 
-def _write_zero_link_kps(cur: sqlite3.Cursor, points: list[dict],
-                         newly: set[int], require_answer: bool) -> None:
+def _write_zero_link_kps(cur: sqlite3.Cursor, points: list[dict], newly: set[int], require_answer: bool) -> None:
     """产出回填后仍为 0 链路的知识点清单（CSV + JSON），供人工优先补齐。"""
-    linked = {r[0] for r in cur.execute(
-        "SELECT DISTINCT knowledge_point_id FROM question_knowledge_links")}
+    linked = {r[0] for r in cur.execute("SELECT DISTINCT knowledge_point_id FROM question_knowledge_links")}
     zero = [p for p in points if p["id"] not in linked and p["id"] not in newly]
     out_dir = os.path.join(REPO_ROOT, "tools", "datasource")
     os.makedirs(out_dir, exist_ok=True)
     jpath = os.path.join(out_dir, "zero_link_knowledge_points.json")
     with open(jpath, "w", encoding="utf-8") as f:
-        json.dump({
-            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "count": len(zero),
-            "items": [{"id": p["id"], "name": p["name"], "subject": p["subject"],
-                       "chapter": p["chapter"]} for p in zero],
-        }, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "count": len(zero),
+                "items": [
+                    {"id": p["id"], "name": p["name"], "subject": p["subject"], "chapter": p["chapter"]} for p in zero
+                ],
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
     cpath = os.path.join(out_dir, "zero_link_knowledge_points.csv")
     with open(cpath, "w", encoding="utf-8-sig") as f:
         f.write("id,name,subject,chapter\n")
         for p in zero:
-            f.write(f'{p["id"]},{p["name"]},{p["subject"] or ""},{p["chapter"] or ""}\n')
+            f.write(f"{p['id']},{p['name']},{p['subject'] or ''},{p['chapter'] or ''}\n")
     print(f"\n0 链路知识点清单（回填后仍为空）：{len(zero)} 个")
     print(f"  → {jpath}")
     print(f"  → {cpath}")

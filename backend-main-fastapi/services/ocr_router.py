@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OCRBlock:
     """单个文本块（对齐 chineseocr_lite CLI 协议）。"""
+
     text: str
     score: float = 0.0
     box: Optional[List[List[float]]] = None
@@ -45,11 +46,12 @@ class OCRBlock:
 @dataclass
 class OCRResult:
     """统一 OCR 结果。"""
+
     text: str
     blocks: List[OCRBlock] = field(default_factory=list)
     elapsed: float = 0.0
-    engine: str = ""            # 实际引擎名：local-gpu / paddleocr / rapidocr / chineseocr-lite
-    backend: str = ""           # 后端标识（用于 manifest 记录）
+    engine: str = ""  # 实际引擎名：local-gpu / paddleocr / rapidocr / chineseocr-lite
+    backend: str = ""  # 后端标识（用于 manifest 记录）
     error: Optional[str] = None
     #: 逐后端失败原因（可观测性）：["local-gpu:退出码 1", "paddleocr:不可用", ...]
     attempts: List[str] = field(default_factory=list)
@@ -107,20 +109,37 @@ class LocalGPUOCRBackend:
             )
             elapsed = time.time() - t0
             if proc.returncode == 3:
-                return OCRResult(text="", engine=self.name, backend=self.name,
-                                 elapsed=elapsed, error="模型仍在下载，请先运行 run.ps1 --continue")
+                return OCRResult(
+                    text="",
+                    engine=self.name,
+                    backend=self.name,
+                    elapsed=elapsed,
+                    error="模型仍在下载，请先运行 run.ps1 --continue",
+                )
             if proc.returncode != 0:
-                return OCRResult(text="", engine=self.name, backend=self.name,
-                                 elapsed=elapsed, error=f"local-gpu 退出码 {proc.returncode}: {proc.stderr[-300:]}")
+                return OCRResult(
+                    text="",
+                    engine=self.name,
+                    backend=self.name,
+                    elapsed=elapsed,
+                    error=f"local-gpu 退出码 {proc.returncode}: {proc.stderr[-300:]}",
+                )
             text = (proc.stdout or "").strip()
-            return OCRResult(text=text, engine=self.name, backend=self.name,
-                             elapsed=elapsed, error=None if text else "未识别到文字")
+            return OCRResult(
+                text=text, engine=self.name, backend=self.name, elapsed=elapsed, error=None if text else "未识别到文字"
+            )
         except subprocess.TimeoutExpired:
-            return OCRResult(text="", engine=self.name, backend=self.name,
-                             elapsed=time.time() - t0, error=f"local-gpu 超时（>{self.timeout:.0f}s）")
+            return OCRResult(
+                text="",
+                engine=self.name,
+                backend=self.name,
+                elapsed=time.time() - t0,
+                error=f"local-gpu 超时（>{self.timeout:.0f}s）",
+            )
         except Exception as e:
-            return OCRResult(text="", engine=self.name, backend=self.name,
-                             elapsed=time.time() - t0, error=f"local-gpu 调用失败: {e}")
+            return OCRResult(
+                text="", engine=self.name, backend=self.name, elapsed=time.time() - t0, error=f"local-gpu 调用失败: {e}"
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -166,16 +185,17 @@ class PaddleOCRBackend:
             data = await self._svc.recognize_bytes(image_bytes, filename=filename)
             elapsed = time.time() - t0
             if data.get("error"):
-                return OCRResult(text="", engine=self.name, backend=self.name,
-                                 elapsed=elapsed, error=str(data["error"]))
+                return OCRResult(
+                    text="", engine=self.name, backend=self.name, elapsed=elapsed, error=str(data["error"])
+                )
             lines = data.get("lines") or []
             text = data.get("text") or ""
             blocks = [OCRBlock(text=ln) for ln in lines if ln and str(ln).strip()]
-            return OCRResult(text=text, blocks=blocks, elapsed=elapsed,
-                             engine=self.name, backend=self.name, error=None)
+            return OCRResult(text=text, blocks=blocks, elapsed=elapsed, engine=self.name, backend=self.name, error=None)
         except Exception as e:
-            return OCRResult(text="", engine=self.name, backend=self.name,
-                             elapsed=time.time() - t0, error=f"paddleocr 调用失败: {e}")
+            return OCRResult(
+                text="", engine=self.name, backend=self.name, elapsed=time.time() - t0, error=f"paddleocr 调用失败: {e}"
+            )
 
     def recognize(self, image_path: str) -> OCRResult:
         import asyncio
@@ -217,8 +237,7 @@ class RapidOCRBackend:
             return True
         except Exception as e:  # noqa: BLE001
             self._probe_failed = True
-            logger.warning("rapidocr 不可用（引擎初始化失败）: %s: %s",
-                           type(e).__name__, e)
+            logger.warning("rapidocr 不可用（引擎初始化失败）: %s: %s", type(e).__name__, e)
             return False
 
     def recognize(self, image_path: str) -> OCRResult:
@@ -226,11 +245,13 @@ class RapidOCRBackend:
         try:
             text = self._svc.recognize(image_path)
             elapsed = time.time() - t0
-            return OCRResult(text=text, engine=self.name, backend=self.name,
-                             elapsed=elapsed, error=None if text else "未识别到文字")
+            return OCRResult(
+                text=text, engine=self.name, backend=self.name, elapsed=elapsed, error=None if text else "未识别到文字"
+            )
         except Exception as e:
-            return OCRResult(text="", engine=self.name, backend=self.name,
-                             elapsed=time.time() - t0, error=f"rapidocr 调用失败: {e}")
+            return OCRResult(
+                text="", engine=self.name, backend=self.name, elapsed=time.time() - t0, error=f"rapidocr 调用失败: {e}"
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -251,24 +272,46 @@ class ChineseOCRLiteBackend:
         try:
             proc = subprocess.run(
                 [self.cmd, image_path, "--output", "-"],
-                capture_output=True, text=True, timeout=60.0,
-                encoding="utf-8", errors="replace",
+                capture_output=True,
+                text=True,
+                timeout=60.0,
+                encoding="utf-8",
+                errors="replace",
             )
             if proc.returncode != 0:
-                return OCRResult(text="", engine=self.name, backend=self.name,
-                                 elapsed=time.time() - t0, error=proc.stderr[-300:])
+                return OCRResult(
+                    text="", engine=self.name, backend=self.name, elapsed=time.time() - t0, error=proc.stderr[-300:]
+                )
             data = json.loads((proc.stdout or "{}").strip())
-            blocks = [OCRBlock(text=b.get("text", ""), score=b.get("score", 0.0), box=b.get("box"))
-                      for b in data.get("blocks", []) if b.get("text")]
-            return OCRResult(text=data.get("text", ""), blocks=blocks,
-                             elapsed=data.get("elapsed", time.time() - t0),
-                             engine=self.name, backend=self.name, error=None)
+            blocks = [
+                OCRBlock(text=b.get("text", ""), score=b.get("score", 0.0), box=b.get("box"))
+                for b in data.get("blocks", [])
+                if b.get("text")
+            ]
+            return OCRResult(
+                text=data.get("text", ""),
+                blocks=blocks,
+                elapsed=data.get("elapsed", time.time() - t0),
+                engine=self.name,
+                backend=self.name,
+                error=None,
+            )
         except json.JSONDecodeError as e:
-            return OCRResult(text="", engine=self.name, backend=self.name,
-                             elapsed=time.time() - t0, error=f"chineseocr-lite JSON 解析失败: {e}")
+            return OCRResult(
+                text="",
+                engine=self.name,
+                backend=self.name,
+                elapsed=time.time() - t0,
+                error=f"chineseocr-lite JSON 解析失败: {e}",
+            )
         except Exception as e:
-            return OCRResult(text="", engine=self.name, backend=self.name,
-                             elapsed=time.time() - t0, error=f"chineseocr-lite 调用失败: {e}")
+            return OCRResult(
+                text="",
+                engine=self.name,
+                backend=self.name,
+                elapsed=time.time() - t0,
+                error=f"chineseocr-lite 调用失败: {e}",
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -379,13 +422,11 @@ class OCRRouter:
             try:
                 result = backend.recognize(image_path)
             except Exception as e:
-                result = OCRResult(text="", engine=name, backend=name,
-                                   elapsed=0.0, error=f"{type(e).__name__}: {e}")
+                result = OCRResult(text="", engine=name, backend=name, elapsed=0.0, error=f"{type(e).__name__}: {e}")
             if result.text:
                 if attempts:
                     # 记录"前面这些后端为什么没用上"，便于排查降级
-                    logger.debug("OCR 后端降级: %s 成功（前序失败: %s）",
-                                 name, "; ".join(attempts))
+                    logger.debug("OCR 后端降级: %s 成功（前序失败: %s）", name, "; ".join(attempts))
                 result.backend = name
                 result.fallback_from = attempts or []
                 return result
@@ -393,8 +434,7 @@ class OCRRouter:
             attempts.append(f"{name}:{(result.error or '空结果')[:80]}")
         msg = f"全部 OCR 后端不可用或未识别到文字（{'; '.join(attempts) or '无候选后端'}）"
         logger.warning("OCR 失败 %s: %s", os.path.basename(image_path), msg)
-        return OCRResult(text="", engine="", backend="", error=msg,
-                         attempts=list(attempts))
+        return OCRResult(text="", engine="", backend="", error=msg, attempts=list(attempts))
 
     def recognize_bytes(self, image_bytes: bytes, filename: str = "image.png") -> OCRResult:
         """识别内存图片字节（仅支持支持 bytes 的后端：paddleocr）。"""
@@ -428,10 +468,7 @@ class OCRRouter:
             return snap
         with self._status_lock:
             now = time.time()
-            if (
-                self._status_snapshot is not None
-                and now - self._status_ts < self._status_ttl
-            ):
+            if self._status_snapshot is not None and now - self._status_ts < self._status_ttl:
                 return self._status_snapshot
             snapshot = {
                 "prefer": self.prefer,

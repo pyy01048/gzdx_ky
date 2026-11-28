@@ -14,6 +14,7 @@
 
 运行: python scripts/import_kyzz_politics_pg.py
 """
+
 # [STATUS] 一次性数据脚本（迁入 oneoff/，docs/完善方案/04 §3.4）。执行前确认数据源与备份。
 import glob
 import json
@@ -144,6 +145,7 @@ def main():
     log.info("共解析 %d 题，开始写入数据库...", len(records))
 
     from scripts._conn import dsn
+
     conn = psycopg.connect(dsn())
     try:
         inserted = write_records(conn, records)

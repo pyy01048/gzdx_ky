@@ -14,6 +14,7 @@ AI 对话/流式接口必须仍然返回可读文本，而不是 content=null / 
 - ``_call_provider_stream`` 用假 httpx 流（只吐 reasoning_content）断言流结束会
   把 reasoning_content 作为兜底 content 输出。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,13 +47,15 @@ def test_parse_response_content_null_falls_back_to_reasoning():
     ai = AIService.__new__(AIService)  # 不触发 __init__
     provider = _make_provider()
     data = {
-        "choices": [{
-            "message": {
-                "role": "assistant",
-                "content": None,
-                "reasoning_content": "这是思维链内容",
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "reasoning_content": "这是思维链内容",
+                }
             }
-        }],
+        ],
         "usage": {"total_tokens": 10},
     }
     content, usage = ai._parse_response(provider, data)
@@ -64,13 +67,15 @@ def test_parse_response_normal_content_unchanged():
     ai = AIService.__new__(AIService)
     provider = _make_provider()
     data = {
-        "choices": [{
-            "message": {
-                "role": "assistant",
-                "content": "正常回答",
-                "reasoning_content": "内部思考",
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "正常回答",
+                    "reasoning_content": "内部思考",
+                }
             }
-        }],
+        ],
     }
     content, _usage = ai._parse_response(provider, data)
     assert content == "正常回答"
@@ -129,11 +134,13 @@ def _sse_chunk(rc_text):
     import json
 
     obj = {
-        "choices": [{
-            "index": 0,
-            "delta": {"role": "assistant", "reasoning_content": rc_text},
-            "finish_reason": None,
-        }]
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"role": "assistant", "reasoning_content": rc_text},
+                "finish_reason": None,
+            }
+        ]
     }
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
@@ -185,11 +192,13 @@ def test_call_provider_stream_normal_content_still_works(monkeypatch):
     import json
 
     obj = {
-        "choices": [{
-            "index": 0,
-            "delta": {"role": "assistant", "content": "正常回答"},
-            "finish_reason": None,
-        }]
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"role": "assistant", "content": "正常回答"},
+                "finish_reason": None,
+            }
+        ]
     }
     chunks = [f"data: {json.dumps(obj, ensure_ascii=False)}\n\n", "data: [DONE]\n\n"]
     events = _run_stream(monkeypatch, chunks)

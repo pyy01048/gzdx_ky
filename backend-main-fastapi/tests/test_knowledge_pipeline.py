@@ -1,4 +1,4 @@
-﻿"""知识库三级结构 / 真题抽取 / 复习进度 的回归测试。
+"""知识库三级结构 / 真题抽取 / 复习进度 的回归测试。
 
 覆盖 V4 新增的四个核心能力：
 - 科目与题型口径（taxonomy）
@@ -9,6 +9,7 @@
 这些测试**不依赖数据库**，因此可在任意环境运行：
     pytest tests/test_knowledge_pipeline.py -v
 """
+
 import datetime
 import os
 import sys
@@ -22,18 +23,15 @@ from services import kp_cleaner, qbank_builder, review_service, structure_parser
 # 一、科目 / 章节 / 题型口径
 # --------------------------------------------------------------------------- #
 
-class TestTaxonomy:
 
+class TestTaxonomy:
     def test_core_subjects_are_834_scoped(self):
         """主线科目 = 考试口径，只含要考的几门。"""
-        assert set(taxonomy.CORE_SUBJECTS) == {
-            "数字电子技术", "模拟电子技术", "数学", "英语", "政治", "真题综合"
-        }
+        assert set(taxonomy.CORE_SUBJECTS) == {"数字电子技术", "模拟电子技术", "数学", "英语", "政治", "真题综合"}
 
     def test_major_subjects_present(self):
         """专业课支撑范围必须覆盖电子信息/电气大类 + 408。"""
-        for s in ("电路", "信号与系统", "通信原理", "光学与工程光学",
-                  "普通物理", "计算机学科专业基础408"):
+        for s in ("电路", "信号与系统", "通信原理", "光学与工程光学", "普通物理", "计算机学科专业基础408"):
             assert s in taxonomy.MAJOR_SUBJECTS
 
     def test_extension_subjects_excluded_from_core(self):
@@ -47,8 +45,7 @@ class TestTaxonomy:
         要能录入资料、出题、路由，但**不算进复习进度口径** ——
         否则会把没考的科目算进进度统计。
         """
-        for s in ("电路", "信号与系统", "通信原理",
-                  "光学与工程光学", "普通物理", "计算机学科专业基础408"):
+        for s in ("电路", "信号与系统", "通信原理", "光学与工程光学", "普通物理", "计算机学科专业基础408"):
             assert s in taxonomy.MAJOR_SUBJECTS
             assert taxonomy.is_major(s), f"{s} 应为专业课支撑科目"
             assert not taxonomy.is_core(s), f"{s} 不应计入考试口径"
@@ -93,9 +90,7 @@ class TestTaxonomy:
     def test_question_types_per_subject(self):
         assert "画波形" in taxonomy.question_types_of("数字电子技术")
         assert "化简" in taxonomy.question_types_of("数字电子技术")
-        assert taxonomy.question_types_of("英语") == [
-            "完形", "阅读", "新题型", "翻译", "小作文", "大作文"
-        ]
+        assert taxonomy.question_types_of("英语") == ["完形", "阅读", "新题型", "翻译", "小作文", "大作文"]
 
     def test_guess_question_type(self):
         assert taxonomy.guess_question_type("三、计算题", "模拟电子技术") == "计算"
@@ -113,8 +108,8 @@ class TestTaxonomy:
 # 二、知识点清洗（垃圾识别）
 # --------------------------------------------------------------------------- #
 
-class TestKpCleaner:
 
+class TestKpCleaner:
     def test_accepts_real_concept_names(self):
         for name in ("触发器", "JK触发器", "卡诺图", "静态工作点", "TTL与非门"):
             r = kp_cleaner.assess_knowledge_point(name, "数字电子技术")
@@ -184,7 +179,6 @@ SAMPLE_EXAM = """电子技术基础练习题
 
 
 class TestQbankBuilder:
-
     def test_extract_questions_from_exam(self):
         qs = qbank_builder.extract_questions(SAMPLE_EXAM)
         assert len(qs) >= 4
@@ -212,7 +206,8 @@ class TestQbankBuilder:
         """题干点明了所属章的关键概念时，应归到该章。"""
         cls = qbank_builder.classify_question(
             "共射极放大电路的静态工作点如何计算",
-            subject_hint="模拟电子技术", section_type="选择",
+            subject_hint="模拟电子技术",
+            section_type="选择",
         )
         assert cls["subject"] == "模拟电子技术"
         assert cls["chapter"] == "第2章 基本放大电路"
@@ -222,7 +217,8 @@ class TestQbankBuilder:
         """一条题干牵涉多章时，取证据最强的一章（集成运放 → 第4章）。"""
         cls = qbank_builder.classify_question(
             "集成运放构成反相比例放大器时，反馈类型为（）",
-            subject_hint="模拟电子技术", section_type="选择",
+            subject_hint="模拟电子技术",
+            section_type="选择",
         )
         assert cls["chapter"] == "第4章 集成运算放大电路"
 
@@ -250,8 +246,8 @@ class TestQbankBuilder:
 # 四、复习进度调度
 # --------------------------------------------------------------------------- #
 
-class TestReviewScheduling:
 
+class TestReviewScheduling:
     def test_mastered_extends_interval(self):
         interval, ef, nxt = review_service.next_review_at(
             review_count=3, ease_factor=2.5, interval=10, result="mastered"
@@ -265,7 +261,7 @@ class TestReviewScheduling:
             review_count=5, ease_factor=2.5, interval=30, result="forgotten"
         )
         assert interval == 1
-        assert ef >= 1.3          # EF 有下限
+        assert ef >= 1.3  # EF 有下限
 
     def test_interval_capped_at_60_days(self):
         interval, ef, _ = review_service.next_review_at(
@@ -274,9 +270,7 @@ class TestReviewScheduling:
         assert interval <= 60
 
     def test_ease_factor_floor(self):
-        interval, ef, _ = review_service.next_review_at(
-            review_count=1, ease_factor=1.3, interval=1, result="forgotten"
-        )
+        interval, ef, _ = review_service.next_review_at(review_count=1, ease_factor=1.3, interval=1, result="forgotten")
         assert ef >= 1.3
 
     def test_result_grade_and_delta_tables_are_consistent(self):
@@ -290,8 +284,8 @@ class TestReviewScheduling:
 # 五、正文 → 章节树
 # --------------------------------------------------------------------------- #
 
-class TestStructureParser:
 
+class TestStructureParser:
     SAMPLE = """第1章 数制和码制
 1.1 几种常用的数制
 二进制是逢二进一。
@@ -326,9 +320,11 @@ class TestStructureParser:
         assert s["chapter_count"] == len(parsed["chapters"])
         assert "chapters" in s
 
+
 # --------------------------------------------------------------------------- #
 # 学科分类回归（2026-10 修复：文档类型词曾被当科目信号）
 # --------------------------------------------------------------------------- #
+
 
 class TestSubjectClassification:
     """分类器曾把"精讲册/逐词逐句/阅读"这类**文档形态词**当科目信号，
@@ -338,6 +334,7 @@ class TestSubjectClassification:
     def test_electronics_not_misclassified_as_english(self):
         """带"精讲册/真题解析/逐题细解"的电子技术资料不能判成英语。"""
         from services.kb_service import classify_subject
+
         cases = [
             ("【电子技术基础-数字部分】康华光 考研真题解析 讲义.pdf", "数字电子技术"),
             ("【电子技术基础-模拟部分】康华光 课后答案.pdf", "模拟电子技术"),
@@ -351,36 +348,43 @@ class TestSubjectClassification:
     def test_english_still_detected(self):
         """真英语资料仍要判对（靠文件名或正文拉丁字母密度）。"""
         from services.kb_service import classify_subject
+
         assert classify_subject("27考研词汇闪过抗遗忘时间规划打卡表.pdf") == "英语"
         assert classify_subject("考研英语长难句解析.pdf") == "英语"
         # 文件名不含科目信息时，靠正文判定
-        en = ("Many theories concerning the causes of juvenile delinquency focus either "
-              "on the individual or on society as the major contributing influence.")
+        en = (
+            "Many theories concerning the causes of juvenile delinquency focus either "
+            "on the individual or on society as the major contributing influence."
+        )
         assert classify_subject("2004年真题逐题细解.txt", en) == "英语"
 
     def test_chapter_words_not_confused_with_circuit_theory(self):
         """数电/模电的"XX电路"章节名不能判成电路理论。"""
         from services.kb_service import classify_subject
-        for name in ("中规模时序电路分析专题-试题部分.txt",
-                     "异步时序电路分析专题-答案部分.txt",
-                     "组合电路分析设计-数据选择器专题-答案部分.txt",
-                     "10第一节 几种常用的脉冲波形的产生和整形电路.txt"):
+
+        for name in (
+            "中规模时序电路分析专题-试题部分.txt",
+            "异步时序电路分析专题-答案部分.txt",
+            "组合电路分析设计-数据选择器专题-答案部分.txt",
+            "10第一节 几种常用的脉冲波形的产生和整形电路.txt",
+        ):
             assert classify_subject(name) == "数字电子技术", f"{name} 误判"
 
     def test_real_circuit_theory_detected(self):
         from services.kb_service import classify_subject
-        for name in ("邱关源电路课后习题答案.pdf",
-                     "电路分析基础-戴维南定理.pdf",
-                     "电路分析-网孔电流法.pdf"):
+
+        for name in ("邱关源电路课后习题答案.pdf", "电路分析基础-戴维南定理.pdf", "电路分析-网孔电流法.pdf"):
             assert classify_subject(name) == "电路", f"{name} 误判"
 
     def test_math_abbreviations(self):
         from services.kb_service import classify_subject
+
         assert classify_subject("概统框架.pdf") == "数学"
         assert classify_subject("概率统计讲义.pdf") == "数学"
 
     def test_major_subjects_detected(self):
         from services.kb_service import classify_subject
+
         assert classify_subject("郑君里信号与系统习题解答.pdf") == "信号与系统"
         assert classify_subject("樊昌信通信原理课后答案.pdf") == "通信原理"
         assert classify_subject("郁道银工程光学课后答案.pdf") == "光学与工程光学"
@@ -389,6 +393,7 @@ class TestSubjectClassification:
     def test_parse_failure_text_not_used(self):
         """解析失败留下的英文报错不能被当成英语资料。"""
         from services.kb_service import classify_subject, is_parse_failure
+
         bad = "[解析失败 .ppt: Package not found at 'D:\\x.ppt']"
         assert is_parse_failure(bad)
         assert classify_subject("7第二节 随机存储器.ppt", bad) == "数字电子技术"
@@ -397,19 +402,20 @@ class TestSubjectClassification:
     def test_short_fragment_not_english(self):
         """几十个字符的 OCR 碎片不足以定成英语（曾误判微信图片）。"""
         from services.kb_service import classify_subject_confidence
-        got, conf = classify_subject_confidence(
-            "微信图片_20260611000715_137_695.jpg", "[OCR]ab cd ef gh ij kl"
-        )
+
+        got, conf = classify_subject_confidence("微信图片_20260611000715_137_695.jpg", "[OCR]ab cd ef gh ij kl")
         assert not conf, "短碎片不应给出高置信判定"
 
     def test_low_confidence_for_generic_names(self):
         """只有"第1章"这类无信息名称时，应报低置信。"""
         from services.kb_service import classify_subject_confidence
+
         got, conf = classify_subject_confidence("第1章.pptx", "")
         assert not conf
 
     def test_confidence_true_for_clear_names(self):
         from services.kb_service import classify_subject_confidence
+
         got, conf = classify_subject_confidence("异步时序电路分析专题-答案部分.txt", "")
         assert conf and got == "数字电子技术"
 
@@ -417,5 +423,6 @@ class TestSubjectClassification:
         """分类结果必须落在标准科目表内（否则前端筛选会漏数据）。"""
         from services import taxonomy
         from services.kb_service import classify_subject
+
         for name in ("邱关源电路.pdf", "未知文件.xyz", "英语真题.pdf", "第1章.pptx"):
             assert classify_subject(name) in taxonomy.ALL_SUBJECTS

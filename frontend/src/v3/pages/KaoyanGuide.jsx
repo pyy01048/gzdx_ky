@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { kaoyanApi } from '../../api/kaoyanApi'
 import { useAuth } from '../../auth/AuthContext'
@@ -21,6 +21,7 @@ const TOOLS = [
   { to: '/kaoyan/recommend', label: '智能择校', desc: '多维权重推荐（复录比 / 均分 / 区域）', icon: Sparkles },
 ]
 
+/** 择校数据中心顶部的统计卡片。 */
 function StatTile({ icon, label, value, hint }) {
   return (
     <Tile className="v3-ky-stat">
@@ -31,6 +32,7 @@ function StatTile({ icon, label, value, hint }) {
   )
 }
 
+/** 择校数据中心：汇总院校 / 专业 / 招生 / 分数线记录数量，并给出分析工具入口。 */
 export default function KaoyanGuide() {
   const { isAdmin } = useAuth()
   const [stats, setStats] = useState(null)
@@ -54,23 +56,23 @@ export default function KaoyanGuide() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
-
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const ok = await load()
     if (ok) toastOk('择校数据已刷新')
     else toastErr('刷新失败，请稍后重试')
-  }
+  }, [load])
 
-  const totalRecords = stats
+  useEffect(() => { load() }, [load])
+
+  const totalRecords = useMemo(() => stats
     ? (stats.school_count || 0) + (stats.major_count || 0)
       + (stats.admission_records || 0) + (stats.scoreline_records || 0)
-    : 0
+    : 0, [stats])
   const isEmpty = !loading && !error && totalRecords === 0 && subjects.length === 0
   const years = Array.isArray(stats?.years) ? stats.years : []
-  const yearText = years.length
+  const yearText = useMemo(() => years.length
     ? (years.length > 1 ? `${years[years.length - 1]}–${years[0]}` : String(years[0]))
-    : ''
+    : '', [years])
 
   const subjectText = !loading && !error && stats
     ? (isEmpty

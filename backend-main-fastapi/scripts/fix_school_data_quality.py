@@ -28,6 +28,7 @@
   python scripts/fix_school_data_quality.py --apply      # 执行
   python scripts/fix_school_data_quality.py --apply --verify  # 执行并输出前后对比
 """
+
 import argparse
 import json
 import os
@@ -47,15 +48,37 @@ BACKUP_DIR = r"D:\平台\data\backups"
 # 长写法 → 短名。短名口径与 routers/kaoyan.py的 PROVINCE_NAMES 保持一致。
 PROVINCE_FIX = {}
 for _full, _short in {
-    "北京市": "北京", "天津市": "天津", "上海市": "上海", "重庆市": "重庆",
-    "河北省": "河北", "山西省": "山西", "辽宁省": "辽宁", "吉林省": "吉林",
-    "黑龙江省": "黑龙江", "江苏省": "江苏", "浙江省": "浙江", "安徽省": "安徽",
-    "福建省": "福建", "江西省": "江西", "山东省": "山东", "河南省": "河南",
-    "湖北省": "湖北", "湖南省": "湖南", "广东省": "广东", "海南省": "海南",
-    "四川省": "四川", "贵州省": "贵州", "云南省": "云南", "陕西省": "陕西",
-    "甘肃省": "甘肃", "青海省": "青海", "宁夏回族自治区": "宁夏",
-    "新疆维吾尔自治区": "新疆", "内蒙古自治区": "内蒙古",
-    "广西壮族自治区": "广西", "西藏自治区": "西藏",
+    "北京市": "北京",
+    "天津市": "天津",
+    "上海市": "上海",
+    "重庆市": "重庆",
+    "河北省": "河北",
+    "山西省": "山西",
+    "辽宁省": "辽宁",
+    "吉林省": "吉林",
+    "黑龙江省": "黑龙江",
+    "江苏省": "江苏",
+    "浙江省": "浙江",
+    "安徽省": "安徽",
+    "福建省": "福建",
+    "江西省": "江西",
+    "山东省": "山东",
+    "河南省": "河南",
+    "湖北省": "湖北",
+    "湖南省": "湖南",
+    "广东省": "广东",
+    "海南省": "海南",
+    "四川省": "四川",
+    "贵州省": "贵州",
+    "云南省": "云南",
+    "陕西省": "陕西",
+    "甘肃省": "甘肃",
+    "青海省": "青海",
+    "宁夏回族自治区": "宁夏",
+    "新疆维吾尔自治区": "新疆",
+    "内蒙古自治区": "内蒙古",
+    "广西壮族自治区": "广西",
+    "西藏自治区": "西藏",
 }.items():
     PROVINCE_FIX[_full] = _short
 
@@ -89,9 +112,7 @@ DUP_PAIRS = [
 
 def plan(conn) -> dict:
     """计算修复计划（只读）。"""
-    rows = conn.execute(
-        "SELECT id, name, level, province, official_url FROM kaoyan_schools"
-    ).fetchall()
+    rows = conn.execute("SELECT id, name, level, province, official_url FROM kaoyan_schools").fetchall()
     level_fix, prov_fix, blank_fix = [], [], []
     for r in rows:
         cur = (r["level"] or "").strip()
@@ -107,10 +128,8 @@ def plan(conn) -> dict:
 
     # 别名：对每组重复，把「非 keep 侧的写法」登记为 keep 侧学校的别名
     alias_add = []
-    for keep_id, dup_id, keep_name, dup_name in DUP_PAIRS:
-        exists = conn.execute(
-            "SELECT COUNT(*) c FROM school_aliases WHERE alias=?", (dup_name,)
-        ).fetchone()["c"]
+    for keep_id, _dup_id, keep_name, dup_name in DUP_PAIRS:
+        exists = conn.execute("SELECT COUNT(*) c FROM school_aliases WHERE alias=?", (dup_name,)).fetchone()["c"]
         if not exists:
             alias_add.append((dup_name, keep_id, keep_name))
 
@@ -148,8 +167,7 @@ def apply_plan(conn, p: dict) -> dict:
 
     for alias, sid, sname in p["alias_add"]:
         conn.execute(
-            "INSERT INTO school_aliases (alias, school_id, school_name, alias_type)"
-            " VALUES (?,?,?,'common')",
+            "INSERT INTO school_aliases (alias, school_id, school_name, alias_type) VALUES (?,?,?,'common')",
             (alias, sid, sname),
         )
         done["alias"] += 1
@@ -167,14 +185,11 @@ def snapshot(conn) -> dict:
         "level_211": g("SELECT COUNT(*) FROM kaoyan_schools WHERE level='211'"),
         "level_shouyiliu": g("SELECT COUNT(*) FROM kaoyan_schools WHERE level='双一流'"),
         "level_shuangfei": g("SELECT COUNT(*) FROM kaoyan_schools WHERE level='双非'"),
-        "level_null": g(
-            "SELECT COUNT(*) FROM kaoyan_schools"
-            " WHERE level IS NULL OR TRIM(level)=''"),
-        "province_distinct": g(
-            "SELECT COUNT(DISTINCT province) FROM kaoyan_schools"),
+        "level_null": g("SELECT COUNT(*) FROM kaoyan_schools WHERE level IS NULL OR TRIM(level)=''"),
+        "province_distinct": g("SELECT COUNT(DISTINCT province) FROM kaoyan_schools"),
         "official_url_empty": g(
-            "SELECT COUNT(*) FROM kaoyan_schools"
-            " WHERE official_url IS NOT NULL AND TRIM(official_url)=''"),
+            "SELECT COUNT(*) FROM kaoyan_schools WHERE official_url IS NOT NULL AND TRIM(official_url)=''"
+        ),
         "school_aliases": g("SELECT COUNT(*) FROM school_aliases"),
         "kaoyan_majors": g("SELECT COUNT(*) FROM kaoyan_majors"),
         "kaoyan_colleges": g("SELECT COUNT(*) FROM kaoyan_colleges"),
@@ -217,8 +232,9 @@ def main():
     bak = backup_db("schoolfix")
     print(f"\n已备份：{bak}")
     done = apply_plan(conn, p)
-    print(f"实际影响：level {done['level']} / province {done['province']} "
-          f"/ blank {done['blank']} / alias {done['alias']}")
+    print(
+        f"实际影响：level {done['level']} / province {done['province']} / blank {done['blank']} / alias {done['alias']}"
+    )
 
     if args.verify:
         after = snapshot(conn)
@@ -230,35 +246,30 @@ def main():
             print(f"  {k:22s} {before[k]:>6d} -> {after[k]:<6d}{mark}")
         # 剩余问题
         print("\n  修复后仍存在的已知问题（未处理，需人工/后续任务）：")
-        n = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_schools WHERE level IS NULL OR TRIM(level)=''"
-        ).fetchone()[0]
+        n = conn.execute("SELECT COUNT(*) FROM kaoyan_schools WHERE level IS NULL OR TRIM(level)=''").fetchone()[0]
         print(f"    level 仍为空: {n}（普通本科/科研院所/军事院校，无权威依据可判）")
         n = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_schools"
-            " WHERE official_url IS NULL OR TRIM(official_url)=''"
+            "SELECT COUNT(*) FROM kaoyan_schools WHERE official_url IS NULL OR TRIM(official_url)=''"
         ).fetchone()[0]
         print(f"    official_url 仍缺失: {n}")
-        n = conn.execute(
-            "SELECT COUNT(*) FROM kaoyan_schools WHERE city IS NULL OR TRIM(city)=''"
-        ).fetchone()[0]
+        n = conn.execute("SELECT COUNT(*) FROM kaoyan_schools WHERE city IS NULL OR TRIM(city)=''").fetchone()[0]
         print(f"    city 仍为空: {n}（580/583 空，字段基本未启用）")
-        for yr, c in conn.execute(
-            "SELECT year, COUNT(*) FROM kaoyan_admissions GROUP BY 1 ORDER BY 1"
-        ):
+        for yr, c in conn.execute("SELECT year, COUNT(*) FROM kaoyan_admissions GROUP BY 1 ORDER BY 1"):
             print(f"    录取数据 year={yr}: {c} 条")
         for col in ("research_direction", "reference_books", "degree_type"):
             c = conn.execute(
-                f"SELECT COUNT(*) FROM kaoyan_majors WHERE {col} IS NOT NULL"
-                " AND TRIM(" + col + ")<>''"
+                f"SELECT COUNT(*) FROM kaoyan_majors WHERE {col} IS NOT NULL AND TRIM(" + col + ")<>''"
             ).fetchone()[0]
             print(f"    kaoyan_majors.{col} 非空: {c}/832")
 
     json.dump(
         {"before": before, "plan_sizes": {k: len(v) for k, v in p.items()}},
-        open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "_school_fix_report.json"), "w", encoding="utf-8"),
-        ensure_ascii=False, indent=2)
+        open(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "_school_fix_report.json"), "w", encoding="utf-8"
+        ),
+        ensure_ascii=False,
+        indent=2,
+    )
     conn.close()
 
 

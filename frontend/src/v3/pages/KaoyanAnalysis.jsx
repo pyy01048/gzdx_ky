@@ -28,6 +28,12 @@ function fmtValue(value, unit = '') {
   return unit ? `${text} ${unit}` : text
 }
 
+/** 错误态占位图标。 */
+function AlertIcon() {
+  return <TrendingDown size={26} />
+}
+
+/** 把同一年的多条专业记录按指标口径聚合为单一年份点。 */
 function aggregateTrendRows(rows, aggregation) {
   const byYear = new Map()
   for (const row of rows) {
@@ -255,11 +261,11 @@ export default function KaoyanAnalysis() {
 
   useEffect(() => { loadTrend() }, [loadTrend])
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const ok = await loadTrend()
     if (ok) toastOk('趋势数据已刷新')
     else if (selected) toastErr('刷新失败，请稍后重试')
-  }
+  }, [loadTrend, selected])
 
   const schoolItems = Array.isArray(schools.items) ? schools.items : []
   const selectedSchool = schoolItems.find((s) => String(s.id) === String(selected))
@@ -511,8 +517,4 @@ export default function KaoyanAnalysis() {
       </p>
     </div>
   )
-}
-
-function AlertIcon() {
-  return <TrendingDown size={26} />
 }

@@ -45,6 +45,7 @@ def _touch(root, name=NAME, body=BODY):
 def _doc(file_name, file_path, **kw):
     """只建 Document 行（不碰磁盘），返回 doc.id。"""
     from database import SessionLocal
+
     from models import Document
 
     db = SessionLocal()
@@ -82,6 +83,7 @@ def _cleanup_docs(*ids):
     清理必须**按表精确限定**：谁建的行谁删，绝不跨表按 id 扫。
     """
     from database import SessionLocal
+
     from models import Document
 
     db = SessionLocal()
@@ -98,6 +100,7 @@ def _cleanup_docs(*ids):
 def _cleanup_netdisk(*ids):
     """只删本用例自己建的 ``netdisk_files`` 行（不碰 documents）。"""
     from database import SessionLocal
+
     from models import NetdiskFile
 
     db = SessionLocal()
@@ -257,6 +260,7 @@ def test_unknown_doc_id_is_404(client, local_root):  # noqa: ARG001
 # --------------------------------------------------------------------------- #
 def _netdisk_row(**kw):
     from database import SessionLocal
+
     from models import NetdiskFile
 
     db = SessionLocal()
@@ -409,6 +413,7 @@ def test_netdisk_content_error_mapping(client, fake_pan):
 # --------------------------------------------------------------------------- #
 def _netdisk_id_by_fs(fs_id):
     from database import SessionLocal
+
     from models import NetdiskFile
 
     db = SessionLocal()

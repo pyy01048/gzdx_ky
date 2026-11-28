@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/admin/netdisk", tags=["admin-netdisk"], dependen
 
 # --- Pydantic Schemas ---
 
+
 class AccountCreate(BaseModel):
     provider: str = Field(..., description="服务商：baidu/quark/aliyun")
     uk_provider_uid: str = Field(..., description="平台唯一标识")
@@ -45,6 +46,7 @@ class PreviewSessionUpdate(BaseModel):
 
 # --- Third Party Accounts ---
 
+
 @router.get("/accounts")
 async def list_accounts(
     user_id: int = Query(..., description="用户ID"),
@@ -67,7 +69,7 @@ async def list_accounts(
                 "created_at": a.created_at.isoformat(),
             }
             for a in accounts
-        ]
+        ],
     }
 
 
@@ -123,10 +125,14 @@ async def update_tokens(
     from datetime import datetime
 
     # 验证账号归属
-    account = db.query(netdisk_service.ThirdPartyAccount).filter(
-        netdisk_service.ThirdPartyAccount.id == account_id,
-        netdisk_service.ThirdPartyAccount.user_id == user_id,
-    ).first()
+    account = (
+        db.query(netdisk_service.ThirdPartyAccount)
+        .filter(
+            netdisk_service.ThirdPartyAccount.id == account_id,
+            netdisk_service.ThirdPartyAccount.user_id == user_id,
+        )
+        .first()
+    )
 
     if not account:
         raise HTTPException(status_code=404, detail="账号不存在")
@@ -171,10 +177,14 @@ async def delete_account(
     db: Session = Depends(get_db),
 ):
     """解绑账号（停用）"""
-    account = db.query(netdisk_service.ThirdPartyAccount).filter(
-        netdisk_service.ThirdPartyAccount.id == account_id,
-        netdisk_service.ThirdPartyAccount.user_id == user_id,
-    ).first()
+    account = (
+        db.query(netdisk_service.ThirdPartyAccount)
+        .filter(
+            netdisk_service.ThirdPartyAccount.id == account_id,
+            netdisk_service.ThirdPartyAccount.user_id == user_id,
+        )
+        .first()
+    )
 
     if not account:
         raise HTTPException(status_code=404, detail="账号不存在")
@@ -199,6 +209,7 @@ async def delete_account(
 
 # --- File Cache ---
 
+
 @router.get("/cache/stats")
 async def cache_stats(
     db: Session = Depends(get_db),
@@ -207,7 +218,9 @@ async def cache_stats(
     total = db.query(netdisk_service.NetdiskFileCache).count()
     expired = (
         db.query(netdisk_service.NetdiskFileCache)
-        .filter(netdisk_service.NetdiskFileCache.expires_at < netdisk_service.datetime.now(netdisk_service.timezone.utc))
+        .filter(
+            netdisk_service.NetdiskFileCache.expires_at < netdisk_service.datetime.now(netdisk_service.timezone.utc)
+        )
         .count()
     )
 
@@ -229,6 +242,7 @@ async def cleanup_cache(
 
 # --- Preview Sessions ---
 
+
 @router.get("/sessions")
 async def list_sessions(
     user_id: int = Query(..., description="用户ID"),
@@ -239,7 +253,8 @@ async def list_sessions(
         db.query(netdisk_service.PreviewSession)
         .filter(
             netdisk_service.PreviewSession.user_id == user_id,
-            netdisk_service.PreviewSession.session_expires_at > netdisk_service.datetime.now(netdisk_service.timezone.utc),
+            netdisk_service.PreviewSession.session_expires_at
+            > netdisk_service.datetime.now(netdisk_service.timezone.utc),
         )
         .order_by(netdisk_service.PreviewSession.updated_at.desc())
         .all()
@@ -258,7 +273,7 @@ async def list_sessions(
                 "updated_at": s.updated_at.isoformat(),
             }
             for s in sessions
-        ]
+        ],
     }
 
 
@@ -303,6 +318,7 @@ async def cleanup_sessions(
 
 # --- Operation Logs ---
 
+
 @router.get("/logs")
 async def list_logs(
     user_id: int = Query(..., description="用户ID"),
@@ -313,9 +329,7 @@ async def list_logs(
     db: Session = Depends(get_db),
 ):
     """查询操作日志"""
-    q = db.query(netdisk_service.NetdiskOperationLog).filter(
-        netdisk_service.NetdiskOperationLog.user_id == user_id
-    )
+    q = db.query(netdisk_service.NetdiskOperationLog).filter(netdisk_service.NetdiskOperationLog.user_id == user_id)
 
     if action:
         q = q.filter(netdisk_service.NetdiskOperationLog.action == action)
@@ -323,9 +337,9 @@ async def list_logs(
         q = q.filter(netdisk_service.NetdiskOperationLog.status == status)
 
     total = q.count()
-    logs = q.order_by(
-        netdisk_service.NetdiskOperationLog.created_at.desc()
-    ).offset((page - 1) * limit).limit(limit).all()
+    logs = (
+        q.order_by(netdisk_service.NetdiskOperationLog.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    )
 
     return {
         "total": total,
@@ -345,5 +359,5 @@ async def list_logs(
                 "created_at": log.created_at.isoformat(),
             }
             for log in logs
-        ]
+        ],
     }

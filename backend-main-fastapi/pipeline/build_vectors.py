@@ -28,6 +28,7 @@
     python -m pipeline.build_vectors --rebuild      # 强制重算全部
     python -m pipeline.build_vectors --subject 数字电子技术
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,8 +69,11 @@ def _legacy_clean_note():
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="向量灌库：chunks → chunk_vectors")
-    p.add_argument("--database-url", default=None,
-                   help="缺省走 pipeline.config.pg_database_url()：DATABASE_URL > .env 的 PG_* 分项")
+    p.add_argument(
+        "--database-url",
+        default=None,
+        help="缺省走 pipeline.config.pg_database_url()：DATABASE_URL > .env 的 PG_* 分项",
+    )
     p.add_argument("--limit", type=int, default=None, help="最多处理多少块（试跑用）")
     p.add_argument("--rebuild", action="store_true", help="忽略已有向量，全部重算")
     p.add_argument("--subject", default=None, help="只处理指定科目")
@@ -99,8 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             elapsed = time.time() - t0
             rate = done / elapsed if elapsed else 0
             eta = (total - done) / rate if rate else 0
-            print(f"  进度 {done}/{total}  速率 {rate:.1f} 块/秒  "
-                  f"预计剩余 {eta / 60:.1f} 分钟")
+            print(f"  进度 {done}/{total}  速率 {rate:.1f} 块/秒  预计剩余 {eta / 60:.1f} 分钟")
 
         res = build_pg_vectors(
             pg,
@@ -121,8 +124,7 @@ def main(argv: list[str] | None = None) -> int:
 
     elapsed = time.time() - t0
     print("-" * 68)
-    print(f"完成：入库 {inserted}，跳过（文本过短）{skipped}，失败 {failed}，"
-          f"耗时 {elapsed / 60:.1f} 分钟")
+    print(f"完成：入库 {inserted}，跳过（文本过短）{skipped}，失败 {failed}，耗时 {elapsed / 60:.1f} 分钟")
     with psycopg.connect(args.database_url or pg_database_url()) as pg:
         _print_coverage(pg)
     print("=" * 68)
@@ -139,11 +141,9 @@ def _print_coverage(pg: psycopg.Connection) -> None:
         cur.execute("SELECT COUNT(DISTINCT model_version) FROM chunk_vectors")
         versions = cur.fetchone()[0]
     rate = (vec_rows / chunks) if chunks else 0
-    print(f"覆盖率：{vec_rows}/{chunks} = {rate:.2%}"
-          f"（embedding_f32 有效 {vec_f32} 行，模型版本 {versions} 种）")
+    print(f"覆盖率：{vec_rows}/{chunks} = {rate:.2%}（embedding_f32 有效 {vec_f32} 行，模型版本 {versions} 种）")
     if versions > 1:
-        print("  [注意] 检测到多个模型版本混存，语义空间不一致会污染召回，"
-              "建议用 --rebuild 统一重算。")
+        print("  [注意] 检测到多个模型版本混存，语义空间不一致会污染召回，建议用 --rebuild 统一重算。")
 
 
 if __name__ == "__main__":

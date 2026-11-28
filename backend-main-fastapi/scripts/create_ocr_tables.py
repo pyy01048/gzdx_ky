@@ -20,6 +20,7 @@
     D:/Anaconda/python.exe scripts/create_ocr_tables.py --apply
     D:/Anaconda/python.exe scripts/create_ocr_tables.py --verify
 """
+
 from __future__ import annotations
 
 import argparse
@@ -77,7 +78,7 @@ def _dsn() -> str:
 
     dsn = SQLALCHEMY_DATABASE_URL
     if dsn.startswith("postgresql+psycopg://"):
-        dsn = "postgresql://" + dsn[len("postgresql+psycopg://"):]
+        dsn = "postgresql://" + dsn[len("postgresql+psycopg://") :]
     elif dsn.startswith("sqlite:///"):
         raise SystemExit("当前后端是 SQLite，本脚本只支持 PostgreSQL")
     return dsn

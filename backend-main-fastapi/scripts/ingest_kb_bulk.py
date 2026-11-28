@@ -24,6 +24,7 @@
     python scripts/ingest_kb_bulk.py --only 真题,专业课   # 只跑指定顶层目录
     python scripts/ingest_kb_bulk.py --embed-at-end       # 全量入库后统一向量化
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,10 +43,16 @@ if BASE_DIR not in sys.path:
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
 
 KB_ROOT = os.environ.get("KB_ROOT", r"D:\平台\knowledge_base")
-SKIP_DIRS = {"documents", "chunks", "meta", "inbox", ".git",
-             # _trash 是 cleanup_lowvalue.py 的隔离区（已判定为低价值），
-             # 绝不能被重新扫描入库
-             "_trash"}
+SKIP_DIRS = {
+    "documents",
+    "chunks",
+    "meta",
+    "inbox",
+    ".git",
+    # _trash 是 cleanup_lowvalue.py 的隔离区（已判定为低价值），
+    # 绝不能被重新扫描入库
+    "_trash",
+}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif", ".tif", ".tiff"}
 TEXT_EXTS = {".txt", ".md", ".pdf", ".docx", ".doc", ".pptx", ".ppt"}
 ALLOWED = IMAGE_EXTS | TEXT_EXTS
@@ -58,17 +65,35 @@ PRIORITY = {"真题": 0, "专业课": 1, "其他": 2, "公共课": 3}
 # 《高数刷题本（打印版）》这类是宝贵真题/题本，只是文件名带"打印"二字。
 # 判定逻辑与 scripts/cleanup_lowvalue.py 的 classify() 保持一致。
 _EXCLUDE_KW = (
-    "答题卡", "答题纸", "答题版", "机读卡", "填涂卡",
-    "签到表", "进度表", "计划表", "倒计时",
-    "课程表", "课表",
-    "打印店", "彩印", "在线打印",
-    "封面及目录", "封面.ppt",
-    "二维码", "扫码", "客服", "加微信", "公众号",
+    "答题卡",
+    "答题纸",
+    "答题版",
+    "机读卡",
+    "填涂卡",
+    "签到表",
+    "进度表",
+    "计划表",
+    "倒计时",
+    "课程表",
+    "课表",
+    "打印店",
+    "彩印",
+    "在线打印",
+    "封面及目录",
+    "封面.ppt",
+    "二维码",
+    "扫码",
+    "客服",
+    "加微信",
+    "公众号",
 )
 
 # 硬保护：文件名带上述词但本体是高价值词汇书，绝不能排除
 _EXCLUDE_KEEP = (
-    "红宝书", "艾宾浩斯抗遗忘打卡", "抗遗忘", "词汇闪过",
+    "红宝书",
+    "艾宾浩斯抗遗忘打卡",
+    "抗遗忘",
+    "词汇闪过",
 )
 
 
@@ -166,10 +191,13 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--only", default=None, help="逗号分隔顶层目录名，如 真题,专业课")
     ap.add_argument("--embed-at-end", action="store_true")
-    ap.add_argument("--mode", default="fast", choices=["fast", "ocr", "all"],
-                    help="fast=只处理有文本层的文件（默认）；ocr=只处理需要 OCR 的扫描件/图片；all=全部")
-    ap.add_argument("--limit-scan", type=int, default=None,
-                    help="只对前 N 个候选文件做 OCR 预判（加速起跑）")
+    ap.add_argument(
+        "--mode",
+        default="fast",
+        choices=["fast", "ocr", "all"],
+        help="fast=只处理有文本层的文件（默认）；ocr=只处理需要 OCR 的扫描件/图片；all=全部",
+    )
+    ap.add_argument("--limit-scan", type=int, default=None, help="只对前 N 个候选文件做 OCR 预判（加速起跑）")
     ap.add_argument("--log", default=os.path.join(BASE_DIR, "scripts", "_kb_bulk.jsonl"))
     args = ap.parse_args()
 
@@ -196,8 +224,7 @@ def main() -> int:
     print(f"库内已有文件名 stem: {len(existing_stems)}")
 
     before = len(files)
-    files = [p for p in files
-             if os.path.splitext(os.path.basename(p))[0] not in existing_stems]
+    files = [p for p in files if os.path.splitext(os.path.basename(p))[0] not in existing_stems]
     print(f"按 stem 去重: {before} → {len(files)}")
 
     known = _load_manifest_hashes()
@@ -244,11 +271,13 @@ def main() -> int:
         with open(_cache_path, "w", encoding="utf-8") as _f:
             json.dump(_cache, _f)
         if args.mode == "fast":
-            files = [p for p, o in zip(head, ocr_flags) if not o] + []
+            files = [p for p, o in zip(head, ocr_flags, strict=False) if not o] + []
         else:  # ocr
-            files = [p for p, o in zip(head, ocr_flags) if o] + []
-        print(f"OCR 预判完成（扫描 {len(head)} 个）：mode={args.mode} → {len(files)} 个"
-              + (f"（另有 {len(tail)} 个未预判）" if tail else ""))
+            files = [p for p, o in zip(head, ocr_flags, strict=False) if o] + []
+        print(
+            f"OCR 预判完成（扫描 {len(head)} 个）：mode={args.mode} → {len(files)} 个"
+            + (f"（另有 {len(tail)} 个未预判）" if tail else "")
+        )
 
     if args.limit:
         files = files[: args.limit]
@@ -269,14 +298,14 @@ def main() -> int:
         rel = os.path.relpath(path, KB_ROOT)
         try:
             res = ingest_file(
-                db, path,
+                db,
+                path,
                 ocr_backend="auto",
                 do_embeddings=False,
                 move_to_documents=False,
             )
         except Exception as e:  # noqa: BLE001
-            res = {"file": os.path.basename(path), "status": "error",
-                   "detail": f"{type(e).__name__}: {e}"}
+            res = {"file": os.path.basename(path), "status": "error", "detail": f"{type(e).__name__}: {e}"}
             traceback.print_exc()
             try:
                 db.rollback()
@@ -292,8 +321,10 @@ def main() -> int:
         log_f.flush()
 
         if st == "ok":
-            print(f"[{i}/{len(files)}] ✓ {rel} → {res.get('subject')} "
-                  f"{res.get('chunks')}块 {res.get('ocr_used') or 'parser'}")
+            print(
+                f"[{i}/{len(files)}] ✓ {rel} → {res.get('subject')} "
+                f"{res.get('chunks')}块 {res.get('ocr_used') or 'parser'}"
+            )
         elif st == "skipped":
             if i % 200 == 0:
                 print(f"[{i}/{len(files)}] · 已入库跳过（累计）")
@@ -302,8 +333,7 @@ def main() -> int:
 
         if i % 50 == 0:
             el = time.time() - t0
-            print(f"--- 进度 {i}/{len(files)} | 成功{done} | {stats} | "
-                  f"耗时{el:.0f}s | 均{el / i:.1f}s/篇 ---")
+            print(f"--- 进度 {i}/{len(files)} | 成功{done} | {stats} | 耗时{el:.0f}s | 均{el / i:.1f}s/篇 ---")
 
     log_f.close()
     print(f"\n=== 完成 === 处理 {len(files)} | 成功 {done} | 状态分布 {stats}")

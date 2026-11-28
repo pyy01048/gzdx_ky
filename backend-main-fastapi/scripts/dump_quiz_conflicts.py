@@ -5,6 +5,7 @@
 签名归一化要点：把连续下划线填空位整体删除，使「保留了填空下划线的版本」
 与「OCR 吃掉填空位的版本」能落到同一个签名上。
 """
+
 import json
 import re
 import sqlite3
@@ -42,9 +43,22 @@ def main():
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     cols = [
-        "id", "content", "options", "answer", "analysis", "subject", "chapter",
-        "source", "question_type", "is_junk", "verified", "confidence",
-        "quality", "variant_group", "paper", "source_ids",
+        "id",
+        "content",
+        "options",
+        "answer",
+        "analysis",
+        "subject",
+        "chapter",
+        "source",
+        "question_type",
+        "is_junk",
+        "verified",
+        "confidence",
+        "quality",
+        "variant_group",
+        "paper",
+        "source_ids",
     ]
     rows = conn.execute("SELECT %s FROM quiz_questions" % ",".join(cols)).fetchall()
 

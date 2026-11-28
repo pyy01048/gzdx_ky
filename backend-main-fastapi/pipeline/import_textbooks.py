@@ -15,6 +15,7 @@
 * 院校匹配不上**不猜**：记入报告 unmatched_schools，不硬塞 ID。
 * 幂等：按 (title, edition, publisher) 去重，重复导入不产生重复行。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,16 +48,24 @@ NON_SCHOOL_TOKENS = ("全国通用", "部分院校", "次主流", "最主流")
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="教材目录导入 PG")
-    p.add_argument("--database-url", default=None,
-                   help="缺省走 pipeline.config.pg_database_url()：DATABASE_URL > .env 的 PG_* 分项")
+    p.add_argument(
+        "--database-url",
+        default=None,
+        help="缺省走 pipeline.config.pg_database_url()：DATABASE_URL > .env 的 PG_* 分项",
+    )
     p.add_argument("--seed", default=str(SEED))
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
 
     seed = json.loads(Path(args.seed).read_text(encoding="utf-8"))
-    report: dict = {"books_inserted": 0, "books_skipped": 0,
-                    "links_inserted": 0, "unmatched_schools": [],
-                    "unmatched_subject_codes": [], "by_category": {}}
+    report: dict = {
+        "books_inserted": 0,
+        "books_skipped": 0,
+        "links_inserted": 0,
+        "unmatched_schools": [],
+        "unmatched_subject_codes": [],
+        "by_category": {},
+    }
 
     with psycopg.connect(args.database_url or pg_database_url()) as pg:
         with pg.cursor() as cur:
@@ -98,12 +107,21 @@ def main(argv: list[str] | None = None) -> int:
                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s::exam_stage[],%s,%s,%s,%s,%s)
                            ON CONFLICT DO NOTHING
                            RETURNING id""",
-                        (b["title"], b.get("subtitle"), b.get("edition"), b["authors"],
-                         b.get("publisher"), b.get("isbn"), sid,
-                         "{" + ",".join(stages) + "}",
-                         "main", b.get("note"), "manual_catalog",
-                         "high" if "官方" in (b.get("scope") or "") else "medium",
-                         cat_stat["books"]),
+                        (
+                            b["title"],
+                            b.get("subtitle"),
+                            b.get("edition"),
+                            b["authors"],
+                            b.get("publisher"),
+                            b.get("isbn"),
+                            sid,
+                            "{" + ",".join(stages) + "}",
+                            "main",
+                            b.get("note"),
+                            "manual_catalog",
+                            "high" if "官方" in (b.get("scope") or "") else "medium",
+                            cat_stat["books"],
+                        ),
                     )
                     row = cur.fetchone()
                     if row is None:
@@ -129,8 +147,7 @@ def main(argv: list[str] | None = None) -> int:
                             continue
                         sid_school = school.get(sname)
                         if sid_school is None:
-                            report["unmatched_schools"].append(
-                                {"school": sname, "textbook": b["title"]})
+                            report["unmatched_schools"].append({"school": sname, "textbook": b["title"]})
                             continue
                         for st in stages:
                             cur.execute(
@@ -138,8 +155,13 @@ def main(argv: list[str] | None = None) -> int:
                                      (textbook_id, school_id, usage_note, exam_stage, is_official)
                                    VALUES (%s,%s,%s,%s::exam_stage,%s)
                                    ON CONFLICT DO NOTHING""",
-                                (bid, sid_school, b.get("scope"), st,
-                                 "指定" in (b.get("scope") or "") or "专用" in (b.get("scope") or "")),
+                                (
+                                    bid,
+                                    sid_school,
+                                    b.get("scope"),
+                                    st,
+                                    "指定" in (b.get("scope") or "") or "专用" in (b.get("scope") or ""),
+                                ),
                             )
                             report["links_inserted"] += 1
                             cat_stat["links"] += 1

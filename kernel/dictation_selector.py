@@ -4,6 +4,7 @@
 规则：R 升序 Top-N ∪ 昨日错词；mastered 排除（豁免彻底）；
 确定性——同一状态两次导出词集完全一致（排序键含 card_id 稳定 tie-break）。
 """
+
 from __future__ import annotations
 
 import datetime
@@ -12,8 +13,9 @@ from typing import List, Sequence
 from kernel.fsrs_adapter import CardState, recall_prob
 
 
-def select(states: Sequence[CardState], yesterday_errors: Sequence[str],
-           now: datetime.datetime, n: int = 30) -> List[str]:
+def select(
+    states: Sequence[CardState], yesterday_errors: Sequence[str], now: datetime.datetime, n: int = 30
+) -> List[str]:
     """返回选中的 card_id 列表（高危 Top-N ∪ 昨日错词，错词必选不受 N 限制）。"""
     if now.tzinfo is not None:
         raise ValueError("now 必须是 naive UTC datetime")
@@ -30,6 +32,5 @@ def select(states: Sequence[CardState], yesterday_errors: Sequence[str],
     topset = set(top)
     known_ids = {s.card_id for s in pool}
     # 昨日错词必选（仍在池中且未被高危 Top-N 覆盖的追加在尾部，保持确定性顺序）
-    extra = [cid for cid in dict.fromkeys(yesterday_errors)
-             if cid in known_ids and cid not in topset]
+    extra = [cid for cid in dict.fromkeys(yesterday_errors) if cid in known_ids and cid not in topset]
     return top + extra

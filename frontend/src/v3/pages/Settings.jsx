@@ -120,6 +120,9 @@ const NAV_OTHER_ITEMS = [
   { to: '/settings', label: '设置' },
 ]
 
+/**
+ * 设置中心主组件：个人资料 / 目标与概览 / 金币激励 / AI 与模型 / 外观与数据 / 账号与安全。
+ */
 export default function Settings() {
   const settings = useStore((s) => s.settings)
   const updateSettings = useStore((s) => s.updateSettings)
@@ -910,6 +913,7 @@ export default function Settings() {
 /* ========================================================================== */
 /* 备考科目                                                                    */
 /* ========================================================================== */
+/** 备考科目设置：科目增删、初试日期、目标院校与分数。 */
 function SubjectSettingsV3() {
   const { isAdmin } = useAuth()
   const [cfg, setCfg] = useState(null)
@@ -1223,6 +1227,7 @@ function SubjectSettingsV3() {
 /* ========================================================================== */
 /* AI 服务管理                                                                 */
 /* ========================================================================== */
+/** AI 服务管理：服务商配置、API Key、模型选择、路由模式。 */
 function AiServiceManagerV3() {
   const [providers, setProviders] = useState([])
   const [routing, setRouting] = useState(null)
@@ -1530,6 +1535,7 @@ function AiServiceManagerV3() {
 /* ========================================================================== */
 /* 模型选型                                                                    */
 /* ========================================================================== */
+/** 模型选择面板：按服务商分组展示可用模型，支持搜索与复制模型名。 */
 function ModelSelectPanelV3() {
   const [rep, setRep] = useState(null)
   const [status, setStatus] = useState('loading')
@@ -1846,9 +1852,26 @@ function UiGroup({ title, sub, items, idOf, labelOf, layout, hiddenKey, orderKey
   )
 }
 
+/**
+ * 界面自定义面板：控制顶部导航分组与「其他」入口的显隐及排序。
+ * 偏好仅保存在本机浏览器（useUiLayout），不影响其他设备。
+ * @returns {JSX.Element} 设置卡片
+ */
 export function UiCustomizeV3() {
   const layout = useUiLayout()
   const setGlobalSubject = useStore((s) => s.setGlobalSubject)
+
+  const resetAll = useCallback(() => {
+    setGlobalSubject('')
+    resetUiLayout()
+    toastOk('展示内容已重置为全新默认')
+  }, [setGlobalSubject])
+
+  const resetLayout = useCallback(() => {
+    resetUiLayout()
+    toastOk('界面布局已恢复默认')
+  }, [])
+
   return (
     <Card>
       <CardHead
@@ -1861,21 +1884,14 @@ export function UiCustomizeV3() {
               variant="tonal"
               size="sm"
               title="清空全局学科选择并恢复默认导航布局，界面回到全新初始状态"
-              onClick={() => {
-                setGlobalSubject('')
-                resetUiLayout()
-                toastOk('展示内容已重置为全新默认')
-              }}
+              onClick={resetAll}
             >
               重置展示内容
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                resetUiLayout()
-                toastOk('界面布局已恢复默认')
-              }}
+              onClick={resetLayout}
             >
               恢复默认布局
             </Button>
@@ -1913,12 +1929,17 @@ export function UiCustomizeV3() {
 /* ========================================================================== */
 /* 手机 / 局域网访问                                                           */
 /* ========================================================================== */
+/**
+ * 手机 / 局域网访问卡片：展示本机与局域网访问地址、二维码、访问密码状态。
+ * 把电脑当服务器，手机连同一 WiFi 即可访问。
+ * @returns {JSX.Element} 设置卡片
+ */
 function LanAccessCardV3() {
   const [info, setInfo] = useState(null)
   const [status, setStatus] = useState('loading')
   const [isPhone, setIsPhone] = useState(false)
 
-  const load = () => {
+  const load = useCallback(() => {
     setStatus('loading')
     systemApi
       .accessInfo()
@@ -1927,14 +1948,14 @@ function LanAccessCardV3() {
         setStatus('ok')
       })
       .catch(() => setStatus('error'))
-  }
+  }, [])
 
   useEffect(() => {
     setIsPhone(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))
     load()
-  }, [])
+  }, [load])
 
-  const copy = async (text) => {
+  const copy = useCallback(async (text) => {
     try {
       await navigator.clipboard.writeText(text)
       setInfo((s) => ({ ...s, _copied: text }))
@@ -1943,7 +1964,7 @@ function LanAccessCardV3() {
       setInfo((s) => ({ ...s, _copied: 'FAIL' }))
       setTimeout(() => setInfo((s) => ({ ...s, _copied: '' })), 1800)
     }
-  }
+  }, [])
 
   if (status === 'loading') {
     return (
@@ -2064,30 +2085,38 @@ function LanAccessCardV3() {
 /* ========================================================================== */
 const MIN_PASSWORD = 8
 
+/**
+ * 账号与安全卡片：修改密码、退出登录。
+ * 修改成功后其他设备上的登录会立即失效。
+ * @returns {JSX.Element} 设置卡片
+ */
 function AccountSecurityV3() {
   const { user, changePassword, logout } = useAuth()
   const [form, setForm] = useState({ old: '', next: '', confirm: '' })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  const submit = async (e) => {
-    e.preventDefault()
-    setErr('')
-    if (form.next.length < MIN_PASSWORD) return setErr(`新密码至少 ${MIN_PASSWORD} 位`)
-    if (form.next !== form.confirm) return setErr('两次输入的新密码不一致')
-    setBusy(true)
-    try {
-      await changePassword(form.old, form.next)
-      setForm({ old: '', next: '', confirm: '' })
-      toastOk('密码已修改，其他设备上的登录已失效')
-    } catch (e2) {
-      setErr(e2?.message || '修改失败')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const submit = useCallback(
+    async (e) => {
+      e.preventDefault()
+      setErr('')
+      if (form.next.length < MIN_PASSWORD) return setErr(`新密码至少 ${MIN_PASSWORD} 位`)
+      if (form.next !== form.confirm) return setErr('两次输入的新密码不一致')
+      setBusy(true)
+      try {
+        await changePassword(form.old, form.next)
+        setForm({ old: '', next: '', confirm: '' })
+        toastOk('密码已修改，其他设备上的登录已失效')
+      } catch (e2) {
+        setErr(e2?.message || '修改失败')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [form.old, form.next, form.confirm, changePassword],
+  )
 
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const set = useCallback((k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value })), [])
 
   return (
     <Card>
@@ -2161,6 +2190,11 @@ function AccountSecurityV3() {
 /* ========================================================================== */
 /* 用户管理（管理员）                                                           */
 /* ========================================================================== */
+/**
+ * 用户管理卡片（管理员）：创建账号、调整角色、禁用/启用、重置密码、软删除与恢复。
+ * 新账号首次登录须修改密码；删除为软删除，勾选「显示已删除」可恢复。
+ * @returns {JSX.Element} 设置卡片
+ */
 function UserAdminV3() {
   const { user: me } = useAuth()
   const [confirm, confirmDialog] = useConfirm()
@@ -2190,98 +2224,113 @@ function UserAdminV3() {
     load()
   }, [load])
 
-  const replaceRow = (u) => setRows((rs) => rs.map((r) => (r.id === u.id ? u : r)))
+  const replaceRow = useCallback((u) => setRows((rs) => rs.map((r) => (r.id === u.id ? u : r))), [])
 
-  const create = async (e) => {
-    e.preventDefault()
-    setBusy(true)
-    try {
-      const body = { username: form.username.trim(), role: form.role }
-      if (form.display_name.trim()) body.display_name = form.display_name.trim()
-      if (form.password) body.password = form.password
-      const r = await adminUsersApi.create(body)
-      setRows((rs) => [...rs, r.user])
-      setForm(EMPTY_USER_FORM)
-      setSecret({
-        username: r.user.username,
-        password: r.temporary_password || form.password,
-        generated: !!r.temporary_password,
-      })
-      toastOk(`已创建用户 ${r.user.username}`)
-    } catch (e2) {
-      toastErr(`创建失败：${e2?.message || e2}`)
-    } finally {
-      setBusy(false)
-    }
-  }
+  const create = useCallback(
+    async (e) => {
+      e.preventDefault()
+      setBusy(true)
+      try {
+        const body = { username: form.username.trim(), role: form.role }
+        if (form.display_name.trim()) body.display_name = form.display_name.trim()
+        if (form.password) body.password = form.password
+        const r = await adminUsersApi.create(body)
+        setRows((rs) => [...rs, r.user])
+        setForm(EMPTY_USER_FORM)
+        setSecret({
+          username: r.user.username,
+          password: r.temporary_password || form.password,
+          generated: !!r.temporary_password,
+        })
+        toastOk(`已创建用户 ${r.user.username}`)
+      } catch (e2) {
+        toastErr(`创建失败：${e2?.message || e2}`)
+      } finally {
+        setBusy(false)
+      }
+    },
+    [form.username, form.display_name, form.role, form.password],
+  )
 
-  const patch = async (u, body, okMsg) => {
+  const patch = useCallback(async (u, body, okMsg) => {
     try {
       replaceRow(await adminUsersApi.update(u.id, body))
       toastOk(okMsg)
     } catch (e) {
       toastErr(`操作失败：${e?.message || e}`)
     }
-  }
+  }, [replaceRow])
 
-  const toggleActive = async (u) => {
-    if (u.is_active) {
+  const toggleActive = useCallback(
+    async (u) => {
+      if (u.is_active) {
+        const ok = await confirm({
+          title: '禁用用户',
+          message: `禁用后 ${u.username} 的所有会话立即失效，确认？`,
+          confirmText: '禁用',
+          danger: true,
+        })
+        if (!ok) return
+      }
+      patch(u, { is_active: !u.is_active }, u.is_active ? '已禁用' : '已启用')
+    },
+    [confirm, patch],
+  )
+
+  const reset = useCallback(
+    async (u) => {
       const ok = await confirm({
-        title: '禁用用户',
-        message: `禁用后 ${u.username} 的所有会话立即失效，确认？`,
-        confirmText: '禁用',
+        title: '重置密码',
+        message: `将为 ${u.username} 生成临时密码，其下次登录须修改，确认？`,
+        confirmText: '重置',
         danger: true,
       })
       if (!ok) return
-    }
-    patch(u, { is_active: !u.is_active }, u.is_active ? '已禁用' : '已启用')
-  }
+      try {
+        const r = await adminUsersApi.resetPassword(u.id)
+        replaceRow(r.user)
+        setSecret({ username: r.user.username, password: r.temporary_password, generated: true })
+      } catch (e) {
+        toastErr(`重置失败：${e?.message || e}`)
+      }
+    },
+    [confirm, replaceRow],
+  )
 
-  const reset = async (u) => {
-    const ok = await confirm({
-      title: '重置密码',
-      message: `将为 ${u.username} 生成临时密码，其下次登录须修改，确认？`,
-      confirmText: '重置',
-      danger: true,
-    })
-    if (!ok) return
-    try {
-      const r = await adminUsersApi.resetPassword(u.id)
-      replaceRow(r.user)
-      setSecret({ username: r.user.username, password: r.temporary_password, generated: true })
-    } catch (e) {
-      toastErr(`重置失败：${e?.message || e}`)
-    }
-  }
+  const remove = useCallback(
+    async (u) => {
+      const ok = await confirm({
+        title: '删除用户',
+        message: `删除后 ${u.username} 将无法登录，其所有会话立即失效。这是软删除，勾选「显示已删除」可以随时恢复。确认删除？`,
+        confirmText: '删除',
+        danger: true,
+      })
+      if (!ok) return
+      try {
+        await adminUsersApi.remove(u.id)
+        if (showDeleted) await load()
+        else setRows((rs) => rs.filter((r) => r.id !== u.id))
+        toastOk(`已删除用户 ${u.username}`)
+      } catch (e) {
+        toastErr(`删除失败：${e?.message || e}`)
+      }
+    },
+    [confirm, showDeleted, load],
+  )
 
-  const remove = async (u) => {
-    const ok = await confirm({
-      title: '删除用户',
-      message: `删除后 ${u.username} 将无法登录，其所有会话立即失效。这是软删除，勾选「显示已删除」可以随时恢复。确认删除？`,
-      confirmText: '删除',
-      danger: true,
-    })
-    if (!ok) return
-    try {
-      await adminUsersApi.remove(u.id)
-      if (showDeleted) await load()
-      else setRows((rs) => rs.filter((r) => r.id !== u.id))
-      toastOk(`已删除用户 ${u.username}`)
-    } catch (e) {
-      toastErr(`删除失败：${e?.message || e}`)
-    }
-  }
+  const restore = useCallback(
+    async (u) => {
+      try {
+        replaceRow(await adminUsersApi.restore(u.id))
+        toastOk(`已恢复用户 ${u.username}`)
+      } catch (e) {
+        toastErr(`恢复失败：${e?.message || e}`)
+      }
+    },
+    [replaceRow],
+  )
 
-  const restore = async (u) => {
-    try {
-      replaceRow(await adminUsersApi.restore(u.id))
-      toastOk(`已恢复用户 ${u.username}`)
-    } catch (e) {
-      toastErr(`恢复失败：${e?.message || e}`)
-    }
-  }
-
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const set = useCallback((k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value })), [])
 
   return (
     <Card>

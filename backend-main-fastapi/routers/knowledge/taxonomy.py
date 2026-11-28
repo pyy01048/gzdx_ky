@@ -12,13 +12,14 @@ from typing import Optional
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query
 from services import kp_mastery, taxonomy
-from sqlalchemy import String, cast, func
+from services.quiz_query import question_owner_expr
+from sqlalchemy import String, case, cast, func
 from sqlalchemy.orm import Session
 from utils.response import MAX_PAGE_SIZE
 from utils.scope import owner_id
 from utils.security import optional_user, require_admin
 
-from models import Document, KnowledgeChunk, KnowledgePoint, SubjectConfig
+from models import Document, KnowledgeChunk, KnowledgePoint, QuizQuestion, SubjectConfig, User
 
 router = APIRouter(prefix="/api/taxonomy", tags=["知识结构"])
 
@@ -62,7 +63,10 @@ def _strip_personal(node):
 
 
 @router.get("/subjects")
-async def list_subjects(db: Session = Depends(get_db)):
+async def list_subjects(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(optional_user),
+) -> dict:
     """科目清单（V8 阶段1 升级为完整科目管理接口）。
 
     返回**向后兼容**的超集：
@@ -86,7 +90,8 @@ async def list_subjects(db: Session = Depends(get_db)):
     # 脏科目以 is_custom=False + unregistered=True 带出（刻意不漏数据）。前端科目页
     # 靠这个标志区分"内置种子"与"未登记"，聚合器一旦补字段这里就要同步透传，
     # 否则两者在响应里完全无法分辨。
-    registry_subjects = subject_registry.list_subjects(db)["subjects"]
+    owner_filter = question_owner_expr(user) if user is not None else QuizQuestion.owner_user_id.is_(None)
+    registry_subjects = subject_registry.list_subjects(db, question_filter=owner_filter)["subjects"]
 
     # 知识地图必须展示知识点数，不能复用题库的 question_count。保留 question_count
     # 兼容既有调用方，同时新增 knowledge_point_count；注册科目聚合其历史别名，
@@ -167,7 +172,7 @@ def _validate_question_types(types) -> list[str]:
 
 
 @router.post("/subjects", dependencies=[Depends(require_admin)])
-async def create_subject(payload: dict, db: Session = Depends(get_db)):
+async def create_subject(payload: dict, db: Session = Depends(get_db)) -> dict:
     """新增自定义科目（is_custom=True）。
 
     body: ``{subject, chapters?, question_types?}``
@@ -206,7 +211,7 @@ async def create_subject(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.put("/subjects/{subject}", dependencies=[Depends(require_admin)])
-async def update_subject(subject: str, payload: dict, db: Session = Depends(get_db)):
+async def update_subject(subject: str, payload: dict, db: Session = Depends(get_db)) -> dict:
     """更新科目配置：重命名 / 改章节 / 改题型。
 
     body: ``{subject?(新名), chapters?, question_types?}``
@@ -308,7 +313,7 @@ def _sync_goal_subject_refs(
 
 
 @router.delete("/subjects/{subject}", dependencies=[Depends(require_admin)])
-async def delete_subject(subject: str, db: Session = Depends(get_db)):
+async def delete_subject(subject: str, db: Session = Depends(get_db)) -> dict:
     """删除科目配置行（内置默认也可删）。
 
     仅删除科目字典配置；``quiz_questions`` / ``error_records`` 等业务表里
@@ -348,7 +353,7 @@ def structure_tree(
     ),
     db: Session = Depends(get_db),
     user=Depends(optional_user),
-):
+) -> dict:
     """三级结构树：科目 → 章节 → 知识点（含题型与掌握度三态）。
 
     以**大纲为标准骨架**，再把数据库里已有知识点挂上去。
@@ -389,7 +394,9 @@ def structure_tree(
         subjects = [s for s in subjects if s == std] or [std]
     rows = rows_query.all()
     # 审计 P0-1：访客无个人学习流水（空集）；登录态按本人 user_id 隔离（B4）
-    learned = kp_mastery.learned_kp_ids(db, user_id=owner_id(user)) if user is not None else set()
+    uid = owner_id(user) if user is not None else None
+    learned = kp_mastery.learned_kp_ids(db, user_id=uid) if uid is not None else set()
+    personal_mastery = kp_mastery.user_mastery(db, uid) if uid is not None else None
     by_subject: dict[str, list[KnowledgePoint]] = {}
     for kp in rows:
         by_subject.setdefault(taxonomy.normalize_subject(kp.subject), []).append(kp)
@@ -421,16 +428,16 @@ def structure_tree(
                 empty_n += 1
                 if not include_empty:
                     continue
-            chapters.append(_chapter_node(ch_name, items, s, learned, include_points))
+            chapters.append(_chapter_node(ch_name, items, s, learned, include_points, personal_mastery))
         # 再列出大纲外的章（实际资料里的自定义章）
         for ch_name in sorted(chapter_map.keys()):
-            chapters.append(_chapter_node(ch_name, chapter_map[ch_name], s, learned, include_points))
+            chapters.append(_chapter_node(ch_name, chapter_map[ch_name], s, learned, include_points, personal_mastery))
         # 未标章节的
         if uncategorized:
-            chapters.append(_chapter_node("未归章", uncategorized, s, learned, include_points))
+            chapters.append(_chapter_node("未归章", uncategorized, s, learned, include_points, personal_mastery))
 
         total = len(kps)
-        counts = kp_mastery.tally(kps, learned)
+        counts = kp_mastery.tally(kps, learned, personal_mastery)
         learned_n = total - counts["unlearned"]
         tree.append(
             {
@@ -457,7 +464,12 @@ def structure_tree(
 
 
 def _chapter_node(
-    title: str, kps: list[KnowledgePoint], subject: str, learned: set, include_points: bool = True
+    title: str,
+    kps: list[KnowledgePoint],
+    subject: str,
+    learned: set,
+    include_points: bool = True,
+    mastery_by_id: dict[int, int] | None = None,
 ) -> dict:
     types: list[str] = []
     for kp in kps:
@@ -467,7 +479,7 @@ def _chapter_node(
     if not types:
         types = taxonomy.question_types_of(subject)
 
-    counts = kp_mastery.tally(kps, learned)
+    counts = kp_mastery.tally(kps, learned, mastery_by_id)
     learned_n = counts["total"] - counts["unlearned"]
     node = {
         "title": title,
@@ -485,15 +497,24 @@ def _chapter_node(
                 "id": kp.id,
                 "name": kp.name,
                 "question_types": kp.question_types or taxonomy.question_types_of(kp.subject),
-                "mastery": int(kp.mastery or 0),
-                "state": kp_mastery.classify_state(kp.mastery, kp.id in learned),
+                "mastery": int(mastery_by_id.get(kp.id, 0) if mastery_by_id is not None else (kp.mastery or 0)),
+                "state": kp_mastery.classify_state(
+                    mastery_by_id.get(kp.id, 0) if mastery_by_id is not None else kp.mastery,
+                    kp.id in learned,
+                ),
                 "difficulty": kp.difficulty or 3,
                 "exam_frequency": kp.exam_frequency or 0,
                 "review_count": kp.review_count or 0,
                 "next_review": kp.next_review.isoformat() if kp.next_review else None,
                 "document_id": kp.document_id,
             }
-            for kp in sorted(kps, key=lambda k: (int(k.mastery or 0), -(k.exam_frequency or 0)))
+            for kp in sorted(
+                kps,
+                key=lambda k: (
+                    int(mastery_by_id.get(k.id, 0) if mastery_by_id is not None else (k.mastery or 0)),
+                    -(k.exam_frequency or 0),
+                ),
+            )
         ]
     return node
 
@@ -509,7 +530,7 @@ def list_knowledge_points(
     page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     user=Depends(optional_user),
-):
+) -> dict:
     """知识点列表（支持 科目 / 章节 / 题型 / 关键词 / 薄弱 筛选）。
 
     章节按树节点的**完整章名精确匹配**；模糊检索请使用 ``keyword``。
@@ -538,14 +559,21 @@ def list_knowledge_points(
         encoded = json.dumps(question_type, ensure_ascii=False)
         q = q.filter(cast(KnowledgePoint.question_types, String).contains(encoded, autoescape=True))
 
-    learned = kp_mastery.learned_kp_ids(db, user_id=owner_id(user)) if user is not None else set()
+    uid = owner_id(user) if user is not None else None
+    learned = kp_mastery.learned_kp_ids(db, user_id=uid) if uid is not None else set()
+    personal_mastery = kp_mastery.user_mastery(db, uid) if uid is not None else None
+    mastery_expr = (
+        case(personal_mastery or {0: 0}, value=KnowledgePoint.id, else_=0)
+        if personal_mastery is not None
+        else func.coalesce(KnowledgePoint.mastery, 0)
+    )
     if low_mastery:
         if user is None:
             q = q.filter(False)
         else:
             q = q.filter(
                 KnowledgePoint.id.in_(learned),
-                func.coalesce(KnowledgePoint.mastery, 0) < kp_mastery.MASTERED_THRESHOLD,
+                mastery_expr < kp_mastery.MASTERED_THRESHOLD,
             )
 
     total = q.order_by(None).count()
@@ -573,8 +601,11 @@ def list_knowledge_points(
                 "subject": k.subject,
                 "chapter": k.chapter,
                 "question_types": k.question_types or taxonomy.question_types_of(k.subject),
-                "mastery": int(k.mastery or 0),
-                "state": kp_mastery.classify_state(k.mastery, k.id in learned),
+                "mastery": int(personal_mastery.get(k.id, 0) if personal_mastery is not None else (k.mastery or 0)),
+                "state": kp_mastery.classify_state(
+                    personal_mastery.get(k.id, 0) if personal_mastery is not None else k.mastery,
+                    k.id in learned,
+                ),
                 "difficulty": k.difficulty or 3,
                 "exam_frequency": k.exam_frequency or 0,
                 "review_count": k.review_count or 0,
@@ -592,7 +623,7 @@ def list_knowledge_points(
 
 
 @router.get("/coverage")
-async def structure_coverage(db: Session = Depends(get_db)):
+async def structure_coverage(db: Session = Depends(get_db)) -> dict:
     """结构化覆盖率体检：哪些科目/章节还没有结构化资料。
 
     直接回答"知识库搭好了没有、缺哪一块"。
@@ -685,7 +716,7 @@ def _covered_chapters(outline: list[str], have: set) -> int:
 
 
 @router.get("/knowledge-points/{kp_id}")
-async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db), user=Depends(optional_user)):
+async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db), user=Depends(optional_user)) -> dict:
     """知识点详情：含关联错题、关联分块、复习记录。
 
     审计 P0-1：访客只读公共目录字段，个人域字段与个人关联数据
@@ -697,7 +728,10 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db), user
 
     from services import error_linker, review_service
 
-    learned = kp_mastery.learned_kp_ids(db, user_id=owner_id(user)) if user is not None else set()
+    uid = owner_id(user) if user is not None else None
+    learned = kp_mastery.learned_kp_ids(db, user_id=uid) if uid is not None else set()
+    personal_mastery = kp_mastery.user_mastery(db, uid) if uid is not None else None
+    mastery = int(personal_mastery.get(kp.id, 0) if personal_mastery is not None else (kp.mastery or 0))
 
     # —— 知识块关联（2026-10 修复）—— #
     # 问题：knowledge_points.subject 是归一后的主分类（数模电/408/公共课），
@@ -745,8 +779,8 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db), user
         "chapter": kp.chapter,
         "description": kp.description,
         "question_types": kp.question_types or taxonomy.question_types_of(kp.subject),
-        "mastery": int(kp.mastery or 0),
-        "state": kp_mastery.classify_state(kp.mastery, kp.id in learned),
+        "mastery": mastery,
+        "state": kp_mastery.classify_state(mastery, kp.id in learned),
         "difficulty": kp.difficulty or 3,
         "exam_frequency": kp.exam_frequency or 0,
         "review_count": kp.review_count or 0,
@@ -755,7 +789,9 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db), user
         "interval": kp.interval or 0,
         "ease_factor": kp.ease_factor or 2.5,
         "lapses": kp.lapses or 0,
-        "related_errors": ([] if user is None else error_linker.related_errors(db, kp.id, limit=20)),
+        "related_errors": (
+            [] if user is None else error_linker.related_errors(db, kp.id, user_id=owner_id(user), limit=20)
+        ),
         "related_chunks": [
             {"chunk_id": c.id, "document_id": c.document_id, "doc_name": c.doc_name, "text": (c.text or "")[:400]}
             for c in chunks
@@ -779,7 +815,7 @@ async def knowledge_point_detail(kp_id: int, db: Session = Depends(get_db), user
 
 
 @router.post("/knowledge-points", dependencies=[Depends(require_admin)])
-async def create_knowledge_point(payload: dict, db: Session = Depends(get_db)):
+async def create_knowledge_point(payload: dict, db: Session = Depends(get_db)) -> dict:
     """手动新增知识点（补录大纲里缺失的考点）。"""
     name = (payload.get("name") or "").strip()
     if not name:
@@ -803,7 +839,7 @@ async def create_knowledge_point(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.put("/knowledge-points/{kp_id}", dependencies=[Depends(require_admin)])
-async def update_knowledge_point(kp_id: int, payload: dict, db: Session = Depends(get_db)):
+async def update_knowledge_point(kp_id: int, payload: dict, db: Session = Depends(get_db)) -> dict:
     """更新知识点（章节归属、题型、考频、掌握度）。"""
     kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == kp_id).first()
     if not kp:
@@ -825,7 +861,7 @@ async def update_knowledge_point(kp_id: int, payload: dict, db: Session = Depend
 
 
 @router.delete("/knowledge-points/{kp_id}", dependencies=[Depends(require_admin)])
-async def delete_knowledge_point(kp_id: int, db: Session = Depends(get_db)):
+async def delete_knowledge_point(kp_id: int, db: Session = Depends(get_db)) -> dict:
     kp = db.query(KnowledgePoint).filter(KnowledgePoint.id == kp_id).first()
     if not kp:
         raise HTTPException(status_code=404, detail="知识点不存在")

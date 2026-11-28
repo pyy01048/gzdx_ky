@@ -71,6 +71,7 @@ python scripts/restore_quiz_missing_options.py --report out.json  # 导 JSON 报
 python scripts/restore_quiz_missing_options.py --apply            # 真写库
 ```
 """
+
 from __future__ import annotations
 
 import argparse
@@ -246,7 +247,8 @@ def collect_targets(db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0)
     """筛出「单选 + 选项不足 4 项 + 有来源标签」的题。"""
     from sqlalchemy import text as sqltext
 
-    rows = db.execute(sqltext("""
+    rows = db.execute(
+        sqltext("""
         select id, coalesce(subject,''), coalesce(content,''),
                coalesce(options::text,'[]'), coalesce(source_label,'')
         from quiz_questions
@@ -255,7 +257,8 @@ def collect_targets(db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0)
           and jsonb_array_length(options) < 4
           and coalesce(source_label,'') <> ''
         order by source_label, id
-    """)).fetchall()
+    """)
+    ).fetchall()
     out: List[dict] = []
     for qid, subj, content, options_json, label in rows:
         if quiz_ids and qid not in quiz_ids:
@@ -266,17 +269,23 @@ def collect_targets(db, *, quiz_ids: Optional[List[int]] = None, limit: int = 0)
             continue
         if not isinstance(opts, list):
             continue
-        out.append({
-            "id": qid, "subject": subj, "content": content,
-            "options": opts, "label": label,
-        })
+        out.append(
+            {
+                "id": qid,
+                "subject": subj,
+                "content": content,
+                "options": opts,
+                "label": label,
+            }
+        )
     if limit:
         out = out[:limit]
     return out
 
 
 def _guard(
-    db_opts: Dict[str, str], doc_plain: Dict[str, str],
+    db_opts: Dict[str, str],
+    doc_plain: Dict[str, str],
 ) -> Tuple[str, str]:
     """判定能否安全写库。返回 ``(守卫名, 说明)``，守卫名为空表示没过。
 
@@ -306,9 +315,14 @@ def _guard(
 
 
 def _build_options(
-    block: List[dict], db_opts: Dict[str, str], guard: str,
-    latex_map: Dict[int, str], img_url: Dict[int, str], *,
-    prefer: str = "tex", force_keys: frozenset = frozenset(),
+    block: List[dict],
+    db_opts: Dict[str, str],
+    guard: str,
+    latex_map: Dict[int, str],
+    img_url: Dict[int, str],
+    *,
+    prefer: str = "tex",
+    force_keys: frozenset = frozenset(),
 ) -> List[dict]:
     """渲染出 4 项候选选项。
 
@@ -351,19 +365,20 @@ def _short(text: str, n: int = _SHOW) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="从源 docx 补全题库整项丢失/被合并的选项（默认干跑）"
-    )
-    ap.add_argument("--quiz-id", type=int, action="append", default=[],
-                    help="只处理指定题目 id，可多次指定")
+    ap = argparse.ArgumentParser(description="从源 docx 补全题库整项丢失/被合并的选项（默认干跑）")
+    ap.add_argument("--quiz-id", type=int, action="append", default=[], help="只处理指定题目 id，可多次指定")
     ap.add_argument("--limit", type=int, default=0, help="最多处理多少道")
     ap.add_argument("--apply", action="store_true", help="真写库（默认干跑）")
     ap.add_argument("--report", help="把逐题结果写成 JSON")
-    ap.add_argument("--no-image-fallback", action="store_true",
-                    help="公式识别失败时不留图片（默认留图）")
-    ap.add_argument("--force-image", action="append", default=[], metavar="ID:KEY",
-                    help="强制某个选项出图片而不出 LaTeX，形如 192:C，可多次指定。"
-                         "用于识别结果肉眼可辨是错的、但任何字符串判据都抓不到的单字符误读")
+    ap.add_argument("--no-image-fallback", action="store_true", help="公式识别失败时不留图片（默认留图）")
+    ap.add_argument(
+        "--force-image",
+        action="append",
+        default=[],
+        metavar="ID:KEY",
+        help="强制某个选项出图片而不出 LaTeX，形如 192:C，可多次指定。"
+        "用于识别结果肉眼可辨是错的、但任何字符串判据都抓不到的单字符误读",
+    )
     args = ap.parse_args()
 
     # ID:KEY → 该题需要强制走图片的选项字母
@@ -380,6 +395,7 @@ def main() -> int:
         force_image.setdefault(qid, set()).add(key)
 
     from database import SessionLocal
+
     from models import QuizQuestion
 
     db = SessionLocal()
@@ -455,9 +471,7 @@ def main() -> int:
                 # 不能用 plain_to_marked(span[1])：选项首字符正好压在占位符上时，
                 # 会把该占位符算到片段之前，选项的第一个公式就丢了。
                 line_i = _line_of(starts_p, span[1])
-                block = find_option_block(
-                    al.marked, starts_m, starts_m[line_i], max_run_index=1
-                )
+                block = find_option_block(al.marked, starts_m, starts_m[line_i], max_run_index=1)
                 if not block:
                     # 源 docx 里这一段只有 2~3 项（题目本身就是少项），或题干后紧跟
                     # 的不是 A~D 连续段。两种情况都不能补——补一版自己证明不了的选项
@@ -465,13 +479,9 @@ def main() -> int:
                     peek = _peek_option_keys(al.marked, starts_m, starts_m[line_i])
                     it["status"] = "option_block_not_found"
                     it["docx_keys"] = "".join(peek)
-                    it["reason"] = (
-                        f"docx 该题后选项依次为 {''.join(peek) or '（无标记）'}"
-                        f"，凑不成连续 A~D"
-                    )
+                    it["reason"] = f"docx 该题后选项依次为 {''.join(peek) or '（无标记）'}，凑不成连续 A~D"
                     results.append(it)
-                    print(f"  quiz {it['id']}: option_block_not_found "
-                          f"（源 docx 选项={''.join(peek) or '无'}）")
+                    print(f"  quiz {it['id']}: option_block_not_found （源 docx 选项={''.join(peek) or '无'}）")
                     continue
 
                 mids: List[int] = []
@@ -490,9 +500,7 @@ def main() -> int:
             rejected: List[Tuple[int, str, str]] = []
             if wanted:
                 out_dir = os.path.join(img_root, str(d.id))
-                res2 = parse_docx_with_images(
-                    d.file_path, out_dir=out_dir, only_indices=wanted
-                )
+                res2 = parse_docx_with_images(d.file_path, out_dir=out_dir, only_indices=wanted)
                 images = {i.index: i for i in res2.images}
                 for idx in sorted(wanted):
                     img = images.get(idx)
@@ -503,10 +511,7 @@ def main() -> int:
                     # 依赖 Windows 注册表。统一转白底 PNG（识别仍用原图，
                     # 避免二次压缩影响精度）。
                     usable = _web_png(img.out_path)
-                    url = (
-                        f"/media/images/quiz_option/{d.id}/"
-                        f"{os.path.basename(usable)}"
-                    )
+                    url = f"/media/images/quiz_option/{d.id}/{os.path.basename(usable)}"
                     if args.no_image_fallback:
                         url = ""
                     if url:
@@ -529,10 +534,7 @@ def main() -> int:
 
             # ---- 第三步：守卫判定 + 渲染 ----
             for it, block, _mids in plans:
-                db_opts = {
-                    str(o.get("key", "")).upper(): str(o.get("text", ""))
-                    for o in it["options"]
-                }
+                db_opts = {str(o.get("key", "")).upper(): str(o.get("text", "")) for o in it["options"]}
                 doc_plain = {seg["key"]: _seg_plain(seg) for seg in block}
                 guard, why = _guard(db_opts, doc_plain)
                 it["run_index"] = block[0].get("run_index")
@@ -545,15 +547,18 @@ def main() -> int:
                     continue
 
                 forced = frozenset(force_image.get(it["id"], ()))
-                cand = _build_options(
-                    block, db_opts, guard, latex_map, img_url, force_keys=forced
-                )
+                cand = _build_options(block, db_opts, guard, latex_map, img_url, force_keys=forced)
                 # 四项里有重复文本 → 多半是公式识别塌陷（两个公式认成同一串），
                 # 整题退图片。错的 LaTeX 比图片有害。
                 if _has_duplicate(cand) and img_url:
                     cand = _build_options(
-                        block, db_opts, guard, latex_map, img_url,
-                        prefer="image", force_keys=forced,
+                        block,
+                        db_opts,
+                        guard,
+                        latex_map,
+                        img_url,
+                        prefer="image",
+                        force_keys=forced,
                     )
                     it["fallback"] = "duplicate"
                 if _has_duplicate(cand):
@@ -583,23 +588,23 @@ def main() -> int:
             print(f"        守卫 {k}: {gcnt.get(k, 0)} 道")
         # 「找不到连续 A~D」的题单独按 docx 里实际有的选项分布列一下：
         # 这一批不是脚本没能力补，而是**源 docx 本身就只有 2~3 项**，补不了也不该补。
-        kcnt = Counter(r.get("docx_keys", "") for r in results
-                       if r.get("status") == "option_block_not_found")
+        kcnt = Counter(r.get("docx_keys", "") for r in results if r.get("status") == "option_block_not_found")
         if kcnt:
-            print("        其中源 docx 选项不足 4 项：" +
-                  "，".join(f"{k or '无标记'}={v} 道" for k, v in kcnt.most_common()))
+            print(
+                "        其中源 docx 选项不足 4 项："
+                + "，".join(f"{k or '无标记'}={v} 道" for k, v in kcnt.most_common())
+            )
 
         # 逐题打印全部候选（team-lead 要核对每一条，不做 show 限制）
         for r in results:
             if r.get("status") != "ok":
-                print(f"\n跳过 quiz {r['id']} [{r.get('subject','')}] "
-                      f"{r['status']}：{r.get('reason','')}")
+                print(f"\n跳过 quiz {r['id']} [{r.get('subject', '')}] {r['status']}：{r.get('reason', '')}")
                 continue
             before = r["db_opts"]
             print(
-                f"\nquiz {r['id']} [{r.get('subject','')}] "
+                f"\nquiz {r['id']} [{r.get('subject', '')}] "
                 f"{len(before)} 项 → 4 项 | 守卫 {r['guard']} | "
-                f"run_index={r['run_index']} | {r.get('fallback','')}"
+                f"run_index={r['run_index']} | {r.get('fallback', '')}"
             )
             for o in r["candidate"]:
                 old = before.get(o["key"])

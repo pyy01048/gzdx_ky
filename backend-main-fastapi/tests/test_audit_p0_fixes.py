@@ -210,8 +210,9 @@ class TestLearnedKpUserIsolation:
 
     def test_learned_kp_ids_scoped_per_user(self, db_schema, sample_data):
         from database import SessionLocal
-        from models import KnowledgePoint, User
         from services import kp_mastery
+
+        from models import KnowledgePoint, User
 
         db = SessionLocal()
         uid_b = 990002
@@ -350,6 +351,7 @@ class TestErrorStatsUserIsolation:
     @pytest.fixture()
     def error_rows(self, db_schema):
         from database import SessionLocal
+
         from models import ErrorRecord, User
 
         db = SessionLocal()

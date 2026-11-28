@@ -1,6 +1,6 @@
 """Download BAAI/bge-reranker-v2-m3 via hf-mirror.com."""
+
 import os
-import sys
 
 # Use hf-mirror as HF endpoint (must be set before importing huggingface_hub)
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
@@ -35,7 +35,7 @@ print(f"Download complete. Files at: {path}")
 
 # Calculate total size
 total_size = 0
-for root, dirs, files in os.walk(path):
+for root, _dirs, files in os.walk(path):
     for f in files:
         fp = os.path.join(root, f)
         total_size += os.path.getsize(fp)

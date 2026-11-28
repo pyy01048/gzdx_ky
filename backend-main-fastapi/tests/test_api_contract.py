@@ -135,6 +135,14 @@ ALLOWED_4XX = {
         {404},
         "M2-5 新端点：题目不存在时 404（测试库无题目数据），与同路径 PUT/DELETE 行为一致",
     ),
+    "/api/quiz/questions/{question_id}/evidence": (
+        {404},
+        "P2 题目证据链：测试库无题目数据，占位题目不存在时返回 404；真实证据链由 test_question_evidence_p2.py 覆盖",
+    ),
+    "/api/kaoyan/majors/{major_id}": (
+        {404},
+        "P1 专业实体深链：测试库无专业数据，占位专业不存在时返回 404；真实专业合同由 test_engineering08_major_detail_contract.py 覆盖",
+    ),
     "/api/kaoyan/analysis/score-detail/{school_id}": ({404}, "测试库无院校数据（V10 分数全景）"),
     "/api/codebank/questions/{qid}": ({404}, "测试库题库数据顺序依赖（V15，单独文件跑有数据）"),
     "/api/netdisk/files/{file_id}": ({404}, "测试库无网盘文件"),
@@ -183,6 +191,14 @@ ALLOWED_4XX = {
     "/api/exam/sessions/{session_id}/report": (
         {404},
         "P0-3 考后报告：测试库无 exam_sessions 数据，会话不存在 → 404，与 /api/exam/sessions/{session_id} 同口径；空作答时返回 200 空报告结构由 exam_report 单测覆盖",
+    ),
+    "/api/quiz/sessions/{session_id}": (
+        {404},
+        "个人刷题会话按用户隔离；sample_data 不创建会话，占位 id=1 不存在或不属于测试主体 → 404",
+    ),
+    "/api/errors/export": (
+        {422},
+        "既有静态导出路径被 /{error_id} 动态路由先匹配，巡检以字符串 export 请求触发整数校验 → 422；非本轮个人题库改动",
     ),
 }
 

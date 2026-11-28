@@ -47,6 +47,7 @@ QUANT_GB_PER_B = {
     "FP32": 4.00,
 }
 
+
 # --------------------------------------------------------------------------- #
 # 模型档案
 # --------------------------------------------------------------------------- #
@@ -54,17 +55,17 @@ QUANT_GB_PER_B = {
 class ModelProfile:
     """一个模型的选型档案。"""
 
-    key: str                        # 唯一键（也是 Ollama 拉取名，若适用）
-    name: str                       # 展示名
-    family: str                     # 阵营：deepseek / qwen / gemma / llama / glm / mistral / minimax / kimi
-    params_b: float                 # 参数量（十亿）
-    ollama_name: Optional[str] = None      # Ollama 拉取名
-    context_k: int = 32                    # 上下文窗口（K）
-    chinese: int = 3                       # 中文能力 1-5
-    reasoning: int = 3                     # 推理/数学能力 1-5
-    speed: int = 3                         # 相对速度 1-5（越大越快）
+    key: str  # 唯一键（也是 Ollama 拉取名，若适用）
+    name: str  # 展示名
+    family: str  # 阵营：deepseek / qwen / gemma / llama / glm / mistral / minimax / kimi
+    params_b: float  # 参数量（十亿）
+    ollama_name: Optional[str] = None  # Ollama 拉取名
+    context_k: int = 32  # 上下文窗口（K）
+    chinese: int = 3  # 中文能力 1-5
+    reasoning: int = 3  # 推理/数学能力 1-5
+    speed: int = 3  # 相对速度 1-5（越大越快）
     license: str = ""
-    local: bool = True                     # 是否可本地运行
+    local: bool = True  # 是否可本地运行
     #: 学科强项评分 {科目: 1-5}。**这是分科路由的依据** ——
     #: 用布尔"是否覆盖"太粗，会把"通才"和"这一科专门调过的"排成一样。
     #: 未列出的科目视为 0（不推荐）。
@@ -114,15 +115,25 @@ MODEL_CATALOG: list[ModelProfile] = [
         reasoning=5,
         speed=3,
         license="MIT",
-        strengths={"数学": 5, "数字电子技术": 5, "模拟电子技术": 5,
-                   "真题综合": 5, "电路": 5, "信号与系统": 5, "通信原理": 4,
-                   "光学与工程光学": 4, "普通物理": 4,
-                   "计算机学科专业基础408": 4,
-                   "电路分析": 4, "光学": 3,
-                   "英语": 2, "政治": 2},
+        strengths={
+            "数学": 5,
+            "数字电子技术": 5,
+            "模拟电子技术": 5,
+            "真题综合": 5,
+            "电路": 5,
+            "信号与系统": 5,
+            "通信原理": 4,
+            "光学与工程光学": 4,
+            "普通物理": 4,
+            "计算机学科专业基础408": 4,
+            "电路分析": 4,
+            "光学": 3,
+            "英语": 2,
+            "政治": 2,
+        },
         best_for=["reasoning"],
         note="把 R1(671B) 的推理链蒸馏进 7B，数学推导与计算题是它的主场；"
-             "输出带思考过程，适合看「怎么想到的」。上下文长，但长上下文吃显存。",
+        "输出带思考过程，适合看「怎么想到的」。上下文长，但长上下文吃显存。",
     ),
     ModelProfile(
         key="deepseek-r1:1.5b",
@@ -135,11 +146,9 @@ MODEL_CATALOG: list[ModelProfile] = [
         reasoning=3,
         speed=5,
         license="MIT",
-        strengths={"数字电子技术": 2, "模拟电子技术": 2,
-                   "电路": 2, "信号与系统": 1, "普通物理": 1},
+        strengths={"数字电子技术": 2, "模拟电子技术": 2, "电路": 2, "信号与系统": 1, "普通物理": 1},
         best_for=["doc_process", "ocr_cleanup"],
-        note="极小极快，适合批量处理文档与 OCR 纠错；推理深度有限，"
-             "别指望它做复杂推导。",
+        note="极小极快，适合批量处理文档与 OCR 纠错；推理深度有限，别指望它做复杂推导。",
     ),
     # ---------------- Qwen Coder：结构化 JSON 生成 ---------------- #
     ModelProfile(
@@ -156,7 +165,7 @@ MODEL_CATALOG: list[ModelProfile] = [
         strengths={},
         best_for=["doc_process", "code"],
         note="代码/结构化输出专用：输出稳定、无 think 干扰，"
-             "适合答案解析/变式题的 JSON 生成（qwen3 系会带 think 破坏 JSON）。",
+        "适合答案解析/变式题的 JSON 生成（qwen3 系会带 think 破坏 JSON）。",
     ),
     # ---------------- Qwen 系列：中文最强 ----------------
     ModelProfile(
@@ -170,15 +179,25 @@ MODEL_CATALOG: list[ModelProfile] = [
         reasoning=4,
         speed=3,
         license="Apache-2.0",
-        strengths={"政治": 5, "英语": 5, "数学": 4, "真题综合": 4,
-                   "数字电子技术": 4, "模拟电子技术": 4,
-                   "电路": 4, "信号与系统": 4, "通信原理": 4,
-                   "光学与工程光学": 3, "普通物理": 4,
-                   "计算机学科专业基础408": 4,
-                   "电路分析": 3, "光学": 3},
+        strengths={
+            "政治": 5,
+            "英语": 5,
+            "数学": 4,
+            "真题综合": 4,
+            "数字电子技术": 4,
+            "模拟电子技术": 4,
+            "电路": 4,
+            "信号与系统": 4,
+            "通信原理": 4,
+            "光学与工程光学": 3,
+            "普通物理": 4,
+            "计算机学科专业基础408": 4,
+            "电路分析": 3,
+            "光学": 3,
+        },
         best_for=["chinese_qa", "general", "reasoning"],
         note="中文理解与长文本处理开箱即用，政治背诵、英语翻译更准；"
-             "8B 在 8GB 显存上需 Q4 量化，属于「能用但别开大上下文」。",
+        "8B 在 8GB 显存上需 Q4 量化，属于「能用但别开大上下文」。",
     ),
     ModelProfile(
         key="qwen3:4b",
@@ -191,8 +210,7 @@ MODEL_CATALOG: list[ModelProfile] = [
         reasoning=3,
         speed=5,
         license="Apache-2.0",
-        strengths={"政治": 3, "英语": 3, "真题综合": 2, "电路": 2,
-                   "信号与系统": 2, "普通物理": 2},
+        strengths={"政治": 3, "英语": 3, "真题综合": 2, "电路": 2, "信号与系统": 2, "普通物理": 2},
         # 也纳入 chinese_qa / reasoning：它是 8GB 卡的"舒适区"模型，
         # 当机器上**只有它**时，应该本地作答而不是退回云端。
         best_for=["doc_process", "ocr_cleanup", "general", "chinese_qa", "reasoning"],
@@ -209,11 +227,9 @@ MODEL_CATALOG: list[ModelProfile] = [
         reasoning=4,
         speed=2,
         license="Apache-2.0",
-        strengths={"政治": 5, "英语": 5, "数学": 4, "真题综合": 4,
-                   "电路": 4, "信号与系统": 4, "通信原理": 4},
+        strengths={"政治": 5, "英语": 5, "数学": 4, "真题综合": 4, "电路": 4, "信号与系统": 4, "通信原理": 4},
         best_for=["chinese_qa"],
-        note="中文能力更上一层，但 8GB 显存需激进量化(Q3)且速度明显下降，"
-             "更适合 12GB+ 显卡。",
+        note="中文能力更上一层，但 8GB 显存需激进量化(Q3)且速度明显下降，更适合 12GB+ 显卡。",
     ),
     # ---------------- Gemma：知识密度高 ----------------
     ModelProfile(
@@ -230,7 +246,7 @@ MODEL_CATALOG: list[ModelProfile] = [
         strengths={},
         best_for=["doc_process"],
         note="知识密度高、4B 能有越级表现，但**中文支持弱** —— "
-             "中文考研资料不建议做主力，可当英文文献阅读或文档摘要的补充。",
+        "中文考研资料不建议做主力，可当英文文献阅读或文档摘要的补充。",
     ),
     ModelProfile(
         key="gemma3:12b",
@@ -290,11 +306,10 @@ MODEL_CATALOG: list[ModelProfile] = [
         reasoning=3,
         speed=4,
         license="自训",
-        strengths={"数字电子技术": 4, "模拟电子技术": 4,
-                   "电路": 2, "信号与系统": 2},
+        strengths={"数字电子技术": 4, "模拟电子技术": 4, "电路": 2, "信号与系统": 2},
         best_for=["chinese_qa", "reasoning"],
         note="用本题库 570 条真题问答 LoRA 微调而成，answer 风格贴合 834；"
-             "但训练集偏小且以数电模电为主，别当全能模型用。",
+        "但训练集偏小且以数电模电为主，别当全能模型用。",
     ),
     # ---------------- 仅云端（列出来是为了让选型有对照） ----------------
     ModelProfile(
@@ -309,11 +324,22 @@ MODEL_CATALOG: list[ModelProfile] = [
         speed=5,
         license="商业 API",
         local=False,
-        strengths={"数学": 5, "数字电子技术": 5, "模拟电子技术": 5, "政治": 4,
-                   "英语": 4, "真题综合": 5, "电路": 5, "信号与系统": 5,
-                   "通信原理": 5, "光学与工程光学": 4, "普通物理": 5,
-                   "计算机学科专业基础408": 5,
-                   "电路分析": 4, "光学": 3},
+        strengths={
+            "数学": 5,
+            "数字电子技术": 5,
+            "模拟电子技术": 5,
+            "政治": 4,
+            "英语": 4,
+            "真题综合": 5,
+            "电路": 5,
+            "信号与系统": 5,
+            "通信原理": 5,
+            "光学与工程光学": 4,
+            "普通物理": 5,
+            "计算机学科专业基础408": 5,
+            "电路分析": 4,
+            "光学": 3,
+        },
         best_for=["reasoning", "chinese_qa", "long_context", "plan", "general"],
         note="本地跑不动时的兜底；推理与中文都强，代价是数据出网、按量计费。",
     ),
@@ -329,9 +355,17 @@ MODEL_CATALOG: list[ModelProfile] = [
         speed=5,
         license="商业 API",
         local=False,
-        strengths={"政治": 4, "英语": 4, "数学": 4, "真题综合": 4,
-                   "电路": 4, "信号与系统": 4, "通信原理": 4,
-                   "普通物理": 4, "计算机学科专业基础408": 4},
+        strengths={
+            "政治": 4,
+            "英语": 4,
+            "数学": 4,
+            "真题综合": 4,
+            "电路": 4,
+            "信号与系统": 4,
+            "通信原理": 4,
+            "普通物理": 4,
+            "计算机学科专业基础408": 4,
+        },
         best_for=["chinese_qa", "long_context", "general"],
         note="中文场景的云端备选，长文本处理稳定。",
     ),
@@ -349,8 +383,7 @@ MODEL_CATALOG: list[ModelProfile] = [
         local=False,
         strengths={"政治": 3},
         best_for=["code", "chinese_qa"],
-        note="编程与智能体能力突出的开源阵营，但旗舰规模**无法本地运行**，"
-             "只能走云端 API。",
+        note="编程与智能体能力突出的开源阵营，但旗舰规模**无法本地运行**，只能走云端 API。",
     ),
     ModelProfile(
         key="kimi-k2",
@@ -405,12 +438,20 @@ class HardwareProfile:
         if v <= 0:
             return "cpu"
         if v < 6:
-            return "entry"      # 4-6GB
+            return "entry"  # 4-6GB
         if v < 9:
             return "mainstream"  # 6-9GB（RTX 4060 8GB 属此档）
         if v < 16:
-            return "advanced"    # 9-16GB
-        return "high"            # 16GB+
+            return "advanced"  # 9-16GB
+        return "high"  # 16GB+
+
+
+def _log_nonfatal(exc: BaseException) -> None:
+    """记录非致命异常（不阻塞主流程，仅留痕）。
+
+    原先多处裸 pass，异常被无声吞掉，出问题无从排查（项目血泪教训 #1）。
+    """
+    logging.getLogger(__name__).warning("%s 处异常已忽略（不阻塞主流程）: %s", __name__, str(exc)[:200])
 
 
 def detect_hardware() -> HardwareProfile:
@@ -423,61 +464,57 @@ def detect_hardware() -> HardwareProfile:
     # 内存
     try:
         import psutil  # type: ignore
-        hw.ram_gb = round(psutil.virtual_memory().total / 1024 ** 3, 1)
+
+        hw.ram_gb = round(psutil.virtual_memory().total / 1024**3, 1)
     except Exception:
         try:
             if sys.platform == "win32":
                 out = subprocess.run(
                     ["wmic", "ComputerSystem", "get", "TotalPhysicalMemory"],
-                    capture_output=True, text=True, timeout=8, errors="ignore",
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                    errors="ignore",
                 ).stdout
                 nums = [int(s) for s in out.split() if s.isdigit()]
                 if nums:
-                    hw.ram_gb = round(nums[0] / 1024 ** 3, 1)
+                    hw.ram_gb = round(nums[0] / 1024**3, 1)
         except Exception as _exc:  # noqa: BLE001
-            # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
-            # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-            logging.getLogger(__name__).warning(
-                '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-            )
+            _log_nonfatal(_exc)
 
     # GPU（nvidia-smi 优先）
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10, errors="ignore",
+            capture_output=True,
+            text=True,
+            timeout=10,
+            errors="ignore",
         )
         if out.returncode == 0 and out.stdout.strip():
             line = out.stdout.strip().splitlines()[0]
             parts = [p.strip() for p in line.split(",")]
             if len(parts) >= 2 and parts[1].isdigit():
                 hw.gpu_name = parts[0]
-                hw.vram_gb = round(int(parts[1]) / 1024, 1)   # MiB → GB
+                hw.vram_gb = round(int(parts[1]) / 1024, 1)  # MiB → GB
                 hw.cuda_available = True
                 hw.source = "nvidia-smi"
                 return hw
     except Exception as _exc:  # noqa: BLE001
-        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
-        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-        logging.getLogger(__name__).warning(
-            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-        )
+        _log_nonfatal(_exc)
 
     # 退回 torch
     try:
         os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
         import torch  # type: ignore
+
         if torch.cuda.is_available():
             hw.cuda_available = True
             hw.gpu_name = torch.cuda.get_device_name(0)
-            hw.vram_gb = round(torch.cuda.get_device_properties(0).total_memory / 1024 ** 3, 1)
+            hw.vram_gb = round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 1)
             hw.source = "torch"
     except Exception as _exc:  # noqa: BLE001
-        # 不静默：原先此处裸 pass，异常被无声吞掉，出问题无从排查
-        # （项目血泪教训 #1）。保留「不阻塞主流程」语义，仅补留痕。
-        logging.getLogger(__name__).warning(
-            '%s 处异常已忽略（不阻塞主流程）: %s', __name__, str(_exc)[:200]
-        )
+        _log_nonfatal(_exc)
 
     return hw
 
@@ -495,21 +532,23 @@ FIT_LEVELS = {
 }
 
 
-def fit_verdict(profile: ModelProfile, hw: HardwareProfile,
-                *, reserve_gb: float = 0.0) -> dict[str, Any]:
+def fit_verdict(profile: ModelProfile, hw: HardwareProfile, *, reserve_gb: float = 0.0) -> dict[str, Any]:
     """判定某模型在本机能否跑、跑得怎么样。
 
     :param reserve_gb: 显存预留（浏览器/其他程序占用），默认按档位自动留。
     """
     if not profile.local:
         return {
-            "level": "cloud_only", "label": FIT_LEVELS["cloud_only"],
-            "required_gb": None, "vram_gb": hw.vram_gb,
+            "level": "cloud_only",
+            "label": FIT_LEVELS["cloud_only"],
+            "required_gb": None,
+            "vram_gb": hw.vram_gb,
             "detail": "该模型规模无法本地运行，需通过云端 API 使用",
         }
     if hw.vram_gb <= 0:
         return {
-            "level": "unknown", "label": FIT_LEVELS["unknown"],
+            "level": "unknown",
+            "label": FIT_LEVELS["unknown"],
             "required_gb": profile.required_gb(),
             "vram_gb": 0,
             "detail": "未检测到可用 GPU。只能走云端 API，或用 CPU 推理（很慢）",
@@ -521,9 +560,11 @@ def fit_verdict(profile: ModelProfile, hw: HardwareProfile,
     usable = round(hw.vram_gb - reserve_gb, 2)
 
     req = profile.required_gb()
-    detail_parts = [f"{profile.params_b}B @ {profile.quant} ≈ {profile.weights_gb()}GB 权重",
-                    f"总需求 ≈ {req}GB（含 KV cache）",
-                    f"可用 ≈ {usable}GB"]
+    detail_parts = [
+        f"{profile.params_b}B @ {profile.quant} ≈ {profile.weights_gb()}GB 权重",
+        f"总需求 ≈ {req}GB（含 KV cache）",
+        f"可用 ≈ {usable}GB",
+    ]
 
     if req <= usable * 0.85:
         level, extra = "perfect", "余量充足，可以开更大上下文"
@@ -598,6 +639,7 @@ def recommend_for_task(
     std = None
     if subject:
         from services import taxonomy
+
         std = taxonomy.normalize_subject(subject)
 
     order = {"perfect": 0, "ok": 1, "cloud_only": 2, "tight": 3, "too_big": 4, "unknown": 2}
@@ -609,22 +651,24 @@ def recommend_for_task(
         fit = fit_verdict(m, hw)
         # 科目强项评分：0 表示该模型未声明这一科
         subj_score = m.strengths.get(std, 0) if std else 0
-        out.append({
-            "key": m.key,
-            "name": m.name,
-            "family": m.family,
-            "params_b": m.params_b,
-            "ollama_name": m.ollama_name,
-            "local": m.local,
-            "installed": bool(m.ollama_name and m.ollama_name in installed),
-            "subject_score": subj_score,
-            "covers_subject": subj_score > 0,
-            "fit": fit,
-            "chinese": m.chinese,
-            "reasoning": m.reasoning,
-            "speed": m.speed,
-            "note": m.note,
-        })
+        out.append(
+            {
+                "key": m.key,
+                "name": m.name,
+                "family": m.family,
+                "params_b": m.params_b,
+                "ollama_name": m.ollama_name,
+                "local": m.local,
+                "installed": bool(m.ollama_name and m.ollama_name in installed),
+                "subject_score": subj_score,
+                "covers_subject": subj_score > 0,
+                "fit": fit,
+                "chinese": m.chinese,
+                "reasoning": m.reasoning,
+                "speed": m.speed,
+                "note": m.note,
+            }
+        )
 
     def sort_key(x):
         ability = x["reasoning"] if task == "reasoning" else x["chinese"]
@@ -697,14 +741,19 @@ def pick_best_available(
         # 任务相关性优先，其次推理/中文能力
         relevant = 0 if task in m.best_for else 1
         ability = m.reasoning if task == "reasoning" else m.chinese
-        fallback.append((relevant * 100 - ability, {
-            "key": m.key,
-            "name": m.name,
-            "ollama_name": m.ollama_name,
-            "installed": True,
-            "relevance": "科目推荐" if relevant == 0 else "已装可用（科目不完全对口）",
-            "fit": fit,
-        }))
+        fallback.append(
+            (
+                relevant * 100 - ability,
+                {
+                    "key": m.key,
+                    "name": m.name,
+                    "ollama_name": m.ollama_name,
+                    "installed": True,
+                    "relevance": "科目推荐" if relevant == 0 else "已装可用（科目不完全对口）",
+                    "fit": fit,
+                },
+            )
+        )
     if fallback:
         fallback.sort(key=lambda kv: kv[0])
         return fallback[0][1]
@@ -733,23 +782,27 @@ def full_report(installed: Optional[set[str]] = None) -> dict[str, Any]:
     for subj in list(taxonomy.CORE_SUBJECTS) + list(taxonomy.MAJOR_SUBJECTS):
         task = route_for_subject(subj)
         recs = recommend_for_task(task, subject=subj, hw=hw, installed=installed)
-        subject_plan.append({
-            "subject": subj,
-            "task": task,
-            "task_desc": TASK_KINDS.get(task, ""),
-            "scope": "core" if taxonomy.is_core(subj) else "major",
-            "recommendations": recs[:3],
-        })
+        subject_plan.append(
+            {
+                "subject": subj,
+                "task": task,
+                "task_desc": TASK_KINDS.get(task, ""),
+                "scope": "core" if taxonomy.is_core(subj) else "major",
+                "recommendations": recs[:3],
+            }
+        )
 
     # 批量任务（文档处理 / OCR 纠错）单独给建议
     batch_plan = []
     for task in ("doc_process", "ocr_cleanup"):
         recs = recommend_for_task(task, hw=hw, installed=installed)
-        batch_plan.append({
-            "task": task,
-            "task_desc": TASK_KINDS[task],
-            "recommendations": recs[:3],
-        })
+        batch_plan.append(
+            {
+                "task": task,
+                "task_desc": TASK_KINDS[task],
+                "recommendations": recs[:3],
+            }
+        )
 
     return {
         "hardware": asdict(hw),

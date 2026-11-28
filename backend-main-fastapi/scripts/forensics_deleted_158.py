@@ -18,8 +18,7 @@ import sqlite3
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "kaoyan.db"))
-BAK_PATH = os.path.abspath(os.path.join(
-    BASE_DIR, "..", "database", "_backup", "kaoyan_20261012_133542.db"))
+BAK_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "database", "_backup", "kaoyan_20261012_133542.db"))
 
 OCR_JUNK = re.compile(r"[\ufffd\ufffe\u001a-\u001f\ue000-\uf8ff]+")
 SIGN_STRIP = re.compile(r"[\s（）()【】\[\]、,，。.；;：:？?！！“”\"'’‘、·—\-]+")
@@ -32,7 +31,7 @@ SIM_THRESHOLD = 0.86
 
 def canon(s: str) -> str:
     s = OCR_JUNK.sub("", s or "")
-    s = BLANK.sub("　", s)          # 填空位统一成一个全角空格
+    s = BLANK.sub("　", s)  # 填空位统一成一个全角空格
     return SIGN_STRIP.sub("", s)
 
 
@@ -51,8 +50,7 @@ def main() -> None:
     # 当前库按完整签名建索引
     sig_index: dict[str, list[tuple[int, bool, int]]] = {}
     pool_norm: list[tuple[int, str, bool, int]] = []
-    for qid, content, ans, junk in cur.execute(
-            "SELECT id, content, answer, is_junk FROM quiz_questions"):
+    for qid, content, ans, junk in cur.execute("SELECT id, content, answer, is_junk FROM quiz_questions"):
         s = canon(content)
         sig_index.setdefault(s, []).append((qid, bool((ans or "").strip()), int(junk or 0)))
         if not int(junk or 0):
@@ -61,11 +59,11 @@ def main() -> None:
 
     qm = ",".join("?" * len(gone))
     deleted = bak.execute(
-        f"SELECT id, content, answer, is_junk, source FROM quiz_questions "
-        f"WHERE id IN ({qm})", gone).fetchall()
+        f"SELECT id, content, answer, is_junk, source FROM quiz_questions WHERE id IN ({qm})", gone
+    ).fetchall()
 
-    true_dup = []       # 找到了孪生 → 删对了
-    orphan = []         # 找不到孪生 → 真唯一内容
+    true_dup = []  # 找到了孪生 → 删对了
+    orphan = []  # 找不到孪生 → 真唯一内容
     for qid, content, ans, junk, source in deleted:
         s = canon(content)
         hit = sig_index.get(s)
@@ -115,12 +113,13 @@ def main() -> None:
     out = {
         "deleted_ids": gone,
         "true_dup": [{"id": q, "hit": h, "how": w} for q, h, w in true_dup],
-        "orphan": [{"id": q, "content": (c or "")[:300], "answer": a,
-                    "is_junk": j, "source": s} for q, c, a, j, s in orphan],
+        "orphan": [
+            {"id": q, "content": (c or "")[:300], "answer": a, "is_junk": j, "source": s} for q, c, a, j, s in orphan
+        ],
     }
     import json
-    with open(os.path.join(BASE_DIR, "data", "diagnostics", "deleted_158_forensics.json"),
-              "w", encoding="utf-8") as f:
+
+    with open(os.path.join(BASE_DIR, "data", "diagnostics", "deleted_158_forensics.json"), "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 
 

@@ -102,15 +102,15 @@ def scan() -> list[dict]:
                     continue
                 reason = _has_reason(lines, i)
                 # 收窄了异常类型的也算"有理由"：类型本身就是筛选意图的表达
-                narrowed = not re.match(
-                    r"^\s*except\s*(Exception)?\s*(as\s+\w+)?\s*:", ln
+                narrowed = not re.match(r"^\s*except\s*(Exception)?\s*(as\s+\w+)?\s*:", ln)
+                out.append(
+                    {
+                        "file": str(p.relative_to(ROOT)),
+                        "line": i + 1,
+                        "except": ln.strip()[:100],
+                        "severity": "LOW" if (reason or narrowed) else "HIGH",
+                    }
                 )
-                out.append({
-                    "file": str(p.relative_to(ROOT)),
-                    "line": i + 1,
-                    "except": ln.strip()[:100],
-                    "severity": "LOW" if (reason or narrowed) else "HIGH",
-                })
     return out
 
 
@@ -125,8 +125,7 @@ def main() -> int:
     low = [x for x in items if x["severity"] == "LOW"]
 
     if args.json:
-        print(json.dumps({"high": high, "low": low, "total": len(items)},
-                         ensure_ascii=False, indent=2))
+        print(json.dumps({"high": high, "low": low, "total": len(items)}, ensure_ascii=False, indent=2))
         return 0
 
     show = high if args.high_only else items

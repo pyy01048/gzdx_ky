@@ -22,6 +22,7 @@
     python scripts/eval_quiz_classify.py --per-subject 40 --no-llm
     python scripts/eval_quiz_classify.py --sweep          # 扫描阈值表
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,8 +58,9 @@ def _load_gold_json(path: str) -> list:
 
 def build_silver_gold(db, per_subject: int = 30) -> list:
     """银标金集：库内标签 + 题干独立 ≥2 关键词双重确认（高精近似真值）。"""
-    from models import QuizQuestion
     from services.quiz_autoclassify import _SUBJECT_RULES
+
+    from models import QuizQuestion
 
     rule_map = {s: set(kws) for s, kws in _SUBJECT_RULES}
     gold = []
@@ -79,17 +81,21 @@ def build_silver_gold(db, per_subject: int = 30) -> list:
                 continue
             # 独立确认：题干命中该科关键词，且不被他科明显抢走（信任库内标签）
             hits = sum(1 for kw in kws if kw in content)
-            other = max((sum(1 for okw in okws if okw in content)
-                         for os_, okws in rule_map.items() if os_ != subject), default=0)
+            other = max(
+                (sum(1 for okw in okws if okw in content) for os_, okws in rule_map.items() if os_ != subject),
+                default=0,
+            )
             if other > hits + 1:
                 continue
             seen.add(content)
-            gold.append({
-                "content": content,
-                "options": r.options if isinstance(r.options, list) else None,
-                "subject": subject,
-                "question_type": r.question_type or "single",
-            })
+            gold.append(
+                {
+                    "content": content,
+                    "options": r.options if isinstance(r.options, list) else None,
+                    "subject": subject,
+                    "question_type": r.question_type or "single",
+                }
+            )
             cnt += 1
             if cnt >= per_subject:
                 break
@@ -107,7 +113,7 @@ def evaluate(gold: list, db, use_llm: bool) -> dict:
 
     subj_correct = type_correct = both_correct = 0
     auto = auto_correct = 0
-    for g, dec in zip(gold, decisions):
+    for g, dec in zip(gold, decisions, strict=False):
         pred_subj = dec.subject.value
         pred_type = dec.question_type.value
         gold_subj = g.get("subject") or ""
@@ -146,20 +152,23 @@ def sweep(gold: list, db, use_llm: bool) -> list:
     for s_th in (0.80, 0.85, 0.90, 0.95):
         for t_th in (0.80, 0.85, 0.90):
             auto = auto_ok = 0
-            for g, dec in zip(gold, decisions):
-                if (dec.subject.value and dec.subject.confidence >= s_th
-                        and dec.question_type.confidence >= t_th):
+            for g, dec in zip(gold, decisions, strict=False):
+                if dec.subject.value and dec.subject.confidence >= s_th and dec.question_type.confidence >= t_th:
                     auto += 1
-                    if dec.subject.value == (g.get("subject") or "") \
-                            and dec.question_type.value == (g.get("question_type") or ""):
+                    if dec.subject.value == (g.get("subject") or "") and dec.question_type.value == (
+                        g.get("question_type") or ""
+                    ):
                         auto_ok += 1
             n = len(gold)
-            rows.append({
-                "subject_th": s_th, "type_th": t_th,
-                "coverage": auto / n if n else 0.0,
-                "auto_prec": auto_ok / auto if auto else float("nan"),
-                "auto_n": auto,
-            })
+            rows.append(
+                {
+                    "subject_th": s_th,
+                    "type_th": t_th,
+                    "coverage": auto / n if n else 0.0,
+                    "auto_prec": auto_ok / auto if auto else float("nan"),
+                    "auto_n": auto,
+                }
+            )
     return rows
 
 
@@ -207,14 +216,12 @@ def main() -> int:
             print(f"{'科目阈值':>8}{'题型阈值':>8}{'覆盖率':>9}{'自动精度':>10}{'自动数':>8}")
             for row in sweep(gold, db, use_llm):
                 aps = f"{row['auto_prec']:.3f}" if row["auto_n"] else "  n/a"
-                print(f"{row['subject_th']:>8}{row['type_th']:>8}"
-                      f"{row['coverage']:>9.1%}{aps:>10}{row['auto_n']:>8}")
+                print(f"{row['subject_th']:>8}{row['type_th']:>8}{row['coverage']:>9.1%}{aps:>10}{row['auto_n']:>8}")
 
         # 自动入库但未判对的（精度漏网）抽样，便于修正
         misses = [
-            (g["content"][:40], dec.subject.value, g.get("subject"),
-             dec.subject.confidence)
-            for g, dec in zip(gold, r["decisions"])
+            (g["content"][:40], dec.subject.value, g.get("subject"), dec.subject.confidence)
+            for g, dec in zip(gold, r["decisions"], strict=False)
             if dec.auto_accept and dec.subject.value != (g.get("subject") or "")
         ]
         if misses:

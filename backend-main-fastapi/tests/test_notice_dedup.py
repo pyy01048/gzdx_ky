@@ -12,6 +12,7 @@
 
 所有用例跑在内存库上，**绝不触碰真库**。
 """
+
 from __future__ import annotations
 
 import os
@@ -105,44 +106,38 @@ def mem_db():
 
 def test_upsert_rejects_empty_anchor(mem_db):
     """空锚点（href='#'）必须被拒写，且库里不留任何行。"""
-    assert upsert_notice(
-        mem_db, 208, "桂林电子科技大学", "博士专业学位授权类别", url="#"
-    ) == "skipped"
+    assert upsert_notice(mem_db, 208, "桂林电子科技大学", "博士专业学位授权类别", url="#") == "skipped"
     # 锚点文本是字面「#」的同类空锚点同样被拒
-    assert upsert_notice(
-        mem_db, 208, "桂林电子科技大学", "#", url="#"
-    ) == "skipped"
+    assert upsert_notice(mem_db, 208, "桂林电子科技大学", "#", url="#") == "skipped"
     assert mem_db.execute("SELECT COUNT(*) FROM kaoyan_notices").fetchone()[0] == 0
 
 
 def test_upsert_rejects_missing_url(mem_db):
     """url 为 None / 空串同样归一化为空，一并拒写。"""
-    assert upsert_notice(
-        mem_db, 208, "桂林电子科技大学", "某公告", url=None
-    ) == "skipped"
-    assert upsert_notice(
-        mem_db, 208, "桂林电子科技大学", "某公告", url=""
-    ) == "skipped"
-    assert upsert_notice(
-        mem_db, 208, "桂林电子科技大学", "某公告", url="#top"
-    ) == "skipped"
+    assert upsert_notice(mem_db, 208, "桂林电子科技大学", "某公告", url=None) == "skipped"
+    assert upsert_notice(mem_db, 208, "桂林电子科技大学", "某公告", url="") == "skipped"
+    assert upsert_notice(mem_db, 208, "桂林电子科技大学", "某公告", url="#top") == "skipped"
     assert mem_db.execute("SELECT COUNT(*) FROM kaoyan_notices").fetchone()[0] == 0
 
 
 def test_upsert_accepts_normal_url(mem_db):
     """正常 URL 必须照常写入（回归保护：防护不能误伤合法数据）。"""
-    assert upsert_notice(
-        mem_db, 208, "桂林电子科技大学", "2027年硕士研究生招生简章",
-        url="https://www.guet.edu.cn/2026/0930/c6358a1/page.htm",
-    ) == "inserted"
+    assert (
+        upsert_notice(
+            mem_db,
+            208,
+            "桂林电子科技大学",
+            "2027年硕士研究生招生简章",
+            url="https://www.guet.edu.cn/2026/0930/c6358a1/page.htm",
+        )
+        == "inserted"
+    )
     assert mem_db.execute("SELECT COUNT(*) FROM kaoyan_notices").fetchone()[0] == 1
 
 
 def test_upsert_accepts_relative_url(mem_db):
     """无协议相对 URL 归一化后非空，应被接受（不是空锚点）。"""
-    assert upsert_notice(
-        mem_db, 208, "桂林电子科技大学", "某公告", url="/info/1074/20804.htm"
-    ) == "inserted"
+    assert upsert_notice(mem_db, 208, "桂林电子科技大学", "某公告", url="/info/1074/20804.htm") == "inserted"
     assert mem_db.execute("SELECT COUNT(*) FROM kaoyan_notices").fetchone()[0] == 1
 
 
@@ -171,9 +166,7 @@ def test_upsert_never_overwrites_user_state(mem_db):
     )
     mem_db.commit()
     upsert_notice(mem_db, 208, "桂电", "标题A(改)", url=url)
-    row = mem_db.execute(
-        "SELECT is_read, is_starred, read_at, starred_at FROM kaoyan_notices"
-    ).fetchone()
+    row = mem_db.execute("SELECT is_read, is_starred, read_at, starred_at FROM kaoyan_notices").fetchone()
     assert row == (1, 1, "2026-10-12 10:00:00", "2026-10-12 10:00:00")
 
 

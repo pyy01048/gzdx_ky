@@ -36,12 +36,14 @@ OLLAMA_HOST = _resolve_ollama_host()
 
 #: 本机推荐拉取的模型（按 model_registry 的适配判定得出）
 RECOMMENDED = [
-    ("deepseek-r1:7b", "数学 / 数电 / 模电 / 电路 / 信号与系统 / 通信 / 光学 / 普物 / 408",
-     "≈4.7GB", "推理首选，完美适配 8GB"),
-    ("qwen3:4b", "文档要点提炼 / OCR 纠错（批量任务）",
-     "≈2.6GB", "又快又稳，日常问答与批量处理"),
-    ("qwen3:8b", "政治 / 英语（中文理解）",
-     "≈5.2GB", "中文最强，可与 7B 共存按科切换"),
+    (
+        "deepseek-r1:7b",
+        "数学 / 数电 / 模电 / 电路 / 信号与系统 / 通信 / 光学 / 普物 / 408",
+        "≈4.7GB",
+        "推理首选，完美适配 8GB",
+    ),
+    ("qwen3:4b", "文档要点提炼 / OCR 纠错（批量任务）", "≈2.6GB", "又快又稳，日常问答与批量处理"),
+    ("qwen3:8b", "政治 / 英语（中文理解）", "≈5.2GB", "中文最强，可与 7B 共存按科切换"),
 ]
 
 OLLAMA_DOWNLOAD = "https://ollama.com/download/OllamaSetup.exe"
@@ -95,6 +97,7 @@ def check_hardware() -> dict:
         from dataclasses import asdict
 
         from services import model_registry as mr
+
         hw = mr.detect_hardware()
         return {**asdict(hw), "tier": hw.tier}
     except Exception as e:
@@ -145,8 +148,7 @@ def main() -> int:
 
     print(f"  {c('32')}已安装{c('0m')}: {exe}")
     try:
-        v = subprocess.run([exe, "--version"], capture_output=True, text=True,
-                           timeout=20, errors="ignore")
+        v = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=20, errors="ignore")
         print(f"  版本: {(v.stdout or v.stderr).strip()[:80]}")
     except Exception:
         pass
@@ -165,7 +167,7 @@ def main() -> int:
     if models:
         for m in models:
             name = m.get("name", "?")
-            size = round((m.get("size") or 0) / 1024 ** 3, 1)
+            size = round((m.get("size") or 0) / 1024**3, 1)
             print(f"  · {name:<28} {size:>5} GB")
     elif running:
         print("  （还没有任何模型）")
@@ -214,7 +216,7 @@ def main() -> int:
                 print(f"  失败: {e}")
         hdr("完成")
         for m in installed_models():
-            print(f"  · {m.get('name')}  {round((m.get('size') or 0)/1024**3,1)} GB")
+            print(f"  · {m.get('name')}  {round((m.get('size') or 0) / 1024**3, 1)} GB")
     else:
         print()
         print("  提示：模型体积共约 12GB，本机网络较慢，建议分批拉取。")

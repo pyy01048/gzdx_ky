@@ -13,14 +13,16 @@
 5. POST /api/quiz/grade-subjective
    - 绑定题目上下文，返回 score/max_score/evaluation/reference_answer
 """
+
 from __future__ import annotations
 
 import uuid
 
 from database import SessionLocal
 from main import app
-from models import QuizQuestion, Word
 from tests.asgi_client import ASGIClient
+
+from models import QuizQuestion, Word
 
 client = ASGIClient(app)
 
@@ -33,8 +35,11 @@ def _make_english_question(db, subject="英语"):
         answer="A",
         analysis="Ubiquitous means everywhere present.",
         subject=subject,
-        chapter="QA-阅读", knowledge_point="QA-词汇",
-        difficulty=2, source="模拟", question_type="single",
+        chapter="QA-阅读",
+        knowledge_point="QA-词汇",
+        difficulty=2,
+        source="模拟",
+        question_type="single",
     )
     db.add(q)
     db.commit()
@@ -50,8 +55,11 @@ def _make_subjective_question(db, subject="数学"):
         answer="微积分是研究变化的数学工具，广泛应用于工程优化与建模。",
         analysis="从连续变化、极限、导数、积分等角度展开即可。",
         subject=subject,
-        chapter="QA-高数", knowledge_point="QA-微积分",
-        difficulty=3, source="自建", question_type="essay",
+        chapter="QA-高数",
+        knowledge_point="QA-微积分",
+        difficulty=3,
+        source="自建",
+        question_type="essay",
         answer_type="subjective",
     )
     db.add(q)
@@ -98,8 +106,7 @@ class TestExtractWords:
             qid = _make_english_question(db)
             # 预置当前测试用户词库中已有 ubiquitous
             if not db.query(Word).filter(Word.word == "ubiquitous").first():
-                db.add(Word(word="ubiquitous", meaning="无处不在",
-                            status="not_mastered", user_id=0))
+                db.add(Word(word="ubiquitous", meaning="无处不在", status="not_mastered", user_id=0))
                 db.commit()
         finally:
             db.close()
@@ -125,8 +132,7 @@ class TestCreateWordDedup:
     def _cleanup(self, word):
         db = SessionLocal()
         try:
-            db.query(Word).filter(Word.word == word, Word.user_id == 0).delete(
-                synchronize_session=False)
+            db.query(Word).filter(Word.word == word, Word.user_id == 0).delete(synchronize_session=False)
             db.commit()
         finally:
             db.close()
@@ -141,9 +147,7 @@ class TestCreateWordDedup:
             rid = r1.json()["id"]
 
             r2 = client.post("/api/words", json=payload)
-            assert r2.status_code == 409, (
-                f"重复创建应 409，实际 {r2.status_code}: {r2.text}"
-            )
+            assert r2.status_code == 409, f"重复创建应 409，实际 {r2.status_code}: {r2.text}"
             detail = r2.json()["detail"]
             assert detail["exists"] is True
             assert detail["word"] == word
@@ -155,11 +159,14 @@ class TestCreateWordDedup:
         word = f"sourcelabel{uuid.uuid4().hex[:8]}"
         self._cleanup(word)
         try:
-            resp = client.post("/api/words", json={
-                "word": word,
-                "meaning": "来源标注测试",
-                "source_label": "刷题生词",
-            })
+            resp = client.post(
+                "/api/words",
+                json={
+                    "word": word,
+                    "meaning": "来源标注测试",
+                    "source_label": "刷题生词",
+                },
+            )
             assert resp.status_code == 200, resp.text
             assert resp.json()["tag"] == "刷题生词"
         finally:
@@ -169,12 +176,15 @@ class TestCreateWordDedup:
         word = f"sourcetag{uuid.uuid4().hex[:8]}"
         self._cleanup(word)
         try:
-            resp = client.post("/api/words", json={
-                "word": word,
-                "meaning": "来源标注测试",
-                "tag": "高频",
-                "source_label": "刷题生词",
-            })
+            resp = client.post(
+                "/api/words",
+                json={
+                    "word": word,
+                    "meaning": "来源标注测试",
+                    "tag": "高频",
+                    "source_label": "刷题生词",
+                },
+            )
             assert resp.status_code == 200, resp.text
             assert resp.json()["tag"] == "高频"
         finally:
@@ -185,18 +195,20 @@ class TestCreateWordDedup:
         w2 = f"batchsrc2{uuid.uuid4().hex[:8]}"
         db = SessionLocal()
         try:
-            db.query(Word).filter(Word.word.in_([w1, w2]), Word.user_id == 0).delete(
-                synchronize_session=False)
+            db.query(Word).filter(Word.word.in_([w1, w2]), Word.user_id == 0).delete(synchronize_session=False)
             db.commit()
         finally:
             db.close()
         try:
-            resp = client.post("/api/words/batch-import", json={
-                "words": [
-                    {"word": w1, "meaning": "批量1", "source_label": "刷题生词"},
-                    {"word": w2, "meaning": "批量2"},
-                ]
-            })
+            resp = client.post(
+                "/api/words/batch-import",
+                json={
+                    "words": [
+                        {"word": w1, "meaning": "批量1", "source_label": "刷题生词"},
+                        {"word": w2, "meaning": "批量2"},
+                    ]
+                },
+            )
             assert resp.status_code == 200, resp.text
             assert resp.json()["imported"] == 2
             db = SessionLocal()
@@ -210,8 +222,7 @@ class TestCreateWordDedup:
         finally:
             db = SessionLocal()
             try:
-                db.query(Word).filter(Word.word.in_([w1, w2]), Word.user_id == 0).delete(
-                    synchronize_session=False)
+                db.query(Word).filter(Word.word.in_([w1, w2]), Word.user_id == 0).delete(synchronize_session=False)
                 db.commit()
             finally:
                 db.close()
@@ -231,12 +242,15 @@ class TestSubmitSubjective:
     def test_submit_subjective_with_self_score(self, db_schema):  # noqa: ARG001
         qid = self._make_subjective()
         # self_score=8, max_score=10，及格线 6 → correct=True
-        resp = client.post("/api/quiz/submit", json={
-            "question_id": qid,
-            "my_answer": "微积分在工程中有广泛应用。",
-            "self_score": 8,
-            "max_score": 10,
-        })
+        resp = client.post(
+            "/api/quiz/submit",
+            json={
+                "question_id": qid,
+                "my_answer": "微积分在工程中有广泛应用。",
+                "self_score": 8,
+                "max_score": 10,
+            },
+        )
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["is_subjective"] is True
@@ -247,12 +261,15 @@ class TestSubmitSubjective:
 
     def test_submit_subjective_below_passing(self, db_schema):  # noqa: ARG001
         qid = self._make_subjective()
-        resp = client.post("/api/quiz/submit", json={
-            "question_id": qid,
-            "my_answer": "不知道。",
-            "self_score": 3,
-            "max_score": 10,
-        })
+        resp = client.post(
+            "/api/quiz/submit",
+            json={
+                "question_id": qid,
+                "my_answer": "不知道。",
+                "self_score": 3,
+                "max_score": 10,
+            },
+        )
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["is_subjective"] is True
@@ -260,10 +277,13 @@ class TestSubmitSubjective:
 
     def test_submit_subjective_without_self_score(self, db_schema):  # noqa: ARG001
         qid = self._make_subjective()
-        resp = client.post("/api/quiz/submit", json={
-            "question_id": qid,
-            "my_answer": "微积分是重要工具。",
-        })
+        resp = client.post(
+            "/api/quiz/submit",
+            json={
+                "question_id": qid,
+                "my_answer": "微积分是重要工具。",
+            },
+        )
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["is_subjective"] is True
@@ -277,10 +297,13 @@ class TestSubmitSubjective:
         finally:
             db.close()
         # 正确答案 A
-        resp = client.post("/api/quiz/submit", json={
-            "question_id": qid,
-            "my_answer": "A",
-        })
+        resp = client.post(
+            "/api/quiz/submit",
+            json={
+                "question_id": qid,
+                "my_answer": "A",
+            },
+        )
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["is_subjective"] is False
@@ -297,11 +320,14 @@ class TestGradeSubjective:
             qid = _make_subjective_question(db)
         finally:
             db.close()
-        resp = client.post("/api/quiz/grade-subjective", json={
-            "question_id": qid,
-            "my_answer": "微积分研究变化率与累积量，工程中用于优化设计。",
-            "max_score": 10,
-        })
+        resp = client.post(
+            "/api/quiz/grade-subjective",
+            json={
+                "question_id": qid,
+                "my_answer": "微积分研究变化率与累积量，工程中用于优化设计。",
+                "max_score": 10,
+            },
+        )
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["question_id"] == qid
@@ -309,11 +335,14 @@ class TestGradeSubjective:
         assert "evaluation" in body
         assert "reference_answer" in body
         # score 可能为 None（LLM 不可用降级），也可能是数字
-        assert body["score"] is None or isinstance(body["score"], (int, float))
+        assert body["score"] is None or isinstance(body["score"], int | float)
 
     def test_grade_subjective_missing_question(self, db_schema):  # noqa: ARG001
-        resp = client.post("/api/quiz/grade-subjective", json={
-            "question_id": 99999999,
-            "my_answer": "测试",
-        })
+        resp = client.post(
+            "/api/quiz/grade-subjective",
+            json={
+                "question_id": 99999999,
+                "my_answer": "测试",
+            },
+        )
         assert resp.status_code == 404
